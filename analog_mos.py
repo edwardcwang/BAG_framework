@@ -55,9 +55,9 @@ class AnalogMosBase(MicroTemplate):
     __metaclass__ = abc.ABCMeta
 
     def __init__(self, lib_name, params, used_names, tech_name):
+        self.tech_name = tech_name
         MicroTemplate.__init__(self, lib_name, params, used_names)
         self.res_um = None
-        self.tech_name = tech_name
 
     def get_layout_basename(self):
         """Returns the base name for this template.
