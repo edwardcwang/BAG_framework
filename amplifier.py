@@ -41,6 +41,8 @@ class AmplifierBase(MicroTemplate):
 
     Parameters
     ----------
+    grid : :class:`bag.layout.routing.RoutingGrid`
+            the :class:`~bag.layout.routing.RoutingGrid` instance.
     lib_name : str
         the layout library name.
     params : dict
@@ -61,8 +63,8 @@ class AmplifierBase(MicroTemplate):
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, lib_name, params, used_names, mos_cls, sub_cls):
-        MicroTemplate.__init__(self, lib_name, params, used_names)
+    def __init__(self, grid, lib_name, params, used_names, mos_cls, sub_cls):
+        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
         self.mos_cls = mos_cls
         self.sub_cls = sub_cls
         self.array_box_list = None

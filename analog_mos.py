@@ -43,6 +43,8 @@ class AnalogMosBase(MicroTemplate):
 
     Parameters
     ----------
+    grid : :class:`bag.layout.routing.RoutingGrid`
+            the :class:`~bag.layout.routing.RoutingGrid` instance.
     lib_name : str
         the layout library name.
     params : dict
@@ -54,10 +56,9 @@ class AnalogMosBase(MicroTemplate):
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, lib_name, params, used_names, tech_name):
+    def __init__(self, grid, lib_name, params, used_names, tech_name):
         self.tech_name = tech_name
-        MicroTemplate.__init__(self, lib_name, params, used_names)
-        self.res_um = None
+        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
     def get_layout_basename(self):
         """Returns the base name for this template.
@@ -70,165 +71,17 @@ class AnalogMosBase(MicroTemplate):
 
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
-        return '%s_%s_%s_%s_w%s_fg%d_g%d_ds%s_base' % (self.tech_name,
-                                                       self.params['mos_type'],
-                                                       self.params['threshold'],
-                                                       lch_str, w_str,
-                                                       self.params['fg'],
-                                                       self.params['g_tracks'],
-                                                       self.params['ds_tracks'])
+        tr_w_str = float_to_si_string(self.params['track_width'])
+        tr_s_str = float_to_si_string(self.params['track_space'])
+        return '%s_%s_%s_l%s_w%s_fg%d_trw%s_trs%s_base' % (self.tech_name,
+                                                           self.params['mos_type'],
+                                                           self.params['threshold'],
+                                                           lch_str, w_str,
+                                                           self.params['fg'],
+                                                           tr_w_str, tr_s_str)
 
     def compute_unique_key(self):
         return self.get_layout_basename()
-
-
-class AnalogFinfetBase(AnalogMosBase):
-    """An abstract subclass of AnalogMosBase for finfet technology.
-
-    Parameters
-    ----------
-    lib_name : str
-        the layout library name.
-    params : dict
-        the parameter values.
-    used_names : set[str]
-        a set of already used cell names.
-    tech_name : str
-        the technology name.
-    core_cls : class
-        the Template class used to generate core transistor.
-    edge_cls : class
-        the Template class used to generate transistor edge block.
-    ext_cls : class
-        the Template class used to generate extension block.
-    """
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self, lib_name, params, used_names, tech_name, core_cls, edge_cls, ext_cls):
-        AnalogMosBase.__init__(self, lib_name, params, used_names, tech_name)
-        self.core_cls = core_cls
-        self.edge_cls = edge_cls
-        self.ext_cls = ext_cls
-
-    @abc.abstractmethod
-    def get_ext_params(self, loc, num_tracks):
-        """Returns a dictionary of extension block parameters.
-
-        Parameters
-        ----------
-        loc : str
-            location of the extension block.  Either 'top' or 'bot'.
-        num_tracks : int
-            number of gate or source/drain tracks needed.
-
-        Returns
-        -------
-        params : dict[str, any] or None
-            the extension block parameters, or None if it is not needed.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def get_edge_params(self):
-        """Returns a dictionary of edge block parameters.
-
-        Returns
-        -------
-        params : dict[str, any] or
-            the edge block parameters.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def get_core_params(self):
-        """Returns a dictionary of core block parameters.
-
-        Returns
-        -------
-        params : dict[str, any] or
-            the core block parameters.
-        """
-        return {}
-
-    def draw_layout(self, layout, temp_db, grid,
-                    mos_type='nch', threshold='lvt', lch=16e-9, w=4, fg=4,
-                    g_tracks=1, ds_tracks=1):
-        """Draw the layout of this template.
-
-        Override this method to create the layout.
-
-        Parameters
-        ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance to draw the layout with.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
-        grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
-        mos_type : str
-            the transistor type.
-        threshold : str
-            the transistor threshold flavor.
-        lch : float
-            the transistor channel length.
-        w : float for int
-            the transistor width, or number of fins.
-        fg : int
-            the number of fingers.
-        g_tracks : int
-            number of gate routing tracks.
-        ds_tracks : int
-            number of drain/source routing tracks.
-        """
-        if fg <= 0:
-            raise ValueError('Number of fingers must be positive.')
-
-        self.res_um = grid.get_resolution()
-
-        # create left edge, but don't add it to layout yet
-        edge_params = self.get_edge_params()
-        edge_blk = temp_db.new_template(params=edge_params, temp_cls=self.edge_cls)  # type: MicroTemplate
-        edge_arr_box = edge_blk.array_box
-
-        # draw bottom extension (if needed) and left edge.  Also compute lower-left array box coordinate.
-        bot_ext_params = self.get_ext_params('bot', g_tracks)
-        if bot_ext_params is not None:
-            blk = temp_db.new_template(params=bot_ext_params, temp_cls=self.ext_cls)  # type: MicroTemplate
-            self.add_template(layout, blk, 'XBEXT')
-            bot_ext_arr_box = blk.array_box
-
-            dy = bot_ext_arr_box.top - edge_arr_box.bottom
-            arr_box_left, arr_box_bottom = bot_ext_arr_box.left, bot_ext_arr_box.bottom
-        else:
-            dy = 0.0
-            arr_box_left, arr_box_bottom = edge_arr_box.left, edge_arr_box.bottom
-
-        self.add_template(layout, edge_blk, 'XLEDGE', loc=(0.0, dy))
-
-        # draw transistor
-        core_params = self.get_core_params()
-        core_blk = temp_db.new_template(params=core_params, temp_cls=self.core_cls)  # type: MicroTemplate
-        core_arr_box = core_blk.array_box
-        dx = edge_arr_box.right - core_arr_box.left
-        self.add_template(layout, core_blk, 'XMOS', loc=(dx, dy))
-
-        # draw right edge and compute right array box coordinate.
-        dx = dx + core_arr_box.right + edge_arr_box.width - edge_arr_box.left
-        self.add_template(layout, edge_blk, 'XREDGE', loc=(dx, dy), orient='MY')
-        arr_box_right = edge_arr_box.left + dx
-        arr_box_top = edge_arr_box.top + dy
-
-        # draw top extension if needed.  Also update upper array box coordinate.
-        top_ext_params = self.get_ext_params('top', ds_tracks)
-        if top_ext_params is not None:
-            blk = temp_db.new_template(params=top_ext_params, temp_cls=self.ext_cls)  # type: MicroTemplate
-            top_ext_arr_box = blk.array_box
-            dy = dy + core_arr_box.top - top_ext_arr_box.bottom
-            self.add_template(layout, blk, 'XTEXT', loc=(0.0, dy))
-            arr_box_top = top_ext_arr_box.top + dy
-
-        # set array box of this template
-        self.array_box = BBox(arr_box_left, arr_box_bottom, arr_box_right, arr_box_top, grid.get_resolution())
 
 
 class AnalogFinfetFoundation(MicroTemplate):
@@ -240,10 +93,10 @@ class AnalogFinfetFoundation(MicroTemplate):
 
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, lib_name, params, used_names):
-        MicroTemplate.__init__(self, lib_name, params, used_names)
+    def __init__(self, grid, lib_name, params, used_names):
+        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
-    def draw_foundation(self, layout, res, lch=16e-9, nfin=4, fg=4,
+    def draw_foundation(self, layout, lch=16e-9, nfin=4, fg=4,
                         nduml=0, ndumr=0, arr_box_ext=None,
                         tech_constants=None):
         """Draw the layout of this template.
@@ -254,8 +107,6 @@ class AnalogFinfetFoundation(MicroTemplate):
         ----------
         layout : :class:`bag.layout.core.BagLayout`
             the BagLayout instance to draw the layout with.
-        res : float
-            layout resolution.
         lch : float
             the transistor channel length.
         nfin : float for int
@@ -283,6 +134,9 @@ class AnalogFinfetFoundation(MicroTemplate):
         if arr_box_ext is None:
             arr_box_ext = [0, 0, 0, 0]
 
+        lch /= self.grid.get_layout_unit()
+        res = self.grid.get_resolution()
+
         mos_fin_pitch = tech_constants['mos_fin_pitch']
         mos_cpo_h = tech_constants['mos_cpo_h']
         sd_pitch = tech_constants['sd_pitch']
@@ -309,14 +163,13 @@ class AnalogFinfetFoundation(MicroTemplate):
                                     bnd_box_w, arr_box.top + mos_cpo_h / 2.0, res))
 
         # draw DPO/PO
-        lch_um = lch * 1e6
         dpo_lp = ('PO', 'dummy1')
         po_lp = ('PO', 'drawing')
         for idx, (layer, purpose) in enumerate(chain(repeat(dpo_lp, nduml), repeat(po_lp, fg),
                                                      repeat(dpo_lp, ndumr))):
             xmid = (idx + 0.5) * sd_pitch + extl
-            layout.add_rect(layer, BBox(xmid - lch_um / 2.0, arr_box.bottom - extb,
-                                        xmid + lch_um / 2.0, arr_box.top + extt, res),
+            layout.add_rect(layer, BBox(xmid - lch / 2.0, arr_box.bottom - extb,
+                                        xmid + lch / 2.0, arr_box.top + extt, res),
                             purpose=purpose)
 
         # draw VT/implant
@@ -339,6 +192,8 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
 
     Parameters
     ----------
+    grid : :class:`bag.layout.routing.RoutingGrid`
+            the :class:`~bag.layout.routing.RoutingGrid` instance.
     lib_name : str
         the layout library name.
     params : dict
@@ -347,8 +202,8 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
         a set of already used cell names.
     """
 
-    def __init__(self, lib_name, params, used_names):
-        AnalogFinfetFoundation.__init__(self, lib_name, params, used_names)
+    def __init__(self, grid, lib_name, params, used_names):
+        AnalogFinfetFoundation.__init__(self, grid, lib_name, params, used_names)
 
     def get_default_params(self):
         """Returns the default parameter dictionary.
@@ -384,12 +239,12 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
         fg = self.params['fg']
         tech_str = self.params['tech_constants']['name']
         lch_str = float_to_si_string(lch)
-        return '%s_%s_%s_%s_fin%d_fg%d_ext' % (tech_str, mos_type, threshold, lch_str, nfin, fg)
+        return '%s_%s_%s_l%s_fin%d_fg%d_ext' % (tech_str, mos_type, threshold, lch_str, nfin, fg)
 
     def compute_unique_key(self):
         return self.get_layout_basename()
 
-    def draw_layout(self, layout, temp_db, grid,
+    def draw_layout(self, layout, temp_db,
                     mos_type='nch', threshold='lvt', lch=16e-9,
                     nfin=4, fg=4, tech_constants=None):
         """Draw the layout of this template.
@@ -402,8 +257,6 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
             the BagLayout instance to draw the layout with.
         temp_db : :class:`bag.layout.template.TemplateDB`
             the TemplateDB instance.  Used to create new templates.
-        grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
         mos_type : str
             the transistor type.  Either 'nch' or 'pch'
         threshold : str
@@ -432,17 +285,29 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
             mos_edge_xext : float
                 horizontal extension of CPO/implant layers over the array box left and right edges.
         """
-        res = grid.get_resolution()
 
         if fg <= 0:
             raise ValueError('Number of fingers must be positive.')
 
+        nfin_min = tech_constants['mos_ext_nfin_min']
+
+        if nfin < nfin_min:
+            raise ValueError('Extension must have a minimum of %d fins' % nfin_min)
+
         ndum = tech_constants['mos_edge_num_dpo']  # type: int
         xext = tech_constants['mos_edge_xext']  # type: float
 
+        # if we're creating a substrate extension, make sure CPO overlap rule is met
+        if mos_type == 'ptap' or mos_type == 'ntap':
+            mos_core_cpo_po_ov = tech_constants['mos_core_cpo_po_ov']
+            mos_cpo_h = tech_constants['mos_cpo_h']
+            extb = max(mos_core_cpo_po_ov - mos_cpo_h / 2.0, 0.0)
+        else:
+            extb = 0.0
+
         # include 2 PODE polys
-        self.draw_foundation(layout, res, lch=lch, nfin=nfin, fg=fg + 2,
-                             nduml=ndum, ndumr=ndum, arr_box_ext=[xext, 0.0, xext, 0.0],
+        self.draw_foundation(layout, lch=lch, nfin=nfin, fg=fg + 2,
+                             nduml=ndum, ndumr=ndum, arr_box_ext=[xext, extb, xext, 0.0],
                              tech_constants=tech_constants)
 
 
@@ -451,6 +316,8 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
 
     Parameters
     ----------
+    grid : :class:`bag.layout.routing.RoutingGrid`
+            the :class:`~bag.layout.routing.RoutingGrid` instance.
     lib_name : str
         the layout library name.
     params : dict
@@ -460,11 +327,11 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, lib_name, params, used_names):
-        AnalogFinfetFoundation.__init__(self, lib_name, params, used_names)
+    def __init__(self, grid, lib_name, params, used_names):
+        AnalogFinfetFoundation.__init__(self, grid, lib_name, params, used_names)
 
     @abc.abstractmethod
-    def draw_od_edge(self, layout, temp_db, grid, w, tech_constants):
+    def draw_od_edge(self, layout, temp_db, yc, w, tech_constants):
         """Draw od edge dummies.
 
         You can assume that self.array_box is already set.
@@ -486,6 +353,7 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
                     threshold='ulvt',
                     lch=16e-9,
                     w=8,
+                    ext=0,
                     tech_constants=None,
                     )
 
@@ -501,16 +369,17 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
         threshold = self.params['threshold']
         lch = self.params['lch']
         w = self.params['w']
+        ext = self.params['ext']
         tech_str = self.params['tech_constants']['name']
         lch_str = float_to_si_string(lch)
-        return '%s_%s_%s_%s_w%d_edge' % (tech_str, mos_type, threshold, lch_str, w)
+        return '%s_%s_%s_l%s_w%d_ext%d_edge' % (tech_str, mos_type, threshold, lch_str, w, ext)
 
     def compute_unique_key(self):
         return self.get_layout_basename()
 
-    def draw_layout(self, layout, temp_db, grid,
+    def draw_layout(self, layout, temp_db,
                     mos_type='nch', threshold='lvt', lch=16e-9,
-                    w=4, tech_constants=None):
+                    w=4, ext=0, tech_constants=None):
         """Draw the layout of this template.
 
         Override this method to create the layout.
@@ -521,8 +390,6 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
             the BagLayout instance to draw the layout with.
         temp_db : :class:`bag.layout.template.TemplateDB`
             the TemplateDB instance.  Used to create new templates.
-        grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
         mos_type : str
             the transistor type.  Either 'nch' or 'pch'
         threshold : str
@@ -531,6 +398,8 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
             the transistor channel length.
         w : float for int
             transistor width.
+        ext : int
+            number of fins to extend on the bottom.
         tech_constants : dict[str, any]
             the technology constants dictionary.  Must have the following entries:
 
@@ -554,8 +423,11 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
                 array box height in number of fin pitches.
             mos_core_cpo_po_ov : float
                 overlap between CPO and PO.
+            mos_edge_od_dy : float
+                delta Y value from center of OD to array box bottom with 0 extension.
         """
-        res = grid.get_resolution()
+
+        res = self.grid.get_resolution()
 
         mos_fin_h = tech_constants['mos_fin_h']
         mos_fin_pitch = tech_constants['mos_fin_pitch']
@@ -572,19 +444,268 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
             extb = 0.0
 
         # draw foundation, include 1 PODE poly
-        self.draw_foundation(layout, res, lch=lch, nfin=nfin, fg=1,
+        self.draw_foundation(layout, lch=lch, nfin=nfin + ext, fg=1,
                              nduml=ndum, ndumr=0, arr_box_ext=[xext, extb, 0.0, 0.0],
                              tech_constants=tech_constants)
 
         # draw OD/PODE
+        od_yc = self.array_box.bottom + tech_constants['mos_edge_od_dy'] + ext * mos_fin_pitch
+        lch_layout = lch / self.grid.get_layout_unit()
         od_h = mos_fin_h + (w - 1) * mos_fin_pitch
-        lch_um = lch * 1e6
         xmid = (ndum + 0.5) * sd_pitch + xext
-        xl = xmid - lch_um / 2.0
-        xr = xmid + lch_um / 2.0
-        box = BBox(xl, self.array_box.yc - od_h / 2.0, xr, self.array_box.yc + od_h / 2.0, res)
+        xl = xmid - lch_layout / 2.0
+        xr = xmid + lch_layout / 2.0
+        box = BBox(xl, od_yc - od_h / 2.0, xr, od_yc + od_h / 2.0, res)
         layout.add_rect('OD', box)
         layout.add_rect('PODE', box, purpose='dummy1')
 
         # draw OD edge objects
-        self.draw_od_edge(layout, temp_db, grid, w, tech_constants)
+        self.draw_od_edge(layout, temp_db, od_yc, w, tech_constants)
+
+
+class AnalogFinfetBase(AnalogMosBase):
+    """An abstract subclass of AnalogMosBase for finfet technology.
+
+    Parameters
+    ----------
+    grid : :class:`bag.layout.routing.RoutingGrid`
+            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    lib_name : str
+        the layout library name.
+    params : dict
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    tech_name : str
+        the technology name.
+    core_cls : class
+        the Template class used to generate core transistor.
+    edge_cls : class
+        the Template class used to generate transistor edge block.
+    ext_cls : class
+        the Template class used to generate extension block.
+    tech_constants : dict[str, any]
+        the technology constants dictionary.
+    """
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, grid, lib_name, params, used_names,
+                 tech_name, core_cls, edge_cls, ext_cls, tech_constants):
+        AnalogMosBase.__init__(self, grid, lib_name, params, used_names, tech_name)
+        self.core_cls = core_cls
+        self.edge_cls = edge_cls
+        self.ext_cls = ext_cls
+        self.tech_constants = tech_constants
+
+    @abc.abstractmethod
+    def get_ext_params(self, ext_nfin):
+        """Returns a dictionary of extension block parameters.
+
+        Parameters
+        ----------
+        ext_nfin : int
+            extension height in number of fins.
+
+        Returns
+        -------
+        params : dict[str, any]
+            the extension block parameters.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_edge_params(self, core_ext):
+        """Returns a dictionary of edge block parameters.
+
+        Parameters
+        ----------
+        core_ext : int
+            core height extension in number of fins.
+
+        Returns
+        -------
+        params : dict[str, any] or
+            the edge block parameters.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_core_params(self, core_ext):
+        """Returns a dictionary of core block parameters.
+
+        Parameters
+        ----------
+        core_ext : int
+            core height extension in number of fins.
+
+        Returns
+        -------
+        params : dict[str, any] or
+            the core block parameters.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_core_info(self):
+        """Returns core transistor properties with 0 extension useful for layout.
+
+        Returns
+        -------
+        core_info : dict[str, any]
+            core transistor properties dictionary.
+        """
+        return {}
+
+    def draw_layout(self, layout, temp_db,
+                    mos_type='nch', threshold='lvt', lch=16e-9, w=4, fg=4,
+                    track_width=78e-9, track_space=210e-9):
+        """Draw the layout of this template.
+
+        Override this method to create the layout.
+
+        Parameters
+        ----------
+        layout : :class:`bag.layout.core.BagLayout`
+            the BagLayout instance to draw the layout with.
+        temp_db : :class:`bag.layout.template.TemplateDB`
+            the TemplateDB instance.  Used to create new templates.
+        mos_type : str
+            the transistor type.
+        threshold : str
+            the transistor threshold flavor.
+        lch : float
+            the transistor channel length.
+        w : float for int
+            the transistor width, or number of fins.
+        fg : int
+            the number of fingers.
+        track_width : float
+            the routing track width.
+        track_space : float
+            the routing track spacing.
+        """
+        if fg <= 0:
+            raise ValueError('Number of fingers must be positive.')
+
+        # get technology constants
+        mos_fin_pitch = self.tech_constants['mos_fin_pitch']
+        mos_ext_nfin_min = self.tech_constants['mos_ext_nfin_min']
+
+        # express track pitch as number of fin pitches
+        layout_unit = self.grid.get_layout_unit()
+        track_width /= layout_unit
+        track_space /= layout_unit
+        track_pitch = track_width + track_space
+        track_nfin = int(round(track_pitch * 1.0 / mos_fin_pitch))
+        if abs(track_pitch - track_nfin * mos_fin_pitch) >= self.grid.get_resolution():
+            # check track_pitch is multiple of nfin.
+            msg = 'track pitch = %.4g not multiples of fin pitch = %.4g' % (track_pitch, mos_fin_pitch)
+            raise ValueError(msg)
+
+        # get extension needed to fit integer number of tracks
+        core_info = self.get_core_info()
+        core_nfin = core_info['nfin']
+        core_tr_nfin = core_info['tr_nfin']
+
+        ntrack = int(np.ceil(core_nfin * 1.0 / track_nfin))
+        ext_nfin = track_nfin * ntrack - core_nfin
+
+        # See if the first track is far enough from core transistor
+        track_top_nfin = int(np.ceil((track_space / 2.0 + track_width) / mos_fin_pitch))
+        track_top_nfin_max = core_tr_nfin + ext_nfin
+        if track_top_nfin > track_top_nfin_max:
+            # first track from bottom too close to core transistor
+            # add an additional track to increase spacing.
+            ext_nfin += track_nfin
+
+        # determine if we need an extension block, or we should simply extend the core.
+        if ext_nfin < mos_ext_nfin_min:
+            core_ext = ext_nfin
+            ext_nfin = 0
+        else:
+            core_ext = 0
+
+        # create left edge
+        edge_params = self.get_edge_params(core_ext)
+        edge_blk = temp_db.new_template(params=edge_params, temp_cls=self.edge_cls)  # type: MicroTemplate
+        edge_arr_box = edge_blk.array_box
+
+        # draw bottom extension if needed, then compute lower-left array box coordinate.
+        if ext_nfin > 0:
+            # draw bottom extension
+            bot_ext_params = self.get_ext_params(ext_nfin)
+            blk = temp_db.new_template(params=bot_ext_params, temp_cls=self.ext_cls)  # type: MicroTemplate
+            self.add_template(layout, blk, 'XBEXT')
+            bot_ext_arr_box = blk.array_box
+
+            dy = bot_ext_arr_box.top - edge_arr_box.bottom
+            arr_box_left, arr_box_bottom = bot_ext_arr_box.left, bot_ext_arr_box.bottom
+        else:
+            dy = 0.0
+            arr_box_left, arr_box_bottom = edge_arr_box.left, edge_arr_box.bottom
+
+        # create core transistor.
+        core_params = self.get_core_params(core_ext)
+        core_blk = temp_db.new_template(params=core_params, temp_cls=self.core_cls)  # type: MicroTemplate
+        core_arr_box = core_blk.array_box
+
+        # draw left edge
+        self.add_template(layout, edge_blk, 'XLEDGE', loc=(0.0, dy))
+        # draw core
+        dx = edge_arr_box.right - core_arr_box.left
+        self.add_template(layout, core_blk, 'XMOS', loc=(dx, dy))
+
+        # draw right edge and compute right array box coordinate.
+        dx = dx + core_arr_box.right + edge_arr_box.width - edge_arr_box.left
+        self.add_template(layout, edge_blk, 'XREDGE', loc=(dx, dy), orient='MY')
+        arr_box_right = edge_arr_box.left + dx
+        arr_box_top = edge_arr_box.top + dy
+
+        # set array box of this template
+        self.array_box = BBox(arr_box_left, arr_box_bottom, arr_box_right, arr_box_top,
+                              self.grid.get_resolution())
+
+
+class AnalogMosConn(MicroTemplate):
+    """An abstract template for analog mosfet connections.
+
+    Connections drain, gate, and source to a metal layer that makes
+    higher level connections relatively process independent.
+
+    Parameters
+    ----------
+    grid : :class:`bag.layout.routing.RoutingGrid`
+            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    lib_name : str
+        the layout library name.
+    params : dict
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    tech_name : str
+        the technology name.
+    """
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, grid, lib_name, params, used_names, tech_name):
+        self.tech_name = tech_name
+        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+
+    def get_layout_basename(self):
+        """Returns the base name for this template.
+
+        Returns
+        -------
+        base_name : str
+            the base name of this template.
+        """
+
+        lch_str = float_to_si_string(self.params['lch'])
+        w_str = float_to_si_string(self.params['w'])
+        return '%s_l%s_w%s_fg%d_s%s_conn' % (self.tech_name,
+                                             lch_str, w_str,
+                                             self.params['fg'],
+                                             self.params['sdir'])
+
+    def compute_unique_key(self):
+        return self.get_layout_basename()
