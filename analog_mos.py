@@ -60,6 +60,28 @@ class AnalogMosBase(MicroTemplate):
         self.tech_name = tech_name
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
+    def get_num_tracks(self):
+        """Returns the number of tracks in this template.
+
+        AnalogMosBase should always have at least one track, and the bottom-most track is always
+        for gate connection.
+
+        Returns
+        -------
+        num_track : int
+            number of tracks in this template.
+        """
+        layout_unit = self.grid.get_layout_unit()
+        h = self.array_box.height
+        tr_w = self.params['track_width'] / layout_unit
+        tr_s = self.params['track_space'] / layout_unit
+        tr_pitch = tr_w + tr_s
+
+        num_track = int(round(h / tr_pitch))
+        if abs(h - num_track * tr_pitch) >= self.grid.get_resolution():
+            raise Exception('array box height = %.4g not integer number of track pitch = %.4g' % (h, tr_pitch))
+        return num_track
+
     def get_layout_basename(self):
         """Returns the base name for this template.
 
@@ -73,12 +95,15 @@ class AnalogMosBase(MicroTemplate):
         w_str = float_to_si_string(self.params['w'])
         tr_w_str = float_to_si_string(self.params['track_width'])
         tr_s_str = float_to_si_string(self.params['track_space'])
-        return '%s_%s_%s_l%s_w%s_fg%d_trw%s_trs%s_base' % (self.tech_name,
-                                                           self.params['mos_type'],
-                                                           self.params['threshold'],
-                                                           lch_str, w_str,
-                                                           self.params['fg'],
-                                                           tr_w_str, tr_s_str)
+        g_ntr = self.params['g_tracks']
+        ds_ntr = self.params['ds_tracks']
+        return '%s_%s_%s_l%s_w%s_fg%d_trw%s_trs%s_ng%d_nds%d_base' % (self.tech_name,
+                                                                      self.params['mos_type'],
+                                                                      self.params['threshold'],
+                                                                      lch_str, w_str,
+                                                                      self.params['fg'],
+                                                                      tr_w_str, tr_s_str,
+                                                                      g_ntr, ds_ntr)
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -558,7 +583,8 @@ class AnalogFinfetBase(AnalogMosBase):
 
     def draw_layout(self, layout, temp_db,
                     mos_type='nch', threshold='lvt', lch=16e-9, w=4, fg=4,
-                    track_width=78e-9, track_space=210e-9):
+                    track_width=78e-9, track_space=210e-9,
+                    g_tracks=1, ds_tracks=1):
         """Draw the layout of this template.
 
         Override this method to create the layout.
@@ -583,6 +609,10 @@ class AnalogFinfetBase(AnalogMosBase):
             the routing track width.
         track_space : float
             the routing track spacing.
+        g_tracks : int
+            minimum number of gate tracks.
+        ds_tracks : int
+            minimum number of drain/source tracks.
         """
         if fg <= 0:
             raise ValueError('Number of fingers must be positive.')
@@ -601,39 +631,50 @@ class AnalogFinfetBase(AnalogMosBase):
             # check track_pitch is multiple of nfin.
             msg = 'track pitch = %.4g not multiples of fin pitch = %.4g' % (track_pitch, mos_fin_pitch)
             raise ValueError(msg)
+        if track_nfin < mos_ext_nfin_min:
+            # check a single track pitch is greater than or equal to minimum extension height.
+            msg = 'track pitch = %.4g less than minimum extension height = %.4g' % (track_pitch,
+                                                                                    mos_ext_nfin_min * mos_fin_pitch)
+            raise ValueError(msg)
 
         # get extension needed to fit integer number of tracks
         core_info = self.get_core_info()
         core_nfin = core_info['nfin']
         core_tr_nfin = core_info['tr_nfin']
 
-        ntrack = int(np.ceil(core_nfin * 1.0 / track_nfin))
-        ext_nfin = track_nfin * ntrack - core_nfin
+        # compute minimum number of tracks and needed bottom extension
+        ntrack_min = int(np.ceil(core_nfin * 1.0 / track_nfin))
+        bot_ext_nfin = track_nfin * ntrack_min - core_nfin
 
         # See if the first track is far enough from core transistor
         track_top_nfin = int(np.ceil((track_space / 2.0 + track_width) / mos_fin_pitch))
-        track_top_nfin_max = core_tr_nfin + ext_nfin
+        track_top_nfin_max = core_tr_nfin + bot_ext_nfin
         if track_top_nfin > track_top_nfin_max:
             # first track from bottom too close to core transistor
             # add an additional track to increase spacing.
-            ext_nfin += track_nfin
+            bot_ext_nfin += track_nfin
+            ntrack_min += 1
 
-        # determine if we need an extension block, or we should simply extend the core.
-        if ext_nfin < mos_ext_nfin_min:
-            core_ext = ext_nfin
-            ext_nfin = 0
+        # now calculate bottom/top extensions to account for gate tracks and drain/source tracks
+        bot_ext_nfin += max(g_tracks - 1, 0) * track_nfin
+        top_ext_nfin = max(ds_tracks - (ntrack_min - 1), 0) * track_nfin
+
+        # determine if we need top/bottom extension blocks, or we should simply extend the core.
+        if bot_ext_nfin < mos_ext_nfin_min:
+            core_bot_ext = bot_ext_nfin
+            bot_ext_nfin = 0
         else:
-            core_ext = 0
+            core_bot_ext = 0
 
         # create left edge
-        edge_params = self.get_edge_params(core_ext)
+        edge_params = self.get_edge_params(core_bot_ext)
         edge_blk = temp_db.new_template(params=edge_params, temp_cls=self.edge_cls)  # type: MicroTemplate
         edge_arr_box = edge_blk.array_box
 
         # draw bottom extension if needed, then compute lower-left array box coordinate.
-        if ext_nfin > 0:
+        if bot_ext_nfin > 0:
             # draw bottom extension
-            bot_ext_params = self.get_ext_params(ext_nfin)
+            bot_ext_params = self.get_ext_params(bot_ext_nfin)
             blk = temp_db.new_template(params=bot_ext_params, temp_cls=self.ext_cls)  # type: MicroTemplate
             self.add_template(layout, blk, 'XBEXT')
             bot_ext_arr_box = blk.array_box
@@ -645,7 +686,7 @@ class AnalogFinfetBase(AnalogMosBase):
             arr_box_left, arr_box_bottom = edge_arr_box.left, edge_arr_box.bottom
 
         # create core transistor.
-        core_params = self.get_core_params(core_ext)
+        core_params = self.get_core_params(core_bot_ext)
         core_blk = temp_db.new_template(params=core_params, temp_cls=self.core_cls)  # type: MicroTemplate
         core_arr_box = core_blk.array_box
 
@@ -655,11 +696,20 @@ class AnalogFinfetBase(AnalogMosBase):
         dx = edge_arr_box.right - core_arr_box.left
         self.add_template(layout, core_blk, 'XMOS', loc=(dx, dy))
 
-        # draw right edge and compute right array box coordinate.
+        # draw right edge and compute top right array box coordinate.
         dx = dx + core_arr_box.right + edge_arr_box.width - edge_arr_box.left
         self.add_template(layout, edge_blk, 'XREDGE', loc=(dx, dy), orient='MY')
         arr_box_right = edge_arr_box.left + dx
         arr_box_top = edge_arr_box.top + dy
+
+        # draw top extension and update top array box coordinate if needed
+        if top_ext_nfin > 0:
+            # draw top extension
+            top_ext_params = self.get_ext_params(top_ext_nfin)
+            blk = temp_db.new_template(params=top_ext_params, temp_cls=self.ext_cls)  # type: MicroTemplate
+            top_ext_arr_box = blk.array_box
+            self.add_template(layout, blk, 'XTEXT', loc=(0.0, arr_box_top - top_ext_arr_box.bottom))
+            arr_box_top += top_ext_arr_box.height
 
         # set array box of this template
         self.array_box = BBox(arr_box_left, arr_box_bottom, arr_box_right, arr_box_top,

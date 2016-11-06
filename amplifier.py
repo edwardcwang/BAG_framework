@@ -88,20 +88,24 @@ class AmplifierBase(MicroTemplate):
         fg : int
             number of fingers.
         g_tracks : int
-            number of gate tracks.
+            minimum number of gate tracks.
         ds_tracks : int
-            number of drain/source tracks.
+            minimum number of drain/source tracks.
 
         Returns
         -------
         mos_params : dict[str, any]
             the mosfet parameter dictionary.
         """
+        track_width = self.params['track_width']
+        track_space = self.params['track_space']
         return dict(mos_type=mos_type,
                     threshold=thres,
                     lch=lch,
                     w=w,
                     fg=fg,
+                    track_width=track_width,
+                    track_space=track_space,
                     g_tracks=g_tracks,
                     ds_tracks=ds_tracks,
                     )
@@ -129,15 +133,20 @@ class AmplifierBase(MicroTemplate):
         substrate_params : dict[str, any]
             the substrate parameter dictionary.
         """
+        track_width = self.params['track_width']
+        track_space = self.params['track_space']
         return dict(mos_type=mos_type,
                     threshold=thres,
                     lch=lch,
                     w=w,
                     fg=fg,
+                    track_width=track_width,
+                    track_space=track_space,
                     )
 
     def draw_base(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw_list, pth_list,
+                  track_width, track_space,
                   ng_tracks=None, nds_tracks=None,
                   pg_tracks=None, pds_tracks=None):
         """Draw the amplifier base.
@@ -156,6 +165,10 @@ class AmplifierBase(MicroTemplate):
             pwell substrate contact width.
         ntap_w : int or float
             nwell substrate contact width.
+        track_width : float
+            the routing track width.
+        track_space : float
+            the routing track spacing.
         nw_list : list[int or float]
             a list of nmos width for each row, from bottom to top.
         nth_list: list[str]
@@ -167,11 +180,11 @@ class AmplifierBase(MicroTemplate):
         ng_tracks : list[int] or None
             number of nmos gate tracks per row, from bottom to top.  Defaults to 1.
         nds_tracks : list[int] or None
-            number of nmos drain/source tracks per row, from bottom to top.  Defaults to 1.
+            number of nmos drain/source tracks per row, from bottom to top.  Defaults to 0.
         pg_tracks : list[int] or None
             number of pmos gate tracks per row, from bottom to top.  Defaults to 1.
         pds_tracks : list[int] or None
-            number of pmos drain/source tracks per row, from bottom to top.  Defaults to 1.
+            number of pmos drain/source tracks per row, from bottom to top.  Defaults to 0.
         """
 
         # set default values.
@@ -192,6 +205,7 @@ class AmplifierBase(MicroTemplate):
             mos_type = 'ntap'
             sub_th = pth_list[0]
             sub_w = ntap_w
+
         bsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot)
         bsub = temp_db.new_template(params=bsub_params, temp_cls=self.sub_cls)  # type: MicroTemplate
         bsub_arr_box = bsub.array_box
@@ -212,18 +226,21 @@ class AmplifierBase(MicroTemplate):
             else:
                 fmt = 'XMP%d'
                 orient = 'MX'
-            for idx, (w, th, gntr, dntr) in enumerate(izip(w_list, th_list, g_list, ds_list)):
-                mos_params = self.get_mos_params(mos_type, th, lch, w, fg_tot, gntr, dntr)
+            for idx, (w, thres, gntr, dntr) in enumerate(izip(w_list, th_list, g_list, ds_list)):
+                mos_params = self.get_mos_params(mos_type, thres, lch, w, fg_tot, gntr, dntr)
                 mos = temp_db.new_template(params=mos_params, temp_cls=self.mos_cls)  # type: MicroTemplate
                 mos_arr_box = mos.array_box
+
+                # compute ybot of mosfet
                 if orient == 'MX':
                     ybot = ycur + mos_arr_box.top
                 else:
                     ybot = ycur - mos_arr_box.bottom
+
+                # add mosfet
                 self.add_template(layout, mos, fmt % idx, loc=(0.0, ybot), orient=orient)
                 self.array_box_list.append(mos_arr_box)
                 self.yo_list.append(ybot)
-
                 ycur += mos_arr_box.height
 
         # draw last substrate
