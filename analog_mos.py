@@ -640,7 +640,7 @@ class AnalogFinfetBase(AnalogMosBase):
         # get extension needed to fit integer number of tracks
         core_info = self.get_core_info()
         core_nfin = core_info['nfin']
-        core_tr_nfin = core_info['tr_nfin']
+        core_tr_nfin = core_info['tr_nfin_max']
 
         # compute minimum number of tracks and needed bottom extension
         ntrack_min = int(np.ceil(core_nfin * 1.0 / track_nfin))
@@ -719,8 +719,8 @@ class AnalogFinfetBase(AnalogMosBase):
 class AnalogMosConn(MicroTemplate):
     """An abstract template for analog mosfet connections.
 
-    Connections drain, gate, and source to a metal layer that makes
-    higher level connections relatively process independent.
+    Connects drain, gate, and source to a high level vertical metal layer.
+    Assumes the center of the left-most source/drain junction is at (0, 0).
 
     Parameters
     ----------
