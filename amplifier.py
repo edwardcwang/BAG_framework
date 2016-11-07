@@ -142,7 +142,7 @@ class AmplifierBase(MicroTemplate):
                     track_space=track_space,
                     )
 
-    def draw_mos_conn(self, layout, temp_db, row_idx, po_idx, fg, sdir):
+    def draw_mos_conn(self, layout, temp_db, row_idx, po_idx, fg, sdir, ddir):
         """Draw transistor connection.
 
         Parameters
@@ -157,8 +157,10 @@ class AmplifierBase(MicroTemplate):
             the poly index.  0 is the left-most poly.
         fg : int
             number of fingers.
-        sdir : str
-            source direction.  'up' or 'down'.  For PMOS sdir is reversed.
+        sdir : int
+            source connection direction.  0 for down, 1 for middle, 2 for up.
+        ddir : int
+            drain connection direction.  0 for down, 1 for middle, 2 for up.
         """
         # skip bottom substrate
         idx = row_idx + 1
@@ -168,6 +170,7 @@ class AmplifierBase(MicroTemplate):
             w=self.w_list[idx],
             fg=fg,
             sdir=sdir,
+            ddir=ddir,
         )
 
         xc, yc = self.sd_list[idx]

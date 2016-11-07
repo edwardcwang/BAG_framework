@@ -819,10 +819,12 @@ class AnalogMosConn(MicroTemplate):
 
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
-        return '%s_l%s_w%s_fg%d_s%s_conn' % (self.tech_name,
-                                             lch_str, w_str,
-                                             self.params['fg'],
-                                             self.params['sdir'])
+        return '%s_l%s_w%s_fg%d_s%d_d%d_conn' % (self.tech_name,
+                                                 lch_str, w_str,
+                                                 self.params['fg'],
+                                                 self.params['sdir'],
+                                                 self.params['ddir'],
+                                                 )
 
     def compute_unique_key(self):
         return self.get_layout_basename()
