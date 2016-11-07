@@ -60,6 +60,30 @@ class AnalogMosBase(MicroTemplate):
         self.tech_name = tech_name
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
+    @abc.abstractmethod
+    def get_left_sd_center(self):
+        """Returns the center coordinate of the leftmost source/drain connection.
+
+        Returns
+        -------
+        xc : float
+            center X coordinate of source/drain.
+        yc : float
+            center Y coordinate of source/drain.
+        """
+        return 0.0, 0.0
+
+    @abc.abstractmethod
+    def get_sd_pitch(self):
+        """Returns the source/drain pitch.
+
+        Returns
+        -------
+        sd_pitch : float
+            the source/drain pitch
+        """
+        return 0.0
+
     def get_num_tracks(self):
         """Returns the number of tracks in this template.
 
@@ -521,6 +545,8 @@ class AnalogFinfetBase(AnalogMosBase):
         self.edge_cls = edge_cls
         self.ext_cls = ext_cls
         self.tech_constants = tech_constants
+        self._sd_center = None, None
+        self._sd_pitch = None
 
     @abc.abstractmethod
     def get_ext_params(self, ext_nfin):
@@ -580,6 +606,28 @@ class AnalogFinfetBase(AnalogMosBase):
             core transistor properties dictionary.
         """
         return {}
+
+    def get_left_sd_center(self):
+        """Returns the center coordinate of the leftmost source/drain connection.
+
+        Returns
+        -------
+        xc : float
+            the center X coordinate of left-most source/drain.
+        yc : float
+            the center Y coordinate of left-most source/drain.
+        """
+        return self._sd_center
+
+    def get_sd_pitch(self):
+        """Returns the source/drain pitch.
+
+        Returns
+        -------
+        sd_pitch : float
+            the source/drain pitch
+        """
+        return self._sd_pitch
 
     def draw_layout(self, layout, temp_db,
                     mos_type='nch', threshold='lvt', lch=16e-9, w=4, fg=4,
@@ -641,6 +689,7 @@ class AnalogFinfetBase(AnalogMosBase):
         core_info = self.get_core_info()
         core_nfin = core_info['nfin']
         core_tr_nfin = core_info['tr_nfin_max']
+        od_dy = core_info['od_dy']
 
         # compute minimum number of tracks and needed bottom extension
         ntrack_min = int(np.ceil(core_nfin * 1.0 / track_nfin))
@@ -689,12 +738,15 @@ class AnalogFinfetBase(AnalogMosBase):
         core_params = self.get_core_params(core_bot_ext)
         core_blk = temp_db.new_template(params=core_params, temp_cls=self.core_cls)  # type: MicroTemplate
         core_arr_box = core_blk.array_box
+        # infer source/drain pitch from array box width
+        self._sd_pitch = core_arr_box.width / fg
 
         # draw left edge
         self.add_template(layout, edge_blk, 'XLEDGE', loc=(0.0, dy))
         # draw core
         dx = edge_arr_box.right - core_arr_box.left
         self.add_template(layout, core_blk, 'XMOS', loc=(dx, dy))
+        self._sd_center = dx + core_arr_box.left, dy + core_arr_box.bottom + od_dy + core_bot_ext * mos_fin_pitch
 
         # draw right edge and compute top right array box coordinate.
         dx = dx + core_arr_box.right + edge_arr_box.width - edge_arr_box.left

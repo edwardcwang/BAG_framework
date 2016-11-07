@@ -23,9 +23,10 @@
 ########################################################################################################################
 
 import abc
-from itertools import izip
+from itertools import izip, chain, repeat
 
 from bag.layout.template import MicroTemplate
+from .analog_mos import AnalogMosBase
 
 
 class AmplifierBase(MicroTemplate):
@@ -53,22 +54,18 @@ class AmplifierBase(MicroTemplate):
         the transistor template class.
     sub_cls : class
         the substrate template class.
-
-    Attributes
-    ----------
-    array_box_list : list[bag.layout.util.BBox]
-        a list of array bounding boxes of substrates and transistors.
-    yo_list : list[float]
-        a list of origin coordinates.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names, mos_cls, sub_cls):
+    def __init__(self, grid, lib_name, params, used_names, mos_cls, sub_cls, mconn_cls):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
         self.mos_cls = mos_cls
         self.sub_cls = sub_cls
-        self.array_box_list = None
-        self.yo_list = None
+        self.mconn_cls = mconn_cls
+        self.orient_list = None
+        self.w_list = None
+        self.sd_list = None
+        self._sd_pitch = None
 
     def get_mos_params(self, mos_type, thres, lch, w, fg, g_tracks, ds_tracks):
         """Returns a dictionary of mosfet parameters.
@@ -144,6 +141,39 @@ class AmplifierBase(MicroTemplate):
                     track_space=track_space,
                     )
 
+    def draw_mos_conn(self, layout, temp_db, row_idx, po_idx, fg, sdir):
+        """Draw transistor connection.
+
+        Parameters
+        ----------
+        layout : :class:`bag.layout.core.BagLayout`
+            the BagLayout instance.
+        temp_db : :class:`bag.layout.template.TemplateDB`
+            the TemplateDB instance.  Used to create new templates.
+        row_idx : int
+            the row index.  0 is the bottom-most NMOS.
+        po_idx : int
+            the poly index.  0 is the left-most poly.
+        fg : int
+            number of fingers.
+        sdir : str
+            source direction.  'up' or 'down'.  For PMOS sdir is reversed.
+        """
+        # skip bottom substrate
+        idx = row_idx + 1
+        orient = self.orient_list[idx]
+        conn_params = dict(
+            lch=self.params['lch'],
+            w=self.w_list[idx],
+            fg=fg,
+            sdir=sdir,
+        )
+
+        xc, yc = self.sd_list[idx]
+        xc += po_idx * self._sd_pitch
+        conn = temp_db.new_template(params=conn_params, temp_cls=self.mconn_cls)
+        self.add_template(layout, conn, loc=(xc, yc), orient=orient)
+
     def draw_base(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw_list, pth_list,
                   track_width, track_space,
@@ -193,8 +223,9 @@ class AmplifierBase(MicroTemplate):
         pg_tracks = pg_tracks or [1] * len(pw_list)
         pds_tracks = pds_tracks or [1] * len(pw_list)
 
-        self.yo_list = []
-        self.array_box_list = []
+        self.orient_list = list(chain(repeat('R0', len(nw_list) + 1), repeat('MX', len(pw_list) + 1)))
+        self.w_list = list(chain([ptap_w], nw_list, pw_list, [ntap_w]))
+        self.sd_list = [(None, None)]
 
         # draw bottom substrate
         if nw_list:
@@ -210,11 +241,10 @@ class AmplifierBase(MicroTemplate):
         bsub = temp_db.new_template(params=bsub_params, temp_cls=self.sub_cls)  # type: MicroTemplate
         bsub_arr_box = bsub.array_box
         self.add_template(layout, bsub, 'XBSUB')
-        self.array_box_list.append(bsub_arr_box)
-        self.yo_list.append(0.0)
 
         ycur = bsub_arr_box.top
         # draw nmos and pmos
+        mos = None
         for mos_type, w_list, th_list, g_list, ds_list in izip(['nch', 'pch'],
                                                                [nw_list, pw_list],
                                                                [nth_list, pth_list],
@@ -228,8 +258,9 @@ class AmplifierBase(MicroTemplate):
                 orient = 'MX'
             for idx, (w, thres, gntr, dntr) in enumerate(izip(w_list, th_list, g_list, ds_list)):
                 mos_params = self.get_mos_params(mos_type, thres, lch, w, fg_tot, gntr, dntr)
-                mos = temp_db.new_template(params=mos_params, temp_cls=self.mos_cls)  # type: MicroTemplate
+                mos = temp_db.new_template(params=mos_params, temp_cls=self.mos_cls)  # type: AnalogMosBase
                 mos_arr_box = mos.array_box
+                sd_xc, sd_yc = mos.get_left_sd_center()
 
                 # compute ybot of mosfet
                 if orient == 'MX':
@@ -239,9 +270,14 @@ class AmplifierBase(MicroTemplate):
 
                 # add mosfet
                 self.add_template(layout, mos, fmt % idx, loc=(0.0, ybot), orient=orient)
-                self.array_box_list.append(mos_arr_box)
-                self.yo_list.append(ybot)
                 ycur += mos_arr_box.height
+
+                # calculate source/drain center location
+                sd_yc = ybot + sd_yc if orient == 'R0' else ybot - sd_yc
+                self.sd_list.append((sd_xc, sd_yc))
+
+        # record source/drain pitch
+        self._sd_pitch = mos.get_sd_pitch()
 
         # draw last substrate
         if pw_list:
@@ -256,6 +292,5 @@ class AmplifierBase(MicroTemplate):
         tsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot)
         tsub = temp_db.new_template(params=tsub_params, temp_cls=self.sub_cls)  # type: MicroTemplate
         tsub_arr_box = tsub.array_box
+        self.sd_list.append((None, None))
         self.add_template(layout, tsub, 'XTSUB', loc=(0.0, ycur + tsub_arr_box.top), orient='MX')
-        self.array_box_list.append(tsub_arr_box)
-        self.yo_list.append(ycur)
