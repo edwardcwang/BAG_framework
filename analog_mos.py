@@ -175,6 +175,8 @@ class AnalogFinfetFoundation(MicroTemplate):
                 the pitch between fins.
             mos_cpo_h : float
                 the height of CPO layer.
+            mos_cpo_h_end : float
+                the height of CPO layer at the end of substrate.
             sd_pitch : float
                 source and drain pitch of the transistor.
             implant_layers : list[str]
@@ -193,6 +195,12 @@ class AnalogFinfetFoundation(MicroTemplate):
 
         extl, extb, extr, extt = arr_box_ext
 
+        # check if we're drawing substrate foundation.  If so use different CPO height for bottom.
+        if extb > 0:
+            mos_cpo_h_bot = tech_constants['mos_cpo_h_end']
+        else:
+            mos_cpo_h_bot = mos_cpo_h
+
         # +2 to account for 2 PODE polys.
         fg_tot = nduml + fg + ndumr
         bnd_box_w = fg_tot * sd_pitch + extl + extr
@@ -206,8 +214,8 @@ class AnalogFinfetFoundation(MicroTemplate):
         arr_box = BBox(arr_box_left, arr_box_bot, arr_box_right, arr_box_top, res)
 
         # draw CPO
-        layout.add_rect('CPO', BBox(0.0, arr_box.bottom - mos_cpo_h / 2.0,
-                                    bnd_box_w, arr_box.bottom + mos_cpo_h / 2.0, res))
+        layout.add_rect('CPO', BBox(0.0, arr_box.bottom - mos_cpo_h_bot / 2.0,
+                                    bnd_box_w, arr_box.bottom + mos_cpo_h_bot / 2.0, res))
         layout.add_rect('CPO', BBox(0.0, arr_box.top - mos_cpo_h / 2.0,
                                     bnd_box_w, arr_box.top + mos_cpo_h / 2.0, res))
 
@@ -349,7 +357,7 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
         # if we're creating a substrate extension, make sure CPO overlap rule is met
         if mos_type == 'ptap' or mos_type == 'ntap':
             mos_core_cpo_po_ov = tech_constants['mos_core_cpo_po_ov']
-            mos_cpo_h = tech_constants['mos_cpo_h']
+            mos_cpo_h = tech_constants['mos_cpo_h_end']
             extb = max(mos_core_cpo_po_ov - mos_cpo_h / 2.0, 0.0)
         else:
             extb = 0.0
@@ -402,7 +410,8 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
                     threshold='ulvt',
                     lch=16e-9,
                     w=8,
-                    ext=0,
+                    bext=0,
+                    text=0,
                     tech_constants=None,
                     )
 
@@ -418,17 +427,18 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
         threshold = self.params['threshold']
         lch = self.params['lch']
         w = self.params['w']
-        ext = self.params['ext']
+        bext = self.params['bext']
+        text = self.params['text']
         tech_str = self.params['tech_constants']['name']
         lch_str = float_to_si_string(lch)
-        return '%s_%s_%s_l%s_w%d_ext%d_edge' % (tech_str, mos_type, threshold, lch_str, w, ext)
+        return '%s_%s_%s_l%s_w%d_bex%d_tex%d_edge' % (tech_str, mos_type, threshold, lch_str, w, bext, text)
 
     def compute_unique_key(self):
         return self.get_layout_basename()
 
     def draw_layout(self, layout, temp_db,
                     mos_type='nch', threshold='lvt', lch=16e-9,
-                    w=4, ext=0, tech_constants=None):
+                    w=4, bext=0, text=0, tech_constants=None):
         """Draw the layout of this template.
 
         Override this method to create the layout.
@@ -447,8 +457,10 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
             the transistor channel length.
         w : float for int
             transistor width.
-        ext : int
+        bext : int
             number of fins to extend on the bottom.
+        text : int
+            number of fins to extend on the top.
         tech_constants : dict[str, any]
             the technology constants dictionary.  Must have the following entries:
 
@@ -485,20 +497,19 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
         sd_pitch = tech_constants['sd_pitch']
         nfin = tech_constants['nfin']
         mos_core_cpo_po_ov = tech_constants['mos_core_cpo_po_ov']
-        mos_cpo_h = tech_constants['mos_cpo_h']
 
         if mos_type == 'ptap' or mos_type == 'ntap':
-            extb = max(mos_core_cpo_po_ov - mos_cpo_h / 2.0, 0.0)
+            extb = max(mos_core_cpo_po_ov - tech_constants['mos_cpo_h_end'] / 2.0, 0.0)
         else:
             extb = 0.0
 
         # draw foundation, include 1 PODE poly
-        self.draw_foundation(layout, lch=lch, nfin=nfin + ext, fg=1,
+        self.draw_foundation(layout, lch=lch, nfin=nfin + bext + text, fg=1,
                              nduml=ndum, ndumr=0, arr_box_ext=[xext, extb, 0.0, 0.0],
                              tech_constants=tech_constants)
 
         # draw OD/PODE
-        od_yc = self.array_box.bottom + tech_constants['mos_edge_od_dy'] + ext * mos_fin_pitch
+        od_yc = self.array_box.bottom + tech_constants['mos_edge_od_dy'] + bext * mos_fin_pitch
         lch_layout = lch / self.grid.get_layout_unit()
         od_h = mos_fin_h + (w - 1) * mos_fin_pitch
         xmid = (ndum + 0.5) * sd_pitch + xext
@@ -565,13 +576,15 @@ class AnalogFinfetBase(AnalogMosBase):
         return {}
 
     @abc.abstractmethod
-    def get_edge_params(self, core_ext):
+    def get_edge_params(self, core_bot_ext, core_top_ext):
         """Returns a dictionary of edge block parameters.
 
         Parameters
         ----------
-        core_ext : int
-            core height extension in number of fins.
+        core_bot_ext : int
+            core bottom extension in number of fins.
+        core_top_ext : int
+            core top extension in number of fins.
 
         Returns
         -------
@@ -581,13 +594,15 @@ class AnalogFinfetBase(AnalogMosBase):
         return {}
 
     @abc.abstractmethod
-    def get_core_params(self, core_ext):
+    def get_core_params(self, core_bot_ext, core_top_ext):
         """Returns a dictionary of core block parameters.
 
         Parameters
         ----------
-        core_ext : int
-            core height extension in number of fins.
+        core_bot_ext : int
+            core bottom extension in number of fins.
+        core_top_ext : int
+            core top extension in number of fins.
 
         Returns
         -------
@@ -679,11 +694,6 @@ class AnalogFinfetBase(AnalogMosBase):
             # check track_pitch is multiple of nfin.
             msg = 'track pitch = %.4g not multiples of fin pitch = %.4g' % (track_pitch, mos_fin_pitch)
             raise ValueError(msg)
-        if track_nfin < mos_ext_nfin_min:
-            # check a single track pitch is greater than or equal to minimum extension height.
-            msg = 'track pitch = %.4g less than minimum extension height = %.4g' % (track_pitch,
-                                                                                    mos_ext_nfin_min * mos_fin_pitch)
-            raise ValueError(msg)
 
         # get extension needed to fit integer number of tracks
         core_info = self.get_core_info()
@@ -714,9 +724,14 @@ class AnalogFinfetBase(AnalogMosBase):
             bot_ext_nfin = 0
         else:
             core_bot_ext = 0
+        if top_ext_nfin < mos_ext_nfin_min:
+            core_top_ext = top_ext_nfin
+            top_ext_nfin = 0
+        else:
+            core_top_ext = 0
 
         # create left edge
-        edge_params = self.get_edge_params(core_bot_ext)
+        edge_params = self.get_edge_params(core_bot_ext, core_top_ext)
         edge_blk = temp_db.new_template(params=edge_params, temp_cls=self.edge_cls)  # type: MicroTemplate
         edge_arr_box = edge_blk.array_box
 
@@ -735,7 +750,7 @@ class AnalogFinfetBase(AnalogMosBase):
             arr_box_left, arr_box_bottom = edge_arr_box.left, edge_arr_box.bottom
 
         # create core transistor.
-        core_params = self.get_core_params(core_bot_ext)
+        core_params = self.get_core_params(core_bot_ext, core_top_ext)
         core_blk = temp_db.new_template(params=core_params, temp_cls=self.core_cls)  # type: MicroTemplate
         core_arr_box = core_blk.array_box
         # infer source/drain pitch from array box width
@@ -808,6 +823,60 @@ class AnalogMosConn(MicroTemplate):
                                              lch_str, w_str,
                                              self.params['fg'],
                                              self.params['sdir'])
+
+    def compute_unique_key(self):
+        return self.get_layout_basename()
+
+
+class AnalogMosSep(MicroTemplate):
+    """An abstract template for analog mosfet separator.
+
+    A separator is a group of dummy transistors that separates the drain/source
+    junction of one transistor from another.
+
+    Parameters
+    ----------
+    grid : :class:`bag.layout.routing.RoutingGrid`
+            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    lib_name : str
+        the layout library name.
+    params : dict
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    tech_name : str
+        the technology name.
+    """
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, grid, lib_name, params, used_names, tech_name):
+        self.tech_name = tech_name
+        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+
+    @abc.abstractmethod
+    def get_num_fingers(self):
+        """Returns the number of dummy transistors in this separator.
+
+        Returns
+        -------
+        fg : int
+            number of fingers.
+        """
+        return 0
+
+    def get_layout_basename(self):
+        """Returns the base name for this template.
+
+        Returns
+        -------
+        base_name : str
+            the base name of this template.
+        """
+
+        lch_str = float_to_si_string(self.params['lch'])
+        w_str = float_to_si_string(self.params['w'])
+        return '%s_l%s_w%s_sep' % (self.tech_name,
+                                   lch_str, w_str,)
 
     def compute_unique_key(self):
         return self.get_layout_basename()

@@ -57,11 +57,12 @@ class AmplifierBase(MicroTemplate):
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names, mos_cls, sub_cls, mconn_cls):
+    def __init__(self, grid, lib_name, params, used_names, mos_cls, sub_cls, mconn_cls, sep_cls):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
         self.mos_cls = mos_cls
         self.sub_cls = sub_cls
         self.mconn_cls = mconn_cls
+        self.sep_cls = sep_cls
         self.orient_list = None
         self.w_list = None
         self.sd_list = None
@@ -172,6 +173,33 @@ class AmplifierBase(MicroTemplate):
         xc, yc = self.sd_list[idx]
         xc += po_idx * self._sd_pitch
         conn = temp_db.new_template(params=conn_params, temp_cls=self.mconn_cls)
+        self.add_template(layout, conn, loc=(xc, yc), orient=orient)
+
+    def draw_mos_sep(self, layout, temp_db, row_idx, po_idx):
+        """Draw transistor separator connection.
+
+        Parameters
+        ----------
+        layout : :class:`bag.layout.core.BagLayout`
+            the BagLayout instance.
+        temp_db : :class:`bag.layout.template.TemplateDB`
+            the TemplateDB instance.  Used to create new templates.
+        row_idx : int
+            the row index.  0 is the bottom-most NMOS.
+        po_idx : int
+            the poly index.  0 is the left-most poly.
+        """
+        # skip bottom substrate
+        idx = row_idx + 1
+        orient = self.orient_list[idx]
+        params = dict(
+            lch=self.params['lch'],
+            w=self.w_list[idx],
+        )
+
+        xc, yc = self.sd_list[idx]
+        xc += po_idx * self._sd_pitch
+        conn = temp_db.new_template(params=params, temp_cls=self.sep_cls)
         self.add_template(layout, conn, loc=(xc, yc), orient=orient)
 
     def draw_base(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
