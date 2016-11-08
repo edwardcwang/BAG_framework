@@ -133,6 +133,74 @@ class AnalogMosBase(MicroTemplate):
         return self.get_layout_basename()
 
 
+class AnalogSubstrate(MicroTemplate):
+    """An abstract template for substrate connection.
+
+    Parameters
+    ----------
+    grid : :class:`bag.layout.routing.RoutingGrid`
+            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    lib_name : str
+        the layout library name.
+    params : dict
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    tech_name : str
+        the technology name.
+    """
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, grid, lib_name, params, used_names, tech_name):
+        self.tech_name = tech_name
+        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+
+    def get_num_tracks(self):
+        """Returns the number of tracks in this template.
+
+        AnalogMosBase should always have at least one track, and the bottom-most track is always
+        for gate connection.
+
+        Returns
+        -------
+        num_track : int
+            number of tracks in this template.
+        """
+        layout_unit = self.grid.get_layout_unit()
+        h = self.array_box.height
+        tr_w = self.params['track_width'] / layout_unit
+        tr_s = self.params['track_space'] / layout_unit
+        tr_pitch = tr_w + tr_s
+
+        num_track = int(round(h / tr_pitch))
+        if abs(h - num_track * tr_pitch) >= self.grid.get_resolution():
+            raise Exception('array box height = %.4g not integer number of track pitch = %.4g' % (h, tr_pitch))
+        return num_track
+
+    def get_layout_basename(self):
+        """Returns the base name for this template.
+
+        Returns
+        -------
+        base_name : str
+            the base name of this template.
+        """
+
+        lch_str = float_to_si_string(self.params['lch'])
+        w_str = float_to_si_string(self.params['w'])
+        tr_w_str = float_to_si_string(self.params['track_width'])
+        tr_s_str = float_to_si_string(self.params['track_space'])
+        return '%s_%s_%s_l%s_w%s_fg%d_trw%s_trs%s' % (self.tech_name,
+                                                      self.params['sub_type'],
+                                                      self.params['threshold'],
+                                                      lch_str, w_str,
+                                                      self.params['fg'],
+                                                      tr_w_str, tr_s_str)
+
+    def compute_unique_key(self):
+        return self.get_layout_basename()
+
+
 class AnalogFinfetFoundation(MicroTemplate):
     """The abstract base class for finfet layout classes.
 
@@ -879,6 +947,51 @@ class AnalogMosSep(MicroTemplate):
         w_str = float_to_si_string(self.params['w'])
         return '%s_l%s_w%s_sep' % (self.tech_name,
                                    lch_str, w_str,)
+
+    def compute_unique_key(self):
+        return self.get_layout_basename()
+
+
+class AnalogMosDummy(MicroTemplate):
+    """An abstract template for analog mosfet separator.
+
+    A separator is a group of dummy transistors that separates the drain/source
+    junction of one transistor from another.
+
+    Parameters
+    ----------
+    grid : :class:`bag.layout.routing.RoutingGrid`
+            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    lib_name : str
+        the layout library name.
+    params : dict
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    tech_name : str
+        the technology name.
+    """
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, grid, lib_name, params, used_names, tech_name):
+        self.tech_name = tech_name
+        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+
+    def get_layout_basename(self):
+        """Returns the base name for this template.
+
+        Returns
+        -------
+        base_name : str
+            the base name of this template.
+        """
+
+        lch_str = float_to_si_string(self.params['lch'])
+        w_str = float_to_si_string(self.params['w'])
+        return '%s_l%s_w%s_fg%d_nc%d_dummy' % (self.tech_name,
+                                               lch_str, w_str,
+                                               self.params['fg'],
+                                               self.params['nconn'])
 
     def compute_unique_key(self):
         return self.get_layout_basename()

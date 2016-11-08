@@ -57,16 +57,18 @@ class AmplifierBase(MicroTemplate):
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names, mos_cls, sub_cls, mconn_cls, sep_cls):
+    def __init__(self, grid, lib_name, params, used_names, mos_cls, sub_cls, mconn_cls, sep_cls, dum_cls):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
         self.mos_cls = mos_cls
         self.sub_cls = sub_cls
         self.mconn_cls = mconn_cls
         self.sep_cls = sep_cls
+        self.dum_cls = dum_cls
         self.orient_list = None
         self.w_list = None
         self.sd_list = None
         self._sd_pitch = None
+        self.fg_tot = None
 
     def get_mos_params(self, mos_type, thres, lch, w, fg, g_tracks, ds_tracks):
         """Returns a dictionary of mosfet parameters.
@@ -108,14 +110,14 @@ class AmplifierBase(MicroTemplate):
                     ds_tracks=ds_tracks,
                     )
 
-    def get_substrate_params(self, mos_type, thres, lch, w, fg):
+    def get_substrate_params(self, sub_type, thres, lch, w, fg):
         """Returns a dictionary of substrate parameters.
 
         Override if you need to include process-specific parameters.
 
         Parameters
         ----------
-        mos_type : str
+        sub_type : str
             subtract type.  'ptap' or 'ntap'.
         thres : str
             threshold flavor.
@@ -133,7 +135,7 @@ class AmplifierBase(MicroTemplate):
         """
         track_width = self.params['track_width']
         track_space = self.params['track_space']
-        return dict(mos_type=mos_type,
+        return dict(sub_type=sub_type,
                     threshold=thres,
                     lch=lch,
                     w=w,
@@ -141,6 +143,45 @@ class AmplifierBase(MicroTemplate):
                     track_width=track_width,
                     track_space=track_space,
                     )
+
+    def draw_dummy(self, layout, temp_db, row_idx, loc, fg, nconn):
+        """Draw dummy connection.
+
+        Parameters
+        ----------
+        layout : :class:`bag.layout.core.BagLayout`
+            the BagLayout instance.
+        temp_db : :class:`bag.layout.template.TemplateDB`
+            the TemplateDB instance.  Used to create new templates.
+        row_idx : int
+            the row index.  0 is the bottom-most NMOS.
+        loc : str
+            location of the dummy.  Either 'left' or 'right'.
+        fg : int
+            number of fingers.
+        nconn : int
+            number of ground connections
+        """
+        # skip bottom substrate
+        idx = row_idx + 1
+        orient = self.orient_list[idx]
+        params = dict(
+            lch=self.params['lch'],
+            w=self.w_list[idx],
+            fg=fg,
+            nconn=nconn,
+        )
+
+        xc, yc = self.sd_list[idx]
+        if loc == 'right':
+            xc += self.fg_tot * self._sd_pitch
+            if orient == 'R0':
+                orient = 'MY'
+            else:
+                orient = 'R180'
+
+        conn = temp_db.new_template(params=params, temp_cls=self.dum_cls)
+        self.add_template(layout, conn, loc=(xc, yc), orient=orient)
 
     def draw_mos_conn(self, layout, temp_db, row_idx, po_idx, fg, sdir, ddir):
         """Draw transistor connection.
@@ -254,6 +295,7 @@ class AmplifierBase(MicroTemplate):
         pg_tracks = pg_tracks or [1] * len(pw_list)
         pds_tracks = pds_tracks or [1] * len(pw_list)
 
+        self.fg_tot = fg_tot
         self.orient_list = list(chain(repeat('R0', len(nw_list) + 1), repeat('MX', len(pw_list) + 1)))
         self.w_list = list(chain([ptap_w], nw_list, pw_list, [ntap_w]))
         self.sd_list = [(None, None)]
