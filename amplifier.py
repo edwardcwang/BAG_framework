@@ -144,7 +144,7 @@ class AmplifierBase(MicroTemplate):
                     track_space=track_space,
                     )
 
-    def draw_dummy(self, layout, temp_db, row_idx, loc, fg, nconn):
+    def draw_dummy(self, layout, temp_db, row_idx, loc, fg):
         """Draw dummy connection.
 
         Parameters
@@ -159,8 +159,6 @@ class AmplifierBase(MicroTemplate):
             location of the dummy.  Either 'left' or 'right'.
         fg : int
             number of fingers.
-        nconn : int
-            number of ground connections
         """
         # skip bottom substrate
         idx = row_idx + 1
@@ -169,7 +167,6 @@ class AmplifierBase(MicroTemplate):
             lch=self.params['lch'],
             w=self.w_list[idx],
             fg=fg,
-            nconn=nconn,
         )
 
         xc, yc = self.sd_list[idx]
@@ -219,7 +216,7 @@ class AmplifierBase(MicroTemplate):
         conn = temp_db.new_template(params=conn_params, temp_cls=self.mconn_cls)
         self.add_template(layout, conn, loc=(xc, yc), orient=orient)
 
-    def draw_mos_sep(self, layout, temp_db, row_idx, po_idx):
+    def draw_mos_sep(self, layout, temp_db, row_idx, po_idx, fg):
         """Draw transistor separator connection.
 
         Parameters
@@ -232,6 +229,8 @@ class AmplifierBase(MicroTemplate):
             the row index.  0 is the bottom-most NMOS.
         po_idx : int
             the poly index.  0 is the left-most poly.
+        fg : int
+            number of separator fingers.
         """
         # skip bottom substrate
         idx = row_idx + 1
@@ -239,6 +238,7 @@ class AmplifierBase(MicroTemplate):
         params = dict(
             lch=self.params['lch'],
             w=self.w_list[idx],
+            fg=fg,
         )
 
         xc, yc = self.sd_list[idx]

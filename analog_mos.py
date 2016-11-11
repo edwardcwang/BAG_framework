@@ -923,17 +923,6 @@ class AnalogMosSep(MicroTemplate):
         self.tech_name = tech_name
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
-    @abc.abstractmethod
-    def get_num_fingers(self):
-        """Returns the number of dummy transistors in this separator.
-
-        Returns
-        -------
-        fg : int
-            number of fingers.
-        """
-        return 0
-
     def get_layout_basename(self):
         """Returns the base name for this template.
 
@@ -945,8 +934,9 @@ class AnalogMosSep(MicroTemplate):
 
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
-        return '%s_l%s_w%s_sep' % (self.tech_name,
-                                   lch_str, w_str,)
+        return '%s_l%s_w%s_fg%d_sep' % (self.tech_name,
+                                        lch_str, w_str,
+                                        self.params['fg'])
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -988,10 +978,9 @@ class AnalogMosDummy(MicroTemplate):
 
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
-        return '%s_l%s_w%s_fg%d_nc%d_dummy' % (self.tech_name,
-                                               lch_str, w_str,
-                                               self.params['fg'],
-                                               self.params['nconn'])
+        return '%s_l%s_w%s_fg%d_dummy' % (self.tech_name,
+                                          lch_str, w_str,
+                                          self.params['fg'],)
 
     def compute_unique_key(self):
         return self.get_layout_basename()
