@@ -59,16 +59,18 @@ class AmplifierBase(MicroTemplate):
 
     def __init__(self, grid, lib_name, params, used_names, mos_cls, sub_cls, mconn_cls, sep_cls, dum_cls):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
-        self.mos_cls = mos_cls
-        self.sub_cls = sub_cls
-        self.mconn_cls = mconn_cls
-        self.sep_cls = sep_cls
-        self.dum_cls = dum_cls
-        self.orient_list = None
-        self.w_list = None
-        self.sd_list = None
+        self._mos_cls = mos_cls
+        self._sub_cls = sub_cls
+        self._mconn_cls = mconn_cls
+        self._sep_cls = sep_cls
+        self._dum_cls = dum_cls
+        self._orient_list = None
+        self._w_list = None
+        self._sd_list = None
         self._sd_pitch = None
-        self.fg_tot = None
+        self._fg_tot = None
+        self._track_width = None
+        self._track_space = None
 
     def get_mos_params(self, mos_type, thres, lch, w, fg, g_tracks, ds_tracks):
         """Returns a dictionary of mosfet parameters.
@@ -97,15 +99,13 @@ class AmplifierBase(MicroTemplate):
         mos_params : dict[str, any]
             the mosfet parameter dictionary.
         """
-        track_width = self.params['track_width']
-        track_space = self.params['track_space']
         return dict(mos_type=mos_type,
                     threshold=thres,
                     lch=lch,
                     w=w,
                     fg=fg,
-                    track_width=track_width,
-                    track_space=track_space,
+                    track_width=self._track_width,
+                    track_space=self._track_space,
                     g_tracks=g_tracks,
                     ds_tracks=ds_tracks,
                     )
@@ -133,15 +133,13 @@ class AmplifierBase(MicroTemplate):
         substrate_params : dict[str, any]
             the substrate parameter dictionary.
         """
-        track_width = self.params['track_width']
-        track_space = self.params['track_space']
         return dict(sub_type=sub_type,
                     threshold=thres,
                     lch=lch,
                     w=w,
                     fg=fg,
-                    track_width=track_width,
-                    track_space=track_space,
+                    track_width=self._track_width,
+                    track_space=self._track_space,
                     )
 
     def draw_dummy(self, layout, temp_db, row_idx, loc, fg):
@@ -162,22 +160,22 @@ class AmplifierBase(MicroTemplate):
         """
         # skip bottom substrate
         idx = row_idx + 1
-        orient = self.orient_list[idx]
+        orient = self._orient_list[idx]
         params = dict(
             lch=self.params['lch'],
-            w=self.w_list[idx],
+            w=self._w_list[idx],
             fg=fg,
         )
 
-        xc, yc = self.sd_list[idx]
+        xc, yc = self._sd_list[idx]
         if loc == 'right':
-            xc += self.fg_tot * self._sd_pitch
+            xc += self._fg_tot * self._sd_pitch
             if orient == 'R0':
                 orient = 'MY'
             else:
                 orient = 'R180'
 
-        conn = temp_db.new_template(params=params, temp_cls=self.dum_cls)
+        conn = temp_db.new_template(params=params, temp_cls=self._dum_cls)
         self.add_template(layout, conn, loc=(xc, yc), orient=orient)
 
     def draw_mos_conn(self, layout, temp_db, row_idx, po_idx, fg, sdir, ddir):
@@ -202,18 +200,18 @@ class AmplifierBase(MicroTemplate):
         """
         # skip bottom substrate
         idx = row_idx + 1
-        orient = self.orient_list[idx]
+        orient = self._orient_list[idx]
         conn_params = dict(
             lch=self.params['lch'],
-            w=self.w_list[idx],
+            w=self._w_list[idx],
             fg=fg,
             sdir=sdir,
             ddir=ddir,
         )
 
-        xc, yc = self.sd_list[idx]
+        xc, yc = self._sd_list[idx]
         xc += po_idx * self._sd_pitch
-        conn = temp_db.new_template(params=conn_params, temp_cls=self.mconn_cls)
+        conn = temp_db.new_template(params=conn_params, temp_cls=self._mconn_cls)
         self.add_template(layout, conn, loc=(xc, yc), orient=orient)
 
     def draw_mos_sep(self, layout, temp_db, row_idx, po_idx, fg):
@@ -234,16 +232,16 @@ class AmplifierBase(MicroTemplate):
         """
         # skip bottom substrate
         idx = row_idx + 1
-        orient = self.orient_list[idx]
+        orient = self._orient_list[idx]
         params = dict(
             lch=self.params['lch'],
-            w=self.w_list[idx],
+            w=self._w_list[idx],
             fg=fg,
         )
 
-        xc, yc = self.sd_list[idx]
+        xc, yc = self._sd_list[idx]
         xc += po_idx * self._sd_pitch
-        conn = temp_db.new_template(params=params, temp_cls=self.sep_cls)
+        conn = temp_db.new_template(params=params, temp_cls=self._sep_cls)
         self.add_template(layout, conn, loc=(xc, yc), orient=orient)
 
     def draw_base(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
@@ -295,10 +293,12 @@ class AmplifierBase(MicroTemplate):
         pg_tracks = pg_tracks or [1] * len(pw_list)
         pds_tracks = pds_tracks or [1] * len(pw_list)
 
-        self.fg_tot = fg_tot
-        self.orient_list = list(chain(repeat('R0', len(nw_list) + 1), repeat('MX', len(pw_list) + 1)))
-        self.w_list = list(chain([ptap_w], nw_list, pw_list, [ntap_w]))
-        self.sd_list = [(None, None)]
+        self._fg_tot = fg_tot
+        self._orient_list = list(chain(repeat('R0', len(nw_list) + 1), repeat('MX', len(pw_list) + 1)))
+        self._w_list = list(chain([ptap_w], nw_list, pw_list, [ntap_w]))
+        self._sd_list = [(None, None)]
+        self._track_space = track_space
+        self._track_width = track_width
 
         # draw bottom substrate
         if nw_list:
@@ -311,7 +311,7 @@ class AmplifierBase(MicroTemplate):
             sub_w = ntap_w
 
         bsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot)
-        bsub = temp_db.new_template(params=bsub_params, temp_cls=self.sub_cls)  # type: MicroTemplate
+        bsub = temp_db.new_template(params=bsub_params, temp_cls=self._sub_cls)  # type: MicroTemplate
         bsub_arr_box = bsub.array_box
         self.add_template(layout, bsub, 'XBSUB')
 
@@ -331,7 +331,7 @@ class AmplifierBase(MicroTemplate):
                 orient = 'MX'
             for idx, (w, thres, gntr, dntr) in enumerate(izip(w_list, th_list, g_list, ds_list)):
                 mos_params = self.get_mos_params(mos_type, thres, lch, w, fg_tot, gntr, dntr)
-                mos = temp_db.new_template(params=mos_params, temp_cls=self.mos_cls)  # type: AnalogMosBase
+                mos = temp_db.new_template(params=mos_params, temp_cls=self._mos_cls)  # type: AnalogMosBase
                 mos_arr_box = mos.array_box
                 sd_xc, sd_yc = mos.get_left_sd_center()
 
@@ -347,7 +347,7 @@ class AmplifierBase(MicroTemplate):
 
                 # calculate source/drain center location
                 sd_yc = ybot + sd_yc if orient == 'R0' else ybot - sd_yc
-                self.sd_list.append((sd_xc, sd_yc))
+                self._sd_list.append((sd_xc, sd_yc))
 
         # record source/drain pitch
         self._sd_pitch = mos.get_sd_pitch()
@@ -363,7 +363,7 @@ class AmplifierBase(MicroTemplate):
             sub_w = ptap_w
 
         tsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot)
-        tsub = temp_db.new_template(params=tsub_params, temp_cls=self.sub_cls)  # type: MicroTemplate
+        tsub = temp_db.new_template(params=tsub_params, temp_cls=self._sub_cls)  # type: MicroTemplate
         tsub_arr_box = tsub.array_box
-        self.sd_list.append((None, None))
+        self._sd_list.append((None, None))
         self.add_template(layout, tsub, 'XTSUB', loc=(0.0, ycur + tsub_arr_box.top), orient='MX')
