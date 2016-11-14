@@ -24,9 +24,108 @@
 
 import abc
 from itertools import izip, chain, repeat
+import bisect
 
 from bag.layout.template import MicroTemplate
 from .analog_mos import AnalogMosBase
+
+
+class IntervalSet(object):
+    """A data structure that keeps track of disjoint 1D intervals.
+
+    This data structure keeps track of disjoint 1D intervals, and provides API for query/modification.
+    this is used to keep track of which transistors has been connected and which hasn't.  Initially,
+    an IntervalSet contains a single interval (0, length).
+
+    Parameters
+    ----------
+    length : int
+        the length of the original interval.
+    """
+    def __init__(self, length):
+        self._start_list = [0]
+        self._end_list = [length]
+
+    def _get_overlap(self, start, end):
+        """Returns the first interval that overlaps with the given interval.
+
+        Parameters
+        ----------
+        start : int
+            the start index of the given interval.  Inclusive.
+        end : int
+            th eend index of the given interval.  Exclusive.
+
+        Returns
+        -------
+        idx : int
+            the index of the overlapping interval.  -1 if not found.
+        """
+        # find the largest start index less than or equal to start
+        idx = bisect.bisect_left(self._start_list, start)
+        if idx == 0:
+            # all interval's starting point is greater than start
+            return 0 if self._start_list[idx] < end else -1
+
+        idx -= 1
+        if start < self._end_list[idx]:
+            # start is covered by the interval; overlaps.
+            return idx
+        elif idx + 1 < len(self._start_list) and self._start_list[idx + 1] < end:
+            # the interval at idx + 1 covers end; overlaps
+            return idx + 1
+        else:
+            # no overlap interval found
+            return -1
+
+    def subtract(self, start, end):
+        """Subtracts the given interval from this IntervalSet.
+
+        If there is no interval completely covering the given interval, False is returned and nothing is done.
+
+        Parameters
+        ----------
+        start : int
+            the start index of the given interval.  Inclusive.
+        end : int
+            th eend index of the given interval.  Exclusive.
+
+        Returns
+        -------
+        success : bool
+            True on subtraction, False if subtraction cannot be done.
+        """
+        idx = self._get_overlap(start, end)
+        if idx < 0 or self._start_list[idx] > start or self._end_list[idx] < end:
+            return False
+
+        s = self._start_list[idx]
+        e = self._end_list[idx]
+
+        # remove old interval
+        del self._start_list[idx]
+        del self._end_list[idx]
+
+        # insert interval 1
+        if s < start:
+            self._start_list.insert(idx, s)
+            self._end_list.insert(idx, start)
+            idx += 1
+        if end < e:
+            self._start_list.insert(idx, end)
+            self._end_list.insert(idx, e)
+
+        return True
+
+    def get_intervals(self):
+        """Returns a list of intervals in this IntervalSet.
+
+        Returns
+        -------
+        intv_list : list[(int, int)]
+            a list of intervals in this IntervalSet.
+        """
+        return list(izip(self._start_list, self._end_list))
 
 
 class AmplifierBase(MicroTemplate):
@@ -40,6 +139,8 @@ class AmplifierBase(MicroTemplate):
     by separators.  Currently source sharing (e.g. diff pair) and inter-digitation are not
     supported.  All transistors have the same channel length.
 
+    To use this class, draw_base() must be the first function called.
+
     Parameters
     ----------
     grid : :class:`bag.layout.routing.RoutingGrid`
@@ -47,7 +148,7 @@ class AmplifierBase(MicroTemplate):
     lib_name : str
         the layout library name.
     params : dict
-        the parameter values.
+        the parameter values.  Must have the following entries:
     used_names : set[str]
         a set of already used cell names.
     mos_cls : class
@@ -64,6 +165,7 @@ class AmplifierBase(MicroTemplate):
         self._mconn_cls = mconn_cls
         self._sep_cls = sep_cls
         self._dum_cls = dum_cls
+        self._lch = None
         self._orient_list = None
         self._w_list = None
         self._sd_list = None
@@ -71,6 +173,15 @@ class AmplifierBase(MicroTemplate):
         self._fg_tot = None
         self._track_width = None
         self._track_space = None
+        self._n_intvs = None
+        self._p_intvs = None
+
+        self._min_fg_sep = self._sep_cls.get_min_fg()
+
+    @property
+    def min_fg_sep(self):
+        """Returns the minimum number of separator fingers."""
+        return self._min_fg_sep
 
     def get_mos_params(self, mos_type, thres, lch, w, fg, g_tracks, ds_tracks):
         """Returns a dictionary of mosfet parameters.
@@ -158,11 +269,22 @@ class AmplifierBase(MicroTemplate):
         fg : int
             number of fingers.
         """
+        col_idx = 0 if loc == 'left' else self._fg_tot - fg
+
+        # mark transistors as connected
+        if row_idx >= len(self._n_intvs):
+            intv_set = self._p_intvs[row_idx - len(self._n_intvs)]
+        else:
+            intv_set = self._n_intvs[row_idx]
+        if not intv_set.subtract(col_idx, col_idx + fg):
+            msg = 'Cannot connect transistors [%d, %d) on row %d; some are already connected.'
+            raise ValueError(msg % (col_idx, col_idx + fg, row_idx))
+
         # skip bottom substrate
         idx = row_idx + 1
         orient = self._orient_list[idx]
         params = dict(
-            lch=self.params['lch'],
+            lch=self._lch,
             w=self._w_list[idx],
             fg=fg,
         )
@@ -178,43 +300,7 @@ class AmplifierBase(MicroTemplate):
         conn = temp_db.new_template(params=params, temp_cls=self._dum_cls)
         self.add_template(layout, conn, loc=(xc, yc), orient=orient)
 
-    def draw_mos_conn(self, layout, temp_db, row_idx, po_idx, fg, sdir, ddir):
-        """Draw transistor connection.
-
-        Parameters
-        ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
-        row_idx : int
-            the row index.  0 is the bottom-most NMOS.
-        po_idx : int
-            the poly index.  0 is the left-most poly.
-        fg : int
-            number of fingers.
-        sdir : int
-            source connection direction.  0 for down, 1 for middle, 2 for up.
-        ddir : int
-            drain connection direction.  0 for down, 1 for middle, 2 for up.
-        """
-        # skip bottom substrate
-        idx = row_idx + 1
-        orient = self._orient_list[idx]
-        conn_params = dict(
-            lch=self.params['lch'],
-            w=self._w_list[idx],
-            fg=fg,
-            sdir=sdir,
-            ddir=ddir,
-        )
-
-        xc, yc = self._sd_list[idx]
-        xc += po_idx * self._sd_pitch
-        conn = temp_db.new_template(params=conn_params, temp_cls=self._mconn_cls)
-        self.add_template(layout, conn, loc=(xc, yc), orient=orient)
-
-    def draw_mos_sep(self, layout, temp_db, row_idx, po_idx, fg):
+    def draw_mos_sep(self, layout, temp_db, row_idx, col_idx, fg=0):
         """Draw transistor separator connection.
 
         Parameters
@@ -225,23 +311,85 @@ class AmplifierBase(MicroTemplate):
             the TemplateDB instance.  Used to create new templates.
         row_idx : int
             the row index.  0 is the bottom-most NMOS.
-        po_idx : int
-            the poly index.  0 is the left-most poly.
+        col_idx : int
+            the left-most transistor index.  0 is the left-most transistor.
         fg : int
-            number of separator fingers.
+            number of separator fingers.  If less than the minimum, the minimum will be used instead.
+
+        Returns
+        -------
+        fg_tot : int
+            total number of fingers used for separator.
         """
+        fg = max(fg, self.min_fg_sep)
+
+        if row_idx >= len(self._n_intvs):
+            intv_set = self._p_intvs[row_idx - len(self._n_intvs)]
+        else:
+            intv_set = self._n_intvs[row_idx]
+        if not intv_set.subtract(col_idx, col_idx + fg):
+            msg = 'Cannot connect transistors [%d, %d) on row %d; some are already connected.'
+            raise ValueError(msg % (col_idx, col_idx + fg, row_idx))
+
         # skip bottom substrate
         idx = row_idx + 1
         orient = self._orient_list[idx]
         params = dict(
-            lch=self.params['lch'],
+            lch=self._lch,
             w=self._w_list[idx],
             fg=fg,
         )
 
         xc, yc = self._sd_list[idx]
-        xc += po_idx * self._sd_pitch
+        xc += col_idx * self._sd_pitch
         conn = temp_db.new_template(params=params, temp_cls=self._sep_cls)
+        self.add_template(layout, conn, loc=(xc, yc), orient=orient)
+
+        return fg
+
+    def draw_mos_conn(self, layout, temp_db, row_idx, col_idx, fg, sdir, ddir):
+        """Draw transistor connection.
+
+        Parameters
+        ----------
+        layout : :class:`bag.layout.core.BagLayout`
+            the BagLayout instance.
+        temp_db : :class:`bag.layout.template.TemplateDB`
+            the TemplateDB instance.  Used to create new templates.
+        row_idx : int
+            the row index.  0 is the bottom-most NMOS.
+        col_idx : int
+            the left-most transistor index.  0 is the left-most transistor.
+        fg : int
+            number of fingers.
+        sdir : int
+            source connection direction.  0 for down, 1 for middle, 2 for up.
+        ddir : int
+            drain connection direction.  0 for down, 1 for middle, 2 for up.
+        """
+        # mark transistors as connected
+        if row_idx >= len(self._n_intvs):
+            intv_set = self._p_intvs[row_idx - len(self._n_intvs)]
+        else:
+            intv_set = self._n_intvs[row_idx]
+        if not intv_set.subtract(col_idx, col_idx + fg):
+            msg = 'Cannot connect transistors [%d, %d) on row %d; some are already connected.'
+            raise ValueError(msg % (col_idx, col_idx + fg, row_idx))
+
+        # skip bottom substrate
+        idx = row_idx + 1
+        orient = self._orient_list[idx]
+        conn_params = dict(
+            lch=self._lch,
+            w=self._w_list[idx],
+            fg=fg,
+            sdir=sdir,
+            ddir=ddir,
+        )
+
+        xc, yc = self._sd_list[idx]
+        xc += col_idx * self._sd_pitch
+        conn = temp_db.new_template(params=conn_params, temp_cls=self._mconn_cls)
         self.add_template(layout, conn, loc=(xc, yc), orient=orient)
 
     def draw_base(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
@@ -258,7 +406,7 @@ class AmplifierBase(MicroTemplate):
         temp_db : :class:`bag.layout.template.TemplateDB`
             the TemplateDB instance.  Used to create new templates.
         lch : float
-            the transistor channel length.
+            the transistor channel length, in meters
         fg_tot : int
             total number of fingers for each row.
         ptap_w : int or float
@@ -280,11 +428,11 @@ class AmplifierBase(MicroTemplate):
         ng_tracks : list[int] or None
             number of nmos gate tracks per row, from bottom to top.  Defaults to 1.
         nds_tracks : list[int] or None
-            number of nmos drain/source tracks per row, from bottom to top.  Defaults to 0.
+            number of nmos drain/source tracks per row, from bottom to top.  Defaults to 1.
         pg_tracks : list[int] or None
             number of pmos gate tracks per row, from bottom to top.  Defaults to 1.
         pds_tracks : list[int] or None
-            number of pmos drain/source tracks per row, from bottom to top.  Defaults to 0.
+            number of pmos drain/source tracks per row, from bottom to top.  Defaults to 1.
         """
 
         # set default values.
@@ -293,12 +441,16 @@ class AmplifierBase(MicroTemplate):
         pg_tracks = pg_tracks or [1] * len(pw_list)
         pds_tracks = pds_tracks or [1] * len(pw_list)
 
+        # initialize private attributes.
+        self._lch = lch
         self._fg_tot = fg_tot
         self._orient_list = list(chain(repeat('R0', len(nw_list) + 1), repeat('MX', len(pw_list) + 1)))
         self._w_list = list(chain([ptap_w], nw_list, pw_list, [ntap_w]))
         self._sd_list = [(None, None)]
         self._track_space = track_space
         self._track_width = track_width
+        self._n_intvs = [IntervalSet(fg_tot) for _ in xrange(len(nw_list))]
+        self._p_intvs = [IntervalSet(fg_tot) for _ in xrange(len(pw_list))]
 
         # draw bottom substrate
         if nw_list:
@@ -367,3 +519,27 @@ class AmplifierBase(MicroTemplate):
         tsub_arr_box = tsub.array_box
         self._sd_list.append((None, None))
         self.add_template(layout, tsub, 'XTSUB', loc=(0.0, ycur + tsub_arr_box.top), orient='MX')
+
+    def fill_dummy(self, layout, temp_db):
+        """Draw dummy/separator on all unused transistors.
+
+        This method should be called last.
+
+        Parameters
+        ----------
+        layout : :class:`bag.layout.core.BagLayout`
+            the BagLayout instance.
+        temp_db : :class:`bag.layout.template.TemplateDB`
+            the TemplateDB instance.  Used to create new templates.
+        """
+        for ridx, intv_set in enumerate(chain(self._n_intvs, self._p_intvs)):
+            for intv in intv_set.get_intervals():
+                fg = intv[1] - intv[0]
+                if intv[0] == 0:
+                    self.draw_dummy(layout, temp_db, ridx, 'left', fg)
+                elif intv[1] == self._fg_tot:
+                    self.draw_dummy(layout, temp_db, ridx, 'right', fg)
+                else:
+                    if fg < self.min_fg_sep:
+                        raise ValueError('Cannot draw separator with fg = %d < %d' % (fg, self.min_fg_sep))
+                    self.draw_mos_sep(layout, temp_db, ridx, intv[0], fg=fg)

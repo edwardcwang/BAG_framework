@@ -904,6 +904,8 @@ class AnalogMosSep(MicroTemplate):
     A separator is a group of dummy transistors that separates the drain/source
     junction of one transistor from another.
 
+    To subclass this class, make sure to implement the get_min_fg() class method.
+
     Parameters
     ----------
     grid : :class:`bag.layout.routing.RoutingGrid`
@@ -922,6 +924,19 @@ class AnalogMosSep(MicroTemplate):
     def __init__(self, grid, lib_name, params, used_names, tech_name):
         self.tech_name = tech_name
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+
+    @classmethod
+    def get_min_fg(cls):
+        """Returns the minimum number of fingers.
+
+        Subclasses must override this method to return the correct value.
+
+        Returns
+        -------
+        min_fg : int
+            minimum number of fingers.
+        """
+        return 2
 
     def get_layout_basename(self):
         """Returns the base name for this template.
