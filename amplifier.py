@@ -27,95 +27,175 @@ from itertools import izip, chain, repeat
 import bisect
 
 from bag.layout.template import MicroTemplate
-from .analog_mos import AnalogMosBase
+from bag.layout.util import BBox
+from .analog_mos import AnalogMosBase, AnalogSubstrate, AnalogMosConn
 
 
 class IntervalSet(object):
     """A data structure that keeps track of disjoint 1D intervals.
 
-    This data structure keeps track of disjoint 1D intervals, and provides API for query/modification.
-    this is used to keep track of which transistors has been connected and which hasn't.  Initially,
-    an IntervalSet contains a single interval (0, length).
+    Each interval can have an optional value associated with it.
 
     Parameters
     ----------
-    length : int
-        the length of the original interval.
+    intv_list : list[(float, float)] or None
+        the initial interval list.
+    val_list : list[any] or None
+        the initial values list.
+    res : float
+        the interval coordinate resolution
     """
-    def __init__(self, length):
-        self._start_list = [0]
-        self._end_list = [length]
 
-    def _get_overlap(self, start, end):
-        """Returns the first interval that overlaps with the given interval.
+    def __init__(self, intv_list=None, val_list=None, res=0.001):
+
+        if intv_list is None:
+            self._start_list = []
+            self._end_list = []
+            self._val_list = []
+        else:
+            self._start_list = [v[0] for v in intv_list]
+            self._end_list = [v[1] for v in intv_list]
+            if val_list is None:
+                self._val_list = [None] * len(self._start_list)
+            else:
+                self._val_list = list(val_list)
+
+        self._res = res
+
+    def _lt(self, a, b):
+        """Return true if a < b within resolution."""
+        return a - b < -self._res
+
+    def _get_overlap_idx(self, start, end):
+        """Returns the index of the first interval that overlaps with the given interval.
 
         Parameters
         ----------
-        start : int
+        start : int or float
             the start index of the given interval.  Inclusive.
-        end : int
-            th eend index of the given interval.  Exclusive.
+        end : int or float
+            th end index of the given interval.  Exclusive.
 
         Returns
         -------
         idx : int
-            the index of the overlapping interval.  -1 if not found.
+            the index of the overlapping interval.  If no overlapping intervals are
+            found, -(idx + 1) is returned, where idx is the index to insert the interval.
         """
+        if not self._start_list:
+            return -1
         # find the largest start index less than or equal to start
         idx = bisect.bisect_left(self._start_list, start)
         if idx == 0:
             # all interval's starting point is greater than start
-            return 0 if self._start_list[idx] < end else -1
+            return 0 if self._lt(self._start_list[idx], end) else -1
 
-        idx -= 1
-        if start < self._end_list[idx]:
+        test_idx = idx - 1
+        if self._lt(start, self._end_list[test_idx]):
             # start is covered by the interval; overlaps.
-            return idx
-        elif idx + 1 < len(self._start_list) and self._start_list[idx + 1] < end:
+            return test_idx
+        elif test_idx + 1 < len(self._start_list) and self._lt(self._start_list[test_idx + 1], end):
             # the interval at idx + 1 covers end; overlaps
-            return idx + 1
+            return test_idx + 1
         else:
             # no overlap interval found
-            return -1
+            return -(idx + 1)
 
-    def subtract(self, start, end):
-        """Subtracts the given interval from this IntervalSet.
-
-        If there is no interval completely covering the given interval, False is returned and nothing is done.
+    def get_overlap(self, start, end):
+        """Returns the first interval that overlaps with the given interval.
 
         Parameters
         ----------
-        start : int
+        start : int or float
             the start index of the given interval.  Inclusive.
-        end : int
-            th eend index of the given interval.  Exclusive.
+        end : int or float
+            th end index of the given interval.  Exclusive.
+
+        Returns
+        -------
+        intv : (float, float) or None
+            the first interval.  None if no overlapping intervals are found.
+        value : any
+            the value associated with the given interval.
+        """
+        idx = self._get_overlap_idx(start, end)
+        if idx < 0:
+            return None, None
+        return (self._start_list[idx], self._end_list[idx]), self._val_list[idx]
+
+    def remove(self, start, end):
+        """Removes the given interval from this IntervalSet.
+
+        Parameters
+        ----------
+        start : int or float
+            the start index of the given interval.  Inclusive.
+        end : int or float
+            th end index of the given interval.  Exclusive.
 
         Returns
         -------
         success : bool
-            True on subtraction, False if subtraction cannot be done.
+            True if the given interval is found and removed.  False otherwise.
         """
-        idx = self._get_overlap(start, end)
-        if idx < 0 or self._start_list[idx] > start or self._end_list[idx] < end:
+        idx = self._get_overlap_idx(start, end)
+        if idx < 0:
             return False
+        if abs(start - self._start_list[idx]) < self._res and abs(end - self._end_list[idx]) < self._res:
+            del self._start_list[idx]
+            del self._end_list[idx]
+            del self._val_list[idx]
+            return True
+        return False
 
-        s = self._start_list[idx]
-        e = self._end_list[idx]
+    def add(self, start, end, val=None):
+        """Adds the given interval to this IntervalSet.
 
-        # remove old interval
-        del self._start_list[idx]
-        del self._end_list[idx]
+        Can only add interval that does not overlap with any existing ones.
 
-        # insert interval 1
-        if s < start:
-            self._start_list.insert(idx, s)
-            self._end_list.insert(idx, start)
-            idx += 1
-        if end < e:
-            self._start_list.insert(idx, end)
-            self._end_list.insert(idx, e)
+        Parameters
+        ----------
+        start : int or float
+            the start index of the given interval.  Inclusive.
+        end : int or float
+            th end index of the given interval.  Exclusive.
+        val : any or None
+            the value associated with the given interval.
 
-        return True
+        Returns
+        -------
+        success : bool
+            True if the given interval is added.
+        """
+        idx = self._get_overlap_idx(start, end)
+        if idx >= 0:
+            return False
+        idx = -idx - 1
+        self._start_list.insert(idx, start)
+        self._end_list.insert(idx, end)
+        self._val_list.insert(idx, val)
+
+    def set_value(self, start, end, value):
+        """Sets the value associated with the given interval.
+
+        Parameters
+        ----------
+        start : int or float
+            the start index of the given interval.  Inclusive.
+        end : int or float
+            th end index of the given interval.  Exclusive.
+        value : any or None
+            the value associated with the given interval.
+
+        Raises
+        ------
+        ValueError :
+            if the given interval is not in this IntervalSet
+        """
+        idx = self._get_overlap_idx(start, end)
+        if idx < 0 or abs(self._start_list[idx] - start) >= self._res or abs(self._end_list[idx] - end) >= self._res:
+            raise ValueError('Interval (%.4g, %.4g) not in this interval set' % (start, end))
+        self._val_list[idx] = value
 
     def get_intervals(self):
         """Returns a list of intervals in this IntervalSet.
@@ -126,6 +206,50 @@ class IntervalSet(object):
             a list of intervals in this IntervalSet.
         """
         return list(izip(self._start_list, self._end_list))
+
+    def get_values(self):
+        """Returns a copy of the values list.
+
+        Returns
+        -------
+        val_list : list[any]
+            the list of values.
+        """
+        return list(self._val_list)
+
+
+def _subtract(intv_set, start, end):
+    """Substract the given interval from the interval set.
+
+    Used to mark transistors as connected.
+
+    Parameters
+    ----------
+    intv_set : IntervalSet
+        the interval set.
+    start : int
+        the starting index.
+    end : int
+        the ending index.
+
+    Returns
+    -------
+    success : bool
+        True on success.
+    """
+    intv, _ = intv_set.get_overlap(start, end)
+    if intv is None:
+        return False
+    if intv[0] > start or intv[1] < end:
+        # overlap interval did not completely cover (start, end)
+        return False
+
+    intv_set.remove(intv[0], intv[1])
+    if intv[0] < start:
+        intv_set.add(intv[0], start)
+    if end < intv[1]:
+        intv_set.add(end, intv[1])
+    return True
 
 
 class AmplifierBase(MicroTemplate):
@@ -158,7 +282,8 @@ class AmplifierBase(MicroTemplate):
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names, mos_cls, sub_cls, mconn_cls, sep_cls, dum_cls):
+    def __init__(self, grid, lib_name, params, used_names,
+                 mos_cls, sub_cls, mconn_cls, sep_cls, dum_cls):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
         self._mos_cls = mos_cls
         self._sub_cls = sub_cls
@@ -173,8 +298,14 @@ class AmplifierBase(MicroTemplate):
         self._fg_tot = None
         self._track_width = None
         self._track_space = None
+        self._gds_space = None
         self._n_intvs = None
         self._p_intvs = None
+        self._num_tracks = None
+        self._track_offsets = None
+        self._ds_tr_indices = None
+        self._vm_layer = None
+        self._hm_layer = None
 
         self._min_fg_sep = self._sep_cls.get_min_fg()
 
@@ -183,7 +314,7 @@ class AmplifierBase(MicroTemplate):
         """Returns the minimum number of separator fingers."""
         return self._min_fg_sep
 
-    def get_mos_params(self, mos_type, thres, lch, w, fg, g_tracks, ds_tracks):
+    def get_mos_params(self, mos_type, thres, lch, w, fg, g_tracks, ds_tracks, gds_space):
         """Returns a dictionary of mosfet parameters.
 
         Override if you need to include process-specific parameters.
@@ -204,6 +335,8 @@ class AmplifierBase(MicroTemplate):
             minimum number of gate tracks.
         ds_tracks : int
             minimum number of drain/source tracks.
+        gds_space : int
+            number of tracks to reserve as space between gate and drain/source tracks.
 
         Returns
         -------
@@ -219,6 +352,7 @@ class AmplifierBase(MicroTemplate):
                     track_space=self._track_space,
                     g_tracks=g_tracks,
                     ds_tracks=ds_tracks,
+                    gds_space=gds_space,
                     )
 
     def get_substrate_params(self, sub_type, thres, lch, w, fg):
@@ -253,6 +387,80 @@ class AmplifierBase(MicroTemplate):
                     track_space=self._track_space,
                     )
 
+    def connect_to_track(self, layout, box_list, row_idx, tr_type, track_idx):
+        """Connect the given wires to the track on the given row.
+
+        Parameters
+        ----------
+        layout : :class:`bag.layout.core.BagLayout`
+            the BagLayout instance.
+        box_list : list[bag.layout.util.BBox]
+            the list of wire bounding boxes.
+        row_idx : int
+            the row index.  0 is the bottom-most NMOS/PMOS row.
+        tr_type : str
+            the type of the track.  Either 'g' or 'ds'.
+        track_idx : int
+            the track index.
+        """
+        if not box_list:
+            # do nothing
+            return None
+
+        res = self.grid.get_resolution()
+        # first try to connect the wires vertically
+        # do so by keeping track of intervals
+        intv_set = IntervalSet(res=res)
+        for box in box_list:
+            intv, val = intv_set.get_overlap(box.left, box.right)
+            if intv is None:
+                # new interval
+                intv_set.add(box.left, box.right, val=(box.bottom, box.top))
+            elif abs(intv[0] - box.left) >= res or abs(intv[1] - box.right) >= res:
+                # overlapping interval that's not equal
+                msg = 'Wires (%.4g, %.4g) and (%.4g, %.4g) misaligned.'
+                raise Exception(msg % (intv[0], intv[1], box.left, box.right))
+            else:
+                new_val = (min(val[0], box.bottom), max(val[1], box.top))
+                intv_set.set_value(box.left, box.right, new_val)
+
+        # get new box list with all vertically aligned wires connected
+        box_list = [BBox(intv[0], val[0], intv[1], val[1], res)
+                    for intv, val in izip(intv_set.get_intervals(), intv_set.get_values())]
+
+        row_idx += 1
+        offset = self._track_offsets[row_idx]
+        if tr_type == 'g':
+            row_offset = 0
+            ntr = self._ds_tr_indices[row_idx] - self._gds_space
+        else:
+            row_offset = self._ds_tr_indices[row_idx]
+            ntr = self._num_tracks[row_idx] - row_offset
+
+        if track_idx < 0 or track_idx >= ntr:
+            raise ValueError('track index = %d out of bounds: [0, %d)' % (track_idx, ntr))
+
+        if self._orient_list[row_idx] == 'R0':
+            track_idx += offset + row_offset
+        else:
+            track_idx = offset + self._num_tracks[row_idx] - (row_offset + track_idx)
+
+        layout_unit = self.grid.get_layout_unit()
+        tr_sp = self._track_space / layout_unit
+        tr_w = self._track_width / layout_unit
+        tr_yb = tr_sp / 2.0 + track_idx * (tr_sp + tr_w)
+        tr_yt = tr_yb + tr_w
+        tr_xl = box_list[0].left
+        tr_xr = box_list[-1].right
+        layout.add_rect(self._hm_layer, BBox(tr_xl, tr_yb, tr_xr, tr_yt, res))
+        for box in box_list:
+            yb = min(box.bottom, tr_yb)
+            yt = max(box.top, tr_yt)
+            layout.add_rect(self._vm_layer, BBox(box.left, yb, box.right, yt, res))
+            vbox = BBox(box.left, tr_yb, box.right, tr_yt, res)
+            via = self.grid.make_via_from_bbox(vbox, self._vm_layer, self._hm_layer, 'y')
+            layout.add_via_obj(via)
+
     def draw_dummy(self, layout, temp_db, row_idx, loc, fg):
         """Draw dummy connection.
 
@@ -276,7 +484,7 @@ class AmplifierBase(MicroTemplate):
             intv_set = self._p_intvs[row_idx - len(self._n_intvs)]
         else:
             intv_set = self._n_intvs[row_idx]
-        if not intv_set.subtract(col_idx, col_idx + fg):
+        if not _subtract(intv_set, col_idx, col_idx + fg):
             msg = 'Cannot connect transistors [%d, %d) on row %d; some are already connected.'
             raise ValueError(msg % (col_idx, col_idx + fg, row_idx))
 
@@ -327,7 +535,7 @@ class AmplifierBase(MicroTemplate):
             intv_set = self._p_intvs[row_idx - len(self._n_intvs)]
         else:
             intv_set = self._n_intvs[row_idx]
-        if not intv_set.subtract(col_idx, col_idx + fg):
+        if not _subtract(intv_set, col_idx, col_idx + fg):
             msg = 'Cannot connect transistors [%d, %d) on row %d; some are already connected.'
             raise ValueError(msg % (col_idx, col_idx + fg, row_idx))
 
@@ -366,13 +574,18 @@ class AmplifierBase(MicroTemplate):
             source connection direction.  0 for down, 1 for middle, 2 for up.
         ddir : int
             drain connection direction.  0 for down, 1 for middle, 2 for up.
+
+        Returns
+        -------
+        ports : dict[str, list[bag.layout.util.BBox]]
+            a dictionary of port bounding boxes.  The keys are 'g', 'd', and 's'.
         """
         # mark transistors as connected
         if row_idx >= len(self._n_intvs):
             intv_set = self._p_intvs[row_idx - len(self._n_intvs)]
         else:
             intv_set = self._n_intvs[row_idx]
-        if not intv_set.subtract(col_idx, col_idx + fg):
+        if not _subtract(intv_set, col_idx, col_idx + fg):
             msg = 'Cannot connect transistors [%d, %d) on row %d; some are already connected.'
             raise ValueError(msg % (col_idx, col_idx + fg, row_idx))
 
@@ -389,12 +602,20 @@ class AmplifierBase(MicroTemplate):
 
         xc, yc = self._sd_list[idx]
         xc += col_idx * self._sd_pitch
-        conn = temp_db.new_template(params=conn_params, temp_cls=self._mconn_cls)
-        self.add_template(layout, conn, loc=(xc, yc), orient=orient)
+        conn = temp_db.new_template(params=conn_params, temp_cls=self._mconn_cls)  # type: AnalogMosConn
+        loc = (xc, yc)
+        self.add_template(layout, conn, loc=loc, orient=orient)
+
+        return dict(
+            g=[box.transform(loc, orient) for box in conn.get_ports('g')],
+            d=[box.transform(loc, orient) for box in conn.get_ports('d')],
+            s=[box.transform(loc, orient) for box in conn.get_ports('s')],
+        )
 
     def draw_base(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw_list, pth_list,
-                  track_width, track_space,
+                  track_width, track_space, gds_space,
+                  vm_layer, hm_layer,
                   ng_tracks=None, nds_tracks=None,
                   pg_tracks=None, pds_tracks=None):
         """Draw the amplifier base.
@@ -417,6 +638,8 @@ class AmplifierBase(MicroTemplate):
             the routing track width.
         track_space : float
             the routing track spacing.
+        gds_space : int
+            number of tracks to reserve as space between gate and drain/source tracks.
         nw_list : list[int or float]
             a list of nmos width for each row, from bottom to top.
         nth_list: list[str]
@@ -425,6 +648,10 @@ class AmplifierBase(MicroTemplate):
             a list of pmos width for each row, from bottom to top.
         pth_list : list[str]
             a list of pmos threshold flavor for each row, from bottom to top.
+        vm_layer : str
+            vertical metal layer name.
+        hm_layer : str
+            horizontal metal layer name.
         ng_tracks : list[int] or None
             number of nmos gate tracks per row, from bottom to top.  Defaults to 1.
         nds_tracks : list[int] or None
@@ -449,8 +676,15 @@ class AmplifierBase(MicroTemplate):
         self._sd_list = [(None, None)]
         self._track_space = track_space
         self._track_width = track_width
-        self._n_intvs = [IntervalSet(fg_tot) for _ in xrange(len(nw_list))]
-        self._p_intvs = [IntervalSet(fg_tot) for _ in xrange(len(pw_list))]
+        intv_init = [(0, fg_tot)]
+        self._n_intvs = [IntervalSet(intv_list=intv_init) for _ in xrange(len(nw_list))]
+        self._p_intvs = [IntervalSet(intv_list=intv_init) for _ in xrange(len(pw_list))]
+        self._num_tracks = []
+        self._track_offsets = []
+        self._ds_tr_indices = []
+        self._vm_layer = vm_layer
+        self._hm_layer = hm_layer
+        self._gds_space = gds_space
 
         # draw bottom substrate
         if nw_list:
@@ -463,9 +697,12 @@ class AmplifierBase(MicroTemplate):
             sub_w = ntap_w
 
         bsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot)
-        bsub = temp_db.new_template(params=bsub_params, temp_cls=self._sub_cls)  # type: MicroTemplate
+        bsub = temp_db.new_template(params=bsub_params, temp_cls=self._sub_cls)  # type: AnalogSubstrate
         bsub_arr_box = bsub.array_box
         self.add_template(layout, bsub, 'XBSUB')
+        self._num_tracks.append(bsub.get_num_tracks())
+        self._track_offsets.append(0)
+        self._ds_tr_indices.append(0)
 
         ycur = bsub_arr_box.top
         # draw nmos and pmos
@@ -482,7 +719,7 @@ class AmplifierBase(MicroTemplate):
                 fmt = 'XMP%d'
                 orient = 'MX'
             for idx, (w, thres, gntr, dntr) in enumerate(izip(w_list, th_list, g_list, ds_list)):
-                mos_params = self.get_mos_params(mos_type, thres, lch, w, fg_tot, gntr, dntr)
+                mos_params = self.get_mos_params(mos_type, thres, lch, w, fg_tot, gntr, dntr, gds_space)
                 mos = temp_db.new_template(params=mos_params, temp_cls=self._mos_cls)  # type: AnalogMosBase
                 mos_arr_box = mos.array_box
                 sd_xc, sd_yc = mos.get_left_sd_center()
@@ -500,6 +737,9 @@ class AmplifierBase(MicroTemplate):
                 # calculate source/drain center location
                 sd_yc = ybot + sd_yc if orient == 'R0' else ybot - sd_yc
                 self._sd_list.append((sd_xc, sd_yc))
+                self._track_offsets.append(self._track_offsets[-1] + self._num_tracks[-1])
+                self._num_tracks.append(mos.get_num_tracks())
+                self._ds_tr_indices.append(mos.get_ds_track_index())
 
         # record source/drain pitch
         self._sd_pitch = mos.get_sd_pitch()
@@ -515,9 +755,12 @@ class AmplifierBase(MicroTemplate):
             sub_w = ptap_w
 
         tsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot)
-        tsub = temp_db.new_template(params=tsub_params, temp_cls=self._sub_cls)  # type: MicroTemplate
+        tsub = temp_db.new_template(params=tsub_params, temp_cls=self._sub_cls)  # type: AnalogSubstrate
         tsub_arr_box = tsub.array_box
         self._sd_list.append((None, None))
+        self._track_offsets.append(self._track_offsets[-1] + self._num_tracks[-1])
+        self._ds_tr_indices.append(0)
+        self._num_tracks.append(tsub.get_num_tracks())
         self.add_template(layout, tsub, 'XTSUB', loc=(0.0, ycur + tsub_arr_box.top), orient='MX')
 
     def fill_dummy(self, layout, temp_db):

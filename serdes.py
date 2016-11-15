@@ -23,7 +23,7 @@
 ########################################################################################################################
 
 import abc
-from itertools import izip
+from itertools import izip, chain
 
 from .amplifier import AmplifierBase
 
@@ -82,56 +82,107 @@ class SerdesRXBase(AmplifierBase):
         fg_sep = max(fg_sep, self.min_fg_sep)
         fg_max = max(fg_list) * 2 + fg_sep
 
-        # figure out source and drain directions.
+        # figure out source/drain directions and intermediate connections
         d_dir_list = [2, 2, 2, 2, 2, 2]
         s_dir_list = [0, 0, 0, 0, 0, 0]
+        conn_list = []
 
         # pmos always drain up, source down
         # if cascode, it's always drain up, source down.
 
         # set input direction
+        in_tail_list = []
         if fg_list[4] > 0:
             # if cascode, flip direction
             d_dir_list[3] = 0
             s_dir_list[3] = 2
+            conn_list.append((4, 0, [(3, 0, 's'), (4, 0, 's')]))
+            conn_list.append((4, 0, [(3, 1, 's'), (4, 1, 's')]))
+            in_tail_list.append((3, 0, 'd'))
+            in_tail_list.append((3, 1, 'd'))
+        else:
+            in_tail_list.append((3, 0, 's'))
+            in_tail_list.append((3, 1, 's'))
 
         # set switch direction
-        # switch always have the same down source/drain as input, and the other
-        # will be middle
-        if d_dir_list[3] == 0:
-            d_dir_list[2] = 0
-            s_dir_list[2] = 1
-        else:
-            s_dir_list[2] = 0
-            d_dir_list[2] = 1
+        if fg_list[2] > 0:
+            # switch always have the same down source/drain as input, and the other
+            # will be middle
+            if d_dir_list[3] == 0:
+                d_dir_list[2] = 0
+                s_dir_list[2] = 1
+                conn_list.append((2, 0, [(2, 0, 's'), (2, 1, 's')]))
+                in_tail_list.append((2, 0, 'd'))
+                in_tail_list.append((2, 1, 'd'))
+            else:
+                s_dir_list[2] = 0
+                d_dir_list[2] = 1
+                conn_list.append((2, 0, [(2, 0, 'd'), (2, 1, 'd')]))
+                in_tail_list.append((2, 0, 's'))
+                in_tail_list.append((2, 1, 's'))
 
         # enable direction always opposite input direction
         d_dir_list[1] = 2 - d_dir_list[3]
         s_dir_list[1] = 2 - s_dir_list[3]
-
         # tail direction is opposite enable or input direction
         if fg_list[1] > 0:
             d_dir_list[0] = 2 - d_dir_list[1]
             s_dir_list[0] = 2 - s_dir_list[1]
+            if d_dir_list[1] == 2:
+                in_tail_list.append((1, 0, 'd'))
+                in_tail_list.append((1, 1, 'd'))
+                conn_list.append((0, 0, [(1, 0, 's'), (1, 1, 's'), (0, 0, 's'),
+                                         (0, 1, 's')]))
+            else:
+                in_tail_list.append((1, 0, 's'))
+                in_tail_list.append((1, 1, 's'))
+                conn_list.append((0, 0, [(1, 0, 'd'), (1, 1, 'd'), (0, 0, 'd'),
+                                         (0, 1, 'd')]))
+            in_tail_row = 1
         else:
             d_dir_list[0] = 2 - d_dir_list[3]
             s_dir_list[0] = 2 - s_dir_list[3]
+            if d_dir_list[0] == 2:
+                in_tail_list.append((0, 0, 'd'))
+                in_tail_list.append((0, 1, 'd'))
+            else:
+                in_tail_list.append((0, 0, 's'))
+                in_tail_list.append((0, 1, 's'))
 
+            in_tail_row = 0
+        conn_list.append((in_tail_row, 0, in_tail_list))
+
+        port_list = []
         for ridx, fg, rname, ddir, sdir in izip(self._row_idx, fg_list, self._row_names, d_dir_list, s_dir_list):
             if ridx < 0:
                 # error checking
                 if fg > 0:
                     raise ValueError('Row %s does not exist but fg = %d > 0' % (rname, fg))
+                port_list.append((None, None))
             elif fg > 0:
                 fg_tot = 2 * fg + fg_sep
                 col_start = col_idx + (fg_max - fg_tot) / 2
-                self.draw_mos_conn(layout, temp_db, ridx, col_start, fg, sdir, ddir)
-                self.draw_mos_conn(layout, temp_db, ridx, col_start + fg + fg_sep, fg, sdir, ddir)
+                pp = self.draw_mos_conn(layout, temp_db, ridx, col_start, fg, sdir, ddir)
+                pn = self.draw_mos_conn(layout, temp_db, ridx, col_start + fg + fg_sep, fg, sdir, ddir)
+                port_list.append((pp, pn))
+
+        # connect outputs
+        outp_list = port_list[-1][0]['d'] + port_list[-2][0]['d']
+        outn_list = port_list[-1][1]['d'] + port_list[-2][1]['d']
+        ridx = self._row_idx[-1]
+        self.connect_to_track(layout, outn_list, ridx, 'ds', 2)
+        self.connect_to_track(layout, outp_list, ridx, 'ds', 0)
+
+        # connect intermediate nodes
+        for row_idx, tr_idx, clist in conn_list:
+            box_iter = chain(*(port_list[pidx1][pidx2][name] for pidx1, pidx2, name in clist))
+            self.connect_to_track(layout, list(box_iter), row_idx, 'ds', tr_idx)
 
     def draw_rows(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
-                  nw_list, nth_list, pw, pth, track_width, track_space,
+                  nw_list, nth_list, pw, pth, track_width, track_space, gds_space,
+                  vm_layer, hm_layer,
                   ng_tracks=None, nds_tracks=None,
-                  pg_tracks=1, pds_tracks=1):
+                  pg_tracks=1, pds_tracks=3):
         """Draw the transistors and substrate rows.
 
         Parameters
@@ -148,10 +199,6 @@ class SerdesRXBase(AmplifierBase):
             pwell substrate contact width.
         ntap_w : int or float
             nwell substrate contact width.
-        track_width : float
-            the routing track width.
-        track_space : float
-            the routing track spacing.
         nw_list : list[int or float]
             a 5-element list of the nmos widths.  They are
             [wtail, wen, wsw, win, wcas].  Use w=0 to disable the corresponding transistor.
@@ -162,6 +209,16 @@ class SerdesRXBase(AmplifierBase):
             the pmos width.
         pth : str
             the pmos threshold flavor.
+        track_width : float
+            the routing track width.
+        track_space : float
+            the routing track spacing.
+        gds_space : int
+            number of tracks to reserve as space between gate and drain/source tracks.
+        vm_layer : str
+            vertical metal layer name.
+        hm_layer : str
+            horizontal metal layer name.
         ng_tracks : list[int] or None
             a list of length 5 of the nmos gate tracks per row.  Use 0 for place holders.
         nds_tracks : list[int] or None
@@ -174,10 +231,7 @@ class SerdesRXBase(AmplifierBase):
         if ng_tracks is None:
             ng_tracks = [1, 1, 1, 2, 1]
         if nds_tracks is None:
-            if nw_list[4] > 0:
-                nds_tracks = [1, 1, 1, 1, 3]
-            else:
-                nds_tracks = [1, 1, 1, 3, 1]
+            nds_tracks = [1, 1, 1, 1, 1]
 
         # eliminate unneeded nmos rows and build row index.
         new_nw_list = [nw_list[0]]
@@ -229,7 +283,7 @@ class SerdesRXBase(AmplifierBase):
         # draw base
         self.draw_base(layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                        new_nw_list, new_nth_list, [pw], [pth],
-                       track_width, track_space,
+                       track_width, track_space, gds_space, vm_layer, hm_layer,
                        ng_tracks=new_ng_tracks, nds_tracks=new_nds_tracks,
                        pg_tracks=[pg_tracks], pds_tracks=[pds_tracks])
 

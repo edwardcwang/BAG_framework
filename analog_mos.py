@@ -51,13 +51,10 @@ class AnalogMosBase(MicroTemplate):
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
-    tech_name : str
-        the technology name.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names, tech_name):
-        self.tech_name = tech_name
+    def __init__(self, grid, lib_name, params, used_names):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
     @abc.abstractmethod
@@ -83,6 +80,17 @@ class AnalogMosBase(MicroTemplate):
             the source/drain pitch
         """
         return 0.0
+
+    @abc.abstractmethod
+    def get_ds_track_index(self):
+        """Returns the middle track index.
+
+        Returns
+        -------
+        tr_idx : int
+            the middle track index.
+        """
+        return 2
 
     def get_num_tracks(self):
         """Returns the number of tracks in this template.
@@ -121,13 +129,13 @@ class AnalogMosBase(MicroTemplate):
         tr_s_str = float_to_si_string(self.params['track_space'])
         g_ntr = self.params['g_tracks']
         ds_ntr = self.params['ds_tracks']
-        return '%s_%s_%s_l%s_w%s_fg%d_trw%s_trs%s_ng%d_nds%d_base' % (self.tech_name,
-                                                                      self.params['mos_type'],
-                                                                      self.params['threshold'],
-                                                                      lch_str, w_str,
-                                                                      self.params['fg'],
-                                                                      tr_w_str, tr_s_str,
-                                                                      g_ntr, ds_ntr)
+        tr_sp = self.params['gds_space']
+        return '%s_%s_l%s_w%s_fg%d_trw%s_trs%s_ng%d_nds%d_sp%d_base' % (self.params['mos_type'],
+                                                                        self.params['threshold'],
+                                                                        lch_str, w_str,
+                                                                        self.params['fg'],
+                                                                        tr_w_str, tr_s_str,
+                                                                        g_ntr, ds_ntr, tr_sp)
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -151,8 +159,7 @@ class AnalogSubstrate(MicroTemplate):
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names, tech_name):
-        self.tech_name = tech_name
+    def __init__(self, grid, lib_name, params, used_names):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
     def get_num_tracks(self):
@@ -190,12 +197,11 @@ class AnalogSubstrate(MicroTemplate):
         w_str = float_to_si_string(self.params['w'])
         tr_w_str = float_to_si_string(self.params['track_width'])
         tr_s_str = float_to_si_string(self.params['track_space'])
-        return '%s_%s_%s_l%s_w%s_fg%d_trw%s_trs%s' % (self.tech_name,
-                                                      self.params['sub_type'],
-                                                      self.params['threshold'],
-                                                      lch_str, w_str,
-                                                      self.params['fg'],
-                                                      tr_w_str, tr_s_str)
+        return '%s_%s_l%s_w%s_fg%d_trw%s_trs%s' % (self.params['sub_type'],
+                                                   self.params['threshold'],
+                                                   lch_str, w_str,
+                                                   self.params['fg'],
+                                                   tr_w_str, tr_s_str)
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -362,9 +368,8 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
         lch = self.params['lch']
         nfin = self.params['nfin']
         fg = self.params['fg']
-        tech_str = self.params['tech_constants']['name']
         lch_str = float_to_si_string(lch)
-        return '%s_%s_%s_l%s_fin%d_fg%d_ext' % (tech_str, mos_type, threshold, lch_str, nfin, fg)
+        return '%s_%s_l%s_fin%d_fg%d_ext' % (mos_type, threshold, lch_str, nfin, fg)
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -497,9 +502,8 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
         w = self.params['w']
         bext = self.params['bext']
         text = self.params['text']
-        tech_str = self.params['tech_constants']['name']
         lch_str = float_to_si_string(lch)
-        return '%s_%s_%s_l%s_w%d_bex%d_tex%d_edge' % (tech_str, mos_type, threshold, lch_str, w, bext, text)
+        return '%s_%s_l%s_w%d_bex%d_tex%d_edge' % (mos_type, threshold, lch_str, w, bext, text)
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -604,8 +608,6 @@ class AnalogFinfetBase(AnalogMosBase):
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
-    tech_name : str
-        the technology name.
     core_cls : class
         the Template class used to generate core transistor.
     edge_cls : class
@@ -618,14 +620,15 @@ class AnalogFinfetBase(AnalogMosBase):
     __metaclass__ = abc.ABCMeta
 
     def __init__(self, grid, lib_name, params, used_names,
-                 tech_name, core_cls, edge_cls, ext_cls, tech_constants):
-        AnalogMosBase.__init__(self, grid, lib_name, params, used_names, tech_name)
+                 core_cls, edge_cls, ext_cls, tech_constants):
+        AnalogMosBase.__init__(self, grid, lib_name, params, used_names)
         self.core_cls = core_cls
         self.edge_cls = edge_cls
         self.ext_cls = ext_cls
         self.tech_constants = tech_constants
         self._sd_center = None, None
         self._sd_pitch = None
+        self._ds_track_idx = None
 
     @abc.abstractmethod
     def get_ext_params(self, ext_nfin):
@@ -690,6 +693,16 @@ class AnalogFinfetBase(AnalogMosBase):
         """
         return {}
 
+    def get_ds_track_index(self):
+        """Returns the middle track index.
+
+        Returns
+        -------
+        tr_idx : int
+            the middle track index.
+        """
+        return self._ds_track_idx
+
     def get_left_sd_center(self):
         """Returns the center coordinate of the leftmost source/drain connection.
 
@@ -715,7 +728,7 @@ class AnalogFinfetBase(AnalogMosBase):
     def draw_layout(self, layout, temp_db,
                     mos_type='nch', threshold='lvt', lch=16e-9, w=4, fg=4,
                     track_width=78e-9, track_space=210e-9,
-                    g_tracks=1, ds_tracks=1):
+                    g_tracks=1, ds_tracks=1, gds_space=0):
         """Draw the layout of this template.
 
         Override this method to create the layout.
@@ -744,6 +757,8 @@ class AnalogFinfetBase(AnalogMosBase):
             minimum number of gate tracks.
         ds_tracks : int
             minimum number of drain/source tracks.
+        gds_space : int
+            number of tracks to reserve as space between gate tracks and drain/source tracks.
         """
         if fg <= 0:
             raise ValueError('Number of fingers must be positive.')
@@ -766,25 +781,34 @@ class AnalogFinfetBase(AnalogMosBase):
         # get extension needed to fit integer number of tracks
         core_info = self.get_core_info()
         core_nfin = core_info['nfin']
-        core_tr_nfin = core_info['tr_nfin_max']
+        g_tr_nfin_max = core_info['g_tr_nfin_max']
+        ds_tr_nfin_min = core_info['ds_tr_nfin_min']
         od_dy = core_info['od_dy']
 
         # compute minimum number of tracks and needed bottom extension
+        # make sure always have at least 2 tracks.
         ntrack_min = int(np.ceil(core_nfin * 1.0 / track_nfin))
         bot_ext_nfin = track_nfin * ntrack_min - core_nfin
 
         # See if the first track is far enough from core transistor
-        track_top_nfin = int(np.ceil((track_space / 2.0 + track_width) / mos_fin_pitch))
-        track_top_nfin_max = core_tr_nfin + bot_ext_nfin
-        if track_top_nfin > track_top_nfin_max:
+        g_tr_top_nfin = int(np.ceil((track_space / 2.0 + track_width) / mos_fin_pitch))
+        g_tr_nfin_max += bot_ext_nfin
+        if g_tr_top_nfin > g_tr_nfin_max:
             # first track from bottom too close to core transistor
             # add an additional track to increase spacing.
             bot_ext_nfin += track_nfin
             ntrack_min += 1
 
-        # now calculate bottom/top extensions to account for gate tracks and drain/source tracks
+        # add more gate tracks
         bot_ext_nfin += max(g_tracks - 1, 0) * track_nfin
-        top_ext_nfin = max(ds_tracks - (ntrack_min - 1), 0) * track_nfin
+        ds_tr_nfin_min += bot_ext_nfin
+        ntrack_min += g_tracks - 1
+
+        # find index of bottom drain/source track index
+        self._ds_track_idx = int(np.ceil((ds_tr_nfin_min * mos_fin_pitch - track_space / 2.0) / track_pitch))
+        self._ds_track_idx = max(self._ds_track_idx, g_tracks + gds_space)
+        # find top extension needed to get drain/source tracks
+        top_ext_nfin = max(0, self._ds_track_idx + ds_tracks - ntrack_min) * track_nfin
 
         # determine if we need top/bottom extension blocks, or we should simply extend the core.
         if bot_ext_nfin < mos_ext_nfin_min:
@@ -867,14 +891,22 @@ class AnalogMosConn(MicroTemplate):
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
-    tech_name : str
-        the technology name.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names, tech_name):
-        self.tech_name = tech_name
+    def __init__(self, grid, lib_name, params, used_names):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+
+    @abc.abstractmethod
+    def get_ports(self, name):
+        """Returns a list of bounding boxes representing wires for the given port.
+
+        Returns
+        -------
+        box_list : list[bag.layout.util.BBox]
+            the wire bounding boxes.
+        """
+        return []
 
     def get_layout_basename(self):
         """Returns the base name for this template.
@@ -887,12 +919,11 @@ class AnalogMosConn(MicroTemplate):
 
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
-        return '%s_l%s_w%s_fg%d_s%d_d%d_conn' % (self.tech_name,
-                                                 lch_str, w_str,
-                                                 self.params['fg'],
-                                                 self.params['sdir'],
-                                                 self.params['ddir'],
-                                                 )
+        return 'mconn_l%s_w%s_fg%d_s%d_d%d' % (lch_str, w_str,
+                                               self.params['fg'],
+                                               self.params['sdir'],
+                                               self.params['ddir'],
+                                               )
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -916,13 +947,10 @@ class AnalogMosSep(MicroTemplate):
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
-    tech_name : str
-        the technology name.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names, tech_name):
-        self.tech_name = tech_name
+    def __init__(self, grid, lib_name, params, used_names):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
     @classmethod
@@ -949,9 +977,8 @@ class AnalogMosSep(MicroTemplate):
 
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
-        return '%s_l%s_w%s_fg%d_sep' % (self.tech_name,
-                                        lch_str, w_str,
-                                        self.params['fg'])
+        return 'msep_l%s_w%s_fg%d' % (lch_str, w_str,
+                                      self.params['fg'])
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -973,13 +1000,10 @@ class AnalogMosDummy(MicroTemplate):
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
-    tech_name : str
-        the technology name.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names, tech_name):
-        self.tech_name = tech_name
+    def __init__(self, grid, lib_name, params, used_names):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
     def get_layout_basename(self):
@@ -993,9 +1017,8 @@ class AnalogMosDummy(MicroTemplate):
 
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
-        return '%s_l%s_w%s_fg%d_dummy' % (self.tech_name,
-                                          lch_str, w_str,
-                                          self.params['fg'],)
+        return 'mdummy_l%s_w%s_fg%d' % (lch_str, w_str,
+                                        self.params['fg'],)
 
     def compute_unique_key(self):
         return self.get_layout_basename()
