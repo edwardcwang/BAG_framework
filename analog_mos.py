@@ -904,15 +904,20 @@ class AnalogMosConn(MicroTemplate):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
     @abc.abstractmethod
-    def get_ports(self, name):
-        """Returns a list of bounding boxes representing wires for the given port.
+    def get_port_locations(self, name):
+        """Returns the wire bounding boxes of the given port.
+
+        Parameters
+        ----------
+        name : str
+            name of the port.  Either 'g', 'd', or 's'.
 
         Returns
         -------
-        box_list : list[bag.layout.util.BBox]
-            the wire bounding boxes.
+        box_arr : bag.layout.util.BBoxArray
+            the bounding box array representing the wire locations.
         """
-        return []
+        return None
 
     def get_layout_basename(self):
         """Returns the base name for this template.

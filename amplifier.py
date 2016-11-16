@@ -34,12 +34,12 @@ from .analog_mos import AnalogMosBase, AnalogSubstrate, AnalogMosConn
 class IntervalSet(object):
     """A data structure that keeps track of disjoint 1D intervals.
 
-    Each interval can have an optional value associated with it.
+    Each interval has a value associated with it.  If not specified, the value defaults to None.
 
     Parameters
     ----------
     intv_list : list[(float, float)] or None
-        the initial interval list.
+        the sorted initial interval list.
     val_list : list[any] or None
         the initial values list.
     res : float
@@ -66,7 +66,7 @@ class IntervalSet(object):
         """Return true if a < b within resolution."""
         return a - b < -self._res
 
-    def _get_overlap_idx(self, start, end):
+    def _get_first_overlap_idx(self, start, end):
         """Returns the index of the first interval that overlaps with the given interval.
 
         Parameters
@@ -84,25 +84,23 @@ class IntervalSet(object):
         """
         if not self._start_list:
             return -1
-        # find the largest start index less than or equal to start
-        idx = bisect.bisect_left(self._start_list, start)
+        # find the smallest start index greater than start
+        idx = bisect.bisect_right(self._start_list, start)
         if idx == 0:
             # all interval's starting point is greater than start
             return 0 if self._lt(self._start_list[idx], end) else -1
 
+        # interval where start index is less than or equal to start
         test_idx = idx - 1
         if self._lt(start, self._end_list[test_idx]):
             # start is covered by the interval; overlaps.
             return test_idx
-        elif test_idx + 1 < len(self._start_list) and self._lt(self._start_list[test_idx + 1], end):
-            # the interval at idx + 1 covers end; overlaps
-            return test_idx + 1
         else:
             # no overlap interval found
             return -(idx + 1)
 
-    def get_overlap(self, start, end):
-        """Returns the first interval that overlaps with the given interval.
+    def _get_last_overlap_idx(self, start, end):
+        """Returns the index of the last interval that overlaps with the given interval.
 
         Parameters
         ----------
@@ -113,15 +111,48 @@ class IntervalSet(object):
 
         Returns
         -------
-        intv : (float, float) or None
-            the first interval.  None if no overlapping intervals are found.
-        value : any
-            the value associated with the given interval.
+        idx : int
+            the index of the overlapping interval.  If no overlapping intervals are
+            found, -(idx + 1) is returned, where idx is the index to insert the interval.
         """
-        idx = self._get_overlap_idx(start, end)
-        if idx < 0:
-            return None, None
-        return (self._start_list[idx], self._end_list[idx]), self._val_list[idx]
+        if not self._start_list:
+            return -1
+        # find the smallest start index greater than end
+        idx = bisect.bisect_right(self._start_list, end)
+        if idx == 0:
+            # all interval's starting point is greater than end
+            return -1
+
+        # interval where start index is less than or equal to end
+        test_idx = idx - 1
+        if self._lt(self._end_list[test_idx], start):
+            # end of interval less than start; no overlap
+            return -(idx + 1)
+        else:
+            return test_idx
+
+    def get_overlaps(self, start, end):
+        """Returns a sorted list of overlapping intervals
+
+        Parameters
+        ----------
+        start : int or float
+            the start index of the given interval.  Inclusive.
+        end : int or float
+            th end index of the given interval.  Exclusive.
+
+        Returns
+        -------
+        intv_list : list[(float, float)]
+            the sorted list of overlapping intervals.
+        val_list : list[any]
+            the list of corresponding values
+        """
+        sidx = self._get_first_overlap_idx(start, end)
+        if sidx < 0:
+            return [], []
+        eidx = self._get_last_overlap_idx(start, end) + 1
+        return list(izip(self._start_list[sidx:eidx], self._end_list[sidx:eidx])), self._val_list[sidx:eidx]
 
     def remove(self, start, end):
         """Removes the given interval from this IntervalSet.
@@ -138,7 +169,7 @@ class IntervalSet(object):
         success : bool
             True if the given interval is found and removed.  False otherwise.
         """
-        idx = self._get_overlap_idx(start, end)
+        idx = self._get_first_overlap_idx(start, end)
         if idx < 0:
             return False
         if abs(start - self._start_list[idx]) < self._res and abs(end - self._end_list[idx]) < self._res:
@@ -167,7 +198,7 @@ class IntervalSet(object):
         success : bool
             True if the given interval is added.
         """
-        idx = self._get_overlap_idx(start, end)
+        idx = self._get_first_overlap_idx(start, end)
         if idx >= 0:
             return False
         idx = -idx - 1
@@ -192,7 +223,7 @@ class IntervalSet(object):
         ValueError :
             if the given interval is not in this IntervalSet
         """
-        idx = self._get_overlap_idx(start, end)
+        idx = self._get_first_overlap_idx(start, end)
         if idx < 0 or abs(self._start_list[idx] - start) >= self._res or abs(self._end_list[idx] - end) >= self._res:
             raise ValueError('Interval (%.4g, %.4g) not in this interval set' % (start, end))
         self._val_list[idx] = value
@@ -237,9 +268,11 @@ def _subtract(intv_set, start, end):
     success : bool
         True on success.
     """
-    intv, _ = intv_set.get_overlap(start, end)
-    if intv is None:
+    intv_list, _ = intv_set.get_overlaps(start, end)
+    if not intv_list:
         return False
+
+    intv = intv_list[0]
     if intv[0] > start or intv[1] < end:
         # overlap interval did not completely cover (start, end)
         return False
@@ -387,15 +420,15 @@ class AmplifierBase(MicroTemplate):
                     track_space=self._track_space,
                     )
 
-    def connect_to_track(self, layout, box_list, row_idx, tr_type, track_idx):
+    def connect_to_track(self, layout, box_arr_list, row_idx, tr_type, track_idx):
         """Connect the given wires to the track on the given row.
 
         Parameters
         ----------
         layout : :class:`bag.layout.core.BagLayout`
             the BagLayout instance.
-        box_list : list[bag.layout.util.BBox]
-            the list of wire bounding boxes.
+        box_arr_list : list[bag.layout.util.BBoxArray]
+            the list of bus wires to connect.
         row_idx : int
             the row index.  0 is the bottom-most NMOS/PMOS row.
         tr_type : str
@@ -403,31 +436,27 @@ class AmplifierBase(MicroTemplate):
         track_idx : int
             the track index.
         """
-        if not box_list:
+        if not box_arr_list:
             # do nothing
-            return None
+            return
 
         res = self.grid.get_resolution()
-        # first try to connect the wires vertically
-        # do so by keeping track of intervals
-        intv_set = IntervalSet(res=res)
-        for box in box_list:
-            intv, val = intv_set.get_overlap(box.left, box.right)
-            if intv is None:
-                # new interval
-                intv_set.add(box.left, box.right, val=(box.bottom, box.top))
-            elif abs(intv[0] - box.left) >= res or abs(intv[1] - box.right) >= res:
-                # overlapping interval that's not equal
-                msg = 'Wires (%.4g, %.4g) and (%.4g, %.4g) misaligned.'
-                raise Exception(msg % (intv[0], intv[1], box.left, box.right))
-            else:
-                new_val = (min(val[0], box.bottom), max(val[1], box.top))
-                intv_set.set_value(box.left, box.right, new_val)
+        layout_unit = self.grid.get_layout_unit()
 
-        # get new box list with all vertically aligned wires connected
-        box_list = [BBox(intv[0], val[0], intv[1], val[1], res)
-                    for intv, val in izip(intv_set.get_intervals(), intv_set.get_values())]
+        # make sure all wires are aligned
+        wire_w = box_arr_list[0].base.width
+        wire_pitch = box_arr_list[0].spx
+        wire_xl = box_arr_list[0].left
+        for box_arr in box_arr_list:
+            if abs(wire_w - box_arr.base.width) >= res or abs(wire_pitch - box_arr.spx) >= res:
+                raise ValueError('Not all wires have same width and pitch')
+            cur_xl = box_arr.left
+            nsep = int(round((cur_xl - wire_xl) / wire_pitch))
+            if abs(cur_xl - wire_xl - nsep * wire_pitch) >= res:
+                raise ValueError('Wires are not aligned properly.')
+            wire_xl = min(wire_xl, cur_xl)
 
+        # calculate track coordinates
         row_idx += 1
         offset = self._track_offsets[row_idx]
         if tr_type == 'g':
@@ -445,21 +474,66 @@ class AmplifierBase(MicroTemplate):
         else:
             track_idx = offset + self._num_tracks[row_idx] - (row_offset + track_idx)
 
-        layout_unit = self.grid.get_layout_unit()
         tr_sp = self._track_space / layout_unit
         tr_w = self._track_width / layout_unit
         tr_yb = tr_sp / 2.0 + track_idx * (tr_sp + tr_w)
         tr_yt = tr_yb + tr_w
-        tr_xl = box_list[0].left
-        tr_xr = box_list[-1].right
-        layout.add_rect(self._hm_layer, BBox(tr_xl, tr_yb, tr_xr, tr_yt, res))
-        for box in box_list:
-            yb = min(box.bottom, tr_yb)
-            yt = max(box.top, tr_yt)
-            layout.add_rect(self._vm_layer, BBox(box.left, yb, box.right, yt, res))
-            vbox = BBox(box.left, tr_yb, box.right, tr_yt, res)
-            via = self.grid.make_via_from_bbox(vbox, self._vm_layer, self._hm_layer, 'y')
-            layout.add_via_obj(via)
+
+        # calculate wire vertical coordinates
+        intv_set = IntervalSet(res=res)
+        for box_arr in box_arr_list:
+            cur_xl = box_arr.left
+            # convert wire coordinates to track number
+            nstart = int(round((cur_xl - wire_xl) / wire_pitch))
+            nend = nstart + box_arr.nx
+            # calculate wire bus bottom and top coordinate.
+            cur_range = (min(tr_yb, box_arr.bottom), max(tr_yt, box_arr.top))
+            intv_list, yrang_list = intv_set.get_overlaps(nstart, nend)
+            # perform max/min with other wire buses.
+            if not intv_list:
+                intv_set.add(nstart, nend, cur_range)
+            else:
+                if nstart < intv_list[0][0]:
+                    intv_set.add(nstart, intv_list[0][0], cur_range)
+                if intv_list[-1][1] < nend:
+                    intv_set.add(intv_list[-1][1], nend, cur_range)
+                for intv, yrang in izip(intv_list, yrang_list):
+                    cstart, cend = intv
+                    intv_set.remove(cstart, cend)
+                    if intv[0] < nstart:
+                        intv_set.add(cstart, nstart, yrang)
+                        cstart = nstart
+                    if intv[1] > nend:
+                        intv_set.add(nend, cend, yrang)
+                        cend = nend
+                    intv_set.add(cstart, cend, (min(cur_range[0], yrang[0]),
+                                                max(cur_range[1], yrang[1])))
+
+        # get wire bus intervals
+        intv_list = intv_set.get_intervals()
+        val_list = intv_set.get_values()
+        # draw horizontal track
+        tr_xr = wire_xl + (intv_list[-1][-1] - 1) * wire_pitch + wire_w
+        layout.add_rect(self._hm_layer, BBox(wire_xl, tr_yb, tr_xr, tr_yt, res))
+        # draw vertical wires
+        for intv, val in izip(intv_list, val_list):
+            xl = intv[0] * wire_pitch + wire_xl
+            yb, yt = val
+            layout.add_rect(self._vm_layer, BBox(xl, yb, xl + wire_w, yt, res),
+                            arr_nx=intv[1] - intv[0], arr_spx=wire_pitch)
+
+        # draw vias
+        via_intv_list = []
+        for intv in intv_list:
+            if not via_intv_list or via_intv_list[-1][1] != intv[0]:
+                via_intv_list.append([intv[0], intv[1]])
+            else:
+                via_intv_list[-1][1] = intv[1]
+        for via_intv in via_intv_list:
+            xo = wire_xl + via_intv[0] * wire_pitch
+            via = self.grid.make_via_from_bbox(BBox(xo, tr_yb, xo + wire_w, tr_yt, res),
+                                               self._vm_layer, self._hm_layer, 'y')
+            layout.add_via_obj(via, arr_nx=via_intv[1] - via_intv[0], arr_spx=wire_pitch)
 
     def draw_dummy(self, layout, temp_db, row_idx, loc, fg):
         """Draw dummy connection.
@@ -577,7 +651,7 @@ class AmplifierBase(MicroTemplate):
 
         Returns
         -------
-        ports : dict[str, list[bag.layout.util.BBox]]
+        ports : dict[str, bag.layout.util.BBoxArray]
             a dictionary of port bounding boxes.  The keys are 'g', 'd', and 's'.
         """
         # mark transistors as connected
@@ -606,11 +680,7 @@ class AmplifierBase(MicroTemplate):
         loc = (xc, yc)
         self.add_template(layout, conn, loc=loc, orient=orient)
 
-        return dict(
-            g=[box.transform(loc, orient) for box in conn.get_ports('g')],
-            d=[box.transform(loc, orient) for box in conn.get_ports('d')],
-            s=[box.transform(loc, orient) for box in conn.get_ports('s')],
-        )
+        return {key: conn.get_port_locations(key).transform(loc=loc, orient=orient) for key in ['g', 'd', 's']}
 
     def draw_base(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw_list, pth_list,

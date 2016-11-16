@@ -23,7 +23,7 @@
 ########################################################################################################################
 
 import abc
-from itertools import izip, chain
+from itertools import izip
 
 from .amplifier import AmplifierBase
 
@@ -83,100 +83,100 @@ class SerdesRXBase(AmplifierBase):
         fg_max = max(fg_list) * 2 + fg_sep
 
         # figure out source/drain directions and intermediate connections
-        d_dir_list = [2, 2, 2, 2, 2, 2]
-        s_dir_list = [0, 0, 0, 0, 0, 0]
-        conn_list = []
+        # load
+        sd_dir = {'load': (0, 2)}
+        conn = {'outp': [('loadp', 'd')], 'outn': [('loadn', 'd')],
+                'vdd': [('loadp', 's'), ('loadn', 's')]}
+        track = {'outp': (5, 0), 'outn': (5, 2)}
 
-        # pmos always drain up, source down
-        # if cascode, it's always drain up, source down.
-
-        # set input direction
-        in_tail_list = []
+        # cascode and input
         if fg_list[4] > 0:
-            # if cascode, flip direction
-            d_dir_list[3] = 0
-            s_dir_list[3] = 2
-            conn_list.append((4, 0, [(3, 0, 's'), (4, 0, 's')]))
-            conn_list.append((4, 0, [(3, 1, 's'), (4, 1, 's')]))
-            in_tail_list.append((3, 0, 'd'))
-            in_tail_list.append((3, 1, 'd'))
+            # if cascode, flip input source/drain
+            sd_dir['casc'] = (0, 2)
+            sd_dir['in'] = (2, 0)
+            conn['midp'] = [('cascp', 's'), ('inp', 's')]
+            conn['midn'] = [('cascn', 's'), ('inn', 's')]
+            track['midp'] = (4, 0)
+            track['midn'] = (4, 0)
+            conn['outp'].append(('cascp', 'd'))
+            conn['outn'].append(('cascn', 'd'))
+            conn['tail'] = [('inp', 'd'), ('inn', 'd')]
         else:
-            in_tail_list.append((3, 0, 's'))
-            in_tail_list.append((3, 1, 's'))
+            sd_dir['in'] = (0, 2)
+            conn['outp'].append(('inp', 'd'))
+            conn['outn'].append(('inn', 'd'))
+            conn['tail'] = [('inp', 's'), ('inn', 's')]
 
-        # set switch direction
+        # switch
         if fg_list[2] > 0:
-            # switch always have the same down source/drain as input, and the other
-            # will be middle
-            if d_dir_list[3] == 0:
-                d_dir_list[2] = 0
-                s_dir_list[2] = 1
-                conn_list.append((2, 0, [(2, 0, 's'), (2, 1, 's')]))
-                in_tail_list.append((2, 0, 'd'))
-                in_tail_list.append((2, 1, 'd'))
+            # switch follows input direction
+            track['vddt'] = (2, 0)
+            if sd_dir['in'][0] == 0:
+                sd_dir['sw'] = (0, 1)
+                conn['vddt'] = [('swp', 'd'), ('swn', 'd')]
+                conn['tail'].extend([('swp', 's'), ('swn', 's')])
             else:
-                s_dir_list[2] = 0
-                d_dir_list[2] = 1
-                conn_list.append((2, 0, [(2, 0, 'd'), (2, 1, 'd')]))
-                in_tail_list.append((2, 0, 's'))
-                in_tail_list.append((2, 1, 's'))
+                sd_dir['sw'] = (1, 0)
+                conn['vddt'] = [('swp', 's'), ('swn', 's')]
+                conn['tail'].extend([('swp', 'd'), ('swn', 'd')])
 
-        # enable direction always opposite input direction
-        d_dir_list[1] = 2 - d_dir_list[3]
-        s_dir_list[1] = 2 - s_dir_list[3]
-        # tail direction is opposite enable or input direction
+        # enable
         if fg_list[1] > 0:
-            d_dir_list[0] = 2 - d_dir_list[1]
-            s_dir_list[0] = 2 - s_dir_list[1]
-            if d_dir_list[1] == 2:
-                in_tail_list.append((1, 0, 'd'))
-                in_tail_list.append((1, 1, 'd'))
-                conn_list.append((0, 0, [(1, 0, 's'), (1, 1, 's'), (0, 0, 's'),
-                                         (0, 1, 's')]))
+            # enable is opposite of input direction
+            track['tail'] = (1, 0)
+            if sd_dir['in'][0] == 0:
+                sd_dir['en'] = (2, 0)
+                conn['tail'].extend([('enp', 's'), ('enn', 's')])
+                conn['foot'] = [('enp', 'd'), ('enn', 'd')]
             else:
-                in_tail_list.append((1, 0, 's'))
-                in_tail_list.append((1, 1, 's'))
-                conn_list.append((0, 0, [(1, 0, 'd'), (1, 1, 'd'), (0, 0, 'd'),
-                                         (0, 1, 'd')]))
-            in_tail_row = 1
+                sd_dir['en'] = (0, 2)
+                conn['tail'].extend([('enp', 'd'), ('enn', 'd')])
+                conn['foot'] = [('enp', 's'), ('enn', 's')]
+
+        # tail
+        if 'foot' in conn:
+            # enable exists.  direction opposite of enable
+            key = 'foot'
+            comp = 'en'
         else:
-            d_dir_list[0] = 2 - d_dir_list[3]
-            s_dir_list[0] = 2 - s_dir_list[3]
-            if d_dir_list[0] == 2:
-                in_tail_list.append((0, 0, 'd'))
-                in_tail_list.append((0, 1, 'd'))
-            else:
-                in_tail_list.append((0, 0, 's'))
-                in_tail_list.append((0, 1, 's'))
+            # direction opposite of in.
+            key = 'tail'
+            comp = 'in'
 
-            in_tail_row = 0
-        conn_list.append((in_tail_row, 0, in_tail_list))
+        track[key] = (0, 0)
+        if sd_dir[comp][0] == 0:
+            sd_dir['tail'] = (2, 0)
+            conn[key].extend([('tailp', 's'), ('tailn', 's')])
+            conn['vss'] = [('tailp', 'd'), ('tailn', 'd')]
+        else:
+            sd_dir['tail'] = (0, 2)
+            conn[key].extend([('tailp', 'd'), ('tailn', 'd')])
+            conn['vss'] = [('tailp', 's'), ('tailn', 's')]
 
-        port_list = []
-        for ridx, fg, rname, ddir, sdir in izip(self._row_idx, fg_list, self._row_names, d_dir_list, s_dir_list):
+        # create mos connections
+        mos_dict = {}
+        for ridx, fg, name in izip(self._row_idx, fg_list, self._row_names):
             if ridx < 0:
                 # error checking
                 if fg > 0:
-                    raise ValueError('Row %s does not exist but fg = %d > 0' % (rname, fg))
-                port_list.append((None, None))
+                    raise ValueError('Row %s does not exist but fg = %d > 0' % (name, fg))
             elif fg > 0:
                 fg_tot = 2 * fg + fg_sep
                 col_start = col_idx + (fg_max - fg_tot) / 2
-                pp = self.draw_mos_conn(layout, temp_db, ridx, col_start, fg, sdir, ddir)
-                pn = self.draw_mos_conn(layout, temp_db, ridx, col_start + fg + fg_sep, fg, sdir, ddir)
-                port_list.append((pp, pn))
+                sdir, ddir = sd_dir[name]
+                mos_dict['%sp' % name] = self.draw_mos_conn(layout, temp_db, ridx, col_start, fg, sdir, ddir)
+                mos_dict['%sn' % name] = self.draw_mos_conn(layout, temp_db, ridx, col_start + fg + fg_sep,
+                                                            fg, sdir, ddir)
 
-        # connect outputs
-        outp_list = port_list[-1][0]['d'] + port_list[-2][0]['d']
-        outn_list = port_list[-1][1]['d'] + port_list[-2][1]['d']
-        ridx = self._row_idx[-1]
-        self.connect_to_track(layout, outn_list, ridx, 'ds', 2)
-        self.connect_to_track(layout, outp_list, ridx, 'ds', 0)
-
-        # connect intermediate nodes
-        for row_idx, tr_idx, clist in conn_list:
-            box_iter = chain(*(port_list[pidx1][pidx2][name] for pidx1, pidx2, name in clist))
-            self.connect_to_track(layout, list(box_iter), row_idx, 'ds', tr_idx)
+        # draw intermediate connections
+        for conn_name, conn_list in conn.iteritems():
+            if conn_name == 'vdd' or conn_name == 'vss':
+                # connect to substrate
+                pass
+            else:
+                box_arr_list = [mos_dict[mos][sd] for mos, sd in conn_list]
+                ridx, tidx = track[conn_name]
+                self.connect_to_track(layout, box_arr_list, ridx, 'ds', tidx)
 
     def draw_rows(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw, pth, track_width, track_space, gds_space,
