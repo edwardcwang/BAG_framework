@@ -28,7 +28,6 @@
 
 import abc
 import numpy as np
-from itertools import repeat, chain
 
 from bag import float_to_si_string
 from bag.layout.util import BBox
@@ -154,8 +153,6 @@ class AnalogSubstrate(MicroTemplate):
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
-    tech_name : str
-        the technology name.
     """
     __metaclass__ = abc.ABCMeta
 
@@ -296,12 +293,21 @@ class AnalogFinfetFoundation(MicroTemplate):
         # draw DPO/PO
         dpo_lp = ('PO', 'dummy1')
         po_lp = ('PO', 'drawing')
-        for idx, (layer, purpose) in enumerate(chain(repeat(dpo_lp, nduml), repeat(po_lp, fg),
-                                                     repeat(dpo_lp, ndumr))):
-            xmid = (idx + 0.5) * sd_pitch + extl
-            layout.add_rect(layer, BBox(xmid - lch / 2.0, arr_box.bottom - extb,
-                                        xmid + lch / 2.0, arr_box.top + extt, res),
-                            purpose=purpose)
+        yb = arr_box.bottom - extb
+        yt = arr_box.top + extt
+        dx = lch / 2.0
+        # draw DPO left
+        xmid = 0.5 * sd_pitch + extl
+        layout.add_rect(dpo_lp[0], BBox(xmid - dx, yb, xmid + dx, yt, res),
+                        purpose=dpo_lp[1], arr_nx=nduml, arr_spx=sd_pitch)
+        # draw PO
+        xmid = (nduml + 0.5) * sd_pitch + extl
+        layout.add_rect(po_lp[0], BBox(xmid - dx, yb, xmid + dx, yt, res),
+                        purpose=po_lp[1], arr_nx=fg, arr_spx=sd_pitch)
+        # draw DPO right
+        xmid = (nduml + fg + 0.5) * sd_pitch + extl
+        layout.add_rect(dpo_lp[0], BBox(xmid - dx, yb, xmid + dx, yt, res),
+                        purpose=dpo_lp[1], arr_nx=ndumr, arr_spx=sd_pitch)
 
         # draw VT/implant
         imp_box = BBox(0.0, arr_box.bottom - extb,
