@@ -194,11 +194,12 @@ class SerdesRXBase(AmplifierBase):
 
         # draw intermediate connections
         for conn_name, conn_list in conn.iteritems():
-            if conn_name == 'vdd' or conn_name == 'vss':
-                # connect to substrate
-                pass
+            box_arr_list = [mos_dict[mos][sd] for mos, sd in conn_list]
+            if conn_name == 'vdd':
+                self.connect_to_supply(layout, 1, box_arr_list)
+            elif conn_name == 'vss':
+                self.connect_to_supply(layout, 0, box_arr_list)
             else:
-                box_arr_list = [mos_dict[mos][sd] for mos, sd in conn_list]
                 conn_type = 'g' if conn_list[0][1] == 'g' else 'ds'
                 ridx, tidx = track[conn_name]
                 self.connect_to_track(layout, box_arr_list, ridx, conn_type, tidx)

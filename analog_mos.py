@@ -159,6 +159,36 @@ class AnalogSubstrate(MicroTemplate):
     def __init__(self, grid, lib_name, params, used_names):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
+    @abc.abstractmethod
+    def contact_both_ds(self):
+        """Returns True if you can contact both drain and source to horizontal tracks.
+
+        Some technology may not allow contacts to be placed on both drain and source
+        wire.  In this case this method will indicate so.
+
+        Returns
+        -------
+        contact_both : bool
+            True if you can draw contacts on both drain and source wires in the same row.
+        """
+        return True
+
+    @abc.abstractmethod
+    def get_port_locations(self, is_dummy=False):
+        """Returns the wire bounding boxes of the substrate port.
+
+        Parameters
+        ----------
+        is_dummy : bool
+            if True, return port locations for separator/dummy connections instead.
+
+        Returns
+        -------
+        box_arr : bag.layout.util.BBoxArray
+            the bounding box array representing the wire locations.
+        """
+        return None
+
     def get_num_tracks(self):
         """Returns the number of tracks in this template.
 

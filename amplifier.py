@@ -25,6 +25,7 @@
 import abc
 from itertools import izip, chain, repeat
 import bisect
+import numpy as np
 
 from bag.layout.template import MicroTemplate
 from bag.layout.util import BBox
@@ -339,6 +340,8 @@ class AmplifierBase(MicroTemplate):
         self._ds_tr_indices = None
         self._vm_layer = None
         self._hm_layer = None
+        self._bsub_ports = None
+        self._tsub_ports = None
 
         self._min_fg_sep = self._sep_cls.get_min_fg()
 
@@ -426,7 +429,7 @@ class AmplifierBase(MicroTemplate):
         Parameters
         ----------
         row_idx : int
-            the row index.  0 is the bottom-most NMOS/PMOS row.
+            the row index.  0 is the bottom-most NMOS/PMOS row.  -1 is bottom substrate.
         tr_type : str
             the type of the track.  Either 'g' or 'ds'.
         tr_idx : int
@@ -463,6 +466,26 @@ class AmplifierBase(MicroTemplate):
         tr_yb = tr_sp / 2.0 + tr_idx2 * (tr_sp + tr_w) + self.array_box.bottom
         tr_yt = tr_yb + tr_w
         return tr_yb, tr_yt
+
+    def connect_to_supply(self, layout, supply_idx, box_arr_list):
+        """Connect the given transistor wires to supply.
+        
+        Parameters
+        ----------
+        layout : :class:`bag.layout.core.BagLayout`
+            the BagLayout instance.
+        supply_idx : int
+            the supply index.  0 for the bottom substrate, 1 for the top substrate.
+        box_arr_list : list[bag.layout.util.BBoxArray]
+            list of BBoxArrays to connect to supply.
+        """
+        if supply_idx == 0:
+            y = self._bsub_ports[1].bottom
+        else:
+            y = self._tsub_ports[1].top
+        for box_arr in box_arr_list:
+            layout.add_rect(self._vm_layer, box_arr.base.extend(y=y),
+                            arr_nx=box_arr.nx, arr_spx=box_arr.spx)
 
     def connect_differential_track(self, layout, pbox_arr_list, nbox_arr_list, row_idx, tr_type, ptr_idx, ntr_idx):
         """Connect the given differential wires to two tracks.
@@ -871,6 +894,8 @@ class AmplifierBase(MicroTemplate):
         bsub_arr_box = bsub.array_box
         self.add_template(layout, bsub, 'XBSUB')
         self._num_tracks.append(bsub.get_num_tracks())
+        self._bsub_ports = [bsub.get_port_locations(is_dummy=True),
+                            bsub.get_port_locations(is_dummy=False)]
         self._track_offsets.append(0)
         self._ds_tr_indices.append(0)
         amp_array_box = bsub_arr_box
@@ -934,7 +959,68 @@ class AmplifierBase(MicroTemplate):
         self._track_offsets.append(self._track_offsets[-1] + self._num_tracks[-1])
         self._ds_tr_indices.append(0)
         self._num_tracks.append(tsub.get_num_tracks())
-        self.add_template(layout, tsub, 'XTSUB', loc=(0.0, ycur + tsub_arr_box.top), orient='MX')
+        tsub_loc = (0.0, ycur + tsub_arr_box.top)
+        tsub_orient = 'MX'
+        self.add_template(layout, tsub, 'XTSUB', loc=tsub_loc, orient=tsub_orient)
+        self._tsub_ports = [tsub.get_port_locations(is_dummy=True).transform(tsub_loc, tsub_orient),
+                            tsub.get_port_locations(is_dummy=False).transform(tsub_loc, tsub_orient)]
+
+        # connect substrates to horizontal tracks.
+        self._connect_substrate(layout, bsub.get_num_tracks(), tsub.get_num_tracks(),
+                                bsub.contact_both_ds(), tsub.contact_both_ds())
+
+    def _connect_substrate(self, layout, nbot, ntop, bot_contact, top_contact):
+        """Connect substrate to horizontal tracks
+
+        Parameters
+        ----------
+        layout : :class:`bag.layout.core.BagLayout`
+            the BagLayout instance.
+        nbot : int
+            number of bottom substrate tracks.
+        ntop : int
+            number of top substrate tracks.
+        bot_contact : bool
+            True to contact both drain/source for bottom substrate.
+        top_contact : bool
+            True to contact both drain/source for top substrate.
+        """
+        res = self.grid.get_resolution()
+        layout_unit = self.grid.get_layout_unit()
+        track_pitch = (self._track_width + self._track_space) / layout_unit
+        track_pitch = round(track_pitch / res) * res
+        # row index substrate by 1 to make get_track_yrange work.
+        # also skip the top track to leave some margin to transistors
+        iter_list = [(-1, self._bsub_ports[1], nbot - 1, 0, bot_contact),
+                     (len(self._w_list) - 2, self._tsub_ports[1], ntop - 1, ntop - 2,
+                      top_contact)]
+        for row_idx, box_arr, ntr, tr_idx, contact in iter_list:
+            yb, yt = self.get_track_yrange(row_idx, 'ds', tr_idx)
+            yb2, yt2 = self.get_track_yrange(row_idx, 'ds', ntr - 1 - tr_idx)
+
+            xl = box_arr.base.left
+            xr = box_arr.base.right
+            via = self.grid.make_via_from_bbox(BBox(xl, yb, xr, yt, res),
+                                               self._vm_layer, self._hm_layer, 'y')
+            yext = (via.bot_box.height - (yt - yb)) / 2.0
+            xext = (via.top_box.width - (xr - xl)) / 2.0
+            # add via, tracks, and wires
+            wbase = box_arr.base.extend(y=yb - yext).extend(y=yt2 + yext)
+            layout.add_rect(self._vm_layer, wbase, arr_nx=box_arr.nx, arr_spx=box_arr.spx)
+            layout.add_rect(self._hm_layer, BBox(xl - xext, yb, box_arr.right + xext, yt, res),
+                            arr_ny=ntr, arr_spy=track_pitch)
+            if contact:
+                layout.add_via_obj(via, arr_nx=box_arr.nx, arr_spx=box_arr.spx,
+                                   arr_ny=ntr, arr_spy=track_pitch)
+            else:
+                nx = int(np.ceil(box_arr.nx / 2.0))
+                num_tr = int(np.ceil(ntr / 2.0))
+                layout.add_via_obj(via, arr_nx=nx, arr_spx=2 * box_arr.spx,
+                                   arr_ny=num_tr, arr_spy=2 * track_pitch)
+                if ntr > 1:
+                    via.move_by(box_arr.spx, track_pitch)
+                    layout.add_via_obj(via, arr_nx=box_arr.nx - nx, arr_spx=2 * box_arr.spx,
+                                       arr_ny=ntr - num_tr, arr_spy=2 * track_pitch)
 
     def fill_dummy(self, layout, temp_db):
         """Draw dummy/separator on all unused transistors.
