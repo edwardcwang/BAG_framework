@@ -86,8 +86,9 @@ class SerdesRXBase(AmplifierBase):
         # load
         sd_dir = {'load': (0, 2)}
         conn = {'outp': [('loadp', 'd')], 'outn': [('loadn', 'd')],
-                'vdd': [('loadp', 's'), ('loadn', 's')]}
-        track = {'outp': (5, 0), 'outn': (5, 2)}
+                'vdd': [('loadp', 's'), ('loadn', 's')],
+                'biasp': [('loadp', 'g'), ('loadn', 'g')]}
+        track = {'outp': (5, 0), 'outn': (5, 2), 'biasp': (5, 0)}
 
         # cascode and input
         if fg_list[4] > 0:
@@ -101,16 +102,25 @@ class SerdesRXBase(AmplifierBase):
             conn['outp'].append(('cascp', 'd'))
             conn['outn'].append(('cascn', 'd'))
             conn['tail'] = [('inp', 'd'), ('inn', 'd')]
+            conn['casc'] = [('cascp', 'g'), ('cascn', 'g')]
+            track['casc'] = (4, 0)
         else:
             sd_dir['in'] = (0, 2)
             conn['outp'].append(('inp', 'd'))
             conn['outn'].append(('inn', 'd'))
             conn['tail'] = [('inp', 's'), ('inn', 's')]
 
+        conn['inp'] = [('inn', 'g')]
+        conn['inn'] = [('inp', 'g')]
+        track['inp'] = (3, 2)
+        track['inn'] = (3, 0)
+
         # switch
         if fg_list[2] > 0:
             # switch follows input direction
             track['vddt'] = (2, 0)
+            conn['sw'] = [('swp', 'g'), ('swn', 'g')]
+            track['sw'] = (2, 0)
             if sd_dir['in'][0] == 0:
                 sd_dir['sw'] = (0, 1)
                 conn['vddt'] = [('swp', 'd'), ('swn', 'd')]
@@ -124,6 +134,8 @@ class SerdesRXBase(AmplifierBase):
         if fg_list[1] > 0:
             # enable is opposite of input direction
             track['tail'] = (1, 0)
+            conn['en'] = [('enp', 'g'), ('enn', 'g')]
+            track['en'] = (1, 0)
             if sd_dir['in'][0] == 0:
                 sd_dir['en'] = (2, 0)
                 conn['tail'].extend([('enp', 's'), ('enn', 's')])
@@ -143,6 +155,8 @@ class SerdesRXBase(AmplifierBase):
             key = 'tail'
             comp = 'in'
 
+        track['biasn'] = (0, 0)
+        conn['biasn'] = [('tailp', 'g'), ('tailn', 'g')]
         track[key] = (0, 0)
         if sd_dir[comp][0] == 0:
             sd_dir['tail'] = (2, 0)
@@ -168,6 +182,16 @@ class SerdesRXBase(AmplifierBase):
                 mos_dict['%sn' % name] = self.draw_mos_conn(layout, temp_db, ridx, col_start + fg + fg_sep,
                                                             fg, sdir, ddir)
 
+        # draw differential connections
+        for diff_sig, conn_type in [('in', 'g'), ('out', 'ds')]:
+            pname = '%sp' % diff_sig
+            nname = '%sn' % diff_sig
+            ridx, ptr_idx = track[pname]
+            _, ntr_idx = track[nname]
+            pba_list = [mos_dict[mos][sd] for mos, sd in conn.pop(pname)]
+            nba_list = [mos_dict[mos][sd] for mos, sd in conn.pop(nname)]
+            self.connect_differential_track(layout, pba_list, nba_list, ridx, conn_type, ptr_idx, ntr_idx)
+
         # draw intermediate connections
         for conn_name, conn_list in conn.iteritems():
             if conn_name == 'vdd' or conn_name == 'vss':
@@ -175,8 +199,9 @@ class SerdesRXBase(AmplifierBase):
                 pass
             else:
                 box_arr_list = [mos_dict[mos][sd] for mos, sd in conn_list]
+                conn_type = 'g' if conn_list[0][1] == 'g' else 'ds'
                 ridx, tidx = track[conn_name]
-                self.connect_to_track(layout, box_arr_list, ridx, 'ds', tidx)
+                self.connect_to_track(layout, box_arr_list, ridx, conn_type, tidx)
 
     def draw_rows(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw, pth, track_width, track_space, gds_space,
@@ -229,7 +254,7 @@ class SerdesRXBase(AmplifierBase):
             number of pmos drain/source tracks.
         """
         if ng_tracks is None:
-            ng_tracks = [1, 1, 1, 2, 1]
+            ng_tracks = [1, 1, 1, 3, 1]
         if nds_tracks is None:
             nds_tracks = [1, 1, 1, 1, 1]
 

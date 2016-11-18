@@ -420,7 +420,113 @@ class AmplifierBase(MicroTemplate):
                     track_space=self._track_space,
                     )
 
-    def connect_to_track(self, layout, box_arr_list, row_idx, tr_type, track_idx):
+    def get_track_yrange(self, row_idx, tr_type, tr_idx):
+        """Calculate the track bottom and top coordinate.
+
+        Parameters
+        ----------
+        row_idx : int
+            the row index.  0 is the bottom-most NMOS/PMOS row.
+        tr_type : str
+            the type of the track.  Either 'g' or 'ds'.
+        tr_idx : int
+            the track index.
+
+        Returns
+        -------
+        yb : float
+            the bottom coordinate.
+        yt : float
+            the top coordinate.
+        """
+        row_idx += 1
+        offset = self._track_offsets[row_idx]
+        if tr_type == 'g':
+            row_offset = 0
+            ntr = self._ds_tr_indices[row_idx] - self._gds_space
+        else:
+            row_offset = self._ds_tr_indices[row_idx]
+            ntr = self._num_tracks[row_idx] - row_offset
+
+        if tr_idx < 0 or tr_idx >= ntr:
+            raise ValueError('track index = %d out of bounds: [0, %d)' % (tr_idx, ntr))
+
+        if self._orient_list[row_idx] == 'R0':
+            tr_idx2 = tr_idx + offset + row_offset
+        else:
+            tr_idx2 = offset + self._num_tracks[row_idx] - (row_offset + tr_idx) - 1
+
+        layout_unit = self.grid.get_layout_unit()
+
+        tr_sp = self._track_space / layout_unit
+        tr_w = self._track_width / layout_unit
+        tr_yb = tr_sp / 2.0 + tr_idx2 * (tr_sp + tr_w) + self.array_box.bottom
+        tr_yt = tr_yb + tr_w
+        return tr_yb, tr_yt
+
+    def connect_differential_track(self, layout, pbox_arr_list, nbox_arr_list, row_idx, tr_type, ptr_idx, ntr_idx):
+        """Connect the given differential wires to two tracks.
+
+        Will make sure the connects are symmetric and have identical parasitics.
+
+        Parameters
+        ----------
+        layout : :class:`bag.layout.core.BagLayout`
+            the BagLayout instance.
+        pbox_arr_list : list[bag.layout.util.BBoxArray]
+            the list of positive bus wires to connect.
+        nbox_arr_list : list[bag.layout.util.BBoxArray]
+            the list of negative bus wires to connect.
+        row_idx : int
+            the row index.  0 is the bottom-most NMOS/PMOS row.
+        tr_type : str
+            the type of the track.  Either 'g' or 'ds'.
+        ptr_idx : int
+            the positive track index.
+        ntr_idx : int
+            the negative track index
+        """
+        if not pbox_arr_list:
+            return
+
+        res = self.grid.get_resolution()
+
+        tr_ybp, tr_ytp = self.get_track_yrange(row_idx, tr_type, ptr_idx)
+        tr_ybn, tr_ytn = self.get_track_yrange(row_idx, tr_type, ntr_idx)
+
+        # make test via to get extensions
+        tr_w = self._track_width / self.grid.get_layout_unit()
+        wire_w = pbox_arr_list[0].base.width
+        via_test = self.grid.make_via_from_bbox(BBox(0.0, tr_ybp, wire_w, tr_ytp, res),
+                                                self._vm_layer, self._hm_layer, 'y')
+        yext = max((via_test.bot_box.height - tr_w) / 2.0, 0.0)
+        xext = max((via_test.top_box.width - wire_w) / 2.0, 0.0)
+
+        # get track X coordinates
+        tr_xl = None
+        tr_xr = None
+        for ba_list in [pbox_arr_list, nbox_arr_list]:
+            for ba in ba_list:
+                if tr_xl is None:
+                    tr_xl = ba.left
+                    tr_xr = ba.right
+                else:
+                    tr_xl = min(ba.left, tr_xl)
+                    tr_xr = max(ba.right, tr_xr)
+
+        tr_xl -= xext
+        tr_xr += xext
+        wire_yb = min(tr_ybp, tr_ybn) - yext
+        wire_yt = max(tr_ytp, tr_ytn) + yext
+
+        # draw the connections
+        self.connect_to_track(layout, pbox_arr_list, row_idx, tr_type, ptr_idx,
+                              wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr)
+        self.connect_to_track(layout, nbox_arr_list, row_idx, tr_type, ntr_idx,
+                              wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr)
+
+    def connect_to_track(self, layout, box_arr_list, row_idx, tr_type, track_idx,
+                         wire_yb=None, wire_yt=None, tr_xl=None, tr_xr=None):
         """Connect the given wires to the track on the given row.
 
         Parameters
@@ -435,13 +541,20 @@ class AmplifierBase(MicroTemplate):
             the type of the track.  Either 'g' or 'ds'.
         track_idx : int
             the track index.
+        wire_yb : float or None
+            if not None, extend wires to this bottom coordinate.  Used for differential routing.
+        wire_yt : float or None
+            if not None, extend wires to this top coordinate.  Used for differential routing.
+        tr_xl : float or None
+            if not None, extend track to this left coordinate.  Used for differential routing.
+        tr_xr : float or None
+            if not None, extend track to this right coordinate.  Used for differential routing.
         """
         if not box_arr_list:
             # do nothing
             return
 
         res = self.grid.get_resolution()
-        layout_unit = self.grid.get_layout_unit()
 
         # make sure all wires are aligned
         wire_w = box_arr_list[0].base.width
@@ -457,27 +570,11 @@ class AmplifierBase(MicroTemplate):
             wire_xl = min(wire_xl, cur_xl)
 
         # calculate track coordinates
-        row_idx += 1
-        offset = self._track_offsets[row_idx]
-        if tr_type == 'g':
-            row_offset = 0
-            ntr = self._ds_tr_indices[row_idx] - self._gds_space
-        else:
-            row_offset = self._ds_tr_indices[row_idx]
-            ntr = self._num_tracks[row_idx] - row_offset
-
-        if track_idx < 0 or track_idx >= ntr:
-            raise ValueError('track index = %d out of bounds: [0, %d)' % (track_idx, ntr))
-
-        if self._orient_list[row_idx] == 'R0':
-            track_idx += offset + row_offset
-        else:
-            track_idx = offset + self._num_tracks[row_idx] - (row_offset + track_idx)
-
-        tr_sp = self._track_space / layout_unit
-        tr_w = self._track_width / layout_unit
-        tr_yb = tr_sp / 2.0 + track_idx * (tr_sp + tr_w)
-        tr_yt = tr_yb + tr_w
+        tr_yb, tr_yt = self.get_track_yrange(row_idx, tr_type, track_idx)
+        if wire_yb is None:
+            wire_yb = tr_yb
+        if wire_yt is None:
+            wire_yt = tr_yb
 
         # calculate wire vertical coordinates
         intv_set = IntervalSet(res=res)
@@ -487,7 +584,7 @@ class AmplifierBase(MicroTemplate):
             nstart = int(round((cur_xl - wire_xl) / wire_pitch))
             nend = nstart + box_arr.nx
             # calculate wire bus bottom and top coordinate.
-            cur_range = (min(tr_yb, box_arr.bottom), max(tr_yt, box_arr.top))
+            cur_range = (min(wire_yb, box_arr.bottom), max(wire_yt, box_arr.top))
             intv_list, yrang_list = intv_set.get_overlaps(nstart, nend)
             # perform max/min with other wire buses.
             if not intv_list:
@@ -513,8 +610,11 @@ class AmplifierBase(MicroTemplate):
         intv_list = intv_set.get_intervals()
         val_list = intv_set.get_values()
         # draw horizontal track
-        tr_xr = wire_xl + (intv_list[-1][-1] - 1) * wire_pitch + wire_w
-        layout.add_rect(self._hm_layer, BBox(wire_xl, tr_yb, tr_xr, tr_yt, res))
+        if tr_xr is None:
+            tr_xr = wire_xl + (intv_list[-1][-1] - 1) * wire_pitch + wire_w
+        if tr_xl is None:
+            tr_xl = wire_xl
+        layout.add_rect(self._hm_layer, BBox(tr_xl, tr_yb, tr_xr, tr_yt, res))
         # draw vertical wires
         for intv, val in izip(intv_list, val_list):
             xl = intv[0] * wire_pitch + wire_xl
@@ -773,6 +873,7 @@ class AmplifierBase(MicroTemplate):
         self._num_tracks.append(bsub.get_num_tracks())
         self._track_offsets.append(0)
         self._ds_tr_indices.append(0)
+        amp_array_box = bsub_arr_box
 
         ycur = bsub_arr_box.top
         # draw nmos and pmos
@@ -792,6 +893,7 @@ class AmplifierBase(MicroTemplate):
                 mos_params = self.get_mos_params(mos_type, thres, lch, w, fg_tot, gntr, dntr, gds_space)
                 mos = temp_db.new_template(params=mos_params, temp_cls=self._mos_cls)  # type: AnalogMosBase
                 mos_arr_box = mos.array_box
+                amp_array_box = amp_array_box.merge(mos_arr_box)
                 sd_xc, sd_yc = mos.get_left_sd_center()
 
                 # compute ybot of mosfet
@@ -827,6 +929,7 @@ class AmplifierBase(MicroTemplate):
         tsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot)
         tsub = temp_db.new_template(params=tsub_params, temp_cls=self._sub_cls)  # type: AnalogSubstrate
         tsub_arr_box = tsub.array_box
+        self.array_box = amp_array_box.merge(tsub_arr_box)
         self._sd_list.append((None, None))
         self._track_offsets.append(self._track_offsets[-1] + self._num_tracks[-1])
         self._ds_tr_indices.append(0)
