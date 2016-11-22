@@ -1022,7 +1022,8 @@ class AnalogMosSep(MicroTemplate):
                                       self.params['fg'])
 
     def compute_unique_key(self):
-        return self.get_layout_basename()
+        base_name = self.get_layout_basename()
+        return '%s_%s' % (base_name, repr(self.params['gate_intv_list']))
 
 
 class AnalogMosDummy(MicroTemplate):
@@ -1058,8 +1059,12 @@ class AnalogMosDummy(MicroTemplate):
 
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
-        return 'mdummy_l%s_w%s_fg%d' % (lch_str, w_str,
-                                        self.params['fg'],)
+        basename = 'mdummy_l%s_w%s_fg%d' % (lch_str, w_str,
+                                            self.params['fg'],)
+        if self.params['conn_right']:
+            return basename + '_full'
+        return basename
 
     def compute_unique_key(self):
-        return self.get_layout_basename()
+        base_name = self.get_layout_basename()
+        return '%s_%s' % (base_name, repr(self.params['gate_intv_list']))

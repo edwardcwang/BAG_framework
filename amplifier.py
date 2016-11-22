@@ -22,6 +22,8 @@
 #
 ########################################################################################################################
 
+"""This module defines AmplifierBase, a base template class for Amplifier-like layout topologies."""
+
 import abc
 from itertools import izip, chain, repeat
 import bisect
@@ -67,6 +69,20 @@ class IntervalSet(object):
         """Return true if a < b within resolution."""
         return a - b < -self._res
 
+    def is_empty(self):
+        """Returns True if this interval set is empty."""
+        return len(self._start_list) == 0
+
+    def copy(self):
+        """Create a copy of this interval set.
+
+        Returns
+        -------
+        intv_set : IntervalSet
+            a copy of this IntervalSet.
+        """
+        return IntervalSet(intv_list=self.get_intervals(), val_list=self._val_list, res=self._res)
+
     def _get_first_overlap_idx(self, start, end):
         """Returns the index of the first interval that overlaps with the given interval.
 
@@ -89,14 +105,18 @@ class IntervalSet(object):
         idx = bisect.bisect_right(self._start_list, start)
         if idx == 0:
             # all interval's starting point is greater than start
-            return 0 if self._lt(self._start_list[idx], end) else -1
+            return 0 if self._lt(self._start_list[0], end) else -1
 
         # interval where start index is less than or equal to start
         test_idx = idx - 1
         if self._lt(start, self._end_list[test_idx]):
             # start is covered by the interval; overlaps.
             return test_idx
+        elif idx < len(self._start_list) and self._lt(self._start_list[idx], end):
+            # _start_list[idx] covered by interval.
+            return idx
         else:
+            # if
             # no overlap interval found
             return -(idx + 1)
 
@@ -155,6 +175,23 @@ class IntervalSet(object):
         eidx = self._get_last_overlap_idx(start, end) + 1
         return list(izip(self._start_list[sidx:eidx], self._end_list[sidx:eidx])), self._val_list[sidx:eidx]
 
+    def has_overlap(self, start, end):
+        """Returns True if the given interval overlaps at least one interval in this set.
+
+        Parameters
+        ----------
+        start : int or float
+            the start index of the given interval.  Inclusive.
+        end : int or float
+            th end index of the given interval.  Exclusive.
+
+        Returns
+        -------
+        has_overlap : bool
+            True if there is at least one interval in this set that overlaps with the given one.
+        """
+        return self._get_first_overlap_idx(start, end) >= 0
+
     def remove(self, start, end):
         """Removes the given interval from this IntervalSet.
 
@@ -179,6 +216,23 @@ class IntervalSet(object):
             del self._val_list[idx]
             return True
         return False
+
+    def remove_all_overlaps(self, start, end):
+        """Remove all intervals in this set that overlaps with the given interval.
+
+        Parameters
+        ----------
+        start : int or float
+            the start index of the given interval.  Inclusive.
+        end : int or float
+            th end index of the given interval.  Exclusive.
+        """
+        sidx = self._get_first_overlap_idx(start, end)
+        if sidx >= 0:
+            eidx = self._get_last_overlap_idx(start, end) + 1
+            del self._start_list[sidx:eidx]
+            del self._end_list[sidx:eidx]
+            del self._val_list[sidx:eidx]
 
     def add(self, start, end, val=None):
         """Adds the given interval to this IntervalSet.
@@ -250,7 +304,7 @@ class IntervalSet(object):
         return list(self._val_list)
 
 
-def _subtract(intv_set, start, end):
+def _subtract_from_set(intv_set, start, end):
     """Substract the given interval from the interval set.
 
     Used to mark transistors as connected.
@@ -284,6 +338,165 @@ def _subtract(intv_set, start, end):
     if end < intv[1]:
         intv_set.add(end, intv[1])
     return True
+
+
+def _substract(intv_list1, intv_list2):
+    """Substrate intv_list2 from intv_list1.
+
+    We're guaranteed that intv_list2 is a subset of intv_list1.  Used by dummy connection calculation.
+    """
+    idx1 = idx2 = 0
+    result = []
+    intv1 = intv_list1[idx1]
+    while idx1 < len(intv_list1) and idx2 < len(intv_list2):
+        intv2 = intv_list2[idx2]
+        if intv2[1] < intv1[0]:
+            # no overlap, retire intv2
+            idx2 += 1
+        elif intv1[1] < intv2[0]:
+            # no overlap, retire intv1
+            if intv1[1] - intv1[0] > 0:
+                result.append(intv1)
+            idx1 += 1
+            if idx1 < len(intv_list1):
+                intv1 = intv_list1[idx1]
+        else:
+            # overlap, substract and update intv1
+            test = intv1[0], intv2[0]
+            if test[1] - test[0] > 0:
+                result.append(test)
+            intv1 = (intv2[1], intv1[1])
+            idx2 += 1
+    return result
+
+
+def _intersection(intv_list1, intv_list2):
+    """Returns the intersection of two lists of intervals.
+
+    If one of the lists is None, the other list is returned.
+    """
+    if intv_list1 is None:
+        return list(intv_list2)
+    if intv_list2 is None:
+        return list(intv_list1)
+
+    idx1 = idx2 = 0
+    result = []
+    while idx1 < len(intv_list1) and idx2 < len(intv_list2):
+        intv1 = intv_list1[idx1]
+        intv2 = intv_list2[idx2]
+        test = (max(intv1[0], intv2[0]), min(intv1[1], intv2[1]))
+        if test[1] - test[0] > 0:
+            result.append(test)
+        if intv1[1] < intv2[1]:
+            idx1 += 1
+        elif intv2[1] < intv1[1]:
+            idx2 += 1
+        else:
+            idx1 += 1
+            idx2 += 1
+
+    return result
+
+
+def _union(intv_list1, intv_list2):
+    """Returns the union of two lists of intervals.
+
+    If one of the lists is None, the other list is returned.
+    """
+    if not intv_list1:
+        return list(intv_list2)
+    if not intv_list2:
+        return list(intv_list1)
+
+    if intv_list1[0][0] < intv_list2[0][0]:
+        cur_intv = intv_list1[0]
+        idx1 = 1
+        idx2 = 0
+    else:
+        cur_intv = intv_list2[0]
+        idx1 = 0
+        idx2 = 1
+
+    result = []
+    while idx1 < len(intv_list1) or idx2 < len(intv_list2):
+        if intv_list1[idx1][0] < intv_list2[idx2][0]:
+            test_intv = intv_list1[idx1][0]
+            idx1 += 1
+        else:
+            test_intv = intv_list2[idx2][0]
+            idx2 += 1
+
+        if cur_intv[1] < test_intv[0]:
+            # no overlap
+            result.append(cur_intv)
+            cur_intv = test_intv
+        else:
+            # overlap
+            cur_intv = (min(cur_intv[0], test_intv[0]), max(cur_intv[1], test_intv[1]))
+
+    result.append(cur_intv)
+    return result
+
+
+def _get_dummy_connections(intv_set_list):
+    """For each row of transistors, figure out substrate connection locations.
+    """
+    # populate conn_list
+    # conn_list[x] contains intervals where you can connect x+1 or more dummies vertically.
+    conn_list = []
+    prev_intv_list = None
+    for intv_set in intv_set_list:
+        cur_intv_list = intv_set.get_intervals()
+        conn = _intersection(cur_intv_list, prev_intv_list)
+        conn_list.append(conn)
+        prev_intv_list = conn
+
+    # substrate adjacent conn_list elements
+    # make it so conn_list[x] contains intervals where you can connect exactly x+1 dummies vertically
+    for idx in xrange(len(conn_list) - 1):
+        cur_conn, next_conn = conn_list[idx], conn_list[idx + 1]
+        conn_list[idx] = _substract(cur_conn, next_conn)
+
+    return conn_list
+
+
+def _select_dummy_connections(conn_list, unconnected, all_conn_list):
+    """Helper method for selecting dummy connections, and find gate connection locations.
+
+    First, look at the connections that connect the most rows of dummy.  Try to use
+    as many of these connections as possible while making sure they at least connect one
+    unconnected dummy.  When done, repeat on connections that connect fewer rows.
+    """
+    select_list = []
+    gate_intv_list = []
+    for idx in xrange(len(conn_list) - 1, -1, -1):
+        conn_intvs = conn_list[idx]
+        cur_select_list = []
+        # select connections
+        for intv in conn_intvs:
+            select = False
+            for j in xrange(idx + 1):
+                dummy_intv_set = unconnected[j]
+                if dummy_intv_set.has_overlap(intv[0], intv[1]):
+                    select = True
+                    break
+            if select:
+                cur_select_list.append(intv)
+        # remove all dummies connected with selected connections
+        for intv in cur_select_list:
+            for j in xrange(idx + 1):
+                unconnected[j].remove_all_overlaps(intv[0], intv[1])
+
+        # include in select_list
+        select_list.insert(0, cur_select_list)
+        if not gate_intv_list:
+            gate_intv_list.append(_union(cur_select_list, all_conn_list))
+        else:
+            gate_intv = _union(cur_select_list, gate_intv_list[0])
+            gate_intv_list.insert(0, gate_intv)
+
+    return select_list, gate_intv_list
 
 
 class AmplifierBase(MicroTemplate):
@@ -658,7 +871,7 @@ class AmplifierBase(MicroTemplate):
                                                self._vm_layer, self._hm_layer, 'y')
             layout.add_via_obj(via, arr_nx=via_intv[1] - via_intv[0], arr_spx=wire_pitch)
 
-    def draw_dummy(self, layout, temp_db, row_idx, loc, fg):
+    def _draw_dummy(self, layout, temp_db, row_idx, loc, fg, gate_intv_list, conn_right):
         """Draw dummy connection.
 
         Parameters
@@ -673,6 +886,12 @@ class AmplifierBase(MicroTemplate):
             location of the dummy.  Either 'left' or 'right'.
         fg : int
             number of fingers.
+        gate_intv_list : list[(int, int)]
+            sorted list of gate intervals to connect gate to M2.
+            for example, if gate_intv_list = [(2, 5)], then we will draw M2 connections
+            between finger number 2 (inclusive) to finger number 5 (exclusive).
+        conn_right : bool
+            True to connect the right-most source/drain to supply.
         """
         col_idx = 0 if loc == 'left' else self._fg_tot - fg
 
@@ -681,17 +900,22 @@ class AmplifierBase(MicroTemplate):
             intv_set = self._p_intvs[row_idx - len(self._n_intvs)]
         else:
             intv_set = self._n_intvs[row_idx]
-        if not _subtract(intv_set, col_idx, col_idx + fg):
+        if not _subtract_from_set(intv_set, col_idx, col_idx + fg):
             msg = 'Cannot connect transistors [%d, %d) on row %d; some are already connected.'
             raise ValueError(msg % (col_idx, col_idx + fg, row_idx))
 
         # skip bottom substrate
         idx = row_idx + 1
         orient = self._orient_list[idx]
+        if loc == 'right':
+            # reverse gate location to account for flip.
+            gate_intv_list = [(fg - 1 - stop, fg - 1 - start) for start, stop in gate_intv_list]
         params = dict(
             lch=self._lch,
             w=self._w_list[idx],
             fg=fg,
+            gate_intv_list=gate_intv_list,
+            conn_right=conn_right,
         )
 
         xc, yc = self._sd_list[idx]
@@ -705,7 +929,7 @@ class AmplifierBase(MicroTemplate):
         conn = temp_db.new_template(params=params, temp_cls=self._dum_cls)
         self.add_template(layout, conn, loc=(xc, yc), orient=orient)
 
-    def draw_mos_sep(self, layout, temp_db, row_idx, col_idx, fg=0):
+    def _draw_mos_sep(self, layout, temp_db, row_idx, col_idx, fg, gate_intv_list):
         """Draw transistor separator connection.
 
         Parameters
@@ -720,7 +944,10 @@ class AmplifierBase(MicroTemplate):
             the left-most transistor index.  0 is the left-most transistor.
         fg : int
             number of separator fingers.  If less than the minimum, the minimum will be used instead.
-
+        gate_intv_list : list[(int, int)]
+            sorted list of gate intervals to connect gate to M2.
+            for example, if gate_intv_list = [(2, 5)], then we will draw M2 connections
+            between finger number 2 (inclusive) to finger number 5 (exclusive).
         Returns
         -------
         fg_tot : int
@@ -732,7 +959,7 @@ class AmplifierBase(MicroTemplate):
             intv_set = self._p_intvs[row_idx - len(self._n_intvs)]
         else:
             intv_set = self._n_intvs[row_idx]
-        if not _subtract(intv_set, col_idx, col_idx + fg):
+        if not _subtract_from_set(intv_set, col_idx, col_idx + fg):
             msg = 'Cannot connect transistors [%d, %d) on row %d; some are already connected.'
             raise ValueError(msg % (col_idx, col_idx + fg, row_idx))
 
@@ -743,6 +970,7 @@ class AmplifierBase(MicroTemplate):
             lch=self._lch,
             w=self._w_list[idx],
             fg=fg,
+            gate_intv_list=gate_intv_list
         )
 
         xc, yc = self._sd_list[idx]
@@ -782,7 +1010,7 @@ class AmplifierBase(MicroTemplate):
             intv_set = self._p_intvs[row_idx - len(self._n_intvs)]
         else:
             intv_set = self._n_intvs[row_idx]
-        if not _subtract(intv_set, col_idx, col_idx + fg):
+        if not _subtract_from_set(intv_set, col_idx, col_idx + fg):
             msg = 'Cannot connect transistors [%d, %d) on row %d; some are already connected.'
             raise ValueError(msg % (col_idx, col_idx + fg, row_idx))
 
@@ -866,7 +1094,7 @@ class AmplifierBase(MicroTemplate):
         self._fg_tot = fg_tot
         self._orient_list = list(chain(repeat('R0', len(nw_list) + 1), repeat('MX', len(pw_list) + 1)))
         self._w_list = list(chain([ptap_w], nw_list, pw_list, [ntap_w]))
-        self._sd_list = [(None, None)]
+        self._sd_list = [(None, None)]  # type: list
         self._track_space = track_space
         self._track_width = track_width
         intv_init = [(0, fg_tot)]
@@ -1034,14 +1262,79 @@ class AmplifierBase(MicroTemplate):
         temp_db : :class:`bag.layout.template.TemplateDB`
             the TemplateDB instance.  Used to create new templates.
         """
-        for ridx, intv_set in enumerate(chain(self._n_intvs, self._p_intvs)):
-            for intv in intv_set.get_intervals():
-                fg = intv[1] - intv[0]
-                if intv[0] == 0:
-                    self.draw_dummy(layout, temp_db, ridx, 'left', fg)
-                elif intv[1] == self._fg_tot:
-                    self.draw_dummy(layout, temp_db, ridx, 'right', fg)
-                else:
-                    if fg < self.min_fg_sep:
-                        raise ValueError('Cannot draw separator with fg = %d < %d' % (fg, self.min_fg_sep))
-                    self.draw_mos_sep(layout, temp_db, ridx, intv[0], fg=fg)
+
+        # separate bottom/top dummies
+        bot_intvs = self._p_intvs if not self._n_intvs else self._n_intvs
+        top_intvs = self._n_intvs if not self._p_intvs else self._p_intvs
+        top_intvs = list(reversed(top_intvs))
+
+        bot_conn = _get_dummy_connections(bot_intvs)
+        top_conn = _get_dummy_connections(top_intvs)
+        bot_unconnected = [intv_set.copy() for intv_set in bot_intvs]
+
+        # check if we have NMOS only or PMOS only
+        # if so get intervals where we can connect from substrate-to-substrate
+        if not self._n_intvs or not self._p_intvs:
+            all_conn_list = bot_conn[-1]
+            top_unconnected = bot_unconnected
+            del bot_conn[-1]
+            del top_conn[-1]
+
+            # remove dummies connected by connections in all_conn_list
+            for intvs in all_conn_list:
+                for intv_set in bot_unconnected:  # type: IntervalSet
+                    overlaps, _ = intv_set.get_overlaps(intvs[0], intvs[1])
+                    for start, end in overlaps:
+                        intv_set.remove(start, end)
+
+        else:
+            top_unconnected = [intv_set.copy() for intv_set in top_intvs]
+            all_conn_list = []
+
+        # select connections
+        if not self._n_intvs:
+            # PMOS only, so we should prioritize top connections
+            top_select, top_gintv = _select_dummy_connections(top_conn, top_unconnected, all_conn_list)
+            bot_select, bot_gintv = _select_dummy_connections(bot_conn, bot_unconnected, all_conn_list)
+        else:
+            bot_select, bot_gintv = _select_dummy_connections(bot_conn, bot_unconnected, all_conn_list)
+            top_select, top_gintv = _select_dummy_connections(top_conn, top_unconnected, all_conn_list)
+
+        print('top unconnected: %s' % top_unconnected[0].get_intervals())
+        print('top select: %s' % top_select)
+        # print('bot select: %s' % bot_select)
+        print('top gintv: %s' % top_gintv)
+        # print('bot gintv: %s' % bot_gintv)
+        # print('all conn: %s' % all_conn_list)
+
+        # make list of dummy gate connection parameters
+        dummy_gate_conns = {}
+        num_rows = len(self._n_intvs) + len(self._p_intvs)
+        for loc_intvs, gintvs, sign in [(bot_intvs, bot_gintv, 1), (top_intvs, top_gintv, -1)]:
+            for intv_idx in xrange(len(loc_intvs)):
+                ridx = intv_idx if sign > 0 else num_rows - 1 - intv_idx
+                dummy_intv_list = loc_intvs[intv_idx].get_intervals()
+                gate_intv_set = IntervalSet(intv_list=gintvs[intv_idx])
+                for dummy_intv in dummy_intv_list:
+                    overlaps, _ = gate_intv_set.get_overlaps(dummy_intv[0], dummy_intv[1])
+                    key = ridx, dummy_intv[0], dummy_intv[1]
+                    # print key, overlaps
+                    cur_gate_intv_list = dummy_gate_conns.get(key, [])
+                    dummy_gate_conns[key] = _union(overlaps, cur_gate_intv_list)
+
+        for key, gate_intv in dummy_gate_conns.iteritems():
+            ridx, start, stop = key
+            if not gate_intv:
+                raise Exception('Dummy (%d, %d) at row %d unconnected.' % (start, stop, ridx))
+            fg = stop - start
+            gate_intv_list = [(a - start, b - start) for a, b in gate_intv]
+            # print('Create dummy at %s with gate_intv: %s' % (key, gate_intv_list))
+            if start == 0:
+                conn_right = (stop == self._fg_tot)
+                self._draw_dummy(layout, temp_db, ridx, 'left', fg, gate_intv_list, conn_right)
+            elif stop == self._fg_tot:
+                self._draw_dummy(layout, temp_db, ridx, 'right', fg, gate_intv_list, False)
+            else:
+                if fg < self.min_fg_sep:
+                    raise ValueError('Cannot draw separator with fg = %d < %d' % (fg, self.min_fg_sep))
+                self._draw_mos_sep(layout, temp_db, ridx, start, fg, gate_intv_list)
