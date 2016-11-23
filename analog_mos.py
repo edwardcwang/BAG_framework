@@ -1007,6 +1007,18 @@ class AnalogMosSep(MicroTemplate):
         """
         return 2
 
+    @abc.abstractmethod
+    def get_port_locations(self):
+        """Returns a list of buses of wires for dummy connection.
+
+        Returns
+        -------
+        box_arr_list : list[bag.layout.util.BBoxArray]
+            list of bounding box arrays representing gate wires.  Each element of
+            the list corresponds to the interval in gate_intv_list.
+        """
+        return None
+
     def get_layout_basename(self):
         """Returns the base name for this template.
 
@@ -1047,6 +1059,18 @@ class AnalogMosDummy(MicroTemplate):
 
     def __init__(self, grid, lib_name, params, used_names):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+
+    @abc.abstractmethod
+    def get_port_locations(self):
+        """Returns a list of buses of wires for dummy connection.
+
+        Returns
+        -------
+        box_arr_list : list[bag.layout.util.BBoxArray]
+            list of bounding box arrays representing gate wires.  Each element of
+            the list corresponds to the interval in gate_intv_list.
+        """
+        return None
 
     def get_layout_basename(self):
         """Returns the base name for this template.

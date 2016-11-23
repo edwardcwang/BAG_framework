@@ -206,7 +206,7 @@ class SerdesRXBase(AmplifierBase):
 
     def draw_rows(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw, pth, track_width, track_space, gds_space,
-                  vm_layer, hm_layer,
+                  vm_layer, hm_layer, dummy_layer,
                   ng_tracks=None, nds_tracks=None,
                   pg_tracks=1, pds_tracks=3):
         """Draw the transistors and substrate rows.
@@ -245,6 +245,8 @@ class SerdesRXBase(AmplifierBase):
             vertical metal layer name.
         hm_layer : str
             horizontal metal layer name.
+        dummy_layer : str
+            dummy connection metal layer name.
         ng_tracks : list[int] or None
             a list of length 5 of the nmos gate tracks per row.  Use 0 for place holders.
         nds_tracks : list[int] or None
@@ -309,7 +311,7 @@ class SerdesRXBase(AmplifierBase):
         # draw base
         self.draw_base(layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                        new_nw_list, new_nth_list, [pw], [pth],
-                       track_width, track_space, gds_space, vm_layer, hm_layer,
+                       track_width, track_space, gds_space, vm_layer, hm_layer, dummy_layer,
                        ng_tracks=new_ng_tracks, nds_tracks=new_nds_tracks,
                        pg_tracks=[pg_tracks], pds_tracks=[pds_tracks])
 
