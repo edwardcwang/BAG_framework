@@ -44,19 +44,13 @@ class SerdesRXBase(AmplifierBase):
         the parameter values.  Must have the following entries:
     used_names : set[str]
         a set of already used cell names.
-    mos_cls : class
-        the transistor template class.
-    sub_cls : class
-        the substrate template class.
     """
     __metaclass__ = abc.ABCMeta
 
     _row_names = ['tail', 'en', 'sw', 'in', 'casc', 'load']
 
-    def __init__(self, grid, lib_name, params, used_names,
-                 mos_cls, sub_cls, mconn_cls, sep_cls, dum_cls):
-        AmplifierBase.__init__(self, grid, lib_name, params, used_names,
-                               mos_cls, sub_cls, mconn_cls, sep_cls, dum_cls)
+    def __init__(self, grid, lib_name, params, used_names):
+        AmplifierBase.__init__(self, grid, lib_name, params, used_names)
         self._row_idx = None
 
     def draw_dynamic_latch(self, layout, temp_db, col_idx, fg_list, fg_sep=0):
@@ -206,7 +200,7 @@ class SerdesRXBase(AmplifierBase):
 
     def draw_rows(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw, pth, track_width, track_space, gds_space,
-                  vm_layer, hm_layer, dummy_layer,
+                  vm_layer, hm_layer,
                   ng_tracks=None, nds_tracks=None,
                   pg_tracks=1, pds_tracks=3):
         """Draw the transistors and substrate rows.
@@ -245,8 +239,6 @@ class SerdesRXBase(AmplifierBase):
             vertical metal layer name.
         hm_layer : str
             horizontal metal layer name.
-        dummy_layer : str
-            dummy connection metal layer name.
         ng_tracks : list[int] or None
             a list of length 5 of the nmos gate tracks per row.  Use 0 for place holders.
         nds_tracks : list[int] or None
@@ -311,19 +303,28 @@ class SerdesRXBase(AmplifierBase):
         # draw base
         self.draw_base(layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                        new_nw_list, new_nth_list, [pw], [pth],
-                       track_width, track_space, gds_space, vm_layer, hm_layer, dummy_layer,
+                       track_width, track_space, gds_space, vm_layer, hm_layer,
                        ng_tracks=new_ng_tracks, nds_tracks=new_nds_tracks,
                        pg_tracks=[pg_tracks], pds_tracks=[pds_tracks])
 
 
 class DynamicLatchChain(SerdesRXBase):
-    """A chain of dynamic latches."""
-    __metaclass__ = abc.ABCMeta
+    """A chain of dynamic latches.
 
-    def __init__(self, grid, lib_name, params, used_names,
-                 mos_cls, sub_cls, mconn_cls, sep_cls, dum_cls):
-        SerdesRXBase.__init__(self, grid, lib_name, params, used_names,
-                              mos_cls, sub_cls, mconn_cls, sep_cls, dum_cls)
+    Parameters
+    ----------
+    grid : :class:`bag.layout.routing.RoutingGrid`
+            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    lib_name : str
+        the layout library name.
+    params : dict
+        the parameter values.  Must have the following entries:
+    used_names : set[str]
+        a set of already used cell names.
+    """
+
+    def __init__(self, grid, lib_name, params, used_names):
+        SerdesRXBase.__init__(self, grid, lib_name, params, used_names)
 
     def draw_layout(self, layout, temp_db, **kwargs):
         """Draw the layout of a dynamic latch chain.
@@ -352,3 +353,32 @@ class DynamicLatchChain(SerdesRXBase):
             self.draw_dynamic_latch(layout, temp_db, col_idx, fg_list, fg_sep=fg_sep)
 
         self.fill_dummy(layout, temp_db)
+
+    def get_default_params(self):
+        """Returns the default parameter dictionary.
+
+        Override this method to return a dictionary of default parameter values.
+        This returned dictionary should not include port_specs
+
+        Returns
+        -------
+        default_params : dict[str, any]
+            the default parameters dictionary.
+        """
+        return dict(
+            lch=16e-9,
+            ptap_w=4,
+            ntap_w=4,
+            nw_list=[4, 8, 4, 4, 8],
+            nth_list=['ulvt', 'ulvt', 'ulvt', 'svt', 'ulvt'],
+            pw=6,
+            pth='ulvt',
+            track_width=78e-9,
+            track_space=114e-9,
+            gds_space=1,
+            vm_layer='M3',
+            hm_layer='M4',
+            fg_list=[4, 6, 4, 4, 6, 6],
+            nstage=2,
+            ndum=4,
+        )

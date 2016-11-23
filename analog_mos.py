@@ -102,14 +102,14 @@ class AnalogMosBase(MicroTemplate):
         num_track : int
             number of tracks in this template.
         """
-        layout_unit = self.grid.get_layout_unit()
+        layout_unit = self.grid.layout_unit
         h = self.array_box.height
         tr_w = self.params['track_width'] / layout_unit
         tr_s = self.params['track_space'] / layout_unit
         tr_pitch = tr_w + tr_s
 
         num_track = int(round(h / tr_pitch))
-        if abs(h - num_track * tr_pitch) >= self.grid.get_resolution():
+        if abs(h - num_track * tr_pitch) >= self.grid.resolution:
             raise Exception('array box height = %.4g not integer number of track pitch = %.4g' % (h, tr_pitch))
         return num_track
 
@@ -200,14 +200,14 @@ class AnalogSubstrate(MicroTemplate):
         num_track : int
             number of tracks in this template.
         """
-        layout_unit = self.grid.get_layout_unit()
+        layout_unit = self.grid.layout_unit
         h = self.array_box.height
         tr_w = self.params['track_width'] / layout_unit
         tr_s = self.params['track_space'] / layout_unit
         tr_pitch = tr_w + tr_s
 
         num_track = int(round(h / tr_pitch))
-        if abs(h - num_track * tr_pitch) >= self.grid.get_resolution():
+        if abs(h - num_track * tr_pitch) >= self.grid.resolution:
             raise Exception('array box height = %.4g not integer number of track pitch = %.4g' % (h, tr_pitch))
         return num_track
 
@@ -286,8 +286,8 @@ class AnalogFinfetFoundation(MicroTemplate):
         if arr_box_ext is None:
             arr_box_ext = [0, 0, 0, 0]
 
-        lch /= self.grid.get_layout_unit()
-        res = self.grid.get_resolution()
+        lch /= self.grid.layout_unit
+        res = self.grid.resolution
 
         mos_fin_pitch = tech_constants['mos_fin_pitch']
         mos_cpo_h = tech_constants['mos_cpo_h']
@@ -596,7 +596,7 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
                 delta Y value from center of OD to array box bottom with 0 extension.
         """
 
-        res = self.grid.get_resolution()
+        res = self.grid.resolution
 
         mos_fin_h = tech_constants['mos_fin_h']
         mos_fin_pitch = tech_constants['mos_fin_pitch']
@@ -618,7 +618,7 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
 
         # draw OD/PODE
         od_yc = self.array_box.bottom + tech_constants['mos_edge_od_dy'] + bext * mos_fin_pitch
-        lch_layout = lch / self.grid.get_layout_unit()
+        lch_layout = lch / self.grid.layout_unit
         od_h = mos_fin_h + (w - 1) * mos_fin_pitch
         xmid = (ndum + 0.5) * sd_pitch + xext
         xl = xmid - lch_layout / 2.0
@@ -804,12 +804,12 @@ class AnalogFinfetBase(AnalogMosBase):
         mos_ext_nfin_min = self.tech_constants['mos_ext_nfin_min']
 
         # express track pitch as number of fin pitches
-        layout_unit = self.grid.get_layout_unit()
+        layout_unit = self.grid.layout_unit
         track_width /= layout_unit
         track_space /= layout_unit
         track_pitch = track_width + track_space
         track_nfin = int(round(track_pitch * 1.0 / mos_fin_pitch))
-        if abs(track_pitch - track_nfin * mos_fin_pitch) >= self.grid.get_resolution():
+        if abs(track_pitch - track_nfin * mos_fin_pitch) >= self.grid.resolution:
             # check track_pitch is multiple of nfin.
             msg = 'track pitch = %.4g not multiples of fin pitch = %.4g' % (track_pitch, mos_fin_pitch)
             raise ValueError(msg)
@@ -908,7 +908,7 @@ class AnalogFinfetBase(AnalogMosBase):
 
         # set array box of this template
         self.array_box = BBox(arr_box_left, arr_box_bottom, arr_box_right, arr_box_top,
-                              self.grid.get_resolution())
+                              self.grid.resolution)
 
 
 class AnalogMosConn(MicroTemplate):
@@ -1059,6 +1059,19 @@ class AnalogMosDummy(MicroTemplate):
 
     def __init__(self, grid, lib_name, params, used_names):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+
+    @classmethod
+    def get_port_layer(cls):
+        """Returns the dummy connection layer name.
+
+        Subclasses must override this method to return the correct value.
+
+        Returns
+        -------
+        dummy_layer : str
+            the dummy connection layer name
+        """
+        return ''
 
     @abc.abstractmethod
     def get_port_locations(self):

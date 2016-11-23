@@ -605,21 +605,23 @@ class AmplifierBase(MicroTemplate):
         the parameter values.  Must have the following entries:
     used_names : set[str]
         a set of already used cell names.
-    mos_cls : class
-        the transistor template class.
-    sub_cls : class
-        the substrate template class.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names,
-                 mos_cls, sub_cls, mconn_cls, sep_cls, dum_cls):
+    def __init__(self, grid, lib_name, params, used_names):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
-        self._mos_cls = mos_cls
-        self._sub_cls = sub_cls
-        self._mconn_cls = mconn_cls
-        self._sep_cls = sep_cls
-        self._dum_cls = dum_cls
+        # get the concrete template classes
+        self._mos_cls = grid.tech_info.get_process_param('mos_template')
+        self._sub_cls = grid.tech_info.get_process_param('sub_template')
+        self._mconn_cls = grid.tech_info.get_process_param('mos_conn_template')
+        self._sep_cls = grid.tech_info.get_process_param('mos_sep_template')
+        self._dum_cls = grid.tech_info.get_process_param('mos_dummy_template')
+
+        # get information from template classes
+        self._dummy_layer = self._dum_cls.get_port_layer()
+        self._min_fg_sep = self._sep_cls.get_min_fg()
+
+        # initialize parameters
         self._lch = None
         self._orient_list = None
         self._w_list = None
@@ -635,12 +637,9 @@ class AmplifierBase(MicroTemplate):
         self._track_offsets = None
         self._ds_tr_indices = None
         self._vm_layer = None
-        self._dummy_layer = None
         self._hm_layer = None
         self._bsub_ports = None
         self._tsub_ports = None
-
-        self._min_fg_sep = self._sep_cls.get_min_fg()
 
     @property
     def min_fg_sep(self):
@@ -756,7 +755,7 @@ class AmplifierBase(MicroTemplate):
         else:
             tr_idx2 = offset + self._num_tracks[row_idx] - (row_offset + tr_idx) - 1
 
-        layout_unit = self.grid.get_layout_unit()
+        layout_unit = self.grid.layout_unit
 
         tr_sp = self._track_space / layout_unit
         tr_w = self._track_width / layout_unit
@@ -809,13 +808,13 @@ class AmplifierBase(MicroTemplate):
         if not pbox_arr_list:
             return
 
-        res = self.grid.get_resolution()
+        res = self.grid.resolution
 
         tr_ybp, tr_ytp = self.get_track_yrange(row_idx, tr_type, ptr_idx)
         tr_ybn, tr_ytn = self.get_track_yrange(row_idx, tr_type, ntr_idx)
 
         # make test via to get extensions
-        tr_w = self._track_width / self.grid.get_layout_unit()
+        tr_w = self._track_width / self.grid.layout_unit
         wire_w = pbox_arr_list[0].base.width
         via_test = self.grid.make_via_from_bbox(BBox(0.0, tr_ybp, wire_w, tr_ytp, res),
                                                 self._vm_layer, self._hm_layer, 'y')
@@ -874,7 +873,7 @@ class AmplifierBase(MicroTemplate):
             # do nothing
             return
 
-        res = self.grid.get_resolution()
+        res = self.grid.resolution
 
         # calculate track coordinates
         tr_yb, tr_yt = self.get_track_yrange(row_idx, tr_type, track_idx)
@@ -934,7 +933,7 @@ class AmplifierBase(MicroTemplate):
             # do nothing
             return []
 
-        res = self.grid.get_resolution()
+        res = self.grid.resolution
 
         # make sure all wires are aligned
         wire_w = box_arr_list[0].base.width
@@ -1175,7 +1174,7 @@ class AmplifierBase(MicroTemplate):
     def draw_base(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw_list, pth_list,
                   track_width, track_space, gds_space,
-                  vm_layer, hm_layer, dummy_layer,
+                  vm_layer, hm_layer,
                   ng_tracks=None, nds_tracks=None,
                   pg_tracks=None, pds_tracks=None):
         """Draw the amplifier base.
@@ -1212,8 +1211,6 @@ class AmplifierBase(MicroTemplate):
             vertical metal layer name.
         hm_layer : str
             horizontal metal layer name.
-        dummy_layer : str
-            dummy connection metal layer name.
         ng_tracks : list[int] or None
             number of nmos gate tracks per row, from bottom to top.  Defaults to 1.
         nds_tracks : list[int] or None
@@ -1246,7 +1243,6 @@ class AmplifierBase(MicroTemplate):
         self._ds_tr_indices = []
         self._vm_layer = vm_layer
         self._hm_layer = hm_layer
-        self._dummy_layer = dummy_layer
         self._gds_space = gds_space
 
         # draw bottom substrate
@@ -1355,8 +1351,8 @@ class AmplifierBase(MicroTemplate):
         top_contact : bool
             True to contact both drain/source for top substrate.
         """
-        res = self.grid.get_resolution()
-        layout_unit = self.grid.get_layout_unit()
+        res = self.grid.resolution
+        layout_unit = self.grid.layout_unit
         track_pitch = (self._track_width + self._track_space) / layout_unit
         track_pitch = round(track_pitch / res) * res
         # row index substrate by 1 to make get_track_yrange work.
