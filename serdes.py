@@ -200,9 +200,7 @@ class SerdesRXBase(AmplifierBase):
 
     def draw_rows(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw, pth, track_width, track_space, gds_space,
-                  vm_layer, hm_layer,
-                  ng_tracks=None, nds_tracks=None,
-                  pg_tracks=1, pds_tracks=3):
+                  vm_layer, hm_layer, ng_tracks, nds_tracks, pg_tracks, pds_tracks):
         """Draw the transistors and substrate rows.
 
         Parameters
@@ -239,19 +237,15 @@ class SerdesRXBase(AmplifierBase):
             vertical metal layer name.
         hm_layer : str
             horizontal metal layer name.
-        ng_tracks : list[int] or None
-            a list of length 5 of the nmos gate tracks per row.  Use 0 for place holders.
-        nds_tracks : list[int] or None
-            a list of length 5 of the nmos drain/source tracks per row.  Use 0 for place holders.
+        ng_tracks : list[int]
+            a 5-element list of the nmos gate tracks per row.  Use 0 for place holders.
+        nds_tracks : list[int]
+            a 5-element list of the nmos drain/source tracks per row.  Use 0 for place holders.
         pg_tracks : int
             number of pmos gate tracks.
         pds_tracks : int
             number of pmos drain/source tracks.
         """
-        if ng_tracks is None:
-            ng_tracks = [1, 1, 1, 3, 1]
-        if nds_tracks is None:
-            nds_tracks = [1, 1, 1, 1, 1]
 
         # eliminate unneeded nmos rows and build row index.
         new_nw_list = [nw_list[0]]
@@ -326,7 +320,7 @@ class DynamicLatchChain(SerdesRXBase):
     def __init__(self, grid, lib_name, params, used_names):
         SerdesRXBase.__init__(self, grid, lib_name, params, used_names)
 
-    def draw_layout(self, layout, temp_db, **kwargs):
+    def draw_layout(self, layout, temp_db):
         """Draw the layout of a dynamic latch chain.
 
         Parameters
@@ -336,6 +330,7 @@ class DynamicLatchChain(SerdesRXBase):
         temp_db : :class:`bag.layout.template.TemplateDB`
             the TemplateDB instance.  Used to create new templates.
         """
+        kwargs = self.params.copy()
         fg_list = kwargs.pop('fg_list')
         nstage = kwargs.pop('nstage')
         ndum = kwargs.pop('ndum')
@@ -343,6 +338,7 @@ class DynamicLatchChain(SerdesRXBase):
         if nstage <= 0:
             raise ValueError('nstage = %d must be greater than 0' % nstage)
 
+        # calculate total number of fingers.
         fg_sep = self.min_fg_sep
         fg_latch = max(fg_list) * 2 + fg_sep
         kwargs['fg_tot'] = nstage * fg_latch + (nstage - 1) * fg_sep + 2 * ndum
@@ -354,31 +350,57 @@ class DynamicLatchChain(SerdesRXBase):
 
         self.fill_dummy(layout, temp_db)
 
-    def get_default_params(self):
-        """Returns the default parameter dictionary.
+    @classmethod
+    def get_default_param_values(cls):
+        """Returns a dictionary containing default parameter values.
 
-        Override this method to return a dictionary of default parameter values.
-        This returned dictionary should not include port_specs
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
 
         Returns
         -------
         default_params : dict[str, any]
-            the default parameters dictionary.
+            dictionary of default parameter values.
         """
         return dict(
-            lch=16e-9,
-            ptap_w=4,
-            ntap_w=4,
-            nw_list=[4, 8, 4, 4, 8],
-            nth_list=['ulvt', 'ulvt', 'ulvt', 'svt', 'ulvt'],
-            pw=6,
-            pth='ulvt',
-            track_width=78e-9,
-            track_space=114e-9,
+            ng_tracks=[1, 1, 1, 3, 1],
+            nds_tracks=[1, 1, 1, 1, 1],
+            pg_tracks=1,
+            pds_tracks=3,
             gds_space=1,
-            vm_layer='M3',
-            hm_layer='M4',
-            fg_list=[4, 6, 4, 4, 6, 6],
-            nstage=2,
-            ndum=4,
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            ptap_w='NMOS substrate width, in meters/number of fins.',
+            ntap_w='PMOS substrate width, in meters/number of fins.',
+            nw_list='5-element list of NMOS widths, in meters/number of fins.',
+            nth_list='5-element list of NMOS threshold flavors.',
+            pw='PMOS width, in meters/number of fins.',
+            pth='PMOS threshold flavor.',
+            track_width='horizontal track width, in meters.',
+            track_space='horizontal track spacing, in meters.',
+            gds_space='number of tracks reserved as space between gate and drain/source tracks.',
+            vm_layer='vertical routing metal layer name.',
+            hm_layer='horizontal routing metal layer name.',
+            fg_list='6-element list of single-sided transistor number of fingers, from bottom to top.',
+            nstage='number of dynamic latch stages.',
+            ndum='number of dummy fingers at both ends.',
+            ng_tracks='5-element list of number of NMOS gate tracks per row, from bottom to top.',
+            nds_tracks='5-element list of number of NMOS drain/source tracks per row, from bottom to top.',
+            pg_tracks='number of PMOS gate tracks.',
+            pds_tracks='number of PMOS drain/source tracks.',
         )

@@ -91,6 +91,30 @@ class AnalogMosBase(MicroTemplate):
         """
         return 2
 
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            w='transistor width, in meters/number of fins.',
+            mos_type="transistor type, either 'pch' or 'nch'.",
+            threshold='transistor threshold flavor.',
+            fg='number of fingers.',
+            track_width='horizontal track width, in meters.',
+            track_space='horizontal track spacing, in meters.',
+            g_tracks='number of gate tracks.',
+            ds_tracks='number of drain/source tracks.',
+            gds_space='number of tracks reserved as space between gate and drain/source tracks.',
+        )
+
     def get_num_tracks(self):
         """Returns the number of tracks in this template.
 
@@ -189,6 +213,27 @@ class AnalogSubstrate(MicroTemplate):
         """
         return None
 
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            w='substrate width, in meters/number of fins.',
+            sub_type="substrate type, either 'ptap' or 'ntap'.",
+            threshold='transistor threshold flavor.',
+            fg='number of fingers.',
+            track_width='horizontal track width, in meters.',
+            track_space='horizontal track spacing, in meters.',
+        )
+
     def get_num_tracks(self):
         """Returns the number of tracks in this template.
 
@@ -246,9 +291,7 @@ class AnalogFinfetFoundation(MicroTemplate):
     def __init__(self, grid, lib_name, params, used_names):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
-    def draw_foundation(self, layout, lch=16e-9, nfin=4, fg=4,
-                        nduml=0, ndumr=0, arr_box_ext=None,
-                        tech_constants=None):
+    def draw_foundation(self, layout, lch, nfin, fg, nduml, ndumr, arr_box_ext, tech_constants):
         """Draw the layout of this template.
 
         Override this method to create the layout.
@@ -372,24 +415,25 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
     def __init__(self, grid, lib_name, params, used_names):
         AnalogFinfetFoundation.__init__(self, grid, lib_name, params, used_names)
 
-    def get_default_params(self):
-        """Returns the default parameter dictionary.
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
 
-        Override this method to return a dictionary of default parameter values.
-        This returned dictionary should not include port_specs
+        Override this method to return a dictionary from parameter names to descriptions.
 
         Returns
         -------
-        default_params : dict[str, any]
-            the default parameters dictionary.
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
         """
-        return dict(mos_type='nch',
-                    threshold='ulvt',
-                    lch=16e-9,
-                    nfin=8,
-                    fg=2,
-                    tech_constants=None,
-                    )
+        return dict(
+            lch='channel length, in meters.',
+            mos_type="transistor type, either 'pch' or 'nch'.",
+            threshold='transistor threshold flavor.',
+            fg='number of fingers.',
+            nfin='height of the extension in number of fins',
+            tech_constants='technology constants dictionary.',
+        )
 
     def get_layout_basename(self):
         """Returns the base name for this template.
@@ -410,9 +454,7 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
     def compute_unique_key(self):
         return self.get_layout_basename()
 
-    def draw_layout(self, layout, temp_db,
-                    mos_type='nch', threshold='lvt', lch=16e-9,
-                    nfin=4, fg=4, tech_constants=None):
+    def draw_layout(self, layout, temp_db):
         """Draw the layout of this template.
 
         Override this method to create the layout.
@@ -423,34 +465,12 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
             the BagLayout instance to draw the layout with.
         temp_db : :class:`bag.layout.template.TemplateDB`
             the TemplateDB instance.  Used to create new templates.
-        mos_type : str
-            the transistor type.  Either 'nch' or 'pch'
-        threshold : str
-            the transistor threshold flavor.
-        lch : float
-            the transistor channel length.
-        nfin : float for int
-            array box height in number of fins.
-        fg : int
-            the transistor number of fingers.
-        tech_constants : dict[str, any]
-            the technology constants dictionary.  Must have the following entries:
-
-            mos_fin_pitch : float
-                the pitch between fins.
-            mos_cpo_h : float
-                the height of CPO layer.
-            sd_pitch : float
-                source and drain pitch of the transistor.
-            implant_layers : list[str]
-                list of implant/threshold layers to draw.
-            name : str
-                a string describing the process technology.  Used for identification purposes.
-            mos_edge_num_dpo : int
-                number of dummy polys at each edge.
-            mos_edge_xext : float
-                horizontal extension of CPO/implant layers over the array box left and right edges.
         """
+        lch = self.params['lch']
+        mos_type = self.params['mos_type']
+        nfin = self.params['nfin']
+        fg = self.params['fg']
+        tech_constants = self.params['tech_constants']
 
         if fg <= 0:
             raise ValueError('Number of fingers must be positive.')
@@ -504,25 +524,26 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
         """
         pass
 
-    def get_default_params(self):
-        """Returns the default parameter dictionary.
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
 
-        Override this method to return a dictionary of default parameter values.
-        This returned dictionary should not include port_specs
+        Override this method to return a dictionary from parameter names to descriptions.
 
         Returns
         -------
-        default_params : dict[str, any]
-            the default parameters dictionary.
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
         """
-        return dict(mos_type='nch',
-                    threshold='ulvt',
-                    lch=16e-9,
-                    w=8,
-                    bext=0,
-                    text=0,
-                    tech_constants=None,
-                    )
+        return dict(
+            lch='channel length, in meters.',
+            mos_type="transistor type, either 'pch' or 'nch'.",
+            threshold='transistor threshold flavor.',
+            w='transistor width, in meters/number of fins.',
+            bext='bottom extension in number of fins',
+            text='top extension in number of fins',
+            tech_constants='technology constants dictionary.',
+        )
 
     def get_layout_basename(self):
         """Returns the base name for this template.
@@ -544,9 +565,7 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
     def compute_unique_key(self):
         return self.get_layout_basename()
 
-    def draw_layout(self, layout, temp_db,
-                    mos_type='nch', threshold='lvt', lch=16e-9,
-                    w=4, bext=0, text=0, tech_constants=None):
+    def draw_layout(self, layout, temp_db):
         """Draw the layout of this template.
 
         Override this method to create the layout.
@@ -557,44 +576,13 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
             the BagLayout instance to draw the layout with.
         temp_db : :class:`bag.layout.template.TemplateDB`
             the TemplateDB instance.  Used to create new templates.
-        mos_type : str
-            the transistor type.  Either 'nch' or 'pch'
-        threshold : str
-            the transistor threshold flavor.
-        lch : float
-            the transistor channel length.
-        w : float for int
-            transistor width.
-        bext : int
-            number of fins to extend on the bottom.
-        text : int
-            number of fins to extend on the top.
-        tech_constants : dict[str, any]
-            the technology constants dictionary.  Must have the following entries:
-
-            mos_fin_pitch : float
-                the pitch between fins.
-            mos_cpo_h : float
-                the height of CPO layer.
-            sd_pitch : float
-                source and drain pitch of the transistor.
-            implant_layers : list[str]
-                list of implant/threshold layers to draw.
-            name : str
-                a string describing the process technology.  Used for identification purposes.
-            mos_edge_num_dpo : int
-                number of dummy polys at each edge.
-            mos_edge_xext : float
-                horizontal extension of CPO/implant layers over the array box left and right edges.
-            mos_fin_h : float
-                the height of the fin.
-            nfin : int
-                array box height in number of fin pitches.
-            mos_core_cpo_po_ov : float
-                overlap between CPO and PO.
-            mos_edge_od_dy : float
-                delta Y value from center of OD to array box bottom with 0 extension.
         """
+        mos_type = self.params['mos_type']
+        lch = self.params['lch']
+        w = self.params['w']
+        bext = self.params['bext']
+        text = self.params['text']
+        tech_constants = self.params['tech_constants']
 
         res = self.grid.resolution
 
@@ -761,10 +749,7 @@ class AnalogFinfetBase(AnalogMosBase):
         """
         return self._sd_pitch
 
-    def draw_layout(self, layout, temp_db,
-                    mos_type='nch', threshold='lvt', lch=16e-9, w=4, fg=4,
-                    track_width=78e-9, track_space=210e-9,
-                    g_tracks=1, ds_tracks=1, gds_space=0):
+    def draw_layout(self, layout, temp_db):
         """Draw the layout of this template.
 
         Override this method to create the layout.
@@ -775,27 +760,16 @@ class AnalogFinfetBase(AnalogMosBase):
             the BagLayout instance to draw the layout with.
         temp_db : :class:`bag.layout.template.TemplateDB`
             the TemplateDB instance.  Used to create new templates.
-        mos_type : str
-            the transistor type.
-        threshold : str
-            the transistor threshold flavor.
-        lch : float
-            the transistor channel length.
-        w : float for int
-            the transistor width, or number of fins.
-        fg : int
-            the number of fingers.
-        track_width : float
-            the routing track width.
-        track_space : float
-            the routing track spacing.
-        g_tracks : int
-            minimum number of gate tracks.
-        ds_tracks : int
-            minimum number of drain/source tracks.
-        gds_space : int
-            number of tracks to reserve as space between gate tracks and drain/source tracks.
         """
+        layout_unit = self.grid.layout_unit
+
+        fg = self.params['fg']
+        track_width = self.params['track_width'] / layout_unit
+        track_space = self.params['track_space'] / layout_unit
+        g_tracks = self.params['g_tracks']
+        ds_tracks = self.params['ds_tracks']
+        gds_space = self.params['gds_space']
+
         if fg <= 0:
             raise ValueError('Number of fingers must be positive.')
 
@@ -804,9 +778,6 @@ class AnalogFinfetBase(AnalogMosBase):
         mos_ext_nfin_min = self.tech_constants['mos_ext_nfin_min']
 
         # express track pitch as number of fin pitches
-        layout_unit = self.grid.layout_unit
-        track_width /= layout_unit
-        track_space /= layout_unit
         track_pitch = track_width + track_space
         track_nfin = int(round(track_pitch * 1.0 / mos_fin_pitch))
         if abs(track_pitch - track_nfin * mos_fin_pitch) >= self.grid.resolution:
@@ -949,6 +920,25 @@ class AnalogMosConn(MicroTemplate):
         """
         return None
 
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            w='transistor width, in meters/number of fins.',
+            fg='number of fingers.',
+            sdir='source connection direction.  0 for down, 1 for middle, 2 for up.',
+            ddir='drain connection direction.  0 for down, 1 for middle, 2 for up.',
+        )
+
     def get_layout_basename(self):
         """Returns the base name for this template.
 
@@ -1019,6 +1009,24 @@ class AnalogMosSep(MicroTemplate):
         """
         return None
 
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            w='transistor width, in meters/number of fins.',
+            fg='number of fingers.',
+            gate_intv_list='list of gate intervals to draw substrate connections.',
+        )
+
     def get_layout_basename(self):
         """Returns the base name for this template.
 
@@ -1084,6 +1092,25 @@ class AnalogMosDummy(MicroTemplate):
             the list corresponds to the interval in gate_intv_list.
         """
         return None
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            w='transistor width, in meters/number of fins.',
+            fg='number of fingers.',
+            gate_intv_list='list of gate intervals to draw substrate connections.',
+            conn_right='True to connect the right-most source to substrate.',
+        )
 
     def get_layout_basename(self):
         """Returns the base name for this template.
