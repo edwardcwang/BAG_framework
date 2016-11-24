@@ -541,8 +541,12 @@ def _select_dummy_connections(conn_list, unconnected, all_conn_list):
         a list of IntervalSets.  gate_intv_set_list[x] contains the finger intervals to
         draw dummy gate connections.
     """
-    select_list = []
-    gate_intv_set_list = []
+    if all_conn_list:
+        select_list = [all_conn_list]
+        gate_intv_set_list = [IntervalSet(intv_list=all_conn_list)]
+    else:
+        select_list = []
+        gate_intv_set_list = []
     for idx in xrange(len(conn_list) - 1, -1, -1):
         conn_intvs = conn_list[idx]
         cur_select_list = []
@@ -565,12 +569,8 @@ def _select_dummy_connections(conn_list, unconnected, all_conn_list):
         select_list.insert(0, cur_select_list)
         # construct gate interval list.
         if not gate_intv_set_list:
-            gate_intv_set = IntervalSet(intv_list=cur_select_list)
-            for intv in all_conn_list:
-                if not gate_intv_set.add(intv):
-                    # this should never happen.
-                    raise Exception('Critical Error: report to developers.')
-            gate_intv_set_list.append(gate_intv_set)
+            # all_conn_list must be empty.  Don't need to consider it.
+            gate_intv_set_list.append(IntervalSet(intv_list=cur_select_list))
         else:
             gate_intv_set = gate_intv_set_list[0].copy()
             for intv in cur_select_list:
@@ -1460,11 +1460,16 @@ class AmplifierBase(MicroTemplate):
                     if key not in dummy_gate_conns:
                         dummy_gate_conns[key] = IntervalSet(intv_list=overlaps, val_list=val_list)
                     else:
-                        dummy_gate_set = dummy_gate_conns[key]
+                        dummy_gate_set = dummy_gate_conns[key]  # type: IntervalSet
                         for fg_intv, ovl_val in izip(overlaps, val_list):
-                            if not dummy_gate_set.add(fg_intv, val=ovl_val):
-                                # this should never happen.
-                                raise Exception('Critical Error: report to developers.')
+                            if not dummy_gate_set.has_overlap(fg_intv):
+                                dummy_gate_set.add(fg_intv, val=ovl_val)
+                            else:
+                                # check that we don't have conflicting gate connections.
+                                for existing_intv, existing_val in dummy_gate_set.overlap_items(fg_intv):
+                                    if existing_intv != fg_intv or existing_val != ovl_val:
+                                        # this should never happen.
+                                        raise Exception('Critical Error: report to developers.')
 
         wire_groups = {-1: [], 0: [], 1: []}
         for key, dummy_gate_set in dummy_gate_conns.iteritems():

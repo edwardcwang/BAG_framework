@@ -309,6 +309,9 @@ class AnalogFinfetFoundation(MicroTemplate):
                 source and drain pitch of the transistor.
             implant_layers : list[str]
                 list of implant/threshold layers to draw.
+            extra_layers : list[((str, str), list[float])]
+                a list of extra technology layers to draw.  Each element is a tuple of (layer, purpose)
+                and (left, bottom, right, top) extension over the array box.
         """
         if arr_box_ext is None:
             arr_box_ext = [0, 0, 0, 0]
@@ -320,6 +323,7 @@ class AnalogFinfetFoundation(MicroTemplate):
         mos_cpo_h = tech_constants['mos_cpo_h']
         sd_pitch = tech_constants['sd_pitch']
         lay_list = tech_constants['implant_layers']
+        extra_list = tech_constants['extra_layers']
 
         extl, extb, extr, extt = arr_box_ext
 
@@ -371,6 +375,10 @@ class AnalogFinfetFoundation(MicroTemplate):
                        arr_box.right + extr, arr_box.top + extt, res)
         for lay in lay_list:
             layout.add_rect(lay, imp_box)
+        for (lay, purpose), (aextl, aextb, aextr, aextt) in extra_list:
+            box = BBox(arr_box.left - aextl, arr_box.bottom - aextb,
+                       arr_box.right + aextr, arr_box.top + aextt, arr_box.resolution)
+            layout.add_rect(lay, box, purpose=purpose)
 
         # draw PR boundary
         layout.add_rect('prBoundary', BBox(0.0, 0.0, arr_box_right + extr,
