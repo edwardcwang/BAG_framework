@@ -30,7 +30,7 @@ import bisect
 import numpy as np
 
 from bag.layout.template import MicroTemplate
-from bag.layout.util import BBox, BBoxArray
+from bag.layout.util import BBox, BBoxArray, Port
 from .analog_mos import AnalogMosBase, AnalogSubstrate, AnalogMosConn, AnalogMosSep, AnalogMosDummy
 
 
@@ -638,8 +638,8 @@ class AmplifierBase(MicroTemplate):
         self._ds_tr_indices = None
         self._vm_layer = None
         self._hm_layer = None
-        self._bsub_ports = None
-        self._tsub_ports = None
+        self._bsub_port = None  # type: Port
+        self._tsub_port = None  # type: Port
 
     @property
     def min_fg_sep(self):
@@ -775,13 +775,12 @@ class AmplifierBase(MicroTemplate):
         box_arr_list : list[bag.layout.util.BBoxArray]
             list of BBoxArrays to connect to supply.
         """
+        wire_yb, wire_yt = None, None
         if supply_idx == 0:
-            y = self._bsub_ports[1].bottom
+            wire_yb = self._bsub_port.get_bbox(self._vm_layer).bottom
         else:
-            y = self._tsub_ports[1].top
-        for box_arr in box_arr_list:
-            layout.add_rect(self._vm_layer, box_arr.base.extend(y=y),
-                            arr_nx=box_arr.nx, arr_spx=box_arr.spx)
+            wire_yt = self._tsub_port.get_bbox(self._vm_layer).top
+        self._connect_vertical_wires(layout, box_arr_list, wire_yb=wire_yb, wire_yt=wire_yt)
 
     def connect_differential_track(self, layout, pbox_arr_list, nbox_arr_list, row_idx, tr_type, ptr_idx, ntr_idx):
         """Connect the given differential wires to two tracks.
@@ -1260,8 +1259,7 @@ class AmplifierBase(MicroTemplate):
         bsub_arr_box = bsub.array_box
         self.add_template(layout, bsub, 'XBSUB')
         self._num_tracks.append(bsub.get_num_tracks())
-        self._bsub_ports = [bsub.get_port_locations(is_dummy=True),
-                            bsub.get_port_locations(is_dummy=False)]
+        self._bsub_port = bsub.get_port(bsub.get_port_names()[0])
         self._track_offsets.append(0)
         self._ds_tr_indices.append(0)
         amp_array_box = bsub_arr_box
@@ -1328,8 +1326,7 @@ class AmplifierBase(MicroTemplate):
         tsub_loc = (0.0, ycur + tsub_arr_box.top)
         tsub_orient = 'MX'
         self.add_template(layout, tsub, 'XTSUB', loc=tsub_loc, orient=tsub_orient)
-        self._tsub_ports = [tsub.get_port_locations(is_dummy=True).transform(tsub_loc, tsub_orient),
-                            tsub.get_port_locations(is_dummy=False).transform(tsub_loc, tsub_orient)]
+        self._tsub_port = tsub.get_port(tsub.get_port_names()[0]).transform(loc=tsub_loc, orient=tsub_orient)
 
         # connect substrates to horizontal tracks.
         self._connect_substrate(layout, bsub.get_num_tracks(), tsub.get_num_tracks(),
@@ -1357,13 +1354,18 @@ class AmplifierBase(MicroTemplate):
         track_pitch = round(track_pitch / res) * res
         # row index substrate by 1 to make get_track_yrange work.
         # also skip the top track to leave some margin to transistors
-        iter_list = [(-1, self._bsub_ports[1], nbot - 1, 0, bot_contact),
-                     (len(self._w_list) - 2, self._tsub_ports[1], ntop - 1, ntop - 2,
+        iter_list = [(-1, self._bsub_port, nbot - 1, 0, bot_contact),
+                     (len(self._w_list) - 2, self._tsub_port, ntop - 1, ntop - 2,
                       top_contact)]
-        for row_idx, box_arr, ntr, tr_idx, contact in iter_list:
+        for row_idx, port, ntr, tr_idx, contact in iter_list:
             yb, yt = self.get_track_yrange(row_idx, 'ds', tr_idx)
             yb2, yt2 = self.get_track_yrange(row_idx, 'ds', ntr - 1 - tr_idx)
 
+            box_arr_list = port.get_pins(self._vm_layer)
+            if len(box_arr_list) != 1:
+                raise Exception('Substrate ports is not a single array.')
+
+            box_arr = box_arr_list[0]
             xl = box_arr.base.left
             xr = box_arr.base.right
             via = self.grid.make_via_from_bbox(BBox(xl, yb, xr, yt, res),
@@ -1479,8 +1481,8 @@ class AmplifierBase(MicroTemplate):
             for bus, sub_val in izip(gate_buses, sub_val_iter):
                 wire_groups[sub_val].append(bus)
 
-        sub_yb = self._bsub_ports[0].bottom
-        sub_yt = self._tsub_ports[0].top
+        sub_yb = self._bsub_port.get_bbox(self._dummy_layer).bottom
+        sub_yt = self._tsub_port.get_bbox(self._dummy_layer).top
 
         for sub_idx, wire_bus_list in wire_groups.iteritems():
             wire_yb = sub_yb if sub_idx >= 0 else None

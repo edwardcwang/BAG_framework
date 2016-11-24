@@ -197,22 +197,6 @@ class AnalogSubstrate(MicroTemplate):
         """
         return True
 
-    @abc.abstractmethod
-    def get_port_locations(self, is_dummy=False):
-        """Returns the wire bounding boxes of the substrate port.
-
-        Parameters
-        ----------
-        is_dummy : bool
-            if True, return port locations for separator/dummy connections instead.
-
-        Returns
-        -------
-        box_arr : bag.layout.util.BBoxArray
-            the bounding box array representing the wire locations.
-        """
-        return None
-
     @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.
