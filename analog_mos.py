@@ -965,18 +965,6 @@ class AnalogMosSep(MicroTemplate):
         """
         return 2
 
-    @abc.abstractmethod
-    def get_port_locations(self):
-        """Returns a list of buses of wires for dummy connection.
-
-        Returns
-        -------
-        box_arr_list : list[bag.layout.util.BBoxArray]
-            list of bounding box arrays representing gate wires.  Each element of
-            the list corresponds to the interval in gate_intv_list.
-        """
-        return None
-
     @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.
@@ -1048,18 +1036,6 @@ class AnalogMosDummy(MicroTemplate):
             the dummy connection layer name
         """
         return ''
-
-    @abc.abstractmethod
-    def get_port_locations(self):
-        """Returns a list of buses of wires for dummy connection.
-
-        Returns
-        -------
-        box_arr_list : list[bag.layout.util.BBoxArray]
-            list of bounding box arrays representing gate wires.  Each element of
-            the list corresponds to the interval in gate_intv_list.
-        """
-        return None
 
     @classmethod
     def get_params_info(cls):

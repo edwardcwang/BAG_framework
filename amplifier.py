@@ -1032,8 +1032,8 @@ class AmplifierBase(MicroTemplate):
 
         Returns
         -------
-        wire_bus_list : list[bag.layout.util.BBoxArray]
-            the dummy gate bus wires list.
+        wires : bag.layout.util.BBoxCollection
+            the dummy gate bus wires.
         """
         col_idx = 0 if loc == 'left' else self._fg_tot - fg
 
@@ -1072,8 +1072,7 @@ class AmplifierBase(MicroTemplate):
         conn_loc = (xc, yc)
         self.add_template(layout, conn, loc=conn_loc, orient=orient)
 
-        port_locs = conn.get_port_locations()
-        return [box_arr.transform(loc=conn_loc, orient=orient) for box_arr in port_locs]
+        return conn.get_port().get_pins().transform(loc=conn_loc, orient=orient)
 
     def _draw_mos_sep(self, layout, temp_db, row_idx, col_idx, fg, gate_intv_list):
         """Draw transistor separator connection.
@@ -1097,8 +1096,8 @@ class AmplifierBase(MicroTemplate):
 
         Returns
         -------
-        wire_bus_list : list[bag.layout.util.BBoxArray]
-            the dummy gate bus wires list.
+        wires : bag.layout.util.BBoxCollection
+            the dummy gate bus wires.
         """
         fg = max(fg, self.min_fg_sep)
 
@@ -1126,8 +1125,7 @@ class AmplifierBase(MicroTemplate):
         conn_loc = (xc, yc)
         self.add_template(layout, conn, loc=conn_loc, orient=orient)
 
-        port_locs = conn.get_port_locations()
-        return [box_arr.transform(loc=conn_loc, orient=orient) for box_arr in port_locs]
+        return conn.get_port().get_pins().transform(loc=conn_loc, orient=orient)
 
     def draw_mos_conn(self, layout, temp_db, row_idx, col_idx, fg, sdir, ddir):
         """Draw transistor connection.
@@ -1487,8 +1485,8 @@ class AmplifierBase(MicroTemplate):
                     raise ValueError('Cannot draw separator with fg = %d < %d' % (fg, self.min_fg_sep))
                 gate_buses = self._draw_mos_sep(layout, temp_db, ridx, start, fg, gate_intv_list)
 
-            for bus, sub_val in izip(gate_buses, sub_val_iter):
-                wire_groups[sub_val].append(bus)
+            for box_arr, sub_val in izip(gate_buses, sub_val_iter):
+                wire_groups[sub_val].append(box_arr)
 
         sub_yb = self._bsub_port.get_bounding_box(self._dummy_layer).bottom
         sub_yt = self._tsub_port.get_bounding_box(self._dummy_layer).top
