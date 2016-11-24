@@ -888,22 +888,6 @@ class AnalogMosConn(MicroTemplate):
     def __init__(self, grid, lib_name, params, used_names):
         MicroTemplate.__init__(self, grid, lib_name, params, used_names)
 
-    @abc.abstractmethod
-    def get_port_locations(self, name):
-        """Returns the wire bounding boxes of the given port.
-
-        Parameters
-        ----------
-        name : str
-            name of the port.  Either 'g', 'd', or 's'.
-
-        Returns
-        -------
-        box_arr : bag.layout.util.BBoxArray
-            the bounding box array representing the wire locations.
-        """
-        return None
-
     @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.

@@ -182,21 +182,21 @@ class SerdesRXBase(AmplifierBase):
             nname = '%sn' % diff_sig
             ridx, ptr_idx = track[pname]
             _, ntr_idx = track[nname]
-            pba_list = [mos_dict[mos][sd] for mos, sd in conn.pop(pname)]
-            nba_list = [mos_dict[mos][sd] for mos, sd in conn.pop(nname)]
-            self.connect_differential_track(layout, pba_list, nba_list, ridx, conn_type, ptr_idx, ntr_idx)
+            p_port_list = [mos_dict[mos][sd] for mos, sd in conn.pop(pname)]
+            n_port_list = [mos_dict[mos][sd] for mos, sd in conn.pop(nname)]
+            self.connect_differential_track(layout, p_port_list, n_port_list, ridx, conn_type, ptr_idx, ntr_idx)
 
         # draw intermediate connections
         for conn_name, conn_list in conn.iteritems():
-            box_arr_list = [mos_dict[mos][sd] for mos, sd in conn_list]
+            port_list = [mos_dict[mos][sd] for mos, sd in conn_list]
             if conn_name == 'vdd':
-                self.connect_to_supply(layout, 1, box_arr_list)
+                self.connect_to_supply(layout, 1, port_list)
             elif conn_name == 'vss':
-                self.connect_to_supply(layout, 0, box_arr_list)
+                self.connect_to_supply(layout, 0, port_list)
             else:
                 conn_type = 'g' if conn_list[0][1] == 'g' else 'ds'
                 ridx, tidx = track[conn_name]
-                self.connect_to_track(layout, box_arr_list, ridx, conn_type, tidx)
+                self.connect_to_track(layout, port_list, ridx, conn_type, tidx)
 
     def draw_rows(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw, pth, track_width, track_space, gds_space,
