@@ -808,6 +808,15 @@ class AmplifierBase(MicroTemplate):
             the positive track index.
         ntr_idx : int
             the negative track index
+
+        Returns
+        -------
+        tr_layer : str
+            the horizontal tracks metal layer.
+        p_box : bag.layout.util.BBox
+            the positive horizontal track bounding box.
+        n_box : bag.layout.util.BBox
+            the negative horizontal track bounding box.
         """
         if not p_port_list:
             return
@@ -846,10 +855,12 @@ class AmplifierBase(MicroTemplate):
         wire_yt = max(tr_ytp, tr_ytn) + yext
 
         # draw the connections
-        self.connect_to_track(layout, p_port_list, row_idx, tr_type, ptr_idx,
-                              wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr)
-        self.connect_to_track(layout, n_port_list, row_idx, tr_type, ntr_idx,
-                              wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr)
+        tr_layer, p_box = self.connect_to_track(layout, p_port_list, row_idx, tr_type, ptr_idx,
+                                                wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr)
+        _, n_box = self.connect_to_track(layout, n_port_list, row_idx, tr_type, ntr_idx,
+                                         wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr)
+
+        return tr_layer, p_box, n_box
 
     def connect_to_track(self, layout, port_list, row_idx, tr_type, track_idx,
                          wire_yb=None, wire_yt=None, tr_xl=None, tr_xr=None):
@@ -875,6 +886,13 @@ class AmplifierBase(MicroTemplate):
             if not None, extend track to this left coordinate.  Used for differential routing.
         tr_xr : float or None
             if not None, extend track to this right coordinate.  Used for differential routing.
+
+        Returns
+        -------
+        track_layer : str
+            the horizontal track metal layer.
+        track_bbox : bag.layout.util.BBox
+            the horizontal track bounding box.
         """
         if not port_list:
             # do nothing
@@ -898,11 +916,6 @@ class AmplifierBase(MicroTemplate):
         wire_w = wire_bus_list[0].base.width
         wire_pitch = wire_bus_list[0].spx
 
-        # draw horizontal track
-        tr_xr = wire_xr if tr_xr is None else max(wire_xr, tr_xr)
-        tr_xl = wire_xl if tr_xl is None else min(wire_xl, tr_xl)
-        layout.add_rect(self._hm_layer, BBox(tr_xl, tr_yb, tr_xr, tr_yt, res))
-
         # determine via intervals
         via_intv_list = []
         for wire_bus in wire_bus_list:
@@ -912,12 +925,25 @@ class AmplifierBase(MicroTemplate):
                 via_intv_list.append([idx_start, idx_start + wire_bus.nx])
             else:
                 via_intv_list[-1][1] = idx_start + wire_bus.nx
+
         # draw vias
+        tr_xr = wire_xr if tr_xr is None else max(wire_xr, tr_xr)
+        tr_xl = wire_xl if tr_xl is None else min(wire_xl, tr_xl)
         for via_intv in via_intv_list:
             xo = wire_xl + via_intv[0] * wire_pitch
             via = self.grid.make_via_from_bbox(BBox(xo, tr_yb, xo + wire_w, tr_yt, res),
                                                self._vm_layer, self._hm_layer, 'y')
-            layout.add_via_obj(via, arr_nx=via_intv[1] - via_intv[0], arr_spx=wire_pitch)
+            arr_nx = via_intv[1] - via_intv[0]
+            layout.add_via_obj(via, arr_nx=arr_nx, arr_spx=wire_pitch)
+            # update track X coordinates.
+            tr_xl = min(tr_xl, via.top_box.left)
+            tr_xr = max(tr_xr, via.top_box.right + (arr_nx - 1) * wire_pitch)
+
+        # draw horizontal track
+        track_box = BBox(tr_xl, tr_yb, tr_xr, tr_yt, res)
+        layout.add_rect(self._hm_layer, track_box)
+
+        return self._hm_layer, track_box
 
     def _connect_vertical_wires(self, layout, box_arr_list, wire_yb=None, wire_yt=None,
                                 wire_layer=''):
@@ -1228,6 +1254,15 @@ class AmplifierBase(MicroTemplate):
             number of pmos gate tracks per row, from bottom to top.  Defaults to 1.
         pds_tracks : list[int] or None
             number of pmos drain/source tracks per row, from bottom to top.  Defaults to 1.
+
+        Returns
+        -------
+        sub_layer : str
+            the substrate horizontal track layer.
+        bot_box_arr : bag.layout.util.BBoxArray
+            the bottom substrate tracks bounding box array.
+        top_box_arr : bag.layout.util.BBoxArray
+            the top substrate tracks bounding box array.
         """
 
         # set default values.
@@ -1339,8 +1374,8 @@ class AmplifierBase(MicroTemplate):
         self._tsub_port = tsub.get_port().transform(loc=tsub_loc, orient=tsub_orient)
 
         # connect substrates to horizontal tracks.
-        self._connect_substrate(layout, bsub.get_num_tracks(), tsub.get_num_tracks(),
-                                bsub.contact_both_ds(), tsub.contact_both_ds())
+        return self._connect_substrate(layout, bsub.get_num_tracks(), tsub.get_num_tracks(),
+                                       bsub.contact_both_ds(), tsub.contact_both_ds())
 
     def _connect_substrate(self, layout, nbot, ntop, bot_contact, top_contact):
         """Connect substrate to horizontal tracks
@@ -1357,6 +1392,15 @@ class AmplifierBase(MicroTemplate):
             True to contact both drain/source for bottom substrate.
         top_contact : bool
             True to contact both drain/source for top substrate.
+
+        Returns
+        -------
+        sub_layer : str
+            the substrate horizontal track layer.
+        bot_box_arr : bag.layout.util.BBoxArray
+            the bottom substrate tracks bounding box array.
+        top_box_arr : bag.layout.util.BBoxArray
+            the top substrate tracks bounding box array.
         """
         res = self.grid.resolution
         layout_unit = self.grid.layout_unit
@@ -1367,6 +1411,7 @@ class AmplifierBase(MicroTemplate):
         iter_list = [(-1, self._bsub_port, nbot - 1, 0, bot_contact),
                      (len(self._w_list) - 2, self._tsub_port, ntop - 1, ntop - 2,
                       top_contact)]
+        sub_box_arr_list = []
         for row_idx, port, ntr, tr_idx, contact in iter_list:
             yb, yt = self.get_track_yrange(row_idx, 'ds', tr_idx)
             yb2, yt2 = self.get_track_yrange(row_idx, 'ds', ntr - 1 - tr_idx)
@@ -1382,8 +1427,10 @@ class AmplifierBase(MicroTemplate):
             # add via, tracks, and wires
             wbase = box_arr.base.extend(y=yb - yext).extend(y=yt2 + yext)
             layout.add_rect(self._vm_layer, wbase, arr_nx=box_arr.nx, arr_spx=box_arr.spx)
-            layout.add_rect(self._hm_layer, BBox(xl - xext, yb, box_arr.right + xext, yt, res),
+            tr_box = BBox(xl - xext, yb, box_arr.right + xext, yt, res)
+            layout.add_rect(self._hm_layer, tr_box,
                             arr_ny=ntr, arr_spy=track_pitch)
+            sub_box_arr_list.append(BBoxArray(tr_box, ny=ntr, spy=track_pitch))
             if contact:
                 layout.add_via_obj(via, arr_nx=box_arr.nx, arr_spx=box_arr.spx,
                                    arr_ny=ntr, arr_spy=track_pitch)
@@ -1396,6 +1443,8 @@ class AmplifierBase(MicroTemplate):
                     via.move_by(box_arr.spx, track_pitch)
                     layout.add_via_obj(via, arr_nx=box_arr.nx - nx, arr_spx=2 * box_arr.spx,
                                        arr_ny=ntr - num_tr, arr_spy=2 * track_pitch)
+
+        return self._hm_layer, sub_box_arr_list[0], sub_box_arr_list[1]
 
     def fill_dummy(self, layout, temp_db):
         """Draw dummy/separator on all unused transistors.

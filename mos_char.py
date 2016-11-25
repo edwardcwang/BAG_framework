@@ -24,6 +24,8 @@
 
 """This module contains templates used for transistor characterization."""
 
+from bag.layout.util import BBoxCollection
+
 from .amplifier import AmplifierBase
 
 
@@ -122,17 +124,27 @@ class Transistor(AmplifierBase):
             pg_tracks.append(num_gate_tr)
             pds_tracks.append(1)
 
-        self.draw_base(layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
-                       nw_list, nth_list, pw_list, pth_list,
-                       track_width, track_space, num_track_sep,
-                       vm_layer, hm_layer,
-                       ng_tracks=ng_tracks, nds_tracks=nds_tracks,
-                       pg_tracks=pg_tracks, pds_tracks=pds_tracks,
-                       )
+        sub_lay, bot_box_arr, top_box_arr = self.draw_base(layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
+                                                           nw_list, nth_list, pw_list, pth_list,
+                                                           track_width, track_space, num_track_sep,
+                                                           vm_layer, hm_layer,
+                                                           ng_tracks=ng_tracks, nds_tracks=nds_tracks,
+                                                           pg_tracks=pg_tracks, pds_tracks=pds_tracks,
+                                                           )
+
+        # export body
+        sup_name = 'VSS' if mos_type == 'nch' else 'VDD'
+        self.add_port(layout, sup_name, {sub_lay: BBoxCollection([bot_box_arr, top_box_arr])},
+                      show_pins=True)
 
         mos_ports = self.draw_mos_conn(layout, temp_db, 0, fg_dum, fg, 0, 2)
-        self.connect_to_track(layout, [mos_ports['g']], 0, 'g', num_gate_tr - 1)
-        self.connect_to_track(layout, [mos_ports['d']], 0, 'ds', 0)
-        self.connect_to_track(layout, [mos_ports['s']], 0, 'g', 0)
+        tr_lay, tr_box = self.connect_to_track(layout, [mos_ports['g']], 0, 'g', num_gate_tr - 1)
+        self.add_port(layout, 'g', {tr_lay: tr_box.as_bbox_collection()}, show_pins=True)
+
+        tr_lay, tr_box = self.connect_to_track(layout, [mos_ports['d']], 0, 'ds', 0)
+        self.add_port(layout, 'd', {tr_lay: tr_box.as_bbox_collection()}, show_pins=True)
+
+        tr_lay, tr_box = self.connect_to_track(layout, [mos_ports['s']], 0, 'g', 0)
+        self.add_port(layout, 's', {tr_lay: tr_box.as_bbox_collection()}, show_pins=True)
 
         self.fill_dummy(layout, temp_db)
