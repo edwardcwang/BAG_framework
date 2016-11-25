@@ -66,7 +66,7 @@ class Transistor(AmplifierBase):
             lch='channel length, in meters.',
             w='transistor width, in meters/number of fins.',
             fg='number of fingers.',
-            fg_dum='number of dummies on both sides.',
+            fg_dum='number of dummies on each side.',
             threshold='transistor threshold flavor.',
             track_width='horizontal track width, in meters.',
             track_space='horizontal track spacing, in meters.',
