@@ -1003,24 +1003,26 @@ class AmplifierBase(MicroTemplate):
             if not ovl_item_list:
                 intv_set.add((nstart, nend), val=cur_range)
             else:
-                ovl_start = ovl_item_list[0][0][0]
-                ovl_end = ovl_item_list[0][-1][1]
-                if nstart < ovl_start:
-                    intv_set.add((nstart, ovl_start), val=cur_range)
-                if ovl_end < nend:
-                    intv_set.add((ovl_end, nend), val=cur_range)
                 for intv, yrang in ovl_item_list:
-                    cstart, cend = intv
                     intv_set.remove(intv)
-                    if intv[0] < nstart:
-                        intv_set.add((cstart, nstart), val=yrang)
-                        cstart = nstart
-                    if intv[1] > nend:
-                        intv_set.add((nend, cend), val=yrang)
-                        cend = nend
-                    intv_set.add((cstart, cend), val=(min(cur_range[0], yrang[0]),
-                                                      max(cur_range[1], yrang[1])))
+                new_item_list = []
+                ovl_end = ovl_item_list[-1][0][1]
+                if ovl_end < nend:
+                    new_item_list.append(((ovl_end, nend), cur_range))
+                prev_mark = nstart
+                for (cstart, cend), yrang in ovl_item_list:
+                    if prev_mark < cstart:
+                        new_item_list.append(((prev_mark, cstart), cur_range))
+                    elif cstart < prev_mark:
+                        # can only happen for first overlap item
+                        new_item_list.append(((cstart, prev_mark), yrang))
+                        cstart = prev_mark
+                    new_item_list.append(((cstart, cend), (min(cur_range[0], yrang[0]),
+                                                           max(cur_range[1], yrang[1]))))
+                    prev_mark = cend
 
+                for intv, yrang in new_item_list:
+                    intv_set.add(intv, val=yrang)
         # draw vertical wires
         wire_layer = wire_layer or self._vm_layer
         wire_bus_list = []

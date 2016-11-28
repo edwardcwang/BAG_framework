@@ -82,12 +82,12 @@ class AnalogMosBase(MicroTemplate):
 
     @abc.abstractmethod
     def get_ds_track_index(self):
-        """Returns the middle track index.
+        """Returns the bottom drain/source track index.
 
         Returns
         -------
         tr_idx : int
-            the middle track index.
+            the bottom drain/source track index.
         """
         return 2
 
@@ -710,12 +710,12 @@ class AnalogFinfetBase(AnalogMosBase):
         return {}
 
     def get_ds_track_index(self):
-        """Returns the middle track index.
+        """Returns the bottom drain/source track index.
 
         Returns
         -------
         tr_idx : int
-            the middle track index.
+            the bottom drain/source track index.
         """
         return self._ds_track_idx
 
