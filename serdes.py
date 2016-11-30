@@ -82,7 +82,10 @@ class SerdesRXBase(AmplifierBase):
         conn = {'outp': [('loadp', 'd')], 'outn': [('loadn', 'd')],
                 'vdd': [('loadp', 's'), ('loadn', 's')],
                 'biasp': [('loadp', 'g'), ('loadn', 'g')]}
-        track = {'outp': (5, 0), 'outn': (5, 2), 'biasp': (5, 0)}
+
+        out_ntr = self.get_num_tracks(self._row_idx[5], 'ds')
+        track = {'outp': (5, out_ntr - 2 - self.params['diff_space']),
+                 'outn': (5, out_ntr - 1), 'biasp': (5, 0)}
 
         # cascode and input
         if fg_list[4] > 0:
@@ -106,8 +109,9 @@ class SerdesRXBase(AmplifierBase):
 
         conn['inp'] = [('inn', 'g')]
         conn['inn'] = [('inp', 'g')]
-        track['inp'] = (3, 2)
-        track['inn'] = (3, 0)
+        in_ntr = self.get_num_tracks(self._row_idx[3], 'g')
+        track['inp'] = (3, in_ntr - 1)
+        track['inn'] = (3, in_ntr - 2 - self.params['diff_space'])
 
         # switch
         if fg_list[2] > 0:
@@ -182,6 +186,7 @@ class SerdesRXBase(AmplifierBase):
             nname = '%sn' % diff_sig
             ridx, ptr_idx = track[pname]
             _, ntr_idx = track[nname]
+            ridx = self._row_idx[ridx]
             p_port_list = [mos_dict[mos][sd] for mos, sd in conn.pop(pname)]
             n_port_list = [mos_dict[mos][sd] for mos, sd in conn.pop(nname)]
             self.connect_differential_track(layout, p_port_list, n_port_list, ridx, conn_type, ptr_idx, ntr_idx)
@@ -196,6 +201,7 @@ class SerdesRXBase(AmplifierBase):
             else:
                 conn_type = 'g' if conn_list[0][1] == 'g' else 'ds'
                 ridx, tidx = track[conn_name]
+                ridx = self._row_idx[ridx]
                 self.connect_to_track(layout, port_list, ridx, conn_type, tidx)
 
     def draw_rows(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
@@ -333,7 +339,9 @@ class DynamicLatchChain(SerdesRXBase):
         kwargs = self.params.copy()
         fg_list = kwargs.pop('fg_list')
         nstage = kwargs.pop('nstage')
-        ndum = kwargs.pop('ndum')
+        nduml = kwargs.pop('nduml')
+        ndumr = kwargs.pop('ndumr')
+        del kwargs['diff_space']
 
         if nstage <= 0:
             raise ValueError('nstage = %d must be greater than 0' % nstage)
@@ -341,11 +349,11 @@ class DynamicLatchChain(SerdesRXBase):
         # calculate total number of fingers.
         fg_sep = self.min_fg_sep
         fg_latch = max(fg_list) * 2 + fg_sep
-        kwargs['fg_tot'] = nstage * fg_latch + (nstage - 1) * fg_sep + 2 * ndum
+        kwargs['fg_tot'] = nstage * fg_latch + (nstage - 1) * fg_sep + nduml + ndumr
 
         self.draw_rows(layout, temp_db, **kwargs)
         for idx in xrange(nstage):
-            col_idx = (fg_latch + fg_sep) * idx + ndum
+            col_idx = (fg_latch + fg_sep) * idx + nduml
             self.draw_dynamic_latch(layout, temp_db, col_idx, fg_list, fg_sep=fg_sep)
 
         self.fill_dummy(layout, temp_db)
@@ -370,6 +378,7 @@ class DynamicLatchChain(SerdesRXBase):
             pg_tracks=1,
             pds_tracks=3,
             gds_space=1,
+            diff_space=1,
         )
 
     @classmethod
@@ -394,11 +403,13 @@ class DynamicLatchChain(SerdesRXBase):
             track_width='horizontal track width, in meters.',
             track_space='horizontal track spacing, in meters.',
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',
+            diff_space='number of tracks reserved as space between differential tracks.',
             vm_layer='vertical routing metal layer name.',
             hm_layer='horizontal routing metal layer name.',
             fg_list='6-element list of single-sided transistor number of fingers, from bottom to top.',
             nstage='number of dynamic latch stages.',
-            ndum='number of dummy fingers at both ends.',
+            nduml='number of dummy fingers on the left.',
+            ndumr='number of dummy fingers on the right.',
             ng_tracks='5-element list of number of NMOS gate tracks per row, from bottom to top.',
             nds_tracks='5-element list of number of NMOS drain/source tracks per row, from bottom to top.',
             pg_tracks='number of PMOS gate tracks.',

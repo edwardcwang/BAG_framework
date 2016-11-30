@@ -719,6 +719,30 @@ class AmplifierBase(MicroTemplate):
                     track_space=self._track_space,
                     )
 
+    def get_num_tracks(self, row_idx, tr_type):
+        """Get number of tracks of the given type on the given row.
+
+        Parameters
+        ----------
+        row_idx : int
+            the row index.  0 is the bottom-most NMOS/PMOS row.  -1 is bottom substrate.
+        tr_type : str
+            the type of the track.  Either 'g' or 'ds'.
+
+        Returns
+        -------
+        num_tracks : int
+            number of tracks.
+        """
+        row_idx += 1
+        if tr_type == 'g':
+            ntr = self._ds_tr_indices[row_idx] - self._gds_space
+        else:
+            row_offset = self._ds_tr_indices[row_idx]
+            ntr = self._num_tracks[row_idx] - row_offset
+
+        return ntr
+
     def get_track_yrange(self, row_idx, tr_type, tr_idx):
         """Calculate the track bottom and top coordinate.
 
@@ -738,14 +762,14 @@ class AmplifierBase(MicroTemplate):
         yt : float
             the top coordinate.
         """
+        ntr = self.get_num_tracks(row_idx, tr_type)
+
         row_idx += 1
         offset = self._track_offsets[row_idx]
         if tr_type == 'g':
             row_offset = 0
-            ntr = self._ds_tr_indices[row_idx] - self._gds_space
         else:
             row_offset = self._ds_tr_indices[row_idx]
-            ntr = self._num_tracks[row_idx] - row_offset
 
         if tr_idx < 0 or tr_idx >= ntr:
             raise ValueError('track index = %d out of bounds: [0, %d)' % (tr_idx, ntr))
