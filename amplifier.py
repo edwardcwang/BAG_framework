@@ -26,341 +26,12 @@
 
 import abc
 from itertools import izip, chain, repeat
-import bisect
 import numpy as np
 
+from bag.util import IntervalSet
 from bag.layout.template import MicroTemplate
 from bag.layout.util import BBox, BBoxArray, Port
 from .analog_mos import AnalogMosBase, AnalogSubstrate, AnalogMosConn, AnalogMosSep, AnalogMosDummy
-
-
-class IntervalSet(object):
-    """A data structure that keeps track of disjoint 1D intervals.
-
-    Each interval has a value associated with it.  If not specified, the value defaults to None.
-
-    Parameters
-    ----------
-    intv_list : list[(float, float)] or None
-        the sorted initial interval list.
-    val_list : list[any] or None
-        the initial values list.
-    res : float
-        the interval coordinate resolution
-    """
-
-    def __init__(self, intv_list=None, val_list=None, res=0.001):
-
-        if intv_list is None:
-            self._start_list = []
-            self._end_list = []
-            self._val_list = []
-        else:
-            self._start_list = [v[0] for v in intv_list]
-            self._end_list = [v[1] for v in intv_list]
-            if val_list is None:
-                self._val_list = [None] * len(self._start_list)
-            else:
-                self._val_list = list(val_list)
-
-        self._res = res
-
-    def _lt(self, a, b):
-        """Return true if a < b within resolution."""
-        return a - b < -self._res
-
-    def __contains__(self, key):
-        """Returns True if this IntervalSet contains the given interval.
-
-        Parameters
-        ----------
-        key : (int or float, int or float)
-            the interval to test.
-
-        Returns
-        -------
-        contains : bool
-            True if this IntervalSet contains the given interval.
-        """
-        idx = self._get_first_overlap_idx(key)
-        return idx >= 0 and abs(self._start_list[idx] - key[0]) < self._res and abs(
-            self._end_list[idx] - key[1]) < self._res
-
-    def __iter__(self):
-        """Iterates over intervals in this IntervalSet in increasing order.
-
-        Yields
-        ------
-        intv : (int or float, int or float)
-            the next interval.
-        """
-        return izip(self._start_list, self._end_list)
-
-    def __len__(self):
-        """Returns the number of intervals in this IntervalSet.
-
-        Returns
-        -------
-        length : int
-            number of intervals in this set.
-        """
-        return len(self._start_list)
-
-    def get_start(self):
-        """Returns the smallest interval lower bound.
-
-        Returns
-        -------
-        start : int or float
-            the smallest interval lower bound.
-        """
-        return self._start_list[0]
-
-    def get_end(self):
-        """Returns the largest interval upper bound.
-
-        Returns
-        -------
-        end : int or float
-            the largest interval upper bound.
-        """
-        return self._end_list[-1]
-
-    def copy(self):
-        """Create a copy of this interval set.
-
-        Returns
-        -------
-        intv_set : IntervalSet
-            a copy of this IntervalSet.
-        """
-        return IntervalSet(intv_list=list(izip(self._start_list, self._end_list)),
-                           val_list=self._val_list, res=self._res)
-
-    def _get_first_overlap_idx(self, intv):
-        """Returns the index of the first interval that overlaps with the given interval.
-
-        Parameters
-        ----------
-        intv : (int or float, int or float)
-            the given interval.
-
-        Returns
-        -------
-        idx : int
-            the index of the overlapping interval.  If no overlapping intervals are
-            found, -(idx + 1) is returned, where idx is the index to insert the interval.
-        """
-        start, end = intv
-        if not self._start_list:
-            return -1
-        # find the smallest start index greater than start
-        idx = bisect.bisect_right(self._start_list, start)
-        if idx == 0:
-            # all interval's starting point is greater than start
-            return 0 if self._lt(self._start_list[0], end) else -1
-
-        # interval where start index is less than or equal to start
-        test_idx = idx - 1
-        if self._lt(start, self._end_list[test_idx]):
-            # start is covered by the interval; overlaps.
-            return test_idx
-        elif idx < len(self._start_list) and self._lt(self._start_list[idx], end):
-            # _start_list[idx] covered by interval.
-            return idx
-        else:
-            # if
-            # no overlap interval found
-            return -(idx + 1)
-
-    def _get_last_overlap_idx(self, intv):
-        """Returns the index of the last interval that overlaps with the given interval.
-
-        Parameters
-        ----------
-        intv : (int or float, int or float)
-            the given interval.
-
-        Returns
-        -------
-        idx : int
-            the index of the overlapping interval.  If no overlapping intervals are
-            found, -(idx + 1) is returned, where idx is the index to insert the interval.
-        """
-        start, end = intv
-        if not self._start_list:
-            return -1
-        # find the smallest start index greater than end
-        idx = bisect.bisect_right(self._start_list, end)
-        if idx == 0:
-            # all interval's starting point is greater than end
-            return -1
-
-        # interval where start index is less than or equal to end
-        test_idx = idx - 1
-        if self._lt(self._end_list[test_idx], start):
-            # end of interval less than start; no overlap
-            return -(idx + 1)
-        else:
-            return test_idx
-
-    def has_overlap(self, intv):
-        """Returns True if the given interval overlaps at least one interval in this set.
-
-        Parameters
-        ----------
-        intv : (int or float, int or float)
-            the given interval.
-
-        Returns
-        -------
-        has_overlap : bool
-            True if there is at least one interval in this set that overlaps with the given one.
-        """
-        return self._get_first_overlap_idx(intv) >= 0
-
-    def remove(self, intv):
-        """Removes the given interval from this IntervalSet.
-
-        Parameters
-        ----------
-        intv : (int or float, int or float)
-            the interval to remove.
-
-        Returns
-        -------
-        success : bool
-            True if the given interval is found and removed.  False otherwise.
-        """
-        idx = self._get_first_overlap_idx(intv)
-        if idx < 0:
-            return False
-        if abs(intv[0] - self._start_list[idx]) < self._res and abs(intv[1] - self._end_list[idx]) < self._res:
-            del self._start_list[idx]
-            del self._end_list[idx]
-            del self._val_list[idx]
-            return True
-        return False
-
-    def remove_all_overlaps(self, intv):
-        """Remove all intervals in this set that overlaps with the given interval.
-
-        Parameters
-        ----------
-        intv : (int or float, int or float)
-            the given interval
-        """
-        sidx = self._get_first_overlap_idx(intv)
-        if sidx >= 0:
-            eidx = self._get_last_overlap_idx(intv) + 1
-            del self._start_list[sidx:eidx]
-            del self._end_list[sidx:eidx]
-            del self._val_list[sidx:eidx]
-
-    def add(self, intv, val=None):
-        """Adds the given interval to this IntervalSet.
-
-        Can only add interval that does not overlap with any existing ones.
-
-        Parameters
-        ----------
-        intv : (int or float, int or float)
-            the interval to add.
-        val : any or None
-            the value associated with the given interval.
-
-        Returns
-        -------
-        success : bool
-            True if the given interval is added.
-        """
-        idx = self._get_first_overlap_idx(intv)
-        if idx >= 0:
-            return False
-        idx = -idx - 1
-        self._start_list.insert(idx, intv[0])
-        self._end_list.insert(idx, intv[1])
-        self._val_list.insert(idx, val)
-
-    def items(self):
-        """Iterates over intervals and values in this IntervalSet
-
-        The intervals are returned in increasing order.
-
-        Yields
-        ------
-        intv : (int or float, int or float)
-            the interval.
-        val : any
-            the value associated with the interval.
-        """
-        return izip(self.__iter__(), self._val_list)
-
-    def intervals(self):
-        """Iterates over intervals in this IntervalSet
-
-        The intervals are returned in increasing order.
-
-        Yields
-        ------
-        intv : (int or float, int or float)
-            the interval.
-        """
-        return self.__iter__()
-
-    def values(self):
-        """Iterates over values in this IntervalSet
-
-        The values correspond to intervals in increasing order.
-
-        Yields
-        ------
-        val : any
-            the value.
-        """
-        return self._val_list.__iter__()
-
-    def overlap_items(self, intv):
-        """Iterates over intervals and values overlapping the given interval.
-
-        Parameters
-        ----------
-        intv : (int or float, int or float)
-            the interval.
-
-        Yields
-        -------
-        ovl_intv : (int or float, int or float)
-            the overlapping interval.
-        val : any
-            value associated with ovl_intv.
-        """
-        sidx = self._get_first_overlap_idx(intv)
-        if sidx < 0:
-            return
-        eidx = self._get_last_overlap_idx(intv) + 1
-        for idx in xrange(sidx, eidx):
-            yield (self._start_list[idx], self._end_list[idx]), self._val_list[idx]
-
-    def overlap_intervals(self, intv):
-        """Iterates over intervals overlapping the given interval.
-
-        Parameters
-        ----------
-        intv : (int or float, int or float)
-            the interval.
-
-        Yields
-        -------
-        ovl_intv : (int or float, int or float)
-            the overlapping interval.
-        """
-        sidx = self._get_first_overlap_idx(intv)
-        if sidx < 0:
-            return
-        eidx = self._get_last_overlap_idx(intv) + 1
-        for idx in xrange(sidx, eidx):
-            yield self._start_list[idx], self._end_list[idx]
 
 
 def _subtract_from_set(intv_set, start, end):
@@ -370,7 +41,7 @@ def _subtract_from_set(intv_set, start, end):
 
     Parameters
     ----------
-    intv_set : IntervalSet
+    intv_set : bag.util.interval.IntervalSet
         the interval set.
     start : int
         the interval lower bound.
@@ -487,7 +158,7 @@ def _get_dummy_connections(intv_set_list):
 
     Parameters
     ----------
-    intv_set_list : list[IntervalSet]
+    intv_set_list : list[bag.util.interval.IntervalSet]
         a list of dummy finger intervals.  index 0 is the row closest to substrate.
 
     Returns
@@ -527,7 +198,7 @@ def _select_dummy_connections(conn_list, unconnected, all_conn_list):
     conn_list : list[list[(int, int)]]
         a list of list of intervals.  conn_list[x] contains the finger intervals where
         you can connect exactly x+1 dummies vertically to substrate.
-    unconnected : list[IntervalSet]
+    unconnected : list[bag.util.interval.IntervalSet]
         a list of unconnected dummy finger intervals.  index 0 is the row closest to substrate.
     all_conn_list : list[(int, int)]
         a list of dummy finger intervals where you can connect from bottom substrate to top substrate.
@@ -537,7 +208,7 @@ def _select_dummy_connections(conn_list, unconnected, all_conn_list):
     select_list : list[list[(int, int)]]
         a list of list of intervals.  select_list[x] contains the finger intervals to
         draw dummy connections for x+1 rows from substrate.
-    gate_intv_set_list : list[IntervalSet]
+    gate_intv_set_list : list[bag.util.interval.IntervalSet]
         a list of IntervalSets.  gate_intv_set_list[x] contains the finger intervals to
         draw dummy gate connections.
     """
