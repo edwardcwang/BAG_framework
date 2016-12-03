@@ -268,25 +268,28 @@ class AmplifierBase(MicroTemplate):
 
     Parameters
     ----------
-    grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
     lib_name : str
         the layout library name.
-    params : dict
-        the parameter values.  Must have the following entries:
+    params : dict[str, any]
+        the parameter values.
     used_names : set[str]
         a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names):
-        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         # get the concrete template classes
-        self._mos_cls = grid.tech_info.get_process_param('mos_template')
-        self._sub_cls = grid.tech_info.get_process_param('sub_template')
-        self._mconn_cls = grid.tech_info.get_process_param('mos_conn_template')
-        self._sep_cls = grid.tech_info.get_process_param('mos_sep_template')
-        self._dum_cls = grid.tech_info.get_process_param('mos_dummy_template')
+        self._mos_cls = self.grid.tech_info.get_process_param('mos_template')
+        self._sub_cls = self.grid.tech_info.get_process_param('sub_template')
+        self._mconn_cls = self.grid.tech_info.get_process_param('mos_conn_template')
+        self._sep_cls = self.grid.tech_info.get_process_param('mos_sep_template')
+        self._dum_cls = self.grid.tech_info.get_process_param('mos_dummy_template')
 
         # get information from template classes
         self._dummy_layer = self._dum_cls.get_port_layer()
@@ -458,13 +461,11 @@ class AmplifierBase(MicroTemplate):
         tr_yt = tr_yb + tr_w
         return tr_yb, tr_yt
 
-    def connect_to_supply(self, layout, supply_idx, port_list):
+    def connect_to_supply(self, supply_idx, port_list):
         """Connect the given transistor wires to supply.
         
         Parameters
         ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
         supply_idx : int
             the supply index.  0 for the bottom substrate, 1 for the top substrate.
         port_list : list[bag.layout.util.Port]
@@ -480,17 +481,15 @@ class AmplifierBase(MicroTemplate):
         # assuming each port only has a single layer
         box_arr_list = list(chain(*(port.get_pins().__iter__() for port in port_list)))
 
-        self._connect_vertical_wires(layout, box_arr_list, wire_yb=wire_yb, wire_yt=wire_yt)
+        self._connect_vertical_wires(box_arr_list, wire_yb=wire_yb, wire_yt=wire_yt)
 
-    def connect_differential_track(self, layout, p_port_list, n_port_list, row_idx, tr_type, ptr_idx, ntr_idx):
+    def connect_differential_track(self, p_port_list, n_port_list, row_idx, tr_type, ptr_idx, ntr_idx):
         """Connect the given differential wires to two tracks.
 
         Will make sure the connects are symmetric and have identical parasitics.
 
         Parameters
         ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
         p_port_list : list[bag.layout.util.Port]
             the list of positive ports to connect.
         n_port_list : list[bag.layout.util.Port]
@@ -550,21 +549,19 @@ class AmplifierBase(MicroTemplate):
         wire_yt = max(tr_ytp, tr_ytn) + yext
 
         # draw the connections
-        tr_layer, p_box = self.connect_to_track(layout, p_port_list, row_idx, tr_type, ptr_idx,
+        tr_layer, p_box = self.connect_to_track(p_port_list, row_idx, tr_type, ptr_idx,
                                                 wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr)
-        _, n_box = self.connect_to_track(layout, n_port_list, row_idx, tr_type, ntr_idx,
+        _, n_box = self.connect_to_track(n_port_list, row_idx, tr_type, ntr_idx,
                                          wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr)
 
         return tr_layer, p_box, n_box
 
-    def connect_to_track(self, layout, port_list, row_idx, tr_type, track_idx,
+    def connect_to_track(self, port_list, row_idx, tr_type, track_idx,
                          wire_yb=None, wire_yt=None, tr_xl=None, tr_xr=None):
         """Connect the given wires to the track on the given row.
 
         Parameters
         ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
         port_list : list[bag.layout.util.Port]
             the list of ports to connect.
         row_idx : int
@@ -605,7 +602,7 @@ class AmplifierBase(MicroTemplate):
         box_arr_list = list(chain(*(port.get_pins().__iter__() for port in port_list)))
 
         # draw vertical wires
-        wire_bus_list = self._connect_vertical_wires(layout, box_arr_list, wire_yb=wire_yb, wire_yt=wire_yt)
+        wire_bus_list = self._connect_vertical_wires(box_arr_list, wire_yb=wire_yb, wire_yt=wire_yt)
         wire_xl = wire_bus_list[0].left
         wire_xr = wire_bus_list[-1].right
         wire_w = wire_bus_list[0].base.width
@@ -629,25 +626,22 @@ class AmplifierBase(MicroTemplate):
             via = self.grid.make_via_from_bbox(BBox(xo, tr_yb, xo + wire_w, tr_yt, res),
                                                self._vm_layer, self._hm_layer, 'y')
             arr_nx = via_intv[1] - via_intv[0]
-            layout.add_via_obj(via, arr_nx=arr_nx, arr_spx=wire_pitch)
+            self.add_via(via, arr_nx=arr_nx, arr_spx=wire_pitch)
             # update track X coordinates.
             tr_xl = min(tr_xl, via.top_box.left)
             tr_xr = max(tr_xr, via.top_box.right + (arr_nx - 1) * wire_pitch)
 
         # draw horizontal track
         track_box = BBox(tr_xl, tr_yb, tr_xr, tr_yt, res)
-        layout.add_rect(self._hm_layer, track_box)
+        self.add_rect(self._hm_layer, track_box)
 
         return self._hm_layer, track_box
 
-    def _connect_vertical_wires(self, layout, box_arr_list, wire_yb=None, wire_yt=None,
-                                wire_layer=''):
+    def _connect_vertical_wires(self, box_arr_list, wire_yb=None, wire_yt=None, wire_layer=''):
         """Connect the given wires together vertically.
 
         Parameters
         ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
         box_arr_list : list[bag.layout.util.BBoxArray]
             the list of bus wires to connect.
         wire_yb : float or None
@@ -726,20 +720,16 @@ class AmplifierBase(MicroTemplate):
             yb, yt = val
             box = BBox(xl, yb, xl + wire_w, yt, res)
             arr_nx = intv[1] - intv[0]
-            layout.add_rect(wire_layer, box, arr_nx=arr_nx, arr_spx=wire_pitch)
+            self.add_rect(wire_layer, box, arr_nx=arr_nx, arr_spx=wire_pitch)
             wire_bus_list.append(BBoxArray(box, nx=arr_nx, spx=wire_pitch))
 
         return wire_bus_list
 
-    def _draw_dummy(self, layout, temp_db, row_idx, loc, fg, gate_intv_list, conn_right):
+    def _draw_dummy(self, row_idx, loc, fg, gate_intv_list, conn_right):
         """Draw dummy connection.
 
         Parameters
         ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
         row_idx : int
             the row index.  0 is the bottom-most NMOS.
         loc : str
@@ -791,21 +781,17 @@ class AmplifierBase(MicroTemplate):
             else:
                 orient = 'R180'
 
-        conn = temp_db.new_template(params=params, temp_cls=self._dum_cls)  # type: AnalogMosDummy
+        conn_master = self.new_template(params=params, temp_cls=self._dum_cls)  # type: AnalogMosDummy
         conn_loc = (xc, yc)
-        self.add_template(layout, conn, loc=conn_loc, orient=orient)
+        conn_inst = self.add_instance(conn_master, loc=conn_loc, orient=orient)
 
-        return conn.get_port().get_pins().transform(loc=conn_loc, orient=orient)
+        return conn_inst.get_port().get_pins()
 
-    def _draw_mos_sep(self, layout, temp_db, row_idx, col_idx, fg, gate_intv_list):
+    def _draw_mos_sep(self, row_idx, col_idx, fg, gate_intv_list):
         """Draw transistor separator connection.
 
         Parameters
         ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
         row_idx : int
             the row index.  0 is the bottom-most NMOS.
         col_idx : int
@@ -844,21 +830,18 @@ class AmplifierBase(MicroTemplate):
 
         xc, yc = self._sd_list[idx]
         xc += col_idx * self._sd_pitch
-        conn = temp_db.new_template(params=params, temp_cls=self._sep_cls)  # type: AnalogMosSep
+
+        conn_master = self.new_template(params=params, temp_cls=self._sep_cls)  # type: AnalogMosSep
         conn_loc = (xc, yc)
-        self.add_template(layout, conn, loc=conn_loc, orient=orient)
+        conn_inst = self.add_instance(conn_master, loc=conn_loc, orient=orient)
 
-        return conn.get_port().get_pins().transform(loc=conn_loc, orient=orient)
+        return conn_inst.get_port().get_pins()
 
-    def draw_mos_conn(self, layout, temp_db, row_idx, col_idx, fg, sdir, ddir):
+    def draw_mos_conn(self, row_idx, col_idx, fg, sdir, ddir):
         """Draw transistor connection.
 
         Parameters
         ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
         row_idx : int
             the row index.  0 is the bottom-most NMOS.
         col_idx : int
@@ -897,13 +880,14 @@ class AmplifierBase(MicroTemplate):
 
         xc, yc = self._sd_list[idx]
         xc += col_idx * self._sd_pitch
-        conn = temp_db.new_template(params=conn_params, temp_cls=self._mconn_cls)  # type: AnalogMosConn
-        loc = (xc, yc)
-        self.add_template(layout, conn, loc=loc, orient=orient)
 
-        return {key: conn.get_port(key).transform(loc=loc, orient=orient) for key in ['g', 'd', 's']}
+        conn_master = self.new_template(params=conn_params, temp_cls=self._mconn_cls)  # type: AnalogMosConn
+        conn_loc = (xc, yc)
+        conn_inst = self.add_instance(conn_master, loc=conn_loc, orient=orient)
 
-    def draw_base(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
+        return {key: conn_inst.get_port(key) for key in ['g', 'd', 's']}
+
+    def draw_base(self, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw_list, pth_list,
                   track_width, track_space, gds_space,
                   vm_layer, hm_layer,
@@ -913,10 +897,6 @@ class AmplifierBase(MicroTemplate):
 
         Parameters
         ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
         lch : float
             the transistor channel length, in meters
         fg_tot : int
@@ -997,18 +977,17 @@ class AmplifierBase(MicroTemplate):
             sub_w = ntap_w
 
         bsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot)
-        bsub = temp_db.new_template(params=bsub_params, temp_cls=self._sub_cls)  # type: AnalogSubstrate
-        bsub_arr_box = bsub.array_box
-        self.add_template(layout, bsub, 'XBSUB')
-        self._num_tracks.append(bsub.get_num_tracks())
-        self._bsub_port = bsub.get_port()
+        bsub_master = self.new_template(params=bsub_params, temp_cls=self._sub_cls)  # type: AnalogSubstrate
+        bsub_inst = self.add_instance(bsub_master, inst_name='XBSUB')
+
+        self._num_tracks.append(bsub_master.get_num_tracks())
+        self._bsub_port = bsub_inst.get_port()
         self._track_offsets.append(0)
         self._ds_tr_indices.append(0)
-        amp_array_box = bsub_arr_box
+        amp_array_box = bsub_inst.array_box
 
-        ycur = bsub_arr_box.top
         # draw nmos and pmos
-        mos = None
+        mos_master = None
         for mos_type, w_list, th_list, g_list, ds_list in izip(['nch', 'pch'],
                                                                [nw_list, pw_list],
                                                                [nth_list, pth_list],
@@ -1022,30 +1001,19 @@ class AmplifierBase(MicroTemplate):
                 orient = 'MX'
             for idx, (w, thres, gntr, dntr) in enumerate(izip(w_list, th_list, g_list, ds_list)):
                 mos_params = self.get_mos_params(mos_type, thres, lch, w, fg_tot, gntr, dntr, gds_space)
-                mos = temp_db.new_template(params=mos_params, temp_cls=self._mos_cls)  # type: AnalogMosBase
-                mos_arr_box = mos.array_box
-                amp_array_box = amp_array_box.merge(mos_arr_box)
-                sd_xc, sd_yc = mos.get_left_sd_center()
+                mos_master = self.new_template(params=mos_params, temp_cls=self._mos_cls)  # type: AnalogMosBase
+                mos_inst = self.add_instance(mos_master, inst_name=fmt % idx, orient=orient)
+                mos_inst.move_by(dy=amp_array_box.top - mos_inst.array_box.bottom)
+                amp_array_box = amp_array_box.merge(mos_inst.array_box)
+                sd_loc = mos_inst.translate_master_location(mos_master.get_left_sd_center())
 
-                # compute ybot of mosfet
-                if orient == 'MX':
-                    ybot = ycur + mos_arr_box.top
-                else:
-                    ybot = ycur - mos_arr_box.bottom
-
-                # add mosfet
-                self.add_template(layout, mos, fmt % idx, loc=(0.0, ybot), orient=orient)
-                ycur += mos_arr_box.height
-
-                # calculate source/drain center location
-                sd_yc = ybot + sd_yc if orient == 'R0' else ybot - sd_yc
-                self._sd_list.append((sd_xc, sd_yc))
+                self._sd_list.append(sd_loc)
                 self._track_offsets.append(self._track_offsets[-1] + self._num_tracks[-1])
-                self._num_tracks.append(mos.get_num_tracks())
-                self._ds_tr_indices.append(mos.get_ds_track_index())
+                self._num_tracks.append(mos_master.get_num_tracks())
+                self._ds_tr_indices.append(mos_master.get_ds_track_index())
 
         # record source/drain pitch
-        self._sd_pitch = mos.get_sd_pitch()
+        self._sd_pitch = mos_master.get_sd_pitch()
 
         # draw last substrate
         if pw_list:
@@ -1058,29 +1026,26 @@ class AmplifierBase(MicroTemplate):
             sub_w = ptap_w
 
         tsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot)
-        tsub = temp_db.new_template(params=tsub_params, temp_cls=self._sub_cls)  # type: AnalogSubstrate
-        tsub_arr_box = tsub.array_box
-        self.array_box = amp_array_box.merge(tsub_arr_box)
+        tsub_master = self.new_template(params=tsub_params, temp_cls=self._sub_cls)  # type: AnalogSubstrate
+        tsub_inst = self.add_instance(tsub_master, inst_name='XTSUB')
+        tsub_inst.move_by(dy=amp_array_box.top - tsub_inst.array_box.bottom)
+
+        self.array_box = amp_array_box.merge(tsub_inst.array_box)
         self._sd_list.append((None, None))
         self._track_offsets.append(self._track_offsets[-1] + self._num_tracks[-1])
         self._ds_tr_indices.append(0)
-        self._num_tracks.append(tsub.get_num_tracks())
-        tsub_loc = (0.0, ycur + tsub_arr_box.top)
-        tsub_orient = 'MX'
-        self.add_template(layout, tsub, 'XTSUB', loc=tsub_loc, orient=tsub_orient)
-        self._tsub_port = tsub.get_port().transform(loc=tsub_loc, orient=tsub_orient)
+        self._num_tracks.append(tsub_master.get_num_tracks())
+        self._tsub_port = tsub_inst.get_port()
 
         # connect substrates to horizontal tracks.
-        return self._connect_substrate(layout, bsub.get_num_tracks(), tsub.get_num_tracks(),
-                                       bsub.contact_both_ds(), tsub.contact_both_ds())
+        return self._connect_substrate(bsub_master.get_num_tracks(), tsub_master.get_num_tracks(),
+                                       bsub_master.contact_both_ds(), tsub_master.contact_both_ds())
 
-    def _connect_substrate(self, layout, nbot, ntop, bot_contact, top_contact):
+    def _connect_substrate(self, nbot, ntop, bot_contact, top_contact):
         """Connect substrate to horizontal tracks
 
         Parameters
         ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
         nbot : int
             number of bottom substrate tracks.
         ntop : int
@@ -1123,37 +1088,30 @@ class AmplifierBase(MicroTemplate):
             xext = (via.top_box.width - (xr - xl)) / 2.0
             # add via, tracks, and wires
             wbase = box_arr.base.extend(y=yb - yext).extend(y=yt2 + yext)
-            layout.add_rect(self._vm_layer, wbase, arr_nx=box_arr.nx, arr_spx=box_arr.spx)
+            self.add_rect(self._vm_layer, wbase, arr_nx=box_arr.nx, arr_spx=box_arr.spx)
             tr_box = BBox(xl - xext, yb, box_arr.right + xext, yt, res)
-            layout.add_rect(self._hm_layer, tr_box,
-                            arr_ny=ntr, arr_spy=track_pitch)
+            self.add_rect(self._hm_layer, tr_box,
+                          arr_ny=ntr, arr_spy=track_pitch)
             sub_box_arr_list.append(BBoxArray(tr_box, ny=ntr, spy=track_pitch))
             if contact:
-                layout.add_via_obj(via, arr_nx=box_arr.nx, arr_spx=box_arr.spx,
-                                   arr_ny=ntr, arr_spy=track_pitch)
+                self.add_via(via, arr_nx=box_arr.nx, arr_spx=box_arr.spx,
+                             arr_ny=ntr, arr_spy=track_pitch)
             else:
                 nx = int(np.ceil(box_arr.nx / 2.0))
                 num_tr = int(np.ceil(ntr / 2.0))
-                layout.add_via_obj(via, arr_nx=nx, arr_spx=2 * box_arr.spx,
-                                   arr_ny=num_tr, arr_spy=2 * track_pitch)
+                self.add_via(via, arr_nx=nx, arr_spx=2 * box_arr.spx,
+                             arr_ny=num_tr, arr_spy=2 * track_pitch)
                 if ntr > 1:
                     via.move_by(box_arr.spx, track_pitch)
-                    layout.add_via_obj(via, arr_nx=box_arr.nx - nx, arr_spx=2 * box_arr.spx,
-                                       arr_ny=ntr - num_tr, arr_spy=2 * track_pitch)
+                    self.add_via(via, arr_nx=box_arr.nx - nx, arr_spx=2 * box_arr.spx,
+                                 arr_ny=ntr - num_tr, arr_spy=2 * track_pitch)
 
         return self._hm_layer, sub_box_arr_list[0], sub_box_arr_list[1]
 
-    def fill_dummy(self, layout, temp_db):
+    def fill_dummy(self):
         """Draw dummy/separator on all unused transistors.
 
         This method should be called last.
-
-        Parameters
-        ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
         """
 
         # separate bottom/top dummies
@@ -1227,14 +1185,14 @@ class AmplifierBase(MicroTemplate):
             sub_val_iter = dummy_gate_set.values()
             if start == 0:
                 conn_right = (stop == self._fg_tot)
-                gate_buses = self._draw_dummy(layout, temp_db, ridx, 'left', fg, gate_intv_list, conn_right)
+                gate_buses = self._draw_dummy(ridx, 'left', fg, gate_intv_list, conn_right)
             elif stop == self._fg_tot:
-                gate_buses = self._draw_dummy(layout, temp_db, ridx, 'right', fg, gate_intv_list, False)
+                gate_buses = self._draw_dummy(ridx, 'right', fg, gate_intv_list, False)
                 sub_val_iter = reversed(list(sub_val_iter))
             else:
                 if fg < self.min_fg_sep:
                     raise ValueError('Cannot draw separator with fg = %d < %d' % (fg, self.min_fg_sep))
-                gate_buses = self._draw_mos_sep(layout, temp_db, ridx, start, fg, gate_intv_list)
+                gate_buses = self._draw_mos_sep(ridx, start, fg, gate_intv_list)
 
             for box_arr, sub_val in izip(gate_buses, sub_val_iter):
                 wire_groups[sub_val].append(box_arr)
@@ -1245,5 +1203,5 @@ class AmplifierBase(MicroTemplate):
         for sub_idx, wire_bus_list in wire_groups.iteritems():
             wire_yb = sub_yb if sub_idx >= 0 else None
             wire_yt = sub_yt if sub_idx <= 0 else None
-            self._connect_vertical_wires(layout, wire_bus_list, wire_yb=wire_yb, wire_yt=wire_yt,
+            self._connect_vertical_wires(wire_bus_list, wire_yb=wire_yb, wire_yt=wire_yt,
                                          wire_layer=self._dummy_layer)

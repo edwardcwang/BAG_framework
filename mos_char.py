@@ -37,18 +37,21 @@ class Transistor(AmplifierBase):
 
     Parameters
     ----------
-    grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
     lib_name : str
         the layout library name.
-    params : dict
-        the parameter values.  Must have the following entries:
+    params : dict[str, any]
+        the parameter values.
     used_names : set[str]
         a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
 
-    def __init__(self, grid, lib_name, params, used_names):
-        AmplifierBase.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        AmplifierBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -77,15 +80,8 @@ class Transistor(AmplifierBase):
             num_track_sep='number of tracks reserved as space between ports.',
         )
 
-    def draw_layout(self, layout, temp_db):
-        """Draw the layout of a dynamic latch chain.
-
-        Parameters
-        ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
+    def draw_layout(self):
+        """Draw the layout of a transistor for characterization.
         """
 
         mos_type = self.params['mos_type']
@@ -124,7 +120,7 @@ class Transistor(AmplifierBase):
             pg_tracks.append(num_gate_tr)
             pds_tracks.append(1)
 
-        sub_lay, bot_box_arr, top_box_arr = self.draw_base(layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
+        sub_lay, bot_box_arr, top_box_arr = self.draw_base(lch, fg_tot, ptap_w, ntap_w,
                                                            nw_list, nth_list, pw_list, pth_list,
                                                            track_width, track_space, num_track_sep,
                                                            vm_layer, hm_layer,
@@ -134,17 +130,17 @@ class Transistor(AmplifierBase):
 
         # export body
         sup_name = 'VSS' if mos_type == 'nch' else 'VDD'
-        self.add_port(layout, sup_name, {sub_lay: BBoxCollection([bot_box_arr, top_box_arr])},
+        self.add_port(sup_name, {sub_lay: BBoxCollection([bot_box_arr, top_box_arr])},
                       show_pins=True)
 
-        mos_ports = self.draw_mos_conn(layout, temp_db, 0, fg_dum, fg, 0, 2)
-        tr_lay, tr_box = self.connect_to_track(layout, [mos_ports['g']], 0, 'g', num_gate_tr - 1)
-        self.add_port(layout, 'g', {tr_lay: tr_box.as_bbox_collection()}, show_pins=True)
+        mos_ports = self.draw_mos_conn(0, fg_dum, fg, 0, 2)
+        tr_lay, tr_box = self.connect_to_track([mos_ports['g']], 0, 'g', num_gate_tr - 1)
+        self.add_port('g', {tr_lay: tr_box.as_bbox_collection()}, show_pins=True)
 
-        tr_lay, tr_box = self.connect_to_track(layout, [mos_ports['d']], 0, 'ds', 0)
-        self.add_port(layout, 'd', {tr_lay: tr_box.as_bbox_collection()}, show_pins=True)
+        tr_lay, tr_box = self.connect_to_track([mos_ports['d']], 0, 'ds', 0)
+        self.add_port('d', {tr_lay: tr_box.as_bbox_collection()}, show_pins=True)
 
-        tr_lay, tr_box = self.connect_to_track(layout, [mos_ports['s']], 0, 'g', 0)
-        self.add_port(layout, 's', {tr_lay: tr_box.as_bbox_collection()}, show_pins=True)
+        tr_lay, tr_box = self.connect_to_track([mos_ports['s']], 0, 'g', 0)
+        self.add_port('s', {tr_lay: tr_box.as_bbox_collection()}, show_pins=True)
 
-        self.fill_dummy(layout, temp_db)
+        self.fill_dummy()

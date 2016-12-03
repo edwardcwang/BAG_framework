@@ -36,24 +36,27 @@ class SerdesRXBase(AmplifierBase):
 
     Parameters
     ----------
-    grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
     lib_name : str
         the layout library name.
-    params : dict
-        the parameter values.  Must have the following entries:
+    params : dict[str, any]
+        the parameter values.
     used_names : set[str]
         a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
     __metaclass__ = abc.ABCMeta
 
     _row_names = ['tail', 'en', 'sw', 'in', 'casc', 'load']
 
-    def __init__(self, grid, lib_name, params, used_names):
-        AmplifierBase.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        AmplifierBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._row_idx = None
 
-    def draw_dynamic_latch(self, layout, temp_db, col_idx, fg_list, fg_sep=0):
+    def draw_dynamic_latch(self, col_idx, fg_list, fg_sep=0):
         """Draw dynamic latch.
 
         a separator is used to separate the positive half and the negative half of the latch.
@@ -61,10 +64,6 @@ class SerdesRXBase(AmplifierBase):
 
         Parameters
         ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
         col_idx : int
             the left-most transistor index.  0 is the left-most transistor.
         fg_list : list[int]
@@ -182,8 +181,8 @@ class SerdesRXBase(AmplifierBase):
                 fg_tot = 2 * fg + fg_sep
                 col_start = col_idx + (fg_max - fg_tot) / 2
                 sdir, ddir = sd_dir[name]
-                mos_dict['%sp' % name] = self.draw_mos_conn(layout, temp_db, ridx, col_start, fg, sdir, ddir)
-                mos_dict['%sn' % name] = self.draw_mos_conn(layout, temp_db, ridx, col_start + fg + fg_sep,
+                mos_dict['%sp' % name] = self.draw_mos_conn(ridx, col_start, fg, sdir, ddir)
+                mos_dict['%sn' % name] = self.draw_mos_conn(ridx, col_start + fg + fg_sep,
                                                             fg, sdir, ddir)
 
         port_dict = {}
@@ -197,7 +196,7 @@ class SerdesRXBase(AmplifierBase):
             ridx = self._row_idx[ridx]
             p_port_list = [mos_dict[mos][sd] for mos, sd in conn.pop(pname)]
             n_port_list = [mos_dict[mos][sd] for mos, sd in conn.pop(nname)]
-            sig_layer, pbox, nbox = self.connect_differential_track(layout, p_port_list, n_port_list, ridx,
+            sig_layer, pbox, nbox = self.connect_differential_track(p_port_list, n_port_list, ridx,
                                                                     conn_type, ptr_idx, ntr_idx)
             port_dict[pname] = (sig_layer, pbox)
             port_dict[nname] = (sig_layer, nbox)
@@ -206,29 +205,25 @@ class SerdesRXBase(AmplifierBase):
         for conn_name, conn_list in conn.iteritems():
             port_list = [mos_dict[mos][sd] for mos, sd in conn_list]
             if conn_name == 'VDD':
-                self.connect_to_supply(layout, 1, port_list)
+                self.connect_to_supply(1, port_list)
             elif conn_name == 'VSS':
-                self.connect_to_supply(layout, 0, port_list)
+                self.connect_to_supply(0, port_list)
             else:
                 conn_type = 'g' if conn_list[0][1] == 'g' else 'ds'
                 ridx, tidx = track[conn_name]
                 ridx = self._row_idx[ridx]
-                sig_layer, sig_box = self.connect_to_track(layout, port_list, ridx, conn_type, tidx)
+                sig_layer, sig_box = self.connect_to_track(port_list, ridx, conn_type, tidx)
                 port_dict[conn_name] = sig_layer, sig_box
 
         return port_dict
 
-    def draw_rows(self, layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
+    def draw_rows(self, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw, pth, track_width, track_space, gds_space,
                   vm_layer, hm_layer, ng_tracks, nds_tracks, pg_tracks, pds_tracks):
         """Draw the transistors and substrate rows.
 
         Parameters
         ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
         lch : float
             the transistor channel length, in meters
         fg_tot : int
@@ -324,7 +319,7 @@ class SerdesRXBase(AmplifierBase):
         self._row_idx[5] = cur_row
 
         # draw base
-        return self.draw_base(layout, temp_db, lch, fg_tot, ptap_w, ntap_w,
+        return self.draw_base(lch, fg_tot, ptap_w, ntap_w,
                               new_nw_list, new_nth_list, [pw], [pth],
                               track_width, track_space, gds_space, vm_layer, hm_layer,
                               ng_tracks=new_ng_tracks, nds_tracks=new_nds_tracks,
@@ -346,8 +341,8 @@ class DynamicLatchChain(SerdesRXBase):
         a set of already used cell names.
     """
 
-    def __init__(self, grid, lib_name, params, used_names):
-        SerdesRXBase.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        SerdesRXBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @staticmethod
     def _rename_port(pname, idx, nstage):
@@ -357,15 +352,8 @@ class DynamicLatchChain(SerdesRXBase):
         else:
             return '%s<%d>' % (pname, idx)
 
-    def draw_layout(self, layout, temp_db):
+    def draw_layout(self):
         """Draw the layout of a dynamic latch chain.
-
-        Parameters
-        ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
         """
         kwargs = self.params.copy()
         fg_list = kwargs.pop('fg_list')
@@ -385,12 +373,12 @@ class DynamicLatchChain(SerdesRXBase):
         fg_latch = max(fg_list) * 2 + fg_sep
         kwargs['fg_tot'] = nstage * fg_latch + (nstage - 1) * fg_sep + nduml + ndumr
 
-        slay, barr, tarr = self.draw_rows(layout, temp_db, **kwargs)
+        slay, barr, tarr = self.draw_rows(**kwargs)
 
         port_list = [('VSS', (slay, barr)), ('VDD', (slay, tarr))]
         for idx in xrange(nstage):
             col_idx = (fg_latch + fg_sep) * idx + nduml
-            pdict = self.draw_dynamic_latch(layout, temp_db, col_idx, fg_list, fg_sep=fg_sep)
+            pdict = self.draw_dynamic_latch(col_idx, fg_list, fg_sep=fg_sep)
             for pname, port_geo in pdict.iteritems():
                 pname = rename_dict.get(pname, pname)
                 if pname:
@@ -398,9 +386,9 @@ class DynamicLatchChain(SerdesRXBase):
                     port_list.append((pin_name, port_geo))
 
         for pname, (lay, box) in port_list:
-            self.add_port(layout, pname, {lay: box.as_bbox_collection()}, show_pins=show_pins)
+            self.add_port(pname, {lay: box.as_bbox_collection()}, show_pins=show_pins)
 
-        self.fill_dummy(layout, temp_db)
+        self.fill_dummy()
 
     @classmethod
     def get_default_param_values(cls):

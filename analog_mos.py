@@ -42,19 +42,22 @@ class AnalogMosBase(MicroTemplate):
 
     Parameters
     ----------
-    grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
     lib_name : str
         the layout library name.
-    params : dict
+    params : dict[str, any]
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names):
-        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @abc.abstractmethod
     def get_left_sd_center(self):
@@ -62,10 +65,8 @@ class AnalogMosBase(MicroTemplate):
 
         Returns
         -------
-        xc : float
-            center X coordinate of source/drain.
-        yc : float
-            center Y coordinate of source/drain.
+        sd_loc : (float, float)
+            center coordinate of leftmost source/drain
         """
         return 0.0, 0.0
 
@@ -169,19 +170,22 @@ class AnalogSubstrate(MicroTemplate):
 
     Parameters
     ----------
-    grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
     lib_name : str
         the layout library name.
-    params : dict
+    params : dict[str, any]
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names):
-        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @abc.abstractmethod
     def contact_both_ds(self):
@@ -272,18 +276,16 @@ class AnalogFinfetFoundation(MicroTemplate):
 
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names):
-        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
-    def draw_foundation(self, layout, lch, nfin, fg, nduml, ndumr, arr_box_ext, tech_constants):
+    def draw_foundation(self, lch, nfin, fg, nduml, ndumr, arr_box_ext, tech_constants):
         """Draw the layout of this template.
 
         Override this method to create the layout.
 
         Parameters
         ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance to draw the layout with.
         lch : float
             the transistor channel length.
         nfin : float for int
@@ -346,10 +348,10 @@ class AnalogFinfetFoundation(MicroTemplate):
         arr_box = BBox(arr_box_left, arr_box_bot, arr_box_right, arr_box_top, res)
 
         # draw CPO
-        layout.add_rect('CPO', BBox(0.0, arr_box.bottom - mos_cpo_h_bot / 2.0,
-                                    bnd_box_w, arr_box.bottom + mos_cpo_h_bot / 2.0, res))
-        layout.add_rect('CPO', BBox(0.0, arr_box.top - mos_cpo_h / 2.0,
-                                    bnd_box_w, arr_box.top + mos_cpo_h / 2.0, res))
+        self.add_rect('CPO', BBox(0.0, arr_box.bottom - mos_cpo_h_bot / 2.0,
+                                  bnd_box_w, arr_box.bottom + mos_cpo_h_bot / 2.0, res))
+        self.add_rect('CPO', BBox(0.0, arr_box.top - mos_cpo_h / 2.0,
+                                  bnd_box_w, arr_box.top + mos_cpo_h / 2.0, res))
 
         # draw DPO/PO
         dpo_lp = ('PO', 'dummy1')
@@ -359,31 +361,31 @@ class AnalogFinfetFoundation(MicroTemplate):
         dx = lch / 2.0
         # draw DPO left
         xmid = 0.5 * sd_pitch + extl
-        layout.add_rect(dpo_lp[0], BBox(xmid - dx, yb, xmid + dx, yt, res),
-                        purpose=dpo_lp[1], arr_nx=nduml, arr_spx=sd_pitch)
+        self.add_rect(dpo_lp[0], BBox(xmid - dx, yb, xmid + dx, yt, res),
+                      purpose=dpo_lp[1], arr_nx=nduml, arr_spx=sd_pitch)
         # draw PO
         xmid = (nduml + 0.5) * sd_pitch + extl
-        layout.add_rect(po_lp[0], BBox(xmid - dx, yb, xmid + dx, yt, res),
-                        purpose=po_lp[1], arr_nx=fg, arr_spx=sd_pitch)
+        self.add_rect(po_lp[0], BBox(xmid - dx, yb, xmid + dx, yt, res),
+                      purpose=po_lp[1], arr_nx=fg, arr_spx=sd_pitch)
         # draw DPO right
         xmid = (nduml + fg + 0.5) * sd_pitch + extl
-        layout.add_rect(dpo_lp[0], BBox(xmid - dx, yb, xmid + dx, yt, res),
-                        purpose=dpo_lp[1], arr_nx=ndumr, arr_spx=sd_pitch)
+        self.add_rect(dpo_lp[0], BBox(xmid - dx, yb, xmid + dx, yt, res),
+                      purpose=dpo_lp[1], arr_nx=ndumr, arr_spx=sd_pitch)
 
         # draw VT/implant
         imp_box = BBox(0.0, arr_box.bottom - extb,
                        arr_box.right + extr, arr_box.top + extt, res)
         for lay in lay_list:
-            layout.add_rect(lay, imp_box)
+            self.add_rect(lay, imp_box)
         for (lay, purpose), (aextl, aextb, aextr, aextt) in extra_list:
             box = BBox(arr_box.left - aextl, arr_box.bottom - aextb,
                        arr_box.right + aextr, arr_box.top + aextt, arr_box.resolution)
-            layout.add_rect(lay, box, purpose=purpose)
+            self.add_rect(lay, box, purpose=purpose)
 
         # draw PR boundary
-        layout.add_rect('prBoundary', BBox(0.0, 0.0, arr_box_right + extr,
-                                           arr_box_top + pr_bnd_yext, res),
-                        purpose='boundary')
+        self.add_rect('prBoundary', BBox(0.0, 0.0, arr_box_right + extr,
+                                         arr_box_top + pr_bnd_yext, res),
+                      purpose='boundary')
 
         # set array box of this template
         self.array_box = arr_box
@@ -394,18 +396,21 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
 
     Parameters
     ----------
-    grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
     lib_name : str
         the layout library name.
-    params : dict
+    params : dict[str, any]
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
 
-    def __init__(self, grid, lib_name, params, used_names):
-        AnalogFinfetFoundation.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        AnalogFinfetFoundation.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -446,17 +451,12 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
     def compute_unique_key(self):
         return self.get_layout_basename()
 
-    def draw_layout(self, layout, temp_db):
+    def draw_layout(self):
         """Draw the layout of this template.
 
         Override this method to create the layout.
 
-        Parameters
-        ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance to draw the layout with.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
+        WARNING: you should never call this method yourself.
         """
         lch = self.params['lch']
         mos_type = self.params['mos_type']
@@ -484,7 +484,7 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
             extb = 0.0
 
         # include 2 PODE polys
-        self.draw_foundation(layout, lch=lch, nfin=nfin, fg=fg + 2,
+        self.draw_foundation(lch=lch, nfin=nfin, fg=fg + 2,
                              nduml=ndum, ndumr=ndum, arr_box_ext=[xext, extb, xext, 0.0],
                              tech_constants=tech_constants)
 
@@ -494,22 +494,25 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
 
     Parameters
     ----------
-    grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
     lib_name : str
         the layout library name.
-    params : dict
+    params : dict[str, any]
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names):
-        AnalogFinfetFoundation.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        AnalogFinfetFoundation.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @abc.abstractmethod
-    def draw_od_edge(self, layout, temp_db, yc, w, tech_constants):
+    def draw_od_edge(self, yc, w, tech_constants):
         """Draw od edge dummies.
 
         You can assume that self.array_box is already set.
@@ -557,17 +560,12 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
     def compute_unique_key(self):
         return self.get_layout_basename()
 
-    def draw_layout(self, layout, temp_db):
+    def draw_layout(self):
         """Draw the layout of this template.
 
         Override this method to create the layout.
 
-        Parameters
-        ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance to draw the layout with.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
+        WARNING: you should never call this method yourself.
         """
         mos_type = self.params['mos_type']
         lch = self.params['lch']
@@ -592,7 +590,7 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
             extb = 0.0
 
         # draw foundation, include 1 PODE poly
-        self.draw_foundation(layout, lch=lch, nfin=nfin + bext + text, fg=1,
+        self.draw_foundation(lch=lch, nfin=nfin + bext + text, fg=1,
                              nduml=ndum, ndumr=0, arr_box_ext=[xext, extb, 0.0, 0.0],
                              tech_constants=tech_constants)
 
@@ -604,11 +602,11 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
         xl = xmid - lch_layout / 2.0
         xr = xmid + lch_layout / 2.0
         box = BBox(xl, od_yc - od_h / 2.0, xr, od_yc + od_h / 2.0, res)
-        layout.add_rect('OD', box)
-        layout.add_rect('PODE', box, purpose='dummy1')
+        self.add_rect('OD', box)
+        self.add_rect('PODE', box, purpose='dummy1')
 
         # draw OD edge objects
-        self.draw_od_edge(layout, temp_db, od_yc, w, tech_constants)
+        self.draw_od_edge(od_yc, w, tech_constants)
 
 
 class AnalogFinfetBase(AnalogMosBase):
@@ -616,11 +614,11 @@ class AnalogFinfetBase(AnalogMosBase):
 
     Parameters
     ----------
-    grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
     lib_name : str
         the layout library name.
-    params : dict
+    params : dict[str, any]
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
@@ -632,12 +630,15 @@ class AnalogFinfetBase(AnalogMosBase):
         the Template class used to generate extension block.
     tech_constants : dict[str, any]
         the technology constants dictionary.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names,
-                 core_cls, edge_cls, ext_cls, tech_constants):
-        AnalogMosBase.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names,
+                 core_cls, edge_cls, ext_cls, tech_constants, **kwargs):
+        AnalogMosBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self.core_cls = core_cls
         self.edge_cls = edge_cls
         self.ext_cls = ext_cls
@@ -741,17 +742,12 @@ class AnalogFinfetBase(AnalogMosBase):
         """
         return self._sd_pitch
 
-    def draw_layout(self, layout, temp_db):
+    def draw_layout(self):
         """Draw the layout of this template.
 
         Override this method to create the layout.
 
-        Parameters
-        ----------
-        layout : :class:`bag.layout.core.BagLayout`
-            the BagLayout instance to draw the layout with.
-        temp_db : :class:`bag.layout.template.TemplateDB`
-            the TemplateDB instance.  Used to create new templates.
+        WARNING: you should never call this method yourself.
         """
         layout_unit = self.grid.layout_unit
 
@@ -821,53 +817,65 @@ class AnalogFinfetBase(AnalogMosBase):
         else:
             core_top_ext = 0
 
-        # create left edge
+        # draw left edge
         edge_params = self.get_edge_params(core_bot_ext, core_top_ext)
-        edge_blk = temp_db.new_template(params=edge_params, temp_cls=self.edge_cls)  # type: MicroTemplate
-        edge_arr_box = edge_blk.array_box
+        edge_master = self.new_template(params=edge_params, temp_cls=self.edge_cls)  # type: MicroTemplate
+        ledge_inst = self.add_instance(edge_master, inst_name='XLEDGE')
+        ledge_arr_box = ledge_inst.array_box
 
         # draw bottom extension if needed, then compute lower-left array box coordinate.
         if bot_ext_nfin > 0:
             # draw bottom extension
             bot_ext_params = self.get_ext_params(bot_ext_nfin)
-            blk = temp_db.new_template(params=bot_ext_params, temp_cls=self.ext_cls)  # type: MicroTemplate
-            self.add_template(layout, blk, 'XBEXT')
-            bot_ext_arr_box = blk.array_box
+            bot_ext_master = self.new_template(params=bot_ext_params, temp_cls=self.ext_cls)  # type: MicroTemplate
+            bot_ext_inst = self.add_instance(bot_ext_master, inst_name='XBEXT')
+            bot_ext_arr_box = bot_ext_inst.array_box
+            # move left edge up
+            ledge_inst.move_by(dy=bot_ext_arr_box.top - ledge_arr_box.bottom)
+            # update left edge array box
+            ledge_arr_box = ledge_inst.array_box
 
-            dy = bot_ext_arr_box.top - edge_arr_box.bottom
             arr_box_left, arr_box_bottom = bot_ext_arr_box.left, bot_ext_arr_box.bottom
         else:
-            dy = 0.0
-            arr_box_left, arr_box_bottom = edge_arr_box.left, edge_arr_box.bottom
+            arr_box_left, arr_box_bottom = ledge_arr_box.left, ledge_arr_box.bottom
 
-        # create core transistor.
+        # draw core transistor.
         core_params = self.get_core_params(core_bot_ext, core_top_ext)
-        core_blk = temp_db.new_template(params=core_params, temp_cls=self.core_cls)  # type: MicroTemplate
-        core_arr_box = core_blk.array_box
+        core_master = self.new_template(params=core_params, temp_cls=self.core_cls)  # type: MicroTemplate
+        core_inst = self.add_instance(core_master, inst_name='XMOS')
+        core_arr_box = core_inst.array_box
+        # move core transistor
+        core_inst.move_by(dx=ledge_arr_box.right - core_arr_box.left,
+                          dy=ledge_arr_box.bottom - core_arr_box.bottom)
+        # update core array box
+        core_arr_box = core_inst.array_box
         # infer source/drain pitch from array box width
         self._sd_pitch = core_arr_box.width / fg
+        self._sd_center = core_arr_box.left, core_arr_box.bottom + od_dy + core_bot_ext * mos_fin_pitch
 
-        # draw left edge
-        self.add_template(layout, edge_blk, 'XLEDGE', loc=(0.0, dy))
-        # draw core
-        dx = edge_arr_box.right - core_arr_box.left
-        self.add_template(layout, core_blk, 'XMOS', loc=(dx, dy))
-        self._sd_center = dx + core_arr_box.left, dy + core_arr_box.bottom + od_dy + core_bot_ext * mos_fin_pitch
+        # draw right edge
+        redge_inst = self.add_instance(edge_master, inst_name='XREDGE', orient='MY')
+        redge_arr_box = redge_inst.array_box
+        redge_inst.move_by(dx=core_arr_box.right - redge_arr_box.left,
+                           dy=core_arr_box.bottom - redge_arr_box.bottom)
+        # update right edge array box
+        redge_arr_box = redge_inst.array_box
 
-        # draw right edge and compute top right array box coordinate.
-        dx = dx + core_arr_box.right + edge_arr_box.width - edge_arr_box.left
-        self.add_template(layout, edge_blk, 'XREDGE', loc=(dx, dy), orient='MY')
-        arr_box_right = edge_arr_box.left + dx
-        arr_box_top = edge_arr_box.top + dy
-
-        # draw top extension and update top array box coordinate if needed
+        # draw top extension if needed, then calculate top right coordinate
         if top_ext_nfin > 0:
             # draw top extension
             top_ext_params = self.get_ext_params(top_ext_nfin)
-            blk = temp_db.new_template(params=top_ext_params, temp_cls=self.ext_cls)  # type: MicroTemplate
-            top_ext_arr_box = blk.array_box
-            self.add_template(layout, blk, 'XTEXT', loc=(0.0, arr_box_top - top_ext_arr_box.bottom))
-            arr_box_top += top_ext_arr_box.height
+            top_ext_master = self.new_template(params=top_ext_params, temp_cls=self.ext_cls)  # type: MicroTemplate
+            top_ext_inst = self.add_instance(top_ext_master, inst_name='XTEXT')
+            top_ext_arr_box = top_ext_inst.array_box
+            top_ext_inst.move_by(dy=core_arr_box.top - top_ext_arr_box.bottom)
+            # update array box
+            top_ext_arr_box = top_ext_inst.array_box
+            arr_box_right = top_ext_arr_box.right
+            arr_box_top = top_ext_arr_box.top
+        else:
+            arr_box_right = redge_arr_box.right
+            arr_box_top = redge_arr_box.top
 
         # set array box of this template
         self.array_box = BBox(arr_box_left, arr_box_bottom, arr_box_right, arr_box_top,
@@ -882,19 +890,22 @@ class AnalogMosConn(MicroTemplate):
 
     Parameters
     ----------
-    grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
     lib_name : str
         the layout library name.
-    params : dict
+    params : dict[str, any]
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names):
-        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -946,19 +957,22 @@ class AnalogMosSep(MicroTemplate):
 
     Parameters
     ----------
-    grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
     lib_name : str
         the layout library name.
-    params : dict
+    params : dict[str, any]
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names):
-        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_min_fg(cls):
@@ -1018,19 +1032,22 @@ class AnalogMosDummy(MicroTemplate):
 
     Parameters
     ----------
-    grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
     lib_name : str
         the layout library name.
-    params : dict
+    params : dict[str, any]
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, grid, lib_name, params, used_names):
-        MicroTemplate.__init__(self, grid, lib_name, params, used_names)
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_port_layer(cls):
