@@ -386,7 +386,7 @@ class DynamicLatchChain(SerdesRXBase):
                     port_list.append((pin_name, port_geo))
 
         for pname, (lay, box) in port_list:
-            self.add_port(pname, {lay: box.as_bbox_collection()}, show_pins=show_pins)
+            self.add_pin(pname, lay, box, show=show_pins)
 
         self.fill_dummy()
 

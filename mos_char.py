@@ -24,7 +24,6 @@
 
 """This module contains templates used for transistor characterization."""
 
-from bag.layout.util import BBoxCollection
 
 from .amplifier import AmplifierBase
 
@@ -130,17 +129,17 @@ class Transistor(AmplifierBase):
 
         # export body
         sup_name = 'VSS' if mos_type == 'nch' else 'VDD'
-        self.add_port(sup_name, {sub_lay: BBoxCollection([bot_box_arr, top_box_arr])},
-                      show_pins=True)
+        self.add_pin(sup_name, sub_lay, bot_box_arr, show=True)
+        self.add_pin(sup_name, sub_lay, top_box_arr, show=True)
 
         mos_ports = self.draw_mos_conn(0, fg_dum, fg, 0, 2)
         tr_lay, tr_box = self.connect_to_track([mos_ports['g']], 0, 'g', num_gate_tr - 1)
-        self.add_port('g', {tr_lay: tr_box.as_bbox_collection()}, show_pins=True)
+        self.add_pin('g', tr_lay, tr_box, show=True)
 
         tr_lay, tr_box = self.connect_to_track([mos_ports['d']], 0, 'ds', 0)
-        self.add_port('d', {tr_lay: tr_box.as_bbox_collection()}, show_pins=True)
+        self.add_pin('d', tr_lay, tr_box, show=True)
 
         tr_lay, tr_box = self.connect_to_track([mos_ports['s']], 0, 'g', 0)
-        self.add_port('s', {tr_lay: tr_box.as_bbox_collection()}, show_pins=True)
+        self.add_pin('s', tr_lay, tr_box, show=True)
 
         self.fill_dummy()
