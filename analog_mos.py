@@ -362,15 +362,15 @@ class AnalogFinfetFoundation(MicroTemplate):
         # draw DPO left
         xmid = 0.5 * sd_pitch + extl
         self.add_rect(dpo_lp, BBox(xmid - dx, yb, xmid + dx, yt, res),
-                      arr_nx=nduml, arr_spx=sd_pitch)
+                      nx=nduml, spx=sd_pitch)
         # draw PO
         xmid = (nduml + 0.5) * sd_pitch + extl
         self.add_rect(po_lp, BBox(xmid - dx, yb, xmid + dx, yt, res),
-                      arr_nx=fg, arr_spx=sd_pitch)
+                      nx=fg, spx=sd_pitch)
         # draw DPO right
         xmid = (nduml + fg + 0.5) * sd_pitch + extl
         self.add_rect(dpo_lp, BBox(xmid - dx, yb, xmid + dx, yt, res),
-                      arr_nx=ndumr, arr_spx=sd_pitch)
+                      nx=ndumr, spx=sd_pitch)
 
         # draw VT/implant
         imp_box = BBox(0.0, arr_box.bottom - extb,

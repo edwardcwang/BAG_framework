@@ -627,7 +627,7 @@ class AmplifierBase(MicroTemplate):
             via_box = BBox(xo, tr_yb, xo + wire_w, tr_yt, res)
             arr_nx = via_intv[1] - via_intv[0]
             via = self.add_via(via_box, self._vm_layer, self._hm_layer, 'y',
-                               arr_nx=arr_nx, arr_spx=wire_pitch)
+                               nx=arr_nx, spx=wire_pitch)
             # update track X coordinates.
             tr_xl = min(tr_xl, via.top_box.left)
             tr_xr = max(tr_xr, via.top_box.right + (arr_nx - 1) * wire_pitch)
@@ -721,7 +721,7 @@ class AmplifierBase(MicroTemplate):
             yb, yt = val
             box = BBox(xl, yb, xl + wire_w, yt, res)
             arr_nx = intv[1] - intv[0]
-            self.add_rect(wire_layer, box, arr_nx=arr_nx, arr_spx=wire_pitch)
+            self.add_rect(wire_layer, box, nx=arr_nx, spx=wire_pitch)
             wire_bus_list.append(BBoxArray(box, nx=arr_nx, spx=wire_pitch))
 
         return wire_bus_list
@@ -1090,10 +1090,10 @@ class AmplifierBase(MicroTemplate):
             xext = (via.top_box.width - (xr - xl)) / 2.0
             # add via, tracks, and wires
             wbase = box_arr.base.extend(y=yb - yext).extend(y=yt2 + yext)
-            self.add_rect(self._vm_layer, wbase, arr_nx=box_arr.nx, arr_spx=box_arr.spx)
+            self.add_rect(self._vm_layer, wbase, nx=box_arr.nx, spx=box_arr.spx)
             tr_box = BBox(xl - xext, yb, box_arr.right + xext, yt, res)
             self.add_rect(self._hm_layer, tr_box,
-                          arr_ny=ntr, arr_spy=track_pitch)
+                          ny=ntr, spy=track_pitch)
             sub_box_arr_list.append(BBoxArray(tr_box, ny=ntr, spy=track_pitch))
             if contact:
                 # set arraying parameters
@@ -1113,8 +1113,8 @@ class AmplifierBase(MicroTemplate):
                     # add second set of vias
                     via_box = via_box.move_by(box_arr.spx, track_pitch)
                     self.add_via(via_box, self._vm_layer, self._hm_layer, 'y',
-                                 arr_nx=box_arr.nx - nx, arr_spx=2 * box_arr.spx,
-                                 arr_ny=ntr - num_tr, arr_spy=2 * track_pitch)
+                                 nx=box_arr.nx - nx, spx=2 * box_arr.spx,
+                                 ny=ntr - num_tr, spy=2 * track_pitch)
 
         return self._hm_layer, sub_box_arr_list[0], sub_box_arr_list[1]
 
