@@ -526,10 +526,11 @@ class AmplifierBase(MicroTemplate):
 
         # make test via to get extensions
         tr_w = self._track_width / self.grid.layout_unit
-        via_test = self.grid.make_via_from_bbox(BBox(0.0, tr_ybp, wire_w, tr_ytp, res),
-                                                self._vm_layer, self._hm_layer, 'y')
-        yext = max((via_test.bot_box.height - tr_w) / 2.0, 0.0)
+        via_test = self.add_via(BBox(0.0, tr_ybp, wire_w, tr_ytp, res),
+                                self._vm_layer, self._hm_layer, 'y')
+        yext = max((via_test.bottom_box.height - tr_w) / 2.0, 0.0)
         xext = max((via_test.top_box.width - wire_w) / 2.0, 0.0)
+        via_test.destroy()
 
         # get track X coordinates
         tr_xl = None
@@ -623,10 +624,10 @@ class AmplifierBase(MicroTemplate):
         tr_xl = wire_xl if tr_xl is None else min(wire_xl, tr_xl)
         for via_intv in via_intv_list:
             xo = wire_xl + via_intv[0] * wire_pitch
-            via = self.grid.make_via_from_bbox(BBox(xo, tr_yb, xo + wire_w, tr_yt, res),
-                                               self._vm_layer, self._hm_layer, 'y')
+            via_box = BBox(xo, tr_yb, xo + wire_w, tr_yt, res)
             arr_nx = via_intv[1] - via_intv[0]
-            self.add_via(via, arr_nx=arr_nx, arr_spx=wire_pitch)
+            via = self.add_via(via_box, self._vm_layer, self._hm_layer, 'y',
+                               arr_nx=arr_nx, arr_spx=wire_pitch)
             # update track X coordinates.
             tr_xl = min(tr_xl, via.top_box.left)
             tr_xr = max(tr_xr, via.top_box.right + (arr_nx - 1) * wire_pitch)
@@ -1082,9 +1083,10 @@ class AmplifierBase(MicroTemplate):
 
             xl = box_arr.base.left
             xr = box_arr.base.right
-            via = self.grid.make_via_from_bbox(BBox(xl, yb, xr, yt, res),
-                                               self._vm_layer, self._hm_layer, 'y')
-            yext = (via.bot_box.height - (yt - yb)) / 2.0
+            # create a temporary via to get extension parameters
+            via_box = BBox(xl, yb, xr, yt, res)
+            via = self.add_via(via_box, self._vm_layer, self._hm_layer, 'y')
+            yext = (via.bottom_box.height - (yt - yb)) / 2.0
             xext = (via.top_box.width - (xr - xl)) / 2.0
             # add via, tracks, and wires
             wbase = box_arr.base.extend(y=yb - yext).extend(y=yt2 + yext)
@@ -1094,16 +1096,24 @@ class AmplifierBase(MicroTemplate):
                           arr_ny=ntr, arr_spy=track_pitch)
             sub_box_arr_list.append(BBoxArray(tr_box, ny=ntr, spy=track_pitch))
             if contact:
-                self.add_via(via, arr_nx=box_arr.nx, arr_spx=box_arr.spx,
-                             arr_ny=ntr, arr_spy=track_pitch)
+                # set arraying parameters
+                via.nx = box_arr.nx
+                via.spx = box_arr.spx
+                via.ny = ntr
+                via.spy = track_pitch
             else:
+                # need two sets of alternating vias
                 nx = int(np.ceil(box_arr.nx / 2.0))
                 num_tr = int(np.ceil(ntr / 2.0))
-                self.add_via(via, arr_nx=nx, arr_spx=2 * box_arr.spx,
-                             arr_ny=num_tr, arr_spy=2 * track_pitch)
+                via.nx = nx
+                via.spx = 2 * box_arr.spx
+                via.ny = num_tr
+                via.spy = 2 * track_pitch
                 if ntr > 1:
-                    via.move_by(box_arr.spx, track_pitch)
-                    self.add_via(via, arr_nx=box_arr.nx - nx, arr_spx=2 * box_arr.spx,
+                    # add second set of vias
+                    via_box = via_box.move_by(box_arr.spx, track_pitch)
+                    self.add_via(via_box, self._vm_layer, self._hm_layer, 'y',
+                                 arr_nx=box_arr.nx - nx, arr_spx=2 * box_arr.spx,
                                  arr_ny=ntr - num_tr, arr_spy=2 * track_pitch)
 
         return self._hm_layer, sub_box_arr_list[0], sub_box_arr_list[1]

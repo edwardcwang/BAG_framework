@@ -361,31 +361,31 @@ class AnalogFinfetFoundation(MicroTemplate):
         dx = lch / 2.0
         # draw DPO left
         xmid = 0.5 * sd_pitch + extl
-        self.add_rect(dpo_lp[0], BBox(xmid - dx, yb, xmid + dx, yt, res),
-                      purpose=dpo_lp[1], arr_nx=nduml, arr_spx=sd_pitch)
+        self.add_rect(dpo_lp, BBox(xmid - dx, yb, xmid + dx, yt, res),
+                      arr_nx=nduml, arr_spx=sd_pitch)
         # draw PO
         xmid = (nduml + 0.5) * sd_pitch + extl
-        self.add_rect(po_lp[0], BBox(xmid - dx, yb, xmid + dx, yt, res),
-                      purpose=po_lp[1], arr_nx=fg, arr_spx=sd_pitch)
+        self.add_rect(po_lp, BBox(xmid - dx, yb, xmid + dx, yt, res),
+                      arr_nx=fg, arr_spx=sd_pitch)
         # draw DPO right
         xmid = (nduml + fg + 0.5) * sd_pitch + extl
-        self.add_rect(dpo_lp[0], BBox(xmid - dx, yb, xmid + dx, yt, res),
-                      purpose=dpo_lp[1], arr_nx=ndumr, arr_spx=sd_pitch)
+        self.add_rect(dpo_lp, BBox(xmid - dx, yb, xmid + dx, yt, res),
+                      arr_nx=ndumr, arr_spx=sd_pitch)
 
         # draw VT/implant
         imp_box = BBox(0.0, arr_box.bottom - extb,
                        arr_box.right + extr, arr_box.top + extt, res)
         for lay in lay_list:
             self.add_rect(lay, imp_box)
-        for (lay, purpose), (aextl, aextb, aextr, aextt) in extra_list:
+        for lay_purp, (aextl, aextb, aextr, aextt) in extra_list:
             box = BBox(arr_box.left - aextl, arr_box.bottom - aextb,
                        arr_box.right + aextr, arr_box.top + aextt, arr_box.resolution)
-            self.add_rect(lay, box, purpose=purpose)
+            self.add_rect(lay_purp, box)
 
         # draw PR boundary
-        self.add_rect('prBoundary', BBox(0.0, 0.0, arr_box_right + extr,
-                                         arr_box_top + pr_bnd_yext, res),
-                      purpose='boundary')
+        self.add_rect(('prBoundary', 'boundary'),
+                      BBox(0.0, 0.0, arr_box_right + extr,
+                           arr_box_top + pr_bnd_yext, res))
 
         # set array box of this template
         self.array_box = arr_box
@@ -603,7 +603,7 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
         xr = xmid + lch_layout / 2.0
         box = BBox(xl, od_yc - od_h / 2.0, xr, od_yc + od_h / 2.0, res)
         self.add_rect('OD', box)
-        self.add_rect('PODE', box, purpose='dummy1')
+        self.add_rect(('PODE', 'dummy1'), box)
 
         # draw OD edge objects
         self.draw_od_edge(od_yc, w, tech_constants)
