@@ -28,7 +28,7 @@ import abc
 from itertools import izip, chain, repeat
 import numpy as np
 
-from bag.util import IntervalSet
+from bag.util.interval import IntervalSet
 from bag.layout.template import MicroTemplate
 from bag.layout.util import BBox, BBoxArray, Port
 from .analog_mos import AnalogMosBase, AnalogSubstrate, AnalogMosConn, AnalogMosSep, AnalogMosDummy
