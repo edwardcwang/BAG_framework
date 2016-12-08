@@ -253,7 +253,7 @@ def _select_dummy_connections(conn_list, unconnected, all_conn_list):
     return select_list, gate_intv_set_list
 
 
-class AmplifierBase(MicroTemplate):
+class AnalogBase(MicroTemplate):
     """The amplifier abstract template class
 
     An amplifier template consists of rows of pmos or nmos capped by substrate contacts.
