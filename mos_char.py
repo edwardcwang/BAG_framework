@@ -128,9 +128,8 @@ class Transistor(AmplifierBase):
                                                            )
 
         # export body
-        sup_name = 'VSS' if mos_type == 'nch' else 'VDD'
-        self.add_pin(sup_name, sub_lay, bot_box_arr, show=True)
-        self.add_pin(sup_name, sub_lay, top_box_arr, show=True)
+        self.add_pin('b', sub_lay, bot_box_arr, show=True)
+        self.add_pin('b', sub_lay, top_box_arr, show=True)
 
         mos_ports = self.draw_mos_conn(0, fg_dum, fg, 0, 2)
         tr_lay, tr_box = self.connect_to_track([mos_ports['g']], 0, 'g', num_gate_tr - 1)
