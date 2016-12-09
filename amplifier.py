@@ -285,11 +285,12 @@ class AmplifierBase(MicroTemplate):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         # get the concrete template classes
-        self._mos_cls = self.grid.tech_info.get_process_param('mos_template')
-        self._sub_cls = self.grid.tech_info.get_process_param('sub_template')
-        self._mconn_cls = self.grid.tech_info.get_process_param('mos_conn_template')
-        self._sep_cls = self.grid.tech_info.get_process_param('mos_sep_template')
-        self._dum_cls = self.grid.tech_info.get_process_param('mos_dummy_template')
+        tech_params = self.grid.tech_info.tech_params
+        self._mos_cls = tech_params['layout']['mos_template']
+        self._sub_cls = tech_params['layout']['sub_template']
+        self._mconn_cls = tech_params['layout']['mos_conn_template']
+        self._sep_cls = tech_params['layout']['mos_sep_template']
+        self._dum_cls = tech_params['layout']['mos_dummy_template']
 
         # get information from template classes
         self._dummy_layer = self._dum_cls.get_port_layer()
