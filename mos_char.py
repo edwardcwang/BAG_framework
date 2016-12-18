@@ -22,13 +22,13 @@
 #
 ########################################################################################################################
 
-"""This module contains templates used for transistor characterization."""
+"""This module defines template used for transistor characterization."""
 
 
-from .amplifier import AmplifierBase
+from .analog_core import AnalogBase
 
 
-class Transistor(AmplifierBase):
+class Transistor(AnalogBase):
     """Subclass of AmplifierBase that draws serdes circuits.
 
     To use this class, draw_rows() must be the first function called, which will call draw_base() for you with
@@ -50,7 +50,7 @@ class Transistor(AmplifierBase):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        AmplifierBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        AnalogBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_params_info(cls):

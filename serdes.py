@@ -25,10 +25,10 @@
 import abc
 from itertools import izip
 
-from .amplifier import AmplifierBase
+from .analog_core import AnalogBase
 
 
-class SerdesRXBase(AmplifierBase):
+class SerdesRXBase(AnalogBase):
     """Subclass of AmplifierBase that draws serdes circuits.
 
     To use this class, draw_rows() must be the first function called, which will call draw_base() for you with
@@ -53,7 +53,7 @@ class SerdesRXBase(AmplifierBase):
     _row_names = ['tail', 'en', 'sw', 'in', 'casc', 'load']
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        AmplifierBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        AnalogBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._row_idx = None
 
     def draw_dynamic_latch(self, col_idx, fg_list, fg_sep=0):
