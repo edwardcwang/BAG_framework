@@ -1029,7 +1029,7 @@ class AnalogBase(MicroTemplate):
 
         tsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot)
         tsub_master = self.new_template(params=tsub_params, temp_cls=self._sub_cls)  # type: AnalogSubstrate
-        tsub_inst = self.add_instance(tsub_master, inst_name='XTSUB')
+        tsub_inst = self.add_instance(tsub_master, inst_name='XTSUB', orient='MX')
         tsub_inst.move_by(dy=amp_array_box.top - tsub_inst.array_box.bottom)
 
         self.array_box = amp_array_box.merge(tsub_inst.array_box)
