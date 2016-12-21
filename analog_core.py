@@ -418,7 +418,7 @@ class AnalogBase(MicroTemplate):
 
         return ntr
 
-    def get_track_yrange(self, row_idx, tr_type, tr_idx):
+    def get_track_yrange(self, row_idx, tr_type, tr_idx, num_track=1):
         """Calculate the track bottom and top coordinate.
 
         Parameters
@@ -429,6 +429,9 @@ class AnalogBase(MicroTemplate):
             the type of the track.  Either 'g' or 'ds'.
         tr_idx : int
             the track index.
+        num_track : int
+            width of the horizontal track wire in number of tracks.  The actual width is calculated
+            as num_track * track_width + (num_track - 1) * track_space
 
         Returns
         -------
@@ -458,8 +461,10 @@ class AnalogBase(MicroTemplate):
 
         tr_sp = self._track_space / layout_unit
         tr_w = self._track_width / layout_unit
-        tr_yb = tr_sp / 2.0 + tr_idx2 * (tr_sp + tr_w) + self.array_box.bottom
-        tr_yt = tr_yb + tr_w
+        tr_w_real = num_track * tr_w + (num_track - 1) * tr_sp
+        tr_yc = (tr_w + tr_sp) / 2.0 + tr_idx2 * (tr_sp + tr_w) + self.array_box.bottom
+        tr_yb = tr_yc - tr_w_real / 2.0
+        tr_yt = tr_yc + tr_w_real / 2.0
         return tr_yb, tr_yt
 
     def connect_to_supply(self, supply_idx, port_list):
@@ -559,7 +564,8 @@ class AnalogBase(MicroTemplate):
         return tr_layer, p_box, n_box
 
     def connect_to_track(self, port_list, row_idx, tr_type, track_idx,
-                         wire_yb=None, wire_yt=None, tr_xl=None, tr_xr=None):
+                         wire_yb=None, wire_yt=None, tr_xl=None, tr_xr=None,
+                         num_track=1):
         """Connect the given wires to the track on the given row.
 
         Parameters
@@ -567,20 +573,22 @@ class AnalogBase(MicroTemplate):
         port_list : list[bag.layout.util.Port]
             the list of ports to connect.
         row_idx : int
-            the row index.  0 is the bottom-most NMOS/PMOS row.
+            the center row index.  0 is the bottom-most NMOS/PMOS row.
         tr_type : str
             the type of the track.  Either 'g' or 'ds'.
         track_idx : int
             the track index.
         wire_yb : float or None
-            if not None, extend wires to this bottom coordinate.  Used for differential routing.
+            if not None, extend vertical wires to this bottom coordinate.  Used for differential routing.
         wire_yt : float or None
-            if not None, extend wires to this top coordinate.  Used for differential routing.
+            if not None, extend vertical wires to this top coordinate.  Used for differential routing.
         tr_xl : float or None
-            if not None, extend track to this left coordinate.  Used for differential routing.
+            if not None, extend horizontal track to this left coordinate.  Used for differential routing.
         tr_xr : float or None
-            if not None, extend track to this right coordinate.  Used for differential routing.
-
+            if not None, extend horizontal track to this right coordinate.  Used for differential routing.
+        num_track : int
+            width of the horizontal track wire in number of tracks.  The actual width is calculated
+            as num_track * track_width + (num_track - 1) * track_space
         Returns
         -------
         track_layer : str
@@ -595,7 +603,7 @@ class AnalogBase(MicroTemplate):
         res = self.grid.resolution
 
         # calculate track coordinates
-        tr_yb, tr_yt = self.get_track_yrange(row_idx, tr_type, track_idx)
+        tr_yb, tr_yt = self.get_track_yrange(row_idx, tr_type, track_idx, num_track=num_track)
         wire_yb = tr_yb if wire_yb is None else min(wire_yb, tr_yb)
         wire_yt = tr_yt if wire_yt is None else max(wire_yt, tr_yt)
 

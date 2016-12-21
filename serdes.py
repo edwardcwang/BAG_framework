@@ -56,7 +56,7 @@ class SerdesRXBase(AnalogBase):
         AnalogBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._row_idx = None
 
-    def draw_dynamic_latch(self, col_idx, fg_list, fg_sep=0):
+    def draw_dynamic_latch(self, col_idx, fg_list, fg_sep=0, num_track_current=1):
         """Draw dynamic latch.
 
         a separator is used to separate the positive half and the negative half of the latch.
@@ -71,6 +71,8 @@ class SerdesRXBase(AnalogBase):
             [fg_tail, fg_en, fg_sw, fg_in, fg_cas, fg_load].  Use fg=0 to disable.
         fg_sep : int
             number of separator fingers.  If less than the minimum, the minimum will be used instead.
+        num_track_current : int
+            width of the current-carrying horizontal track wire in number of tracks.
 
         Returns
         -------
@@ -209,10 +211,17 @@ class SerdesRXBase(AnalogBase):
             elif conn_name == 'VSS':
                 self.connect_to_supply(0, port_list)
             else:
-                conn_type = 'g' if conn_list[0][1] == 'g' else 'ds'
+                if conn_list[0][1] == 'g':
+                    conn_type = 'g'
+                    num_tr = 1
+                else:
+                    conn_type = 'ds'
+                    num_tr = num_track_current
+
                 ridx, tidx = track[conn_name]
                 ridx = self._row_idx[ridx]
-                sig_layer, sig_box = self.connect_to_track(port_list, ridx, conn_type, tidx)
+                sig_layer, sig_box = self.connect_to_track(port_list, ridx, conn_type, tidx,
+                                                           num_track=num_tr)
                 port_dict[conn_name] = sig_layer, sig_box
 
         return port_dict
@@ -362,6 +371,7 @@ class DynamicLatchChain(SerdesRXBase):
         ndumr = kwargs.pop('ndumr')
         show_pins = kwargs.pop('show_pins')
         rename_dict = kwargs.pop('rename_dict')
+        num_track_current = kwargs.pop('num_track_current')
 
         del kwargs['diff_space']
 
@@ -378,7 +388,7 @@ class DynamicLatchChain(SerdesRXBase):
         port_list = [('VSS', (slay, barr)), ('VDD', (slay, tarr))]
         for idx in xrange(nstage):
             col_idx = (fg_latch + fg_sep) * idx + nduml
-            pdict = self.draw_dynamic_latch(col_idx, fg_list, fg_sep=fg_sep)
+            pdict = self.draw_dynamic_latch(col_idx, fg_list, fg_sep=fg_sep, num_track_current=num_track_current)
             for pname, port_geo in pdict.iteritems():
                 pname = rename_dict.get(pname, pname)
                 if pname:
@@ -411,8 +421,9 @@ class DynamicLatchChain(SerdesRXBase):
             pds_tracks=3,
             gds_space=1,
             diff_space=1,
+            num_track_current=1,
             show_pins=True,
-            rename_dict={}
+            rename_dict={},
         )
 
     @classmethod
@@ -448,6 +459,7 @@ class DynamicLatchChain(SerdesRXBase):
             nds_tracks='5-element list of number of NMOS drain/source tracks per row, from bottom to top.',
             pg_tracks='number of PMOS gate tracks.',
             pds_tracks='number of PMOS drain/source tracks.',
+            num_track_current='width of the current-carrying horizontal track wire in number of tracks.',
             show_pins='True to create pin labels.',
             rename_dict='port renaming dictionary',
         )
