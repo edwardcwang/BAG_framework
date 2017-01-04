@@ -924,6 +924,25 @@ class AnalogMosConn(MicroTemplate):
             fg='number of fingers.',
             sdir='source connection direction.  0 for down, 1 for middle, 2 for up.',
             ddir='drain connection direction.  0 for down, 1 for middle, 2 for up.',
+            min_ds_cap='True to minimize parasitic Cds.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : dict[str, any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            min_ds_cap=False,
         )
 
     def get_layout_basename(self):
@@ -937,11 +956,14 @@ class AnalogMosConn(MicroTemplate):
 
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
-        return 'mconn_l%s_w%s_fg%d_s%d_d%d' % (lch_str, w_str,
-                                               self.params['fg'],
-                                               self.params['sdir'],
-                                               self.params['ddir'],
-                                               )
+        basename = 'mconn_l%s_w%s_fg%d_s%d_d%d' % (lch_str, w_str,
+                                                   self.params['fg'],
+                                                   self.params['sdir'],
+                                                   self.params['ddir'],
+                                                   )
+        if self.params['min_ds_cap']:
+            basename += '_minds'
+        return basename
 
     def compute_unique_key(self):
         return self.get_layout_basename()

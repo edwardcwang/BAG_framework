@@ -77,6 +77,25 @@ class Transistor(AnalogBase):
             vm_layer='vertical routing metal layer name.',
             hm_layer='horizontal routing metal layer name.',
             num_track_sep='number of tracks reserved as space between ports.',
+            min_ds_cap='True to minimize parasitic Cds.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : dict[str, any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            min_ds_cap=False,
         )
 
     def draw_layout(self):
@@ -131,7 +150,7 @@ class Transistor(AnalogBase):
         self.add_pin('b', sub_lay, bot_box_arr, show=True)
         self.add_pin('b', sub_lay, top_box_arr, show=True)
 
-        mos_ports = self.draw_mos_conn(0, fg_dum, fg, 0, 2)
+        mos_ports = self.draw_mos_conn(0, fg_dum, fg, 0, 2, min_ds_cap=self.params['min_ds_cap'])
         tr_lay, tr_box = self.connect_to_track([mos_ports['g']], 0, 'g', num_gate_tr - 1)
         self.add_pin('g', tr_lay, tr_box, show=True)
 
