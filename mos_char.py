@@ -29,10 +29,10 @@ from .analog_core import AnalogBase
 
 
 class Transistor(AnalogBase):
-    """Subclass of AmplifierBase that draws serdes circuits.
+    """A template of a single transistor with dummies.
 
-    To use this class, draw_rows() must be the first function called, which will call draw_base() for you with
-    the right arguments.
+    This class is mainly used for transistor characterization or
+    design exploration with config views.
 
     Parameters
     ----------
