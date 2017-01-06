@@ -25,6 +25,11 @@
 
 """This module defines abstract analog mosfet template classes.
 """
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+# noinspection PyUnresolvedReferences,PyCompatibility
+from builtins import *
+from future.utils import with_metaclass
 
 import abc
 import numpy as np
@@ -34,7 +39,7 @@ from bag.layout.util import BBox
 from bag.layout.template import MicroTemplate
 
 
-class AnalogMosBase(MicroTemplate):
+class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """An abstract template for analog mosfet.
 
     Must have parameters mos_type, lch, w, threshold, fg.
@@ -54,7 +59,6 @@ class AnalogMosBase(MicroTemplate):
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
@@ -165,7 +169,7 @@ class AnalogMosBase(MicroTemplate):
         return self.get_layout_basename()
 
 
-class AnalogSubstrate(MicroTemplate):
+class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """An abstract template for substrate connection.
 
     Parameters
@@ -182,7 +186,6 @@ class AnalogSubstrate(MicroTemplate):
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
@@ -267,14 +270,13 @@ class AnalogSubstrate(MicroTemplate):
         return self.get_layout_basename()
 
 
-class AnalogFinfetFoundation(MicroTemplate):
+# noinspection PyAbstractClass
+class AnalogFinfetFoundation(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """The abstract base class for finfet layout classes.
 
     This class provides the draw_foundation() method, which draws the poly array
     and implantation layers.
     """
-
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
@@ -489,7 +491,7 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
                              tech_constants=tech_constants)
 
 
-class AnalogFinfetEdge(AnalogFinfetFoundation):
+class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
     """The template for finfet vertical extension block.  Used to add more routing tracks.
 
     Parameters
@@ -506,7 +508,6 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         AnalogFinfetFoundation.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
@@ -609,7 +610,7 @@ class AnalogFinfetEdge(AnalogFinfetFoundation):
         self.draw_od_edge(od_yc, w, tech_constants)
 
 
-class AnalogFinfetBase(AnalogMosBase):
+class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
     """An abstract subclass of AnalogMosBase for finfet technology.
 
     Parameters
@@ -634,7 +635,6 @@ class AnalogFinfetBase(AnalogMosBase):
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, temp_db, lib_name, params, used_names,
                  core_cls, edge_cls, ext_cls, tech_constants, **kwargs):
@@ -882,7 +882,8 @@ class AnalogFinfetBase(AnalogMosBase):
                               self.grid.resolution)
 
 
-class AnalogMosConn(MicroTemplate):
+# noinspection PyAbstractClass
+class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """An abstract template for analog mosfet connections.
 
     Connects drain, gate, and source to a high level vertical metal layer.
@@ -902,7 +903,6 @@ class AnalogMosConn(MicroTemplate):
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
@@ -947,7 +947,8 @@ class AnalogMosConn(MicroTemplate):
         return self.get_layout_basename()
 
 
-class AnalogMosSep(MicroTemplate):
+# noinspection PyAbstractClass
+class AnalogMosSep(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """An abstract template for analog mosfet separator.
 
     A separator is a group of dummy transistors that separates the drain/source
@@ -969,7 +970,6 @@ class AnalogMosSep(MicroTemplate):
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
@@ -1024,7 +1024,8 @@ class AnalogMosSep(MicroTemplate):
         return '%s_%s' % (base_name, repr(self.params['gate_intv_list']))
 
 
-class AnalogMosDummy(MicroTemplate):
+# noinspection PyAbstractClass
+class AnalogMosDummy(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """An abstract template for analog mosfet separator.
 
     A separator is a group of dummy transistors that separates the drain/source
@@ -1044,7 +1045,6 @@ class AnalogMosDummy(MicroTemplate):
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)

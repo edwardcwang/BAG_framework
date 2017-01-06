@@ -23,6 +23,10 @@
 ########################################################################################################################
 
 """This module defines AmplifierBase, a base template class for Amplifier-like layout topologies."""
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+# noinspection PyUnresolvedReferences,PyCompatibility
+from builtins import *
 
 import abc
 from itertools import chain, repeat
@@ -32,6 +36,7 @@ from bag.util.interval import IntervalSet
 from bag.layout.template import MicroTemplate
 from bag.layout.util import BBox, BBoxArray, Port
 from .analog_mos import AnalogMosBase, AnalogSubstrate, AnalogMosConn, AnalogMosSep, AnalogMosDummy
+from future.utils import with_metaclass
 
 
 def _subtract_from_set(intv_set, start, end):
@@ -253,7 +258,8 @@ def _select_dummy_connections(conn_list, unconnected, all_conn_list):
     return select_list, gate_intv_set_list
 
 
-class AnalogBase(MicroTemplate):
+# noinspection PyAbstractClass
+class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """The amplifier abstract template class
 
     An amplifier template consists of rows of pmos or nmos capped by substrate contacts.
@@ -280,7 +286,6 @@ class AnalogBase(MicroTemplate):
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)

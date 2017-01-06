@@ -22,12 +22,19 @@
 #
 ########################################################################################################################
 
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+# noinspection PyUnresolvedReferences,PyCompatibility
+from builtins import *
+from future.utils import with_metaclass
+
 import abc
 
 from .analog_core import AnalogBase
 
 
-class SerdesRXBase(AnalogBase):
+# noinspection PyAbstractClass
+class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
     """Subclass of AmplifierBase that draws serdes circuits.
 
     To use this class, draw_rows() must be the first function called, which will call draw_base() for you with
@@ -47,7 +54,6 @@ class SerdesRXBase(AnalogBase):
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
-    __metaclass__ = abc.ABCMeta
 
     _row_names = ['tail', 'en', 'sw', 'in', 'casc', 'load']
 
