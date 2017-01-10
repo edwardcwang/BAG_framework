@@ -23,15 +23,20 @@
 ########################################################################################################################
 
 """This module defines AmplifierBase, a base template class for Amplifier-like layout topologies."""
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+# noinspection PyUnresolvedReferences,PyCompatibility
+from builtins import *
 
 import abc
-from itertools import izip, chain, repeat
+from itertools import chain, repeat
 import numpy as np
 
 from bag.util.interval import IntervalSet
 from bag.layout.template import MicroTemplate
 from bag.layout.util import BBox, BBoxArray, Port
 from .analog_mos import AnalogMosBase, AnalogSubstrate, AnalogMosConn, AnalogMosSep, AnalogMosDummy
+from future.utils import with_metaclass
 
 
 def _subtract_from_set(intv_set, start, end):
@@ -179,7 +184,7 @@ def _get_dummy_connections(intv_set_list):
 
     # substrate adjacent conn_list elements
     # make it so conn_list[x] contains intervals where you can connect exactly x+1 dummies vertically
-    for idx in xrange(len(conn_list) - 1):
+    for idx in range(len(conn_list) - 1):
         cur_conn, next_conn = conn_list[idx], conn_list[idx + 1]
         conn_list[idx] = _substract(cur_conn, next_conn)
 
@@ -218,13 +223,13 @@ def _select_dummy_connections(conn_list, unconnected, all_conn_list):
     else:
         select_list = []
         gate_intv_set_list = []
-    for idx in xrange(len(conn_list) - 1, -1, -1):
+    for idx in range(len(conn_list) - 1, -1, -1):
         conn_intvs = conn_list[idx]
         cur_select_list = []
         # select connections
         for intv in conn_intvs:
             select = False
-            for j in xrange(idx + 1):
+            for j in range(idx + 1):
                 dummy_intv_set = unconnected[j]
                 if dummy_intv_set.has_overlap(intv):
                     select = True
@@ -233,7 +238,7 @@ def _select_dummy_connections(conn_list, unconnected, all_conn_list):
                 cur_select_list.append(intv)
         # remove all dummies connected with selected connections
         for intv in cur_select_list:
-            for j in xrange(idx + 1):
+            for j in range(idx + 1):
                 unconnected[j].remove_all_overlaps(intv)
 
         # include in select_list
@@ -253,7 +258,8 @@ def _select_dummy_connections(conn_list, unconnected, all_conn_list):
     return select_list, gate_intv_set_list
 
 
-class AnalogBase(MicroTemplate):
+# noinspection PyAbstractClass
+class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """The amplifier abstract template class
 
     An amplifier template consists of rows of pmos or nmos capped by substrate contacts.
@@ -280,7 +286,6 @@ class AnalogBase(MicroTemplate):
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
@@ -969,8 +974,8 @@ class AnalogBase(MicroTemplate):
         self._track_space = track_space
         self._track_width = track_width
         intv_init = [(0, fg_tot)]
-        self._n_intvs = [IntervalSet(intv_list=intv_init) for _ in xrange(len(nw_list))]
-        self._p_intvs = [IntervalSet(intv_list=intv_init) for _ in xrange(len(pw_list))]
+        self._n_intvs = [IntervalSet(intv_list=intv_init) for _ in range(len(nw_list))]
+        self._p_intvs = [IntervalSet(intv_list=intv_init) for _ in range(len(pw_list))]
         self._num_tracks = []
         self._track_offsets = []
         self._ds_tr_indices = []
@@ -1000,18 +1005,18 @@ class AnalogBase(MicroTemplate):
 
         # draw nmos and pmos
         mos_master = None
-        for mos_type, w_list, th_list, g_list, ds_list in izip(['nch', 'pch'],
-                                                               [nw_list, pw_list],
-                                                               [nth_list, pth_list],
-                                                               [ng_tracks, pg_tracks],
-                                                               [nds_tracks, pds_tracks]):
+        for mos_type, w_list, th_list, g_list, ds_list in zip(['nch', 'pch'],
+                                                              [nw_list, pw_list],
+                                                              [nth_list, pth_list],
+                                                              [ng_tracks, pg_tracks],
+                                                              [nds_tracks, pds_tracks]):
             if mos_type == 'nch':
                 fmt = 'XMN%d'
                 orient = 'R0'
             else:
                 fmt = 'XMP%d'
                 orient = 'MX'
-            for idx, (w, thres, gntr, dntr) in enumerate(izip(w_list, th_list, g_list, ds_list)):
+            for idx, (w, thres, gntr, dntr) in enumerate(zip(w_list, th_list, g_list, ds_list)):
                 mos_params = self.get_mos_params(mos_type, thres, lch, w, fg_tot, gntr, dntr, gds_space)
                 mos_master = self.new_template(params=mos_params, temp_cls=self._mos_cls)  # type: AnalogMosBase
                 mos_inst = self.add_instance(mos_master, inst_name=fmt % idx, orient=orient)
@@ -1175,7 +1180,7 @@ class AnalogBase(MicroTemplate):
         num_rows = len(self._n_intvs) + len(self._p_intvs)
         all_conn_set = IntervalSet(intv_list=all_conn_list)
         for loc_intvs, gintvs, sign in [(bot_intvs, bot_gintv, 1), (top_intvs, top_gintv, -1)]:
-            for distance in xrange(len(loc_intvs)):
+            for distance in range(len(loc_intvs)):
                 ridx = distance if sign > 0 else num_rows - 1 - distance
                 gate_intv_set = gintvs[distance]
                 for dummy_intv in loc_intvs[distance]:
@@ -1186,7 +1191,7 @@ class AnalogBase(MicroTemplate):
                         dummy_gate_conns[key] = IntervalSet(intv_list=overlaps, val_list=val_list)
                     else:
                         dummy_gate_set = dummy_gate_conns[key]  # type: IntervalSet
-                        for fg_intv, ovl_val in izip(overlaps, val_list):
+                        for fg_intv, ovl_val in zip(overlaps, val_list):
                             if not dummy_gate_set.has_overlap(fg_intv):
                                 dummy_gate_set.add(fg_intv, val=ovl_val)
                             else:
@@ -1197,7 +1202,7 @@ class AnalogBase(MicroTemplate):
                                         raise Exception('Critical Error: report to developers.')
 
         wire_groups = {-1: [], 0: [], 1: []}
-        for key, dummy_gate_set in dummy_gate_conns.iteritems():
+        for key, dummy_gate_set in dummy_gate_conns.items():
             ridx, start, stop = key
             if not dummy_gate_set:
                 raise Exception('Dummy (%d, %d) at row %d unconnected.' % (start, stop, ridx))
@@ -1215,13 +1220,13 @@ class AnalogBase(MicroTemplate):
                     raise ValueError('Cannot draw separator with fg = %d < %d' % (fg, self.min_fg_sep))
                 gate_buses = self._draw_mos_sep(ridx, start, fg, gate_intv_list)
 
-            for box_arr, sub_val in izip(gate_buses, sub_val_iter):
+            for box_arr, sub_val in zip(gate_buses, sub_val_iter):
                 wire_groups[sub_val].append(box_arr)
 
         sub_yb = self._bsub_port.get_bounding_box(self._dummy_layer).bottom
         sub_yt = self._tsub_port.get_bounding_box(self._dummy_layer).top
 
-        for sub_idx, wire_bus_list in wire_groups.iteritems():
+        for sub_idx, wire_bus_list in wire_groups.items():
             wire_yb = sub_yb if sub_idx >= 0 else None
             wire_yt = sub_yt if sub_idx <= 0 else None
             self._connect_vertical_wires(wire_bus_list, wire_yb=wire_yb, wire_yt=wire_yt,

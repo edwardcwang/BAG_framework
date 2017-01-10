@@ -22,13 +22,19 @@
 #
 ########################################################################################################################
 
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+# noinspection PyUnresolvedReferences,PyCompatibility
+from builtins import *
+from future.utils import with_metaclass
+
 import abc
-from itertools import izip
 
 from .analog_core import AnalogBase
 
 
-class SerdesRXBase(AnalogBase):
+# noinspection PyAbstractClass
+class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
     """Subclass of AmplifierBase that draws serdes circuits.
 
     To use this class, draw_rows() must be the first function called, which will call draw_base() for you with
@@ -48,7 +54,6 @@ class SerdesRXBase(AnalogBase):
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
-    __metaclass__ = abc.ABCMeta
 
     _row_names = ['tail', 'en', 'sw', 'in', 'casc', 'load']
 
@@ -174,14 +179,14 @@ class SerdesRXBase(AnalogBase):
 
         # create mos connections
         mos_dict = {}
-        for ridx, fg, name in izip(self._row_idx, fg_list, self._row_names):
+        for ridx, fg, name in zip(self._row_idx, fg_list, self._row_names):
             if ridx < 0:
                 # error checking
                 if fg > 0:
                     raise ValueError('Row %s does not exist but fg = %d > 0' % (name, fg))
             elif fg > 0:
                 fg_tot = 2 * fg + fg_sep
-                col_start = col_idx + (fg_max - fg_tot) / 2
+                col_start = col_idx + (fg_max - fg_tot) // 2
                 sdir, ddir = sd_dir[name]
                 mos_dict['%sp' % name] = self.draw_mos_conn(ridx, col_start, fg, sdir, ddir)
                 mos_dict['%sn' % name] = self.draw_mos_conn(ridx, col_start + fg + fg_sep,
@@ -204,7 +209,7 @@ class SerdesRXBase(AnalogBase):
             port_dict[nname] = (sig_layer, nbox)
 
         # draw intermediate connections
-        for conn_name, conn_list in conn.iteritems():
+        for conn_name, conn_list in conn.items():
             port_list = [mos_dict[mos][sd] for mos, sd in conn_list]
             if conn_name == 'VDD':
                 self.connect_to_supply(1, port_list)
@@ -386,10 +391,10 @@ class DynamicLatchChain(SerdesRXBase):
         slay, barr, tarr = self.draw_rows(**kwargs)
 
         port_list = [('VSS', (slay, barr)), ('VDD', (slay, tarr))]
-        for idx in xrange(nstage):
+        for idx in range(nstage):
             col_idx = (fg_latch + fg_sep) * idx + nduml
             pdict = self.draw_dynamic_latch(col_idx, fg_list, fg_sep=fg_sep, num_track_current=num_track_current)
-            for pname, port_geo in pdict.iteritems():
+            for pname, port_geo in pdict.items():
                 pname = rename_dict.get(pname, pname)
                 if pname:
                     pin_name = self._rename_port(pname, idx, nstage)

@@ -23,7 +23,10 @@
 ########################################################################################################################
 
 """This module defines template used for transistor characterization."""
-
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+# noinspection PyUnresolvedReferences,PyCompatibility
+from builtins import *
 
 from .analog_core import AnalogBase
 
