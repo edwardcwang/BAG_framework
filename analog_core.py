@@ -374,7 +374,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                     guard_ring_nf=guard_ring_nf,
                     )
 
-    def get_substrate_params(self, sub_type, thres, lch, w, fg, has_guard_ring, guard_ring_nf):
+    def get_substrate_params(self, sub_type, thres, lch, w, fg, has_guard_ring, guard_ring_nf, is_end):
         """Returns a dictionary of substrate parameters.
 
         Override if you need to include process-specific parameters.
@@ -395,6 +395,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             True to draw guard rings.
         guard_ring_nf : int
             width of guard ring in number of fingers.
+        is_end : bool
+            True if this substrate is at the ends.
 
         Returns
         -------
@@ -410,6 +412,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                     track_space=self._track_space,
                     has_guard_ring=has_guard_ring,
                     guard_ring_nf=guard_ring_nf,
+                    is_end=is_end,
                     )
 
     def get_num_tracks(self, row_idx, tr_type):
@@ -1011,7 +1014,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             sub_th = pth_list[0]
             sub_w = ntap_w
 
-        bsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot, has_guard_ring, guard_ring_nf)
+        bsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot, has_guard_ring,
+                                                guard_ring_nf, True)
         bsub_master = self.new_template(params=bsub_params, temp_cls=self._sub_cls)  # type: AnalogSubstrate
         bsub_inst = self.add_instance(bsub_master, inst_name='XBSUB')
 
@@ -1062,7 +1066,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             sub_w = ptap_w
 
         tsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot,
-                                                has_guard_ring, guard_ring_nf)
+                                                has_guard_ring, guard_ring_nf, True)
         tsub_master = self.new_template(params=tsub_params, temp_cls=self._sub_cls)  # type: AnalogSubstrate
         tsub_inst = self.add_instance(tsub_master, inst_name='XTSUB', orient='MX')
         tsub_inst.move_by(dy=amp_array_box.top - tsub_inst.array_box.bottom)

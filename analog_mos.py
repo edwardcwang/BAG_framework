@@ -115,6 +115,7 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             ds_tracks=2,
             gds_space=1,
             guard_ring_nf=0,
+            is_end=False,
         )
 
     @classmethod
@@ -140,6 +141,7 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             ds_tracks='number of drain/source tracks.',
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  Use 0 for no guard ring.',
+            is_end='True if this template is at the ends.',
         )
 
     def get_num_tracks(self):
@@ -187,10 +189,11 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                                                                    self.params['fg'],
                                                                    tr_w_str, tr_s_str,
                                                                    g_ntr, ds_ntr, tr_sp)
+        name = 'base_end' if self.params['is_end'] else 'base'
         if gr_nf > 0:
-            return '%s_gr%d_base' % (main, gr_nf)
+            return '%s_gr%d_%s' % (main, gr_nf, name)
         else:
-            return main + '_base'
+            return main + '_' + name
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -248,6 +251,7 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
         """
         return dict(
             guard_ring_nf=0,
+            is_end=True,
         )
 
     @classmethod
@@ -270,6 +274,7 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
             track_width='horizontal track width, in meters.',
             track_space='horizontal track spacing, in meters.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  Use 0 for no guard ring.',
+            is_end='True if this template is at the ends.'
         )
 
     def get_num_tracks(self):
@@ -313,10 +318,11 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
                                                    lch_str, w_str,
                                                    self.params['fg'],
                                                    tr_w_str, tr_s_str)
+        name = 'base_end' if self.params['is_end'] else 'base'
         if gr_nf > 0:
-            return '%s_gr%d_base' % (main, gr_nf)
+            return '%s_gr%d_%s' % (main, gr_nf, name)
         else:
-            return main + '_base'
+            return main + '_' + name
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -490,6 +496,7 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
             nfin='height of the extension in number of fins',
             tech_constants='technology constants dictionary.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  Use 0 for no guard ring.',
+            is_end='True if this template is at the ends.',
         )
 
     @classmethod
@@ -508,6 +515,7 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
         """
         return dict(
             guard_ring_nf=0,
+            is_end=False,
         )
 
     def get_layout_basename(self):
@@ -526,10 +534,12 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
         lch_str = float_to_si_string(lch)
         gr_nf = self.params['guard_ring_nf']
         main = '%s_%s_l%s_fin%d_fg%d' % (mos_type, threshold, lch_str, nfin, fg)
+        name = 'ext_end' if self.params['is_end'] else 'ext'
+
         if gr_nf > 0:
-            return '%s_gr%d_ext' % (main, gr_nf)
+            return '%s_gr%d_%s' % (main, gr_nf, name)
         else:
-            return main + '_ext'
+            return main + '_' + name
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -548,6 +558,7 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
         threshold = self.params['threshold']
         tech_constants = self.params['tech_constants']
         gr_nf = self.params['guard_ring_nf']
+        is_end = self.params['is_end']
 
         if fg <= 0:
             raise ValueError('Number of fingers must be positive.')
@@ -560,8 +571,8 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
         ndum = tech_constants['mos_edge_num_dpo']  # type: int
         xext = tech_constants['mos_edge_xext']  # type: float
 
-        # if we're creating a substrate extension, make sure CPO overlap rule is met
-        if mos_type == 'ptap' or mos_type == 'ntap':
+        # make sure CPO overlap rule is met at the ends
+        if is_end:
             mos_core_cpo_po_ov = tech_constants['mos_core_cpo_po_ov']
             mos_cpo_h = tech_constants['mos_cpo_h_end']
             extb = max(mos_core_cpo_po_ov - mos_cpo_h / 2.0, 0.0)
@@ -579,6 +590,7 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
                 sub_type='ptap' if mos_type == 'nch' or mos_type == 'ptap' else 'ntap',
                 threshold=threshold,
                 fg=gr_nf,
+                is_end=is_end,
             )
             gr_master = self.new_template(params=gr_params, temp_cls=self._gr_cls)  # type: AnalogFinfetGuardRingExt
             # add left guard ring
@@ -644,6 +656,25 @@ class AnalogFinfetGuardRingExt(with_metaclass(abc.ABCMeta, MicroTemplate)):
             sub_type="substrate type, either 'ptap' or 'ntap'.",
             threshold='transistor threshold flavor.',
             fg='width of guard ring in number of fingers.',
+            is_end='True if this template is at the ends.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : dict[str, any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            is_end=False,
         )
 
     def get_layout_basename(self):
@@ -661,6 +692,8 @@ class AnalogFinfetGuardRingExt(with_metaclass(abc.ABCMeta, MicroTemplate)):
                                                  self.params['threshold'],
                                                  lch_str, h_str,
                                                  self.params['fg'])
+        if self.params['is_end']:
+            main += '_end'
         return main
 
     def compute_unique_key(self):
@@ -718,6 +751,7 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
             tech_constants='technology constants dictionary.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  Use 0 for no guard ring.',
             is_guard_ring_right="True if this is the guard ring's right edge.",
+            is_end='True if this template is at the ends.',
         )
 
     @classmethod
@@ -737,6 +771,7 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
         return dict(
             guard_ring_nf=0,
             is_guard_ring_right=False,
+            is_end=False,
         )
 
     def get_layout_basename(self):
@@ -757,6 +792,8 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
         gr_nf = self.params['guard_ring_nf']
         main = '%s_%s_l%s_w%d_bex%d_tex%d' % (mos_type, threshold, lch_str, w, bext, text)
         blk_name = 'grredge' if not self.params['is_guard_ring_right'] else 'edge'
+        if self.params['is_end']:
+            blk_name += '_end'
         if gr_nf > 0:
             return '%s_gr%d_%s' % (main, gr_nf, blk_name)
         else:
@@ -780,6 +817,7 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
         text = self.params['text']
         tech_constants = self.params['tech_constants']
         gr_nf = self.params['guard_ring_nf']
+        is_end = self.params['is_end']
 
         res = self.grid.resolution
 
@@ -791,7 +829,7 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
         nfin = tech_constants['nfin']
         mos_core_cpo_po_ov = tech_constants['mos_core_cpo_po_ov']
 
-        if mos_type == 'ptap' or mos_type == 'ntap':
+        if is_end:
             extb = max(mos_core_cpo_po_ov - tech_constants['mos_cpo_h_end'] / 2.0, 0.0)
         else:
             extb = 0.0
@@ -814,6 +852,7 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
                 bext=bext,
                 text=text,
                 fg=gr_nf,
+                is_end=is_end,
             )
             gr_master = self.new_template(params=gr_params, temp_cls=self._gr_cls)  # type: AnalogFinfetGuardRingExt
             # add left guard ring
@@ -892,6 +931,25 @@ class AnalogFinfetGuardRingEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
             bext='bottom extension in number of fins',
             text='top extension in number of fins',
             fg='width of guard ring in number of fingers.',
+            is_end='True if this template is at the ends.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : dict[str, any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            is_end=False,
         )
 
     def get_layout_basename(self):
@@ -912,6 +970,8 @@ class AnalogFinfetGuardRingEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
         lch_str = float_to_si_string(lch)
         main = '%s_%s_l%s_w%d_fg_%d_bex%d_tex%d_guardring' % (sub_type, threshold,
                                                               lch_str, w, fg, bext, text)
+        if self.params['is_end']:
+            main += '_end'
         return main
 
     def compute_unique_key(self):
@@ -952,7 +1012,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
 
     @classmethod
     @abc.abstractmethod
-    def get_ext_params(cls, lch, mos_type, threshold, fg, ext_nfin, guard_ring_nf):
+    def get_ext_params(cls, lch, mos_type, threshold, fg, ext_nfin, guard_ring_nf, is_end):
         """Returns a dictionary of extension block parameters.
 
         Parameters
@@ -969,6 +1029,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             extension height in number of fins.
         guard_ring_nf : int
             width of guard ring in number of fingers.  0 to disable.
+        is_end : bool
+            True if this template is at the ends.
 
         Returns
         -------
@@ -980,7 +1042,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
     @classmethod
     @abc.abstractmethod
     def get_edge_params(cls, lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                        guard_ring_style, guard_ring_nf, is_guard_ring_right):
+                        guard_ring_style, guard_ring_nf, is_guard_ring_right, is_end):
         """Returns a dictionary of edge block parameters.
 
         Parameters
@@ -1005,6 +1067,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             width of guard ring in number of fingers.  0 to disable.
         is_guard_ring_right : bool
             True if this is the guard ring's right edge.
+        is_end : bool
+            True if this template is at the ends.
 
         Returns
         -------
@@ -1016,7 +1080,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
     @classmethod
     @abc.abstractmethod
     def get_core_params(cls, lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                        guard_ring_style):
+                        guard_ring_style, is_end):
         """Returns a dictionary of edge block parameters.
 
         Parameters
@@ -1037,6 +1101,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             core top extension in number of fins.
         guard_ring_style : bool
             True to draw guard ring style transistor core.
+        is_end : bool
+            True if this template is at the ends.
 
         Returns
         -------
@@ -1094,14 +1160,14 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
     @classmethod
     def draw_transistor(cls, template, lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
                         bot_ext_nfin, top_ext_nfin, guard_ring_nf, res,
-                        is_guard_ring_transistor=False, guard_ring_style=False):
+                        is_guard_ring_transistor=False, guard_ring_style=False, is_end=False):
         """Draw a transistor at the given location.
         """
 
         tech_params = template.grid.tech_info.tech_params
         edge_cls = tech_params['layout']['finfet_edge_template']
         core_cls = tech_params['layout']['finfet_core_template']
-
+        core_is_end = is_end and bot_ext_nfin == 0
         if fg <= 0:
             raise ValueError('Number of fingers must be positive.')
 
@@ -1116,7 +1182,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
 
         # draw left edge
         ledge_params = cls.get_edge_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                                           guard_ring_style, guard_ring_nf, False)
+                                           guard_ring_style, guard_ring_nf, False, core_is_end)
         ledge_master = template.new_template(params=ledge_params, temp_cls=edge_cls)  # type: MicroTemplate
         ledge_inst = template.add_instance(ledge_master, inst_name='XLEDGE')
         inst_list.append(ledge_inst)
@@ -1126,7 +1192,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         if bot_ext_nfin > 0:
             # draw bottom extension
             bot_ext_params = cls.get_ext_params(lch, mos_type, threshold, fg, bot_ext_nfin,
-                                                guard_ring_nf)
+                                                guard_ring_nf, is_end)
             bot_ext_master = template.new_template(params=bot_ext_params,
                                                    temp_cls=AnalogFinfetExt)  # type: MicroTemplate
             bot_ext_inst = template.add_instance(bot_ext_master, inst_name='XBEXT')
@@ -1143,7 +1209,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
 
         # draw core transistor.
         core_params = cls.get_core_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                                          guard_ring_style)
+                                          guard_ring_style, core_is_end)
         core_master = template.new_template(params=core_params, temp_cls=core_cls)  # type: MicroTemplate
         core_inst = template.add_instance(core_master, inst_name='XMOS')
         inst_list.append(core_inst)
@@ -1159,7 +1225,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
 
         # draw right edge
         redge_params = cls.get_edge_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                                           guard_ring_style, guard_ring_nf, is_guard_ring_transistor)
+                                           guard_ring_style, guard_ring_nf, is_guard_ring_transistor, core_is_end)
         redge_master = template.new_template(params=redge_params, temp_cls=edge_cls)  # type: MicroTemplate
         redge_inst = template.add_instance(redge_master, inst_name='XREDGE', orient='MY')
         inst_list.append(redge_inst)
@@ -1245,6 +1311,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         ds_tracks = self.params['ds_tracks']
         gds_space = self.params['gds_space']
         guard_ring_nf = self.params['guard_ring_nf']
+        is_end = self.params['is_end']
 
         if fg <= 0:
             raise ValueError('Number of fingers must be positive.')
@@ -1308,7 +1375,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         results = self.draw_transistor(self, lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
                                        bot_ext_nfin, top_ext_nfin, guard_ring_nf,
                                        self.grid.resolution, is_guard_ring_transistor=False,
-                                       guard_ring_style=False)
+                                       guard_ring_style=False, is_end=is_end)
         self.array_box, self._sd_pitch, self._sd_center = results[1], results[2], results[3]
 
 
