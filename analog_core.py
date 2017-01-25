@@ -326,7 +326,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         """Returns the minimum number of separator fingers."""
         return self._min_fg_sep
 
-    def get_mos_params(self, mos_type, thres, lch, w, fg, g_tracks, ds_tracks, gds_space):
+    def get_mos_params(self, mos_type, thres, lch, w, fg, g_tracks, ds_tracks, gds_space,
+                       has_guard_ring, guard_ring_nf):
         """Returns a dictionary of mosfet parameters.
 
         Override if you need to include process-specific parameters.
@@ -349,6 +350,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             minimum number of drain/source tracks.
         gds_space : int
             number of tracks to reserve as space between gate and drain/source tracks.
+        has_guard_ring : bool
+            True to draw guard rings.
+        guard_ring_nf : int
+            width of guard ring in number of fingers.
 
         Returns
         -------
@@ -365,9 +370,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                     g_tracks=g_tracks,
                     ds_tracks=ds_tracks,
                     gds_space=gds_space,
+                    has_guard_ring=has_guard_ring,
+                    guard_ring_nf=guard_ring_nf,
                     )
 
-    def get_substrate_params(self, sub_type, thres, lch, w, fg):
+    def get_substrate_params(self, sub_type, thres, lch, w, fg, has_guard_ring, guard_ring_nf):
         """Returns a dictionary of substrate parameters.
 
         Override if you need to include process-specific parameters.
@@ -384,6 +391,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             width of the substrate.
         fg : int
             number of fingers.
+        has_guard_ring : bool
+            True to draw guard rings.
+        guard_ring_nf : int
+            width of guard ring in number of fingers.
 
         Returns
         -------
@@ -397,6 +408,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                     fg=fg,
                     track_width=self._track_width,
                     track_space=self._track_space,
+                    has_guard_ring=has_guard_ring,
+                    guard_ring_nf=guard_ring_nf,
                     )
 
     def get_num_tracks(self, row_idx, tr_type):
@@ -909,7 +922,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                   track_width, track_space, gds_space,
                   vm_layer, hm_layer,
                   ng_tracks=None, nds_tracks=None,
-                  pg_tracks=None, pds_tracks=None):
+                  pg_tracks=None, pds_tracks=None,
+                  has_guard_ring=False, guard_ring_nf=2):
         """Draw the amplifier base.
 
         Parameters
@@ -948,6 +962,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             number of pmos gate tracks per row, from bottom to top.  Defaults to 1.
         pds_tracks : list[int] or None
             number of pmos drain/source tracks per row, from bottom to top.  Defaults to 1.
+        has_guard_ring : bool
+            True to draw guard rings.
+        guard_ring_nf : int
+            width of guard ring in number of fingers.
 
         Returns
         -------
@@ -993,7 +1011,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             sub_th = pth_list[0]
             sub_w = ntap_w
 
-        bsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot)
+        bsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot, has_guard_ring, guard_ring_nf)
         bsub_master = self.new_template(params=bsub_params, temp_cls=self._sub_cls)  # type: AnalogSubstrate
         bsub_inst = self.add_instance(bsub_master, inst_name='XBSUB')
 
@@ -1017,7 +1035,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                 fmt = 'XMP%d'
                 orient = 'MX'
             for idx, (w, thres, gntr, dntr) in enumerate(zip(w_list, th_list, g_list, ds_list)):
-                mos_params = self.get_mos_params(mos_type, thres, lch, w, fg_tot, gntr, dntr, gds_space)
+                mos_params = self.get_mos_params(mos_type, thres, lch, w, fg_tot, gntr, dntr, gds_space,
+                                                 has_guard_ring, guard_ring_nf)
                 mos_master = self.new_template(params=mos_params, temp_cls=self._mos_cls)  # type: AnalogMosBase
                 mos_inst = self.add_instance(mos_master, inst_name=fmt % idx, orient=orient)
                 mos_inst.move_by(dy=amp_array_box.top - mos_inst.array_box.bottom)
@@ -1042,7 +1061,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             sub_th = nth_list[-1]
             sub_w = ptap_w
 
-        tsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot)
+        tsub_params = self.get_substrate_params(mos_type, sub_th, lch, sub_w, fg_tot,
+                                                has_guard_ring, guard_ring_nf)
         tsub_master = self.new_template(params=tsub_params, temp_cls=self._sub_cls)  # type: AnalogSubstrate
         tsub_inst = self.add_instance(tsub_master, inst_name='XTSUB', orient='MX')
         tsub_inst.move_by(dy=amp_array_box.top - tsub_inst.array_box.bottom)

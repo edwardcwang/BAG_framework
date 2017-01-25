@@ -233,7 +233,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
     def draw_rows(self, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw, pth, track_width, track_space, gds_space,
-                  vm_layer, hm_layer, ng_tracks, nds_tracks, pg_tracks, pds_tracks):
+                  vm_layer, hm_layer, ng_tracks, nds_tracks, pg_tracks, pds_tracks,
+                  **kwargs):
         """Draw the transistors and substrate rows.
 
         Parameters
@@ -274,6 +275,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             number of pmos gate tracks.
         pds_tracks : int
             number of pmos drain/source tracks.
+        kwargs : dict[str, any]
+            any addtional parameters.
 
         Returns
         -------
@@ -337,7 +340,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                               new_nw_list, new_nth_list, [pw], [pth],
                               track_width, track_space, gds_space, vm_layer, hm_layer,
                               ng_tracks=new_ng_tracks, nds_tracks=new_nds_tracks,
-                              pg_tracks=[pg_tracks], pds_tracks=[pds_tracks])
+                              pg_tracks=[pg_tracks], pds_tracks=[pds_tracks],
+                              **kwargs)
 
 
 class DynamicLatchChain(SerdesRXBase):
@@ -429,6 +433,8 @@ class DynamicLatchChain(SerdesRXBase):
             num_track_current=1,
             show_pins=True,
             rename_dict={},
+            has_guard_ring=False,
+            guard_ring_nf=2,
         )
 
     @classmethod
@@ -467,4 +473,6 @@ class DynamicLatchChain(SerdesRXBase):
             num_track_current='width of the current-carrying horizontal track wire in number of tracks.',
             show_pins='True to create pin labels.',
             rename_dict='port renaming dictionary',
+            has_guard_ring='True to draw guard ring on the sides.',
+            guard_ring_nf='Width of the guard ring, in number of fingers.',
         )
