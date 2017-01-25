@@ -717,6 +717,7 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
             text='top extension in number of fins',
             tech_constants='technology constants dictionary.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  Use 0 for no guard ring.',
+            is_guard_ring_right="True if this is the guard ring's right edge.",
         )
 
     @classmethod
@@ -735,6 +736,7 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
         """
         return dict(
             guard_ring_nf=0,
+            is_guard_ring_right=False,
         )
 
     def get_layout_basename(self):
@@ -754,10 +756,11 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
         lch_str = float_to_si_string(lch)
         gr_nf = self.params['guard_ring_nf']
         main = '%s_%s_l%s_w%d_bex%d_tex%d' % (mos_type, threshold, lch_str, w, bext, text)
+        blk_name = 'grredge' if not self.params['is_guard_ring_right'] else 'edge'
         if gr_nf > 0:
-            return '%s_gr%d_edge' % (main, gr_nf)
+            return '%s_gr%d_%s' % (main, gr_nf, blk_name)
         else:
-            return main + '_edge'
+            return main + '_' + blk_name
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -796,6 +799,11 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
         gr_master = None
         xshift = 0.0
         arr_box_ext = [xext, extb, 0.0, 0.0]
+        if self.params['is_guard_ring_right']:
+            # the right guard ring edge shares dummy poly, so we need to shrink
+            # implant layers
+            arr_box_ext[0] -= (ndum / 2) * sd_pitch
+
         if gr_nf > 0:
             # create guard ring master.
             gr_params = dict(
@@ -972,7 +980,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
     @classmethod
     @abc.abstractmethod
     def get_edge_params(cls, lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                        is_guard_ring_transistor, guard_ring_nf):
+                        guard_ring_style, guard_ring_nf, is_guard_ring_right):
         """Returns a dictionary of edge block parameters.
 
         Parameters
@@ -991,10 +999,12 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             core bottom extension in number of fins.
         core_top_ext : int
             core top extension in number of fins.
-        is_guard_ring_transistor : bool
-            True if this is the edge of a guard ring transistor.
+        guard_ring_style : bool
+            True to draw guard ring style edge.
         guard_ring_nf : int
             width of guard ring in number of fingers.  0 to disable.
+        is_guard_ring_right : bool
+            True if this is the guard ring's right edge.
 
         Returns
         -------
@@ -1006,7 +1016,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
     @classmethod
     @abc.abstractmethod
     def get_core_params(cls, lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                        is_guard_ring_transistor):
+                        guard_ring_style):
         """Returns a dictionary of edge block parameters.
 
         Parameters
@@ -1025,8 +1035,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             core bottom extension in number of fins.
         core_top_ext : int
             core top extension in number of fins.
-        is_guard_ring_transistor : bool
-            True if this is a guard ring transistor core.
+        guard_ring_style : bool
+            True to draw guard ring style transistor core.
 
         Returns
         -------
@@ -1037,7 +1047,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
 
     @classmethod
     @abc.abstractmethod
-    def get_ds_conn_info(cls, lch, w, is_guard_ring_transistor=False):
+    def get_ds_conn_info(cls, lch, w, guard_ring_style=False):
         """Returns a dictionary containing information about drain/source connection.
 
         Parameters
@@ -1046,8 +1056,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             the channel length, in meters.
         w : int
             the number of fins.
-        is_guard_ring_transistor : bool
-            True to return information for guard ring transistor.
+        guard_ring_style : bool
+            True to return information for guard ring style transistor.
 
         Returns
         -------
@@ -1084,7 +1094,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
     @classmethod
     def draw_transistor(cls, template, lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
                         bot_ext_nfin, top_ext_nfin, guard_ring_nf, res,
-                        is_guard_ring_transistor=False):
+                        is_guard_ring_transistor=False, guard_ring_style=False):
         """Draw a transistor at the given location.
         """
 
@@ -1099,16 +1109,16 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         mos_fin_pitch = cls.get_tech_constants()['mos_fin_pitch']
 
         # get extension needed to fit integer number of tracks
-        core_info = cls.get_ds_conn_info(lch, w, is_guard_ring_transistor=is_guard_ring_transistor)
+        core_info = cls.get_ds_conn_info(lch, w, guard_ring_style=guard_ring_style)
         od_dy = core_info['od_dy']
 
         inst_list = []
 
         # draw left edge
-        edge_params = cls.get_edge_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                                          is_guard_ring_transistor, guard_ring_nf)
-        edge_master = template.new_template(params=edge_params, temp_cls=edge_cls)  # type: MicroTemplate
-        ledge_inst = template.add_instance(edge_master, inst_name='XLEDGE')
+        ledge_params = cls.get_edge_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
+                                           guard_ring_style, guard_ring_nf, False)
+        ledge_master = template.new_template(params=ledge_params, temp_cls=edge_cls)  # type: MicroTemplate
+        ledge_inst = template.add_instance(ledge_master, inst_name='XLEDGE')
         inst_list.append(ledge_inst)
         ledge_arr_box = ledge_inst.array_box
 
@@ -1133,7 +1143,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
 
         # draw core transistor.
         core_params = cls.get_core_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                                          is_guard_ring_transistor)
+                                          guard_ring_style)
         core_master = template.new_template(params=core_params, temp_cls=core_cls)  # type: MicroTemplate
         core_inst = template.add_instance(core_master, inst_name='XMOS')
         inst_list.append(core_inst)
@@ -1148,7 +1158,10 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         sd_center = core_arr_box.left, core_arr_box.bottom + od_dy + core_bot_ext * mos_fin_pitch
 
         # draw right edge
-        redge_inst = template.add_instance(edge_master, inst_name='XREDGE', orient='MY')
+        redge_params = cls.get_edge_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
+                                           guard_ring_style, guard_ring_nf, is_guard_ring_transistor)
+        redge_master = template.new_template(params=redge_params, temp_cls=edge_cls)  # type: MicroTemplate
+        redge_inst = template.add_instance(redge_master, inst_name='XREDGE', orient='MY')
         inst_list.append(redge_inst)
         redge_arr_box = redge_inst.array_box
         redge_inst.move_by(dx=core_arr_box.right - redge_arr_box.left,
@@ -1294,7 +1307,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
 
         results = self.draw_transistor(self, lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
                                        bot_ext_nfin, top_ext_nfin, guard_ring_nf,
-                                       self.grid.resolution, is_guard_ring_transistor=False)
+                                       self.grid.resolution, is_guard_ring_transistor=False,
+                                       guard_ring_style=False)
         self.array_box, self._sd_pitch, self._sd_center = results[1], results[2], results[3]
 
 
