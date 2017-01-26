@@ -354,7 +354,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                     guard_ring_nf=guard_ring_nf,
                     )
 
-    def get_substrate_params(self, sub_type, thres, lch, w, fg, has_guard_ring, guard_ring_nf, is_end):
+    def get_substrate_params(self, sub_type, thres, lch, w, fg, has_guard_ring, guard_ring_nf,
+                             is_end, dummy_only):
         """Returns a dictionary of substrate parameters.
 
         Override if you need to include process-specific parameters.
@@ -377,6 +378,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             width of guard ring in number of fingers.
         is_end : bool
             True if this substrate is at the ends.
+        dummy_only : bool
+            True if only dummy connections will be drawn to this substrate.
 
         Returns
         -------
@@ -393,6 +396,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                     has_guard_ring=has_guard_ring,
                     guard_ring_nf=guard_ring_nf,
                     is_end=is_end,
+                    dummy_only=dummy_only,
                     )
 
     def _find_row_index(self, mos_type, row_idx):
@@ -498,19 +502,19 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             if inner:
                 if len(self._ptap_list) != 2:
                     raise ValueError('Inner substrate does not exist.')
-                port = self._ptap_list[1][2]
+                port = self._ptap_list[1][2].get_port()
                 wire_yt = port.get_bounding_box(self._vm_layer).top
             else:
-                port = self._ptap_list[0][2]
+                port = self._ptap_list[0][2].get_port()
                 wire_yb = port.get_bounding_box(self._vm_layer).bottom
         elif sub_type == 'ntap':
             if inner:
                 if len(self._ntap_list) != 2:
                     raise ValueError('Inner substrate does not exist.')
-                port = self._ptap_list[0][2]
+                port = self._ntap_list[0][2].get_port()
                 wire_yb = port.get_bounding_box(self._vm_layer).bottom
             else:
-                port = self._ptap_list[-1][2]
+                port = self._ntap_list[-1][2].get_port()
                 wire_yt = port.get_bounding_box(self._vm_layer).top
         else:
             raise ValueError('Invalid substrate type: %s' % sub_type)
@@ -1059,8 +1063,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                     self._sd_pitch = mmaster.get_sd_pitch()
             else:
                 # substrate
+                is_end = (ridx == 0 or ridx == (len(type_list) - 1))
                 mparams = self.get_substrate_params(mtype, thres, lch, w, fg_tot, has_guard_ring,
-                                                    guard_ring_nf, True)
+                                                    guard_ring_nf, is_end, not is_end)
                 mmaster = self.new_template(params=mparams, temp_cls=self._sub_cls)  # type: AnalogSubstrate
 
             # add and shift instance
@@ -1088,11 +1093,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
             # append substrates to respective list
             if mtype == 'ptap':
-                self._ptap_list.append((mmaster.get_num_tracks(), mmaster.contact_both_ds(),
-                                        minst.get_port()))
+                self._ptap_list.append((mmaster.get_num_tracks(), mmaster.contact_both_ds(), minst))
             elif mtype == 'ntap':
-                self._ntap_list.append((mmaster.get_num_tracks(), mmaster.contact_both_ds(),
-                                        minst.get_port()))
+                self._ntap_list.append((mmaster.get_num_tracks(), mmaster.contact_both_ds(), minst))
 
         self.array_box = tot_array_box
         # connect substrates to horizontal tracks.
@@ -1135,7 +1138,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         track_pitch = round(track_pitch / res) * res
 
         sub_box_arr_list = []
-        for row_idx, (ntr, contact, port) in zip(row_idx_list, sub_list):
+        for row_idx, (ntr, contact, subinst) in zip(row_idx_list, sub_list):
             # substrate 1 from number of tracks to give some margin for transistor.
             ntr -= 1
             yb, yt = self.get_track_yrange(sub_type, row_idx, 'ds', 0)
@@ -1145,7 +1148,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             yt_min = yb_min + delta_y
             yt_max = max(yt, yt2)
 
-            box_arr = port.get_pins(self._vm_layer).as_bbox_array()
+            box_arr = subinst.get_port().get_pins(self._vm_layer).as_bbox_array()
 
             xl = box_arr.base.left
             xr = box_arr.base.right
@@ -1194,31 +1197,31 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         n_intvs = [intv_set.get_complement(total_intv) for intv_set in self._n_intvs]
 
         # connect NMOS dummies
-        top_sub_port = None
+        top_sub_inst = None
         if self._ptap_list:
-            bot_sub_port = self._ptap_list[0][2]
+            bot_sub_inst = self._ptap_list[0][2]
             if len(self._ptap_list) > 1:
-                top_sub_port = self._ptap_list[1][2]
-            self._fill_dummy_helper('nch', n_intvs, bot_sub_port, top_sub_port)
+                top_sub_inst = self._ptap_list[1][2]
+            self._fill_dummy_helper('nch', n_intvs, bot_sub_inst, top_sub_inst, not self._ntap_list)
 
         # connect PMOS dummies
-        bot_sub_port = None
+        bot_sub_inst = None
         if self._ntap_list:
-            top_sub_port = self._ntap_list[-1][2]
+            top_sub_inst = self._ntap_list[-1][2]
             if len(self._ntap_list) > 1:
-                bot_sub_port = self._ntap_list[0][2]
-            self._fill_dummy_helper('pch', p_intvs, bot_sub_port, top_sub_port)
+                bot_sub_inst = self._ntap_list[0][2]
+            self._fill_dummy_helper('pch', p_intvs, bot_sub_inst, top_sub_inst, not self._ptap_list)
 
-    def _fill_dummy_helper(self, mos_type, intv_set_list, bot_sub_port, top_sub_port):
+    def _fill_dummy_helper(self, mos_type, intv_set_list, bot_sub_inst, top_sub_inst, export_both):
 
         num_rows = len(intv_set_list)
         bot_conn = top_conn = []
 
         num_sub = 0
-        if bot_sub_port is not None:
+        if bot_sub_inst is not None:
             num_sub += 1
             bot_conn = _get_dummy_connections(intv_set_list)
-        if top_sub_port is not None:
+        if top_sub_inst is not None:
             num_sub += 1
             top_conn = _get_dummy_connections(list(reversed(intv_set_list)))
 
@@ -1242,10 +1245,18 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             # for NMOS, prioritize connection to bottom substrate.
             bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list, all_conn_list)
             top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list, all_conn_list)
+            if not export_both:
+                # change inner substrate port exports.
+                top_sub_inst.new_master_with(port_intv_list=list(top_gintv[0].intervals()),
+                                             port_mode='d')
         else:
             # for PMOS, prioritize connection to top substrate.
             top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list, all_conn_list)
             bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list, all_conn_list)
+            if not export_both:
+                # change inner substrate port exports.
+                bot_sub_inst.new_master_with(port_intv_list=list(bot_gintv[0].intervals()),
+                                             port_mode='d')
 
         # make list of dummy gate connection parameters
         dummy_gate_conns = {}
@@ -1286,10 +1297,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                 wire_groups[sub_val].append(box_arr)
 
         sub_yb = sub_yt = None
-        if bot_sub_port is not None:
-            sub_yb = bot_sub_port.get_bounding_box(self._dummy_layer).bottom
-        if top_sub_port is not None:
-            sub_yt = top_sub_port.get_bounding_box(self._dummy_layer).top
+        if bot_sub_inst is not None:
+            sub_yb = bot_sub_inst.get_port().get_bounding_box(self._dummy_layer).bottom
+        if top_sub_inst is not None:
+            sub_yt = top_sub_inst.get_port().get_bounding_box(self._dummy_layer).top
 
         for sub_idx, wire_bus_list in wire_groups.items():
             wire_yb = sub_yb if sub_idx >= 0 else None

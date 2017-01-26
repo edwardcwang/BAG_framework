@@ -252,6 +252,9 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return dict(
             guard_ring_nf=0,
             is_end=True,
+            dummy_only=False,
+            port_intv_list=None,
+            port_mode='ds',
         )
 
     @classmethod
@@ -274,7 +277,10 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
             track_width='horizontal track width, in meters.',
             track_space='horizontal track spacing, in meters.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  Use 0 for no guard ring.',
-            is_end='True if this template is at the ends.'
+            is_end='True if this template is at the ends.',
+            dummy_only='True if only dummy connections will be made to this substrate.',
+            port_intv_list='list of gate intervals to draw substrate connections.',
+            port_mode="source/drain type to export.  Either 'd', 's', or 'ds'",
         )
 
     def get_num_tracks(self):
@@ -313,19 +319,30 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
         tr_w_str = float_to_si_string(self.params['track_width'])
         tr_s_str = float_to_si_string(self.params['track_space'])
         gr_nf = self.params['guard_ring_nf']
+        is_end = self.params['is_end']
+        dummy_only = self.params['dummy_only']
         main = '%s_%s_l%s_w%s_fg%d_trw%s_trs%s' % (self.params['sub_type'],
                                                    self.params['threshold'],
                                                    lch_str, w_str,
                                                    self.params['fg'],
                                                    tr_w_str, tr_s_str)
-        name = 'base_end' if self.params['is_end'] else 'base'
+        name = 'base'
+        if is_end:
+            name += '_end'
+        if dummy_only:
+            name += '_dumonly'
+
         if gr_nf > 0:
             return '%s_gr%d_%s' % (main, gr_nf, name)
         else:
             return main + '_' + name
 
     def compute_unique_key(self):
-        return self.get_layout_basename()
+        basename = self.get_layout_basename()
+        port_intv_list = self.params['port_intv_list']
+        if not port_intv_list:
+            port_intv_list = [(0, self.params['fg'])]
+        return '%s_%s_%s' % (basename, repr(port_intv_list), self.params['port_mode'])
 
 
 # noinspection PyAbstractClass
@@ -1545,10 +1562,7 @@ class AnalogMosSep(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
 # noinspection PyAbstractClass
 class AnalogMosDummy(with_metaclass(abc.ABCMeta, MicroTemplate)):
-    """An abstract template for analog mosfet separator.
-
-    A separator is a group of dummy transistors that separates the drain/source
-    junction of one transistor from another.
+    """An abstract template for analog mosfet dummy.
 
     Parameters
     ----------
