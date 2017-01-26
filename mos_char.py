@@ -153,14 +153,14 @@ class Transistor(AnalogBase):
         self.add_pin('b', sub_lay, bot_box_arr, show=True)
         self.add_pin('b', sub_lay, top_box_arr, show=True)
 
-        mos_ports = self.draw_mos_conn(0, fg_dum, fg, 0, 2, min_ds_cap=self.params['min_ds_cap'])
-        tr_lay, tr_box = self.connect_to_track([mos_ports['g']], 0, 'g', num_gate_tr - 1)
+        mos_ports = self.draw_mos_conn(mos_type, 0, fg_dum, fg, 0, 2, min_ds_cap=self.params['min_ds_cap'])
+        tr_lay, tr_box = self.connect_to_track([mos_ports['g']], mos_type, 0, 'g', num_gate_tr - 1)
         self.add_pin('g', tr_lay, tr_box, show=True)
 
-        tr_lay, tr_box = self.connect_to_track([mos_ports['d']], 0, 'ds', 0)
+        tr_lay, tr_box = self.connect_to_track([mos_ports['d']], mos_type, 0, 'ds', 0)
         self.add_pin('d', tr_lay, tr_box, show=True)
 
-        tr_lay, tr_box = self.connect_to_track([mos_ports['s']], 0, 'g', 0)
+        tr_lay, tr_box = self.connect_to_track([mos_ports['s']], mos_type, 0, 'g', 0)
         self.add_pin('s', tr_lay, tr_box, show=True)
 
         self.fill_dummy()

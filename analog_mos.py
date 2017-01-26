@@ -1600,6 +1600,24 @@ class AnalogMosDummy(with_metaclass(abc.ABCMeta, MicroTemplate)):
             conn_right='True to connect the right-most source to substrate.',
         )
 
+    @classmethod
+    def get_default_param_values(cls):
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : dict[str, any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            conn_right=False,
+        )
+
     def get_layout_basename(self):
         """Returns the base name for this template.
 

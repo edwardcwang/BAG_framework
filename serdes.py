@@ -29,6 +29,7 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
+from itertools import chain
 
 from .analog_core import AnalogBase
 
@@ -95,7 +96,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 'VDD': [('loadp', 's'), ('loadn', 's')],
                 'bias_load': [('loadp', 'g'), ('loadn', 'g')]}
 
-        out_ntr = self.get_num_tracks(self._row_idx[5], 'ds')
+        out_ntr = self.get_num_tracks(self._row_idx[5][0], self._row_idx[5][1], 'ds')
         track = {'outp': (5, out_ntr - 2 - self.params['diff_space']),
                  'outn': (5, out_ntr - 1), 'bias_load': (5, 0)}
 
@@ -121,7 +122,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         conn['inp'] = [('inn', 'g')]
         conn['inn'] = [('inp', 'g')]
-        in_ntr = self.get_num_tracks(self._row_idx[3], 'g')
+        in_ntr = self.get_num_tracks(self._row_idx[3][0], self._row_idx[3][1], 'g')
         track['inp'] = (3, in_ntr - 1)
         track['inn'] = (3, in_ntr - 2 - self.params['diff_space'])
 
@@ -179,7 +180,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         # create mos connections
         mos_dict = {}
-        for ridx, fg, name in zip(self._row_idx, fg_list, self._row_names):
+        for (mos_type, ridx), fg, name in zip(self._row_idx, fg_list, self._row_names):
             if ridx < 0:
                 # error checking
                 if fg > 0:
@@ -188,8 +189,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 fg_tot = 2 * fg + fg_sep
                 col_start = col_idx + (fg_max - fg_tot) // 2
                 sdir, ddir = sd_dir[name]
-                mos_dict['%sp' % name] = self.draw_mos_conn(ridx, col_start, fg, sdir, ddir)
-                mos_dict['%sn' % name] = self.draw_mos_conn(ridx, col_start + fg + fg_sep,
+                mos_dict['%sp' % name] = self.draw_mos_conn(mos_type, ridx, col_start, fg, sdir, ddir)
+                mos_dict['%sn' % name] = self.draw_mos_conn(mos_type, ridx, col_start + fg + fg_sep,
                                                             fg, sdir, ddir)
 
         port_dict = {}
@@ -200,10 +201,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             nname = '%sn' % diff_sig
             ridx, ptr_idx = track[pname]
             _, ntr_idx = track[nname]
-            ridx = self._row_idx[ridx]
+            mos_type, ridx = self._row_idx[ridx]
             p_port_list = [mos_dict[mos][sd] for mos, sd in conn.pop(pname)]
             n_port_list = [mos_dict[mos][sd] for mos, sd in conn.pop(nname)]
-            sig_layer, pbox, nbox = self.connect_differential_track(p_port_list, n_port_list, ridx,
+            sig_layer, pbox, nbox = self.connect_differential_track(p_port_list, n_port_list, mos_type, ridx,
                                                                     conn_type, ptr_idx, ntr_idx)
             port_dict[pname] = (sig_layer, pbox)
             port_dict[nname] = (sig_layer, nbox)
@@ -212,9 +213,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         for conn_name, conn_list in conn.items():
             port_list = [mos_dict[mos][sd] for mos, sd in conn_list]
             if conn_name == 'VDD':
-                self.connect_to_supply(1, port_list)
+                self.connect_to_substrate('ntap', port_list)
             elif conn_name == 'VSS':
-                self.connect_to_supply(0, port_list)
+                self.connect_to_substrate('ptap', port_list)
             else:
                 if conn_list[0][1] == 'g':
                     conn_type = 'g'
@@ -224,8 +225,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                     num_tr = num_track_current
 
                 ridx, tidx = track[conn_name]
-                ridx = self._row_idx[ridx]
-                sig_layer, sig_box = self.connect_to_track(port_list, ridx, conn_type, tidx,
+                mos_type, ridx = self._row_idx[ridx]
+                sig_layer, sig_box = self.connect_to_track(port_list, mos_type, ridx, conn_type, tidx,
                                                            num_track=num_tr)
                 port_dict[conn_name] = sig_layer, sig_box
 
@@ -282,10 +283,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         -------
         sub_layer : str
             the substrate horizontal track layer.
-        bot_box_arr : bag.layout.util.BBoxArray
-            the bottom substrate tracks bounding box array.
-        top_box_arr : bag.layout.util.BBoxArray
-            the top substrate tracks bounding box array.
+        ptap_box_arr_list : list[bag.layout.util.BBoxArray]
+            list of P-tap substrate tracks bounding box arrays.
+        ntap_box_arr_list : list[bag.layout.util.BBoxArray]
+            list of N-tap substrate tracks bounding box arrays.
         """
 
         # eliminate unneeded nmos rows and build row index.
@@ -294,12 +295,13 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         new_ng_tracks = [ng_tracks[0]]
         new_nds_tracks = [nds_tracks[0]]
 
-        self._row_idx = [0, -1, -1, -1, -1, -1]
+        self._row_idx = [('nch', 0), ('nch', -1), ('nch', -1), ('nch', -1),
+                         ('nch', -1), ('pch', 0)]
         cur_row = 1
 
         # set enable row index
         if nw_list[1] > 0:
-            self._row_idx[1] = cur_row
+            self._row_idx[1] = 'nch', cur_row
             cur_row += 1
             new_nw_list.append(nw_list[1])
             new_nth_list.append(nth_list[1])
@@ -308,7 +310,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         # set switch row index
         if nw_list[2] > 0:
-            self._row_idx[2] = cur_row
+            self._row_idx[2] = 'nch', cur_row
             cur_row += 1
             new_nw_list.append(nw_list[2])
             new_nth_list.append(nth_list[2])
@@ -316,7 +318,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             new_nds_tracks.append(nds_tracks[2])
 
         # set input row index
-        self._row_idx[3] = cur_row
+        self._row_idx[3] = 'nch', cur_row
         cur_row += 1
         new_nw_list.append(nw_list[3])
         new_nth_list.append(nth_list[3])
@@ -325,15 +327,12 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         # set cascode row index
         if nw_list[4] > 0:
-            self._row_idx[4] = cur_row
+            self._row_idx[4] = 'nch', cur_row
             cur_row += 1
             new_nw_list.append(nw_list[4])
             new_nth_list.append(nth_list[4])
             new_ng_tracks.append(ng_tracks[4])
             new_nds_tracks.append(nds_tracks[4])
-
-        # set load row index
-        self._row_idx[5] = cur_row
 
         # draw base
         return self.draw_base(lch, fg_tot, ptap_w, ntap_w,
@@ -392,9 +391,9 @@ class DynamicLatchChain(SerdesRXBase):
         fg_latch = max(fg_list) * 2 + fg_sep
         kwargs['fg_tot'] = nstage * fg_latch + (nstage - 1) * fg_sep + nduml + ndumr
 
-        slay, barr, tarr = self.draw_rows(**kwargs)
-
-        port_list = [('VSS', (slay, barr)), ('VDD', (slay, tarr))]
+        slay, ptap_box_arr_list, ntap_box_arr_list = self.draw_rows(**kwargs)
+        port_list = list(chain((('VSS', (slay, barr)) for barr in ptap_box_arr_list),
+                               (('VDD', (slay, barr)) for barr in ntap_box_arr_list)))
         for idx in range(nstage):
             col_idx = (fg_latch + fg_sep) * idx + nduml
             pdict = self.draw_dynamic_latch(col_idx, fg_list, fg_sep=fg_sep, num_track_current=num_track_current)
