@@ -947,7 +947,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                   ng_tracks=None, nds_tracks=None,
                   pg_tracks=None, pds_tracks=None,
                   n_orientations=None, p_orientations=None,
-                  guard_ring_nf=2):
+                  guard_ring_nf=0):
         """Draw the amplifier base.
 
         Parameters

@@ -432,7 +432,7 @@ class DynamicLatchChain(SerdesRXBase):
             num_track_current=1,
             show_pins=True,
             rename_dict={},
-            guard_ring_nf=2,
+            guard_ring_nf=0,
         )
 
     @classmethod
