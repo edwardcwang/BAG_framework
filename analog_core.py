@@ -1118,7 +1118,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         if numn == 0:
             ntap_barr_list = self._connect_substrate('ntap', self._ntap_list, list(range(len(self._ntap_list))))
         elif nump > 0:
-            ntap_barr_list = self._connect_substrate('ntap', self._ntap_list[1:], [len(self._ntap_list) - 1])
+            ntap_barr_list = self._connect_substrate('ntap', self._ntap_list[-1:], [len(self._ntap_list) - 1])
         else:
             ntap_barr_list = []
 
