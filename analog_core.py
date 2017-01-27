@@ -307,7 +307,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return self._min_fg_sep
 
     def get_mos_params(self, mos_type, thres, lch, w, fg, g_tracks, ds_tracks, gds_space,
-                       has_guard_ring, guard_ring_nf):
+                       guard_ring_nf):
         """Returns a dictionary of mosfet parameters.
 
         Override if you need to include process-specific parameters.
@@ -330,10 +330,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             minimum number of drain/source tracks.
         gds_space : int
             number of tracks to reserve as space between gate and drain/source tracks.
-        has_guard_ring : bool
-            True to draw guard rings.
         guard_ring_nf : int
-            width of guard ring in number of fingers.
+            width of guard ring in number of fingers.  0 to disable guard ring.
 
         Returns
         -------
@@ -350,11 +348,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                     g_tracks=g_tracks,
                     ds_tracks=ds_tracks,
                     gds_space=gds_space,
-                    has_guard_ring=has_guard_ring,
                     guard_ring_nf=guard_ring_nf,
                     )
 
-    def get_substrate_params(self, sub_type, thres, lch, w, fg, has_guard_ring, guard_ring_nf,
+    def get_substrate_params(self, sub_type, thres, lch, w, fg, guard_ring_nf,
                              is_end, dummy_only):
         """Returns a dictionary of substrate parameters.
 
@@ -372,10 +369,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             width of the substrate.
         fg : int
             number of fingers.
-        has_guard_ring : bool
-            True to draw guard rings.
         guard_ring_nf : int
-            width of guard ring in number of fingers.
+            width of guard ring in number of fingers.  0 to disable guard ring.
         is_end : bool
             True if this substrate is at the ends.
         dummy_only : bool
@@ -393,7 +388,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                     fg=fg,
                     track_width=self._track_width,
                     track_space=self._track_space,
-                    has_guard_ring=has_guard_ring,
                     guard_ring_nf=guard_ring_nf,
                     is_end=is_end,
                     dummy_only=dummy_only,
@@ -953,7 +947,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                   ng_tracks=None, nds_tracks=None,
                   pg_tracks=None, pds_tracks=None,
                   n_orientations=None, p_orientations=None,
-                  has_guard_ring=False, guard_ring_nf=2):
+                  guard_ring_nf=2):
         """Draw the amplifier base.
 
         Parameters
@@ -996,10 +990,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             orientation of each nmos row. Defaults to all 'R0'.
         p_orientations : list[str] or None
             orientation of each pmos row.  Defaults to all 'MX'.
-        has_guard_ring : bool
-            True to draw guard rings.
         guard_ring_nf : int
-            width of guard ring in number of fingers.
+            width of guard ring in number of fingers.  0 to disable guard ring.
 
         Returns
         -------
@@ -1033,10 +1025,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         # get property lists
         results = self.get_prop_lists('nch', ntap_w, nw_list, nth_list, ng_tracks, nds_tracks,
-                                      n_orientations, has_guard_ring or nump == 0)
+                                      n_orientations, guard_ring_nf > 0 or nump == 0)
         ntype_list, norient_list, nw_list, nth_list, ng_list, nds_list, nname_list = results
         results = self.get_prop_lists('pch', ptap_w, pw_list, pth_list, pg_tracks, pds_tracks,
-                                      p_orientations, has_guard_ring or numn == 0)
+                                      p_orientations, guard_ring_nf > 0 or numn == 0)
         ptype_list, porient_list, pw_list, pth_list, pg_list, pds_list, pname_list = results
 
         self._orient_list = norient_list + porient_list
@@ -1060,14 +1052,14 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             if is_mos:
                 # transistor
                 mparams = self.get_mos_params(mtype, thres, lch, w, fg_tot, gntr, dntr, gds_space,
-                                              has_guard_ring, guard_ring_nf)
+                                              guard_ring_nf)
                 mmaster = self.new_template(params=mparams, temp_cls=self._mos_cls)  # type: AnalogMosBase
                 if self._sd_pitch is None:
                     self._sd_pitch = mmaster.get_sd_pitch()
             else:
                 # substrate
                 is_end = (ridx == 0 or ridx == (len(type_list) - 1))
-                mparams = self.get_substrate_params(mtype, thres, lch, w, fg_tot, has_guard_ring,
+                mparams = self.get_substrate_params(mtype, thres, lch, w, fg_tot,
                                                     guard_ring_nf, is_end, not is_end)
                 mmaster = self.new_template(params=mparams, temp_cls=self._sub_cls)  # type: AnalogSubstrate
 
@@ -1274,7 +1266,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             port_name = 'VSS'
             bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list, all_conn_list)
             top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list, all_conn_list)
-            if not export_both:
+            if not export_both and top_sub_inst is not None:
                 # change inner substrate port exports.
                 top_sub_inst.new_master_with(port_intv_list=list(top_gintv[0].intervals()),
                                              port_mode='d')
@@ -1283,7 +1275,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             port_name = 'VDD'
             top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list, all_conn_list)
             bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list, all_conn_list)
-            if not export_both:
+            if not export_both and bot_sub_inst is not None:
                 # change inner substrate port exports.
                 bot_sub_inst.new_master_with(port_intv_list=list(bot_gintv[0].intervals()),
                                              port_mode='d')
@@ -1292,27 +1284,28 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         dummy_gate_conns = {}
         all_conn_set = IntervalSet(intv_list=all_conn_list)
         for gintvs, sign in [(bot_gintv, 1), (top_gintv, -1)]:
-            for distance in range(num_rows):
-                ridx = distance if sign > 0 else num_rows - 1 - distance
-                gate_intv_set = gintvs[distance]
-                for dummy_intv in intv_set_list[distance]:
-                    key = ridx, dummy_intv[0], dummy_intv[1]
-                    overlaps = list(gate_intv_set.overlap_intervals(dummy_intv))
-                    val_list = [0 if ovl_intv in all_conn_set else sign for ovl_intv in overlaps]
-                    if key not in dummy_gate_conns:
-                        # print('adding key = %s' % repr(key))
-                        dummy_gate_conns[key] = IntervalSet(intv_list=overlaps, val_list=val_list)
-                    else:
-                        dummy_gate_set = dummy_gate_conns[key]  # type: IntervalSet
-                        for fg_intv, ovl_val in zip(overlaps, val_list):
-                            if not dummy_gate_set.has_overlap(fg_intv):
-                                dummy_gate_set.add(fg_intv, val=ovl_val)
-                            else:
-                                # check that we don't have conflicting gate connections.
-                                for existing_intv, existing_val in dummy_gate_set.overlap_items(fg_intv):
-                                    if existing_intv != fg_intv or existing_val != ovl_val:
-                                        # this should never happen.
-                                        raise Exception('Critical Error: report to developers.')
+            if gintvs:
+                for distance in range(num_rows):
+                    ridx = distance if sign > 0 else num_rows - 1 - distance
+                    gate_intv_set = gintvs[distance]
+                    for dummy_intv in intv_set_list[distance]:
+                        key = ridx, dummy_intv[0], dummy_intv[1]
+                        overlaps = list(gate_intv_set.overlap_intervals(dummy_intv))
+                        val_list = [0 if ovl_intv in all_conn_set else sign for ovl_intv in overlaps]
+                        if key not in dummy_gate_conns:
+                            # print('adding key = %s' % repr(key))
+                            dummy_gate_conns[key] = IntervalSet(intv_list=overlaps, val_list=val_list)
+                        else:
+                            dummy_gate_set = dummy_gate_conns[key]  # type: IntervalSet
+                            for fg_intv, ovl_val in zip(overlaps, val_list):
+                                if not dummy_gate_set.has_overlap(fg_intv):
+                                    dummy_gate_set.add(fg_intv, val=ovl_val)
+                                else:
+                                    # check that we don't have conflicting gate connections.
+                                    for existing_intv, existing_val in dummy_gate_set.overlap_items(fg_intv):
+                                        if existing_intv != fg_intv or existing_val != ovl_val:
+                                            # this should never happen.
+                                            raise Exception('Critical Error: report to developers.')
 
         wire_groups = {-1: [], 0: [], 1: []}
         for key, dummy_gate_set in dummy_gate_conns.items():

@@ -432,7 +432,6 @@ class DynamicLatchChain(SerdesRXBase):
             num_track_current=1,
             show_pins=True,
             rename_dict={},
-            has_guard_ring=False,
             guard_ring_nf=2,
         )
 
@@ -472,6 +471,5 @@ class DynamicLatchChain(SerdesRXBase):
             num_track_current='width of the current-carrying horizontal track wire in number of tracks.',
             show_pins='True to create pin labels.',
             rename_dict='port renaming dictionary',
-            has_guard_ring='True to draw guard ring on the sides.',
-            guard_ring_nf='Width of the guard ring, in number of fingers.',
+            guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
         )
