@@ -496,25 +496,26 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             True to connect to inner substrate.
         """
         wire_yb, wire_yt = None, None
+        port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
 
         # get wire upper/lower Y coordinate
         if sub_type == 'ptap':
             if inner:
                 if len(self._ptap_list) != 2:
                     raise ValueError('Inner substrate does not exist.')
-                port = self._ptap_list[1][2].get_port()
+                port = self._ptap_list[1][2].get_port(port_name)
                 wire_yt = port.get_bounding_box(self._vm_layer).top
             else:
-                port = self._ptap_list[0][2].get_port()
+                port = self._ptap_list[0][2].get_port(port_name)
                 wire_yb = port.get_bounding_box(self._vm_layer).bottom
         elif sub_type == 'ntap':
             if inner:
                 if len(self._ntap_list) != 2:
                     raise ValueError('Inner substrate does not exist.')
-                port = self._ntap_list[0][2].get_port()
+                port = self._ntap_list[0][2].get_port(port_name)
                 wire_yb = port.get_bounding_box(self._vm_layer).bottom
             else:
-                port = self._ntap_list[-1][2].get_port()
+                port = self._ntap_list[-1][2].get_port(port_name)
                 wire_yt = port.get_bounding_box(self._vm_layer).top
         else:
             raise ValueError('Invalid substrate type: %s' % sub_type)
@@ -1049,6 +1050,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         # draw rows
         tot_array_box = None
         self._sd_pitch = None
+        gr_vss_list = []
+        gr_vdd_list = []
         for ridx, (mtype, orient, w, thres, gntr, dntr, name) in enumerate(zip(type_list, self._orient_list,
                                                                                self._w_list, th_list, g_list,
                                                                                ds_list, name_list)):
@@ -1097,6 +1100,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             elif mtype == 'ntap':
                 self._ntap_list.append((mmaster.get_num_tracks(), mmaster.contact_both_ds(), minst))
 
+            # add body pins to respective list
+            if minst.has_port('b'):
+                if mtype == 'ptap' or mtype == 'nch':
+                    gr_vss_list.extend(minst.get_port('b').get_pins(self._vm_layer).__iter__())
+                else:
+                    gr_vdd_list.extend(minst.get_port('b').get_pins(self._vm_layer).__iter__())
+
+        # connect body guard rings together
+        self._connect_vertical_wires(gr_vss_list)
+        self._connect_vertical_wires(gr_vdd_list)
+
         self.array_box = tot_array_box
         # connect substrates to horizontal tracks.
         if nump == 0:
@@ -1137,6 +1151,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         track_pitch = (self._track_width + self._track_space) / layout_unit
         track_pitch = round(track_pitch / res) * res
 
+        port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
+
         sub_box_arr_list = []
         for row_idx, (ntr, contact, subinst) in zip(row_idx_list, sub_list):
             # substrate 1 from number of tracks to give some margin for transistor.
@@ -1148,42 +1164,54 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             yt_min = yb_min + delta_y
             yt_max = max(yt, yt2)
 
-            box_arr = subinst.get_port().get_pins(self._vm_layer).as_bbox_array()
+            # get all wires to connect to supply.
+            barr_iter_list = [subinst.get_port(port_name).get_pins(self._vm_layer).__iter__()]
+            if subinst.has_port('b'):
+                barr_iter_list.append(subinst.get_port('b').get_pins(self._vm_layer).__iter__())
 
-            xl = box_arr.base.left
-            xr = box_arr.base.right
-            # create a temporary via to get extension parameters
-            via_box = BBox(xl, yb_min, xr, yt_min, res)
-            via = self.add_via(via_box, self._vm_layer, self._hm_layer, 'y')
-            yext = (via.bottom_box.height - delta_y) / 2.0
-            xext = (via.top_box.width - (xr - xl)) / 2.0
-            # add via, tracks, and wires
-            wbase = box_arr.base.extend(y=yb_min - yext).extend(y=yt_max + yext)
-            self.add_rect(self._vm_layer, wbase, nx=box_arr.nx, spx=box_arr.spx)
-            tr_box = BBox(xl - xext, yb_min, box_arr.right + xext, yt_min, res)
+            barr_list = list(chain(*barr_iter_list))
+
+            # draw vias to horizontal layer
+            tr_xl = float('inf')
+            tr_xr = float('-inf')
+            for box_arr in barr_list:
+                xl = box_arr.base.left
+                xr = box_arr.base.right
+                # create a temporary via to get extension parameters
+                via_box = BBox(xl, yb_min, xr, yt_min, res)
+                via = self.add_via(via_box, self._vm_layer, self._hm_layer, 'y')
+                yext = (via.bottom_box.height - delta_y) / 2.0
+                xext = (via.top_box.width - (xr - xl)) / 2.0
+                # update track X coordinates
+                tr_xl = min(tr_xl, xl - xext)
+                tr_xr = max(tr_xr, box_arr.right + xext)
+                # add via, tracks, and wires
+                wbase = box_arr.base.extend(y=yb_min - yext).extend(y=yt_max + yext)
+                self.add_rect(self._vm_layer, wbase, nx=box_arr.nx, spx=box_arr.spx)
+                if contact:
+                    # set arraying parameters
+                    via.nx = box_arr.nx
+                    via.spx = box_arr.spx
+                    via.ny = ntr
+                    via.spy = track_pitch
+                else:
+                    # need two sets of alternating vias
+                    nx = int(np.ceil(box_arr.nx / 2.0))
+                    num_tr = int(np.ceil(ntr / 2.0))
+                    via.nx = nx
+                    via.spx = 2 * box_arr.spx
+                    via.ny = num_tr
+                    via.spy = 2 * track_pitch
+                    if ntr > 1:
+                        # add second set of vias
+                        via_box = via_box.move_by(box_arr.spx, track_pitch)
+                        self.add_via(via_box, self._vm_layer, self._hm_layer, 'y',
+                                     nx=box_arr.nx - nx, spx=2 * box_arr.spx,
+                                     ny=ntr - num_tr, spy=2 * track_pitch)
+
+            tr_box = BBox(tr_xl, yb_min, tr_xr, yt_min, res)
             self.add_rect(self._hm_layer, tr_box, ny=ntr, spy=track_pitch)
             sub_box_arr_list.append(BBoxArray(tr_box, ny=ntr, spy=track_pitch))
-            if contact:
-                # set arraying parameters
-                via.nx = box_arr.nx
-                via.spx = box_arr.spx
-                via.ny = ntr
-                via.spy = track_pitch
-            else:
-                # need two sets of alternating vias
-                nx = int(np.ceil(box_arr.nx / 2.0))
-                num_tr = int(np.ceil(ntr / 2.0))
-                via.nx = nx
-                via.spx = 2 * box_arr.spx
-                via.ny = num_tr
-                via.spy = 2 * track_pitch
-                if ntr > 1:
-                    # add second set of vias
-                    via_box = via_box.move_by(box_arr.spx, track_pitch)
-                    self.add_via(via_box, self._vm_layer, self._hm_layer, 'y',
-                                 nx=box_arr.nx - nx, spx=2 * box_arr.spx,
-                                 ny=ntr - num_tr, spy=2 * track_pitch)
-
         return sub_box_arr_list
 
     def fill_dummy(self):
@@ -1243,6 +1271,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         if mos_type == 'nch':
             # for NMOS, prioritize connection to bottom substrate.
+            port_name = 'VSS'
             bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list, all_conn_list)
             top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list, all_conn_list)
             if not export_both:
@@ -1251,6 +1280,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                                              port_mode='d')
         else:
             # for PMOS, prioritize connection to top substrate.
+            port_name = 'VDD'
             top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list, all_conn_list)
             bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list, all_conn_list)
             if not export_both:
@@ -1298,9 +1328,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         sub_yb = sub_yt = None
         if bot_sub_inst is not None:
-            sub_yb = bot_sub_inst.get_port().get_bounding_box(self._dummy_layer).bottom
+            sub_yb = bot_sub_inst.get_port(port_name).get_bounding_box(self._dummy_layer).bottom
         if top_sub_inst is not None:
-            sub_yt = top_sub_inst.get_port().get_bounding_box(self._dummy_layer).top
+            sub_yt = top_sub_inst.get_port(port_name).get_bounding_box(self._dummy_layer).top
 
         for sub_idx, wire_bus_list in wire_groups.items():
             wire_yb = sub_yb if sub_idx >= 0 else None

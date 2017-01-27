@@ -611,7 +611,9 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
             )
             gr_master = self.new_template(params=gr_params, temp_cls=self._gr_cls)  # type: AnalogFinfetGuardRingExt
             # add left guard ring
-            self.add_instance(gr_master, inst_name='XLGR')
+            lgr_inst = self.add_instance(gr_master, inst_name='XLGR')
+            # re-export body pins
+            self.reexport(lgr_inst.get_port(), show=False)
             # calculate shift
             xshift = gr_master.array_box.right
             # share dummy polys
@@ -626,6 +628,8 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
             # draw right guard ring.
             rgr_inst = self.add_instance(gr_master, inst_name='XRGR', orient='MY')
             rgr_inst.move_by(dx=self.array_box.right + gr_master.array_box.right)
+            # re-export body pins
+            self.reexport(rgr_inst.get_port(), show=False)
             # update array box
             xl = gr_master.array_box.left
             wgr = gr_master.array_box.width
@@ -873,7 +877,9 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
             )
             gr_master = self.new_template(params=gr_params, temp_cls=self._gr_cls)  # type: AnalogFinfetGuardRingExt
             # add left guard ring
-            self.add_instance(gr_master, inst_name='XGR')
+            gr_inst = self.add_instance(gr_master, inst_name='XGR')
+            # re-export body pins
+            self.reexport(gr_inst.get_port(), show=False)
             # calculate shift
             xshift = gr_master.array_box.right
             # share dummy polys
@@ -1274,7 +1280,12 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         # set array box of this template
         array_box = BBox(arr_box_left, arr_box_bottom, arr_box_right, arr_box_top, res)
 
-        return inst_list, array_box, sd_pitch, sd_center
+        if guard_ring_nf > 0:
+            # get body ports.
+            port_list = [inst.get_port('b') for inst in inst_list if inst.has_port('b')]
+        else:
+            port_list = []
+        return inst_list, array_box, sd_pitch, sd_center, port_list
 
     def get_ds_track_index(self):
         """Returns the bottom drain/source track index.
@@ -1394,6 +1405,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
                                        self.grid.resolution, is_guard_ring_transistor=False,
                                        guard_ring_style=False, is_end=is_end)
         self.array_box, self._sd_pitch, self._sd_center = results[1], results[2], results[3]
+        for body_port in results[4]:
+            self.reexport(body_port, show=False)
 
 
 # noinspection PyAbstractClass
