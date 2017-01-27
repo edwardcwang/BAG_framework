@@ -54,7 +54,7 @@ def _flip_ud(orient):
         raise ValueError('Unknown orientation: %s' % orient)
 
 
-def _substract(intv_list1, intv_list2):
+def _subtract(intv_list1, intv_list2):
     """Substrate intv_list2 from intv_list1.
 
     intv_list2 must be a subset of intv_list1.  Used by dummy connection calculation.
@@ -161,11 +161,11 @@ def _get_dummy_connections(intv_set_list):
         conn_list.append(conn)
         prev_intv_list = conn
 
-    # substrate adjacent conn_list elements
+    # subtract adjacent conn_list elements
     # make it so conn_list[x] contains intervals where you can connect exactly x+1 dummies vertically
     for idx in range(len(conn_list) - 1):
         cur_conn, next_conn = conn_list[idx], conn_list[idx + 1]
-        conn_list[idx] = _substract(cur_conn, next_conn)
+        conn_list[idx] = _subtract(cur_conn, next_conn)
 
     return conn_list
 
@@ -1288,7 +1288,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                 for distance in range(num_rows):
                     ridx = distance if sign > 0 else num_rows - 1 - distance
                     gate_intv_set = gintvs[distance]
-                    for dummy_intv in intv_set_list[distance]:
+                    for dummy_intv in intv_set_list[ridx]:
                         key = ridx, dummy_intv[0], dummy_intv[1]
                         overlaps = list(gate_intv_set.overlap_intervals(dummy_intv))
                         val_list = [0 if ovl_intv in all_conn_set else sign for ovl_intv in overlaps]
