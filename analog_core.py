@@ -752,6 +752,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                         # can only happen for first overlap item
                         new_item_list.append(((cstart, prev_mark), yrang))
                         cstart = prev_mark
+                    if nend < cend:
+                        # last interval, append left overs
+                        new_item_list.append(((nend, cend), (yrang[0], yrang[1])))
+                        cend = nend
                     new_item_list.append(((cstart, cend), (min(cur_range[0], yrang[0]),
                                                            max(cur_range[1], yrang[1]))))
                     prev_mark = cend
@@ -1293,7 +1297,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                         overlaps = list(gate_intv_set.overlap_intervals(dummy_intv))
                         val_list = [0 if ovl_intv in all_conn_set else sign for ovl_intv in overlaps]
                         if key not in dummy_gate_conns:
-                            # print('adding key = %s' % repr(key))
                             dummy_gate_conns[key] = IntervalSet(intv_list=overlaps, val_list=val_list)
                         else:
                             dummy_gate_set = dummy_gate_conns[key]  # type: IntervalSet
