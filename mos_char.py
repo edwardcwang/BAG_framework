@@ -141,17 +141,18 @@ class Transistor(AnalogBase):
             pg_tracks.append(num_gate_tr)
             pds_tracks.append(1)
 
-        sub_lay, bot_box_arr, top_box_arr = self.draw_base(lch, fg_tot, ptap_w, ntap_w,
-                                                           nw_list, nth_list, pw_list, pth_list,
-                                                           track_width, track_space, num_track_sep,
-                                                           vm_layer, hm_layer,
-                                                           ng_tracks=ng_tracks, nds_tracks=nds_tracks,
-                                                           pg_tracks=pg_tracks, pds_tracks=pds_tracks,
-                                                           )
+        sub_lay, bot_box_arr_list, top_box_arr_list = self.draw_base(lch, fg_tot, ptap_w, ntap_w,
+                                                                     nw_list, nth_list, pw_list, pth_list,
+                                                                     track_width, track_space, num_track_sep,
+                                                                     vm_layer, hm_layer,
+                                                                     ng_tracks=ng_tracks, nds_tracks=nds_tracks,
+                                                                     pg_tracks=pg_tracks, pds_tracks=pds_tracks,
+                                                                     )
 
         # export body
-        self.add_pin('b', sub_lay, bot_box_arr, show=True)
-        self.add_pin('b', sub_lay, top_box_arr, show=True)
+        b_barr_list = bot_box_arr_list + top_box_arr_list
+        for barr in b_barr_list:
+            self.add_pin('b', sub_lay, barr, show=True)
 
         mos_ports = self.draw_mos_conn(mos_type, 0, fg_dum, fg, 0, 2, min_ds_cap=self.params['min_ds_cap'])
         tr_lay, tr_box = self.connect_to_track([mos_ports['g']], mos_type, 0, 'g', num_gate_tr - 1)
