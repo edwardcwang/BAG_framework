@@ -738,17 +738,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         wire_bus_list = []
         base = None
         count = 0
-        spx = None
+        spx = 0.0
         last_xl = None
         for (xl, xr), (yb, yt) in intv_set.items():
             if count == 0:
                 base = BBox(xl, yb, xr, yt, res)
                 count = 1
-                spx = None
+                spx = 0.0
             else:
                 if abs(yb - base.bottom) < res and abs(yt - base.top) < res:
                     # height matches
-                    if spx is None:
+                    if count == 1:
                         # second bounding box, set pitch
                         spx = xl - last_xl
                         count += 1
@@ -761,14 +761,14 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                         wire_bus_list.append(BBoxArray(base, nx=count, spx=spx))
                         base = BBox(xl, yb, xr, yt, res)
                         count = 1
-                        spx = None
+                        spx = 0.0
                 else:
                     # height does not match, add cumulated wires and start anew
                     self.add_rect(wire_layer, base, nx=count, spx=spx)
                     wire_bus_list.append(BBoxArray(base, nx=count, spx=spx))
                     base = BBox(xl, yb, xr, yt, res)
                     count = 1
-                    spx = None
+                    spx = 0.0
 
             # update last_xl
             last_xl = xl
