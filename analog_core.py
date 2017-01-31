@@ -437,8 +437,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             the row index.  0 is the bottom-most row.
         tr_type : str
             the type of the track.  Either 'g' or 'ds'.
-        tr_idx : int
-            the track index.
+        tr_idx : int or float
+            the track index.  Can be integer + 0.5 if num_track is even.
         num_track : int
             width of the horizontal track wire in number of tracks.  The actual width is calculated
             as num_track * track_width + (num_track - 1) * track_space
@@ -521,7 +521,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._connect_vertical_wires(box_arr_list, wire_yb=wire_yb, wire_yt=wire_yt)
 
     def connect_differential_track(self, p_port_list, n_port_list, mos_type,
-                                   row_idx, tr_type, ptr_idx, ntr_idx):
+                                   row_idx, tr_type, ptr_idx, ntr_idx,
+                                   num_track=1):
         """Connect the given differential wires to two tracks.
 
         Will make sure the connects are symmetric and have identical parasitics.
@@ -542,6 +543,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             the positive track index.
         ntr_idx : int
             the negative track index
+        num_track : int
+            width of the horizontal track wire in number of tracks.  The actual width is calculated
+            as num_track * track_width + (num_track - 1) * track_space
 
         Returns
         -------
@@ -557,8 +561,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         res = self.grid.resolution
 
-        tr_ybp, tr_ytp = self.get_track_yrange(mos_type, row_idx, tr_type, ptr_idx)
-        tr_ybn, tr_ytn = self.get_track_yrange(mos_type, row_idx, tr_type, ntr_idx)
+        tr_ybp, tr_ytp = self.get_track_yrange(mos_type, row_idx, tr_type, ptr_idx, num_track=num_track)
+        tr_ybn, tr_ytn = self.get_track_yrange(mos_type, row_idx, tr_type, ntr_idx, num_track=num_track)
 
         # the ports should all be just BBoxArray on the same layer.
         test_box_arr = p_port_list[0].get_pins().as_bbox_array()
@@ -591,9 +595,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         # draw the connections
         tr_layer, p_box = self.connect_to_track(p_port_list, mos_type, row_idx, tr_type, ptr_idx,
-                                                wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr)
+                                                wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr,
+                                                num_track=num_track)
         _, n_box = self.connect_to_track(n_port_list, mos_type, row_idx, tr_type, ntr_idx,
-                                         wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr)
+                                         wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr,
+                                         num_track=num_track)
 
         return tr_layer, p_box, n_box
 
@@ -686,6 +692,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     def _connect_vertical_wires(self, box_arr_list, wire_yb=None, wire_yt=None, wire_layer=''):
         """Connect the given wires together vertically.
 
+        assumes all wires are aligned to source-drain pitch.
+
         Parameters
         ----------
         box_arr_list : list[bag.layout.util.BBoxArray]
@@ -707,71 +715,67 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         res = self.grid.resolution
 
-        # make sure all wires are aligned
-        wire_w = box_arr_list[0].base.width
-        wire_pitch = box_arr_list[0].spx
-        wire_xl = box_arr_list[0].left
-        for box_arr in box_arr_list:
-            if abs(wire_w - box_arr.base.width) >= res or abs(wire_pitch - box_arr.spx) >= res:
-                raise ValueError('Not all wires have same width and pitch')
-            cur_xl = box_arr.left
-            nsep = int(round((cur_xl - wire_xl) / wire_pitch))
-            if abs(cur_xl - wire_xl - nsep * wire_pitch) >= res:
-                raise ValueError('Wires are not aligned properly.')
-            wire_xl = min(wire_xl, cur_xl)
-
         # calculate wire vertical coordinates
         intv_set = IntervalSet(res=res)
         for box_arr in box_arr_list:
-            cur_xl = box_arr.left
-            # convert wire coordinates to track number
-            nstart = int(round((cur_xl - wire_xl) / wire_pitch))
-            nend = nstart + box_arr.nx
-            # calculate wire bus bottom and top coordinate.
-            cur_range = (box_arr.bottom, box_arr.top)
-            if wire_yb is not None:
-                cur_range = (min(cur_range[0], wire_yb), max(cur_range[1], wire_yb))
-            if wire_yt is not None:
-                cur_range = (min(cur_range[0], wire_yt), max(cur_range[1], wire_yt))
-            ovl_item_list = list(intv_set.overlap_items((nstart, nend)))
-            # perform max/min with other wire buses.
-            if not ovl_item_list:
-                intv_set.add((nstart, nend), val=cur_range)
-            else:
-                for intv, yrang in ovl_item_list:
-                    intv_set.remove(intv)
-                new_item_list = []
-                ovl_end = ovl_item_list[-1][0][1]
-                if ovl_end < nend:
-                    new_item_list.append(((ovl_end, nend), cur_range))
-                prev_mark = nstart
-                for (cstart, cend), yrang in ovl_item_list:
-                    if prev_mark < cstart:
-                        new_item_list.append(((prev_mark, cstart), cur_range))
-                    elif cstart < prev_mark:
-                        # can only happen for first overlap item
-                        new_item_list.append(((cstart, prev_mark), yrang))
-                        cstart = prev_mark
-                    if nend < cend:
-                        # last interval, append left overs
-                        new_item_list.append(((nend, cend), (yrang[0], yrang[1])))
-                        cend = nend
-                    new_item_list.append(((cstart, cend), (min(cur_range[0], yrang[0]),
-                                                           max(cur_range[1], yrang[1]))))
-                    prev_mark = cend
+            for box in box_arr:
+                intv = box.left, box.right
+                cur_range = (box.bottom, box.top)
+                if wire_yb is not None:
+                    cur_range = (min(cur_range[0], wire_yb), max(cur_range[1], wire_yb))
+                if wire_yt is not None:
+                    cur_range = (min(cur_range[0], wire_yt), max(cur_range[1], wire_yt))
 
-                for intv, yrang in new_item_list:
-                    intv_set.add(intv, val=yrang)
-        # draw vertical wires
+                try:
+                    old_range = intv_set[intv]
+                    cur_range = min(cur_range[0], old_range[0]), max(cur_range[1], old_range[1])
+                    intv_set[intv] = cur_range
+                except KeyError:
+                    intv_set.add(intv, cur_range)
+
+        # draw vertical wires, group into bounding box arrays
         wire_layer = wire_layer or self._vm_layer
         wire_bus_list = []
-        for intv, val in intv_set.items():
-            xl = intv[0] * wire_pitch + wire_xl
-            yb, yt = val
-            box = BBox(xl, yb, xl + wire_w, yt, res)
-            arr_nx = intv[1] - intv[0]
-            self.add_rect(wire_layer, box, nx=arr_nx, spx=wire_pitch)
-            wire_bus_list.append(BBoxArray(box, nx=arr_nx, spx=wire_pitch))
+        base = None
+        count = 0
+        spx = None
+        last_xl = None
+        for (xl, xr), (yb, yt) in intv_set.items():
+            if count == 0:
+                base = BBox(xl, yb, xr, yt, res)
+                count = 1
+                spx = None
+            else:
+                if abs(yb - base.bottom) < res and abs(yt - base.top) < res:
+                    # height matches
+                    if spx is None:
+                        # second bounding box, set pitch
+                        spx = xl - last_xl
+                        count += 1
+                    elif abs(spx - (xl - last_xl)) < res:
+                        # pitch matches
+                        count += 1
+                    else:
+                        # pitch does not match, add cumulated wires and start anew
+                        self.add_rect(wire_layer, base, nx=count, spx=spx)
+                        wire_bus_list.append(BBoxArray(base, nx=count, spx=spx))
+                        base = BBox(xl, yb, xr, yt, res)
+                        count = 1
+                        spx = None
+                else:
+                    # height does not match, add cumulated wires and start anew
+                    self.add_rect(wire_layer, base, nx=count, spx=spx)
+                    wire_bus_list.append(BBoxArray(base, nx=count, spx=spx))
+                    base = BBox(xl, yb, xr, yt, res)
+                    count = 1
+                    spx = None
+
+            # update last_xl
+            last_xl = xl
+
+        # add last wires
+        self.add_rect(wire_layer, base, nx=count, spx=spx)
+        wire_bus_list.append(BBoxArray(base, nx=count, spx=spx))
 
         return wire_bus_list
 
@@ -882,6 +886,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         w = self._w_list[ridx]
         xc, yc = self._sd_list[ridx]
         xc += col_idx * self._sd_pitch
+
+        if orient == 'MX':
+            # flip source/drain directions
+            sdir = 2 - sdir
+            ddir = 2 - ddir
 
         conn_params = dict(
             lch=self._lch,

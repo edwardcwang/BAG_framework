@@ -1262,7 +1262,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         if top_ext_nfin > 0:
             # draw top extension
             top_ext_params = cls.get_ext_params(lch, mos_type, threshold, fg, top_ext_nfin,
-                                                guard_ring_nf)
+                                                guard_ring_nf, is_end)
             top_ext_master = template.new_template(params=top_ext_params,
                                                    temp_cls=AnalogFinfetExt)  # type: MicroTemplate
             top_ext_inst = template.add_instance(top_ext_master, inst_name='XTEXT')
@@ -1347,7 +1347,10 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         # get technology constants
         tech_constants = self.get_tech_constants()
         mos_fin_pitch = tech_constants['mos_fin_pitch']
-        mos_ext_nfin_min = tech_constants['mos_ext_nfin_min']
+        if guard_ring_nf == 0:
+            mos_ext_nfin_min = tech_constants['mos_ext_nfin_min']
+        else:
+            mos_ext_nfin_min = tech_constants['mos_gring_ext_nfin_min']
 
         # express track pitch as number of fin pitches
         track_pitch = track_width + track_space
