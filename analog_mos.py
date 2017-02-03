@@ -116,6 +116,7 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             gds_space=1,
             guard_ring_nf=0,
             is_end=False,
+            is_ds_dummy=False,
         )
 
     @classmethod
@@ -142,6 +143,7 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  Use 0 for no guard ring.',
             is_end='True if this template is at the ends.',
+            is_ds_dummy='True if this template is only used to create drain/source dummy metals.',
         )
 
     def get_num_tracks(self):
@@ -189,7 +191,11 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                                                                    self.params['fg'],
                                                                    tr_w_str, tr_s_str,
                                                                    g_ntr, ds_ntr, tr_sp)
-        name = 'base_end' if self.params['is_end'] else 'base'
+        name = 'base'
+        if self.params['is_end']:
+            name += '_end'
+        if self.params['is_ds_dummy']:
+            name += '_dsdummy'
         if gr_nf > 0:
             return '%s_gr%d_%s' % (main, gr_nf, name)
         else:
@@ -773,6 +779,7 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
             guard_ring_nf='Width of the guard ring, in number of fingers.  Use 0 for no guard ring.',
             is_guard_ring_right="True if this is the guard ring's right edge.",
             is_end='True if this template is at the ends.',
+            is_ds_dummy='True if this template is only used to create drain/source dummy metals.',
         )
 
     @classmethod
@@ -793,6 +800,7 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
             guard_ring_nf=0,
             is_guard_ring_right=False,
             is_end=False,
+            is_ds_dummy=False,
         )
 
     def get_layout_basename(self):
@@ -815,6 +823,8 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
         blk_name = 'grredge' if not self.params['is_guard_ring_right'] else 'edge'
         if self.params['is_end']:
             blk_name += '_end'
+        if self.params['is_ds_dummy']:
+            blk_name += '_dsdummy'
         if gr_nf > 0:
             return '%s_gr%d_%s' % (main, gr_nf, blk_name)
         else:
@@ -898,16 +908,18 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
             self.array_box = BBox(xl, self.array_box.bottom,
                                   xl + wgr + wfund, self.array_box.top, self.array_box.resolution)
 
-        # draw OD/PODE
         od_yc = self.array_box.bottom + tech_constants['mos_edge_od_dy'] + bext * mos_fin_pitch
-        lch_layout = lch / self.grid.layout_unit
-        od_h = mos_fin_h + (w - 1) * mos_fin_pitch
-        xmid = xshift + (ndum + 0.5) * sd_pitch
-        xl = xmid - lch_layout / 2.0
-        xr = xmid + lch_layout / 2.0
-        box = BBox(xl, od_yc - od_h / 2.0, xr, od_yc + od_h / 2.0, res)
-        self.add_rect('OD', box)
-        self.add_rect(('PODE', 'dummy1'), box)
+
+        # draw OD/PODE
+        if not self.params['is_ds_dummy']:
+            lch_layout = lch / self.grid.layout_unit
+            od_h = mos_fin_h + (w - 1) * mos_fin_pitch
+            xmid = xshift + (ndum + 0.5) * sd_pitch
+            xl = xmid - lch_layout / 2.0
+            xr = xmid + lch_layout / 2.0
+            box = BBox(xl, od_yc - od_h / 2.0, xr, od_yc + od_h / 2.0, res)
+            self.add_rect('OD', box)
+            self.add_rect(('PODE', 'dummy1'), box)
 
         # draw OD edge objects
         self.draw_od_edge(xshift, od_yc, w, tech_constants)
@@ -1065,7 +1077,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
     @classmethod
     @abc.abstractmethod
     def get_edge_params(cls, lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                        guard_ring_style, guard_ring_nf, is_guard_ring_right, is_end):
+                        guard_ring_style, guard_ring_nf, is_guard_ring_right, is_end,
+                        is_ds_dummy):
         """Returns a dictionary of edge block parameters.
 
         Parameters
@@ -1092,6 +1105,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             True if this is the guard ring's right edge.
         is_end : bool
             True if this template is at the ends.
+        is_ds_dummy : bool
+            True if this transistor is only for drain/source dummy metal connection.
 
         Returns
         -------
@@ -1103,7 +1118,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
     @classmethod
     @abc.abstractmethod
     def get_core_params(cls, lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                        guard_ring_style, is_end):
+                        guard_ring_style, is_end, is_ds_dummy):
         """Returns a dictionary of edge block parameters.
 
         Parameters
@@ -1126,7 +1141,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             True to draw guard ring style transistor core.
         is_end : bool
             True if this template is at the ends.
-
+        is_ds_dummy : bool
+            True if this transistor is only for drain/source dummy metal connection.
         Returns
         -------
         params : dict[str, any] or
@@ -1183,7 +1199,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
     @classmethod
     def draw_transistor(cls, template, lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
                         bot_ext_nfin, top_ext_nfin, guard_ring_nf, res,
-                        is_guard_ring_transistor=False, guard_ring_style=False, is_end=False):
+                        is_guard_ring_transistor=False, guard_ring_style=False, is_end=False,
+                        is_ds_dummy=False):
         """Draw a transistor at the given location.
         """
 
@@ -1205,7 +1222,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
 
         # draw left edge
         ledge_params = cls.get_edge_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                                           guard_ring_style, guard_ring_nf, False, core_is_end)
+                                           guard_ring_style, guard_ring_nf, False, core_is_end,
+                                           is_ds_dummy=is_ds_dummy)
         ledge_master = template.new_template(params=ledge_params, temp_cls=edge_cls)  # type: MicroTemplate
         ledge_inst = template.add_instance(ledge_master, inst_name='XLEDGE')
         inst_list.append(ledge_inst)
@@ -1232,7 +1250,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
 
         # draw core transistor.
         core_params = cls.get_core_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                                          guard_ring_style, core_is_end)
+                                          guard_ring_style, core_is_end, is_ds_dummy=is_ds_dummy)
         core_master = template.new_template(params=core_params, temp_cls=core_cls)  # type: MicroTemplate
         core_inst = template.add_instance(core_master, inst_name='XMOS')
         inst_list.append(core_inst)
@@ -1248,7 +1266,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
 
         # draw right edge
         redge_params = cls.get_edge_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
-                                           guard_ring_style, guard_ring_nf, is_guard_ring_transistor, core_is_end)
+                                           guard_ring_style, guard_ring_nf, is_guard_ring_transistor, core_is_end,
+                                           is_ds_dummy=is_ds_dummy)
         redge_master = template.new_template(params=redge_params, temp_cls=edge_cls)  # type: MicroTemplate
         redge_inst = template.add_instance(redge_master, inst_name='XREDGE', orient='MY')
         inst_list.append(redge_inst)
@@ -1340,6 +1359,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         gds_space = self.params['gds_space']
         guard_ring_nf = self.params['guard_ring_nf']
         is_end = self.params['is_end']
+        is_ds_dummy = self.params['is_ds_dummy']
 
         if fg <= 0:
             raise ValueError('Number of fingers must be positive.')
@@ -1406,7 +1426,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         results = self.draw_transistor(self, lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
                                        bot_ext_nfin, top_ext_nfin, guard_ring_nf,
                                        self.grid.resolution, is_guard_ring_transistor=False,
-                                       guard_ring_style=False, is_end=is_end)
+                                       guard_ring_style=False, is_end=is_end,
+                                       is_ds_dummy=is_ds_dummy)
         self.array_box, self._sd_pitch, self._sd_center = results[1], results[2], results[3]
         for body_port in results[4]:
             self.reexport(body_port, show=False)
@@ -1456,6 +1477,7 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
             ddir='drain connection direction.  0 for down, 1 for middle, 2 for up.',
             min_ds_cap='True to minimize parasitic Cds.',
             gate_pref_loc="Preferred gate vertical track location.  Either 's' or 'd'.",
+            is_ds_dummy='True if this is only a drain/source dummy metal connection.',
         )
 
     @classmethod
@@ -1475,6 +1497,7 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return dict(
             min_ds_cap=False,
             gate_pref_loc='d',
+            is_ds_dummy=False,
         )
 
     def get_layout_basename(self):
@@ -1495,6 +1518,8 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
                                                    )
         if self.params['min_ds_cap']:
             basename += '_minds'
+        if self.params['is_ds_dummy']:
+            basename += '_dsdummy'
         return basename
 
     def compute_unique_key(self):

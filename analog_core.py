@@ -300,6 +300,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._ntap_list = None
         self._ptap_list = None
         self._ridx_lookup = None
+        self._ds_dummy_list = None
 
     @property
     def min_fg_sep(self):
@@ -307,7 +308,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return self._min_fg_sep
 
     def get_mos_params(self, mos_type, thres, lch, w, fg, g_tracks, ds_tracks, gds_space,
-                       guard_ring_nf):
+                       guard_ring_nf, is_ds_dummy):
         """Returns a dictionary of mosfet parameters.
 
         Override if you need to include process-specific parameters.
@@ -332,6 +333,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             number of tracks to reserve as space between gate and drain/source tracks.
         guard_ring_nf : int
             width of guard ring in number of fingers.  0 to disable guard ring.
+        is_ds_dummy : bool
+            True if this mosfet is used for drain/source dummy metals only.
 
         Returns
         -------
@@ -349,6 +352,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                     ds_tracks=ds_tracks,
                     gds_space=gds_space,
                     guard_ring_nf=guard_ring_nf,
+                    is_ds_dummy=is_ds_dummy,
                     )
 
     def get_substrate_params(self, sub_type, thres, lch, w, fg, guard_ring_nf,
@@ -873,6 +877,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         ridx = self._ridx_lookup[mos_type][row_idx]
         orient = self._orient_list[ridx]
+        is_ds_dummy = self._ds_dummy_list[ridx]
         w = self._w_list[ridx]
         xc, yc = self._sd_list[ridx]
         xc += col_idx * self._sd_pitch
@@ -888,16 +893,18 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             fg=fg,
             sdir=sdir,
             ddir=ddir,
+            is_ds_dummy=is_ds_dummy,
         )
         conn_params.update(kwargs)
 
         conn_master = self.new_template(params=conn_params, temp_cls=self._mconn_cls)  # type: AnalogMosConn
         conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient)
 
-        return {key: conn_inst.get_port(key) for key in ['g', 'd', 's']}
+        return {key: conn_inst.get_port(key) for key in ['g', 'd', 's'] if conn_inst.has_port(key)}
 
     @staticmethod
-    def get_prop_lists(mos_type, sub_w, w_list, th_list, g_tracks, ds_tracks, orientations, both_subs):
+    def get_prop_lists(mos_type, sub_w, w_list, th_list, g_tracks, ds_tracks, orientations, both_subs,
+                       ds_dummy_list):
         """Helper method of draw_base"""
         if mos_type == 'nch':
             sub_type = 'ptap'
@@ -920,6 +927,19 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         g_tracks = g_tracks or [1] * num
         ds_tracks = ds_tracks or [1] * num
         orientations = orientations or [default_orient] * num
+        ds_dummy_list = ds_dummy_list or [False] * num
+
+        # error checking
+        if len(g_tracks) != num:
+            raise ValueError('gate tracks list length != %d' % num)
+        if len(th_list) != num:
+            raise ValueError('threshold list length != %d' % num)
+        if len(ds_tracks) != num:
+            raise ValueError('drain/source tracks list length != %d' % num)
+        if len(orientations) != num:
+            raise ValueError('orientation list length != %d' % num)
+        if len(ds_dummy_list) != num:
+            raise ValueError('drain/source dummy list length != %d' % num)
 
         # get property lists
         mtype_list = list(chain([sub_type], repeat(mos_type, num), [sub_type]))
@@ -930,6 +950,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         ds_list = list(chain([0], ds_tracks, [0]))
         name_list = list(chain([sub_name + 'B'], ((mname % idx for idx in range(num))),
                                [sub_name + 'T']))
+        ds_dummy_list = list(chain([False], ds_dummy_list, [False]))
 
         if not both_subs:
             # remove middle substrates
@@ -940,8 +961,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             del g_list[del_idx]
             del ds_list[del_idx]
             del name_list[del_idx]
+            del ds_dummy_list[del_idx]
 
-        return mtype_list, orient_list, w_list, th_list, g_list, ds_list, name_list
+        return mtype_list, orient_list, w_list, th_list, g_list, ds_list, name_list, ds_dummy_list
 
     def draw_base(self, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw_list, pth_list,
@@ -950,7 +972,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                   ng_tracks=None, nds_tracks=None,
                   pg_tracks=None, pds_tracks=None,
                   n_orientations=None, p_orientations=None,
-                  guard_ring_nf=0):
+                  guard_ring_nf=0,
+                  n_ds_dummy=None, p_ds_dummy=None,
+                  ):
         """Draw the amplifier base.
 
         Parameters
@@ -995,6 +1019,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             orientation of each pmos row.  Defaults to all 'MX'.
         guard_ring_nf : int
             width of guard ring in number of fingers.  0 to disable guard ring.
+        n_ds_dummy : list[bool] or None
+            is_ds_dummy flag for each nmos row.  Defaults to all False.
+        p_ds_dummy : list[bool] or None
+            is_ds_dummy flag for each pmos row.  Defaults to all False.
 
         Returns
         -------
@@ -1028,14 +1056,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         # get property lists
         results = self.get_prop_lists('nch', ntap_w, nw_list, nth_list, ng_tracks, nds_tracks,
-                                      n_orientations, guard_ring_nf > 0 or nump == 0)
-        ntype_list, norient_list, nw_list, nth_list, ng_list, nds_list, nname_list = results
+                                      n_orientations, guard_ring_nf > 0 or nump == 0,
+                                      n_ds_dummy)
+        ntype_list, norient_list, nw_list, nth_list, ng_list, nds_list, nname_list, n_ds_dummy_list = results
         results = self.get_prop_lists('pch', ptap_w, pw_list, pth_list, pg_tracks, pds_tracks,
-                                      p_orientations, guard_ring_nf > 0 or numn == 0)
-        ptype_list, porient_list, pw_list, pth_list, pg_list, pds_list, pname_list = results
+                                      p_orientations, guard_ring_nf > 0 or numn == 0,
+                                      p_ds_dummy)
+        ptype_list, porient_list, pw_list, pth_list, pg_list, pds_list, pname_list, p_ds_dummy_list = results
 
         self._orient_list = norient_list + porient_list
         self._w_list = nw_list + pw_list
+        self._ds_dummy_list = n_ds_dummy_list + p_ds_dummy_list
         type_list = ntype_list + ptype_list
         th_list = nth_list + pth_list
         g_list = ng_list + pg_list
@@ -1047,15 +1078,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._sd_pitch = None
         gr_vss_list = []
         gr_vdd_list = []
-        for ridx, (mtype, orient, w, thres, gntr, dntr, name) in enumerate(zip(type_list, self._orient_list,
-                                                                               self._w_list, th_list, g_list,
-                                                                               ds_list, name_list)):
+        for ridx, (mtype, orient, w, thres, gntr, dntr, name, ds_dummy) in enumerate(zip(type_list, self._orient_list,
+                                                                                         self._w_list, th_list, g_list,
+                                                                                         ds_list, name_list,
+                                                                                         self._ds_dummy_list)):
             self._ridx_lookup[mtype].append(ridx)
             is_mos = (mtype == 'nch' or mtype == 'pch')
             if is_mos:
                 # transistor
                 mparams = self.get_mos_params(mtype, thres, lch, w, fg_tot, gntr, dntr, gds_space,
-                                              guard_ring_nf)
+                                              guard_ring_nf, ds_dummy)
                 mmaster = self.new_template(params=mparams, temp_cls=self._mos_cls)  # type: AnalogMosBase
                 if self._sd_pitch is None:
                     self._sd_pitch = mmaster.get_sd_pitch()
@@ -1107,7 +1139,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._connect_vertical_wires(gr_vdd_list)
 
         self.array_box = tot_array_box
-            
+
         # connect substrates to horizontal tracks.
         if nump == 0:
             # connect both substrates if NMOS only
