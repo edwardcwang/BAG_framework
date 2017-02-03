@@ -1455,6 +1455,7 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
             sdir='source connection direction.  0 for down, 1 for middle, 2 for up.',
             ddir='drain connection direction.  0 for down, 1 for middle, 2 for up.',
             min_ds_cap='True to minimize parasitic Cds.',
+            gate_pref_loc="Preferred gate vertical track location.  Either 's' or 'd'.",
         )
 
     @classmethod
@@ -1473,6 +1474,7 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
         """
         return dict(
             min_ds_cap=False,
+            gate_pref_loc='d',
         )
 
     def get_layout_basename(self):

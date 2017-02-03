@@ -846,7 +846,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         return conn_inst.get_port().get_pins()
 
-    def draw_mos_conn(self, mos_type, row_idx, col_idx, fg, sdir, ddir, min_ds_cap=False):
+    def draw_mos_conn(self, mos_type, row_idx, col_idx, fg, sdir, ddir, **kwargs):
         """Draw transistor connection.
 
         Parameters
@@ -863,8 +863,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             source connection direction.  0 for down, 1 for middle, 2 for up.
         ddir : int
             drain connection direction.  0 for down, 1 for middle, 2 for up.
-        min_ds_cap : bool
-            True to minimize parasitic Cds.
+        kwargs : dict[string, any]
+            optional arguments for AnalogMosConn.
         Returns
         -------
         ports : dict[str, bag.layout.util.Port]
@@ -898,8 +898,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             fg=fg,
             sdir=sdir,
             ddir=ddir,
-            min_ds_cap=min_ds_cap,
         )
+        conn_params.update(kwargs)
 
         conn_master = self.new_template(params=conn_params, temp_cls=self._mconn_cls)  # type: AnalogMosConn
         conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient)
