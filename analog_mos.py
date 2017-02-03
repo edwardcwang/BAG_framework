@@ -593,6 +593,8 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
 
         ndum = tech_constants['mos_edge_num_dpo']  # type: int
         xext = tech_constants['mos_edge_xext']  # type: float
+        od_dummy_layer = tech_constants.get('od_dummy_layer', None)
+        od_dummy_sp_nfin = tech_constants.get('od_dummy_sp_nfin', 0)
 
         # make sure CPO overlap rule is met at the ends
         if is_end:
@@ -642,6 +644,18 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
             wfund = self.array_box.width
             self.array_box = BBox(xl, self.array_box.bottom,
                                   xl + 2 * wgr + wfund, self.array_box.top, self.array_box.resolution)
+
+        # draw dummy OD
+        if od_dummy_layer is not None:
+            sd_pitch = tech_constants['sd_pitch']
+            mos_fin_h = tech_constants['mos_fin_h']
+            mos_fin_pitch = tech_constants['mos_fin_pitch']
+            lch_layout = lch / self.grid.layout_unit
+            xl = xshift + (ndum + 0.5) * sd_pitch - lch_layout / 2.0
+            xr = xl + lch_layout + (fg + 1) * sd_pitch
+            yb = self.array_box.bottom + od_dummy_sp_nfin * mos_fin_pitch - mos_fin_h / 2.0
+            yt = self.array_box.top - od_dummy_sp_nfin * mos_fin_pitch + mos_fin_h / 2.0
+            self.add_rect(od_dummy_layer, BBox(xl, yb, xr, yt, self.grid.resolution))
 
 
 # noinspection PyAbstractClass
