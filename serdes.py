@@ -91,7 +91,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         # figure out source/drain directions and intermediate connections
         # load
-        sd_dir = {'load': (0, 2)}
+        sd_dir = {'load': (2, 0)}
         conn = {'outp': [('loadp', 'd')], 'outn': [('loadn', 'd')],
                 'VDD': [('loadp', 's'), ('loadn', 's')],
                 'bias_load': [('loadp', 'g'), ('loadn', 'g')]}
@@ -380,6 +380,8 @@ class DynamicLatchChain(SerdesRXBase):
         show_pins = kwargs.pop('show_pins')
         rename_dict = kwargs.pop('rename_dict')
         num_track_current = kwargs.pop('num_track_current')
+        global_gnd_layer = kwargs.pop('global_gnd_layer')
+        global_gnd_name = kwargs.pop('global_gnd_name')
 
         del kwargs['diff_space']
 
@@ -394,6 +396,10 @@ class DynamicLatchChain(SerdesRXBase):
         slay, ptap_box_arr_list, ntap_box_arr_list = self.draw_rows(**kwargs)
         port_list = list(chain((('VSS', (slay, barr)) for barr in ptap_box_arr_list),
                                (('VDD', (slay, barr)) for barr in ntap_box_arr_list)))
+        # add global ground
+        if global_gnd_layer is not None:
+            self.add_pin(global_gnd_name, global_gnd_layer, ptap_box_arr_list[0].base, show=show_pins)
+        
         for idx in range(nstage):
             col_idx = (fg_latch + fg_sep) * idx + nduml
             pdict = self.draw_dynamic_latch(col_idx, fg_list, fg_sep=fg_sep, num_track_current=num_track_current)
@@ -433,6 +439,8 @@ class DynamicLatchChain(SerdesRXBase):
             show_pins=True,
             rename_dict={},
             guard_ring_nf=0,
+            global_gnd_layer=None,
+            global_gnd_name='gnd!',
         )
 
     @classmethod
@@ -472,4 +480,6 @@ class DynamicLatchChain(SerdesRXBase):
             show_pins='True to create pin labels.',
             rename_dict='port renaming dictionary',
             guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
+            global_gnd_layer='layer of the global ground pin.  None to disable drawing global ground.',
+            global_gnd_name='name of global ground pin.',
         )

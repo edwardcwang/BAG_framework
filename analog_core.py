@@ -660,28 +660,18 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         wire_w = wire_bus_list[0].base.width
         wire_pitch = wire_bus_list[0].spx
 
-        # determine via intervals
-        via_intv_list = []
-        for wire_bus in wire_bus_list:
-            cur_xl = wire_bus.left
-            idx_start = int(round((cur_xl - wire_xl) / wire_pitch))
-            if not via_intv_list or via_intv_list[-1][1] != idx_start:
-                via_intv_list.append([idx_start, idx_start + wire_bus.nx])
-            else:
-                via_intv_list[-1][1] = idx_start + wire_bus.nx
-
         # draw vias
-        tr_xr = wire_xr if tr_xr is None else max(wire_xr, tr_xr)
-        tr_xl = wire_xl if tr_xl is None else min(wire_xl, tr_xl)
-        for via_intv in via_intv_list:
-            xo = wire_xl + via_intv[0] * wire_pitch
-            via_box = BBox(xo, tr_yb, xo + wire_w, tr_yt, res)
-            arr_nx = via_intv[1] - via_intv[0]
+        if tr_xl is None:
+            tr_xl = float('inf')
+        if tr_xr is None:
+            tr_xr = float('-inf')
+        for wire_bus in wire_bus_list:
+            via_box = BBox(wire_bus.base.left, tr_yb, wire_bus.base.right, tr_yt, res)
             via = self.add_via(via_box, self._vm_layer, self._hm_layer, 'y',
-                               nx=arr_nx, spx=wire_pitch)
-            # update track X coordinates.
+                               nx=wire_bus.nx, spx=wire_bus.spx)
+            # update horizontal track X coordinates.
             tr_xl = min(tr_xl, via.top_box.left)
-            tr_xr = max(tr_xr, via.top_box.right + (arr_nx - 1) * wire_pitch)
+            tr_xr = max(tr_xr, via.top_box.right + (wire_bus.nx - 1) * wire_bus.spx)
 
         # draw horizontal track
         track_box = BBox(tr_xl, tr_yb, tr_xr, tr_yt, res)
@@ -1117,6 +1107,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._connect_vertical_wires(gr_vdd_list)
 
         self.array_box = tot_array_box
+            
         # connect substrates to horizontal tracks.
         if nump == 0:
             # connect both substrates if NMOS only
