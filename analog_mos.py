@@ -63,6 +63,23 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
+    @classmethod
+    @abc.abstractmethod
+    def get_sd_pitch(cls, lch):
+        """Returns the source/drain pitch given channel length.
+
+        Parameters
+        ----------
+        lch : float
+            channel length, in meters.
+
+        Returns
+        -------
+        sd_pitch : float
+            the source/drain pitch
+        """
+        return 0.0
+
     @abc.abstractmethod
     def get_left_sd_center(self):
         """Returns the center coordinate of the leftmost source/drain connection.
@@ -73,17 +90,6 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             center coordinate of leftmost source/drain
         """
         return 0.0, 0.0
-
-    @abc.abstractmethod
-    def get_sd_pitch(self):
-        """Returns the source/drain pitch.
-
-        Returns
-        -------
-        sd_pitch : float
-            the source/drain pitch
-        """
-        return 0.0
 
     @abc.abstractmethod
     def get_ds_track_index(self):
@@ -136,8 +142,6 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             mos_type="transistor type, either 'pch' or 'nch'.",
             threshold='transistor threshold flavor.',
             fg='number of fingers.',
-            track_width='horizontal track width, in meters.',
-            track_space='horizontal track spacing, in meters.',
             g_tracks='number of gate tracks.',
             ds_tracks='number of drain/source tracks.',
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',
@@ -147,7 +151,7 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         )
 
     def get_num_tracks(self):
-        """Returns the number of tracks in this template.
+        """Returns the number of horizontal tracks in this template.
 
         AnalogMosBase should always have at least one track, and the bottom-most track is always
         for gate connection.
@@ -157,12 +161,9 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         num_track : int
             number of tracks in this template.
         """
-        layout_unit = self.grid.layout_unit
+        h_layer_id = AnalogMosConn.port_layer_id() + 1
+        tr_pitch = self.grid.get_track_pitch(h_layer_id)
         h = self.array_box.height
-        tr_w = self.params['track_width'] / layout_unit
-        tr_s = self.params['track_space'] / layout_unit
-        tr_pitch = tr_w + tr_s
-
         num_track = int(round(h / tr_pitch))
         if abs(h - num_track * tr_pitch) >= self.grid.resolution:
             raise Exception('array box height = %.4g not integer number of track pitch = %.4g' % (h, tr_pitch))
@@ -179,18 +180,15 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
-        tr_w_str = float_to_si_string(self.params['track_width'])
-        tr_s_str = float_to_si_string(self.params['track_space'])
         g_ntr = self.params['g_tracks']
         ds_ntr = self.params['ds_tracks']
         tr_sp = self.params['gds_space']
         gr_nf = self.params['guard_ring_nf']
-        main = '%s_%s_l%s_w%s_fg%d_trw%s_trs%s_ng%d_nds%d_sp%d' % (self.params['mos_type'],
-                                                                   self.params['threshold'],
-                                                                   lch_str, w_str,
-                                                                   self.params['fg'],
-                                                                   tr_w_str, tr_s_str,
-                                                                   g_ntr, ds_ntr, tr_sp)
+        main = '%s_%s_l%s_w%s_fg%d_ng%d_nds%d_sp%d' % (self.params['mos_type'],
+                                                       self.params['threshold'],
+                                                       lch_str, w_str,
+                                                       self.params['fg'],
+                                                       g_ntr, ds_ntr, tr_sp)
         name = 'base'
         if self.params['is_end']:
             name += '_end'
@@ -280,8 +278,6 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
             sub_type="substrate type, either 'ptap' or 'ntap'.",
             threshold='transistor threshold flavor.',
             fg='number of fingers.',
-            track_width='horizontal track width, in meters.',
-            track_space='horizontal track spacing, in meters.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  Use 0 for no guard ring.',
             is_end='True if this template is at the ends.',
             dummy_only='True if only dummy connections will be made to this substrate.',
@@ -290,7 +286,7 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
         )
 
     def get_num_tracks(self):
-        """Returns the number of tracks in this template.
+        """Returns the number of horizontal tracks in this template.
 
         AnalogMosBase should always have at least one track, and the bottom-most track is always
         for gate connection.
@@ -300,12 +296,9 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
         num_track : int
             number of tracks in this template.
         """
-        layout_unit = self.grid.layout_unit
+        h_layer_id = AnalogMosConn.port_layer_id() + 1
+        tr_pitch = self.grid.get_track_pitch(h_layer_id)
         h = self.array_box.height
-        tr_w = self.params['track_width'] / layout_unit
-        tr_s = self.params['track_space'] / layout_unit
-        tr_pitch = tr_w + tr_s
-
         num_track = int(round(h / tr_pitch))
         if abs(h - num_track * tr_pitch) >= self.grid.resolution:
             raise Exception('array box height = %.4g not integer number of track pitch = %.4g' % (h, tr_pitch))
@@ -322,16 +315,13 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
-        tr_w_str = float_to_si_string(self.params['track_width'])
-        tr_s_str = float_to_si_string(self.params['track_space'])
         gr_nf = self.params['guard_ring_nf']
         is_end = self.params['is_end']
         dummy_only = self.params['dummy_only']
-        main = '%s_%s_l%s_w%s_fg%d_trw%s_trs%s' % (self.params['sub_type'],
-                                                   self.params['threshold'],
-                                                   lch_str, w_str,
-                                                   self.params['fg'],
-                                                   tr_w_str, tr_s_str)
+        main = '%s_%s_l%s_w%s_fg%d' % (self.params['sub_type'],
+                                       self.params['threshold'],
+                                       lch_str, w_str,
+                                       self.params['fg'])
         name = 'base'
         if is_end:
             name += '_end'
@@ -1050,7 +1040,6 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         AnalogMosBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._sd_center = None, None
-        self._sd_pitch = None
         self._ds_track_idx = None
 
     @classmethod
@@ -1275,7 +1264,6 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         # update core array box
         core_arr_box = core_inst.array_box
         # infer source/drain pitch from array box width
-        sd_pitch = core_arr_box.width / fg
         sd_center = core_arr_box.left, core_arr_box.bottom + od_dy + core_bot_ext * mos_fin_pitch
 
         # draw right edge
@@ -1318,7 +1306,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             port_list = [inst.get_port('b') for inst in inst_list if inst.has_port('b')]
         else:
             port_list = []
-        return inst_list, array_box, sd_pitch, sd_center, port_list
+        return inst_list, array_box, sd_center, port_list
 
     def get_ds_track_index(self):
         """Returns the bottom drain/source track index.
@@ -1341,16 +1329,6 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             the center Y coordinate of left-most source/drain.
         """
         return self._sd_center
-
-    def get_sd_pitch(self):
-        """Returns the source/drain pitch.
-
-        Returns
-        -------
-        sd_pitch : float
-            the source/drain pitch
-        """
-        return self._sd_pitch
 
     def draw_layout(self):
         """Draw the layout of this template.
@@ -1442,8 +1420,8 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
                                        self.grid.resolution, is_guard_ring_transistor=False,
                                        guard_ring_style=False, is_end=is_end,
                                        is_ds_dummy=is_ds_dummy)
-        self.array_box, self._sd_pitch, self._sd_center = results[1], results[2], results[3]
-        for body_port in results[4]:
+        self.array_box, self._sd_center = results[1], results[2]
+        for body_port in results[3]:
             self.reexport(body_port, show=False)
 
 
@@ -1471,6 +1449,30 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    @abc.abstractmethod
+    def port_layer_id(cls):
+        """Returns the port layer ID for AnalogMosConn.
+
+        Returns
+        -------
+        port_layer_id : int
+            the port layer ID.
+        """
+        return -1
+
+    @classmethod
+    @abc.abstractmethod
+    def get_port_width(cls):
+        """Returns the width of the AnalogMosConn port.
+
+        Returns
+        -------
+        port_width : float
+            th port width in layout units.
+        """
+        return 0.0
 
     @classmethod
     def get_params_info(cls):
@@ -1640,17 +1642,16 @@ class AnalogMosDummy(with_metaclass(abc.ABCMeta, MicroTemplate)):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
-    def get_port_layer(cls):
-        """Returns the dummy connection layer name.
-
-        Subclasses must override this method to return the correct value.
+    @abc.abstractmethod
+    def port_layer_id(cls):
+        """Returns the dummy connection layer ID.
 
         Returns
         -------
-        dummy_layer : str
-            the dummy connection layer name
+        port_layer_id : int
+            dummy connection layer ID.
         """
-        return ''
+        return -1
 
     @classmethod
     def get_params_info(cls):

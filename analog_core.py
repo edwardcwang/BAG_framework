@@ -30,12 +30,11 @@ from builtins import *
 
 import abc
 from itertools import chain, repeat
-import numpy as np
 from typing import List
 
 from bag.util.interval import IntervalSet
 from bag.layout.template import MicroTemplate
-from bag.layout.util import BBox, BBoxArray
+from bag.layout.routing import TrackID
 from .analog_mos import AnalogMosBase, AnalogSubstrate, AnalogMosConn
 from future.utils import with_metaclass
 
@@ -267,17 +266,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # call base class constructor
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        # get the concrete template classes
+
         tech_params = self.grid.tech_info.tech_params
         self._mos_cls = tech_params['layout']['mos_template']
-        self._sub_cls = tech_params['layout']['sub_template']
         self._mconn_cls = tech_params['layout']['mos_conn_template']
+        self._sub_cls = tech_params['layout']['sub_template']
         self._sep_cls = tech_params['layout']['mos_sep_template']
         self._dum_cls = tech_params['layout']['mos_dummy_template']
 
         # get information from template classes
-        self._dummy_layer = self._dum_cls.get_port_layer()
         self._min_fg_sep = self._sep_cls.get_min_fg()
 
         # initialize parameters
@@ -287,115 +286,23 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._sd_list = None
         self._sd_pitch = None
         self._fg_tot = None
-        self._track_width = None
-        self._track_space = None
         self._gds_space = None
         self._n_intvs = None  # type: List[IntervalSet]
         self._p_intvs = None  # type: List[IntervalSet]
         self._num_tracks = None
         self._track_offsets = None
         self._ds_tr_indices = None
-        self._vm_layer = None
-        self._hm_layer = None
         self._ntap_list = None
         self._ptap_list = None
         self._ridx_lookup = None
         self._ds_dummy_list = None
+        self._bot_lay_id = self._mconn_cls.port_layer_id()
+        self._dum_lay_id = self._dum_cls.port_layer_id()
 
     @property
     def min_fg_sep(self):
         """Returns the minimum number of separator fingers."""
         return self._min_fg_sep
-
-    def get_mos_params(self, mos_type, thres, lch, w, fg, g_tracks, ds_tracks, gds_space,
-                       guard_ring_nf, is_ds_dummy):
-        """Returns a dictionary of mosfet parameters.
-
-        Override if you need to include process-specific parameters.
-
-        Parameters
-        ----------
-        mos_type : str
-            mosfet type.  'pch' or 'nch'.
-        thres : str
-            threshold flavor.
-        lch : float
-            channel length.
-        w : int or float
-            width of the transistor.
-        fg : int
-            number of fingers.
-        g_tracks : int
-            minimum number of gate tracks.
-        ds_tracks : int
-            minimum number of drain/source tracks.
-        gds_space : int
-            number of tracks to reserve as space between gate and drain/source tracks.
-        guard_ring_nf : int
-            width of guard ring in number of fingers.  0 to disable guard ring.
-        is_ds_dummy : bool
-            True if this mosfet is used for drain/source dummy metals only.
-
-        Returns
-        -------
-        mos_params : dict[str, any]
-            the mosfet parameter dictionary.
-        """
-        return dict(mos_type=mos_type,
-                    threshold=thres,
-                    lch=lch,
-                    w=w,
-                    fg=fg,
-                    track_width=self._track_width,
-                    track_space=self._track_space,
-                    g_tracks=g_tracks,
-                    ds_tracks=ds_tracks,
-                    gds_space=gds_space,
-                    guard_ring_nf=guard_ring_nf,
-                    is_ds_dummy=is_ds_dummy,
-                    )
-
-    def get_substrate_params(self, sub_type, thres, lch, w, fg, guard_ring_nf,
-                             is_end, dummy_only):
-        """Returns a dictionary of substrate parameters.
-
-        Override if you need to include process-specific parameters.
-
-        Parameters
-        ----------
-        sub_type : str
-            subtract type.  'ptap' or 'ntap'.
-        thres : str
-            threshold flavor.
-        lch : float
-            channel length.
-        w : int or float
-            width of the substrate.
-        fg : int
-            number of fingers.
-        guard_ring_nf : int
-            width of guard ring in number of fingers.  0 to disable guard ring.
-        is_end : bool
-            True if this substrate is at the ends.
-        dummy_only : bool
-            True if only dummy connections will be drawn to this substrate.
-
-        Returns
-        -------
-        substrate_params : dict[str, any]
-            the substrate parameter dictionary.
-        """
-        return dict(sub_type=sub_type,
-                    threshold=thres,
-                    lch=lch,
-                    w=w,
-                    fg=fg,
-                    track_width=self._track_width,
-                    track_space=self._track_space,
-                    guard_ring_nf=guard_ring_nf,
-                    is_end=is_end,
-                    dummy_only=dummy_only,
-                    )
 
     def _find_row_index(self, mos_type, row_idx):
         ridx_list = self._ridx_lookup[mos_type]
@@ -430,29 +337,24 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         return ntr
 
-    def get_track_yrange(self, mos_type, row_idx, tr_type, tr_idx, num_track=1):
-        """Calculate the track bottom and top coordinate.
+    def get_track_index(self, mos_type, row_idx, tr_type, tr_idx):
+        """Convert relative track index to absolute track index.
 
         Parameters
         ----------
         mos_type : string
             the row type, one of 'nch', 'pch', 'ntap', or 'ptap'.
         row_idx : int
-            the row index.  0 is the bottom-most row.
+            the center row index.  0 is the bottom-most row.
         tr_type : str
             the type of the track.  Either 'g' or 'ds'.
-        tr_idx : int or float
-            the track index.  Can be integer + 0.5 if num_track is even.
-        num_track : int
-            width of the horizontal track wire in number of tracks.  The actual width is calculated
-            as num_track * track_width + (num_track - 1) * track_space
+        tr_idx : float
+            the relative track index.
 
         Returns
         -------
-        yb : float
-            the bottom coordinate.
-        yt : float
-            the top coordinate.
+        abs_tr_idx : float
+            the absolute track index.
         """
         ntr = self.get_num_tracks(mos_type, row_idx, tr_type)
         row_idx = self._find_row_index(mos_type, row_idx)
@@ -467,19 +369,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             raise ValueError('track index = %d out of bounds: [0, %d)' % (tr_idx, ntr))
 
         if self._orient_list[row_idx] == 'R0':
-            tr_idx2 = tr_idx + offset + row_offset
+            return tr_idx + offset + row_offset
         else:
-            tr_idx2 = offset + self._num_tracks[row_idx] - (row_offset + tr_idx) - 1
-
-        layout_unit = self.grid.layout_unit
-
-        tr_sp = self._track_space / layout_unit
-        tr_w = self._track_width / layout_unit
-        tr_w_real = num_track * tr_w + (num_track - 1) * tr_sp
-        tr_yc = (tr_w + tr_sp) / 2.0 + tr_idx2 * (tr_sp + tr_w) + self.array_box.bottom
-        tr_yb = tr_yc - tr_w_real / 2.0
-        tr_yt = tr_yc + tr_w_real / 2.0
-        return tr_yb, tr_yt
+            return offset + self._num_tracks[row_idx] - (row_offset + tr_idx) - 1
 
     def connect_to_substrate(self, sub_type, port_list, inner=False):
         """Connect the given transistor wires to substrate.
@@ -501,277 +393,28 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             if inner:
                 if len(self._ptap_list) != 2:
                     raise ValueError('Inner substrate does not exist.')
-                port = self._ptap_list[1][2].get_port(port_name)
-                wire_yt = port.get_bounding_box(self._vm_layer).top
+                port = self._ptap_list[1].get_port(port_name)
+                wire_yt = port.get_bounding_box(self.grid, self._bot_lay_id).top
             else:
-                port = self._ptap_list[0][2].get_port(port_name)
-                wire_yb = port.get_bounding_box(self._vm_layer).bottom
+                port = self._ptap_list[0].get_port(port_name)
+                wire_yb = port.get_bounding_box(self.grid, self._bot_lay_id).bottom
         elif sub_type == 'ntap':
             if inner:
                 if len(self._ntap_list) != 2:
                     raise ValueError('Inner substrate does not exist.')
-                port = self._ntap_list[0][2].get_port(port_name)
-                wire_yb = port.get_bounding_box(self._vm_layer).bottom
+                port = self._ntap_list[0].get_port(port_name)
+                wire_yb = port.get_bounding_box(self.grid, self._bot_lay_id).bottom
             else:
-                port = self._ntap_list[-1][2].get_port(port_name)
-                wire_yt = port.get_bounding_box(self._vm_layer).top
+                port = self._ntap_list[-1].get_port(port_name)
+                wire_yt = port.get_bounding_box(self.grid, self._bot_lay_id).top
         else:
             raise ValueError('Invalid substrate type: %s' % sub_type)
 
         # convert port list to list of BBoxArray
         # assuming each port only has a single layer
-        box_arr_list = list(chain(*(port.get_pins().__iter__() for port in port_list)))
+        warr_list = list(chain(*(port.get_pins(self._bot_lay_id) for port in port_list)))
 
-        self._connect_vertical_wires(box_arr_list, wire_yb=wire_yb, wire_yt=wire_yt)
-
-    def connect_differential_track(self, p_port_list, n_port_list, mos_type,
-                                   row_idx, tr_type, ptr_idx, ntr_idx,
-                                   num_track=1):
-        """Connect the given differential wires to two tracks.
-
-        Will make sure the connects are symmetric and have identical parasitics.
-
-        Parameters
-        ----------
-        p_port_list : list[bag.layout.util.Port]
-            the list of positive ports to connect.
-        n_port_list : list[bag.layout.util.Port]
-            the list of negative ports to connect.
-        mos_type : string
-            the row type, one of 'nch', 'pch', 'ntap', or 'ptap'.
-        row_idx : int
-            the row index.  0 is the bottom-most row.
-        tr_type : str
-            the type of the track.  Either 'g' or 'ds'.
-        ptr_idx : int
-            the positive track index.
-        ntr_idx : int
-            the negative track index
-        num_track : int
-            width of the horizontal track wire in number of tracks.  The actual width is calculated
-            as num_track * track_width + (num_track - 1) * track_space
-
-        Returns
-        -------
-        tr_layer : str
-            the horizontal tracks metal layer.
-        p_box : bag.layout.util.BBox
-            the positive horizontal track bounding box.
-        n_box : bag.layout.util.BBox
-            the negative horizontal track bounding box.
-        """
-        if not p_port_list:
-            return
-
-        res = self.grid.resolution
-
-        tr_ybp, tr_ytp = self.get_track_yrange(mos_type, row_idx, tr_type, ptr_idx, num_track=num_track)
-        tr_ybn, tr_ytn = self.get_track_yrange(mos_type, row_idx, tr_type, ntr_idx, num_track=num_track)
-
-        # the ports should all be just BBoxArray on the same layer.
-        test_box_arr = p_port_list[0].get_pins().as_bbox_array()
-        wire_w = test_box_arr.base.width
-
-        # make test via to get extensions
-        tr_w = self._track_width / self.grid.layout_unit
-        via_test = self.add_via(BBox(0.0, tr_ybp, wire_w, tr_ytp, res),
-                                self._vm_layer, self._hm_layer, 'y')
-        yext = max((via_test.bottom_box.height - tr_w) / 2.0, 0.0)
-        xext = max((via_test.top_box.width - wire_w) / 2.0, 0.0)
-        via_test.destroy()
-
-        # get track X coordinates
-        tr_xl = None
-        tr_xr = None
-        for port in chain(p_port_list, n_port_list):
-            ba = port.get_pins().as_bbox_array()
-            if tr_xl is None:
-                tr_xl = ba.left
-                tr_xr = ba.right
-            else:
-                tr_xl = min(ba.left, tr_xl)
-                tr_xr = max(ba.right, tr_xr)
-
-        tr_xl -= xext
-        tr_xr += xext
-        wire_yb = min(tr_ybp, tr_ybn) - yext
-        wire_yt = max(tr_ytp, tr_ytn) + yext
-
-        # draw the connections
-        tr_layer, p_box = self.connect_to_track(p_port_list, mos_type, row_idx, tr_type, ptr_idx,
-                                                wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr,
-                                                num_track=num_track)
-        _, n_box = self.connect_to_track(n_port_list, mos_type, row_idx, tr_type, ntr_idx,
-                                         wire_yb=wire_yb, wire_yt=wire_yt, tr_xl=tr_xl, tr_xr=tr_xr,
-                                         num_track=num_track)
-
-        return tr_layer, p_box, n_box
-
-    def connect_to_track(self, port_list, mos_type, row_idx, tr_type, track_idx,
-                         wire_yb=None, wire_yt=None, tr_xl=None, tr_xr=None,
-                         num_track=1):
-        """Connect the given wires to the track on the given row.
-
-        Parameters
-        ----------
-        port_list : list[bag.layout.util.Port]
-            the list of ports to connect.
-        mos_type : string
-            the row type, one of 'nch', 'pch', 'ntap', or 'ptap'.
-        row_idx : int
-            the center row index.  0 is the bottom-most row.
-        tr_type : str
-            the type of the track.  Either 'g' or 'ds'.
-        track_idx : int
-            the track index.
-        wire_yb : float or None
-            if not None, extend vertical wires to this bottom coordinate.  Used for differential routing.
-        wire_yt : float or None
-            if not None, extend vertical wires to this top coordinate.  Used for differential routing.
-        tr_xl : float or None
-            if not None, extend horizontal track to this left coordinate.  Used for differential routing.
-        tr_xr : float or None
-            if not None, extend horizontal track to this right coordinate.  Used for differential routing.
-        num_track : int
-            width of the horizontal track wire in number of tracks.  The actual width is calculated
-            as num_track * track_width + (num_track - 1) * track_space
-        Returns
-        -------
-        track_layer : str
-            the horizontal track metal layer.
-        track_bbox : bag.layout.util.BBox
-            the horizontal track bounding box.
-        """
-        if not port_list:
-            # do nothing
-            return
-
-        res = self.grid.resolution
-
-        # calculate track coordinates
-        tr_yb, tr_yt = self.get_track_yrange(mos_type, row_idx, tr_type, track_idx, num_track=num_track)
-        wire_yb = tr_yb if wire_yb is None else min(wire_yb, tr_yb)
-        wire_yt = tr_yt if wire_yt is None else max(wire_yt, tr_yt)
-
-        # convert port list to list of BBoxArray
-        # assuming each port only has a single layer
-        box_arr_list = list(chain(*(port.get_pins().__iter__() for port in port_list)))
-
-        # draw vertical wires
-        wire_bus_list = self._connect_vertical_wires(box_arr_list, wire_yb=wire_yb, wire_yt=wire_yt)
-        wire_xl = wire_bus_list[0].left
-        wire_xr = wire_bus_list[-1].right
-        wire_w = wire_bus_list[0].base.width
-        wire_pitch = wire_bus_list[0].spx
-
-        # draw vias
-        if tr_xl is None:
-            tr_xl = float('inf')
-        if tr_xr is None:
-            tr_xr = float('-inf')
-        for wire_bus in wire_bus_list:
-            via_box = BBox(wire_bus.base.left, tr_yb, wire_bus.base.right, tr_yt, res)
-            via = self.add_via(via_box, self._vm_layer, self._hm_layer, 'y',
-                               nx=wire_bus.nx, spx=wire_bus.spx)
-            # update horizontal track X coordinates.
-            tr_xl = min(tr_xl, via.top_box.left)
-            tr_xr = max(tr_xr, via.top_box.right + (wire_bus.nx - 1) * wire_bus.spx)
-
-        # draw horizontal track
-        track_box = BBox(tr_xl, tr_yb, tr_xr, tr_yt, res)
-        self.add_rect(self._hm_layer, track_box)
-
-        return self._hm_layer, track_box
-
-    def _connect_vertical_wires(self, box_arr_list, wire_yb=None, wire_yt=None, wire_layer=''):
-        """Connect the given wires together vertically.
-
-        assumes all wires are aligned to source-drain pitch.
-
-        Parameters
-        ----------
-        box_arr_list : list[bag.layout.util.BBoxArray]
-            the list of bus wires to connect.
-        wire_yb : float or None
-            if not None, extend wires to this bottom coordinate.  Used for differential routing.
-        wire_yt : float or None
-            if not None, extend wires to this top coordinate.  Used for differential routing.
-        wire_layer : str
-            the wire layer.  If not given, defaults to self._vm_layer
-        Returns
-        -------
-        wire_bus_list : list[bag.layout.util.BBoxArray]
-            a list of wire buses created.
-        """
-        if not box_arr_list:
-            # do nothing
-            return []
-
-        res = self.grid.resolution
-
-        # calculate wire vertical coordinates
-        intv_set = IntervalSet(res=res)
-        for box_arr in box_arr_list:
-            for box in box_arr:
-                intv = box.left, box.right
-                cur_range = (box.bottom, box.top)
-                if wire_yb is not None:
-                    cur_range = (min(cur_range[0], wire_yb), max(cur_range[1], wire_yb))
-                if wire_yt is not None:
-                    cur_range = (min(cur_range[0], wire_yt), max(cur_range[1], wire_yt))
-
-                try:
-                    old_range = intv_set[intv]
-                    cur_range = min(cur_range[0], old_range[0]), max(cur_range[1], old_range[1])
-                    intv_set[intv] = cur_range
-                except KeyError:
-                    intv_set.add(intv, cur_range)
-
-        # draw vertical wires, group into bounding box arrays
-        wire_layer = wire_layer or self._vm_layer
-        wire_bus_list = []
-        base = None
-        count = 0
-        spx = 0.0
-        last_xl = None
-        for (xl, xr), (yb, yt) in intv_set.items():
-            if count == 0:
-                base = BBox(xl, yb, xr, yt, res)
-                count = 1
-                spx = 0.0
-            else:
-                if abs(yb - base.bottom) < res and abs(yt - base.top) < res:
-                    # height matches
-                    if count == 1:
-                        # second bounding box, set pitch
-                        spx = xl - last_xl
-                        count += 1
-                    elif abs(spx - (xl - last_xl)) < res:
-                        # pitch matches
-                        count += 1
-                    else:
-                        # pitch does not match, add cumulated wires and start anew
-                        self.add_rect(wire_layer, base, nx=count, spx=spx)
-                        wire_bus_list.append(BBoxArray(base, nx=count, spx=spx))
-                        base = BBox(xl, yb, xr, yt, res)
-                        count = 1
-                        spx = 0.0
-                else:
-                    # height does not match, add cumulated wires and start anew
-                    self.add_rect(wire_layer, base, nx=count, spx=spx)
-                    wire_bus_list.append(BBoxArray(base, nx=count, spx=spx))
-                    base = BBox(xl, yb, xr, yt, res)
-                    count = 1
-                    spx = 0.0
-
-            # update last_xl
-            last_xl = xl
-
-        # add last wires
-        self.add_rect(wire_layer, base, nx=count, spx=spx)
-        wire_bus_list.append(BBoxArray(base, nx=count, spx=spx))
-
-        return wire_bus_list
+        self.connect_wires(warr_list, lower=wire_yb, upper=wire_yt)
 
     def _draw_dummy_sep_conn(self, mos_type, row_idx, start, stop, gate_intv_list):
         """Draw dummy/separator connection.
@@ -793,7 +436,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         Returns
         -------
-        wires : bag.layout.util.BBoxCollection
+        wires : list[:class:`~bag.layout.routing.WireArray`]
             the dummy/separator gate bus wires.
         """
         # get orientation, width, and source/drain center
@@ -838,7 +481,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         conn_master = self.new_template(params=params, temp_cls=temp_cls)
         conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient)
 
-        return conn_inst.get_port().get_pins()
+        return conn_inst.get_port().get_pins(self._dum_lay_id)
 
     def draw_mos_conn(self, mos_type, row_idx, col_idx, fg, sdir, ddir, **kwargs):
         """Draw transistor connection.
@@ -861,7 +504,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             optional arguments for AnalogMosConn.
         Returns
         -------
-        ports : dict[str, bag.layout.util.Port]
+        ports : dict[str, bag.layout.routing.Port]
             a dictionary of ports.  The keys are 'g', 'd', and 's'.
         """
         # mark transistors as connected
@@ -967,15 +610,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     def draw_base(self, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw_list, pth_list,
-                  track_width, track_space, gds_space,
-                  vm_layer, hm_layer,
+                  gds_space,
                   ng_tracks=None, nds_tracks=None,
                   pg_tracks=None, pds_tracks=None,
                   n_orientations=None, p_orientations=None,
                   guard_ring_nf=0,
                   n_ds_dummy=None, p_ds_dummy=None,
+                  extra_vss_tracks=None, extra_vdd_tracks=None,
                   ):
-        """Draw the amplifier base.
+        """Draw the analog base.
+
+        This method must be called first.
 
         Parameters
         ----------
@@ -987,10 +632,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             pwell substrate contact width.
         ntap_w : int or float
             nwell substrate contact width.
-        track_width : float
-            the routing track width.
-        track_space : float
-            the routing track spacing.
         gds_space : int
             number of tracks to reserve as space between gate and drain/source tracks.
         nw_list : list[int or float]
@@ -1001,10 +642,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             a list of pmos width for each row, from bottom to top.
         pth_list : list[str]
             a list of pmos threshold flavor for each row, from bottom to top.
-        vm_layer : str
-            vertical metal layer name.
-        hm_layer : str
-            horizontal metal layer name.
         ng_tracks : list[int] or None
             number of nmos gate tracks per row, from bottom to top.  Defaults to 1.
         nds_tracks : list[int] or None
@@ -1023,30 +660,40 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             is_ds_dummy flag for each nmos row.  Defaults to all False.
         p_ds_dummy : list[bool] or None
             is_ds_dummy flag for each pmos row.  Defaults to all False.
-
+        extra_vss_tracks : list or None
+            list of extra vss tracks, in format of (ridx, ds_type, tr_idx, tr_width).
+            assume mos_type = 'nch'.
+        extra_vdd_tracks : list or None
+            list of extra vdd tracks, in format of (ridx, ds_type, tr_idx, tr_width),
+            assume mos_type = 'pch'.
         Returns
         -------
-        sub_layer : str
-            the substrate horizontal track layer.
-        ptap_box_arr_list : list[bag.layout.util.BBoxArray]
-            list of P-tap substrate tracks bounding box arrays.
-        ntap_box_arr_list : list[bag.layout.util.BBoxArray]
-            list of N-tap substrate tracks bounding box arrays.
+        ptap_wire_arrs : list[:class:`~bag.layout.routing.WireArray`]
+            list of P-tap substrate WireArrays.
+        ntap_wire_arrs : list[:class:`~bag.layout.routing.WireArray`]
+            list of N-tap substrate WireArrays.
         """
         numn = len(nw_list)
         nump = len(pw_list)
+        extra_vss_tracks = extra_vss_tracks or []
+        extra_vdd_tracks = extra_vdd_tracks or []
+
+        # get sd_pitch and vertical metal layer track info
+        self._sd_pitch = self._mos_cls.get_sd_pitch(self._lch)
+        vm_width = self._mconn_cls.get_port_width()
+        vm_space = self._sd_pitch - vm_width
+
+        # register new grid layers
+        self.grid = self.grid.copy()
+        self.grid.add_new_layer(self._bot_lay_id, vm_space, vm_width, 'y')
+        self.grid.add_new_layer(self._dum_lay_id, vm_space, vm_width, 'y')
 
         # initialize private attributes.
-        self._lch = lch
         self._fg_tot = fg_tot
         self._sd_list = []
-        self._track_space = track_space
-        self._track_width = track_width
         self._num_tracks = []
         self._track_offsets = []
         self._ds_tr_indices = []
-        self._vm_layer = vm_layer
-        self._hm_layer = hm_layer
         self._gds_space = gds_space
         self._ntap_list = []
         self._ptap_list = []
@@ -1076,26 +723,26 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         # draw rows
         tot_array_box = None
         self._sd_pitch = None
-        gr_vss_list = []
-        gr_vdd_list = []
-        for ridx, (mtype, orient, w, thres, gntr, dntr, name, ds_dummy) in enumerate(zip(type_list, self._orient_list,
-                                                                                         self._w_list, th_list, g_list,
-                                                                                         ds_list, name_list,
-                                                                                         self._ds_dummy_list)):
+        gr_vss_ports = []
+        gr_vdd_ports = []
+        for ridx, value in enumerate(zip(type_list, self._orient_list, self._w_list, th_list, g_list,
+                                         ds_list, name_list, self._ds_dummy_list)):
+            mtype, orient, w, thres, gntr, dntr, name, ds_dummy = value
             self._ridx_lookup[mtype].append(ridx)
             is_mos = (mtype == 'nch' or mtype == 'pch')
             if is_mos:
                 # transistor
-                mparams = self.get_mos_params(mtype, thres, lch, w, fg_tot, gntr, dntr, gds_space,
-                                              guard_ring_nf, ds_dummy)
+                mparams = dict(mos_type=mtype, threshold=thres, lch=lch, w=w, fg=fg_tot,
+                               g_tracks=gntr, ds_tracks=dntr, gds_space=gds_space,
+                               guard_ring_nf=guard_ring_nf, is_ds_dummy=ds_dummy, )
                 mmaster = self.new_template(params=mparams, temp_cls=self._mos_cls)  # type: AnalogMosBase
                 if self._sd_pitch is None:
                     self._sd_pitch = mmaster.get_sd_pitch()
             else:
                 # substrate
                 is_end = (ridx == 0 or ridx == (len(type_list) - 1))
-                mparams = self.get_substrate_params(mtype, thres, lch, w, fg_tot,
-                                                    guard_ring_nf, is_end, not is_end)
+                mparams = dict(sub_type=mtype, threshold=thres, lch=lch, w=w, fg=fg_tot,
+                               guard_ring_nf=guard_ring_nf, is_end=is_end, ummy_only=not is_end, )
                 mmaster = self.new_template(params=mparams, temp_cls=self._sub_cls)  # type: AnalogSubstrate
 
             # add and shift instance
@@ -1123,42 +770,47 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
             # append substrates to respective list
             if mtype == 'ptap':
-                self._ptap_list.append((mmaster.get_num_tracks(), mmaster.contact_both_ds(), minst))
+                self._ptap_list.append(minst)
             elif mtype == 'ntap':
-                self._ntap_list.append((mmaster.get_num_tracks(), mmaster.contact_both_ds(), minst))
+                self._ntap_list.append(minst)
 
             # add body pins to respective list
             if minst.has_port('b'):
                 if mtype == 'ptap' or mtype == 'nch':
-                    gr_vss_list.extend(minst.get_port('b').get_pins(self._vm_layer).__iter__())
+                    gr_vss_ports.append(minst.get_port('b'))
                 else:
-                    gr_vdd_list.extend(minst.get_port('b').get_pins(self._vm_layer).__iter__())
+                    gr_vdd_ports.append(minst.get_port('b'))
 
         # connect body guard rings together
-        self._connect_vertical_wires(gr_vss_list)
-        self._connect_vertical_wires(gr_vdd_list)
+        for mos_type, gr_sup_ports, extra_tracks in [('nch', gr_vss_ports, extra_vss_tracks),
+                                                     ('pch', gr_vdd_ports, extra_vdd_tracks)]:
+            if not extra_tracks:
+                warr_list = list(chain(*(port.get_pins(self._bot_lay_id) for port in gr_sup_ports)))
+                self.connect_wires(warr_list)
+            else:
+                pass
 
         self.array_box = tot_array_box
 
         # connect substrates to horizontal tracks.
         if nump == 0:
             # connect both substrates if NMOS only
-            ptap_barr_list = self._connect_substrate('ptap', self._ptap_list, list(range(len(self._ptap_list))))
+            ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list, list(range(len(self._ptap_list))))
         elif numn > 0:
             # only connect bottom substrate to upper level metal
-            ptap_barr_list = self._connect_substrate('ptap', self._ptap_list[:1], [0])
+            ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list[:1], [0])
         else:
-            ptap_barr_list = []
+            ptap_wire_arrs = []
 
         # similarly for PMOS substrate
         if numn == 0:
-            ntap_barr_list = self._connect_substrate('ntap', self._ntap_list, list(range(len(self._ntap_list))))
+            ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list, list(range(len(self._ntap_list))))
         elif nump > 0:
-            ntap_barr_list = self._connect_substrate('ntap', self._ntap_list[-1:], [len(self._ntap_list) - 1])
+            ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list[-1:], [len(self._ntap_list) - 1])
         else:
-            ntap_barr_list = []
+            ntap_wire_arrs = []
 
-        return self._hm_layer, ptap_barr_list, ntap_barr_list
+        return ptap_wire_arrs, ntap_wire_arrs
 
     def _connect_substrate(self, sub_type, sub_list, row_idx_list):
         """Connect all given substrates to horizontal tracks
@@ -1171,76 +823,30 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         Returns
         -------
-        box_arr_list : list[bag.layout.util.BBoxArray]
-            list of substrate tracks bounding box arrays.
+        track_buses : list[bag.layout.routing.WireArray]
+            list of substrate tracks buses.
         """
-        res = self.grid.resolution
-        layout_unit = self.grid.layout_unit
-        track_pitch = (self._track_width + self._track_space) / layout_unit
-        track_pitch = round(track_pitch / res) * res
-
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
 
-        sub_box_arr_list = []
-        for row_idx, (ntr, contact, subinst) in zip(row_idx_list, sub_list):
+        sub_warr_list = []
+        for row_idx, subinst in zip(row_idx_list, sub_list):
+            # Create substrate TrackID
             # substrate 1 from number of tracks to give some margin for transistor.
-            ntr -= 1
-            yb, yt = self.get_track_yrange(sub_type, row_idx, 'ds', 0)
-            yb2, yt2 = self.get_track_yrange(sub_type, row_idx, 'ds', ntr - 1)
-            yb_min = min(yb, yb2)
-            delta_y = yt - yb
-            yt_min = yb_min + delta_y
-            yt_max = max(yt, yt2)
+            ntr = self.get_num_tracks(sub_type, row_idx, 'ds')
+            tr_idx1 = self.get_track_index(sub_type, row_idx, 'ds', 0)
+            tr_idx2 = self.get_track_index(sub_type, row_idx, 'ds', ntr - 2)
+            track_id = TrackID(self._bot_lay_id + 1, min(tr_idx1, tr_idx2), 1, num=ntr - 1, pitch=1)
 
             # get all wires to connect to supply.
-            barr_iter_list = [subinst.get_port(port_name).get_pins(self._vm_layer).__iter__()]
+            warr_iter_list = [subinst.get_port(port_name).get_pins(self._bot_lay_id)]
             if subinst.has_port('b'):
-                barr_iter_list.append(subinst.get_port('b').get_pins(self._vm_layer).__iter__())
+                warr_iter_list.append(subinst.get_port('b').get_pins(self._bot_lay_id))
 
-            barr_list = list(chain(*barr_iter_list))
+            warr_list = list(chain(*warr_iter_list))
+            track_warr = self.connect_to_tracks(warr_list, track_id)
+            sub_warr_list.append(track_warr)
 
-            # draw vias to horizontal layer
-            tr_xl = float('inf')
-            tr_xr = float('-inf')
-            for box_arr in barr_list:
-                xl = box_arr.base.left
-                xr = box_arr.base.right
-                # create a temporary via to get extension parameters
-                via_box = BBox(xl, yb_min, xr, yt_min, res)
-                via = self.add_via(via_box, self._vm_layer, self._hm_layer, 'y')
-                yext = (via.bottom_box.height - delta_y) / 2.0
-                xext = (via.top_box.width - (xr - xl)) / 2.0
-                # update track X coordinates
-                tr_xl = min(tr_xl, xl - xext)
-                tr_xr = max(tr_xr, box_arr.right + xext)
-                # add via, tracks, and wires
-                wbase = box_arr.base.extend(y=yb_min - yext).extend(y=yt_max + yext)
-                self.add_rect(self._vm_layer, wbase, nx=box_arr.nx, spx=box_arr.spx)
-                if contact:
-                    # set arraying parameters
-                    via.nx = box_arr.nx
-                    via.spx = box_arr.spx
-                    via.ny = ntr
-                    via.spy = track_pitch
-                else:
-                    # need two sets of alternating vias
-                    nx = int(np.ceil(box_arr.nx / 2.0))
-                    num_tr = int(np.ceil(ntr / 2.0))
-                    via.nx = nx
-                    via.spx = 2 * box_arr.spx
-                    via.ny = num_tr
-                    via.spy = 2 * track_pitch
-                    if ntr > 1:
-                        # add second set of vias
-                        via_box = via_box.move_by(box_arr.spx, track_pitch)
-                        self.add_via(via_box, self._vm_layer, self._hm_layer, 'y',
-                                     nx=box_arr.nx - nx, spx=2 * box_arr.spx,
-                                     ny=ntr - num_tr, spy=2 * track_pitch)
-
-            tr_box = BBox(tr_xl, yb_min, tr_xr, yt_min, res)
-            self.add_rect(self._hm_layer, tr_box, ny=ntr, spy=track_pitch)
-            sub_box_arr_list.append(BBoxArray(tr_box, ny=ntr, spy=track_pitch))
-        return sub_box_arr_list
+        return sub_warr_list
 
     def fill_dummy(self):
         """Draw dummy/separator on all unused transistors.
@@ -1255,17 +861,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         # connect NMOS dummies
         top_sub_inst = None
         if self._ptap_list:
-            bot_sub_inst = self._ptap_list[0][2]
+            bot_sub_inst = self._ptap_list[0]
             if len(self._ptap_list) > 1:
-                top_sub_inst = self._ptap_list[1][2]
+                top_sub_inst = self._ptap_list[1]
             self._fill_dummy_helper('nch', n_intvs, bot_sub_inst, top_sub_inst, not self._ntap_list)
 
         # connect PMOS dummies
         bot_sub_inst = None
         if self._ntap_list:
-            top_sub_inst = self._ntap_list[-1][2]
+            top_sub_inst = self._ntap_list[-1]
             if len(self._ntap_list) > 1:
-                bot_sub_inst = self._ntap_list[0][2]
+                bot_sub_inst = self._ntap_list[0]
             self._fill_dummy_helper('pch', p_intvs, bot_sub_inst, top_sub_inst, not self._ptap_list)
 
     def _fill_dummy_helper(self, mos_type, intv_set_list, bot_sub_inst, top_sub_inst, export_both):
@@ -1356,12 +962,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         sub_yb = sub_yt = None
         if bot_sub_inst is not None:
-            sub_yb = bot_sub_inst.get_port(port_name).get_bounding_box(self._dummy_layer).bottom
+            sub_yb = bot_sub_inst.get_port(port_name).get_bounding_box(self._dum_lay_id).bottom
         if top_sub_inst is not None:
-            sub_yt = top_sub_inst.get_port(port_name).get_bounding_box(self._dummy_layer).top
+            sub_yt = top_sub_inst.get_port(port_name).get_bounding_box(self._dum_lay_id).top
 
         for sub_idx, wire_bus_list in wire_groups.items():
             wire_yb = sub_yb if sub_idx >= 0 else None
             wire_yt = sub_yt if sub_idx <= 0 else None
-            self._connect_vertical_wires(wire_bus_list, wire_yb=wire_yb, wire_yt=wire_yt,
-                                         wire_layer=self._dummy_layer)
+
+            self.connect_wires(wire_bus_list, lower=wire_yb, upper=wire_yt)
