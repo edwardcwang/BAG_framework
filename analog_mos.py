@@ -80,6 +80,35 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         """
         return 0.0
 
+    @classmethod
+    @abc.abstractmethod
+    def port_layer_id(cls):
+        """Returns the dummy connection layer ID.
+
+        Returns
+        -------
+        port_layer_id : int
+            dummy connection layer ID.
+        """
+        return -1
+
+    @classmethod
+    @abc.abstractmethod
+    def get_port_width(cls, lch):
+        """Returns the width of the AnalogMosConn port.
+
+        Parameters
+        ----------
+        lch : float
+            channel length, in meters.
+
+        Returns
+        -------
+        port_width : float
+            th port width in layout units.
+        """
+        return 0.0
+
     @abc.abstractmethod
     def get_left_sd_center(self):
         """Returns the center coordinate of the leftmost source/drain connection.
@@ -161,7 +190,7 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         num_track : int
             number of tracks in this template.
         """
-        h_layer_id = AnalogMosConn.port_layer_id() + 1
+        h_layer_id = self.port_layer_id() + 1
         tr_pitch = self.grid.get_track_pitch(h_layer_id)
         h = self.array_box.height
         num_track = int(round(h / tr_pitch))
@@ -296,7 +325,9 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
         num_track : int
             number of tracks in this template.
         """
-        h_layer_id = AnalogMosConn.port_layer_id() + 1
+        tech_params = self.grid.tech_info.tech_params
+        mos_cls = tech_params['layout']['mos_template']
+        h_layer_id = mos_cls.port_layer_id() + 1
         tr_pitch = self.grid.get_track_pitch(h_layer_id)
         h = self.array_box.height
         num_track = int(round(h / tr_pitch))
@@ -1337,15 +1368,11 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
 
         WARNING: you should never call this method yourself.
         """
-        layout_unit = self.grid.layout_unit
-
         lch = self.params['lch']
         w = self.params['w']
         mos_type = self.params['mos_type']
         threshold = self.params['threshold']
         fg = self.params['fg']
-        track_width = self.params['track_width'] / layout_unit
-        track_space = self.params['track_space'] / layout_unit
         g_tracks = self.params['g_tracks']
         ds_tracks = self.params['ds_tracks']
         gds_space = self.params['gds_space']
@@ -1365,6 +1392,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             mos_ext_nfin_min = tech_constants['mos_gring_ext_nfin_min']
 
         # express track pitch as number of fin pitches
+        track_width, track_space = self.grid.get_track_info(self.port_layer_id() + 1)
         track_pitch = track_width + track_space
         track_nfin = int(round(track_pitch * 1.0 / mos_fin_pitch))
         if abs(track_pitch - track_nfin * mos_fin_pitch) >= self.grid.resolution:
@@ -1449,30 +1477,6 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-
-    @classmethod
-    @abc.abstractmethod
-    def port_layer_id(cls):
-        """Returns the port layer ID for AnalogMosConn.
-
-        Returns
-        -------
-        port_layer_id : int
-            the port layer ID.
-        """
-        return -1
-
-    @classmethod
-    @abc.abstractmethod
-    def get_port_width(cls):
-        """Returns the width of the AnalogMosConn port.
-
-        Returns
-        -------
-        port_width : float
-            th port width in layout units.
-        """
-        return 0.0
 
     @classmethod
     def get_params_info(cls):
@@ -1652,6 +1656,23 @@ class AnalogMosDummy(with_metaclass(abc.ABCMeta, MicroTemplate)):
             dummy connection layer ID.
         """
         return -1
+
+    @classmethod
+    @abc.abstractmethod
+    def get_port_width(cls, lch):
+        """Returns the width of the AnalogMosConn port.
+
+        Parameters
+        ----------
+        lch : float
+            channel length, in meters.
+
+        Returns
+        -------
+        port_width : float
+            th port width in layout units.
+        """
+        return 0.0
 
     @classmethod
     def get_params_info(cls):

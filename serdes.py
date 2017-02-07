@@ -202,20 +202,24 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             ridx, ptr_idx = track[pname]
             _, ntr_idx = track[nname]
             mos_type, ridx = self._row_idx[ridx]
-            p_port_list = [mos_dict[mos][sd] for mos, sd in conn.pop(pname)]
-            n_port_list = [mos_dict[mos][sd] for mos, sd in conn.pop(nname)]
-            sig_layer, pbox, nbox = self.connect_differential_track(p_port_list, n_port_list, mos_type, ridx,
-                                                                    conn_type, ptr_idx, ntr_idx)
-            port_dict[pname] = (sig_layer, pbox)
-            port_dict[nname] = (sig_layer, nbox)
+            pwarr_list = list(chain(*(mos_dict[mos][sd] for mos, sd in conn.pop(pname))))
+            nwarr_list = list(chain(*(mos_dict[mos][sd] for mos, sd in conn.pop(nname))))
+
+            ptr_idx = self.get_track_index(mos_type, ridx, conn_type, ptr_idx)
+            ntr_idx = self.get_track_index(mos_type, ridx, conn_type, ntr_idx)
+
+            p_tr, n_tr = self.connect_differential_tracks(pwarr_list, nwarr_list, self.mos_conn_layer + 1,
+                                                          ptr_idx, ntr_idx)
+            port_dict[pname] = p_tr
+            port_dict[nname] = n_tr
 
         # draw intermediate connections
         for conn_name, conn_list in conn.items():
-            port_list = [mos_dict[mos][sd] for mos, sd in conn_list]
+            warr_list = list(chain(*(mos_dict[mos][sd] for mos, sd in conn_list)))
             if conn_name == 'VDD':
-                self.connect_to_substrate('ntap', port_list)
+                self.connect_to_substrate('ntap', warr_list)
             elif conn_name == 'VSS':
-                self.connect_to_substrate('ptap', port_list)
+                self.connect_to_substrate('ptap', warr_list)
             else:
                 if conn_list[0][1] == 'g':
                     conn_type = 'g'
@@ -226,15 +230,15 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
                 ridx, tidx = track[conn_name]
                 mos_type, ridx = self._row_idx[ridx]
-                sig_layer, sig_box = self.connect_to_track(port_list, mos_type, ridx, conn_type, tidx,
-                                                           num_track=num_tr)
-                port_dict[conn_name] = sig_layer, sig_box
+                tr_id = self.make_track_id(mos_type, ridx, conn_type, tidx, width=num_tr)
+                sig_warr = self.connect_to_tracks(warr_list, tr_id)
+                port_dict[conn_name] = sig_warr
 
         return port_dict
 
     def draw_rows(self, lch, fg_tot, ptap_w, ntap_w,
-                  nw_list, nth_list, pw, pth, track_width, track_space, gds_space,
-                  vm_layer, hm_layer, ng_tracks, nds_tracks, pg_tracks, pds_tracks,
+                  nw_list, nth_list, pw, pth, gds_space,
+                  ng_tracks, nds_tracks, pg_tracks, pds_tracks,
                   **kwargs):
         """Draw the transistors and substrate rows.
 
@@ -258,16 +262,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             the pmos width.
         pth : str
             the pmos threshold flavor.
-        track_width : float
-            the routing track width.
-        track_space : float
-            the routing track spacing.
         gds_space : int
             number of tracks to reserve as space between gate and drain/source tracks.
-        vm_layer : str
-            vertical metal layer name.
-        hm_layer : str
-            horizontal metal layer name.
         ng_tracks : list[int]
             a 5-element list of the nmos gate tracks per row.  Use 0 for place holders.
         nds_tracks : list[int]
@@ -281,12 +277,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         Returns
         -------
-        sub_layer : str
-            the substrate horizontal track layer.
-        ptap_box_arr_list : list[bag.layout.util.BBoxArray]
-            list of P-tap substrate tracks bounding box arrays.
-        ntap_box_arr_list : list[bag.layout.util.BBoxArray]
-            list of N-tap substrate tracks bounding box arrays.
+        ptap_wire_arrs : list[:class:`~bag.layout.routing.WireArray`]
+            list of P-tap substrate WireArrays.
+        ntap_wire_arrs : list[:class:`~bag.layout.routing.WireArray`]
+            list of N-tap substrate WireArrays.
         """
 
         # eliminate unneeded nmos rows and build row index.
@@ -335,9 +329,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             new_nds_tracks.append(nds_tracks[4])
 
         # draw base
-        return self.draw_base(lch, fg_tot, ptap_w, ntap_w,
-                              new_nw_list, new_nth_list, [pw], [pth],
-                              track_width, track_space, gds_space, vm_layer, hm_layer,
+        return self.draw_base(lch, fg_tot, ptap_w, ntap_w, new_nw_list,
+                              new_nth_list, [pw], [pth], gds_space,
                               ng_tracks=new_ng_tracks, nds_tracks=new_nds_tracks,
                               pg_tracks=[pg_tracks], pds_tracks=[pds_tracks],
                               **kwargs)
@@ -393,24 +386,26 @@ class DynamicLatchChain(SerdesRXBase):
         fg_latch = max(fg_list) * 2 + fg_sep
         kwargs['fg_tot'] = nstage * fg_latch + (nstage - 1) * fg_sep + nduml + ndumr
 
-        slay, ptap_box_arr_list, ntap_box_arr_list = self.draw_rows(**kwargs)
-        port_list = list(chain((('VSS', (slay, barr)) for barr in ptap_box_arr_list),
-                               (('VDD', (slay, barr)) for barr in ntap_box_arr_list)))
+        ptap_wire_arrs, ntap_wire_arrs = self.draw_rows(**kwargs)
+        port_list = list(chain((('VSS', warr) for warr in ptap_wire_arrs),
+                               (('VDD', warr) for warr in ntap_wire_arrs)))
+
         # add global ground
         if global_gnd_layer is not None:
-            self.add_pin(global_gnd_name, global_gnd_layer, ptap_box_arr_list[0].base, show=show_pins)
-        
+            _, global_gnd_box = next(ptap_wire_arrs[0].wire_iter(self.grid))
+            self.add_pin_primitive(global_gnd_name, global_gnd_layer, global_gnd_box)
+
         for idx in range(nstage):
             col_idx = (fg_latch + fg_sep) * idx + nduml
             pdict = self.draw_dynamic_latch(col_idx, fg_list, fg_sep=fg_sep, num_track_current=num_track_current)
-            for pname, port_geo in pdict.items():
+            for pname, port_warr in pdict.items():
                 pname = rename_dict.get(pname, pname)
                 if pname:
                     pin_name = self._rename_port(pname, idx, nstage)
-                    port_list.append((pin_name, port_geo))
+                    port_list.append((pin_name, port_warr))
 
-        for pname, (lay, box) in port_list:
-            self.add_pin(pname, lay, box, show=show_pins)
+        for pname, warr in port_list:
+            self.add_pin(pname, warr, show=show_pins)
 
         self.fill_dummy()
 
@@ -462,12 +457,8 @@ class DynamicLatchChain(SerdesRXBase):
             nth_list='5-element list of NMOS threshold flavors.',
             pw='PMOS width, in meters/number of fins.',
             pth='PMOS threshold flavor.',
-            track_width='horizontal track width, in meters.',
-            track_space='horizontal track spacing, in meters.',
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',
             diff_space='number of tracks reserved as space between differential tracks.',
-            vm_layer='vertical routing metal layer name.',
-            hm_layer='horizontal routing metal layer name.',
             fg_list='6-element list of single-sided transistor number of fingers, from bottom to top.',
             nstage='number of dynamic latch stages.',
             nduml='number of dummy fingers on the left.',

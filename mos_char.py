@@ -73,12 +73,8 @@ class Transistor(AnalogBase):
             fg='number of fingers.',
             fg_dum='number of dummies on each side.',
             threshold='transistor threshold flavor.',
-            track_width='horizontal track width, in meters.',
-            track_space='horizontal track spacing, in meters.',
             ptap_w='NMOS substrate width, in meters/number of fins.',
             ntap_w='PMOS substrate width, in meters/number of fins.',
-            vm_layer='vertical routing metal layer name.',
-            hm_layer='horizontal routing metal layer name.',
             num_track_sep='number of tracks reserved as space between ports.',
             min_ds_cap='True to minimize parasitic Cds.',
         )
@@ -111,12 +107,8 @@ class Transistor(AnalogBase):
         fg = self.params['fg']
         fg_dum = self.params['fg_dum']
         threshold = self.params['threshold']
-        track_width = self.params['track_width']
-        track_space = self.params['track_space']
         ptap_w = self.params['ptap_w']
         ntap_w = self.params['ntap_w']
-        vm_layer = self.params['vm_layer']
-        hm_layer = self.params['hm_layer']
         num_track_sep = self.params['num_track_sep']
 
         fg_tot = fg + 2 * fg_dum
@@ -141,10 +133,8 @@ class Transistor(AnalogBase):
             pg_tracks.append(num_gate_tr)
             pds_tracks.append(1)
 
-        sub_lay, bot_box_arr_list, top_box_arr_list = self.draw_base(lch, fg_tot, ptap_w, ntap_w,
-                                                                     nw_list, nth_list, pw_list, pth_list,
-                                                                     track_width, track_space, num_track_sep,
-                                                                     vm_layer, hm_layer,
+        sub_lay, bot_box_arr_list, top_box_arr_list = self.draw_base(lch, fg_tot, ptap_w, ntap_w, nw_list,
+                                                                     nth_list, pw_list, pth_list, num_track_sep,
                                                                      ng_tracks=ng_tracks, nds_tracks=nds_tracks,
                                                                      pg_tracks=pg_tracks, pds_tracks=pds_tracks,
                                                                      )
@@ -155,13 +145,16 @@ class Transistor(AnalogBase):
             self.add_pin('b', sub_lay, barr, show=True)
 
         mos_ports = self.draw_mos_conn(mos_type, 0, fg_dum, fg, 0, 2, min_ds_cap=self.params['min_ds_cap'])
-        tr_lay, tr_box = self.connect_to_track([mos_ports['g']], mos_type, 0, 'g', num_gate_tr - 1)
-        self.add_pin('g', tr_lay, tr_box, show=True)
+        tr_id = self.make_track_id(mos_type, 0, 'g', num_gate_tr - 1)
+        warr = self.connect_to_tracks(mos_ports['g'], tr_id)
+        self.add_pin('g', warr, show=True)
 
-        tr_lay, tr_box = self.connect_to_track([mos_ports['d']], mos_type, 0, 'ds', 0)
-        self.add_pin('d', tr_lay, tr_box, show=True)
+        tr_id = self.make_track_id(mos_type, 0, 'ds', 0)
+        warr = self.connect_to_tracks(mos_ports['d'], tr_id)
+        self.add_pin('d', warr, show=True)
 
-        tr_lay, tr_box = self.connect_to_track([mos_ports['s']], mos_type, 0, 'g', 0)
-        self.add_pin('s', tr_lay, tr_box, show=True)
+        tr_id = self.make_track_id(mos_type, 0, 'g', 0)
+        warr = self.connect_to_tracks(mos_ports['s'], tr_id)
+        self.add_pin('s', warr, show=True)
 
         self.fill_dummy()
