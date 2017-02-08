@@ -274,13 +274,6 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             number of pmos drain/source tracks.
         kwargs : dict[str, any]
             any addtional parameters.
-
-        Returns
-        -------
-        ptap_wire_arrs : list[:class:`~bag.layout.routing.WireArray`]
-            list of P-tap substrate WireArrays.
-        ntap_wire_arrs : list[:class:`~bag.layout.routing.WireArray`]
-            list of N-tap substrate WireArrays.
         """
 
         # eliminate unneeded nmos rows and build row index.
@@ -329,11 +322,11 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             new_nds_tracks.append(nds_tracks[4])
 
         # draw base
-        return self.draw_base(lch, fg_tot, ptap_w, ntap_w, new_nw_list,
-                              new_nth_list, [pw], [pth], gds_space,
-                              ng_tracks=new_ng_tracks, nds_tracks=new_nds_tracks,
-                              pg_tracks=[pg_tracks], pds_tracks=[pds_tracks],
-                              **kwargs)
+        self.draw_base(lch, fg_tot, ptap_w, ntap_w, new_nw_list,
+                       new_nth_list, [pw], [pth], gds_space,
+                       ng_tracks=new_ng_tracks, nds_tracks=new_nds_tracks,
+                       pg_tracks=[pg_tracks], pds_tracks=[pds_tracks],
+                       **kwargs)
 
 
 class DynamicLatchChain(SerdesRXBase):
@@ -386,14 +379,8 @@ class DynamicLatchChain(SerdesRXBase):
         fg_latch = max(fg_list) * 2 + fg_sep
         kwargs['fg_tot'] = nstage * fg_latch + (nstage - 1) * fg_sep + nduml + ndumr
 
-        ptap_wire_arrs, ntap_wire_arrs = self.draw_rows(**kwargs)
-        port_list = list(chain((('VSS', warr) for warr in ptap_wire_arrs),
-                               (('VDD', warr) for warr in ntap_wire_arrs)))
-
-        # add global ground
-        if global_gnd_layer is not None:
-            _, global_gnd_box = next(ptap_wire_arrs[0].wire_iter(self.grid))
-            self.add_pin_primitive(global_gnd_name, global_gnd_layer, global_gnd_box)
+        self.draw_rows(**kwargs)
+        port_list = []
 
         for idx in range(nstage):
             col_idx = (fg_latch + fg_sep) * idx + nduml
@@ -407,7 +394,15 @@ class DynamicLatchChain(SerdesRXBase):
         for pname, warr in port_list:
             self.add_pin(pname, warr, show=show_pins)
 
-        self.fill_dummy()
+        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy()
+        # export supplies
+        port_list.extend((('VSS', warr) for warr in ptap_wire_arrs))
+        port_list.extend((('VDD', warr) for warr in ntap_wire_arrs))
+
+        # add global ground
+        if global_gnd_layer is not None:
+            _, global_gnd_box = next(ptap_wire_arrs[0].wire_iter(self.grid))
+            self.add_pin_primitive(global_gnd_name, global_gnd_layer, global_gnd_box)
 
     @classmethod
     def get_default_param_values(cls):

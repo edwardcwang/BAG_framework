@@ -254,20 +254,6 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
-    @abc.abstractmethod
-    def contact_both_ds(self):
-        """Returns True if you can contact both drain and source to horizontal tracks.
-
-        Some technology may not allow contacts to be placed on both drain and source
-        wire.  In this case this method will indicate so.
-
-        Returns
-        -------
-        contact_both : bool
-            True if you can draw contacts on both drain and source wires in the same row.
-        """
-        return True
-
     @classmethod
     def get_default_param_values(cls):
         """Returns a dictionary containing default parameter values.
@@ -285,9 +271,9 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return dict(
             guard_ring_nf=0,
             is_end=True,
-            dummy_only=False,
-            port_intv_list=None,
-            port_mode='ds',
+            port_tracks=[],
+            dum_tracks=[],
+            dummy_only=False
         )
 
     @classmethod
@@ -310,8 +296,8 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
             guard_ring_nf='Width of the guard ring, in number of fingers.  Use 0 for no guard ring.',
             is_end='True if this template is at the ends.',
             dummy_only='True if only dummy connections will be made to this substrate.',
-            port_intv_list='list of gate intervals to draw substrate connections.',
-            port_mode="source/drain type to export.  Either 'd', 's', or 'ds'",
+            port_tracks='Substrate port must contain these track indices.',
+            dum_tracks='Dummy port must contain these track indices.',
         )
 
     def get_num_tracks(self):
@@ -348,7 +334,7 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
         w_str = float_to_si_string(self.params['w'])
         gr_nf = self.params['guard_ring_nf']
         is_end = self.params['is_end']
-        dummy_only = self.params['dummy_only']
+        dum_only = self.params['dummy_only']
         main = '%s_%s_l%s_w%s_fg%d' % (self.params['sub_type'],
                                        self.params['threshold'],
                                        lch_str, w_str,
@@ -356,7 +342,7 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
         name = 'base'
         if is_end:
             name += '_end'
-        if dummy_only:
+        if dum_only:
             name += '_dumonly'
 
         if gr_nf > 0:
@@ -366,10 +352,9 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
-        port_intv_list = self.params['port_intv_list']
-        if not port_intv_list:
-            port_intv_list = [(0, self.params['fg'])]
-        return '%s_%s_%s' % (basename, repr(port_intv_list), self.params['port_mode'])
+        port_tracks = self.params['port_tracks']
+        dum_tracks = self.params['dum_tracks']
+        return '%s_%s_%s' % (basename, repr(port_tracks), repr(dum_tracks))
 
 
 # noinspection PyAbstractClass
