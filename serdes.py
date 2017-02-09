@@ -29,7 +29,6 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
-from itertools import chain
 
 from .analog_core import AnalogBase
 
@@ -202,8 +201,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             ridx, ptr_idx = track[pname]
             _, ntr_idx = track[nname]
             mos_type, ridx = self._row_idx[ridx]
-            pwarr_list = list(chain(*(mos_dict[mos][sd] for mos, sd in conn.pop(pname))))
-            nwarr_list = list(chain(*(mos_dict[mos][sd] for mos, sd in conn.pop(nname))))
+            pwarr_list = [mos_dict[mos][sd] for mos, sd in conn.pop(pname)]
+            nwarr_list = [mos_dict[mos][sd] for mos, sd in conn.pop(nname)]
 
             ptr_idx = self.get_track_index(mos_type, ridx, conn_type, ptr_idx)
             ntr_idx = self.get_track_index(mos_type, ridx, conn_type, ntr_idx)
@@ -215,7 +214,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         # draw intermediate connections
         for conn_name, conn_list in conn.items():
-            warr_list = list(chain(*(mos_dict[mos][sd] for mos, sd in conn_list)))
+            warr_list = [mos_dict[mos][sd] for mos, sd in conn_list]
             if conn_name == 'VDD':
                 self.connect_to_substrate('ntap', warr_list)
             elif conn_name == 'VSS':
@@ -391,13 +390,13 @@ class DynamicLatchChain(SerdesRXBase):
                     pin_name = self._rename_port(pname, idx, nstage)
                     port_list.append((pin_name, port_warr))
 
-        for pname, warr in port_list:
-            self.add_pin(pname, warr, show=show_pins)
-
         ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy()
         # export supplies
         port_list.extend((('VSS', warr) for warr in ptap_wire_arrs))
         port_list.extend((('VDD', warr) for warr in ntap_wire_arrs))
+
+        for pname, warr in port_list:
+            self.add_pin(pname, warr, show=show_pins)
 
         # add global ground
         if global_gnd_layer is not None:

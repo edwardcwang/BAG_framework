@@ -34,7 +34,7 @@ from typing import List
 
 from bag.util.interval import IntervalSet
 from bag.layout.template import MicroTemplate
-from bag.layout.routing import TrackID
+from bag.layout.routing import TrackID, WireArray
 from .analog_mos import AnalogMosBase, AnalogSubstrate, AnalogMosConn
 from future.utils import with_metaclass
 
@@ -421,13 +421,15 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         ----------
         sub_type : string
             substrate type.  Either 'ptap' or 'ntap'.
-        warr_list : list[bag.layout.routing.WireArray]
+        warr_list : :class:`~bag.layout.routing.WireArray` or Iterable[:class:`~bag.layout.routing.WireArray`]
             list of WireArrays to connect to supply.
         inner : bool
             True to connect to inner substrate.
         both : bool
             True to connect to both substrates
         """
+        if isinstance(warr_list, WireArray):
+            warr_list = [warr_list]
         wire_yb, wire_yt = None, None
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
 
@@ -552,7 +554,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             optional arguments for AnalogMosConn.
         Returns
         -------
-        ports : dict[str, bag.layout.routing.WireArray]
+        ports : dict[str, :class:`~bag.layout.routing.WireArray`]
             a dictionary of ports as WireArrays.  The keys are 'g', 'd', and 's'.
         """
         # mark transistors as connected
@@ -591,7 +593,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         conn_master = self.new_template(params=conn_params, temp_cls=self._mconn_cls)  # type: AnalogMosConn
         conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient)
 
-        return {key: conn_inst.get_port(key).get_pins(self._bot_lay_id)
+        return {key: conn_inst.get_port(key).get_pins(self._bot_lay_id)[0]
                 for key in ['g', 'd', 's'] if conn_inst.has_port(key)}
 
     @staticmethod
