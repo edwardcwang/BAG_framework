@@ -659,7 +659,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         return mtype_list, orient_list, w_list, th_list, g_list, ds_list, name_list, ds_dummy_list
 
-    # noinspection PyUnusedLocal
     def draw_base(self, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw_list, pth_list,
                   gds_space=0,
@@ -667,8 +666,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                   pg_tracks=None, pds_tracks=None,
                   n_orientations=None, p_orientations=None,
                   guard_ring_nf=0,
-                  n_ds_dummy=None, p_ds_dummy=None,
-                  **kwargs):
+                  n_ds_dummy=None, p_ds_dummy=None):
         """Draw the analog base.
 
         This method must be called first.
