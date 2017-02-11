@@ -424,7 +424,7 @@ class DynamicLatchChain(SerdesRXBase):
         ng_tracks = []
         nds_tracks = []
         for row_name in ['tail', 'w_en', 'sw', 'in', 'casc']:
-            if w_dict.get('w_' + row_name, -1) > 0:
+            if w_dict.get(row_name, -1) > 0:
                 if row_name == 'in':
                     ng_tracks.append(2 + diff_space)
                 else:
@@ -434,15 +434,18 @@ class DynamicLatchChain(SerdesRXBase):
         kwargs['nds_tracks'] = nds_tracks
 
         # draw rows with width/threshold parameters.
-        kwargs.update(w_dict)
-        kwargs.update(th_dict)
+        for key, val in w_dict.items():
+            kwargs['w_' + key] = val
+        for key, val in th_dict.items():
+            kwargs['th_' + key] = val
         self.draw_rows(lch, fg_tot, ptap_w, ntap_w, **kwargs)
 
         port_list = []
 
+        da_kwargs = {'fg_' + key: val for key, val in fg_dict.items()}
         for idx in range(nstage):
             col_idx = (fg_latch + fg_sep) * idx + nduml
-            pdict = self.draw_diffamp(col_idx, cur_track_width=cur_track_width, **fg_dict)
+            pdict = self.draw_diffamp(col_idx, cur_track_width=cur_track_width, **da_kwargs)
             for pname, port_warr in pdict.items():
                 pname = self.get_pin_name(pname)
                 if pname:
@@ -484,7 +487,7 @@ class DynamicLatchChain(SerdesRXBase):
             fg_sep=0,
             nduml=4,
             ndumr=4,
-            cur_track_width=2,
+            cur_track_width=1,
             show_pins=True,
             rename_dict={},
             guard_ring_nf=0,
