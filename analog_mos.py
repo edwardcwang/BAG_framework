@@ -83,7 +83,7 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     @classmethod
     @abc.abstractmethod
     def port_layer_id(cls):
-        """Returns the dummy connection layer ID.
+        """Returns the mosfet connection layer ID.
 
         Returns
         -------
