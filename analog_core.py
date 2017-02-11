@@ -659,16 +659,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         return mtype_list, orient_list, w_list, th_list, g_list, ds_list, name_list, ds_dummy_list
 
+    # noinspection PyUnusedLocal
     def draw_base(self, lch, fg_tot, ptap_w, ntap_w,
                   nw_list, nth_list, pw_list, pth_list,
-                  gds_space,
+                  gds_space=0,
                   ng_tracks=None, nds_tracks=None,
                   pg_tracks=None, pds_tracks=None,
                   n_orientations=None, p_orientations=None,
                   guard_ring_nf=0,
                   n_ds_dummy=None, p_ds_dummy=None,
-                  extra_vss_tracks=None, extra_vdd_tracks=None,
-                  ):
+                  **kwargs):
         """Draw the analog base.
 
         This method must be called first.
@@ -711,17 +711,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             is_ds_dummy flag for each nmos row.  Defaults to all False.
         p_ds_dummy : list[bool] or None
             is_ds_dummy flag for each pmos row.  Defaults to all False.
-        extra_vss_tracks : list or None
-            list of extra vss tracks, in format of (ridx, ds_type, tr_idx, tr_width).
-            assume mos_type = 'nch'.
-        extra_vdd_tracks : list or None
-            list of extra vdd tracks, in format of (ridx, ds_type, tr_idx, tr_width),
-            assume mos_type = 'pch'.
         """
         numn = len(nw_list)
         nump = len(pw_list)
-        extra_vss_tracks = extra_vss_tracks or []
-        extra_vdd_tracks = extra_vdd_tracks or []
 
         # get sd_pitch and vertical metal layer track info
         self._lch = lch
@@ -833,13 +825,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                     gr_vdd_ports.append(minst.get_port('b'))
 
         # connect body guard rings together
-        for mos_type, gr_sup_ports, extra_tracks in [('nch', gr_vss_ports, extra_vss_tracks),
-                                                     ('pch', gr_vdd_ports, extra_vdd_tracks)]:
-            if not extra_tracks:
-                warr_list = list(chain(*(port.get_pins(self._bot_lay_id) for port in gr_sup_ports)))
-                self.connect_wires(warr_list)
-            else:
-                pass
+        for mos_type, gr_sup_ports in [('nch', gr_vss_ports),
+                                       ('pch', gr_vdd_ports)]:
+            warr_list = list(chain(*(port.get_pins(self._bot_lay_id) for port in gr_sup_ports)))
+            self.connect_wires(warr_list)
 
         self.array_box = tot_array_box
 
@@ -1051,7 +1040,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         if top_sub_inst is not None:
             self._export_supplies(top_dum_tracks, top_tracks, top_sub_inst, top_dum_only)
 
-    def _export_supplies(self, dum_tracks, port_tracks, sub_inst, dum_only):
+    @staticmethod
+    def _export_supplies(dum_tracks, port_tracks, sub_inst, dum_only):
         dum_tracks = sorted(dum_tracks)
         port_tracks = sorted(port_tracks)
         sub_inst.new_master_with(dum_tracks=dum_tracks, port_tracks=port_tracks,
