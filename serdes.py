@@ -102,6 +102,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         Returns
         -------
+        fg_gm : int
+            width of Gm stage in number of fingers.
         port_dict : dict[str, List[:class:`~bag.layout.routing.WireArray`]]
             a dictionary from connection name to WireArrays.  Outputs are on vertical layer,
             and rests are on the horizontal layer above that.
@@ -121,7 +123,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         # find number of fingers per row
         fg_sep, fg_max, out_type = self._get_gm_info(fg_in, fg_tail, fg_casc, fg_but, fg_sw, fg_en, fg_sep)
-
+        fg_gm_tot = fg_max * 2 + fg_sep
         # figure out source/drain directions and intermediate connections
         # load always drain down.
         sd_dir = {}
@@ -293,7 +295,14 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 sig_warr = self.connect_to_tracks(warr_list, tr_id)
                 port_dict[conn_name] = [sig_warr, ]
 
-        return port_dict
+        return fg_gm_tot, port_dict
+
+    def get_diffamp_info(self, fg_in, fg_tail, fg_load, fg_casc=0, fg_but=0,
+                         fg_sw=0, fg_en=0, fg_sep=0):
+        """Calculate total number of Gm summer fingers."""
+        fg_sep, fg_max_gm, out_type = self._get_gm_info(fg_in, fg_tail, fg_casc, fg_but, fg_sw, fg_en, fg_sep)
+        fg_max = max(fg_load, fg_max_gm)
+        return fg_max * 2 + fg_sep
 
     def draw_diffamp(self, col_idx, fg_in, fg_tail, fg_load,
                      fg_casc=0, fg_but=0, fg_sw=0, fg_en=0,
@@ -331,6 +340,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         Returns
         -------
+        fg_amp : int
+            width of amplifier in number of fingers.
         port_dict : dict[str, List[:class:`~bag.layout.routing.WireArray`]]
             a dictionary from connection name to the horizontal track associated
             with the connection.
@@ -344,9 +355,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             raise ValueError('fg_load > fg_but > 0 case not supported yet.')
 
         # draw Gm.
-        port_dict = self.draw_gm(gm_col_idx, fg_in, fg_tail, fg_casc=fg_casc, fg_but=fg_but,
-                                 fg_sw=fg_sw, fg_en=fg_en, fg_sep=fg_sep,
-                                 cur_track_width=cur_track_width, diff_space=diff_space)
+        fg_gm_tot, port_dict = self.draw_gm(gm_col_idx, fg_in, fg_tail, fg_casc=fg_casc, fg_but=fg_but,
+                                            fg_sw=fg_sw, fg_en=fg_en, fg_sep=fg_sep,
+                                            cur_track_width=cur_track_width, diff_space=diff_space)
+        fg_amp_tot = fg_max * 2 + fg_sep
 
         outp_warrs = port_dict['outp']
         outn_warrs = port_dict['outn']
@@ -383,9 +395,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         port_dict['outp'] = [p_tr, ]
         port_dict['outn'] = [n_tr, ]
 
-        return port_dict
+        return fg_amp_tot, port_dict
 
-    def get_summer_fingers(self, fg_load, gm_fg_list, fg_stage=0, fg_sep=0):
+    def get_summer_info(self, fg_load, gm_fg_list, fg_sep_gm=0, fg_sep=0):
         """Calculate total number of Gm summer fingers."""
         gm_fg_max_list = []
         gm_fg_cum_list = []
@@ -409,17 +421,17 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         # draw each Gm stage and load.
         fg_count = 0
         fg_sep = max(fg_sep, self.min_fg_sep)
-        fg_stage = max(fg_stage, self.min_fg_sep)
+        fg_sep_gm = max(fg_sep_gm, self.min_fg_sep)
         col_idx_list = []
         for cur_load_fg, gm_fg_max in zip(load_fg_list, gm_fg_max_list):
             col_idx_list.append(fg_count)
-            fg_count += max(gm_fg_max, cur_load_fg) * 2 + fg_sep + fg_stage
+            fg_count += max(gm_fg_max, cur_load_fg) * 2 + fg_sep + fg_sep_gm
 
-        fg_count -= fg_stage
+        fg_count -= fg_sep_gm
         return fg_count, load_fg_list, col_idx_list
 
     def draw_gm_summer(self, col_idx, fg_load, gm_fg_list,
-                       fg_stage=0, **kwargs):
+                       fg_sep_gm=0, **kwargs):
         """Draw a differential Gm summer (multiple Gm stage connected to same load).
 
         a separator is used to separate the positive half and the negative half of the latch.
@@ -433,13 +445,15 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             number of pmos load fingers (single-sided).
         gm_fg_list : List[Dict[string, int]]
             a list of finger dictionaries for each Gm stage, from left to right.
-        fg_stage : int
+        fg_sep_gm : int
             number of separator fingers between Gm stages.
         kwargs : Dict[string, any]
             optional parameters for :py:method:`draw_diffamp`
 
         Returns
         -------
+        fg_summer : int
+            width of Gm summer in number of fingers.
         port_dict : dict[(str, int), :class:`~bag.layout.routing.WireArray`]
             a dictionary from connection name/index pair to the horizontal track associated
             with the connection.
@@ -448,9 +462,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         if fg_load <= 0:
             raise ValueError('load transistors num. fingers must be positive.')
 
-        fg_tot, load_fg_list, col_idx_list = self.get_summer_fingers(fg_load, gm_fg_list,
-                                                                     fg_stage=fg_stage,
-                                                                     fg_sep=kwargs.get('fg_sep', 0))
+        fg_tot, load_fg_list, col_idx_list = self.get_summer_info(fg_load, gm_fg_list,
+                                                                  fg_sep_gm=fg_sep_gm,
+                                                                  fg_sep=kwargs.get('fg_sep', 0))
 
         # draw each Gm stage and load.
         conn_dict = {'vddt': [], 'bias_load': [], 'outp': [], 'outn': []}
@@ -461,7 +475,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             cur_kwargs['fg_load'] = cur_load_fg
             for key, val in gm_fdict.items():
                 cur_kwargs['fg_' + key] = val
-            cur_ports = self.draw_diffamp(col_idx + cur_col, **cur_kwargs)
+            _, cur_ports = self.draw_diffamp(col_idx + cur_col, **cur_kwargs)
             # register port
             for name, warr in cur_ports.items():
                 if name in conn_dict:
@@ -478,7 +492,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                     raise ValueError('%s wire are on different tracks.' % name)
                 port_dict[(name, -1)] = conn_list
 
-        return port_dict
+        return fg_tot, port_dict
 
     def draw_rows(self, lch, fg_tot, ptap_w, ntap_w,
                   w_in, w_tail, w_load,
@@ -623,7 +637,7 @@ class DynamicLatchChain(SerdesRXBase):
         da_kwargs = {'fg_' + key: val for key, val in fg_dict.items()}
         for idx in range(nstage):
             col_idx = (fg_latch + fg_sep) * idx + nduml
-            pdict = self.draw_diffamp(col_idx, cur_track_width=cur_track_width, **da_kwargs)
+            _, pdict = self.draw_diffamp(col_idx, cur_track_width=cur_track_width, **da_kwargs)
             for pname, port_warr in pdict.items():
                 pname = self.get_pin_name(pname)
                 if pname:
@@ -737,27 +751,37 @@ class RXTest(SerdesRXBase):
         """
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, lch, ptap_w, ntap_w, w_dict, th_dict, summer_params,
-                            nduml, ndumr, global_gnd_layer, global_gnd_name,
-                            diff_space, cur_track_width, show_pins, **kwargs):
+    def _draw_layout_helper(self, lch, ptap_w, ntap_w, w_dict, th_dict,
+                            analatch_params, integ_params, summer_params,
+                            fg_stage, nduml, ndumr, global_gnd_layer, global_gnd_name,
+                            show_pins, diff_space, cur_track_width, **kwargs):
 
-        # calculate total number of fingers.
-        fg_tot, load_fg_list, col_idx_list = self.get_summer_fingers(**summer_params)
+        analatch_params = analatch_params.copy()
+        integ_params = integ_params.copy()
+        summer_params = summer_params.copy()k
 
-        fg_tot += nduml + ndumr
+        # get width of each block
+        fg_amp = self.get_diffamp_info(**analatch_params)
+        fg_integ, _, _ = self.get_summer_info(**integ_params)
+        fg_summer, _, _ = self.get_summer_info(**summer_params)
+
+        fg_tot = fg_amp + fg_integ + fg_summer + 2 * fg_stage + nduml + ndumr
 
         # figure out number of tracks
         kwargs['pg_tracks'] = [1]
         kwargs['pds_tracks'] = [2 + diff_space]
         ng_tracks = []
         nds_tracks = []
-        gm_fg_list = summer_params['gm_fg_list']
+
+        # check if butterfly switches are used
         has_but = False
+        gm_fg_list = integ_params['gm_fg_list']
         for fdict in gm_fg_list:
             if fdict.get('but', 0) > 0:
                 has_but = True
                 break
 
+        # compute nmos gate/drain/source number of tracks
         for row_name in ['tail', 'w_en', 'sw', 'in', 'casc']:
             if w_dict.get(row_name, -1) > 0:
                 if row_name == 'in' or (row_name == 'casc' and has_but):
@@ -776,16 +800,22 @@ class RXTest(SerdesRXBase):
         del kwargs['rename_dict']
         self.draw_rows(lch, fg_tot, ptap_w, ntap_w, **kwargs)
 
-        port_dict = self.draw_gm_summer(nduml, **summer_params)
-        for (name, idx), warr_list in port_dict.items():
-            pname = self.get_pin_name(name)
-            if pname:
-                if idx >= 0:
-                    pname = '%s<%d>' % (pname, idx)
-                self.add_pin(pname, warr_list, show=show_pins)
+        # draw blocks
+        cur_col = nduml
+        analatch_params['cur_track_width'] = cur_track_width
+        analatch_params['diff_space'] = diff_space
+        fg_amp, analatch_ports = self.draw_diffamp(cur_col, **analatch_params)
+        cur_col += fg_amp + fg_stage
+        integ_params['cur_track_width'] = cur_track_width
+        integ_params['diff_space'] = diff_space
+        fg_integ, integ_ports = self.draw_gm_summer(cur_col, **integ_params)
+        cur_col += fg_integ + fg_stage
+        summer_params['cur_track_width'] = cur_track_width
+        summer_params['diff_space'] = diff_space
+        fg_summer, summer_ports = self.draw_gm_summer(cur_col, **summer_params)
 
-        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy()
         # export supplies
+        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy()
         for warr in ptap_wire_arrs:
             self.add_pin(self.get_pin_name('VSS'), warr, show=show_pins)
         for warr in ntap_wire_arrs:
@@ -814,6 +844,7 @@ class RXTest(SerdesRXBase):
             th_dict={},
             gds_space=1,
             diff_space=1,
+            fg_stage=6,
             nduml=4,
             ndumr=4,
             cur_track_width=1,
@@ -841,11 +872,14 @@ class RXTest(SerdesRXBase):
             ntap_w='PMOS substrate width, in meters/number of fins.',
             w_dict='NMOS/PMOS width dictionary.',
             th_dict='NMOS/PMOS threshold flavor dictionary.',
-            summer_params='Gm summer parameters.',
-            gds_space='number of tracks reserved as space between gate and drain/source tracks.',
-            diff_space='number of tracks reserved as space between differential tracks.',
+            analatch_params='Analog latch parameters',
+            integ_params='Integrator parameters.',
+            summer_params='DFE tap-1 summer parameters.',
+            fg_stage='separation between stages.',
             nduml='number of dummy fingers on the left.',
             ndumr='number of dummy fingers on the right.',
+            gds_space='number of tracks reserved as space between gate and drain/source tracks.',
+            diff_space='number of tracks reserved as space between differential tracks.',
             cur_track_width='width of the current-carrying horizontal track wire in number of tracks.',
             show_pins='True to create pin labels.',
             rename_dict='port renaming dictionary',
