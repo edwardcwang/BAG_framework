@@ -59,8 +59,17 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         AnalogBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._nrow_idx = None
 
+    def _get_gm_info(self, fg_in, fg_tail, fg_casc, fg_but, fg_sw, fg_en, fg_sep):
+        fg_sep = max(fg_sep, self.min_fg_sep)
+        fg_max = max(fg_but, fg_casc, fg_in, fg_sw, fg_en, fg_tail)
+        if (fg_but // 2) % 2 == 1:
+            out_type = 's'
+        else:
+            out_type = 'd'
+        return fg_sep, fg_max, out_type
+
     def draw_gm(self, col_idx, fg_in, fg_tail,
-                fg_casc=0, fg_sw=0, fg_en=0,
+                fg_casc=0, fg_but=0, fg_sw=0, fg_en=0,
                 fg_sep=0, cur_track_width=1, diff_space=1):
         """Draw a differential gm stage.
 
@@ -77,6 +86,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             number of nmos tail fingers (single-sided).
         fg_casc : int
             number of nmos cascode fingers (single-sided).  0 to disable.
+        fg_but : int
+            number of nmos butterfly diffpair fingers per side.  0 to disable.  This parameter
+            overrides fg_casc.
         fg_sw : int or float
             number of nmos tail switch fingers (single-sided).  0 to disable.
         fg_en : int or float
@@ -90,29 +102,52 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         Returns
         -------
-        port_dict : dict[str, :class:`~bag.layout.routing.WireArray`]
-            a dictionary from connection name to WireArray.  Outputs are on vertical layer,
+        port_dict : dict[str, List[:class:`~bag.layout.routing.WireArray`]]
+            a dictionary from connection name to WireArrays.  Outputs are on vertical layer,
             and rests are on the horizontal layer above that.
         """
         # error checking
         if fg_in <= 0 or fg_tail <= 0:
-            raise ValueError('tail/input/load transistors num. fingers must be positive.')
-        for fg, name in ((fg_casc, 'casc'), (fg_en, 'en'), (fg_sw, 'sw')):
+            raise ValueError('tail/input number of fingers must be positive.')
+        if fg_but > 0:
+            # override fg_casc
+            fg_casc = 0
+            if fg_but % 2 == 1:
+                raise ValueError('fg_but must be even.')
+
+        for fg, name in ((fg_but, 'but'), (fg_casc, 'casc'), (fg_en, 'en'), (fg_sw, 'sw')):
             if fg > 0 and name not in self._nrow_idx:
                 raise ValueError('nmos %s row is not drawn.' % name)
 
-        fg_sep = max(fg_sep, self.min_fg_sep)
-        fg_max = max(fg_in, fg_tail, fg_casc, fg_sw, fg_en) * 2 + fg_sep
+        # find number of fingers per row
+        fg_sep, fg_max, out_type = self._get_gm_info(fg_in, fg_tail, fg_casc, fg_but, fg_sw, fg_en, fg_sep)
 
         # figure out source/drain directions and intermediate connections
         # load always drain down.
-        in_ntr = self.get_num_tracks('nch', self._nrow_idx['in'], 'g')
         sd_dir = {}
         conn = {}
         track = {}
+        # butterfly, cascode and input
+        if fg_but > 0:
+            if out_type == 's':
+                # for diff mode, 'drain' direction always mean output direction, so
+                # it always goes up.
+                sd_dir['but'] = (0, 2)
+                # output on source wire
+                sd_dir['in'] = (0, 2)
+                btail_type = 'd'
+            else:
+                sd_dir['but'] = (0, 2)
+                sd_dir['in'] = (2, 0)
+                btail_type = 's'
+            conn['butp'] = [('butp', 's'), ('inp', btail_type)]
+            conn['butn'] = [('butn', 's'), ('inn', btail_type)]
+            track['butp'] = ('nch', self._nrow_idx['but'], 'ds', (cur_track_width - 1) / 2)
+            track['butn'] = ('nch', self._nrow_idx['but'], 'ds', (cur_track_width - 1) / 2)
 
-        # cascode and input
-        if fg_casc > 0:
+            itail_type = 'd' if btail_type == 's' else 's'
+            conn['tail'] = [('inp', itail_type), ('inn', itail_type)]
+        elif fg_casc > 0:
             # if cascode, flip input source/drain
             sd_dir['casc'] = (0, 2)
             sd_dir['in'] = (2, 0)
@@ -122,40 +157,49 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             track['midn'] = ('nch', self._nrow_idx['casc'], 'ds', (cur_track_width - 1) / 2)
 
             conn['tail'] = [('inp', 'd'), ('inn', 'd')]
+            casc_ntr = self.get_num_tracks('nch', self._nrow_idx['casc'], 'g')
             conn['bias_casc'] = [('cascp', 'g'), ('cascn', 'g')]
-            track['bias_casc'] = ('nch', self._nrow_idx['casc'], 'g', 0)
+            track['bias_casc'] = ('nch', self._nrow_idx['casc'], 'g', casc_ntr - 1)
         else:
             sd_dir['in'] = (0, 2)
             conn['tail'] = [('inp', 's'), ('inn', 's')]
 
         # switch
         if fg_sw > 0:
+            inst_g = [('swp', 'g'), ('swn', 'g')]
+            inst_d = [('swp', 'd'), ('swn', 'd')]
+            inst_s = [('swp', 's'), ('swn', 's')]
+
             # switch follows input direction
-            conn['sw'] = [('swp', 'g'), ('swn', 'g')]
+            conn['sw'] = inst_g
             if sd_dir['in'][0] == 0:
                 sd_dir['sw'] = (0, 1)
-                conn['vddt'] = [('swp', 'd'), ('swn', 'd')]
-                conn['tail'].extend([('swp', 's'), ('swn', 's')])
+                conn['vddt'] = inst_d
+                conn['tail'].extend(inst_s)
             else:
                 sd_dir['sw'] = (1, 0)
-                conn['vddt'] = [('swp', 's'), ('swn', 's')]
-                conn['tail'].extend([('swp', 'd'), ('swn', 'd')])
+                conn['vddt'] = inst_s
+                conn['tail'].extend(inst_d)
 
             track['vddt'] = ('nch', self._nrow_idx['sw'], 'ds', (cur_track_width - 1) / 2)
             track['sw'] = ('nch', self._nrow_idx['sw'], 'g', 0)
 
         # enable
         if fg_en > 0:
+            inst_g = [('enp', 'g'), ('enn', 'g')]
+            inst_d = [('enp', 'd'), ('enn', 'd')]
+            inst_s = [('enp', 's'), ('enn', 's')]
+
             # enable is opposite of input direction
-            conn['enable'] = [('enp', 'g'), ('enn', 'g')]
+            conn['enable'] = inst_g
             if sd_dir['in'][0] == 0:
                 sd_dir['en'] = (2, 0)
-                conn['tail'].extend([('enp', 's'), ('enn', 's')])
-                conn['foot'] = [('enp', 'd'), ('enn', 'd')]
+                conn['tail'].extend(inst_s)
+                conn['foot'] = inst_d
             else:
                 sd_dir['en'] = (0, 2)
-                conn['tail'].extend([('enp', 'd'), ('enn', 'd')])
-                conn['foot'] = [('enp', 's'), ('enn', 's')]
+                conn['tail'].extend(inst_d)
+                conn['foot'] = inst_s
 
             track['enable'] = ('nch', self._nrow_idx['en'], 'g', 0)
             track['tail'] = ('nch', self._nrow_idx['en'], 'ds', (cur_track_width - 1) / 2)
@@ -170,44 +214,68 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             key = 'tail'
             comp = 'in'
 
-        conn['bias_tail'] = [('tailp', 'g'), ('tailn', 'g')]
+        inst_g = [('tailp', 'g'), ('tailn', 'g')]
+        inst_d = [('tailp', 'd'), ('tailn', 'd')]
+        inst_s = [('tailp', 's'), ('tailn', 's')]
+
+        conn['bias_tail'] = inst_g
         if sd_dir[comp][0] == 0:
             sd_dir['tail'] = (2, 0)
-            conn[key].extend([('tailp', 's'), ('tailn', 's')])
-            conn['VSS'] = [('tailp', 'd'), ('tailn', 'd')]
+            conn[key].extend(inst_s)
+            conn['VSS'] = inst_d
         else:
             sd_dir['tail'] = (0, 2)
-            conn[key].extend([('tailp', 'd'), ('tailn', 'd')])
-            conn['VSS'] = [('tailp', 's'), ('tailn', 's')]
+            conn[key].extend(inst_d)
+            conn['VSS'] = inst_s
 
         track['bias_tail'] = ('nch', self._nrow_idx['tail'], 'g', 0)
         track[key] = ('nch', self._nrow_idx['tail'], 'ds', (cur_track_width - 1) / 2)
 
         # create mos connections
         mos_dict = {}
-        for name, fg in zip(('casc', 'in', 'sw', 'en', 'tail'),
-                            (fg_casc, fg_in, fg_sw, fg_en, fg_tail)):
+        for name, fg in zip(('but', 'casc', 'in', 'sw', 'en', 'tail'),
+                            (fg_but, fg_casc, fg_in, fg_sw, fg_en, fg_tail)):
             if fg > 0:
-                fg_tot = 2 * fg + fg_sep
-                col_start = col_idx + (fg_max - fg_tot) // 2
+                col_start = col_idx + fg_max - fg
                 sdir, ddir = sd_dir[name]
                 ridx = self._nrow_idx[name]
-                mos_dict['%sp' % name] = self.draw_mos_conn('nch', ridx, col_start, fg, sdir, ddir)
+                is_diff = (name == 'but')
+                mos_dict['%sp' % name] = self.draw_mos_conn('nch', ridx, col_start, fg, sdir, ddir,
+                                                            is_diff=is_diff)
                 mos_dict['%sn' % name] = self.draw_mos_conn('nch', ridx, col_start + fg + fg_sep,
-                                                            fg, sdir, ddir)
+                                                            fg, sdir, ddir, is_diff=is_diff)
 
         # get output WireArrays
-        out_ntype = 'casc' if fg_casc > 0 else 'in'
-        port_dict = dict(outp=mos_dict['%sp' % out_ntype]['d'],
-                         outn=mos_dict['%sn' % out_ntype]['d'])
+        port_dict = {}
+        if fg_but > 0:
+            port_dict['outp'] = [mos_dict['butp']['dp'], mos_dict['butn']['dp']]
+            port_dict['outn'] = [mos_dict['butp']['dn'], mos_dict['butn']['dn']]
+
+            # draw differential butterfly connection
+            but_ntr = self.get_num_tracks('nch', self._nrow_idx['but'], 'g')
+            ptr_idx = self.get_track_index('nch', self._nrow_idx['but'], 'g', but_ntr - 1)
+            ntr_idx = self.get_track_index('nch', self._nrow_idx['but'], 'g', but_ntr - 2 - diff_space)
+            p_tr, n_tr = self.connect_differential_tracks([mos_dict['butp']['gp'], mos_dict['butn']['gn']],
+                                                          [mos_dict['butp']['gn'], mos_dict['butn']['gp']],
+                                                          self.mos_conn_layer + 1, ptr_idx, ntr_idx)
+            port_dict['sgnp'] = [p_tr, ]
+            port_dict['sgnn'] = [n_tr, ]
+        elif fg_casc > 0:
+            port_dict['outp'] = [mos_dict['cascp']['d'], ]
+            port_dict['outn'] = [mos_dict['cascn']['d'], ]
+        else:
+            port_dict['outp'] = [mos_dict['inp']['d'], ]
+            port_dict['outn'] = [mos_dict['inn']['d'], ]
 
         # draw differential input connection
+        inp_warr = mos_dict['inp']['g']
+        inn_warr = mos_dict['inn']['g']
+        in_ntr = self.get_num_tracks('nch', self._nrow_idx['in'], 'g')
         ptr_idx = self.get_track_index('nch', self._nrow_idx['in'], 'g', in_ntr - 1)
         ntr_idx = self.get_track_index('nch', self._nrow_idx['in'], 'g', in_ntr - 2 - diff_space)
-        p_tr, n_tr = self.connect_differential_tracks(mos_dict['inp']['g'], mos_dict['inn']['g'],
-                                                      self.mos_conn_layer + 1, ptr_idx, ntr_idx)
-        port_dict['inp'] = p_tr
-        port_dict['inn'] = n_tr
+        p_tr, n_tr = self.connect_differential_tracks(inp_warr, inn_warr, self.mos_conn_layer + 1, ptr_idx, ntr_idx)
+        port_dict['inp'] = [p_tr, ]
+        port_dict['inn'] = [n_tr, ]
 
         # draw intermediate connections
         for conn_name, conn_list in conn.items():
@@ -223,12 +291,12 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 mos_type, ridx, tr_type, tr_idx = track[conn_name]
                 tr_id = self.make_track_id(mos_type, ridx, tr_type, tr_idx, width=tr_width)
                 sig_warr = self.connect_to_tracks(warr_list, tr_id)
-                port_dict[conn_name] = sig_warr
+                port_dict[conn_name] = [sig_warr, ]
 
         return port_dict
 
     def draw_diffamp(self, col_idx, fg_in, fg_tail, fg_load,
-                     fg_casc=0, fg_sw=0, fg_en=0,
+                     fg_casc=0, fg_but=0, fg_sw=0, fg_en=0,
                      fg_sep=0, cur_track_width=1, diff_space=1):
         """Draw a differential amplifier/dynamic latch.
 
@@ -247,6 +315,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             number of pmos load fingers (single-sided).
         fg_casc : int
             number of nmos cascode fingers (single-sided).  0 to disable.
+        fg_but : int
+            number of nmos butterfly diffpair fingers per side.  0 to disable.  This parameter
+            overrides fg_casc.
         fg_sw : int or float
             number of nmos tail switch fingers (single-sided).  0 to disable.
         fg_en : int or float
@@ -260,52 +331,57 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         Returns
         -------
-        port_dict : dict[str, :class:`~bag.layout.routing.WireArray`]
+        port_dict : dict[str, List[:class:`~bag.layout.routing.WireArray`]]
             a dictionary from connection name to the horizontal track associated
             with the connection.
         """
         # compute Gm stage column index.
-        fg_sep = max(fg_sep, self.min_fg_sep)
-        fg_max_gm = max(fg_in, fg_tail, fg_casc, fg_sw, fg_en) * 2 + fg_sep
-        fg_max_load = fg_load * 2 + fg_sep
-        fg_max = max(fg_max_load, fg_max_gm)
-        gm_col_idx = (fg_max - fg_max_gm) // 2 + col_idx
+        fg_sep, fg_max_gm, out_type = self._get_gm_info(fg_in, fg_tail, fg_casc, fg_but, fg_sw, fg_en, fg_sep)
+        fg_max = max(fg_load, fg_max_gm)
+        gm_col_idx = fg_max - fg_max_gm + col_idx
+
+        if fg_load > fg_but > 0:
+            raise ValueError('fg_load > fg_but > 0 case not supported yet.')
 
         # draw Gm.
-        port_dict = self.draw_gm(gm_col_idx, fg_in, fg_tail, fg_casc=fg_casc,
+        port_dict = self.draw_gm(gm_col_idx, fg_in, fg_tail, fg_casc=fg_casc, fg_but=fg_but,
                                  fg_sw=fg_sw, fg_en=fg_en, fg_sep=fg_sep,
                                  cur_track_width=cur_track_width, diff_space=diff_space)
 
+        outp_warrs = port_dict['outp']
+        outn_warrs = port_dict['outn']
         if fg_load > 0:
             # draw load transistors
-            load_col_idx = (fg_max - fg_max_load) // 2 + col_idx
-            loadp = self.draw_mos_conn('pch', 0, load_col_idx, fg_load, 2, 0)
-            loadn = self.draw_mos_conn('pch', 0, load_col_idx + fg_load + fg_sep, fg_load, 2, 0)
+            load_col_idx = fg_max - fg_load + col_idx
+            if out_type == 'd':
+                sdir, ddir = 2, 0
+                sup_type = 's'
+            else:
+                sdir, ddir = 0, 2
+                sup_type = 'd'
+            loadp = self.draw_mos_conn('pch', 0, load_col_idx, fg_load, sdir, ddir)
+            loadn = self.draw_mos_conn('pch', 0, load_col_idx + fg_load + fg_sep, fg_load, sdir, ddir)
 
             # connect load gate bias
             tr_id = self.make_track_id('pch', 0, 'g', 0)
             warr = self.connect_to_tracks([loadp['g'], loadn['g']], tr_id)
-            port_dict['bias_load'] = warr
+            port_dict['bias_load'] = [warr, ]
 
             # connect VDD
-            self.connect_to_substrate('ntap', [loadp['s'], loadn['s']])
+            self.connect_to_substrate('ntap', [loadp[sup_type], loadn[sup_type]])
 
-            outp_warr = [loadp['d'], port_dict['outp']]
-            outn_warr = [loadn['d'], port_dict['outn']]
-        else:
-            # no load transistors, just connect Gm output to horizontal tracks.
-            outp_warr = [port_dict['outp']]
-            outn_warr = [port_dict['outn']]
+            # connect load outputs vertically
+            self.connect_wires(outp_warrs + outn_warrs + [loadp[out_type], loadn[out_type]])
 
         # connect differential outputs
         out_ntr = self.get_num_tracks('pch', 0, 'ds')
         ptr_idx = self.get_track_index('pch', 0, 'ds', out_ntr - 2 - diff_space)
         ntr_idx = self.get_track_index('pch', 0, 'ds', out_ntr - 1)
 
-        p_tr, n_tr = self.connect_differential_tracks(outp_warr, outn_warr, self.mos_conn_layer + 1,
+        p_tr, n_tr = self.connect_differential_tracks(outp_warrs, outn_warrs, self.mos_conn_layer + 1,
                                                       ptr_idx, ntr_idx)
-        port_dict['outp'] = p_tr
-        port_dict['outn'] = n_tr
+        port_dict['outp'] = [p_tr, ]
+        port_dict['outn'] = [n_tr, ]
 
         return port_dict
 
@@ -389,7 +465,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             # register port
             for name, warr in cur_ports.items():
                 if name in conn_dict:
-                    conn_dict[name].append(warr)
+                    conn_dict[name].extend(warr)
                 else:
                     port_dict[(name, idx)] = warr
 
@@ -400,7 +476,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 if len(conn_list) != 1:
                     # error checking
                     raise ValueError('%s wire are on different tracks.' % name)
-                port_dict[(name, -1)] = conn_list[0]
+                port_dict[(name, -1)] = conn_list
 
         return port_dict
 
@@ -468,6 +544,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 nth_list.append(thres)
                 cur_idx += 1
 
+        if 'casc' in self._nrow_idx:
+            # butterfly switch and cascode share the same row.
+            self._nrow_idx['but'] = self._nrow_idx['casc']
+
         # draw base
         self.draw_base(lch, fg_tot, ptap_w, ntap_w, nw_list,
                        nth_list, [w_load], [th_load], **kwargs)
@@ -522,7 +602,7 @@ class DynamicLatchChain(SerdesRXBase):
         nds_tracks = []
         for row_name in ['tail', 'w_en', 'sw', 'in', 'casc']:
             if w_dict.get(row_name, -1) > 0:
-                if row_name == 'in':
+                if row_name == 'in' or (row_name == 'casc' and fg_dict.get('but', 0) > 0):
                     ng_tracks.append(2 + diff_space)
                 else:
                     ng_tracks.append(1)
@@ -671,9 +751,16 @@ class RXTest(SerdesRXBase):
         kwargs['pds_tracks'] = [2 + diff_space]
         ng_tracks = []
         nds_tracks = []
+        gm_fg_list = summer_params['gm_fg_list']
+        has_but = False
+        for fdict in gm_fg_list:
+            if fdict.get('but', 0) > 0:
+                has_but = True
+                break
+
         for row_name in ['tail', 'w_en', 'sw', 'in', 'casc']:
             if w_dict.get(row_name, -1) > 0:
-                if row_name == 'in':
+                if row_name == 'in' or (row_name == 'casc' and has_but):
                     ng_tracks.append(2 + diff_space)
                 else:
                     ng_tracks.append(1)
@@ -690,12 +777,12 @@ class RXTest(SerdesRXBase):
         self.draw_rows(lch, fg_tot, ptap_w, ntap_w, **kwargs)
 
         port_dict = self.draw_gm_summer(nduml, **summer_params)
-        for (name, idx), warr in port_dict.items():
+        for (name, idx), warr_list in port_dict.items():
             pname = self.get_pin_name(name)
             if pname:
                 if idx >= 0:
                     pname = '%s<%d>' % (pname, idx)
-                self.add_pin(pname, warr, show=show_pins)
+                self.add_pin(pname, warr_list, show=show_pins)
 
         ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy()
         # export supplies

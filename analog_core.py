@@ -277,8 +277,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._dum_cls = tech_params['layout']['mos_dummy_template']
 
         # get information from template classes
-        self._min_fg_sep = self._sep_cls.get_min_fg()
-
+        self._min_fg_sep = tech_params['layout']['analog_base']['min_fg_sep']
+        self._mconn_diff = tech_params['layout']['analog_base']['mconn_diff_mode']
+        self._float_dummy = tech_params['layout']['analog_base']['floating_dummy']
         # initialize parameters
         self._lch = None
         self._orient_list = None
@@ -315,6 +316,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     def min_fg_sep(self):
         """Returns the minimum number of separator fingers."""
         return self._min_fg_sep
+
+    @property
+    def mconn_diff_mode(self):
+        """Returns True if AnalogMosConn supports diffpair mode."""
+        return self._mconn_diff
+
+    @property
+    def floating_dummy(self):
+        """Returns True if floating dummy connection is OK."""
+        return self._float_dummy
 
     def _find_row_index(self, mos_type, row_idx):
         ridx_list = self._ridx_lookup[mos_type]
@@ -594,7 +605,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient)
 
         return {key: conn_inst.get_port(key).get_pins(self._bot_lay_id)[0]
-                for key in ['g', 'd', 's'] if conn_inst.has_port(key)}
+                for key in conn_inst.port_names_iter()}
 
     @staticmethod
     def get_prop_lists(mos_type, sub_w, w_list, th_list, g_tracks, ds_tracks, orientations, both_subs,
@@ -1002,14 +1013,15 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         wire_groups = {-1: [], 0: [], 1: []}
         for key, dummy_gate_set in dummy_gate_conns.items():
             ridx, start, stop = key
-            if not dummy_gate_set:
-                raise Exception('Dummy (%d, %d) at row %d unconnected.' % (start, stop, ridx))
-            gate_intv_list = [(a - start, b - start) for a, b in dummy_gate_set]
-            sub_val_iter = dummy_gate_set.values()
-            gate_buses = self._draw_dummy_sep_conn(mos_type, ridx, start, stop, gate_intv_list)
+            if dummy_gate_set:
+                gate_intv_list = [(a - start, b - start) for a, b in dummy_gate_set]
+                sub_val_iter = dummy_gate_set.values()
+                gate_buses = self._draw_dummy_sep_conn(mos_type, ridx, start, stop, gate_intv_list)
 
-            for gate_warr, sub_val in zip(gate_buses, sub_val_iter):
-                wire_groups[sub_val].append(gate_warr)
+                for gate_warr, sub_val in zip(gate_buses, sub_val_iter):
+                    wire_groups[sub_val].append(gate_warr)
+            elif not self.floating_dummy:
+                raise Exception('Dummy (%d, %d) at row %d unconnected.' % (start, stop, ridx))
 
         grid = self.grid
         sub_yb = sub_yt = None

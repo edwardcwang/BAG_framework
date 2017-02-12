@@ -1484,6 +1484,12 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
+    @abc.abstractmethod
+    def support_diff_mode(cls):
+        """Returns True if diff pair mode is supported."""
+        return True
+
+    @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.
 
@@ -1503,6 +1509,7 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
             min_ds_cap='True to minimize parasitic Cds.',
             gate_pref_loc="Preferred gate vertical track location.  Either 's' or 'd'.",
             is_ds_dummy='True if this is only a drain/source dummy metal connection.',
+            is_diff='True to draw a differential pair connection instead (shared source).',
         )
 
     @classmethod
@@ -1523,6 +1530,7 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
             min_ds_cap=False,
             gate_pref_loc='d',
             is_ds_dummy=False,
+            is_diff=False,
         )
 
     def get_layout_basename(self):
@@ -1536,11 +1544,16 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
-        basename = 'mconn_l%s_w%s_fg%d_s%d_d%d' % (lch_str, w_str,
-                                                   self.params['fg'],
-                                                   self.params['sdir'],
-                                                   self.params['ddir'],
-                                                   )
+        prefix = 'mconn'
+        if self.params['is_diff']:
+            prefix += '_diff'
+
+        basename = '%s_l%s_w%s_fg%d_s%d_d%d' % (prefix, lch_str, w_str,
+                                                self.params['fg'],
+                                                self.params['sdir'],
+                                                self.params['ddir'],
+                                                )
+
         if self.params['min_ds_cap']:
             basename += '_minds'
         if self.params['is_ds_dummy']:
