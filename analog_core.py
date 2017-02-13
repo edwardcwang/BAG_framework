@@ -324,6 +324,7 @@ class AnalogBaseInfo(object):
             ans += 1
         return ans
 
+
 # noinspection PyAbstractClass
 class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """The amplifier abstract template class
