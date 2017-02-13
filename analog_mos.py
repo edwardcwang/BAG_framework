@@ -109,6 +109,25 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         """
         return 0.0
 
+    @classmethod
+    @abc.abstractmethod
+    def get_left_sd_xc(cls, lch, guard_ring_nf):
+        """Returns the center X coordinate of the leftmost source/drain connection.
+
+        Parameters
+        ----------
+        lch : float
+            channel length, in meters.
+        guard_ring_nf : int
+            guard ring width in number of fingers.  0 to disable.
+
+        Returns
+        -------
+        xc : float
+            center X coordinate of leftmost source/drain
+        """
+        return 0.0
+
     @abc.abstractmethod
     def get_left_sd_center(self):
         """Returns the center coordinate of the leftmost source/drain connection.

@@ -59,18 +59,206 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         AnalogBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._nrow_idx = None
 
-    def _get_gm_info(self, fg_in, fg_tail, fg_casc, fg_but, fg_sw, fg_en, fg_sep):
-        fg_sep = max(fg_sep, self.min_fg_sep)
+    @classmethod
+    def get_gm_info(cls, tech_info, fg_in, fg_tail, fg_casc=0, fg_but=0, fg_sw=0,
+                    fg_en=0, fg_sep=0, fg_min=0):
+        """Return Gm layout information dictionary.
+
+        Parameters
+        ----------
+        tech_info : :class:`~bag.layout.core.TechInfo`
+            the TechInfo object.
+        fg_in : int
+            number of nmos input fingers (single-sided).
+        fg_tail : int
+            number of nmos tail fingers (single-sided).
+        fg_casc : int
+            number of nmos cascode fingers (single-sided).  0 to disable.
+        fg_but : int
+            number of nmos butterfly diffpair fingers per side.  0 to disable.  This parameter
+            overrides fg_casc.
+        fg_sw : int or float
+            number of nmos tail switch fingers (single-sided).  0 to disable.
+        fg_en : int or float
+            number of nmos enable fingers (single-sided).  0 to disable.
+        fg_sep : int
+            number of separator fingers.  If less than the minimum, the minimum will be used instead.
+        fg_min : int
+            minimum number of fingers for this Gm stage.
+
+        Returns
+        -------
+        gm_info : Dict[string, any]
+            the Gm stage layout information dictionary.
+        """
+        fg_sep = max(fg_sep, cls.get_min_fg_sep(tech_info))
         fg_max = max(fg_but, fg_casc, fg_in, fg_sw, fg_en, fg_tail)
+        fg_tot = fg_max * 2 + fg_sep
+
+        if fg_tot < fg_min:
+            # add dummies to get to fg_min
+            nduml = (fg_min - fg_tot) // 2
+            ndumr = fg_min - fg_tot - nduml
+            fg_tot = fg_min
+        else:
+            nduml = ndumr = 0
+
+        # determine output source/drain type.
         if (fg_but // 2) % 2 == 1:
             out_type = 's'
         else:
             out_type = 'd'
-        return fg_sep, fg_max, out_type
+
+        results = dict(
+            fg_tot=fg_tot,
+            fg_max=fg_max,
+            fg_sep=fg_sep,
+            nduml=nduml,
+            ndumr=ndumr,
+            out_type=out_type,
+        )
+
+        # calculate column offsets.
+        col_offsets = {}
+        for name, fg in (('but', fg_but), ('casc', fg_casc), ('in', fg_in),
+                         ('sw', fg_sw), ('en', fg_en), ('tail', fg_tail)):
+            if fg > 0:
+                col_offsets[name] = (fg_max - fg) + nduml
+
+        results['col_offsets'] = col_offsets
+
+        return results
+
+    @classmethod
+    def get_diffamp_info(cls, tech_info, fg_in, fg_tail, fg_load, fg_casc=0, fg_but=0,
+                         fg_sw=0, fg_en=0, fg_sep=0, fg_min=0):
+        """Return DiffAmp layout information dictionary.
+
+        Parameters
+        ----------
+        tech_info : :class:`~bag.layout.core.TechInfo`
+            the TechInfo object.
+        fg_in : int
+            number of nmos input fingers (single-sided).
+        fg_tail : int
+            number of nmos tail fingers (single-sided).
+        fg_load : int
+            number of pmos load fingers (single-sided).
+        fg_casc : int
+            number of nmos cascode fingers (single-sided).  0 to disable.
+        fg_but : int
+            number of nmos butterfly diffpair fingers per side.  0 to disable.  This parameter
+            overrides fg_casc.
+        fg_sw : int or float
+            number of nmos tail switch fingers (single-sided).  0 to disable.
+        fg_en : int or float
+            number of nmos enable fingers (single-sided).  0 to disable.
+        fg_sep : int
+            number of separator fingers.  If less than the minimum, the minimum will be used instead.
+        fg_min : int
+            minimum number of fingers for this Gm stage.
+
+        Returns
+        -------
+        amp_info : Dict[string, any]
+            the DiffAmp stage layout information dictionary.
+        """
+        fg_sep = max(fg_sep, cls.get_min_fg_sep(tech_info))
+        fg_load_tot = 2 * fg_load + fg_sep
+        # this guarantees fg_gm_tot >= fg_load_tot
+        fg_min = max(fg_min, fg_load_tot)
+        gm_info = cls.get_gm_info(tech_info, fg_in, fg_tail, fg_casc=fg_casc, fg_but=fg_but,
+                                  fg_sw=fg_sw, fg_en=fg_en, fg_sep=fg_sep, fg_min=fg_min)
+        fg_gm_tot = gm_info['fg_tot']
+        nduml_load = (fg_gm_tot - fg_load_tot) // 2
+        ndumr_load = fg_gm_tot - fg_load_tot - nduml_load
+
+        results = dict(
+            fg_tot=fg_gm_tot,
+            fg_sep=fg_sep,
+            fg_min=fg_min,
+            nduml_load=nduml_load,
+            ndumr_load=ndumr_load,
+            out_type=gm_info['out_type'],
+        )
+
+        return results
+
+    @classmethod
+    def get_summer_info(cls, tech_info, fg_load, gm_fg_list, gm_sep_list=None):
+        """Return GmSummer layout information dictionary.
+
+        Parameters
+        ----------
+        tech_info : :class:`~bag.layout.core.TechInfo`
+            the TechInfo object.
+        fg_load : int
+            number of pmos load fingers (single-sided).
+        gm_fg_list : List[Dict[string, int]]
+            list of Gm parameter dictionaries.
+        gm_sep_list : List[int] or None
+            list of number of separator fingers between Gm stages.
+            Defaults to minimum.
+
+        Returns
+        -------
+        summer_info : dict[string, any]
+            the GmSummer stage layout information dictionary.
+        """
+        min_fg_sep = cls.get_min_fg_sep(tech_info)
+        if not gm_sep_list:
+            gm_sep_list = [min_fg_sep] * (len(gm_fg_list) - 1)
+        else:
+            # error checking
+            if len(gm_sep_list) != len(gm_fg_list) - 1:
+                raise ValueError('gm_sep_list length mismatch')
+            gm_sep_list = [max(min_fg_sep, val) for val in gm_sep_list]
+        # append dummy value so we can use zip later.
+        gm_sep_list.append(0)
+
+        gm_fg_max_list = []
+        gm_fg_cum_list = []
+        gm_fg_tot = 0
+        for gm_fg_dict in gm_fg_list:
+            gm_info = cls.get_gm_info(tech_info, **gm_fg_dict)
+            cur_fg_max = (gm_info['fg_tot'] - gm_info['fg_sep']) // 2
+            gm_fg_max_list.append(cur_fg_max)
+            gm_fg_tot += cur_fg_max
+            gm_fg_cum_list.append(cur_fg_max)
+
+        # distrbute load across gm stages to minimize horizontal current.
+        fg_load_list = []
+        last_fg = 0
+        for fg_cum in gm_fg_cum_list:
+            cur_fg = fg_cum * fg_load / gm_fg_tot
+            # round to even
+            cur_fg = int(round(cur_fg / 2)) * 2
+            fg_load_list.append(cur_fg - last_fg)
+            last_fg = cur_fg
+
+        # get each diffamp info and calculate total number of fingers.
+        fg_tot = 0
+        amp_info_list = []
+        gm_offsets = []
+        for gm_fg_dict, fg_load, fg_sep_gm in zip(gm_fg_list, fg_load_list, gm_sep_list):
+            gm_offsets.append(fg_tot)
+            amp_info = cls.get_diffamp_info(tech_info, fg_load=fg_load, **gm_fg_dict)
+            fg_tot += amp_info['fg_tot'] + fg_sep_gm
+            amp_info_list.append(amp_info)
+
+        results = dict(
+            fg_tot=fg_tot,
+            gm_sep_list=gm_sep_list,
+            gm_offsets=gm_offsets,
+            fg_load_list=fg_load_list,
+            amp_info_list=amp_info_list,
+        )
+        return results
 
     def draw_gm(self, col_idx, fg_in, fg_tail,
                 fg_casc=0, fg_but=0, fg_sw=0, fg_en=0,
-                fg_sep=0, cur_track_width=1, diff_space=1):
+                fg_sep=0, fg_min=0, cur_track_width=1, diff_space=1,
+                gate_locs=None):
         """Draw a differential gm stage.
 
         a separator is used to separate the positive half and the negative half of the gm stage.
@@ -95,10 +283,14 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             number of nmos enable fingers (single-sided).  0 to disable.
         fg_sep : int
             number of separator fingers.  If less than the minimum, the minimum will be used instead.
+        fg_min : int
+            minimum number of fingers for this Gm stage.
         cur_track_width : int
             width of the current-carrying horizontal track wire in number of tracks.
         diff_space : int
             number of tracks to reserve as space between differential wires.
+        gate_locs : Dict[string, int] or None
+            dictionary from gate names to relative track index.  If None uses default.
 
         Returns
         -------
@@ -121,9 +313,15 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             if fg > 0 and name not in self._nrow_idx:
                 raise ValueError('nmos %s row is not drawn.' % name)
 
+        gate_locs = gate_locs or {}
+
         # find number of fingers per row
-        fg_sep, fg_max, out_type = self._get_gm_info(fg_in, fg_tail, fg_casc, fg_but, fg_sw, fg_en, fg_sep)
-        fg_gm_tot = fg_max * 2 + fg_sep
+        gm_info = self.get_gm_info(self.grid.tech_info, fg_in, fg_tail, fg_casc=fg_casc, fg_but=fg_but,
+                                   fg_sw=fg_sw, fg_en=fg_en, fg_sep=fg_sep, fg_min=fg_min)
+        out_type = gm_info['out_type']
+        fg_sep = gm_info['fg_sep']
+        fg_gm_tot = gm_info['fg_tot']
+
         # figure out source/drain directions and intermediate connections
         # load always drain down.
         sd_dir = {}
@@ -161,7 +359,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             conn['tail'] = [('inp', 'd'), ('inn', 'd')]
             casc_ntr = self.get_num_tracks('nch', self._nrow_idx['casc'], 'g')
             conn['bias_casc'] = [('cascp', 'g'), ('cascn', 'g')]
-            track['bias_casc'] = ('nch', self._nrow_idx['casc'], 'g', casc_ntr - 1)
+            track['bias_casc'] = ('nch', self._nrow_idx['casc'], 'g',
+                                  gate_locs.get('bias_casc', casc_ntr - 1))
         else:
             sd_dir['in'] = (0, 2)
             conn['tail'] = [('inp', 's'), ('inn', 's')]
@@ -184,7 +383,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 conn['tail'].extend(inst_d)
 
             track['vddt'] = ('nch', self._nrow_idx['sw'], 'ds', (cur_track_width - 1) / 2)
-            track['sw'] = ('nch', self._nrow_idx['sw'], 'g', 0)
+            track['sw'] = ('nch', self._nrow_idx['sw'], 'g', gate_locs.get('sw', 0))
 
         # enable
         if fg_en > 0:
@@ -203,7 +402,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 conn['tail'].extend(inst_d)
                 conn['foot'] = inst_s
 
-            track['enable'] = ('nch', self._nrow_idx['en'], 'g', 0)
+            track['enable'] = ('nch', self._nrow_idx['en'], 'g', gate_locs.get('enable', 0))
             track['tail'] = ('nch', self._nrow_idx['en'], 'ds', (cur_track_width - 1) / 2)
 
         # tail
@@ -230,15 +429,16 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             conn[key].extend(inst_d)
             conn['VSS'] = inst_s
 
-        track['bias_tail'] = ('nch', self._nrow_idx['tail'], 'g', 0)
+        track['bias_tail'] = ('nch', self._nrow_idx['tail'], 'g', gate_locs.get('bias_tail', 0))
         track[key] = ('nch', self._nrow_idx['tail'], 'ds', (cur_track_width - 1) / 2)
 
         # create mos connections
         mos_dict = {}
+        col_offsets = gm_info['col_offsets']
         for name, fg in zip(('but', 'casc', 'in', 'sw', 'en', 'tail'),
                             (fg_but, fg_casc, fg_in, fg_sw, fg_en, fg_tail)):
             if fg > 0:
-                col_start = col_idx + fg_max - fg
+                col_start = col_idx + col_offsets[name]
                 sdir, ddir = sd_dir[name]
                 ridx = self._nrow_idx[name]
                 is_diff = (name == 'but')
@@ -255,8 +455,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
             # draw differential butterfly connection
             but_ntr = self.get_num_tracks('nch', self._nrow_idx['but'], 'g')
-            ptr_idx = self.get_track_index('nch', self._nrow_idx['but'], 'g', but_ntr - 1)
-            ntr_idx = self.get_track_index('nch', self._nrow_idx['but'], 'g', but_ntr - 2 - diff_space)
+            ptr_idx = self.get_track_index('nch', self._nrow_idx['but'], 'g',
+                                           gate_locs.get('sgnp', but_ntr - 1))
+            ntr_idx = self.get_track_index('nch', self._nrow_idx['but'], 'g',
+                                           gate_locs.get('sgnn', but_ntr - 2 - diff_space))
             p_tr, n_tr = self.connect_differential_tracks([mos_dict['butp']['gp'], mos_dict['butn']['gn']],
                                                           [mos_dict['butp']['gn'], mos_dict['butn']['gp']],
                                                           self.mos_conn_layer + 1, ptr_idx, ntr_idx)
@@ -273,8 +475,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         inp_warr = mos_dict['inp']['g']
         inn_warr = mos_dict['inn']['g']
         in_ntr = self.get_num_tracks('nch', self._nrow_idx['in'], 'g')
-        ptr_idx = self.get_track_index('nch', self._nrow_idx['in'], 'g', in_ntr - 1)
-        ntr_idx = self.get_track_index('nch', self._nrow_idx['in'], 'g', in_ntr - 2 - diff_space)
+        ptr_idx = self.get_track_index('nch', self._nrow_idx['in'], 'g',
+                                       gate_locs.get('inp', in_ntr - 1))
+        ntr_idx = self.get_track_index('nch', self._nrow_idx['in'], 'g',
+                                       gate_locs.get('inn', in_ntr - 2 - diff_space))
         p_tr, n_tr = self.connect_differential_tracks(inp_warr, inn_warr, self.mos_conn_layer + 1, ptr_idx, ntr_idx)
         port_dict['inp'] = [p_tr, ]
         port_dict['inn'] = [n_tr, ]
@@ -297,16 +501,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         return fg_gm_tot, port_dict
 
-    def get_diffamp_info(self, fg_in, fg_tail, fg_load, fg_casc=0, fg_but=0,
-                         fg_sw=0, fg_en=0, fg_sep=0):
-        """Calculate total number of Gm summer fingers."""
-        fg_sep, fg_max_gm, out_type = self._get_gm_info(fg_in, fg_tail, fg_casc, fg_but, fg_sw, fg_en, fg_sep)
-        fg_max = max(fg_load, fg_max_gm)
-        return fg_max * 2 + fg_sep
-
     def draw_diffamp(self, col_idx, fg_in, fg_tail, fg_load,
                      fg_casc=0, fg_but=0, fg_sw=0, fg_en=0,
-                     fg_sep=0, cur_track_width=1, diff_space=1):
+                     fg_sep=0, fg_min=0, cur_track_width=1,
+                     diff_space=1, gate_locs=None):
         """Draw a differential amplifier/dynamic latch.
 
         a separator is used to separate the positive half and the negative half of the latch.
@@ -333,10 +531,14 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             number of nmos enable fingers (single-sided).  0 to disable.
         fg_sep : int
             number of separator fingers.  If less than the minimum, the minimum will be used instead.
+        fg_min : int
+            minimum number of fingers for this DiffAmp.
         cur_track_width : int
             width of the current-carrying horizontal track wire in number of tracks.
         diff_space : int
             number of tracks to reserve as space between differential wires.
+        gate_locs : Dict[string, int] or None
+            dictionary from gate names to relative track index.  If None uses default.
 
         Returns
         -------
@@ -346,25 +548,30 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             a dictionary from connection name to the horizontal track associated
             with the connection.
         """
-        # compute Gm stage column index.
-        fg_sep, fg_max_gm, out_type = self._get_gm_info(fg_in, fg_tail, fg_casc, fg_but, fg_sw, fg_en, fg_sep)
-        fg_max = max(fg_load, fg_max_gm)
-        gm_col_idx = fg_max - fg_max_gm + col_idx
-
         if fg_load > fg_but > 0:
             raise ValueError('fg_load > fg_but > 0 case not supported yet.')
 
+        gate_locs = gate_locs or {}
+
+        # compute Gm stage column index.
+        results = self.get_diffamp_info(self.grid.tech_info, fg_in, fg_tail, fg_load, fg_casc=fg_casc,
+                                        fg_but=fg_but, fg_sw=fg_sw, fg_en=fg_en,
+                                        fg_sep=fg_sep, fg_min=fg_min)
+        fg_min = results['fg_min']
+        offset_load = results['nduml_load']
+        out_type = results['out_type']
+
         # draw Gm.
-        fg_gm_tot, port_dict = self.draw_gm(gm_col_idx, fg_in, fg_tail, fg_casc=fg_casc, fg_but=fg_but,
-                                            fg_sw=fg_sw, fg_en=fg_en, fg_sep=fg_sep,
-                                            cur_track_width=cur_track_width, diff_space=diff_space)
-        fg_amp_tot = fg_max * 2 + fg_sep
+        fg_amp_tot, port_dict = self.draw_gm(col_idx, fg_in, fg_tail, fg_casc=fg_casc, fg_but=fg_but,
+                                             fg_sw=fg_sw, fg_en=fg_en, fg_sep=fg_sep, fg_min=fg_min,
+                                             cur_track_width=cur_track_width, diff_space=diff_space,
+                                             gate_locs=gate_locs)
 
         outp_warrs = port_dict['outp']
         outn_warrs = port_dict['outn']
         if fg_load > 0:
             # draw load transistors
-            load_col_idx = fg_max - fg_load + col_idx
+            load_col_idx = col_idx + offset_load
             if out_type == 'd':
                 sdir, ddir = 2, 0
                 sup_type = 's'
@@ -375,7 +582,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             loadn = self.draw_mos_conn('pch', 0, load_col_idx + fg_load + fg_sep, fg_load, sdir, ddir)
 
             # connect load gate bias
-            tr_id = self.make_track_id('pch', 0, 'g', 0)
+            tr_id = self.make_track_id('pch', 0, 'g', gate_locs.get('bias_load', 0))
             warr = self.connect_to_tracks([loadp['g'], loadn['g']], tr_id)
             port_dict['bias_load'] = [warr, ]
 
@@ -397,41 +604,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         return fg_amp_tot, port_dict
 
-    def get_summer_info(self, fg_load, gm_fg_list, fg_sep_gm=0, fg_sep=0):
-        """Calculate total number of Gm summer fingers."""
-        gm_fg_max_list = []
-        gm_fg_cum_list = []
-        gm_fg_tot = 0
-        for fdict in gm_fg_list:
-            cur_fg = max(fdict.values())
-            gm_fg_max_list.append(cur_fg)
-            gm_fg_tot += cur_fg
-            gm_fg_cum_list.append(gm_fg_tot)
-
-        # distrbute load across gm stages to minimize horizontal current.
-        load_fg_list = []
-        last_fg = 0
-        for fg_cum in gm_fg_cum_list:
-            cur_fg = fg_cum * fg_load / gm_fg_tot
-            # round to even
-            cur_fg = int(round(cur_fg / 2)) * 2
-            load_fg_list.append(cur_fg - last_fg)
-            last_fg = cur_fg
-
-        # draw each Gm stage and load.
-        fg_count = 0
-        fg_sep = max(fg_sep, self.min_fg_sep)
-        fg_sep_gm = max(fg_sep_gm, self.min_fg_sep)
-        col_idx_list = []
-        for cur_load_fg, gm_fg_max in zip(load_fg_list, gm_fg_max_list):
-            col_idx_list.append(fg_count)
-            fg_count += max(gm_fg_max, cur_load_fg) * 2 + fg_sep + fg_sep_gm
-
-        fg_count -= fg_sep_gm
-        return fg_count, load_fg_list, col_idx_list
-
     def draw_gm_summer(self, col_idx, fg_load, gm_fg_list,
-                       fg_sep_gm=0, **kwargs):
+                       gm_sep_list=None, cur_track_width=1,
+                       diff_space=1, gate_locs=None):
         """Draw a differential Gm summer (multiple Gm stage connected to same load).
 
         a separator is used to separate the positive half and the negative half of the latch.
@@ -445,10 +620,15 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             number of pmos load fingers (single-sided).
         gm_fg_list : List[Dict[string, int]]
             a list of finger dictionaries for each Gm stage, from left to right.
-        fg_sep_gm : int
-            number of separator fingers between Gm stages.
-        kwargs : Dict[string, any]
-            optional parameters for :py:method:`draw_diffamp`
+        gm_sep_list : List[int] or None
+            list of number of separator fingers between Gm stages.
+            Defaults to minimum.
+        cur_track_width : int
+            width of the current-carrying horizontal track wire in number of tracks.
+        diff_space : int
+            number of tracks to reserve as space between differential wires.
+        gate_locs : Dict[string, int] or None
+            dictionary from gate names to relative track index.  If None uses default.
 
         Returns
         -------
@@ -462,20 +642,20 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         if fg_load <= 0:
             raise ValueError('load transistors num. fingers must be positive.')
 
-        fg_tot, load_fg_list, col_idx_list = self.get_summer_info(fg_load, gm_fg_list,
-                                                                  fg_sep_gm=fg_sep_gm,
-                                                                  fg_sep=kwargs.get('fg_sep', 0))
-
+        summer_info = self.get_summer_info(self.grid.tech_info, fg_load, gm_fg_list, gm_sep_list=gm_sep_list)
+        fg_load_list = summer_info['fg_load_list']
+        gm_offsets = summer_info['gm_offsets']
+        print('summer col: %d' % col_idx)
+        print('summer gm offsets: %s' % repr(gm_offsets))
         # draw each Gm stage and load.
         conn_dict = {'vddt': [], 'bias_load': [], 'outp': [], 'outn': []}
         port_dict = {}
-        for idx, (cur_load_fg, cur_col, gm_fdict) in enumerate(zip(load_fg_list, col_idx_list,
-                                                                   gm_fg_list)):
-            cur_kwargs = kwargs.copy()
-            cur_kwargs['fg_load'] = cur_load_fg
-            for key, val in gm_fdict.items():
-                cur_kwargs['fg_' + key] = val
-            _, cur_ports = self.draw_diffamp(col_idx + cur_col, **cur_kwargs)
+        for idx, (cur_fg_load, gm_off, gm_fg_dict) in enumerate(zip(fg_load_list, gm_offsets,
+                                                                    gm_fg_list)):
+            _, cur_ports = self.draw_diffamp(col_idx + gm_off, fg_load=cur_fg_load,
+                                             cur_track_width=cur_track_width,
+                                             diff_space=diff_space, gate_locs=gate_locs,
+                                             **gm_fg_dict)
             # register port
             for name, warr in cur_ports.items():
                 if name in conn_dict:
@@ -492,7 +672,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                     raise ValueError('%s wire are on different tracks.' % name)
                 port_dict[(name, -1)] = conn_list
 
-        return fg_tot, port_dict
+        return summer_info['fg_tot'], port_dict
 
     def draw_rows(self, lch, fg_tot, ptap_w, ntap_w,
                   w_in, w_tail, w_load,
