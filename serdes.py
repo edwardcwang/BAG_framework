@@ -645,8 +645,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         summer_info = self.get_summer_info(self.grid.tech_info, fg_load, gm_fg_list, gm_sep_list=gm_sep_list)
         fg_load_list = summer_info['fg_load_list']
         gm_offsets = summer_info['gm_offsets']
-        print('summer col: %d' % col_idx)
-        print('summer gm offsets: %s' % repr(gm_offsets))
+        # print('summer col: %d' % col_idx)
+        # print('summer gm offsets: %s' % repr(gm_offsets))
         # draw each Gm stage and load.
         conn_dict = {'vddt': [], 'bias_load': [], 'outp': [], 'outn': []}
         port_dict = {}
@@ -657,11 +657,11 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                                              diff_space=diff_space, gate_locs=gate_locs,
                                              **gm_fg_dict)
             # register port
-            for name, warr in cur_ports.items():
+            for name, warr_list in cur_ports.items():
                 if name in conn_dict:
-                    conn_dict[name].extend(warr)
+                    conn_dict[name].extend(warr_list)
                 else:
-                    port_dict[(name, idx)] = warr
+                    port_dict[(name, idx)] = warr_list
 
         # connect tracks together
         for name, warr_list in conn_dict.items():
