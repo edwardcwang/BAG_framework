@@ -454,7 +454,11 @@ class AnalogFinfetFoundation(with_metaclass(abc.ABCMeta, MicroTemplate)):
         bnd_box_w = fg_tot * sd_pitch
 
         # compute array box
-        pr_bnd_yext = mos_fin_pitch * (np.ceil(mos_cpo_h / mos_fin_pitch - 0.5) + 0.5)
+        mos_cls = self.grid.tech_info.tech_params['layout']['mos_template']
+        hm_layer_id = mos_cls.port_layer_id() + 1
+        hm_track_pitch = self.grid.get_track_pitch(hm_layer_id)
+        # pr_bnd_yext = mos_fin_pitch * (np.ceil(mos_cpo_h / mos_fin_pitch - 0.5) + 0.5)
+        pr_bnd_yext = hm_track_pitch * np.ceil(mos_cpo_h / 2.0 / hm_track_pitch)
         arr_box_bot = pr_bnd_yext
         arr_box_top = arr_box_bot + nfin * mos_fin_pitch
         arr_box_left = dx

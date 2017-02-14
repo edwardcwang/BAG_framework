@@ -926,8 +926,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             # add and shift instance
             minst = self.add_instance(mmaster, inst_name=name, orient=orient)
             if tot_array_box is None:
-                # grid is relative to array box.
-                self.grid.add_offset(dx=minst.array_box.left, dy=minst.array_box.bottom)
                 tot_array_box = minst.array_box
             else:
                 minst.move_by(dy=tot_array_box.top - minst.array_box.bottom)
