@@ -66,6 +66,15 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @classmethod
     @abc.abstractmethod
+    def array_port_layer_id(cls):
+        """Returns the resistor array bottom port layer ID.
+
+        Bottom port layer must be horizontal.
+        """
+        return -1
+
+    @classmethod
+    @abc.abstractmethod
     def port_layer_id(cls):
         """Returns the bottom port layer ID.
 
@@ -516,6 +525,13 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         res_type : string
             the resistor type.
         """
+        # add resistor array layers to RoutingGrid
+        self.grid = self.grid.copy()
+        grid_layers = self.grid.tech_info.tech_params['layout']['analog_res']['grid_layers']
+        for lay_id, tr_w, tr_sp, tr_dir in grid_layers:
+            self.grid.add_new_layer(lay_id, tr_sp, tr_w, tr_dir)
+        self.grid.update_block_pitch()
+
         layout_params = dict(
             l=l,
             w=w,
