@@ -90,7 +90,7 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return dict(
             x_tracks_min=1,
             y_tracks_min=1,
-            is_high_speed=False,
+            res_type='reference',
             parity=0,
             sub_type='ntap',
         )
@@ -111,9 +111,9 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
             w='unit resistor width, in meters.',
             x_tracks_min='Minimum number of horizontal tracks per block.',
             y_tracks_min='Minimum number of vertical tracks per block.',
-            is_high_speed='True if this is high speed analog resistor.',
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
+            res_type='the resistor type.',
         )
 
     @abc.abstractmethod
@@ -141,10 +141,9 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
         ntrx, ntry = self.get_xy_tracks()
         l_str = float_to_si_string(self.params['l'])
         w_str = float_to_si_string(self.params['w'])
-        main = 'rescore_%s_l%s_w%s_xtr%d_ytr%d' % (self.params['sub_type'], l_str,
-                                                   w_str, ntrx, ntry)
-        if self.params['is_high_speed']:
-            main += '_hs'
+        main = 'rescore_%s_%s_l%s_w%s_xtr%d_ytr%d' % (self.params['res_type'],
+                                                      self.params['sub_type'],
+                                                      l_str, w_str, ntrx, ntry)
         if self.use_parity():
             main += '_par%d' % self.params['parity']
 
@@ -193,10 +192,9 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return dict(
             x_tracks_min=1,
             y_tracks_min=1,
-            is_high_speed=False,
             parity=0,
             sub_type='ntap',
-
+            res_type='reference',
         )
 
     @classmethod
@@ -215,9 +213,9 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
             w='unit resistor width, in meters.',
             x_tracks_min='Minimum number of horizontal tracks per block.',
             y_tracks_min='Minimum number of vertical tracks per block.',
-            is_high_speed='True if this is high speed analog resistor.',
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
+            res_type='the resistor type.',
         )
 
     @abc.abstractmethod
@@ -247,10 +245,9 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
         l_str = float_to_si_string(self.params['l'])
         w_str = float_to_si_string(self.params['w'])
         ntrx, ntry = self.get_xy_tracks()
-        main = 'resedgelr_%s_l%s_w%s_xtr%d_ytr%d' % (self.params['sub_type'], l_str,
-                                                     w_str, ntrx, ntry)
-        if self.params['is_high_speed']:
-            main += '_hs'
+        main = 'resedgelr_%s_%s_l%s_w%s_xtr%d_ytr%d' % (self.params['res_type'],
+                                                        self.params['sub_type'],
+                                                        l_str, w_str, ntrx, ntry)
         if res_cls.use_parity():
             main += '_par%d' % self.params['parity']
 
@@ -299,10 +296,9 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return dict(
             x_tracks_min=1,
             y_tracks_min=1,
-            is_high_speed=False,
             parity=0,
             sub_type='ntap',
-
+            res_type='reference',
         )
 
     @classmethod
@@ -321,9 +317,9 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
             w='unit resistor width, in meters.',
             x_tracks_min='Minimum number of horizontal tracks per block.',
             y_tracks_min='Minimum number of vertical tracks per block.',
-            is_high_speed='True if this is high speed analog resistor.',
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
+            res_type='the resistor type.',
         )
 
     @abc.abstractmethod
@@ -353,10 +349,9 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
         l_str = float_to_si_string(self.params['l'])
         w_str = float_to_si_string(self.params['w'])
         ntrx, ntry = self.get_xy_tracks()
-        main = 'resedgetb_%s_l%s_w%s_xtr%d_ytr%d' % (self.params['sub_type'], l_str,
-                                                     w_str, ntrx, ntry)
-        if self.params['is_high_speed']:
-            main += '_hs'
+        main = 'resedgetb_%s_%s_l%s_w%s_xtr%d_ytr%d' % (self.params['res_type'],
+                                                        self.params['sub_type'],
+                                                        l_str, w_str, ntrx, ntry)
         if res_cls.use_parity():
             main += '_par%d' % self.params['parity']
 
@@ -405,10 +400,9 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return dict(
             x_tracks_min=1,
             y_tracks_min=1,
-            is_high_speed=False,
             parity=0,
             sub_type='ntap',
-
+            res_type='reference',
         )
 
     @classmethod
@@ -427,9 +421,9 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
             w='unit resistor width, in meters.',
             x_tracks_min='Minimum number of horizontal tracks per block.',
             y_tracks_min='Minimum number of vertical tracks per block.',
-            is_high_speed='True if this is high speed analog resistor.',
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
+            res_type='the resistor type.',
         )
 
     @abc.abstractmethod
@@ -459,10 +453,9 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
         l_str = float_to_si_string(self.params['l'])
         w_str = float_to_si_string(self.params['w'])
         ntrx, ntry = self.get_xy_tracks()
-        main = 'rescorner_%s_l%s_w%s_xtr%d_ytr%d' % (self.params['sub_type'], l_str,
-                                                     w_str, ntrx, ntry)
-        if self.params['is_high_speed']:
-            main += '_hs'
+        main = 'rescorner_%s_%s_l%s_w%s_xtr%d_ytr%d' % (self.params['res_type'],
+                                                        self.params['sub_type'],
+                                                        l_str, w_str, ntrx, ntry)
         if res_cls.use_parity():
             main += '_par%d' % self.params['parity']
 
@@ -501,7 +494,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._use_parity = self._core_cls.use_parity()
 
     def draw_array(self, l, w, nx=1, ny=1, x_tracks_min=1, y_tracks_min=1,
-                   is_high_speed=False, sub_type='ntap'):
+                   sub_type='ntap', res_type='reference'):
         """Draws the resistor array.
 
         Parameters
@@ -518,18 +511,18 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             minimum number of horizontal tracks per resistor unit cell.
         y_tracks_min : int
             minimum number of vertical tracks per resistor unit cell.
-        is_high_speed : bool
-            True to create high speed resistor layout.
         sub_type : string
             the substrate type.  Either 'ptap' or 'ntap'.
+        res_type : string
+            the resistor type.
         """
         layout_params = dict(
             l=l,
             w=w,
             x_tracks_min=x_tracks_min,
             y_tracks_min=y_tracks_min,
-            is_high_speed=is_high_speed,
             sub_type=sub_type,
+            res_type=res_type,
             parity=0,
         )
         # create BL corner
@@ -657,9 +650,8 @@ class ResArrayTest(ResArrayBase):
             ny=1,
             x_tracks_min=1,
             y_tracks_min=1,
-            is_high_speed=False,
             sub_type='ntap',
-
+            res_type='reference',
         )
 
     @classmethod
@@ -680,8 +672,8 @@ class ResArrayTest(ResArrayBase):
             ny='number of resistors in a column.',
             x_tracks_min='Minimum number of horizontal tracks per block.',
             y_tracks_min='Minimum number of vertical tracks per block.',
-            is_high_speed='True if this is high speed analog resistor.',
             sub_type='the substrate type.',
+            res_type='the resistor type.',
         )
 
     def draw_layout(self):
