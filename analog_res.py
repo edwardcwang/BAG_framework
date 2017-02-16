@@ -116,6 +116,19 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
             sub_type='the substrate type.',
         )
 
+    @abc.abstractmethod
+    def get_xy_tracks(self):
+        """Returns the number of vertical/horizontal tracks in this template.
+
+        Returns
+        -------
+        num_x_tracks : int
+            number of horizontal tracks in this template.
+        num_y_tracks : int
+            number of vertical tracks in this template.
+        """
+        return 1, 1
+
     def get_layout_basename(self):
         """Returns the base name for this template.
 
@@ -125,11 +138,11 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
             the base name of this template.
         """
 
+        ntrx, ntry = self.get_xy_tracks()
         l_str = float_to_si_string(self.params['l'])
         w_str = float_to_si_string(self.params['w'])
-        main = 'rescore_%s_l%s_w%s_xmin%d_ymin%d' % (self.params['sub_type'], l_str,
-                                                     w_str, self.params['x_tracks_min'],
-                                                     self.params['y_tracks_min'])
+        main = 'rescore_%s_l%s_w%s_xtr%d_ytr%d' % (self.params['sub_type'], l_str,
+                                                   w_str, ntrx, ntry)
         if self.params['is_high_speed']:
             main += '_hs'
         if self.use_parity():
@@ -207,6 +220,19 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
             sub_type='the substrate type.',
         )
 
+    @abc.abstractmethod
+    def get_xy_tracks(self):
+        """Returns the number of vertical/horizontal tracks in this template.
+
+        Returns
+        -------
+        num_x_tracks : int
+            number of horizontal tracks in this template.
+        num_y_tracks : int
+            number of vertical tracks in this template.
+        """
+        return 1, 1
+
     def get_layout_basename(self):
         """Returns the base name for this template.
 
@@ -220,9 +246,9 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         l_str = float_to_si_string(self.params['l'])
         w_str = float_to_si_string(self.params['w'])
-        main = 'resedgelr_%s_l%s_w%s_xmin%d_ymin%d' % (self.params['sub_type'], l_str,
-                                                       w_str, self.params['x_tracks_min'],
-                                                       self.params['y_tracks_min'])
+        ntrx, ntry = self.get_xy_tracks()
+        main = 'resedgelr_%s_l%s_w%s_xtr%d_ytr%d' % (self.params['sub_type'], l_str,
+                                                     w_str, ntrx, ntry)
         if self.params['is_high_speed']:
             main += '_hs'
         if res_cls.use_parity():
@@ -300,6 +326,19 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
             sub_type='the substrate type.',
         )
 
+    @abc.abstractmethod
+    def get_xy_tracks(self):
+        """Returns the number of vertical/horizontal tracks in this template.
+
+        Returns
+        -------
+        num_x_tracks : int
+            number of horizontal tracks in this template.
+        num_y_tracks : int
+            number of vertical tracks in this template.
+        """
+        return 1, 1
+
     def get_layout_basename(self):
         """Returns the base name for this template.
 
@@ -313,9 +352,9 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         l_str = float_to_si_string(self.params['l'])
         w_str = float_to_si_string(self.params['w'])
-        main = 'resedgetb_%s_l%s_w%s_xmin%d_ymin%d' % (self.params['sub_type'], l_str,
-                                                       w_str, self.params['x_tracks_min'],
-                                                       self.params['y_tracks_min'])
+        ntrx, ntry = self.get_xy_tracks()
+        main = 'resedgetb_%s_l%s_w%s_xtr%d_ytr%d' % (self.params['sub_type'], l_str,
+                                                     w_str, ntrx, ntry)
         if self.params['is_high_speed']:
             main += '_hs'
         if res_cls.use_parity():
@@ -393,6 +432,19 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
             sub_type='the substrate type.',
         )
 
+    @abc.abstractmethod
+    def get_xy_tracks(self):
+        """Returns the number of vertical/horizontal tracks in this template.
+
+        Returns
+        -------
+        num_x_tracks : int
+            number of horizontal tracks in this template.
+        num_y_tracks : int
+            number of vertical tracks in this template.
+        """
+        return 1, 1
+
     def get_layout_basename(self):
         """Returns the base name for this template.
 
@@ -406,9 +458,9 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         l_str = float_to_si_string(self.params['l'])
         w_str = float_to_si_string(self.params['w'])
-        main = 'rescorner_%s_l%s_w%s_xmin%d_ymin%d' % (self.params['sub_type'], l_str,
-                                                       w_str, self.params['x_tracks_min'],
-                                                       self.params['y_tracks_min'])
+        ntrx, ntry = self.get_xy_tracks()
+        main = 'rescorner_%s_l%s_w%s_xtr%d_ytr%d' % (self.params['sub_type'], l_str,
+                                                     w_str, ntrx, ntry)
         if self.params['is_high_speed']:
             main += '_hs'
         if res_cls.use_parity():
@@ -488,7 +540,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         # create bottom edge
         master = self._add_blk(self._edgetb_cls, layout_params, (w_edge_lr, 0.0),
-                             'R0', nx, 1, 1)
+                               'R0', nx, 1, 1)
         w_core = master.array_box.width
 
         # create BR corner
@@ -499,7 +551,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         # create left edge
         master = self._add_blk(self._edgelr_cls, layout_params, (0.0, h_edge_tb),
-                             'R0', 1, ny, 1)
+                               'R0', 1, ny, 1)
         h_core = master.array_box.height
 
         # create TL corner
@@ -535,13 +587,13 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         spy = master0.array_box.height
         if not self._use_parity:
             self.add_instance(master0, loc=loc, nx=nx, ny=ny, spx=spx, spy=spy,
-                                      orient=orient)
+                              orient=orient)
         else:
             # add current parity
             nx0 = (nx + 1) // 2
             ny0 = (ny + 1) // 2
             self.add_instance(master0, loc=loc, nx=nx0, ny=ny0, spx=spx * 2, spy=spy * 2,
-                                      orient=orient)
+                              orient=orient)
             nx0 = nx // 2
             ny0 = ny // 2
             if nx0 > 0 and ny0 > 0:
@@ -582,6 +634,7 @@ class ResArrayTest(ResArrayBase):
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
+
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         ResArrayBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
