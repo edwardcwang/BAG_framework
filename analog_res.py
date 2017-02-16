@@ -33,6 +33,7 @@ from future.utils import with_metaclass
 
 import abc
 from bag import float_to_si_string
+from bag.layout.util import BBox
 from bag.layout.template import MicroTemplate
 
 
@@ -91,6 +92,7 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
             y_tracks_min=1,
             is_high_speed=False,
             parity=0,
+            sub_type='ntap',
         )
 
     @classmethod
@@ -111,6 +113,7 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
             y_tracks_min='Minimum number of vertical tracks per block.',
             is_high_speed='True if this is high speed analog resistor.',
             parity='the parity of this resistor core.  Either 0 or 1.',
+            sub_type='the substrate type.',
         )
 
     def get_layout_basename(self):
@@ -124,8 +127,9 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         l_str = float_to_si_string(self.params['l'])
         w_str = float_to_si_string(self.params['w'])
-        main = 'rescore_l%s_w%s_xmin%d_ymin%d' % (l_str, w_str, self.params['x_tracks_min'],
-                                                  self.params['y_tracks_min'])
+        main = 'rescore_%s_l%s_w%s_xmin%d_ymin%d' % (self.params['sub_type'], l_str,
+                                                     w_str, self.params['x_tracks_min'],
+                                                     self.params['y_tracks_min'])
         if self.params['is_high_speed']:
             main += '_hs'
         if self.use_parity():
@@ -135,3 +139,497 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     def compute_unique_key(self):
         return self.get_layout_basename()
+
+
+# noinspection PyAbstractClass
+class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
+    """An abstract template for analog resistors array left/right edge.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_default_param_values(cls):
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : dict[str, any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            x_tracks_min=1,
+            y_tracks_min=1,
+            is_high_speed=False,
+            parity=0,
+            sub_type='ntap',
+
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            l='unit resistor length, in meters.',
+            w='unit resistor width, in meters.',
+            x_tracks_min='Minimum number of horizontal tracks per block.',
+            y_tracks_min='Minimum number of vertical tracks per block.',
+            is_high_speed='True if this is high speed analog resistor.',
+            parity='the parity of this resistor core.  Either 0 or 1.',
+            sub_type='the substrate type.',
+        )
+
+    def get_layout_basename(self):
+        """Returns the base name for this template.
+
+        Returns
+        -------
+        base_name : str
+            the base name of this template.
+        """
+        tech_params = self.grid.tech_info.tech_params
+        res_cls = tech_params['layout']['res_core_template']
+
+        l_str = float_to_si_string(self.params['l'])
+        w_str = float_to_si_string(self.params['w'])
+        main = 'resedgelr_%s_l%s_w%s_xmin%d_ymin%d' % (self.params['sub_type'], l_str,
+                                                       w_str, self.params['x_tracks_min'],
+                                                       self.params['y_tracks_min'])
+        if self.params['is_high_speed']:
+            main += '_hs'
+        if res_cls.use_parity():
+            main += '_par%d' % self.params['parity']
+
+        return main
+
+    def compute_unique_key(self):
+        return self.get_layout_basename()
+
+
+# noinspection PyAbstractClass
+class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
+    """An abstract template for analog resistors array left/right edge.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_default_param_values(cls):
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : dict[str, any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            x_tracks_min=1,
+            y_tracks_min=1,
+            is_high_speed=False,
+            parity=0,
+            sub_type='ntap',
+
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            l='unit resistor length, in meters.',
+            w='unit resistor width, in meters.',
+            x_tracks_min='Minimum number of horizontal tracks per block.',
+            y_tracks_min='Minimum number of vertical tracks per block.',
+            is_high_speed='True if this is high speed analog resistor.',
+            parity='the parity of this resistor core.  Either 0 or 1.',
+            sub_type='the substrate type.',
+        )
+
+    def get_layout_basename(self):
+        """Returns the base name for this template.
+
+        Returns
+        -------
+        base_name : str
+            the base name of this template.
+        """
+        tech_params = self.grid.tech_info.tech_params
+        res_cls = tech_params['layout']['res_core_template']
+
+        l_str = float_to_si_string(self.params['l'])
+        w_str = float_to_si_string(self.params['w'])
+        main = 'resedgetb_%s_l%s_w%s_xmin%d_ymin%d' % (self.params['sub_type'], l_str,
+                                                       w_str, self.params['x_tracks_min'],
+                                                       self.params['y_tracks_min'])
+        if self.params['is_high_speed']:
+            main += '_hs'
+        if res_cls.use_parity():
+            main += '_par%d' % self.params['parity']
+
+        return main
+
+    def compute_unique_key(self):
+        return self.get_layout_basename()
+
+
+# noinspection PyAbstractClass
+class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
+    """An abstract template for analog resistors array left/right edge.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_default_param_values(cls):
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : dict[str, any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            x_tracks_min=1,
+            y_tracks_min=1,
+            is_high_speed=False,
+            parity=0,
+            sub_type='ntap',
+
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            l='unit resistor length, in meters.',
+            w='unit resistor width, in meters.',
+            x_tracks_min='Minimum number of horizontal tracks per block.',
+            y_tracks_min='Minimum number of vertical tracks per block.',
+            is_high_speed='True if this is high speed analog resistor.',
+            parity='the parity of this resistor core.  Either 0 or 1.',
+            sub_type='the substrate type.',
+        )
+
+    def get_layout_basename(self):
+        """Returns the base name for this template.
+
+        Returns
+        -------
+        base_name : str
+            the base name of this template.
+        """
+        tech_params = self.grid.tech_info.tech_params
+        res_cls = tech_params['layout']['res_core_template']
+
+        l_str = float_to_si_string(self.params['l'])
+        w_str = float_to_si_string(self.params['w'])
+        main = 'rescorner_%s_l%s_w%s_xmin%d_ymin%d' % (self.params['sub_type'], l_str,
+                                                       w_str, self.params['x_tracks_min'],
+                                                       self.params['y_tracks_min'])
+        if self.params['is_high_speed']:
+            main += '_hs'
+        if res_cls.use_parity():
+            main += '_par%d' % self.params['parity']
+
+        return main
+
+    def compute_unique_key(self):
+        return self.get_layout_basename()
+
+
+# noinspection PyAbstractClass
+class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
+    """An abstract template that draws analog resistors array and connections.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        tech_params = self.grid.tech_info.tech_params
+        self._core_cls = tech_params['layout']['res_core_template']
+        self._edgelr_cls = tech_params['layout']['res_edgelr_template']
+        self._edgetb_cls = tech_params['layout']['res_edgetb_template']
+        self._corner_cls = tech_params['layout']['res_corner_template']
+        self._use_parity = self._core_cls.use_parity()
+
+    def draw_array(self, l, w, nx=1, ny=1, x_tracks_min=1, y_tracks_min=1,
+                   is_high_speed=False, sub_type='ntap'):
+        """Draws the resistor array.
+
+        Parameters
+        ----------
+        l : float
+            unit resistor length, in meters.
+        w : float
+            unit resistor width, in meters.
+        nx : int
+            number of resistors in a row.
+        ny : int
+            number of resistors in a column.
+        x_tracks_min : int
+            minimum number of horizontal tracks per resistor unit cell.
+        y_tracks_min : int
+            minimum number of vertical tracks per resistor unit cell.
+        is_high_speed : bool
+            True to create high speed resistor layout.
+        sub_type : string
+            the substrate type.  Either 'ptap' or 'ntap'.
+        """
+        layout_params = dict(
+            l=l,
+            w=w,
+            x_tracks_min=x_tracks_min,
+            y_tracks_min=y_tracks_min,
+            is_high_speed=is_high_speed,
+            sub_type=sub_type,
+            parity=0,
+        )
+        # create BL corner
+        master = self.new_template(params=layout_params, temp_cls=self._corner_cls)
+        self.add_instance(master)
+        w_edge_lr = master.array_box.width
+        h_edge_tb = master.array_box.height
+
+        # create bottom edge
+        master = self._add_blk(self._edgetb_cls, layout_params, (w_edge_lr, 0.0),
+                             'R0', nx, 1, 1)
+        w_core = master.array_box.width
+
+        # create BR corner
+        layout_params['parity'] = (nx + 1) % 2
+        master = self.new_template(params=layout_params, temp_cls=self._corner_cls)
+        inst = self.add_instance(master, orient='MY')
+        inst.move_by(dx=w_edge_lr + nx * w_core - inst.array_box.left)
+
+        # create left edge
+        master = self._add_blk(self._edgelr_cls, layout_params, (0.0, h_edge_tb),
+                             'R0', 1, ny, 1)
+        h_core = master.array_box.height
+
+        # create TL corner
+        layout_params['parity'] = (ny + 1) % 2
+        master = self.new_template(params=layout_params, temp_cls=self._corner_cls)
+        inst = self.add_instance(master, orient='MX')
+        inst.move_by(dy=h_edge_tb + ny * h_core - inst.array_box.bottom)
+
+        # create core
+        self._add_blk(self._core_cls, layout_params, (w_edge_lr, h_edge_tb),
+                      'R0', nx, ny, 0)
+
+        # create top edge
+        loc = (w_edge_lr, 2 * h_edge_tb + ny * h_core)
+        self._add_blk(self._edgetb_cls, layout_params, loc, 'MX', nx, 1, ny % 2)
+
+        # create right edge
+        loc = (2 * w_edge_lr + nx * w_core, h_edge_tb)
+        self._add_blk(self._edgelr_cls, layout_params, loc, 'MY', 1, ny, nx % 2)
+
+        # create TR corner
+        self.array_box = BBox(0.0, 0.0, 2 * w_edge_lr + nx * w_core, 2 * h_edge_tb + ny * h_core,
+                              self.grid.resolution)
+        layout_params['parity'] = (nx + ny) % 2
+        master = self.new_template(params=layout_params, temp_cls=self._corner_cls)
+        self.add_instance(master, loc=(self.array_box.right, self.array_box.top),
+                          orient='R180')
+
+    def _add_blk(self, temp_cls, params, loc, orient, nx, ny, par0):
+        params['parity'] = par0
+        master0 = self.new_template(params=params, temp_cls=temp_cls)
+        spx = master0.array_box.width
+        spy = master0.array_box.height
+        if not self._use_parity:
+            self.add_instance(master0, loc=loc, nx=nx, ny=ny, spx=spx, spy=spy,
+                                      orient=orient)
+        else:
+            # add current parity
+            nx0 = (nx + 1) // 2
+            ny0 = (ny + 1) // 2
+            self.add_instance(master0, loc=loc, nx=nx0, ny=ny0, spx=spx * 2, spy=spy * 2,
+                                      orient=orient)
+            nx0 = nx // 2
+            ny0 = ny // 2
+            if nx0 > 0 and ny0 > 0:
+                self.add_instance(master0, loc=(loc[0] + spx, loc[1] + spy),
+                                  nx=nx0, ny=ny0, spx=spx * 2, spy=spy * 2, orient=orient)
+
+            # add opposite parity
+            params['parity'] = 1 - par0
+            master1 = self.new_template(params=params, temp_cls=temp_cls)
+            nx1 = nx // 2
+            ny1 = (ny + 1) // 2
+            if nx1 > 0 and ny1 > 0:
+                self.add_instance(master1, loc=(loc[0] + spx, loc[1]),
+                                  nx=nx1, ny=ny1, spx=spx * 2, spy=spy * 2, orient=orient)
+            nx1 = (nx + 1) // 2
+            ny1 = ny // 2
+            if nx1 > 0 and ny1 > 0:
+                self.add_instance(master1, loc=(loc[0], loc[1] + spy),
+                                  nx=nx1, ny=ny1, spx=spx * 2, spy=spy * 2, orient=orient)
+
+        return master0
+
+
+class ResArrayTest(ResArrayBase):
+    """An abstract template that draws analog resistors array and connections.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        ResArrayBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_default_param_values(cls):
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : dict[str, any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            nx=1,
+            ny=1,
+            x_tracks_min=1,
+            y_tracks_min=1,
+            is_high_speed=False,
+            sub_type='ntap',
+
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            l='unit resistor length, in meters.',
+            w='unit resistor width, in meters.',
+            nx='number of resistors in a row.',
+            ny='number of resistors in a column.',
+            x_tracks_min='Minimum number of horizontal tracks per block.',
+            y_tracks_min='Minimum number of vertical tracks per block.',
+            is_high_speed='True if this is high speed analog resistor.',
+            sub_type='the substrate type.',
+        )
+
+    def draw_layout(self):
+        self.draw_array(**self.params)
