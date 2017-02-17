@@ -77,6 +77,8 @@ class Transistor(AnalogBase):
             ntap_w='PMOS substrate width, in meters/number of fins.',
             num_track_sep='number of tracks reserved as space between ports.',
             min_ds_cap='True to minimize parasitic Cds.',
+            global_gnd_layer='layer of the global ground pin.  None to disable drawing global ground.',
+            global_gnd_name='name of global ground pin.',
         )
 
     @classmethod
@@ -95,6 +97,8 @@ class Transistor(AnalogBase):
         """
         return dict(
             min_ds_cap=False,
+            global_gnd_layer=None,
+            global_gnd_name='gnd!',
         )
 
     def draw_layout(self):
@@ -110,6 +114,8 @@ class Transistor(AnalogBase):
         ptap_w = self.params['ptap_w']
         ntap_w = self.params['ntap_w']
         num_track_sep = self.params['num_track_sep']
+        global_gnd_layer = self.params['global_gnd_layer']
+        global_gnd_name = self.params['global_gnd_name']
 
         fg_tot = fg + 2 * fg_dum
 
@@ -139,7 +145,11 @@ class Transistor(AnalogBase):
                        pg_tracks=pg_tracks, pds_tracks=pds_tracks,
                        )
 
-        mos_ports = self.draw_mos_conn(mos_type, 0, fg_dum, fg, 2, 0, min_ds_cap=self.params['min_ds_cap'])
+        if mos_type == 'pch':
+            sdir, ddir = 2, 0
+        else:
+            sdir, ddir = 0, 2
+        mos_ports = self.draw_mos_conn(mos_type, 0, fg_dum, fg, sdir, ddir, min_ds_cap=self.params['min_ds_cap'])
         tr_id = self.make_track_id(mos_type, 0, 'g', num_gate_tr - 1)
         warr = self.connect_to_tracks(mos_ports['g'], tr_id)
         self.add_pin('g', warr, show=True)
@@ -156,3 +166,7 @@ class Transistor(AnalogBase):
         # export body
         self.add_pin('b', ptap_wire_arrs, show=True)
         self.add_pin('b', ntap_wire_arrs, show=True)
+
+        if global_gnd_layer is not None:
+            _, global_gnd_box = next(ptap_wire_arrs[0].wire_iter(self.grid))
+            self.add_pin_primitive(global_gnd_name, global_gnd_layer, global_gnd_box)
