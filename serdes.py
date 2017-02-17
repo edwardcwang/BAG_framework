@@ -465,8 +465,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             port_dict['sgnp'] = [p_tr, ]
             port_dict['sgnn'] = [n_tr, ]
         elif fg_casc > 0:
-            port_dict['outp'] = [mos_dict['cascp']['d'], ]
-            port_dict['outn'] = [mos_dict['cascn']['d'], ]
+            port_dict['outp'] = [mos_dict['cascn']['d'], ]
+            port_dict['outn'] = [mos_dict['cascp']['d'], ]
         else:
             port_dict['outp'] = [mos_dict['inp']['d'], ]
             port_dict['outn'] = [mos_dict['inn']['d'], ]
@@ -548,6 +548,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             a dictionary from connection name to the horizontal track associated
             with the connection.
         """
+        fg_sep = max(fg_sep, self.get_min_fg_sep(self.grid.tech_info))
         if fg_load > fg_but > 0:
             raise ValueError('fg_load > fg_but > 0 case not supported yet.')
 
@@ -785,7 +786,7 @@ class DynamicLatchChain(SerdesRXBase):
             raise ValueError('nstage = %d must be greater than 0' % nstage)
 
         # calculate total number of fingers.
-        fg_sep = max(fg_sep, self.min_fg_sep)
+        fg_sep = max(fg_sep, self.get_min_fg_sep(self.grid.tech_info))
         fg_latch = max(fg_dict.values()) * 2 + fg_sep
         fg_tot = nstage * fg_latch + (nstage - 1) * fg_sep + nduml + ndumr
 
@@ -794,7 +795,7 @@ class DynamicLatchChain(SerdesRXBase):
         kwargs['pds_tracks'] = [2 + diff_space]
         ng_tracks = []
         nds_tracks = []
-        for row_name in ['tail', 'w_en', 'sw', 'in', 'casc']:
+        for row_name in ['tail', 'en', 'sw', 'in', 'casc']:
             if w_dict.get(row_name, -1) > 0:
                 if row_name == 'in' or (row_name == 'casc' and fg_dict.get('but', 0) > 0):
                     ng_tracks.append(2 + diff_space)
