@@ -133,16 +133,11 @@ class Transistor(AnalogBase):
             pg_tracks.append(num_gate_tr)
             pds_tracks.append(1)
 
-        sub_lay, bot_box_arr_list, top_box_arr_list = self.draw_base(lch, fg_tot, ptap_w, ntap_w, nw_list,
-                                                                     nth_list, pw_list, pth_list, num_track_sep,
-                                                                     ng_tracks=ng_tracks, nds_tracks=nds_tracks,
-                                                                     pg_tracks=pg_tracks, pds_tracks=pds_tracks,
-                                                                     )
-
-        # export body
-        b_barr_list = bot_box_arr_list + top_box_arr_list
-        for barr in b_barr_list:
-            self.add_pin('b', sub_lay, barr, show=True)
+        self.draw_base(lch, fg_tot, ptap_w, ntap_w, nw_list,
+                       nth_list, pw_list, pth_list, num_track_sep,
+                       ng_tracks=ng_tracks, nds_tracks=nds_tracks,
+                       pg_tracks=pg_tracks, pds_tracks=pds_tracks,
+                       )
 
         mos_ports = self.draw_mos_conn(mos_type, 0, fg_dum, fg, 0, 2, min_ds_cap=self.params['min_ds_cap'])
         tr_id = self.make_track_id(mos_type, 0, 'g', num_gate_tr - 1)
@@ -157,4 +152,7 @@ class Transistor(AnalogBase):
         warr = self.connect_to_tracks(mos_ports['s'], tr_id)
         self.add_pin('s', warr, show=True)
 
-        self.fill_dummy()
+        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy()
+        # export body
+        self.add_pin('b', ptap_wire_arrs, show=True)
+        self.add_pin('b', ntap_wire_arrs, show=True)

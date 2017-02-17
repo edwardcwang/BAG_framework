@@ -764,7 +764,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         num = len(w_list)
         if num == 0:
             # return nothing
-            return [], [], [], [], [], [], []
+            return [], [], [], [], [], [], [], []
 
         # set default values
         g_tracks = g_tracks or [1] * num
