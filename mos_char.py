@@ -139,7 +139,7 @@ class Transistor(AnalogBase):
                        pg_tracks=pg_tracks, pds_tracks=pds_tracks,
                        )
 
-        mos_ports = self.draw_mos_conn(mos_type, 0, fg_dum, fg, 0, 2, min_ds_cap=self.params['min_ds_cap'])
+        mos_ports = self.draw_mos_conn(mos_type, 0, fg_dum, fg, 2, 0, min_ds_cap=self.params['min_ds_cap'])
         tr_id = self.make_track_id(mos_type, 0, 'g', num_gate_tr - 1)
         warr = self.connect_to_tracks(mos_ports['g'], tr_id)
         self.add_pin('g', warr, show=True)
