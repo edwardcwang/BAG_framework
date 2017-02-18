@@ -74,15 +74,6 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return -1
 
     @classmethod
-    @abc.abstractmethod
-    def port_layer_id(cls):
-        """Returns the bottom port layer ID.
-
-        Bottom port layer must be horizontal.
-        """
-        return -1
-
-    @classmethod
     def get_default_param_values(cls):
         """Returns a dictionary containing default parameter values.
 
@@ -137,6 +128,19 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
             number of vertical tracks in this template.
         """
         return 1, 1
+
+    @abc.abstractmethod
+    def port_locations(self):
+        """Returns the port locations of this resistor.
+
+        Returns
+        -------
+        top_pin : Tuple[str, :class:`~bag.layout.util.BBox`]
+            the top pin represented as (layer, bbox) tuple.
+        bot_pin : Tuple[str, :class:`~bag.layout.util.BBox`]
+            the bottom pin represented as (layer, bbox) tuple.
+        """
+        return None
 
     def get_layout_basename(self):
         """Returns the base name for this template.
@@ -501,6 +505,8 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._edgetb_cls = tech_params['layout']['res_edgetb_template']
         self._corner_cls = tech_params['layout']['res_corner_template']
         self._use_parity = self._core_cls.use_parity()
+        self._port_dict = {}
+        self._core_offset = None
 
     def draw_array(self, l, w, nx=1, ny=1, x_tracks_min=1, y_tracks_min=1,
                    sub_type='ntap', res_type='reference'):
@@ -570,7 +576,8 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         inst.move_by(dy=h_edge_tb + ny * h_core - inst.array_box.bottom)
 
         # create core
-        self._add_blk(self._core_cls, layout_params, (w_edge_lr, h_edge_tb),
+        self._core_offset = (w_edge_lr, h_edge_tb)
+        self._add_blk(self._core_cls, layout_params, self._core_offset,
                       'R0', nx, ny, 0)
 
         # create top edge
@@ -591,7 +598,9 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     def _add_blk(self, temp_cls, params, loc, orient, nx, ny, par0):
         params['parity'] = par0
-        master0 = self.new_template(params=params, temp_cls=temp_cls)
+        master0 = self.new_template(params=params, temp_cls=temp_cls)  # type: AnalogResCore
+        self._port_dict[par0] = master0.port_locations()
+
         spx = master0.array_box.width
         spy = master0.array_box.height
         if not self._use_parity:
@@ -611,7 +620,8 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
             # add opposite parity
             params['parity'] = 1 - par0
-            master1 = self.new_template(params=params, temp_cls=temp_cls)
+            master1 = self.new_template(params=params, temp_cls=temp_cls)  # type: AnalogResCore
+            self._port_dict[1 - par0] = master1.port_locations()
             nx1 = nx // 2
             ny1 = (ny + 1) // 2
             if nx1 > 0 and ny1 > 0:
