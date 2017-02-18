@@ -93,6 +93,7 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
             res_type='reference',
             parity=0,
             sub_type='ntap',
+            em_specs={},
         )
 
     @classmethod
@@ -114,6 +115,7 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
             res_type='the resistor type.',
+            em_specs='resistor EM spec specifications.',
         )
 
     @abc.abstractmethod
@@ -208,6 +210,7 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
             parity=0,
             sub_type='ntap',
             res_type='reference',
+            em_specs={},
         )
 
     @classmethod
@@ -229,6 +232,7 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
             res_type='the resistor type.',
+            em_specs='resistor EM spec specifications.',
         )
 
     @abc.abstractmethod
@@ -312,6 +316,7 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
             parity=0,
             sub_type='ntap',
             res_type='reference',
+            em_specs={},
         )
 
     @classmethod
@@ -333,6 +338,7 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
             res_type='the resistor type.',
+            em_specs='resistor EM specifications.',
         )
 
     @abc.abstractmethod
@@ -416,6 +422,7 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
             parity=0,
             sub_type='ntap',
             res_type='reference',
+            em_specs={},
         )
 
     @classmethod
@@ -437,6 +444,7 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
             res_type='the resistor type.',
+            em_specs='resistor EM specifications.',
         )
 
     @abc.abstractmethod
@@ -509,7 +517,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._core_offset = None
 
     def draw_array(self, l, w, nx=1, ny=1, x_tracks_min=1, y_tracks_min=1,
-                   sub_type='ntap', res_type='reference'):
+                   sub_type='ntap', res_type='reference', em_specs=None):
         """Draws the resistor array.
 
         Parameters
@@ -530,6 +538,8 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             the substrate type.  Either 'ptap' or 'ntap'.
         res_type : string
             the resistor type.
+        em_specs : Dict[str, any] or None
+            resistor EM specifications dictionary.
         """
         # add resistor array layers to RoutingGrid
         self.grid = self.grid.copy()
@@ -546,6 +556,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             sub_type=sub_type,
             res_type=res_type,
             parity=0,
+            em_specs=em_specs or {},
         )
         # create BL corner
         master = self.new_template(params=layout_params, temp_cls=self._corner_cls)
@@ -598,8 +609,9 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     def _add_blk(self, temp_cls, params, loc, orient, nx, ny, par0):
         params['parity'] = par0
-        master0 = self.new_template(params=params, temp_cls=temp_cls)  # type: AnalogResCore
-        self._port_dict[par0] = master0.port_locations()
+        master0 = self.new_template(params=params, temp_cls=temp_cls)
+        if isinstance(master0, AnalogResCore):
+            self._port_dict[par0] = master0.port_locations()
 
         spx = master0.array_box.width
         spy = master0.array_box.height
@@ -620,8 +632,9 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
             # add opposite parity
             params['parity'] = 1 - par0
-            master1 = self.new_template(params=params, temp_cls=temp_cls)  # type: AnalogResCore
-            self._port_dict[1 - par0] = master1.port_locations()
+            master1 = self.new_template(params=params, temp_cls=temp_cls)
+            if isinstance(master1, AnalogResCore):
+                self._port_dict[1 - par0] = master1.port_locations()
             nx1 = nx // 2
             ny1 = (ny + 1) // 2
             if nx1 > 0 and ny1 > 0:
@@ -678,6 +691,7 @@ class ResArrayTest(ResArrayBase):
             y_tracks_min=1,
             sub_type='ntap',
             res_type='reference',
+            em_specs={},
         )
 
     @classmethod
@@ -700,6 +714,7 @@ class ResArrayTest(ResArrayBase):
             y_tracks_min='Minimum number of vertical tracks per block.',
             sub_type='the substrate type.',
             res_type='the resistor type.',
+            em_specs='resistor EM specifications.',
         )
 
     def draw_layout(self):
