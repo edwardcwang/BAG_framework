@@ -200,9 +200,6 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         return main
 
-    def compute_unique_key(self):
-        return self.get_layout_basename()
-
 
 # noinspection PyAbstractClass
 class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
@@ -305,9 +302,6 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
             main += '_par%d' % self.params['parity']
 
         return main
-
-    def compute_unique_key(self):
-        return self.get_layout_basename()
 
 
 # noinspection PyAbstractClass
@@ -412,9 +406,6 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         return main
 
-    def compute_unique_key(self):
-        return self.get_layout_basename()
-
 
 # noinspection PyAbstractClass
 class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
@@ -517,9 +508,6 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
             main += '_par%d' % self.params['parity']
 
         return main
-
-    def compute_unique_key(self):
-        return self.get_layout_basename()
 
 
 # noinspection PyAbstractClass
