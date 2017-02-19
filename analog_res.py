@@ -98,12 +98,11 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
             dictionary of default parameter values.
         """
         return dict(
-            x_tracks_min=1,
-            y_tracks_min=1,
             res_type='reference',
             parity=0,
             sub_type='ntap',
             em_specs={},
+            min_tracks=(1, 1, 1, 1),
         )
 
     @classmethod
@@ -120,8 +119,7 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return dict(
             l='unit resistor length, in meters.',
             w='unit resistor width, in meters.',
-            x_tracks_min='Minimum number of horizontal tracks per block.',
-            y_tracks_min='Minimum number of vertical tracks per block.',
+            min_tracks='Minimum number of tracks on each layer per block.',
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
             res_type='the resistor type.',
@@ -243,8 +241,7 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
             dictionary of default parameter values.
         """
         return dict(
-            x_tracks_min=1,
-            y_tracks_min=1,
+            min_tracks=(1, 1, 1, 1),
             parity=0,
             sub_type='ntap',
             res_type='reference',
@@ -265,8 +262,7 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return dict(
             l='unit resistor length, in meters.',
             w='unit resistor width, in meters.',
-            x_tracks_min='Minimum number of horizontal tracks per block.',
-            y_tracks_min='Minimum number of vertical tracks per block.',
+            min_tracks='Minimum number of tracks on each layer per block.',
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
             res_type='the resistor type.',
@@ -351,8 +347,7 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
             dictionary of default parameter values.
         """
         return dict(
-            x_tracks_min=1,
-            y_tracks_min=1,
+            min_tracks=(1, 1, 1, 1),
             parity=0,
             sub_type='ntap',
             res_type='reference',
@@ -373,8 +368,7 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return dict(
             l='unit resistor length, in meters.',
             w='unit resistor width, in meters.',
-            x_tracks_min='Minimum number of horizontal tracks per block.',
-            y_tracks_min='Minimum number of vertical tracks per block.',
+            min_tracks='Minimum number of tracks on each layer per block.',
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
             res_type='the resistor type.',
@@ -459,8 +453,7 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
             dictionary of default parameter values.
         """
         return dict(
-            x_tracks_min=1,
-            y_tracks_min=1,
+            min_tracks=(1, 1, 1, 1),
             parity=0,
             sub_type='ntap',
             res_type='reference',
@@ -481,8 +474,7 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return dict(
             l='unit resistor length, in meters.',
             w='unit resistor width, in meters.',
-            x_tracks_min='Minimum number of horizontal tracks per block.',
-            y_tracks_min='Minimum number of vertical tracks per block.',
+            min_tracks='Minimum number of tracks on each layer per block.',
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
             res_type='the resistor type.',
@@ -530,7 +522,6 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return self.get_layout_basename()
 
 
-# TODO: modify implementation after track width on top 2 routing layer is implemented.
 # noinspection PyAbstractClass
 class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """An abstract template that draws analog resistors array and connections.
@@ -632,7 +623,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         result = self.connect_wires([warr0, warr1])[0]  # get only element from list
         return result
 
-    def draw_array(self, l, w, nx=1, ny=1, x_tracks_min=1, y_tracks_min=1,
+    def draw_array(self, l, w, nx=1, ny=1, min_tracks=(1, 1, 1, 1),
                    sub_type='ntap', res_type='reference', em_specs=None):
         """Draws the resistor array.
 
@@ -646,10 +637,8 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             number of resistors in a row.
         ny : int
             number of resistors in a column.
-        x_tracks_min : int
-            minimum number of horizontal tracks per resistor unit cell.
-        y_tracks_min : int
-            minimum number of vertical tracks per resistor unit cell.
+        min_tracks : Tuple[int]
+            minimum number of tracks per layer in the resistor unit cell.
         sub_type : string
             the substrate type.  Either 'ptap' or 'ntap'.
         res_type : string
@@ -667,8 +656,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         layout_params = dict(
             l=l,
             w=w,
-            x_tracks_min=x_tracks_min,
-            y_tracks_min=y_tracks_min,
+            min_tracks=min_tracks,
             sub_type=sub_type,
             res_type=res_type,
             parity=0,
@@ -809,8 +797,7 @@ class ResArrayTest(ResArrayBase):
         return dict(
             nx=1,
             ny=1,
-            x_tracks_min=1,
-            y_tracks_min=1,
+            min_tracks=(1, 1, 1, 1),
             sub_type='ntap',
             res_type='reference',
             em_specs={},
@@ -832,8 +819,7 @@ class ResArrayTest(ResArrayBase):
             w='unit resistor width, in meters.',
             nx='number of resistors in a row.',
             ny='number of resistors in a column.',
-            x_tracks_min='Minimum number of horizontal tracks per block.',
-            y_tracks_min='Minimum number of vertical tracks per block.',
+            min_tracks='Minimum number of tracks on each layer per block.',
             sub_type='the substrate type.',
             res_type='the resistor type.',
             em_specs='resistor EM specifications.',
@@ -857,7 +843,7 @@ class ResArrayTest(ResArrayBase):
 
         # connect common node to x layer
         xm_layer = vm_layer + 1
-        xm_width = 1
+        xm_width = self.w_tracks[2]
         x_pitch = self.num_tracks[2]
         x_base = self._num_corner_tracks[2] + (x_pitch - 1) / 2.0
         x_tid = TrackID(xm_layer, x_base, width=xm_width, num=ny, pitch=x_pitch)
