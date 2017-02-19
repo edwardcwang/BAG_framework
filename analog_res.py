@@ -841,7 +841,11 @@ class ResArrayTest(ResArrayBase):
 
     def draw_layout(self):
         ny = self.params['ny']
-        self.draw_array(**self.params)
+        em_specs = self.params.pop('em_specs')
+        div_em_specs = em_specs.copy()
+        for key in ('idc', 'iac_rms', 'iac_peak'):
+            div_em_specs[key] = div_em_specs[key] / ny
+        self.draw_array(em_specs=div_em_specs, **self.params)
 
         # connect common node to v layer
         vm_layer = self.hm_layer_id + 1
@@ -853,7 +857,16 @@ class ResArrayTest(ResArrayBase):
 
         # connect common node to x layer
         xm_layer = vm_layer + 1
+        xm_width = 1
         x_pitch = self.num_tracks[2]
         x_base = self._num_corner_tracks[2] + (x_pitch - 1) / 2.0
-        x_tid = TrackID(xm_layer, x_base, width=1, num=ny, pitch=x_pitch)
+        x_tid = TrackID(xm_layer, x_base, width=xm_width, num=ny, pitch=x_pitch)
         x_warr = self.connect_to_tracks(v_warr, x_tid)
+
+        # connect common node to y layer
+        ym_layer = xm_layer + 1
+        bot_w = self.grid.get_track_width(xm_layer, xm_width)
+        ym_width = self.grid.get_min_track_width(ym_layer, bot_w=bot_w, **em_specs)
+        tnum = self.grid.coord_to_nearest_track(ym_layer, x_warr.middle, half_track=True)
+        y_tid = TrackID(ym_layer, tnum, width=ym_width)
+        self.connect_to_tracks(x_warr, y_tid)
