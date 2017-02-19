@@ -34,6 +34,7 @@ from future.utils import with_metaclass
 import abc
 from bag import float_to_si_string
 from bag.layout.util import BBox
+from bag.layout.routing import TrackID
 from bag.layout.template import MicroTemplate
 
 
@@ -66,8 +67,17 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @classmethod
     @abc.abstractmethod
+    def port_layer_id(cls):
+        """Returns the resistor port layer ID.
+
+        Bottom port layer must be horizontal.
+        """
+        return -1
+
+    @classmethod
+    @abc.abstractmethod
     def array_port_layer_id(cls):
-        """Returns the resistor array bottom port layer ID.
+        """Returns the resistor array top horizontal metal port layer ID.
 
         Bottom port layer must be horizontal.
         """
@@ -120,16 +130,59 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @abc.abstractmethod
     def get_xy_tracks(self):
-        """Returns the number of vertical/horizontal tracks in this template.
+        """Returns the number of top level horizontal/vertical tracks in this template.
+
+        Note: this method must work before draw_layout() is called.
 
         Returns
         -------
         num_x_tracks : int
-            number of horizontal tracks in this template.
+            number of top level horizontal tracks in this template.
         num_y_tracks : int
-            number of vertical tracks in this template.
+            number of top level vertical tracks in this template.
         """
         return 1, 1
+
+    @abc.abstractmethod
+    def get_hv_tracks(self):
+        """Returns the number of lower level horizontal/vertical tracks in this template.
+
+        Returns
+        -------
+        num_h_tracks : int
+            number of lower level horizontal tracks in this template.
+        num_v_tracks : int
+            number of lower level vertical tracks in this template.
+        """
+        return 1, 1
+
+    @abc.abstractmethod
+    def get_hve_tracks(self):
+        """Returns the number of lower level horizontal/vertical tracks in the edge templates.
+
+        Returns
+        -------
+        num_h_tracks : int
+            number of lower level horizontal tracks in the bottom edge template.
+        num_v_tracks : int
+            number of lower level vertical tracks in the left edge template.
+        """
+        return 1, 1
+
+    @abc.abstractmethod
+    def get_hv_width(self):
+        """Returns the lower level horizontal/vertical track widths.
+
+        Returns
+        -------
+        h_width_ntr : int
+            lower level horizontal track width in number of tracks.
+        v_width_ntr : int
+            lower level vertical track width in number of tracks.
+        """
+        return 1, 1
+
+    # TODO: add get_xy_width, and make resistor block interpret x/y_tracks_min in widths
 
     @abc.abstractmethod
     def port_locations(self):
@@ -239,6 +292,8 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
     def get_xy_tracks(self):
         """Returns the number of vertical/horizontal tracks in this template.
 
+        Note: this method must work before draw_layout() is called.
+
         Returns
         -------
         num_x_tracks : int
@@ -344,6 +399,8 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
     @abc.abstractmethod
     def get_xy_tracks(self):
         """Returns the number of vertical/horizontal tracks in this template.
+
+        Note: this method must work before draw_layout() is called.
 
         Returns
         -------
@@ -451,6 +508,8 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
     def get_xy_tracks(self):
         """Returns the number of vertical/horizontal tracks in this template.
 
+        Note: this method must work before draw_layout() is called.
+
         Returns
         -------
         num_x_tracks : int
@@ -486,6 +545,7 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return self.get_layout_basename()
 
 
+# TODO: modify implementation after get_xy_width() is implemented.
 # noinspection PyAbstractClass
 class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """An abstract template that draws analog resistors array and connections.
@@ -515,6 +575,73 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._use_parity = self._core_cls.use_parity()
         self._port_dict = {}
         self._core_offset = None
+        self._core_pitch = None
+        self._num_h_tracks = None
+        self._num_v_tracks = None
+        self._num_he_tracks = None
+        self._num_ve_tracks = None
+        self._hm_width = None
+        self._vm_width = None
+        self._hm_layer = self._core_cls.port_layer_id() + 1
+
+    @property
+    def num_h_tracks(self):
+        return self._num_h_tracks
+
+    @property
+    def num_v_tracks(self):
+        return self._num_v_tracks
+
+    def connect_lr(self, row_idx, left_col_idx, pos):
+        """Connect the resistor at the given coordinate to the resistor on its right.
+
+        Parameters
+        ----------
+        row_idx : int
+            the resistor row index.  0 is the bottom row.
+        left_col_idx : int
+            the left resistor column index.  0 is the left-most column.
+        pos : int
+            the port position, 0 for bottom port, 1 for top port.
+
+        Returns
+        -------
+        warr : :class:`~bag.layout.routing.WireArray`
+            the lower level horizontal track drawn to connect the resistors.
+        """
+        if pos != 0 and pos != 1:
+            raise ValueError('pos = %s must be either 0 or 1' % repr(pos))
+        par0 = (row_idx + left_col_idx) % 2
+        lay0, port_bbox = self._port_dict[par0][pos]
+        lay1, _ = self._port_dict[1 - par0][pos]
+        hm_tr_sp = self.grid.get_num_space_tracks(self._hm_layer, self._hm_width, half_space=False)
+
+        # step 1: determinal horizontal track index.
+        if pos == 0:
+            # find first track below bottom port
+            tr_idx = self.grid.find_next_track(self._hm_layer, port_bbox.top, tr_width=self._hm_width,
+                                               half_track=True, mode=-1)
+            # max with minimum legal track index based on spacing to block below
+            tr_idx = max(tr_idx, (self._hm_width + hm_tr_sp - 1) / 2.0)
+        else:
+            # find first track above top port
+            tr_idx = self.grid.find_next_track(self._hm_layer, port_bbox.bottom, tr_width=self._hm_width,
+                                               half_track=True, mode=1)
+            # min with maximum legal track index based on spacing to block above
+            tr_idx = min(tr_idx, self._num_h_tracks - 1 - (self._hm_width + hm_tr_sp - 1) / 2.0)
+
+        # step 2: create TrackID
+        tr_idx += row_idx * self._num_h_tracks + self._num_he_tracks
+        tid = TrackID(self._hm_layer, tr_idx, width=self._hm_width)
+
+        # step 2: connect ports to track
+        dx = self._core_offset[0] + self._core_pitch[0] * left_col_idx
+        dy = self._core_offset[1] + self._core_pitch[1] * row_idx
+        warr0 = self.connect_bbox_to_tracks(lay0, port_bbox.move_by(dx, dy), tid)
+        warr1 = self.connect_bbox_to_tracks(lay1, port_bbox.move_by(dx + self._core_pitch[0], dy), tid)
+
+        result = self.connect_wires([warr0, warr1])[0]  # get only element from list
+        return result
 
     def draw_array(self, l, w, nx=1, ny=1, x_tracks_min=1, y_tracks_min=1,
                    sub_type='ntap', res_type='reference', em_specs=None):
@@ -588,6 +715,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         # create core
         self._core_offset = (w_edge_lr, h_edge_tb)
+        self._core_pitch = (w_core, h_core)
         self._add_blk(self._core_cls, layout_params, self._core_offset,
                       'R0', nx, ny, 0)
 
@@ -612,6 +740,11 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         master0 = self.new_template(params=params, temp_cls=temp_cls)
         if isinstance(master0, AnalogResCore):
             self._port_dict[par0] = master0.port_locations()
+            if not self._use_parity:
+                self._port_dict[1 - par0] = master0.port_locations()
+            self._num_h_tracks, self._num_v_tracks = master0.get_hv_tracks()
+            self._num_he_tracks, self._num_ve_tracks = master0.get_hve_tracks()
+            self._hm_width, self._vm_width = master0.get_hv_width()
 
         spx = master0.array_box.width
         spy = master0.array_box.height
@@ -718,4 +851,7 @@ class ResArrayTest(ResArrayBase):
         )
 
     def draw_layout(self):
+        ny = self.params['ny']
         self.draw_array(**self.params)
+        for idx in range(ny):
+            self.connect_lr(idx, 0, 1)
