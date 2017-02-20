@@ -36,10 +36,10 @@ import numpy as np
 
 from bag import float_to_si_string
 from bag.layout.util import BBox
-from bag.layout.template import MicroTemplate
+from bag.layout.template import TemplateBase
 
 
-class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
+class AnalogMosBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     """An abstract template for analog mosfet.
 
     Must have parameters mos_type, lch, w, threshold, fg.
@@ -61,13 +61,13 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        super(AnalogMosBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     @abc.abstractmethod
     def get_template_width(cls, fg_tot, guard_ring_nf=0):
         # type: (int, int) -> int
-        """Returns the width of the AnalogMosBase in number of fingers.
+        """Returns the width of the AnalogMosBase in number of vertical tracks.
 
         Parameters
         ----------
@@ -79,7 +79,7 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         Returns
         -------
         mos_width : int
-            the AnalogMosBase width in number of fingers.
+            the AnalogMosBase width in number of vertical tracks.
         """
         return 0
 
@@ -230,12 +230,12 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             number of tracks in this template.
         """
         h_layer_id = self.port_layer_id() + 1
-        tr_pitch = self.grid.get_track_pitch(h_layer_id)
-        h = self.array_box.height
-        num_track = int(round(h / tr_pitch))
-        if abs(h - num_track * tr_pitch) >= self.grid.resolution:
+        tr_pitch = self.grid.get_track_pitch(h_layer_id, unit_mode=True)
+        h = self.array_box.height_unit
+        q, r = divmod(h, tr_pitch)
+        if r != 0:
             raise Exception('array box height = %.4g not integer number of track pitch = %.4g' % (h, tr_pitch))
-        return num_track
+        return q
 
     def get_layout_basename(self):
         """Returns the base name for this template.
@@ -272,7 +272,7 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
 
 # noinspection PyAbstractClass
-class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
+class AnalogSubstrate(with_metaclass(abc.ABCMeta, TemplateBase)):
     """An abstract template for substrate connection.
 
     Parameters
@@ -291,7 +291,7 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        super(AnalogSubstrate, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
@@ -353,12 +353,12 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
         tech_params = self.grid.tech_info.tech_params
         mos_cls = tech_params['layout']['mos_template']
         h_layer_id = mos_cls.port_layer_id() + 1
-        tr_pitch = self.grid.get_track_pitch(h_layer_id)
-        h = self.array_box.height
-        num_track = int(round(h / tr_pitch))
-        if abs(h - num_track * tr_pitch) >= self.grid.resolution:
+        tr_pitch = self.grid.get_track_pitch(h_layer_id, unit_mode=True)
+        h = self.array_box.height_unit
+        q, r = divmod(h, tr_pitch)
+        if r != 0:
             raise Exception('array box height = %.4g not integer number of track pitch = %.4g' % (h, tr_pitch))
-        return num_track
+        return q
 
     def get_layout_basename(self):
         """Returns the base name for this template.
@@ -397,7 +397,7 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
 
 # noinspection PyAbstractClass
-class AnalogFinfetFoundation(with_metaclass(abc.ABCMeta, MicroTemplate)):
+class AnalogFinfetFoundation(with_metaclass(abc.ABCMeta, TemplateBase)):
     """The abstract base class for finfet layout classes.
 
     This class provides the draw_foundation() method, which draws the poly array
@@ -405,7 +405,7 @@ class AnalogFinfetFoundation(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        super(AnalogFinfetFoundation, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     def draw_foundation(self, lch, nfin, fg, nduml, ndumr, arr_box_ext, tech_constants,
                         dx=0.0, no_cpo=False):
@@ -712,7 +712,7 @@ class AnalogFinfetExt(AnalogFinfetFoundation):
 
 
 # noinspection PyAbstractClass
-class AnalogFinfetGuardRingExt(with_metaclass(abc.ABCMeta, MicroTemplate)):
+class AnalogFinfetGuardRingExt(with_metaclass(abc.ABCMeta, TemplateBase)):
     """A guard ring for extension block.
 
     Parameters
@@ -731,7 +731,7 @@ class AnalogFinfetGuardRingExt(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        super(AnalogFinfetGuardRingExt, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -812,7 +812,7 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        AnalogFinfetFoundation.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        super(AnalogFinfetEdge, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         tech_params = self.grid.tech_info.tech_params
         self._gr_cls = tech_params['layout']['edge_guard_ring_template']
 
@@ -985,6 +985,11 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
             self.array_box = BBox(xl, self.array_box.bottom,
                                   xl + wgr + wfund, self.array_box.top, self.array_box.resolution)
 
+        # set block size from array box
+        tech_params = self.grid.tech_info.tech_params
+        mos_cls = tech_params['layout']['mos_template']
+        h_layer_id = mos_cls.port_layer_id() + 1
+        self.set_size_from_array_box(h_layer_id)
         od_yc = self.array_box.bottom + tech_constants['mos_edge_od_dy'] + bext * mos_fin_pitch
 
         # draw OD/PODE
@@ -1003,7 +1008,7 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
 
 
 # noinspection PyAbstractClass
-class AnalogFinfetGuardRingEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
+class AnalogFinfetGuardRingEdge(with_metaclass(abc.ABCMeta, TemplateBase)):
     """A guard ring for extension block.
 
     Parameters
@@ -1022,7 +1027,7 @@ class AnalogFinfetGuardRingEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        super(AnalogFinfetGuardRingEdge, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -1111,7 +1116,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        AnalogMosBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        super(AnalogFinfetBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._sd_center = None, None
         self._ds_track_idx = None
 
@@ -1305,7 +1310,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         ledge_params = cls.get_edge_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
                                            guard_ring_style, guard_ring_nf, is_guard_ring_transistor,
                                            False, core_is_end, is_ds_dummy=is_ds_dummy)
-        ledge_master = template.new_template(params=ledge_params, temp_cls=edge_cls)  # type: MicroTemplate
+        ledge_master = template.new_template(params=ledge_params, temp_cls=edge_cls)
         ledge_inst = template.add_instance(ledge_master, inst_name='XLEDGE')
         inst_list.append(ledge_inst)
         ledge_arr_box = ledge_inst.array_box
@@ -1316,7 +1321,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             bot_ext_params = cls.get_ext_params(lch, mos_type, threshold, fg, bot_ext_nfin,
                                                 guard_ring_nf, is_end)
             bot_ext_master = template.new_template(params=bot_ext_params,
-                                                   temp_cls=AnalogFinfetExt)  # type: MicroTemplate
+                                                   temp_cls=AnalogFinfetExt)
             bot_ext_inst = template.add_instance(bot_ext_master, inst_name='XBEXT')
             inst_list.append(bot_ext_inst)
             bot_ext_arr_box = bot_ext_inst.array_box
@@ -1333,7 +1338,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         core_params = cls.get_core_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
                                           guard_ring_style, is_guard_ring_transistor,
                                           core_is_end, is_ds_dummy=is_ds_dummy)
-        core_master = template.new_template(params=core_params, temp_cls=core_cls)  # type: MicroTemplate
+        core_master = template.new_template(params=core_params, temp_cls=core_cls)
         core_inst = template.add_instance(core_master, inst_name='XMOS')
         inst_list.append(core_inst)
         core_arr_box = core_inst.array_box
@@ -1349,7 +1354,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
         redge_params = cls.get_edge_params(lch, w, mos_type, threshold, fg, core_bot_ext, core_top_ext,
                                            guard_ring_style, guard_ring_nf, is_guard_ring_transistor,
                                            True, core_is_end, is_ds_dummy=is_ds_dummy)
-        redge_master = template.new_template(params=redge_params, temp_cls=edge_cls)  # type: MicroTemplate
+        redge_master = template.new_template(params=redge_params, temp_cls=edge_cls)
         redge_inst = template.add_instance(redge_master, inst_name='XREDGE', orient='MY')
         inst_list.append(redge_inst)
         redge_arr_box = redge_inst.array_box
@@ -1364,7 +1369,7 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             top_ext_params = cls.get_ext_params(lch, mos_type, threshold, fg, top_ext_nfin,
                                                 guard_ring_nf, is_end)
             top_ext_master = template.new_template(params=top_ext_params,
-                                                   temp_cls=AnalogFinfetExt)  # type: MicroTemplate
+                                                   temp_cls=AnalogFinfetExt)
             top_ext_inst = template.add_instance(top_ext_master, inst_name='XTEXT')
             inst_list.append(top_ext_inst)
             top_ext_arr_box = top_ext_inst.array_box
@@ -1497,12 +1502,15 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
                                        guard_ring_style=False, is_end=is_end,
                                        is_ds_dummy=is_ds_dummy)
         self.array_box, self._sd_center = results[1], results[2]
+        # set block size from array box
+        self.set_size_from_array_box(self.port_layer_id() + 1)
+
         for body_port in results[3]:
             self.reexport(body_port, show=False)
 
 
 # noinspection PyAbstractClass
-class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
+class AnalogMosConn(with_metaclass(abc.ABCMeta, TemplateBase)):
     """An abstract template for analog mosfet connections.
 
     Connects drain, gate, and source to a high level vertical metal layer.
@@ -1524,7 +1532,7 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        super(AnalogMosConn, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     @abc.abstractmethod
@@ -1608,7 +1616,7 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
 
 # noinspection PyAbstractClass
-class AnalogMosSep(with_metaclass(abc.ABCMeta, MicroTemplate)):
+class AnalogMosSep(with_metaclass(abc.ABCMeta, TemplateBase)):
     """An abstract template for analog mosfet separator.
 
     A separator is a group of dummy transistors that separates the drain/source
@@ -1632,7 +1640,7 @@ class AnalogMosSep(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        super(AnalogMosSep, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_min_fg(cls):
@@ -1685,7 +1693,7 @@ class AnalogMosSep(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
 
 # noinspection PyAbstractClass
-class AnalogMosDummy(with_metaclass(abc.ABCMeta, MicroTemplate)):
+class AnalogMosDummy(with_metaclass(abc.ABCMeta, TemplateBase)):
     """An abstract template for analog mosfet dummy.
 
     Parameters
@@ -1704,7 +1712,7 @@ class AnalogMosDummy(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        super(AnalogMosDummy, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     @abc.abstractmethod
