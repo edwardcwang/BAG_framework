@@ -32,10 +32,13 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
+
+from typing import Dict, Any, Set, Tuple, Union
+
 from bag import float_to_si_string
 from bag.layout.util import BBox
-from bag.layout.routing import TrackID
-from bag.layout.template import MicroTemplate
+from bag.layout.routing import TrackID, Port, WireArray
+from bag.layout.template import MicroTemplate, TemplateDB
 
 
 class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
@@ -43,31 +46,34 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     Parameters
     ----------
-    temp_db : :class:`bag.layout.template.TemplateDB`
+    temp_db : :class:`~bag.layout.template.TemplateDB`
             the template database.
     lib_name : str
         the layout library name.
-    params : dict[str, any]
+    params : Dict[str, Any]
         the parameter values.
-    used_names : set[str]
+    used_names : Set[str]
         a set of already used cell names.
-    kwargs : dict[str, any]
+    **kwargs :
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> Any
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     @abc.abstractmethod
     def use_parity(cls):
+        # type: () -> bool
         """Returns True if parity changes resistor core layout."""
         return False
 
     @classmethod
     @abc.abstractmethod
     def port_layer_id(cls):
+        # type: () -> int
         """Returns the resistor port layer ID.
 
         Bottom port layer must be horizontal.
@@ -75,16 +81,8 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return -1
 
     @classmethod
-    @abc.abstractmethod
-    def array_port_layer_id(cls):
-        """Returns the resistor array top horizontal metal port layer ID.
-
-        Bottom port layer must be horizontal.
-        """
-        return -1
-
-    @classmethod
     def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
         """Returns a dictionary containing default parameter values.
 
         Override this method to define default parameter values.  As good practice,
@@ -94,7 +92,7 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         Returns
         -------
-        default_params : dict[str, any]
+        default_params : Dict[str, Any]
             dictionary of default parameter values.
         """
         return dict(
@@ -107,13 +105,14 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @classmethod
     def get_params_info(cls):
+        # type: () -> Dict[str, str]
         """Returns a dictionary containing parameter descriptions.
 
         Override this method to return a dictionary from parameter names to descriptions.
 
         Returns
         -------
-        param_info : dict[str, str]
+        param_info : Dict[str, str]
             dictionary from parameter name to description.
         """
         return dict(
@@ -128,59 +127,50 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @abc.abstractmethod
     def get_num_tracks(self):
+        # type: () -> Tuple[int, int, int, int]
         """Returns a list of the number of tracks on each routing layer in this template.
 
         Note: this method must work before draw_layout() is called.
 
         Returns
         -------
-        ntr_list : Tuple[int]
+        ntr_list : Tuple[int, int, int, int]
             a list of number of tracks in this template on each layer.
             index 0 is the bottom-most routing layer, and corresponds to
-            AnalogResCore.port_layer_id() + 1.
+            AnalogResCore.port_layer_id().
         """
-        return [1, 1, 1, 1]
+        return 1, 1, 1, 1
 
     @abc.abstractmethod
     def get_num_corner_tracks(self):
+        # type: () -> Tuple[int, int, int, int]
         """Returns a list of number of tracks on each routing layer in corner templates.
 
         Returns
         -------
-        ntr_list : Tuple[int]
+        ntr_list : Tuple[int, int, int, int]
             a list of number of tracks in corner templates on each layer.
             index 0 is the bottom-most routing layer, and corresponds to
-            AnalogResCore.port_layer_id() + 1.
+            AnalogResCore.port_layer_id().
         """
-        return [1, 1, 1, 1]
+        return 1, 1, 1, 1
 
     @abc.abstractmethod
     def get_track_widths(self):
+        # type: () -> Tuple[int, int, int, int]
         """Returns a list of track widths on each routing layer.
 
         Returns
         -------
-        width_list : List[int]
+        width_list : Tuple[int, int, int, int]
             a list of track widths in number of tracks on each layer.
             index 0 is the bottom-most routing layer, and corresponds to
-            port_layer_id() + 1.
+            port_layer_id().
         """
-        return [1, 1, 1, 1]
-
-    @abc.abstractmethod
-    def port_locations(self):
-        """Returns the port locations of this resistor.
-
-        Returns
-        -------
-        top_pin : Tuple[str, :class:`~bag.layout.util.BBox`]
-            the top pin represented as (layer, bbox) tuple.
-        bot_pin : Tuple[str, :class:`~bag.layout.util.BBox`]
-            the bottom pin represented as (layer, bbox) tuple.
-        """
-        return None
+        return 1, 1, 1, 1
 
     def get_layout_basename(self):
+        # type: () -> str
         """Returns the base name for this template.
 
         Returns
@@ -215,16 +205,18 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
-    kwargs : dict[str, any]
+    **kwargs :
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> Any
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
         """Returns a dictionary containing default parameter values.
 
         Override this method to define default parameter values.  As good practice,
@@ -234,7 +226,7 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         Returns
         -------
-        default_params : dict[str, any]
+        default_params : Dict[str, Any]
             dictionary of default parameter values.
         """
         return dict(
@@ -247,13 +239,14 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @classmethod
     def get_params_info(cls):
+        # type: () -> Dict[str, str]
         """Returns a dictionary containing parameter descriptions.
 
         Override this method to return a dictionary from parameter names to descriptions.
 
         Returns
         -------
-        param_info : dict[str, str]
+        param_info : Dict[str, str]
             dictionary from parameter name to description.
         """
         return dict(
@@ -268,20 +261,22 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @abc.abstractmethod
     def get_num_tracks(self):
+        # type: () -> Tuple[int, int, int, int]
         """Returns a list of the number of tracks on each routing layer in this template.
 
         Note: this method must work before draw_layout() is called.
 
         Returns
         -------
-        ntr_list : Tuple[int]
+        ntr_list : Tuple[int, int, int, int]
             a list of number of tracks in this template on each layer.
             index 0 is the bottom-most routing layer, and corresponds to
-            AnalogResCore.port_layer_id() + 1.
+            AnalogResCore.port_layer_id().
         """
-        return [1, 1, 1, 1]
+        return 1, 1, 1, 1
 
     def get_layout_basename(self):
+        # type: () -> str
         """Returns the base name for this template.
 
         Returns
@@ -318,16 +313,18 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
-    kwargs : dict[str, any]
+    **kwargs :
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> Any
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
         """Returns a dictionary containing default parameter values.
 
         Override this method to define default parameter values.  As good practice,
@@ -337,7 +334,7 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         Returns
         -------
-        default_params : dict[str, any]
+        default_params : Dict[str, Any]
             dictionary of default parameter values.
         """
         return dict(
@@ -350,13 +347,14 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @classmethod
     def get_params_info(cls):
+        # type: () -> Dict[str, str]
         """Returns a dictionary containing parameter descriptions.
 
         Override this method to return a dictionary from parameter names to descriptions.
 
         Returns
         -------
-        param_info : dict[str, str]
+        param_info : Dict[str, str]
             dictionary from parameter name to description.
         """
         return dict(
@@ -371,20 +369,22 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @abc.abstractmethod
     def get_num_tracks(self):
+        # type: () -> Tuple[int, int, int, int]
         """Returns a list of the number of tracks on each routing layer in this template.
 
         Note: this method must work before draw_layout() is called.
 
         Returns
         -------
-        ntr_list : Tuple[int]
+        ntr_list : Tuple[int, int, int, int]
             a list of number of tracks in this template on each layer.
             index 0 is the bottom-most routing layer, and corresponds to
-            AnalogResCore.port_layer_id() + 1.
+            AnalogResCore.port_layer_id().
         """
-        return [1, 1, 1, 1]
+        return 1, 1, 1, 1
 
     def get_layout_basename(self):
+        # type: () -> str
         """Returns the base name for this template.
 
         Returns
@@ -421,16 +421,18 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
-    kwargs : dict[str, any]
+    **kwargs :
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> Any
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
         """Returns a dictionary containing default parameter values.
 
         Override this method to define default parameter values.  As good practice,
@@ -440,7 +442,7 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         Returns
         -------
-        default_params : dict[str, any]
+        default_params : Dict[str, Any]
             dictionary of default parameter values.
         """
         return dict(
@@ -453,13 +455,14 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @classmethod
     def get_params_info(cls):
+        # type: () -> Dict[str, str]
         """Returns a dictionary containing parameter descriptions.
 
         Override this method to return a dictionary from parameter names to descriptions.
 
         Returns
         -------
-        param_info : dict[str, str]
+        param_info : Dict[str, str]
             dictionary from parameter name to description.
         """
         return dict(
@@ -474,20 +477,22 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @abc.abstractmethod
     def get_num_tracks(self):
+        # type: () -> Tuple[int, int, int, int]
         """Returns a list of the number of tracks on each routing layer in this template.
 
         Note: this method must work before draw_layout() is called.
 
         Returns
         -------
-        ntr_list : Tuple[int]
+        ntr_list : Tuple[int, int, int, int]
             a list of number of tracks in this template on each layer.
             index 0 is the bottom-most routing layer, and corresponds to
-            AnalogResCore.port_layer_id() + 1.
+            AnalogResCore.port_layer_id().
         """
-        return [1, 1, 1, 1]
+        return 1, 1, 1, 1
 
     def get_layout_basename(self):
+        # type: () -> str
         """Returns the base name for this template.
 
         Returns
@@ -524,95 +529,81 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
-    kwargs : dict[str, any]
+    **kwargs :
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> Any
         MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         tech_params = self.grid.tech_info.tech_params
-        self._core_cls = tech_params['layout']['res_core_template']
-        self._edgelr_cls = tech_params['layout']['res_edgelr_template']
-        self._edgetb_cls = tech_params['layout']['res_edgetb_template']
-        self._corner_cls = tech_params['layout']['res_corner_template']
+        self._core_cls = tech_params['layout']['res_core_template']  # type: AnalogResCore
+        self._edgelr_cls = tech_params['layout']['res_edgelr_template']  # type: AnalogResLREdge
+        self._edgetb_cls = tech_params['layout']['res_edgetb_template']  # type: AnalogResTBEdge
+        self._corner_cls = tech_params['layout']['res_corner_template']  # type: AnalogResCorner
         self._use_parity = self._core_cls.use_parity()
-        self._port_dict = {}
-        self._core_offset = None
-        self._core_pitch = None
-        self._num_tracks = None
-        self._num_corner_tracks = None
-        self._w_tracks = None
-        self._hm_layer = self._core_cls.port_layer_id() + 1
+        self._bot_port = None  # type: Port
+        self._top_port = None  # type: Port
+        self._core_offset = None  # type: Tuple[float, float]
+        self._core_pitch = None  # type: Tuple[float, float]
+        self._num_tracks = None  # type: Tuple[int, int, int, int]
+        self._num_corner_tracks = None  # type: Tuple[int, int, int, int]
+        self._w_tracks = None  # type: Tuple[int, int, int, int]
+        self._hm_layer = self._core_cls.port_layer_id()
 
     @property
     def num_tracks(self):
+        # type: () -> Tuple[int, int, int, int]
+        """Returns the number of tracks on each resistor routing layer."""
         return self._num_tracks
 
     @property
-    def hm_layer_id(self):
+    def bot_layer_id(self):
+        # type: () -> int
+        """Returns the bottom resistor routing layer ID."""
         return self._hm_layer
 
     @property
     def w_tracks(self):
+        # type: () -> Tuple[int, int, int, int]
+        """Returns the track width on each resistor routing layer, in number of tracks."""
         return self._w_tracks
 
-    def connect_lr(self, row_idx, left_col_idx, pos):
-        """Connect the resistor at the given coordinate to the resistor on its right.
+    def get_res_ports(self, row_idx, col_idx):
+        # type: (int, int) -> Tuple[WireArray, WireArray]
+        """Returns the port of the given resistor.
 
         Parameters
         ----------
         row_idx : int
             the resistor row index.  0 is the bottom row.
-        left_col_idx : int
-            the left resistor column index.  0 is the left-most column.
-        pos : int
-            the port position, 0 for bottom port, 1 for top port.
+        col_idx : int
+            the resistor column index.  0 is the left-most column.
 
         Returns
         -------
-        warr : :class:`~bag.layout.routing.WireArray`
-            the lower level horizontal track drawn to connect the resistors.
+        bot_warr : :class:`~bag.layout.routing.WireArray`
+            the bottom port as WireArray.
+        top_warr : :class:`~bag.layout.routing.WireArray`
+            the top port as WireArray.
         """
-        if pos != 0 and pos != 1:
-            raise ValueError('pos = %s must be either 0 or 1' % repr(pos))
-        par0 = (row_idx + left_col_idx) % 2
-        lay0, port_bbox = self._port_dict[par0][pos]
-        lay1, _ = self._port_dict[1 - par0][pos]
-        hm_width = self.w_tracks[0]
-        hm_num = self.num_tracks[0]
-        hm_nume = self._num_corner_tracks[0]
-        hm_tr_sp = self.grid.get_num_space_tracks(self.hm_layer_id, hm_width, half_space=False)
-
-        # step 1: determinal horizontal track index.
-        if pos == 0:
-            # find first track below bottom port
-            tr_idx = self.grid.find_next_track(self.hm_layer_id, port_bbox.top, tr_width=hm_width,
-                                               half_track=True, mode=-1)
-            # max with minimum legal track index based on spacing to block below
-            tr_idx = max(tr_idx, (hm_width + hm_tr_sp - 1) / 2.0)
-        else:
-            # find first track above top port
-            tr_idx = self.grid.find_next_track(self.hm_layer_id, port_bbox.bottom, tr_width=hm_width,
-                                               half_track=True, mode=1)
-            # min with maximum legal track index based on spacing to block above
-            tr_idx = min(tr_idx, hm_num - 1 - (hm_width + hm_tr_sp - 1) / 2.0)
-
-        # step 2: create TrackID
-        tr_idx += row_idx * hm_num + hm_nume
-        tid = TrackID(self.hm_layer_id, tr_idx, width=hm_width)
-
-        # step 2: connect ports to track
-        dx = self._core_offset[0] + self._core_pitch[0] * left_col_idx
+        dx = self._core_offset[0] + self._core_pitch[0] * col_idx
         dy = self._core_offset[1] + self._core_pitch[1] * row_idx
-        warr0 = self.connect_bbox_to_tracks(lay0, port_bbox.move_by(dx, dy), tid)
-        warr1 = self.connect_bbox_to_tracks(lay1, port_bbox.move_by(dx + self._core_pitch[0], dy), tid)
+        loc = dx, dy
+        bot_port = self._bot_port.transform(self.grid, loc=loc)
+        top_port = self._top_port.transform(self.grid, loc=loc)
+        return bot_port.get_pins()[0], top_port.get_pins()[0]
 
-        result = self.connect_wires([warr0, warr1])[0]  # get only element from list
-        return result
-
-    def draw_array(self, l, w, nx=1, ny=1, min_tracks=(1, 1, 1, 1),
-                   sub_type='ntap', res_type='reference', em_specs=None):
+    def draw_array(self, l,  # type: float
+                   w,  # type: float
+                   nx=1,  # type: int
+                   ny=1,  # type: int
+                   min_tracks=(1, 1, 1, 1),  # type: Tuple[int, int, int, int]
+                   sub_type='ntap',  # type: str
+                   res_type='reference',  # type: str
+                   em_specs=None  # type: Union[None, Dict[str, Any]]
+                   ):
         """Draws the resistor array.
 
         Parameters
@@ -625,13 +616,13 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             number of resistors in a row.
         ny : int
             number of resistors in a column.
-        min_tracks : Tuple[int]
+        min_tracks : Tuple[int, int, int, int]
             minimum number of tracks per layer in the resistor unit cell.
-        sub_type : string
+        sub_type : str
             the substrate type.  Either 'ptap' or 'ntap'.
-        res_type : string
+        res_type : str
             the resistor type.
-        em_specs : Dict[str, any] or None
+        em_specs : Union[None, Dict[str, Any]]
             resistor EM specifications dictionary.
         """
         # add resistor array layers to RoutingGrid
@@ -700,13 +691,19 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self.add_instance(master, loc=(self.array_box.right, self.array_box.top),
                           orient='R180')
 
-    def _add_blk(self, temp_cls, params, loc, orient, nx, ny, par0):
+    def _add_blk(self, temp_cls,  # type: MicroTemplate
+                 params,  # type: Dict[str, Any]
+                 loc,  # type: Tuple[float, float]
+                 orient,  # type: str
+                 nx,  # type: int
+                 ny,  # type: int
+                 par0  # type: int
+                 ):
         params['parity'] = par0
         master0 = self.new_template(params=params, temp_cls=temp_cls)
         if isinstance(master0, AnalogResCore):
-            self._port_dict[par0] = master0.port_locations()
-            if not self._use_parity:
-                self._port_dict[1 - par0] = master0.port_locations()
+            self._bot_port = master0.get_port('bot')
+            self._top_port = master0.get_port('top')
             self._num_tracks = master0.get_num_tracks()
             self._num_corner_tracks = master0.get_num_corner_tracks()
             self._w_tracks = master0.get_track_widths()
@@ -731,8 +728,6 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             # add opposite parity
             params['parity'] = 1 - par0
             master1 = self.new_template(params=params, temp_cls=temp_cls)
-            if isinstance(master1, AnalogResCore):
-                self._port_dict[1 - par0] = master1.port_locations()
             nx1 = nx // 2
             ny1 = (ny + 1) // 2
             if nx1 > 0 and ny1 > 0:
@@ -760,16 +755,18 @@ class ResArrayTest(ResArrayBase):
         the parameter values.
     used_names : set[str]
         a set of already used cell names.
-    kwargs : dict[str, any]
+    **kwargs :
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> Any
         ResArrayBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
         """Returns a dictionary containing default parameter values.
 
         Override this method to define default parameter values.  As good practice,
@@ -779,7 +776,7 @@ class ResArrayTest(ResArrayBase):
 
         Returns
         -------
-        default_params : dict[str, any]
+        default_params : Dict[str, Any]
             dictionary of default parameter values.
         """
         return dict(
@@ -793,13 +790,14 @@ class ResArrayTest(ResArrayBase):
 
     @classmethod
     def get_params_info(cls):
+        # type: () -> Dict[str, str]
         """Returns a dictionary containing parameter descriptions.
 
         Override this method to return a dictionary from parameter names to descriptions.
 
         Returns
         -------
-        param_info : dict[str, str]
+        param_info : Dict[str, str]
             dictionary from parameter name to description.
         """
         return dict(
@@ -821,10 +819,25 @@ class ResArrayTest(ResArrayBase):
             div_em_specs[key] = div_em_specs[key] / ny
         self.draw_array(em_specs=div_em_specs, **self.params)
 
+        # connect resistors together
+        h_warr_list = []
+        left_warr_list = []
+        right_warr_list = []
+        for row_idx in range(ny):
+            bot0, top0 = self.get_res_ports(row_idx, 0)
+            bot1, top1 = self.get_res_ports(row_idx, 1)
+            if row_idx % 2 == 0:
+                h_warr_list.extend(self.connect_wires([bot0, bot1]))
+                left_warr_list.append(top0)
+                right_warr_list.append(top1)
+            else:
+                h_warr_list.extend(self.connect_wires([top0, top1]))
+                left_warr_list.append(bot0)
+                right_warr_list.append(bot1)
+
         # connect common node to v layer
-        vm_layer = self.hm_layer_id + 1
+        vm_layer = self.bot_layer_id + 1
         vm_width = self.w_tracks[1]
-        h_warr_list = [self.connect_lr(idx, 0, idx % 2) for idx in range(ny)]
         tnum = self.grid.coord_to_nearest_track(vm_layer, h_warr_list[0].middle, half_track=True)
         v_tid = TrackID(vm_layer, tnum, width=vm_width)
         v_warr = self.connect_to_tracks(h_warr_list, v_tid)
