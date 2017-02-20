@@ -30,13 +30,15 @@ from builtins import *
 
 import abc
 from itertools import chain, repeat
-from typing import List
+from typing import List, Union, Optional, TypeVar, Type, Dict, Any, Set
 
 from bag.util.interval import IntervalSet
-from bag.layout.template import MicroTemplate
+from bag.layout.template import MicroTemplate, TemplateDB
 from bag.layout.routing import TrackID, WireArray
-from .analog_mos import AnalogMosBase, AnalogSubstrate, AnalogMosConn
+from .analog_mos import AnalogMosBase, AnalogMosConn
 from future.utils import with_metaclass
+
+MosBase = TypeVar('MosBase', bound=AnalogMosBase)
 
 
 def _flip_ud(orient):
@@ -373,25 +375,25 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     Parameters
     ----------
-    temp_db : :class:`bag.layout.template.TemplateDB`
-            the template database.
+    temp_db : TemplateDB
+        the template database.
     lib_name : str
         the layout library name.
-    params : dict[str, any]
+    params : Dict[str, Any]
         the parameter values.
-    used_names : set[str]
+    used_names : Set[str]
         a set of already used cell names.
-    kwargs : dict[str, any]
+    **kwargs
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # call base class constructor
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(MicroTemplate, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
         tech_params = self.grid.tech_info.tech_params
-        self._mos_cls = tech_params['layout']['mos_template']
+        self._mos_cls = tech_params['layout']['mos_template']  # type: Type[MosBase]
         self._mconn_cls = tech_params['layout']['mos_conn_template']
         self._sub_cls = tech_params['layout']['sub_template']
         self._sep_cls = tech_params['layout']['mos_sep_template']
@@ -416,6 +418,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._ptap_exports = None
         self._ntap_exports = None
         self._layout_info = None
+        self._fg_offset = 0
 
     @classmethod
     def get_min_fg_sep(cls, tech_info):
@@ -808,14 +811,28 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         return mtype_list, orient_list, w_list, th_list, g_list, ds_list, name_list, ds_dummy_list
 
-    def draw_base(self, lch, fg_tot, ptap_w, ntap_w,
-                  nw_list, nth_list, pw_list, pth_list,
-                  gds_space=0,
-                  ng_tracks=None, nds_tracks=None,
-                  pg_tracks=None, pds_tracks=None,
-                  n_orientations=None, p_orientations=None,
-                  guard_ring_nf=0,
-                  n_ds_dummy=None, p_ds_dummy=None):
+    def draw_base(self,  # type: AnalogBase
+                  lch,  # type: float
+                  fg_tot,  # type: int
+                  ptap_w,  # type: Union[float, int]
+                  ntap_w,  # type: Union[float, int]
+                  nw_list,  # type: List[Union[float, int]]
+                  nth_list,  # type: List[str]
+                  pw_list,  # type: List[Union[float, int]]
+                  pth_list,  # type: List[str]
+                  gds_space=0,  # type: int
+                  ng_tracks=None,  # type: Optional[List[int]]
+                  nds_tracks=None,  # type: Optional[List[int]]
+                  pg_tracks=None,  # type: Optional[List[int]]
+                  pds_tracks=None,  # type: Optional[List[int]]
+                  n_orientations=None,  # type: Optional[List[str]]
+                  p_orientations=None,  # type: Optional[List[str]]
+                  guard_ring_nf=0,  # type: int
+                  n_ds_dummy=None,  # type: Optional[List[bool]]
+                  p_ds_dummy=None,  # type: Optional[List[bool]]
+                  finger_offset=0  # type: int
+                  ):
+        # type: (...) -> None
         """Draw the analog base.
 
         This method must be called first.
@@ -826,38 +843,41 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             the transistor channel length, in meters
         fg_tot : int
             total number of fingers for each row.
-        ptap_w : int or float
+        ptap_w : Union[float, int]
             pwell substrate contact width.
-        ntap_w : int or float
+        ntap_w : Union[float, int]
             nwell substrate contact width.
         gds_space : int
             number of tracks to reserve as space between gate and drain/source tracks.
-        nw_list : list[int or float]
+        nw_list : List[Union[float, int]]
             a list of nmos width for each row, from bottom to top.
-        nth_list: list[str]
+        nth_list: List[str]
             a list of nmos threshold flavor for each row, from bottom to top.
-        pw_list : list[int or float]
+        pw_list : List[Union[float, int]]
             a list of pmos width for each row, from bottom to top.
-        pth_list : list[str]
+        pth_list : List[str]
             a list of pmos threshold flavor for each row, from bottom to top.
-        ng_tracks : list[int] or None
+        ng_tracks : Optional[List[int]]
             number of nmos gate tracks per row, from bottom to top.  Defaults to 1.
-        nds_tracks : list[int] or None
+        nds_tracks : Optional[List[int]]
             number of nmos drain/source tracks per row, from bottom to top.  Defaults to 1.
-        pg_tracks : list[int] or None
+        pg_tracks : Optional[List[int]]
             number of pmos gate tracks per row, from bottom to top.  Defaults to 1.
-        pds_tracks : list[int] or None
+        pds_tracks : Optional[List[int]]
             number of pmos drain/source tracks per row, from bottom to top.  Defaults to 1.
-        n_orientations : list[str] or None
+        n_orientations : Optional[List[str]]
             orientation of each nmos row. Defaults to all 'R0'.
-        p_orientations : list[str] or None
+        p_orientations : Optional[List[str]]
             orientation of each pmos row.  Defaults to all 'MX'.
         guard_ring_nf : int
             width of guard ring in number of fingers.  0 to disable guard ring.
-        n_ds_dummy : list[bool] or None
+        n_ds_dummy : Optional[List[bool]]
             is_ds_dummy flag for each nmos row.  Defaults to all False.
-        p_ds_dummy : list[bool] or None
+        p_ds_dummy : Optional[List[bool]]
             is_ds_dummy flag for each pmos row.  Defaults to all False.
+        finger_offset : int
+            shift the templates to the right by this many fingers.  This parameter can be
+            used to center the transistors in the grid.
         """
         numn = len(nw_list)
         nump = len(pw_list)
@@ -915,13 +935,13 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                 mparams = dict(mos_type=mtype, threshold=thres, lch=lch, w=w, fg=fg_tot,
                                g_tracks=gntr, ds_tracks=dntr, gds_space=gds_space,
                                guard_ring_nf=guard_ring_nf, is_ds_dummy=ds_dummy, )
-                mmaster = self.new_template(params=mparams, temp_cls=self._mos_cls)  # type: AnalogMosBase
+                mmaster = self.new_template(params=mparams, temp_cls=self._mos_cls)
             else:
                 # substrate
                 is_end = (ridx == 0 or ridx == (len(type_list) - 1))
                 mparams = dict(sub_type=mtype, threshold=thres, lch=lch, w=w, fg=fg_tot,
                                guard_ring_nf=guard_ring_nf, is_end=is_end, ummy_only=not is_end, )
-                mmaster = self.new_template(params=mparams, temp_cls=self._sub_cls)  # type: AnalogSubstrate
+                mmaster = self.new_template(params=mparams, temp_cls=self._sub_cls)
 
             # add and shift instance
             minst = self.add_instance(mmaster, inst_name=name, orient=orient)

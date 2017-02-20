@@ -65,6 +65,26 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @classmethod
     @abc.abstractmethod
+    def get_template_width(cls, fg_tot, guard_ring_nf=0):
+        # type: (int, int) -> int
+        """Returns the width of the AnalogMosBase in number of fingers.
+
+        Parameters
+        ----------
+        fg_tot : int
+            number of fingers.
+        guard_ring_nf : int
+            width of guard ring in number of fingers.  0 to disable guard ring.
+
+        Returns
+        -------
+        mos_width : int
+            the AnalogMosBase width in number of fingers.
+        """
+        return 0
+
+    @classmethod
+    @abc.abstractmethod
     def get_sd_pitch(cls, lch):
         """Returns the source/drain pitch given channel length.
 
