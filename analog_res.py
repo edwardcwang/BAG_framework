@@ -742,8 +742,8 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return master0
 
 
-class ResArrayTest(ResArrayBase):
-    """An abstract template that draws analog resistors array and connections.
+class Termination(ResArrayBase):
+    """An template for creating termination resistors.
 
     Parameters
     ----------
@@ -780,9 +780,8 @@ class ResArrayTest(ResArrayBase):
             dictionary of default parameter values.
         """
         return dict(
-            nx=1,
+            nx=2,
             ny=1,
-            min_tracks=(1, 1, 1, 1),
             sub_type='ntap',
             res_type='reference',
             em_specs={},
@@ -803,15 +802,17 @@ class ResArrayTest(ResArrayBase):
         return dict(
             l='unit resistor length, in meters.',
             w='unit resistor width, in meters.',
-            nx='number of resistors in a row.',
+            nx='number of resistors in a row.  Must be even.',
             ny='number of resistors in a column.',
-            min_tracks='Minimum number of tracks on each layer per block.',
             sub_type='the substrate type.',
             res_type='the resistor type.',
-            em_specs='resistor EM specifications.',
+            em_specs='EM specifications for the termination network.',
         )
 
     def draw_layout(self):
+        nx = self.params['nx']
+        if nx % 2 != 0 or nx <= 0:
+            raise ValueError('number of resistors in a row must be even and positive.')
         ny = self.params['ny']
         em_specs = self.params.pop('em_specs')
         div_em_specs = em_specs.copy()
@@ -819,41 +820,58 @@ class ResArrayTest(ResArrayBase):
             div_em_specs[key] = div_em_specs[key] / ny
         self.draw_array(em_specs=div_em_specs, **self.params)
 
-        # connect resistors together
-        h_warr_list = []
-        left_warr_list = []
-        right_warr_list = []
+        # connect row resistors
+        hc_warr_list = []
+        hl_warr_list = []
+        hr_warr_list = []
         for row_idx in range(ny):
-            bot0, top0 = self.get_res_ports(row_idx, 0)
-            bot1, top1 = self.get_res_ports(row_idx, 1)
-            if row_idx % 2 == 0:
-                h_warr_list.extend(self.connect_wires([bot0, bot1]))
-                left_warr_list.append(top0)
-                right_warr_list.append(top1)
-            else:
-                h_warr_list.extend(self.connect_wires([top0, top1]))
-                left_warr_list.append(bot0)
-                right_warr_list.append(bot1)
+            for col_idx in range(nx - 1):
+                ports_l = self.get_res_ports(row_idx, col_idx)
+                ports_r = self.get_res_ports(row_idx, col_idx + 1)
+                con_par = (col_idx + row_idx) % 2
+                mid_wire = self.connect_wires([ports_l[con_par], ports_r[con_par]])
+                if col_idx == 0:
+                    hl_warr_list.append(ports_l[1 - con_par])
+                if col_idx == nx - 2:
+                    hr_warr_list.append(ports_r[1 - con_par])
+                if col_idx == (nx // 2) - 1:
+                    hc_warr_list.append(mid_wire[0])
 
-        # connect common node to v layer
+        # connect to v layer
         vm_layer = self.bot_layer_id + 1
         vm_width = self.w_tracks[1]
-        tnum = self.grid.coord_to_nearest_track(vm_layer, h_warr_list[0].middle, half_track=True)
-        v_tid = TrackID(vm_layer, tnum, width=vm_width)
-        v_warr = self.connect_to_tracks(h_warr_list, v_tid)
+        v_pitch = self.num_tracks[1]
+        vc_id = self.grid.coord_to_nearest_track(vm_layer, hc_warr_list[0].middle, half_track=True)
+        v_tid = TrackID(vm_layer, vc_id, width=vm_width)
+        vc_warr = self.connect_to_tracks(hc_warr_list, v_tid)
+        v_tid = TrackID(vm_layer, vc_id - v_pitch, width=vm_width)
+        vl_warr = self.connect_to_tracks(hl_warr_list, v_tid)
+        v_tid = TrackID(vm_layer, vc_id + v_pitch, width=vm_width)
+        vr_warr = self.connect_to_tracks(hr_warr_list, v_tid)
 
-        # connect common node to x layer
+        # connect to x layer
         xm_layer = vm_layer + 1
         xm_width = self.w_tracks[2]
         x_pitch = self.num_tracks[2]
         x_base = self._num_corner_tracks[2] + (x_pitch - 1) / 2.0
         x_tid = TrackID(xm_layer, x_base, width=xm_width, num=ny, pitch=x_pitch)
-        x_warr = self.connect_to_tracks(v_warr, x_tid)
+        xc_warr = self.connect_to_tracks(vc_warr, x_tid)
+        xl_warr = self.connect_to_tracks(vl_warr, x_tid)
+        xr_warr = self.connect_to_tracks(vr_warr, x_tid)
 
-        # connect common node to y layer
+        # connect to y layer
         ym_layer = xm_layer + 1
         bot_w = self.grid.get_track_width(xm_layer, xm_width)
         ym_width = self.grid.get_min_track_width(ym_layer, bot_w=bot_w, **em_specs)
-        tnum = self.grid.coord_to_nearest_track(ym_layer, x_warr.middle, half_track=True)
-        y_tid = TrackID(ym_layer, tnum, width=ym_width)
-        self.connect_to_tracks(x_warr, y_tid)
+        y_pitch = self.num_tracks[3]
+        yc_id = self.grid.coord_to_nearest_track(ym_layer, xc_warr.middle, half_track=True)
+        y_tid = TrackID(ym_layer, yc_id, width=ym_width)
+        yc_warr = self.connect_to_tracks(xc_warr, y_tid)
+        y_tid = TrackID(ym_layer, yc_id - y_pitch, width=ym_width)
+        yl_warr = self.connect_to_tracks(xl_warr, y_tid)
+        y_tid = TrackID(ym_layer, yc_id + y_pitch, width=ym_width)
+        yr_warr = self.connect_to_tracks(xr_warr, y_tid)
+
+        self.add_pin('inp', yl_warr, show=True)
+        self.add_pin('inn', yr_warr, show=True)
+        self.add_pin('incm', yc_warr, show=True)
