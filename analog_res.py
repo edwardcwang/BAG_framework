@@ -33,12 +33,12 @@ from future.utils import with_metaclass
 
 import abc
 
-from typing import Dict, Any, Set, Tuple, Union
+from typing import Dict, Set, Tuple, Union
 
 from bag import float_to_si_string
 from bag.layout.util import BBox
-from bag.layout.routing import TrackID, Port, WireArray
-from bag.layout.template import MicroTemplate, TemplateDB
+from bag.layout.routing import TrackID
+from bag.layout.template import MicroTemplate
 
 
 class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
@@ -60,20 +60,18 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> Any
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        # noinspection PySuperArguments
+        super(AnalogResCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     @abc.abstractmethod
     def use_parity(cls):
-        # type: () -> bool
         """Returns True if parity changes resistor core layout."""
         return False
 
     @classmethod
     @abc.abstractmethod
     def port_layer_id(cls):
-        # type: () -> int
         """Returns the resistor port layer ID.
 
         Bottom port layer must be horizontal.
@@ -82,7 +80,6 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @classmethod
     def get_default_param_values(cls):
-        # type: () -> Dict[str, Any]
         """Returns a dictionary containing default parameter values.
 
         Override this method to define default parameter values.  As good practice,
@@ -105,7 +102,6 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @classmethod
     def get_params_info(cls):
-        # type: () -> Dict[str, str]
         """Returns a dictionary containing parameter descriptions.
 
         Override this method to return a dictionary from parameter names to descriptions.
@@ -127,7 +123,6 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @abc.abstractmethod
     def get_num_tracks(self):
-        # type: () -> Tuple[int, int, int, int]
         """Returns a list of the number of tracks on each routing layer in this template.
 
         Note: this method must work before draw_layout() is called.
@@ -143,7 +138,6 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @abc.abstractmethod
     def get_num_corner_tracks(self):
-        # type: () -> Tuple[int, int, int, int]
         """Returns a list of number of tracks on each routing layer in corner templates.
 
         Returns
@@ -157,7 +151,6 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @abc.abstractmethod
     def get_track_widths(self):
-        # type: () -> Tuple[int, int, int, int]
         """Returns a list of track widths on each routing layer.
 
         Returns
@@ -170,7 +163,6 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return 1, 1, 1, 1
 
     def get_layout_basename(self):
-        # type: () -> str
         """Returns the base name for this template.
 
         Returns
@@ -211,12 +203,11 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> Any
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        # noinspection PySuperArguments
+        super(AnalogResLREdge, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
-        # type: () -> Dict[str, Any]
         """Returns a dictionary containing default parameter values.
 
         Override this method to define default parameter values.  As good practice,
@@ -239,7 +230,6 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @classmethod
     def get_params_info(cls):
-        # type: () -> Dict[str, str]
         """Returns a dictionary containing parameter descriptions.
 
         Override this method to return a dictionary from parameter names to descriptions.
@@ -261,7 +251,6 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @abc.abstractmethod
     def get_num_tracks(self):
-        # type: () -> Tuple[int, int, int, int]
         """Returns a list of the number of tracks on each routing layer in this template.
 
         Note: this method must work before draw_layout() is called.
@@ -276,7 +265,6 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return 1, 1, 1, 1
 
     def get_layout_basename(self):
-        # type: () -> str
         """Returns the base name for this template.
 
         Returns
@@ -319,12 +307,11 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> Any
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        # noinspection PySuperArguments
+        super(AnalogResTBEdge, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
-        # type: () -> Dict[str, Any]
         """Returns a dictionary containing default parameter values.
 
         Override this method to define default parameter values.  As good practice,
@@ -347,7 +334,6 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @classmethod
     def get_params_info(cls):
-        # type: () -> Dict[str, str]
         """Returns a dictionary containing parameter descriptions.
 
         Override this method to return a dictionary from parameter names to descriptions.
@@ -369,7 +355,6 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @abc.abstractmethod
     def get_num_tracks(self):
-        # type: () -> Tuple[int, int, int, int]
         """Returns a list of the number of tracks on each routing layer in this template.
 
         Note: this method must work before draw_layout() is called.
@@ -384,7 +369,6 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return 1, 1, 1, 1
 
     def get_layout_basename(self):
-        # type: () -> str
         """Returns the base name for this template.
 
         Returns
@@ -427,12 +411,11 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> Any
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        # noinspection PySuperArguments
+        super(AnalogResCorner, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
-        # type: () -> Dict[str, Any]
         """Returns a dictionary containing default parameter values.
 
         Override this method to define default parameter values.  As good practice,
@@ -455,7 +438,6 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @classmethod
     def get_params_info(cls):
-        # type: () -> Dict[str, str]
         """Returns a dictionary containing parameter descriptions.
 
         Override this method to return a dictionary from parameter names to descriptions.
@@ -477,7 +459,6 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     @abc.abstractmethod
     def get_num_tracks(self):
-        # type: () -> Tuple[int, int, int, int]
         """Returns a list of the number of tracks on each routing layer in this template.
 
         Note: this method must work before draw_layout() is called.
@@ -492,7 +473,6 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return 1, 1, 1, 1
 
     def get_layout_basename(self):
-        # type: () -> str
         """Returns the base name for this template.
 
         Returns
@@ -535,43 +515,41 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> Any
-        MicroTemplate.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        # noinspection PySuperArguments
+        super(ResArrayBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         tech_params = self.grid.tech_info.tech_params
-        self._core_cls = tech_params['layout']['res_core_template']  # type: AnalogResCore
-        self._edgelr_cls = tech_params['layout']['res_edgelr_template']  # type: AnalogResLREdge
-        self._edgetb_cls = tech_params['layout']['res_edgetb_template']  # type: AnalogResTBEdge
-        self._corner_cls = tech_params['layout']['res_corner_template']  # type: AnalogResCorner
+        self._core_cls = tech_params['layout']['res_core_template']
+        self._edgelr_cls = tech_params['layout']['res_edgelr_template']
+        self._edgetb_cls = tech_params['layout']['res_edgetb_template']
+        self._corner_cls = tech_params['layout']['res_corner_template']
+        # noinspection PyUnresolvedReferences
         self._use_parity = self._core_cls.use_parity()
-        self._bot_port = None  # type: Port
-        self._top_port = None  # type: Port
-        self._core_offset = None  # type: Tuple[float, float]
-        self._core_pitch = None  # type: Tuple[float, float]
-        self._num_tracks = None  # type: Tuple[int, int, int, int]
-        self._num_corner_tracks = None  # type: Tuple[int, int, int, int]
-        self._w_tracks = None  # type: Tuple[int, int, int, int]
+        self._bot_port = None
+        self._top_port = None
+        self._core_offset = None
+        self._core_pitch = None
+        self._num_tracks = None
+        self._num_corner_tracks = None
+        self._w_tracks = None
+        # noinspection PyUnresolvedReferences
         self._hm_layer = self._core_cls.port_layer_id()
 
     @property
     def num_tracks(self):
-        # type: () -> Tuple[int, int, int, int]
         """Returns the number of tracks on each resistor routing layer."""
         return self._num_tracks
 
     @property
     def bot_layer_id(self):
-        # type: () -> int
         """Returns the bottom resistor routing layer ID."""
         return self._hm_layer
 
     @property
     def w_tracks(self):
-        # type: () -> Tuple[int, int, int, int]
         """Returns the track width on each resistor routing layer, in number of tracks."""
         return self._w_tracks
 
     def get_res_ports(self, row_idx, col_idx):
-        # type: (int, int) -> Tuple[WireArray, WireArray]
         """Returns the port of the given resistor.
 
         Parameters
@@ -595,15 +573,8 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         top_port = self._top_port.transform(self.grid, loc=loc)
         return bot_port.get_pins()[0], top_port.get_pins()[0]
 
-    def draw_array(self, l,  # type: float
-                   w,  # type: float
-                   nx=1,  # type: int
-                   ny=1,  # type: int
-                   min_tracks=(1, 1, 1, 1),  # type: Tuple[int, int, int, int]
-                   sub_type='ntap',  # type: str
-                   res_type='reference',  # type: str
-                   em_specs=None  # type: Union[None, Dict[str, Any]]
-                   ):
+    def draw_array(self, l, w, nx=1, ny=1, min_tracks=(1, 1, 1, 1), sub_type='ntap',
+                   res_type='reference', em_specs=None):
         """Draws the resistor array.
 
         Parameters
@@ -642,7 +613,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             em_specs=em_specs or {},
         )
         # create BL corner
-        master = self.new_template(params=layout_params, temp_cls=self._corner_cls)
+        master = self.new_template(params=layout_params, temp_cls=self._corner_cls)  # type: MicroTemplate
         self.add_instance(master)
         w_edge_lr = master.array_box.width
         h_edge_tb = master.array_box.height
@@ -691,14 +662,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self.add_instance(master, loc=(self.array_box.right, self.array_box.top),
                           orient='R180')
 
-    def _add_blk(self, temp_cls,  # type: MicroTemplate
-                 params,  # type: Dict[str, Any]
-                 loc,  # type: Tuple[float, float]
-                 orient,  # type: str
-                 nx,  # type: int
-                 ny,  # type: int
-                 par0  # type: int
-                 ):
+    def _add_blk(self, temp_cls, params, loc, orient, nx, ny, par0):
         params['parity'] = par0
         master0 = self.new_template(params=params, temp_cls=temp_cls)
         if isinstance(master0, AnalogResCore):
@@ -761,12 +725,11 @@ class Termination(ResArrayBase):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> Any
-        ResArrayBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        # noinspection PySuperArguments
+        super(Termination, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
-        # type: () -> Dict[str, Any]
         """Returns a dictionary containing default parameter values.
 
         Override this method to define default parameter values.  As good practice,
@@ -789,7 +752,6 @@ class Termination(ResArrayBase):
 
     @classmethod
     def get_params_info(cls):
-        # type: () -> Dict[str, str]
         """Returns a dictionary containing parameter descriptions.
 
         Override this method to return a dictionary from parameter names to descriptions.
