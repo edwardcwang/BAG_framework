@@ -30,7 +30,7 @@ from builtins import *
 
 import abc
 from itertools import chain, repeat
-from typing import List, Union, Optional, TypeVar, Type, Dict, Any, Set
+from typing import List, Union, Optional, TypeVar, Type, Dict, Any, Set, Tuple
 
 from bag.util.interval import IntervalSet
 from bag.layout.template import MicroTemplate, TemplateDB
@@ -249,9 +249,11 @@ class AnalogBaseInfo(object):
         the channel length of AnalogBase, in meters.
     guard_ring_nf : int
         guard ring width in number of fingers.  0 to disable.
+    pitch_offset : Tuple[int, int]
+        the lower-left corner in track pitches.
     """
 
-    def __init__(self, grid, lch, guard_ring_nf):
+    def __init__(self, grid, lch, guard_ring_nf, pitch_offset=(0, 0)):
         tech_params = grid.tech_info.tech_params
         mos_cls = tech_params['layout']['mos_template']
         dum_cls = tech_params['layout']['mos_dummy_template']
@@ -263,9 +265,10 @@ class AnalogBaseInfo(object):
 
         # initialize parameters
         self.sd_pitch = mos_cls.get_sd_pitch(lch)
-        self.sd_xc = mos_cls.get_left_sd_xc(lch, guard_ring_nf)
+        self.sd_xc = mos_cls.get_left_sd_xc(lch, guard_ring_nf) + self.sd_pitch * pitch_offset[0]
         self.mconn_port_layer = mos_cls.port_layer_id()
         self.dum_port_layer = dum_cls.port_layer_id()
+        self.pitch_offset = pitch_offset
 
         # register new grid layers
         vm_width = mos_cls.get_port_width(lch)
@@ -276,6 +279,7 @@ class AnalogBaseInfo(object):
         self.grid = grid.copy()
         self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y', share_track=True)
         self.grid.add_new_layer(self.dum_port_layer, dum_space, dum_width, 'y', share_track=True)
+        self.grid.update_block_pitch()
 
     def col_to_coord(self, col_idx):
         """Convert the given transistor column index to X coordinate.
@@ -290,7 +294,7 @@ class AnalogBaseInfo(object):
         xcoord : float
             X coordinate of the left source/drain center of the given transistor.
         """
-        return self.sd_xc + col_idx * self.sd_pitch
+        return self.sd_xc + (col_idx + self.pitch_offset[0]) * self.sd_pitch
 
     def get_center_tracks(self, layer_id, num_tracks, col_intv):
         """Return the tracks that center on the given column interval.
@@ -418,7 +422,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._ptap_exports = None
         self._ntap_exports = None
         self._layout_info = None
-        self._fg_offset = 0
+        self._pitch_offset = 0, 0
+        self._hm_idx0 = 0
 
     @classmethod
     def get_min_fg_sep(cls, tech_info):
@@ -531,9 +536,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             raise ValueError('track index = %d out of bounds: [0, %d)' % (tr_idx, ntr))
 
         if self._orient_list[row_idx] == 'R0':
-            return tr_idx + offset + row_offset
+            return self._hm_idx0 + tr_idx + offset + row_offset
         else:
-            return offset + self._num_tracks[row_idx] - (row_offset + tr_idx) - 1
+            return self._hm_idx0 + offset + self._num_tracks[row_idx] - (row_offset + tr_idx) - 1
 
     def make_track_id(self, mos_type, row_idx, tr_type, tr_idx, width=1,
                       num=1, pitch=0.0):
@@ -588,28 +593,28 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             inner = True
 
         # get wire upper/lower Y coordinate and record used supply tracks
-        track_id_list = [tid for warr in warr_list for tid in warr.track_id]
+        sub_port_id_list = [tid - self._pitch_offset[0] for warr in warr_list for tid in warr.track_id]
         if sub_type == 'ptap':
             if inner:
                 if len(self._ptap_list) != 2:
                     raise ValueError('Inner substrate does not exist.')
                 port = self._ptap_list[1].get_port(port_name)
-                self._ptap_exports[1].update(track_id_list)
+                self._ptap_exports[1].update(sub_port_id_list)
                 wire_yt = port.get_bounding_box(self.grid, self.mos_conn_layer).top
             if not inner or both:
                 port = self._ptap_list[0].get_port(port_name)
-                self._ptap_exports[0].update(track_id_list)
+                self._ptap_exports[0].update(sub_port_id_list)
                 wire_yb = port.get_bounding_box(self.grid, self.mos_conn_layer).bottom
         elif sub_type == 'ntap':
             if inner:
                 if len(self._ntap_list) != 2:
                     raise ValueError('Inner substrate does not exist.')
                 port = self._ntap_list[0].get_port(port_name)
-                self._ntap_exports[0].update(track_id_list)
+                self._ntap_exports[0].update(sub_port_id_list)
                 wire_yb = port.get_bounding_box(self.grid, self.mos_conn_layer).bottom
             if not inner or both:
                 port = self._ntap_list[-1].get_port(port_name)
-                self._ntap_exports[-1].update(track_id_list)
+                self._ntap_exports[-1].update(sub_port_id_list)
                 wire_yt = port.get_bounding_box(self.grid, self.mos_conn_layer).top
         else:
             raise ValueError('Invalid substrate type: %s' % sub_type)
@@ -830,7 +835,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                   guard_ring_nf=0,  # type: int
                   n_ds_dummy=None,  # type: Optional[List[bool]]
                   p_ds_dummy=None,  # type: Optional[List[bool]]
-                  finger_offset=0  # type: int
+                  pitch_offset=(0, 0)  # type: Tuple[int, int]
                   ):
         # type: (...) -> None
         """Draw the analog base.
@@ -875,15 +880,15 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             is_ds_dummy flag for each nmos row.  Defaults to all False.
         p_ds_dummy : Optional[List[bool]]
             is_ds_dummy flag for each pmos row.  Defaults to all False.
-        finger_offset : int
-            shift the templates to the right by this many fingers.  This parameter can be
+        pitch_offset : Tuple[int, int]
+            shift the templates right/up by this many track pitches.  This parameter is
             used to center the transistors in the grid.
         """
         numn = len(nw_list)
         nump = len(pw_list)
 
         # make AnalogBaseInfo object.
-        self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf)
+        self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, pitch_offset=pitch_offset)
         self.grid = self._layout_info.grid
 
         # initialize private attributes.
@@ -901,6 +906,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._ridx_lookup = dict(nch=[], pch=[], ntap=[], ptap=[])
         self._n_intvs = [IntervalSet() for _ in range(numn)]
         self._p_intvs = [IntervalSet() for _ in range(nump)]
+        self._pitch_offset = pitch_offset
 
         # get property lists
         results = self.get_prop_lists('nch', ntap_w, nw_list, nth_list, ng_tracks, nds_tracks,
@@ -922,9 +928,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         name_list = nname_list + pname_list
 
         # draw rows
+        hm_layer = self.mos_conn_layer + 1
         tot_array_box = None
         gr_vss_ports = []
         gr_vdd_ports = []
+        xoff = self._layout_info.sd_pitch * pitch_offset[0]
+        yoff = self.grid.get_track_pitch(hm_layer) * pitch_offset[1]
         for ridx, value in enumerate(zip(type_list, self._orient_list, self._w_list, th_list, g_list,
                                          ds_list, name_list, self._ds_dummy_list)):
             mtype, orient, w, thres, gntr, dntr, name, ds_dummy = value
@@ -946,9 +955,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             # add and shift instance
             minst = self.add_instance(mmaster, inst_name=name, orient=orient)
             if tot_array_box is None:
+                minst.move_by(dx=xoff, dy=yoff)
                 tot_array_box = minst.array_box
             else:
-                minst.move_by(dy=tot_array_box.top - minst.array_box.bottom)
+                minst.move_by(dx=xoff, dy=tot_array_box.top - minst.array_box.bottom)
                 tot_array_box = tot_array_box.merge(minst.array_box)
 
             # update track information
@@ -988,6 +998,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
             self.connect_wires(warr_list)
 
         self.array_box = tot_array_box
+        # find the first horizontal track index inside the array box
+        self._hm_idx0 = self.grid.coord_to_nearest_track(hm_layer, self.array_box.bottom, mode=2)
+        # set size from array box
+        self.set_size_from_array_box(hm_layer)
 
     def _connect_substrate(self, sub_type, sub_list, row_idx_list):
         """Connect all given substrates to horizontal tracks
@@ -1182,14 +1196,14 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         bot_dum_tracks = set()
         top_dum_tracks = set()
         for sub_idx, wire_bus_list in wire_groups.items():
-            tid_list = [tid for warr in wire_bus_list for tid in warr.track_id]
+            sub_port_id_list = [tid - self._pitch_offset[0] for warr in wire_bus_list for tid in warr.track_id]
             wire_yb = wire_yt = None
             if sub_idx >= 0:
                 wire_yb = sub_yb
-                bot_dum_tracks.update(tid_list)
+                bot_dum_tracks.update(sub_port_id_list)
             if sub_idx <= 0:
                 wire_yt = sub_yt
-                top_dum_tracks.update(tid_list)
+                top_dum_tracks.update(sub_port_id_list)
             self.connect_wires(wire_bus_list, lower=wire_yb, upper=wire_yt)
 
         # update substrate master to only export necessary wires
