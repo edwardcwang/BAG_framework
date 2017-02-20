@@ -37,7 +37,7 @@ from typing import Dict, Set, Tuple, Union
 
 from bag import float_to_si_string
 from bag.layout.util import BBox
-from bag.layout.routing import TrackID
+from bag.layout.routing import TrackID, WireArray
 from bag.layout.template import MicroTemplate
 
 
@@ -60,7 +60,6 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # noinspection PySuperArguments
         super(AnalogResCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
@@ -203,7 +202,6 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # noinspection PySuperArguments
         super(AnalogResLREdge, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
@@ -307,7 +305,6 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # noinspection PySuperArguments
         super(AnalogResTBEdge, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
@@ -411,7 +408,6 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # noinspection PySuperArguments
         super(AnalogResCorner, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
@@ -515,14 +511,12 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # noinspection PySuperArguments
         super(ResArrayBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         tech_params = self.grid.tech_info.tech_params
         self._core_cls = tech_params['layout']['res_core_template']
         self._edgelr_cls = tech_params['layout']['res_edgelr_template']
         self._edgetb_cls = tech_params['layout']['res_edgetb_template']
         self._corner_cls = tech_params['layout']['res_corner_template']
-        # noinspection PyUnresolvedReferences
         self._use_parity = self._core_cls.use_parity()
         self._bot_port = None
         self._top_port = None
@@ -531,7 +525,6 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         self._num_tracks = None
         self._num_corner_tracks = None
         self._w_tracks = None
-        # noinspection PyUnresolvedReferences
         self._hm_layer = self._core_cls.port_layer_id()
 
     @property
@@ -550,6 +543,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         return self._w_tracks
 
     def get_res_ports(self, row_idx, col_idx):
+        # type: (int, int) -> Tuple[WireArray, WireArray]
         """Returns the port of the given resistor.
 
         Parameters
@@ -561,9 +555,9 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
         Returns
         -------
-        bot_warr : :class:`~bag.layout.routing.WireArray`
+        bot_warr : WireArray
             the bottom port as WireArray.
-        top_warr : :class:`~bag.layout.routing.WireArray`
+        top_warr : WireArray
             the top port as WireArray.
         """
         dx = self._core_offset[0] + self._core_pitch[0] * col_idx
@@ -725,7 +719,6 @@ class Termination(ResArrayBase):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # noinspection PySuperArguments
         super(Termination, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
