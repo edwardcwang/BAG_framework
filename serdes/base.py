@@ -507,7 +507,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
     def draw_diffamp(self, col_idx, fg_in, fg_tail, fg_load,
                      fg_casc=0, fg_but=0, fg_sw=0, fg_en=0,
                      fg_sep=0, fg_min=0, cur_track_width=1,
-                     diff_space=1, gate_locs=None):
+                     diff_space=1, gate_locs=None, sign=1):
         """Draw a differential amplifier/dynamic latch.
 
         a separator is used to separate the positive half and the negative half of the latch.
@@ -542,6 +542,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             number of tracks to reserve as space between differential wires.
         gate_locs : Dict[string, int] or None
             dictionary from gate names to relative track index.  If None uses default.
+        sign : int
+            the sign of the gain.  If negative, flip output connection.
 
         Returns
         -------
@@ -601,15 +603,20 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         ptr_idx = self.get_track_index('pch', 0, 'ds', out_ntr - 2 - diff_space)
         ntr_idx = self.get_track_index('pch', 0, 'ds', out_ntr - 1)
 
-        p_tr, n_tr = self.connect_differential_tracks(outp_warrs, outn_warrs, self.mos_conn_layer + 1,
-                                                      ptr_idx, ntr_idx)
+        if sign < 0:
+            # flip positive/negative wires.
+            p_tr, n_tr = self.connect_differential_tracks(outn_warrs, outp_warrs, self.mos_conn_layer + 1,
+                                                          ptr_idx, ntr_idx)
+        else:
+            p_tr, n_tr = self.connect_differential_tracks(outp_warrs, outn_warrs, self.mos_conn_layer + 1,
+                                                          ptr_idx, ntr_idx)
         port_dict['outp'] = [p_tr, ]
         port_dict['outn'] = [n_tr, ]
 
         return fg_amp_tot, port_dict
 
     def draw_gm_summer(self, col_idx, fg_load, gm_fg_list,
-                       gm_sep_list=None, cur_track_width=1,
+                       gm_sep_list=None, sgn_list=None, cur_track_width=1,
                        diff_space=1, gate_locs=None):
         """Draw a differential Gm summer (multiple Gm stage connected to same load).
 
@@ -622,11 +629,13 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             the left-most transistor index.  0 is the left-most transistor.
         fg_load : int
             number of pmos load fingers (single-sided).
-        gm_fg_list : List[Dict[string, int]]
+        gm_fg_list : List[Dict[str, int]]
             a list of finger dictionaries for each Gm stage, from left to right.
-        gm_sep_list : List[int] or None
+        gm_sep_list : Optional[List[int]]
             list of number of separator fingers between Gm stages.
             Defaults to minimum.
+        sgn_list : Optional[List[int]]
+            a list of 1s or -1s representing the sign of each gm stage.  If None, defautls to all 1s.
         cur_track_width : int
             width of the current-carrying horizontal track wire in number of tracks.
         diff_space : int
@@ -642,11 +651,18 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             a dictionary from connection name/index pair to the horizontal track associated
             with the connection.
         """
+        if sgn_list is None:
+            sgn_list = [1] * len(gm_fg_list)
+
         # error checking
         if fg_load <= 0:
             raise ValueError('load transistors num. fingers must be positive.')
 
         summer_info = self.get_summer_info(self.grid.tech_info, fg_load, gm_fg_list, gm_sep_list=gm_sep_list)
+
+        if len(sgn_list) != len(gm_fg_list):
+            raise ValueError('sign list and number of GM stages mistach.')
+
         fg_load_list = summer_info['fg_load_list']
         gm_offsets = summer_info['gm_offsets']
         # print('summer col: %d' % col_idx)
@@ -654,12 +670,12 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         # draw each Gm stage and load.
         conn_dict = {'vddt': [], 'bias_load': [], 'outp': [], 'outn': []}
         port_dict = {}
-        for idx, (cur_fg_load, gm_off, gm_fg_dict) in enumerate(zip(fg_load_list, gm_offsets,
-                                                                    gm_fg_list)):
+        for idx, (cur_fg_load, gm_off, gm_fg_dict, sgn) in enumerate(zip(fg_load_list, gm_offsets,
+                                                                         gm_fg_list, sgn_list)):
             _, cur_ports = self.draw_diffamp(col_idx + gm_off, fg_load=cur_fg_load,
                                              cur_track_width=cur_track_width,
                                              diff_space=diff_space, gate_locs=gate_locs,
-                                             **gm_fg_dict)
+                                             sign=sgn, **gm_fg_dict)
             # register port
             for name, warr_list in cur_ports.items():
                 if name in conn_dict:
