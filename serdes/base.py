@@ -59,7 +59,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        AnalogBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        super(SerdesRXBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._nrow_idx = None
 
     @classmethod
