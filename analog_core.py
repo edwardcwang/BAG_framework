@@ -33,8 +33,10 @@ from itertools import chain, repeat
 from typing import List, Union, Optional, TypeVar, Type, Dict, Any, Set, Tuple
 
 from bag.util.interval import IntervalSet
-from bag.layout.template import MicroTemplate, TemplateDB
+from bag.util.search import BinaryIterator
+from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.routing import TrackID, WireArray
+from bag.layout.objects import Instance
 from .analog_mos import AnalogMosBase, AnalogMosConn
 from future.utils import with_metaclass
 
@@ -364,7 +366,7 @@ class AnalogBaseInfo(object):
 
 
 # noinspection PyAbstractClass
-class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
+class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     """The amplifier abstract template class
 
     An amplifier template consists of rows of pmos or nmos capped by substrate contacts.
@@ -394,7 +396,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(MicroTemplate, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        super(AnalogBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
         tech_params = self.grid.tech_info.tech_params
         self._mos_cls = tech_params['layout']['mos_template']  # type: Type[MosBase]
@@ -947,9 +949,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
                 mmaster = self.new_template(params=mparams, temp_cls=self._mos_cls)
             else:
                 # substrate
-                is_end = (ridx == 0 or ridx == (len(type_list) - 1))
+                end_mode = 1 if (ridx == 0 or ridx == (len(type_list) - 1)) else 0
+                # initally export everything.  In fill dummy we will modify substrate port locations and layers.
                 mparams = dict(sub_type=mtype, threshold=thres, lch=lch, w=w, fg=fg_tot,
-                               guard_ring_nf=guard_ring_nf, is_end=is_end, ummy_only=not is_end, )
+                               guard_ring_nf=guard_ring_nf, end_mode=end_mode, dummy_only=False)
                 mmaster = self.new_template(params=mparams, temp_cls=self._sub_cls)
 
             # add and shift instance
@@ -1104,7 +1107,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
 
     def _fill_dummy_helper(self, mos_type, intv_set_list, bot_sub_inst, top_sub_inst,
                            bot_tracks, top_tracks, export_both):
-
+        # type: (str, List[IntervalSet], Instance, Instance, List[int], List[int], bool) -> None
         num_rows = len(intv_set_list)
         bot_conn = top_conn = []
 
@@ -1218,3 +1221,163 @@ class AnalogBase(with_metaclass(abc.ABCMeta, MicroTemplate)):
         port_tracks = sorted(port_tracks)
         sub_inst.new_master_with(dum_tracks=dum_tracks, port_tracks=port_tracks,
                                  dummy_only=dum_only)
+
+
+class SubstrateContact(TemplateBase):
+    """A template that draws a single substrate.
+
+    Useful for resistor/capacitor body biasing.
+
+    Parameters
+    ----------
+    temp_db : TemplateDB
+        the template database.
+    lib_name : str
+        the layout library name.
+    params : Dict[str, Any]
+        the parameter values.
+    used_names : Set[str]
+        a set of already used cell names.
+    **kwargs
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(SubstrateContact, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : Dict[str, Any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            show_pins=False,
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            w='substrate width, in meters/number of fins.',
+            sub_type='substrate type.',
+            threshold='substrate threshold flavor.',
+            top_layer='the top level layer ID.',
+            blk_width='Width of this template in number of blocks.',
+            show_pins='True to show pin labels.',
+        )
+
+    def draw_layout(self):
+        # type: () -> None
+        self._draw_layout_helper(**self.params)
+
+    def _draw_layout_helper(self, lch, w, sub_type, threshold, top_layer, blk_width, show_pins):
+        # type: (float, Union[float, int], str, str, int, int, bool) -> None
+
+        # get technology parameters
+        res = self.grid.resolution
+        tech_params = self.grid.tech_info.tech_params
+        mos_cls = tech_params['layout']['mos_template']
+        dum_cls = tech_params['layout']['mos_dummy_template']
+        sub_cls = tech_params['layout']['sub_template']
+        mconn_layer = mos_cls.port_layer_id()
+        dum_layer = dum_cls.port_layer_id()
+        sd_pitch = mos_cls.get_sd_pitch(lch)
+        hm_layer = mconn_layer + 1
+
+        # add transistor routing layers to grid
+        vm_width = mos_cls.get_port_width(lch)
+        vm_space = sd_pitch - vm_width
+        dum_width = dum_cls.get_port_width(lch)
+        dum_space = sd_pitch - dum_width
+        hm_pitch_unit = self.grid.get_track_pitch(hm_layer, unit_mode=True)
+
+        self.grid = self.grid.copy()
+        self.grid.add_new_layer(mconn_layer, vm_space, vm_width, 'y', share_track=True)
+        self.grid.add_new_layer(dum_layer, dum_space, dum_width, 'y', share_track=True)
+        self.grid.update_block_pitch()
+
+        if top_layer < hm_layer:
+            raise ValueError('SubstrateContact top layer must be >= %d' % hm_layer)
+
+        # compute template width in number of sd pitches
+        wtot_unit, _ = self.grid.get_size_dimension((top_layer, blk_width, 1), unit_mode=True)
+        _, hblk_unit = self.grid.get_block_size(top_layer, unit_mode=True)
+        sd_pitch_unit = int(round(sd_pitch / res))
+        q, r = divmod(wtot_unit, sd_pitch_unit)
+        # find maximum number of fingers we can draw
+        bin_iter = BinaryIterator(1, None)
+        while bin_iter.has_next():
+            cur_fg = bin_iter.get_next()
+            num_sd = mos_cls.get_template_width(cur_fg)
+            if num_sd == q:
+                bin_iter.save()
+                break
+            elif num_sd < q:
+                bin_iter.save()
+                bin_iter.up()
+            else:
+                bin_iter.down()
+
+        sub_fg_tot = bin_iter.get_last_save()
+        if sub_fg_tot is None:
+            raise ValueError('Cannot draw substrate that fit in width: %d' % wtot_unit)
+
+        # compute offset
+        num_sd = mos_cls.get_template_width(sub_fg_tot)
+        if r != 0:
+            sub_xoff = (q + 1 - num_sd) // 2
+        else:
+            sub_xoff = (q - num_sd) // 2
+
+        # create substrate
+        params = dict(
+            lch=lch,
+            w=w,
+            sub_type=sub_type,
+            threshold=threshold,
+            fg=sub_fg_tot,
+            end_mode=3,
+        )
+        master = self.new_template(params=params, temp_cls=sub_cls)
+        # find substrate height and calculate block height and offset
+        _, h_sub_unit = self.grid.get_size_dimension(master.size, unit_mode=True)
+        blk_height = -(-h_sub_unit // hblk_unit)
+        nh_tracks = blk_height * hblk_unit // hm_pitch_unit
+        sub_nh_tracks = h_sub_unit // hm_pitch_unit
+        sub_yoff = (nh_tracks - sub_nh_tracks) // 2
+
+        # add instance and set size
+        inst = self.add_instance(master, inst_name='XSUB', loc=(sub_xoff * sd_pitch, sub_yoff * hm_pitch_unit * res))
+        self.array_box = inst.array_box
+        # find the first horizontal track index inside the array box
+        hm_idx0 = self.grid.coord_to_nearest_track(hm_layer, self.array_box.bottom, mode=2)
+        self.size = (top_layer, blk_width, blk_height)
+
+        # connect to horizontal metal layer.
+        ntr = self.array_box.height_unit // hm_pitch_unit  # type: int
+        track_id = TrackID(hm_layer, hm_idx0, width=1, num=ntr, pitch=1)
+        port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
+        sub_wires = self.connect_to_tracks(inst.get_port(port_name).get_pins(mconn_layer), track_id)
+        self.add_pin(port_name, sub_wires, show=show_pins)
