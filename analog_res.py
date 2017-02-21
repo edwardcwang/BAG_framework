@@ -39,6 +39,8 @@ from bag.layout.util import BBox
 from bag.layout.routing import TrackID, WireArray
 from bag.layout.template import TemplateBase, TemplateDB
 
+from .analog_core import SubstrateContact
+
 
 class AnalogResCore(with_metaclass(abc.ABCMeta, TemplateBase)):
     """An abstract template for analog resistors array core.
@@ -97,7 +99,6 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, TemplateBase)):
         return dict(
             res_type='reference',
             parity=0,
-            sub_type='ntap',
             em_specs={},
             min_tracks=(1, 1, 1, 1),
         )
@@ -120,6 +121,7 @@ class AnalogResCore(with_metaclass(abc.ABCMeta, TemplateBase)):
             min_tracks='Minimum number of tracks on each layer per block.',
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
+            threshold='substrate threshold flavor.',
             res_type='the resistor type.',
             em_specs='resistor EM spec specifications.',
         )
@@ -231,7 +233,6 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, TemplateBase)):
         return dict(
             min_tracks=(1, 1, 1, 1),
             parity=0,
-            sub_type='ntap',
             res_type='reference',
             em_specs={},
         )
@@ -254,6 +255,7 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, TemplateBase)):
             min_tracks='Minimum number of tracks on each layer per block.',
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
+            threshold='substrate threshold flavor.',
             res_type='the resistor type.',
             em_specs='resistor EM spec specifications.',
         )
@@ -339,7 +341,6 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, TemplateBase)):
         return dict(
             min_tracks=(1, 1, 1, 1),
             parity=0,
-            sub_type='ntap',
             res_type='reference',
             em_specs={},
         )
@@ -362,6 +363,7 @@ class AnalogResTBEdge(with_metaclass(abc.ABCMeta, TemplateBase)):
             min_tracks='Minimum number of tracks on each layer per block.',
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
+            threshold='substrate threshold flavor.',
             res_type='the resistor type.',
             em_specs='resistor EM specifications.',
         )
@@ -447,7 +449,6 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, TemplateBase)):
         return dict(
             min_tracks=(1, 1, 1, 1),
             parity=0,
-            sub_type='ntap',
             res_type='reference',
             em_specs={},
         )
@@ -470,6 +471,7 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, TemplateBase)):
             min_tracks='Minimum number of tracks on each layer per block.',
             parity='the parity of this resistor core.  Either 0 or 1.',
             sub_type='the substrate type.',
+            threshold='substrate threshold flavor.',
             res_type='the resistor type.',
             em_specs='resistor EM specifications.',
         )
@@ -598,13 +600,55 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         top_port = self._top_port.transform(self.grid, loc=loc)
         return bot_port.get_pins()[0], top_port.get_pins()[0]
 
+    def get_h_track_index(self, row_idx, tr_idx):
+        # type: (int, Union[float, int]) -> Union[float, int]
+        """Compute absolute track index from relative track index.
+
+        Parameters
+        ----------
+        row_idx : int
+            the row index.  0 is the bottom row.
+        tr_idx : Union[int, float]
+            the track index within the given row.
+
+        Returns
+        -------
+        abs_idx : Union[int, float]
+            the absolute track index in this template.
+        """
+        delta = self._core_offset[1] + self._core_pitch[1] * row_idx
+        delta_unit = int(round(delta / self.grid.resolution))
+        xm_pitch_unit = self.grid.get_track_pitch(self.bot_layer_id + 2, unit_mode=True)
+        return (delta_unit // xm_pitch_unit) + tr_idx
+
+    def move_array(self, nx_blk=0, ny_blk=0):
+        """Move the whole array by the given number of block pitches.
+
+        The block pitch is calculated on the top resistor routing layer.
+
+        Note: this method does not update size or array_box.  They must be updated manually.
+
+        Parameters
+        ----------
+        nx_blk : int
+            number of horizontal block pitches.
+        ny_blk : int
+            number of vertical block pitches.
+        """
+        blk_w, blk_h = self.grid.get_block_size(self.bot_layer_id + 3)
+        dx = nx_blk * blk_w
+        dy = ny_blk * blk_h
+        self.move_all_by(dx=dx, dy=dy)
+        self._core_offset = self._core_offset[0] + dx, self._core_offset[1] + dy
+
     def draw_array(self,  # type: ResArrayBase
                    l,  # type: float
                    w,  # type: float
+                   sub_type,  # type: str
+                   threshold,  # type: str
                    nx=1,  # type: int
                    ny=1,  # type: int
                    min_tracks=(1, 1, 1, 1),  # type: Tuple[int, int, int, int]
-                   sub_type='ntap',  # type: str
                    res_type='reference',  # type: str
                    em_specs=None,  # type: Optional[Dict[str, Any]]
                    ):
@@ -620,14 +664,16 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             unit resistor length, in meters.
         w : float
             unit resistor width, in meters.
+        sub_type : str
+            the substrate type.  Either 'ptap' or 'ntap'.
+        threshold : str
+            the substrate threshold flavor.
         nx : int
             number of resistors in a row.
         ny : int
             number of resistors in a column.
         min_tracks : Tuple[int, int, int, int]
             minimum number of tracks per layer in the resistor unit cell.
-        sub_type : str
-            the substrate type.  Either 'ptap' or 'ntap'.
         res_type : str
             the resistor type.
         em_specs : Union[None, Dict[str, Any]]
@@ -645,6 +691,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             w=w,
             min_tracks=min_tracks,
             sub_type=sub_type,
+            threshold=threshold,
             res_type=res_type,
             parity=0,
             em_specs=em_specs or {},
@@ -786,7 +833,6 @@ class Termination(ResArrayBase):
         return dict(
             nx=2,
             ny=1,
-            sub_type='ntap',
             res_type='reference',
             em_specs={},
         )
@@ -806,24 +852,64 @@ class Termination(ResArrayBase):
         return dict(
             l='unit resistor length, in meters.',
             w='unit resistor width, in meters.',
+            sub_lch='substrate contact channel length.',
+            sub_w='substrate contact width.',
+            sub_type='the substrate type.',
+            threshold='the substrate threshold flavor.',
             nx='number of resistors in a row.  Must be even.',
             ny='number of resistors in a column.',
-            sub_type='the substrate type.',
             res_type='the resistor type.',
             em_specs='EM specifications for the termination network.',
         )
 
     def draw_layout(self):
         # type: () -> None
+
+        # copy routing grid before calling draw_array so substrate contact can have its own grid
+        sub_grid = self.grid.copy()
+
+        # draw array
         nx = self.params['nx']
         if nx % 2 != 0 or nx <= 0:
             raise ValueError('number of resistors in a row must be even and positive.')
         ny = self.params['ny']
         em_specs = self.params.pop('em_specs')
+        sub_lch = self.params.pop('sub_lch')
+        sub_w = self.params.pop('sub_w')
+        sub_type = self.params['sub_type']
         div_em_specs = em_specs.copy()
         for key in ('idc', 'iac_rms', 'iac_peak'):
             div_em_specs[key] = div_em_specs[key] / ny
         self.draw_array(em_specs=div_em_specs, **self.params)
+
+        vm_layer = self.bot_layer_id + 1
+        xm_layer = vm_layer + 1
+        ym_layer = xm_layer + 1
+
+        # draw contact and move array up
+        nx_arr, ny_arr = self.size[1], self.size[2]
+        sub_params = dict(
+            lch=sub_lch,
+            w=sub_w,
+            sub_type=sub_type,
+            threshold=self.params['threshold'],
+            top_layer=ym_layer,
+            blk_width=nx_arr,
+            show_pins=False,
+        )
+        sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact, grid=sub_grid)
+        ny_shift = sub_master.size[2]
+        self.move_array(ny_blk=ny_shift)
+        bot_inst = self.add_instance(sub_master, inst_name='XBSUB')
+        top_yo = (ny_arr + 2 * ny_shift) * self.grid.get_block_pitch(xm_layer)
+        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0.0, top_yo), orient='MX')
+
+        # export supplies and recompute array_box/size
+        port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
+        self.reexport(bot_inst.get_port(port_name))
+        self.reexport(top_inst.get_port(port_name))
+        self.size = ym_layer, nx_arr, ny_arr + 2 * ny_shift
+        self.array_box = bot_inst.array_box.merge(top_inst.array_box)
 
         # connect row resistors
         hc_warr_list = []
@@ -843,7 +929,6 @@ class Termination(ResArrayBase):
                     hc_warr_list.append(mid_wire[0])
 
         # connect to v layer
-        vm_layer = self.bot_layer_id + 1
         vm_width = self.w_tracks[1]
         v_pitch = self.num_tracks[1]
         vc_id = self.grid.coord_to_nearest_track(vm_layer, hc_warr_list[0].middle, half_track=True)
@@ -855,17 +940,15 @@ class Termination(ResArrayBase):
         vr_warr = self.connect_to_tracks(hr_warr_list, v_tid)
 
         # connect to x layer
-        xm_layer = vm_layer + 1
         xm_width = self.w_tracks[2]
         x_pitch = self.num_tracks[2]
-        x_base = self._num_corner_tracks[2] + (x_pitch - 1) / 2.0
+        x_base = self.get_h_track_index(0, (x_pitch - 1) / 2.0)
         x_tid = TrackID(xm_layer, x_base, width=xm_width, num=ny, pitch=x_pitch)
         xc_warr = self.connect_to_tracks(vc_warr, x_tid)
         xl_warr = self.connect_to_tracks(vl_warr, x_tid)
         xr_warr = self.connect_to_tracks(vr_warr, x_tid)
 
         # connect to y layer
-        ym_layer = xm_layer + 1
         bot_w = self.grid.get_track_width(xm_layer, xm_width)
         ym_width = self.grid.get_min_track_width(ym_layer, bot_w=bot_w, **em_specs)
         y_pitch = self.num_tracks[3]

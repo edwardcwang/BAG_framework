@@ -1323,7 +1323,7 @@ class SubstrateContact(TemplateBase):
 
         # compute template width in number of sd pitches
         wtot_unit, _ = self.grid.get_size_dimension((top_layer, blk_width, 1), unit_mode=True)
-        _, hblk_unit = self.grid.get_block_size(top_layer, unit_mode=True)
+        wblk_unit, hblk_unit = self.grid.get_block_size(top_layer, unit_mode=True)
         sd_pitch_unit = int(round(sd_pitch / res))
         q, r = divmod(wtot_unit, sd_pitch_unit)
         # find maximum number of fingers we can draw
@@ -1374,6 +1374,10 @@ class SubstrateContact(TemplateBase):
         # find the first horizontal track index inside the array box
         hm_idx0 = self.grid.coord_to_nearest_track(hm_layer, self.array_box.bottom, mode=2)
         self.size = (top_layer, blk_width, blk_height)
+        # add implant layers to cover entire template
+        imp_box = self.bound_box
+        for imp_layer in sub_cls.get_implant_layers(sub_type, threshold):
+            self.add_rect(imp_layer, imp_box)
 
         # connect to horizontal metal layer.
         ntr = self.array_box.height_unit // hm_pitch_unit  # type: int

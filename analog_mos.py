@@ -292,6 +292,25 @@ class AnalogSubstrate(with_metaclass(abc.ABCMeta, TemplateBase)):
         super(AnalogSubstrate, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
+    @abc.abstractmethod
+    def get_implant_layers(cls, sub_type, threshold):
+        """Returns a list of all layers needed to define substrate.
+
+        Parameters
+        ----------
+        sub_type : str
+            the substrate type.  Either 'ptap' or 'ntap'.
+        threshold : str
+            the substrate threshold flavor.
+
+        Returns
+        -------
+        imp_list : List[Tuple[str, str]]
+            list of implantation layer/purpose pairs.
+        """
+        return []
+
+    @classmethod
     def get_default_param_values(cls):
         """Returns a dictionary containing default parameter values.
 
