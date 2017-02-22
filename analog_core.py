@@ -351,13 +351,18 @@ class AnalogBaseInfo(object):
         min_fg : int
             minimum number of fingers needed to span the given number of tracks.
         """
+        res = self.grid.resolution
         x0 = self.col_to_coord(col_idx)
         # find track number with coordinate strictly larger than x0
         t_start = self.grid.coord_to_nearest_track(layer_id, x0, mode=2)
         # find coordinate of last track
         xlast = self.grid.track_to_coord(layer_id, t_start + num_tracks - 1)
+        x0_unit = int(round(x0 / res))
+        xlast_unit = int(round(xlast / res))
+        sd_pitch_unit = int(round(self.sd_pitch / res))
+
         # divide by source/drain pitch
-        q, r = divmod(xlast - x0, self.sd_pitch)
+        q, r = divmod(xlast_unit - x0_unit, sd_pitch_unit)
         # +1 for strict inclusion.
         ans = int(q + 1)
         if even and ans % 2 == 1:
