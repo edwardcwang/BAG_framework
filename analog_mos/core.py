@@ -64,6 +64,24 @@ class AnalogMosBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     @classmethod
     @abc.abstractmethod
+    def get_num_fingers_per_sd(cls, lch):
+        # type: (float) -> int
+        """Returns number of transistor fingers per source/drain pitch.
+
+        Parameters
+        ----------
+        lch : float
+            channel length, in meters.
+
+        Returns
+        -------
+        num_fg : int
+            number of transistor fingers per source/drain pitch.
+        """
+        return 1
+
+    @classmethod
+    @abc.abstractmethod
     def get_template_width(cls, fg_tot, guard_ring_nf=0):
         # type: (int, int) -> int
         """Returns the width of the AnalogMosBase in number of vertical tracks.

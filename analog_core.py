@@ -266,6 +266,7 @@ class AnalogBaseInfo(object):
         self.float_dummy = tech_params['layout']['analog_base']['floating_dummy']
 
         # initialize parameters
+        self.num_fg_per_sd = mos_cls.get_num_fingers_per_sd(lch)
         self.sd_pitch = mos_cls.get_sd_pitch(lch)
         self.sd_xc = mos_cls.get_left_sd_xc(lch, guard_ring_nf) + self.sd_pitch * pitch_offset[0]
         self.mconn_port_layer = mos_cls.port_layer_id()
@@ -282,6 +283,11 @@ class AnalogBaseInfo(object):
         self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y', share_track=True)
         self.grid.add_new_layer(self.dum_port_layer, dum_space, dum_width, 'y', share_track=True)
         self.grid.update_block_pitch()
+        self._mos_cls = mos_cls
+
+    def get_total_width(self, fg_tot, guard_ring_nf=0):
+        """Calculate width of final AnalogBase in number of source/drain tracks."""
+        return self._mos_cls.get_template_width(fg_tot, guard_ring_nf=guard_ring_nf)
 
     def col_to_coord(self, col_idx):
         """Convert the given transistor column index to X coordinate.
