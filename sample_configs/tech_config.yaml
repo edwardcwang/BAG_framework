@@ -1,0 +1,6 @@
+# transistor specific parameters
+mos:
+  # the transistor width minimum resolution.
+  width_resolution: !!float 5e-9
+  # the transsitor length minimum resolution.
+  length_resolution: !!float 5e-9

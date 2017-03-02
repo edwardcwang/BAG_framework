@@ -1,0 +1,277 @@
+<?xml version="1.0"?>
+<setupdb version="5">data
+	<active>Active Setup
+		<corners>
+			<corner enabled="1">_default</corner>
+		</corners>
+		<extensions>
+			<extension>Parasitics
+				<callback>_parSetupDBExtensionCB</callback>
+				<iconvalue></iconvalue>
+				<icontype></icontype>
+			</extension>
+		</extensions>
+		<currentmode>Single Run, Sweeps and Corners</currentmode>
+		<overwritehistory>0</overwritehistory>
+		<tests>
+			<test>tb_tran
+				<tool>ADE</tool>
+				<tooloptions>
+					<option>cell
+						<value>gm_tb_tran</value>
+					</option>
+					<option>lib
+						<value>demo_testbenches</value>
+					</option>
+					<option>sim
+						<value>spectre</value>
+					</option>
+					<option>view
+						<value>schematic</value>
+					</option>
+					<option>path
+						<value>$AXL_SETUPDB_DIR/test_states</value>
+					</option>
+					<option>state
+						<value>tb_tran_active</value>
+					</option>
+				</tooloptions>
+				<origoptions>
+					<option>cell
+						<value>gm_tb_tran</value>
+					</option>
+					<option>lib
+						<value>serdes_testbenches</value>
+					</option>
+					<option>sim
+						<value>spectre</value>
+					</option>
+					<option>view
+						<value>schematic</value>
+					</option>
+				</origoptions>
+			</test>
+		</tests>
+		<vars>
+			<var>tsim
+				<value>5n</value>
+				<dependentTests>
+					<dependentTest enabled="1">tb_tran</dependentTest>
+				</dependentTests>
+			</var>
+			<var>cload
+				<value>20f</value>
+				<dependentTests>
+					<dependentTest enabled="1">tb_tran</dependentTest>
+				</dependentTests>
+			</var>
+			<var>rload
+				<value>1000</value>
+				<dependentTests>
+					<dependentTest enabled="1">tb_tran</dependentTest>
+				</dependentTests>
+			</var>
+			<var>tper
+				<value>200p</value>
+				<dependentTests>
+					<dependentTest enabled="1">tb_tran</dependentTest>
+				</dependentTests>
+			</var>
+			<var>tr
+				<value>10p</value>
+				<dependentTests>
+					<dependentTest enabled="1">tb_tran</dependentTest>
+				</dependentTests>
+			</var>
+			<var>vamp
+				<value>100m</value>
+				<dependentTests>
+					<dependentTest enabled="1">tb_tran</dependentTest>
+				</dependentTests>
+			</var>
+			<var>vbias
+				<value>0.45</value>
+				<dependentTests>
+					<dependentTest enabled="1">tb_tran</dependentTest>
+				</dependentTests>
+			</var>
+			<var>vcm
+				<value>0.7</value>
+				<dependentTests>
+					<dependentTest enabled="1">tb_tran</dependentTest>
+				</dependentTests>
+			</var>
+			<var>vdd
+				<value>1.0</value>
+				<dependentTests>
+					<dependentTest enabled="1">tb_tran</dependentTest>
+				</dependentTests>
+			</var>
+			<var>tstep
+				<value>1p</value>
+				<dependentTests>
+					<dependentTest enabled="1">tb_tran</dependentTest>
+				</dependentTests>
+			</var>
+		</vars>
+		<overwritehistoryname>Interactive.0</overwritehistoryname>
+		<plottingoptions>
+			<plottingoption>plottype
+				<value>None</value>
+			</plottingoption>
+			<plottingoption>usewaveformtemplate
+				<value>no</value>
+			</plottingoption>
+			<plottingoption>waveformtemplate
+				<value></value>
+			</plottingoption>
+		</plottingoptions>
+		<allvarsdisabled>0</allvarsdisabled>
+	</active>
+	<history>History
+		<historyentry>Interactive.0
+			<checkpoint>
+				<corners>
+					<corner enabled="1">_default</corner>
+				</corners>
+				<extensions>
+					<extension>Parasitics
+						<callback>_parSetupDBExtensionCB</callback>
+						<iconvalue></iconvalue>
+						<icontype></icontype>
+					</extension>
+				</extensions>
+				<currentmode>Single Run, Sweeps and Corners</currentmode>
+				<overwritehistory>0</overwritehistory>
+				<tests>
+					<test>serdes_testbenches:gm_tb_tran:1
+						<tool>ADE</tool>
+						<tooloptions>
+							<option>cell
+								<value>gm_tb_tran</value>
+							</option>
+							<option>lib
+								<value>serdes_testbenches</value>
+							</option>
+							<option>sim
+								<value>spectre</value>
+							</option>
+							<option>view
+								<value>schematic</value>
+							</option>
+							<option>path
+								<value>$AXL_SETUPDB_DIR/test_states</value>
+							</option>
+							<option>state
+								<value>serdes_testbenches:gm_tb_tran:1_none_Interactive.0</value>
+							</option>
+						</tooloptions>
+						<origoptions>
+							<option>cell
+								<value>gm_tb_tran</value>
+							</option>
+							<option>lib
+								<value>serdes_testbenches</value>
+							</option>
+							<option>sim
+								<value>spectre</value>
+							</option>
+							<option>view
+								<value>schematic</value>
+							</option>
+						</origoptions>
+					</test>
+				</tests>
+				<vars>
+					<var>tsim
+						<value>5n</value>
+						<dependentTests>
+							<dependentTest enabled="1">serdes_testbenches:gm_tb_tran:1</dependentTest>
+						</dependentTests>
+					</var>
+					<var>cload
+						<value>20f</value>
+						<dependentTests>
+							<dependentTest enabled="1">serdes_testbenches:gm_tb_tran:1</dependentTest>
+						</dependentTests>
+					</var>
+					<var>rload
+						<value>1000</value>
+						<dependentTests>
+							<dependentTest enabled="1">serdes_testbenches:gm_tb_tran:1</dependentTest>
+						</dependentTests>
+					</var>
+					<var>tper
+						<value>200p</value>
+						<dependentTests>
+							<dependentTest enabled="1">serdes_testbenches:gm_tb_tran:1</dependentTest>
+						</dependentTests>
+					</var>
+					<var>tr
+						<value>10p</value>
+						<dependentTests>
+							<dependentTest enabled="1">serdes_testbenches:gm_tb_tran:1</dependentTest>
+						</dependentTests>
+					</var>
+					<var>vamp
+						<value>100m</value>
+						<dependentTests>
+							<dependentTest enabled="1">serdes_testbenches:gm_tb_tran:1</dependentTest>
+						</dependentTests>
+					</var>
+					<var>vbias
+						<value>0.45</value>
+						<dependentTests>
+							<dependentTest enabled="1">serdes_testbenches:gm_tb_tran:1</dependentTest>
+						</dependentTests>
+					</var>
+					<var>vcm
+						<value>0.7</value>
+						<dependentTests>
+							<dependentTest enabled="1">serdes_testbenches:gm_tb_tran:1</dependentTest>
+						</dependentTests>
+					</var>
+					<var>vdd
+						<value>1.0</value>
+						<dependentTests>
+							<dependentTest enabled="1">serdes_testbenches:gm_tb_tran:1</dependentTest>
+						</dependentTests>
+					</var>
+					<var>tstep
+						<value>1p</value>
+						<dependentTests>
+							<dependentTest enabled="1">serdes_testbenches:gm_tb_tran:1</dependentTest>
+						</dependentTests>
+					</var>
+				</vars>
+				<overwritehistoryname>Interactive.0</overwritehistoryname>
+				<plottingoptions>
+					<plottingoption>plottype
+						<value>None</value>
+					</plottingoption>
+					<plottingoption>usewaveformtemplate
+						<value>no</value>
+					</plottingoption>
+					<plottingoption>waveformtemplate
+						<value></value>
+					</plottingoption>
+				</plottingoptions>
+				<allvarsdisabled>0</allvarsdisabled>
+			</checkpoint>
+			<timestamp>Fri Jun 3 10:45:27 2016</timestamp>
+			<resultsname>/tools/designs/eeis/BAG_2.0/BAG_framework/sample_testbenches/serdes_testbenches/gm_tb_tran/adexl/results/data/Interactive.0.rdb</resultsname>
+			<simresults>$AXL_SETUPDB_DIR/results/data/Interactive.0.rdb</simresults>
+			<rawdatadelstrategy>SaveAll</rawdatadelstrategy>
+			<netlistdelstrategy>SaveAll</netlistdelstrategy>
+			<uselocalpsfdir>false</uselocalpsfdir>
+			<localpsfdir>/tmp/bwrcr720-10.EECS.Berkeley.EDU_erichang_104527092</localpsfdir>
+			<psfdir>/tools/scratch/erichang/simulation/serdes_testbenches/gm_tb_tran/adexl/results/data/Interactive.0</psfdir>
+			<simdir>$AXL_PROJECT_DIR/serdes_testbenches/gm_tb_tran/adexl/results/data/Interactive.0</simdir>
+			<gendatasheetplotsonsimulation>1</gendatasheetplotsonsimulation>
+			<runlog>/tools/designs/eeis/BAG_2.0/BAG_framework/sample_testbenches/serdes_testbenches/gm_tb_tran/adexl/results/data/Interactive.0.log</runlog>
+			<runlogfile>$AXL_SETUPDB_DIR/results/data/Interactive.0.log</runlogfile>
+			<schematicpoint></schematicpoint>
+			<test>all</test>
+		</historyentry>
+	</history>
+</setupdb>

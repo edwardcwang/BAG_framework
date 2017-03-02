@@ -1,0 +1,144 @@
+lib_name: demo_templates
+cell_name: gm
+pins: [ "VSS", "INP", "INN", "OUTP", "OUTN", "BIAS", "FOOT" ]
+instances:
+  XD4:
+    lib_name: BAG_prim
+    cell_name: nmos4_fast
+    instpins:
+      S:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      D:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      B:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      G:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+  XD3:
+    lib_name: BAG_prim
+    cell_name: nmos4_fast
+    instpins:
+      S:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      D:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      B:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      G:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+  XD2:
+    lib_name: BAG_prim
+    cell_name: nmos4_fast
+    instpins:
+      S:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      D:
+        direction: inputOutput
+        net_name: "FOOT"
+        num_bits: 1
+      B:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      G:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+  XD1:
+    lib_name: BAG_prim
+    cell_name: nmos4_fast
+    instpins:
+      S:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      D:
+        direction: inputOutput
+        net_name: "FOOT"
+        num_bits: 1
+      B:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      G:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+  XT:
+    lib_name: BAG_prim
+    cell_name: nmos4_fast
+    instpins:
+      S:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      D:
+        direction: inputOutput
+        net_name: "FOOT"
+        num_bits: 1
+      B:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      G:
+        direction: inputOutput
+        net_name: "BIAS"
+        num_bits: 1
+  XN:
+    lib_name: BAG_prim
+    cell_name: nmos4_fast
+    instpins:
+      S:
+        direction: inputOutput
+        net_name: "FOOT"
+        num_bits: 1
+      D:
+        direction: inputOutput
+        net_name: "OUTP"
+        num_bits: 1
+      B:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      G:
+        direction: inputOutput
+        net_name: "INN"
+        num_bits: 1
+  XP:
+    lib_name: BAG_prim
+    cell_name: nmos4_fast
+    instpins:
+      S:
+        direction: inputOutput
+        net_name: "FOOT"
+        num_bits: 1
+      D:
+        direction: inputOutput
+        net_name: "OUTN"
+        num_bits: 1
+      B:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      G:
+        direction: inputOutput
+        net_name: "INP"
+        num_bits: 1
