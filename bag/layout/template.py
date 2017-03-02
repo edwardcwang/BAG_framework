@@ -390,7 +390,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self._port_params = {}
         self._array_box = None  # type: BBox
         self._finalized = False
-        self._used_tracks = UsedTracks()
+        self._used_tracks = UsedTracks(self._grid.resolution)
 
         # set parameters
         self.params = {}
@@ -1031,7 +1031,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         # export all port geometries
         port_pins = port_params['pins']
         for wire_arr in port:
-            self._used_tracks.add_wire_arrays(self.grid, wire_arr, fill_margin=fill_margin, fill_type=fill_type,
+            self._used_tracks.add_wire_arrays(wire_arr, fill_margin=fill_margin, fill_type=fill_type,
                                               unit_mode=unit_mode)
             layer_id = wire_arr.layer_id
             if layer_id not in port_pins:
@@ -1361,7 +1361,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             self.add_rect(layer_name, bbox_arr)
         new_warr_list.append(warr)
 
-        self._used_tracks.add_wire_arrays(grid, new_warr_list, fill_margin=fill_margin, fill_type=fill_type,
+        self._used_tracks.add_wire_arrays(new_warr_list, fill_margin=fill_margin, fill_type=fill_type,
                                           unit_mode=True)
         return new_warr_list
 
@@ -1500,7 +1500,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         for layer_name, bbox_arr in result.wire_arr_iter(self.grid):
             self.add_rect(layer_name, bbox_arr)
 
-        self._used_tracks.add_wire_arrays(self.grid, result, fill_margin=fill_margin, fill_type=fill_type,
+        self._used_tracks.add_wire_arrays(result, fill_margin=fill_margin, fill_type=fill_type,
                                           unit_mode=True)
         return result
 
@@ -1612,7 +1612,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         for layer_name, bbox_arr in result.wire_arr_iter(self.grid):
             self.add_rect(layer_name, bbox_arr)
 
-        self._used_tracks.add_wire_arrays(grid, result, fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
+        self._used_tracks.add_wire_arrays(result, fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
         return result
 
     def connect_differential_tracks(self, pwarr_list,  # type: Union[WireArray, List[WireArray]]
