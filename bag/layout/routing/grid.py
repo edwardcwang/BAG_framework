@@ -29,7 +29,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Union, Tuple, List
+from typing import Union, Tuple, List, Optional
 
 import numpy as np
 
@@ -614,6 +614,169 @@ class RoutingGrid(object):
             bin_iter.down()
 
         return bin_iter.get_last_save()
+
+    def get_track_index_range(self,  # type: RoutingGrid
+                              layer_id,  # type: int
+                              lower,  # type: Union[float, int]
+                              upper,  # type: Union[float, int]
+                              num_space=0,  # type: Union[float, int]
+                              edge_margin=0,  # type: Union[float, int]
+                              half_track=False,  # type: bool
+                              unit_mode=False  # type: bool
+                              ):
+        # type: (...) -> Tuple[Optional[Union[float, int]], Optional[Union[float, int]]]
+        """ Returns the first and last track index strictly in the given range.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer ID.
+        lower : Union[float, int]
+            the lower coordinate.
+        upper : Union[float, int]
+            the upper coordinate.
+        num_space : Union[float, int]
+            number of space tracks to the tracks right outside of the given range.
+        edge_margin : Union[float, int]
+            minimum space from outer tracks to given range.
+        half_track : bool
+            True to allow half-integer tracks.
+        unit_mode : bool
+            True if lower/upper/edge_margin are given in resolution units.
+
+        Returns
+        -------
+        start_track : Optional[Union[float, int]]
+            the first track index.  None if no solution.
+        end_track : Optional[Union[float, int]]
+            the last track index.  None if no solution.
+        """
+        if not unit_mode:
+            lower = int(round(lower / self._resolution))
+            upper = int(round(upper / self._resolution))
+            edge_margin = int(round(edge_margin / self._resolution))
+
+        tr_w = self.w_tracks[layer_id]
+        tr_sp = self.sp_tracks[layer_id]
+        tr_wh = tr_w // 2
+        tr_ph = (tr_w + tr_sp) // 2
+
+        # get start track half index
+        lower_bnd = self.coord_to_nearest_track(layer_id, lower, half_track=True,
+                                                mode=-1, unit_mode=True)
+        start_track = self.coord_to_nearest_track(layer_id, lower + edge_margin, half_track=True,
+                                                  mode=2, unit_mode=True)
+        hstart_track = int(round(2 * max(start_track, lower_bnd + num_space) + 1))
+        # check strictly in range
+        if hstart_track * tr_ph - tr_wh < lower + edge_margin:
+            hstart_track += 1
+        # check if half track is allowed
+        if not half_track and hstart_track % 2 == 0:
+            hstart_track += 1
+
+        # get end track half index
+        upper_bnd = self.coord_to_nearest_track(layer_id, upper, half_track=True,
+                                                mode=1, unit_mode=True)
+        end_track = self.coord_to_nearest_track(layer_id, upper - edge_margin, half_track=True,
+                                                mode=-2, unit_mode=True)
+        hend_track = int(round(2 * min(end_track, upper_bnd - num_space) + 1))
+        # check strictly in range
+        if hend_track * tr_ph + tr_wh > upper - edge_margin:
+            hend_track -= 1
+        # check if half track is allowed
+        if not half_track and hend_track % 2 == 0:
+            hend_track -= 1
+
+        if hend_track < hstart_track:
+            # no solution
+            return None, None
+        # convert to track
+        if hstart_track % 2 == 1:
+            start_track = (hstart_track - 1) // 2
+        else:
+            start_track = (hstart_track - 1) / 2
+        if hend_track % 2 == 1:
+            end_track = (hend_track - 1) // 2
+        else:
+            end_track = (hend_track - 1) / 2
+        return start_track, end_track
+
+    def get_overlap_tracks(self,  # type: RoutingGrid
+                           layer_id,  # type: int
+                           lower,  # type: Union[float, int]
+                           upper,  # type: Union[float, int]
+                           half_track=False,  # type: bool
+                           unit_mode=False  # type: bool
+                           ):
+        # type: (...) -> Tuple[Optional[Union[float, int]], Optional[Union[float, int]]]
+        """ Returns the first and last track index that overlaps with the given range.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer ID.
+        lower : Union[float, int]
+            the lower coordinate.
+        upper : Union[float, int]
+            the upper coordinate.
+        half_track : bool
+            True to allow half-integer tracks.
+        unit_mode : bool
+            True if lower/upper are given in resolution units.
+
+        Returns
+        -------
+        start_track : Optional[Union[float, int]]
+            the first track index.  None if no solution.
+        end_track : Optional[Union[float, int]]
+            the last track index.  None if no solution.
+        """
+        if not unit_mode:
+            lower = int(round(lower / self._resolution))
+            upper = int(round(upper / self._resolution))
+
+        tr_w = self.w_tracks[layer_id]
+        tr_sp = self.sp_tracks[layer_id]
+        tr_wh = tr_w // 2
+        tr_ph = (tr_w + tr_sp) // 2
+
+        # get start track half index
+        lower_bnd = self.coord_to_nearest_track(layer_id, lower, half_track=True,
+                                                mode=-1, unit_mode=True)
+
+        hlower_bnd = int(round(2 * lower_bnd + 1))
+
+        # check if overlap
+        if hlower_bnd * tr_ph + tr_wh < lower:
+            hlower_bnd += 1
+        # check if half track is allowed
+        if not half_track and hlower_bnd % 2 == 0:
+            hlower_bnd += 1
+
+        # get end track half index
+        upper_bnd = self.coord_to_nearest_track(layer_id, upper, half_track=True,
+                                                mode=1, unit_mode=True)
+        hupper_bnd = int(round(2 * upper_bnd + 1))
+        # check if overlap
+        if hupper_bnd * tr_ph - tr_wh > upper:
+            hupper_bnd -= 1
+        # check if half track is allowed
+        if not half_track and hupper_bnd % 2 == 0:
+            hupper_bnd -= 1
+
+        if hupper_bnd < hlower_bnd:
+            # no solution
+            return None, None
+        # convert to track
+        if hlower_bnd % 2 == 1:
+            start_track = (hlower_bnd - 1) // 2
+        else:
+            start_track = (hlower_bnd - 1) / 2
+        if hupper_bnd % 2 == 1:
+            end_track = (hupper_bnd - 1) // 2
+        else:
+            end_track = (hupper_bnd - 1) / 2
+        return start_track, end_track
 
     def coord_to_track(self, layer_id, coord, unit_mode=False):
         # type: (int, Union[float, int], bool) -> Union[float, int]

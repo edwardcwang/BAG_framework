@@ -380,6 +380,33 @@ class IntervalSet(object):
             self._val_list.insert(idx, val)
             return True
 
+    def subtract(self, intv):
+        # type: (Tuple[int, int]) -> None
+        """Subtract the given interval from this IntervalSet.
+
+        Parameters
+        ----------
+        intv : Tuple[int, int]
+            the interval to subtract.
+        """
+        bidx = self._get_first_overlap_idx(intv)
+        if bidx >= 0:
+            eidx = self._get_last_overlap_idx(intv)
+            insert_intv = []
+            if self._start_list[bidx] < intv[0]:
+                insert_intv.append(((self._start_list[bidx], intv[0]), self._val_list[bidx]))
+            if intv[1] < self._end_list[eidx]:
+                insert_intv.append(((intv[1], self._end_list[eidx]), self._val_list[eidx]))
+            del self._start_list[bidx:eidx + 1]
+            del self._end_list[bidx:eidx + 1]
+            del self._val_list[bidx:eidx + 1]
+            insert_idx = bidx
+            for (new_start, new_end), val in insert_intv:
+                self._start_list.insert(insert_idx, new_start)
+                self._end_list.insert(insert_idx, new_end)
+                self._val_list.insert(insert_idx, val)
+                insert_idx += 1
+
     def items(self):
         # type: () -> Generator[Tuple[Tuple[int, int], Any]]
         """Iterates over intervals and values in this IntervalSet

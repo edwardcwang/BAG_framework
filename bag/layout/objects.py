@@ -822,7 +822,6 @@ class Rect(Arrayable):
                        bbox=[[self.bbox.left, self.bbox.bottom], [self.bbox.right, self.bbox.top]],
                        )
         if self.nx > 1 or self.ny > 1:
-            # TODO: figure out bug
             content['arr_nx'] = self.nx
             content['arr_ny'] = self.ny
             content['arr_spx'] = self.spx
