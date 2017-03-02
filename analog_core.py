@@ -768,7 +768,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     @staticmethod
     def get_prop_lists(mos_type, sub_w, w_list, th_list, g_tracks, ds_tracks, orientations, both_subs,
-                       ds_dummy_list):
+                       ds_dummy_list, gr_w):
         """Helper method of draw_base"""
         if mos_type == 'nch':
             sub_type = 'ptap'
@@ -809,6 +809,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         mtype_list = list(chain([sub_type], repeat(mos_type, num), [sub_type]))
         orient_list = list(chain(['R0'], orientations, ['MX']))
         w_list = list(chain([sub_w], w_list, [sub_w]))
+        w_list[del_idx] = gr_w
         th_list = list(chain([th_list[0]], th_list, [th_list[-1]]))
         g_list = list(chain([0], g_tracks, [0]))
         ds_list = list(chain([0], ds_tracks, [0]))
@@ -848,7 +849,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                   guard_ring_nf=0,  # type: int
                   n_ds_dummy=None,  # type: Optional[List[bool]]
                   p_ds_dummy=None,  # type: Optional[List[bool]]
-                  pitch_offset=(0, 0)  # type: Tuple[int, int]
+                  pitch_offset=(0, 0),  # type: Tuple[int, int]
+                  pgr_w=None,  # type: Optional[Union[float, int]]
+                  ngr_w=None  # type: Optional[Union[float, int]]
                   ):
         # type: (...) -> None
         """Draw the analog base.
@@ -896,6 +899,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         pitch_offset : Tuple[int, int]
             shift the templates right/up by this many track pitches.  This parameter is
             used to center the transistors in the grid.
+        pgr_w : Optional[Union[float, int]]
+            pwell guard ring substrate contact width.
+        ngr_w : Optional[Union[float, int]]
+            nwell guard ringsubstrate contact width.
         """
         numn = len(nw_list)
         nump = len(pw_list)
@@ -921,14 +928,19 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._p_intvs = [IntervalSet() for _ in range(nump)]
         self._pitch_offset = pitch_offset
 
+        if pgr_w is None:
+            pgr_w = ptap_w
+        if ngr_w is None:
+            ngr_w = ntap_w
+
         # get property lists
         results = self.get_prop_lists('nch', ntap_w, nw_list, nth_list, ng_tracks, nds_tracks,
                                       n_orientations, guard_ring_nf > 0 or nump == 0,
-                                      n_ds_dummy)
+                                      n_ds_dummy, ngr_w)
         ntype_list, norient_list, nw_list, nth_list, ng_list, nds_list, nname_list, n_ds_dummy_list = results
         results = self.get_prop_lists('pch', ptap_w, pw_list, pth_list, pg_tracks, pds_tracks,
                                       p_orientations, guard_ring_nf > 0 or numn == 0,
-                                      p_ds_dummy)
+                                      p_ds_dummy, pgr_w)
         ptype_list, porient_list, pw_list, pth_list, pg_list, pds_list, pname_list, p_ds_dummy_list = results
 
         self._orient_list = norient_list + porient_list
@@ -1017,14 +1029,21 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # set size from array box
         self.set_size_from_array_box(hm_layer)
 
-    def _connect_substrate(self, sub_type, sub_list, row_idx_list):
+    def _connect_substrate(self, sub_type, sub_list, row_idx_list, lower=float('inf'), upper=float('-inf')):
         """Connect all given substrates to horizontal tracks
 
         Parameters
         ----------
-        sub_list :
-            list of substrates to connect.  Each element is a tuple
-            of row-index, master, and instance.
+        sub_type : str
+            substrate type.  Either 'ptap' or 'ntap'.
+        sub_list : List[Instance]
+            list of substrates to connect.
+        row_idx_list : List[int]
+            list of substrate row indices.
+        lower : float
+            lower supply track coordinates.
+        upper : float
+            upper supplu track coordinates.
 
         Returns
         -------
@@ -1048,15 +1067,22 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 warr_iter_list.append(subinst.get_port('b').get_pins(self.mos_conn_layer))
 
             warr_list = list(chain(*warr_iter_list))
-            track_warr = self.connect_to_tracks(warr_list, track_id)
+            track_warr = self.connect_to_tracks(warr_list, track_id, track_lower=lower, track_upper=upper)
             sub_warr_list.append(track_warr)
 
         return sub_warr_list
 
-    def fill_dummy(self):
+    def fill_dummy(self, lower=float('inf'), upper=float('-inf')):
         """Draw dummy/separator on all unused transistors.
 
         This method should be called last.
+
+        Parameters
+        ----------
+        lower : float
+            lower coordinate for the supply tracks.
+        upper : float
+            upper coordinate for the supply tracks.
 
         Returns
         -------
@@ -1097,20 +1123,24 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # connect NMOS substrates to horizontal tracks.
         if not self._ntap_list:
             # connect both substrates if NMOS only
-            ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list, list(range(len(self._ptap_list))))
+            ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list, list(range(len(self._ptap_list))),
+                                                     lower=lower, upper=upper)
         elif self._ptap_list:
             # NMOS exists, only connect bottom substrate to upper level metal
-            ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list[:1], [0])
+            ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list[:1], [0],
+                                                     lower=lower, upper=upper)
         else:
             ptap_wire_arrs = []
 
         # connect PMOS substrates to horizontal tracks.
         if not self._ptap_list:
             # connect both substrates if PMOS only
-            ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list, list(range(len(self._ntap_list))))
+            ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list, list(range(len(self._ntap_list))),
+                                                     lower=lower, upper=upper)
         elif self._ntap_list:
             # PMOS exists, only connect top substrate to upper level metal
-            ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list[-1:], [len(self._ntap_list) - 1])
+            ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list[-1:], [len(self._ntap_list) - 1],
+                                                     lower=lower, upper=upper)
         else:
             ntap_wire_arrs = []
 
