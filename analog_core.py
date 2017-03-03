@@ -1073,6 +1073,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return sub_warr_list
 
     def fill_dummy(self, lower=float('inf'), upper=float('-inf')):
+        # type: (float, float) -> Tuple[List[WireArray], List[WireArray]]
         """Draw dummy/separator on all unused transistors.
 
         This method should be called last.
@@ -1086,9 +1087,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         Returns
         -------
-        ptap_wire_arrs : list[:class:`~bag.layout.routing.WireArray`]
+        ptap_wire_arrs : List[WireArray]
             list of P-tap substrate WireArrays.
-        ntap_wire_arrs : list[:class:`~bag.layout.routing.WireArray`]
+        ntap_wire_arrs : List[WireArray]
             list of N-tap substrate WireArrays.
         """
         # invert PMOS/NMOS IntervalSet to get unconnected dummies
