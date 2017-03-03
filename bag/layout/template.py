@@ -45,7 +45,8 @@ from bag.util.interval import IntervalSet
 from .core import BagLayout
 from .util import BBox, BBoxArray
 from ..io import fix_string, get_encoding, open_file
-from .routing import Port, TrackID, WireArray, RoutingGrid, UsedTracks
+from .routing import Port, TrackID, WireArray, RoutingGrid
+from .routing.fill import UsedTracks, get_power_fill_tracks
 from .objects import Instance, Rect, Via, Path
 from future.utils import with_metaclass
 
@@ -1615,7 +1616,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self._used_tracks.add_wire_arrays(result, fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
         return result
 
-    def connect_differential_tracks(self, pwarr_list,  # type: Union[WireArray, List[WireArray]]
+    def connect_differential_tracks(self,  # type: TemplateBase
+                                    pwarr_list,  # type: Union[WireArray, List[WireArray]]
                                     nwarr_list,  # type: Union[WireArray, List[WireArray]]
                                     tr_layer_id,  # type: int
                                     ptr_idx,  # type: Union[int, float]
@@ -1770,6 +1772,82 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                                       track_lower=tr_lower, track_upper=tr_upper, fill_margin=fill_margin,
                                       fill_type=fill_type, unit_mode=True, debug=debug)
         return pans, nans
+
+    def draw_vias_on_intersections(self, bot_warr_list, top_warr_list):
+        # type: (Union[WireArray, List[WireArray]], Union[WireArray, List[WireArray]]) -> None
+        """Draw vias on all intersections of the two given wire groups.
+
+        Parameters
+        ----------
+        bot_warr_list : Union[WireArray, List[WireArray]]
+            the bottom wires.
+        top_warr_list : Union[WireArray, List[WireArray]]
+            the top wires.
+        """
+        if isinstance(bot_warr_list, WireArray):
+            bot_warr_list = [bot_warr_list]
+        else:
+            pass
+        if isinstance(top_warr_list, WireArray):
+            top_warr_list = [top_warr_list]
+        else:
+            pass
+
+        grid = self.grid
+        res = grid.resolution
+
+        for bwarr in bot_warr_list:
+            bot_intv = int(round(bwarr.lower / res)), int(round(bwarr.upper / res))
+            bot_track_idx = bwarr.track_id
+            bot_layer_id = bot_track_idx.layer_id
+            top_layer_id = bot_layer_id + 1
+            bot_width = bot_track_idx.width
+            bot_dir = self.grid.get_direction(bot_layer_id)
+            for bot_index in bot_track_idx:
+                bot_lay_name = self.grid.get_layer_name(bot_layer_id, bot_index)
+                btl, btu = grid.get_wire_bounds(bot_layer_id, bot_index, width=bot_width, unit_mode=True)
+                for twarr in top_warr_list:
+                    top_intv = int(round(twarr.lower / res)), int(round(twarr.upper / res))
+                    top_track_idx = twarr.track_id
+                    top_width = top_track_idx.width
+                    if top_intv[1] >= btu and top_intv[0] <= btl:
+                        # top wire cuts bottom wire, possible intersection
+                        for top_index in top_track_idx:
+                            ttl, ttu = grid.get_wire_bounds(top_layer_id, top_index, width=top_width, unit_mode=True)
+                            if bot_intv[1] >= ttu and bot_intv[0] <= ttl:
+                                # bottom wire cuts top wire, we have intersection.  Make bbox
+                                if bot_dir == 'x':
+                                    box = BBox(ttl, btl, ttu, btu, res, unit_mode=True)
+                                else:
+                                    box = BBox(btl, ttl, btu, ttu, res, unit_mode=True)
+                                top_lay_name = self.grid.get_layer_name(top_layer_id, top_index)
+                                self.add_via(box, bot_lay_name, top_lay_name, bot_dir)
+
+    def do_power_fill(self,  # type: TemplateBase
+                      layer_id,  # type: int
+                      vdd_warrs,  # type: Union[WireArray, List[WireArray]]
+                      vss_warrs,  # type: Union[WireArray, List[WireArray]]
+                      sup_width=1,  # type: int
+                      fill_margin=0,  # type: Union[float, int]
+                      edge_margin=0,  # type: Union[float, int]
+                      unit_mode=False  # type: bool
+                      ):
+        # type: (...) -> Tuple[List[WireArray], List[WireArray]]
+        """Draw power fill on the given layer."""
+        if not unit_mode:
+            res = self.grid.resolution
+            fill_margin = int(round(fill_margin / res))
+            edge_margin = int(round(edge_margin / res))
+        top_vdd, top_vss = get_power_fill_tracks(self.grid, self.size, layer_id,
+                                                 self._used_tracks.get_tracks_info(layer_id),
+                                                 sup_width, fill_margin, edge_margin)
+        for warr in chain(top_vdd, top_vss):
+            for layer, box_arr in warr.wire_arr_iter(self.grid):
+                self.add_rect(layer, box_arr)
+        self.draw_vias_on_intersections(vdd_warrs, top_vdd)
+        self.draw_vias_on_intersections(vss_warrs, top_vss)
+
+        return top_vdd, top_vss
 
 
 # noinspection PyAbstractClass
