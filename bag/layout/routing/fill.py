@@ -30,11 +30,73 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Union, List, Tuple, Dict
+from typing import Union, List, Tuple, Generator, Any
 
 from bag.util.interval import IntervalSet
-from .base import TrackID, WireArray
+from .base import WireArray, TrackID
 from .grid import RoutingGrid
+
+
+class TrackSet(object):
+    """A data structure that stored tracks on the same layer."""
+    def __init__(self):
+        # type: (float) -> None
+        self._tracks = {}
+
+    def __contains__(self, item):
+        # type: (int) -> bool
+        return item in self._tracks
+
+    def __getitem__(self, item):
+        # type: (int) -> IntervalSet
+        return self._tracks[item]
+
+    def __len__(self):
+        return len(self._tracks)
+
+    def __iter__(self):
+        return iter(self._tracks)
+
+    def keys(self):
+        # type: () -> Generator[int]
+        return self._tracks.keys()
+
+    def items(self):
+        # type: () -> Generator[Tuple[int, IntervalSet]]
+        return self._tracks.items()
+
+    def subtract(self, hidx, intv):
+        # type: (int, Tuple[int, int]) -> None
+        """Subtract the given intervals from this TrackSet."""
+        if hidx in self._tracks:
+            intv_set = self._tracks[hidx]
+            intv_set.subtract(intv)
+            if not intv_set:
+                del self._tracks[hidx]
+
+    def add_track(self, hidx, intv, width, value=None):
+        # type: (int, Tuple[int, int], int, Any) -> None
+        """Add tracks to this data structure.
+
+        Parameters
+        ----------
+        hidx : int
+            the half track index.
+        intv : Tuple[int, int]
+            the track interval.
+        width : int
+            the track width.
+        value : Any
+            value associated with this track.
+        """
+        if hidx not in self._tracks:
+            intv_set = IntervalSet()
+            self._tracks[hidx] = intv_set
+        else:
+            intv_set = self._tracks[hidx]
+
+        # TODO: add more robust checking?
+        intv_set.add(intv, val=[width, value], merge=True)
 
 
 class UsedTracks(object):
@@ -48,11 +110,11 @@ class UsedTracks(object):
 
     def __init__(self, resolution):
         # type: (float) -> None
-        self._tracks = {}
+        self._track_sets = {}
         self._res = resolution
 
     def get_tracks_info(self, layer_id):
-        # type: (int) -> Dict[int, IntervalSet]
+        # type: (int) -> TrackSet
         """Returns used tracks information on the given layer.
 
         Parameters
@@ -62,10 +124,12 @@ class UsedTracks(object):
 
         Returns
         -------
-        tracks_info : Dict[int, IntervalSet]
-            a dictionary from half-track index to used tracks with that index.
+        tracks_info : TrackSet
+            the used tracks on the given layer.
         """
-        return self._tracks[layer_id]
+        if layer_id not in self._track_sets:
+            self._track_sets[layer_id] = TrackSet()
+        return self._track_sets[layer_id]
 
     def add_wire_arrays(self, warr_list, fill_margin=0, fill_type='VSS', unit_mode=False):
         # type: (Union[WireArray, List[WireArray]], Union[float, int], str, bool) -> None
@@ -94,30 +158,24 @@ class UsedTracks(object):
             warr_tid = warr.track_id
             layer_id = warr_tid.layer_id
             width = warr_tid.width
-            if layer_id not in self._tracks:
-                track_table = {}
-                self._tracks[layer_id] = track_table
+            if layer_id not in self._track_sets:
+                track_set = TrackSet()
+                self._track_sets[layer_id] = track_set
             else:
-                track_table = self._tracks[layer_id]
+                track_set = self._track_sets[layer_id]
 
             intv = (int(round(warr.lower / self._res)), int(round(warr.upper / self._res)))
-            for idx in warr_tid:
-                hidx = int(round(2 * idx + 1))
-
-                if hidx not in track_table:
-                    intv_set = IntervalSet()
-                    track_table[hidx] = intv_set
-                else:
-                    intv_set = track_table[hidx]
-
-                # TODO: add more robust checking?
-                intv_set.add(intv, val=(width, fill_margin, fill_type), merge=True)
+            base_hidx = int(round(2 * warr_tid.base_index + 1))
+            step = int(round(warr_tid.pitch * 2))
+            for idx in range(warr_tid.num):
+                hidx = base_hidx + idx * step
+                track_set.add_track(hidx, intv, width, value=(fill_margin, fill_type))
 
 
 def get_power_fill_tracks(grid,  # type: RoutingGrid
                           size,  # type: Tuple[int, int, int]
                           layer_id,  # type: int
-                          used_tracks,  # type: UsedTracks
+                          track_set,  # type: TrackSet
                           sup_width,  # type: int
                           fill_margin,  # type: int
                           edge_margin  # type: int
@@ -146,15 +204,15 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
     fill_hidx_list = list(range(first_hidx, last_hidx + 1, 2 * (sup_width + num_space)))
 
     # add all fill tracks
-    fill_table = {}  # type: Dict[int, IntervalSet]
-    fill_intv_list = [(lower, upper)]
+    fill_track_set = TrackSet()
+    fill_intv = (lower, upper)
     for hidx in fill_hidx_list:
-        fill_table[hidx] = IntervalSet(intv_list=fill_intv_list)
+        fill_track_set.add_track(hidx, fill_intv, sup_width, value=False)
 
     # subtract used tracks from fill.
     sup_type = {}
-    for hidx, intv_set in used_tracks.get_tracks_info(layer_id).items():
-        for (wstart, wstop), (wwidth, fmargin, fill_type) in intv_set.items():
+    for hidx, intv_set in track_set.items():
+        for (wstart, wstop), (wwidth, (fmargin, fill_type)) in intv_set.items():
             fmargin = max(fill_margin, fmargin)
             sub_intv = (wstart - fmargin, wstop + fmargin)
             cbeg, cend = grid.get_wire_bounds(layer_id, (hidx - 1) / 2, width=wwidth, unit_mode=True)
@@ -163,25 +221,23 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
             hidx0 = int(round(2 * idx0 + 1)) - 2 * (sup_width - 1)
             hidx1 = int(round(2 * idx1 + 1)) + 2 * (sup_width - 1)
             for sub_idx in range(hidx0, hidx1 + 1):
-                if sub_idx in fill_table:
-                    fill_table[sub_idx].subtract(sub_intv)
-                    # TODO: more robust error/warning messages?
-                    if sub_idx not in sup_type:
-                        sup_type[sub_idx] = fill_type
+                fill_track_set.subtract(sub_idx, sub_intv)
+                # TODO: more robust error/warning messages?
+                if sub_idx not in sup_type:
+                    sup_type[sub_idx] = fill_type
 
     # count remaining fill tracks
-    tot_cnt = 0
+    fill_hidx_list = sorted(fill_track_set.keys())
+    tot_cnt = len(fill_hidx_list)
     vdd_cnt = 0
     vss_cnt = 0
-    for hidx, intv_set in fill_table.items():
-        if intv_set:
-            # TODO: add minimum length deletion.
-            tot_cnt += 1
-            cur_type = sup_type.get(hidx, '')
-            if cur_type == 'VDD':
-                vdd_cnt += 1
-            elif cur_type == 'VSS':
-                vss_cnt += 1
+    for hidx in fill_hidx_list:
+        # TODO: add minimum length deletion.
+        cur_type = sup_type.get(hidx, None)
+        if cur_type == 'VDD':
+            vdd_cnt += 1
+        elif cur_type == 'VSS':
+            vss_cnt += 1
 
     # assign tracks to VDD/VSS
     num_vdd = tot_cnt // 2
@@ -189,20 +245,16 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
     remaining_tot = tot_cnt - vdd_cnt - vss_cnt
     remaining_vss = max(num_vss - vss_cnt, 0)
     remaining_vdd = remaining_tot - remaining_vss
-    print(tot_cnt, remaining_tot, remaining_vdd, remaining_vss)
     # uniformly distribute vdd tracks among remaining tracks
     k = 0
     next_vdd = ((2 * k + 1) * remaining_tot + remaining_vdd) // (2 * remaining_vdd)
     cur_idx = 0
-    # add vdd and vss fills to WireArray lists
     res = grid.resolution
-    cur_vdd_warr_list = []
-    cur_vss_warr_list = []
+    vdd_warr_list = []
+    vss_warr_list = []
     for hidx in fill_hidx_list:
-        tr_idx = (hidx - 1) / 2
-        if hidx in sup_type:
-            cur_type = sup_type[hidx]
-        else:
+        # get supply type
+        if hidx not in sup_type:
             if cur_idx == next_vdd:
                 cur_type = 'VDD'
                 k += 1
@@ -210,14 +262,12 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
             else:
                 cur_type = 'VSS'
             cur_idx += 1
-
-        if cur_type == 'VDD':
-            cur_warr_list = cur_vdd_warr_list
         else:
-            cur_warr_list = cur_vss_warr_list
-        intv_set = fill_table[hidx]
-        cur_warr_list.extend((WireArray(TrackID(layer_id, tr_idx, width=sup_width),
-                                        intv[0] * res, intv[1] * res)
-                              for intv in intv_set.intervals()))
+            cur_type = sup_type[hidx]
 
-    return cur_vdd_warr_list, cur_vss_warr_list
+        w_list = vdd_warr_list if cur_type == 'VDD' else vss_warr_list
+        tid = TrackID(layer_id, (hidx - 1) / 2, width=sup_width)
+        w_list.extend(WireArray(tid, intv[0] * res, intv[1] * res)
+                      for intv in fill_track_set[hidx].intervals())
+
+    return vdd_warr_list, vss_warr_list
