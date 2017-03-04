@@ -230,6 +230,37 @@ class RoutingGrid(object):
         else:
             return blk_w // tr_pitch
 
+    def get_min_length(self, layer_id, width_ntr, unit_mode=False):
+        # type: (int, int, bool) -> Union[float, int]
+        """Returns the minimum length for the given track.
+
+        Parameters
+        ----------
+        layer_id : int
+            the track layer ID
+        width_ntr : int
+            the track width in number of tracks.
+        unit_mode : bool
+            True to return the minimum length in resolution units.
+
+        Returns
+        -------
+        min_length : Union[float, int]
+            the minimum length.
+        """
+        layer_name = self.tech_info.get_layer_name(layer_id)
+        if isinstance(layer_name, tuple):
+            layer_name = layer_name[0]
+        layer_type = self.tech_info.get_layer_type(layer_name)
+
+        width = self.get_track_width(layer_id, width_ntr)
+        min_length = self.tech_info.get_min_length(layer_type, width)
+
+        if unit_mode:
+            return int(round(min_length / self._resolution))
+        else:
+            return min_length
+
     def get_num_space_tracks(self, layer_id, width_ntr, half_space=False):
         """Returns the number of tracks needed to reserve for space around a track of the given width.
 
