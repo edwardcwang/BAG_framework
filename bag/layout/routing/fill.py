@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Union, List, Tuple, Generator, Any
+from typing import Union, List, Tuple, Generator, Any, Dict
 
 from bag.util.interval import IntervalSet
 from .base import WireArray, TrackID
@@ -38,10 +38,17 @@ from .grid import RoutingGrid
 
 
 class TrackSet(object):
-    """A data structure that stored tracks on the same layer."""
-    def __init__(self):
+    """A data structure that stored tracks on the same layer.
+
+    Parameters
+    ----------
+    min_length : int
+        Make sure all stored track has at least min_length.
+    """
+    def __init__(self, min_length=0):
         # type: (float) -> None
-        self._tracks = {}
+        self._tracks = {}  # type: Dict[int, IntervalSet]
+        self._min_len = min_length
 
     def __contains__(self, item):
         # type: (int) -> bool
@@ -70,7 +77,11 @@ class TrackSet(object):
         """Subtract the given intervals from this TrackSet."""
         if hidx in self._tracks:
             intv_set = self._tracks[hidx]
-            intv_set.subtract(intv)
+            new_intvs = intv_set.subtract(intv)
+            # delete intervals smaller than minimum length.
+            for intv in new_intvs:
+                if intv[1] - intv[0] < self._min_len:
+                    intv_set.remove(intv)
             if not intv_set:
                 del self._tracks[hidx]
 
@@ -89,14 +100,15 @@ class TrackSet(object):
         value : Any
             value associated with this track.
         """
-        if hidx not in self._tracks:
-            intv_set = IntervalSet()
-            self._tracks[hidx] = intv_set
-        else:
-            intv_set = self._tracks[hidx]
+        if intv[1] - intv[0] >= self._min_len:
+            if hidx not in self._tracks:
+                intv_set = IntervalSet()
+                self._tracks[hidx] = intv_set
+            else:
+                intv_set = self._tracks[hidx]
 
-        # TODO: add more robust checking?
-        intv_set.add(intv, val=[width, value], merge=True)
+            # TODO: add more robust checking?
+            intv_set.add(intv, val=[width, value], merge=True)
 
 
 class UsedTracks(object):
@@ -204,7 +216,8 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
     fill_hidx_list = list(range(first_hidx, last_hidx + 1, 2 * (sup_width + num_space)))
 
     # add all fill tracks
-    fill_track_set = TrackSet()
+    min_length = grid.get_min_length(layer_id, sup_width, unit_mode=True)
+    fill_track_set = TrackSet(min_length=min_length)
     fill_intv = (lower, upper)
     for hidx in fill_hidx_list:
         fill_track_set.add_track(hidx, fill_intv, sup_width, value=False)
@@ -232,7 +245,6 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
     vdd_cnt = 0
     vss_cnt = 0
     for hidx in fill_hidx_list:
-        # TODO: add minimum length deletion.
         cur_type = sup_type.get(hidx, None)
         if cur_type == 'VDD':
             vdd_cnt += 1

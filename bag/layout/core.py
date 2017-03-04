@@ -148,6 +148,25 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         return 0.0
 
     @abc.abstractmethod
+    def get_min_length(self, layer_type, width):
+        # type: (str, float) -> float
+        """Returns the minimum length of a wire on the given layer with the given width.
+
+        Parameters
+        ----------
+        layer_type : str
+            the wiring layer type.
+        width : float
+            the width of the wire, in layout units.
+
+        Returns
+        -------
+        min_length : float
+            the minimum length.
+        """
+        return 0.0
+
+    @abc.abstractmethod
     def get_layer_id(self, layer_name):
         """Return the layer id for the given layer name.
 
