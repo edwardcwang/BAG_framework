@@ -1012,7 +1012,7 @@ class RoutingGrid(object):
         return result
 
     def add_new_layer(self, layer_id, tr_space, tr_width, direction,
-                      max_num_tr=100, share_track=False, override=False):
+                      max_num_tr=100, override=False):
         """Add a new layer to this RoutingGrid.
 
         This method is used to add customized routing grid per template on lower level layers.
@@ -1034,8 +1034,6 @@ class RoutingGrid(object):
             track direction.  'x' for horizontal, 'y' for vertical.
         max_num_tr : int
             maximum track width in number of tracks.
-        share_track : bool
-            True to share track with adjacent blocks.  Defaults to False.
         override : bool
             True to override existing layers if they already exist.
         """
@@ -1051,5 +1049,5 @@ class RoutingGrid(object):
         self.w_tracks[layer_id] = w_unit
         self.dir_tracks[layer_id] = direction
         self.max_num_tr_tracks[layer_id] = max_num_tr
-        offset = 0 if share_track else (sp_unit + w_unit) // 2
+        offset = (sp_unit + w_unit) // 2
         self.offset_tracks[layer_id] = offset
