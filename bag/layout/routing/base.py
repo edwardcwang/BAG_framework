@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Tuple, Union
+from typing import Tuple, Union, Generator
 
 from ..util import BBox, BBoxArray
 from .grid import RoutingGrid
@@ -43,22 +43,23 @@ class TrackID(object):
     ----------
     layer_id : int
         the layer ID.
-    track_idx : float
+    track_idx : Union[float, int]
         the smallest middle track index in the array.  Multiples of 0.5
     width : int
         width of one track in number of tracks.
     num : int
         number of tracks in this array.
-    pitch : float
+    pitch : Union[float, int]
         pitch between adjacent tracks, in number of track pitches.
     """
 
     def __init__(self, layer_id, track_idx, width=1, num=1, pitch=0.0):
+        # type: (int, Union[float, int], int, int, Union[float, int]) -> None
         self._layer_id = layer_id
-        self._idx = track_idx
+        self._hidx = int(round(2 * track_idx)) + 1
         self._w = width
         self._n = num
-        self._pitch = pitch
+        self._hpitch = int(pitch * 2)
 
     @property
     def layer_id(self):
@@ -67,19 +68,27 @@ class TrackID(object):
 
     @property
     def width(self):
+        # type: () -> int
         return self._w
 
     @property
     def base_index(self):
-        return self._idx
+        # type: () -> Union[float, int]
+        if self._hidx % 2 == 1:
+            return (self._hidx - 1) // 2
+        return (self._hidx - 1) / 2
 
     @property
     def num(self):
+        # type: () -> int
         return self._n
 
     @property
     def pitch(self):
-        return self._pitch
+        # type: () -> Union[float, int]
+        if self._hpitch % 2 == 0:
+            return self._hpitch // 2
+        return self._hpitch / 2
 
     def get_bounds(self, grid, unit_mode=False):
         # type: (RoutingGrid, bool) -> Tuple[Union[float, int], Union[float, int]]
@@ -101,7 +110,7 @@ class TrackID(object):
         """
         lower, upper = grid.get_wire_bounds(self.layer_id, self.base_index,
                                             width=self.width, unit_mode=True)
-        upper += (self.num - 1) * self.pitch * grid.get_track_pitch(self.layer_id, unit_mode=True)
+        upper += (self.num - 1) * self.pitch * grid.get_track_pitch(self._layer_id, unit_mode=True)
         if unit_mode:
             return lower, int(upper)
         else:
@@ -109,39 +118,59 @@ class TrackID(object):
             return lower * res, upper * res
 
     def __iter__(self):
+        # type: () -> Generator[Union[float, int]]
         """Iterate over all middle track indices in this TrackID."""
         for idx in range(self._n):
-            yield self._idx + idx * self._pitch
+            num = self._hidx + idx * self._hpitch
+            if num % 2 == 1:
+                yield (num - 1) // 2
+            else:
+                yield (num - 1) / 2
 
     def sub_tracks_iter(self, grid):
+        # type: (RoutingGrid) -> Generator[TrackID]
         """Iterate through sub-TrackIDs where every track in sub-TrackID has the same layer name.
 
         This method is used to deal with double patterning layer.  If this TrackID is not
         on a double patterning layer, it simply yields itself.
+
+        Parameters
+        ----------
+        grid : RoutingGrid
+            the RoutingGrid object.
 
         Yields
         ------
         sub_id : TrackID
             a TrackID where all tracks has the same layer name.
         """
-        layer_id = self.layer_id
-        pitch = self.pitch
+        layer_id = self._layer_id
         layer_names = grid.tech_info.get_layer_name(layer_id)
-        nlayer = len(layer_names)
-        if isinstance(layer_names, tuple) and pitch % nlayer != 0:
-            # double patterning layer
-            num = self.num
-            base_idx = self.base_index
-            nlayer = len(layer_names)
-            q, r = divmod(num, nlayer)
-            tr_pitch = pitch * nlayer
-            for idx in range(min(nlayer, num)):
-                cur_idx = base_idx + idx * pitch
-                cur_num = q + 1 if idx < r else q
-                yield TrackID(layer_id, cur_idx, self.width, num=cur_num, pitch=tr_pitch)
-            pass
+        if isinstance(layer_names, tuple):
+            den = 2 * len(layer_names)
+            if self._hpitch % den == 0:
+                # layer name will never change
+                yield self
+            else:
+                # TODO: have more robust solution than just yielding tracks one by one?
+                for tr_idx in self:
+                    yield TrackID(layer_id, tr_idx, width=self.width)
         else:
             yield self
+
+    def transform(self, grid, loc=(0, 0), orient="R0", unit_mode=False):
+        # type: (RoutingGrid, Tuple[Union[float, int], Union[float, int]], str, bool) -> TrackID
+        """Transform this TrackID."""
+        layer_id = self._layer_id
+        is_x = grid.get_direction(layer_id) == 'x'
+        if orient == 'R180' or (is_x and orient == 'MX') or (not is_x and orient == 'MY'):
+            base_hidx = -self._hidx - self._n * self._hpitch
+        else:
+            base_hidx = self._hidx
+
+        delta = loc[1] if is_x else loc[0]
+        delta = grid.coord_to_track(layer_id, delta, unit_mode=unit_mode) + 0.5
+        return TrackID(layer_id, (base_hidx - 1) / 2 + delta, width=self._w, num=self._n, pitch=self.pitch)
 
 
 class WireArray(object):
@@ -258,35 +287,21 @@ class WireArray(object):
         """
         tid = self.track_id
         layer_id = tid.layer_id
-        num = tid.num
-        pitch = tid.pitch
-        base_idx = tid.base_index
         tr_width = tid.width
-        direction = grid.get_direction(layer_id)
-        wire_pitch = pitch * grid.get_track_pitch(layer_id)
-
-        layer_names = grid.tech_info.get_layer_name(layer_id)
-        nlayer = len(layer_names)
-        if isinstance(layer_names, tuple) and pitch % nlayer != 0:
-            # double patterning layer and layer name will change
-            q, r = divmod(num, nlayer)
-            wire_pitch *= nlayer
-            for idx in range(min(nlayer, num)):
-                cur_idx = base_idx + idx * pitch
-                cur_layer = grid.get_layer_name(layer_id, cur_idx)
-                bbox = grid.get_bbox(layer_id, cur_idx, self._lower, self._upper, width=tr_width)
-                cur_num = q + 1 if idx < r else q
-                if direction == 'x':
-                    yield cur_layer, BBoxArray(bbox, ny=cur_num, spy=wire_pitch)
-                else:
-                    yield cur_layer, BBoxArray(bbox, nx=cur_num, spx=wire_pitch)
-        else:
+        track_pitch = grid.get_track_pitch(layer_id)
+        res = grid.resolution
+        is_x = grid.get_direction(layer_id) == 'x'
+        for track_idx in tid.sub_tracks_iter(grid):
+            base_idx = track_idx.base_index
             cur_layer = grid.get_layer_name(layer_id, base_idx)
-            bbox = grid.get_bbox(layer_id, base_idx, self._lower, self._upper, width=tr_width)
-            if direction == 'x':
-                yield cur_layer, BBoxArray(bbox, ny=num, spy=wire_pitch)
+            cur_num = track_idx.num
+            wire_pitch = track_idx.pitch * track_pitch
+            tl, tu = grid.get_wire_bounds(layer_id, base_idx, width=tr_width)
+            if is_x:
+                box_arr = BBoxArray(BBox(self._lower, tl, self._upper, tu, res), ny=cur_num, spy=wire_pitch)
             else:
-                yield cur_layer, BBoxArray(bbox, nx=num, spx=wire_pitch)
+                box_arr = BBoxArray(BBox(tl, self._lower, tu, self._upper, res), nx=cur_num, spx=wire_pitch)
+            yield cur_layer, box_arr
 
     def transform(self, grid, loc=(0, 0), orient='R0'):
         """Return a new transformed WireArray.
@@ -300,24 +315,15 @@ class WireArray(object):
         orient : string
             the new orientation.
         """
-        track_id = self.track_id
-        tr_w = track_id.width
-        layer_id = track_id.layer_id
-        num = track_id.num
-        pitch = track_id.pitch
-
-        box_arr = self.get_bbox_array(grid)
-        new_box_arr = box_arr.transform(loc=loc, orient=orient)
-        new_box_base = new_box_arr.base
-        if grid.get_direction(layer_id) == 'x':
-            new_tr_idx = grid.coord_to_track(layer_id, new_box_base.yc)
-            lower, upper = new_box_base.left, new_box_base.right
+        layer_id = self.layer_id
+        is_x = grid.get_direction(layer_id) == 'x'
+        if orient == 'R180' or (is_x and orient == 'MY') or (not is_x and orient == 'MX'):
+            lower, upper = -self._upper, -self._lower
         else:
-            new_tr_idx = grid.coord_to_track(layer_id, new_box_base.xc)
-            lower, upper = new_box_base.bottom, new_box_base.top
+            lower, upper = self._lower, self._upper
 
-        new_tr_id = TrackID(layer_id, new_tr_idx, tr_w, num=num, pitch=pitch)
-        return WireArray(new_tr_id, lower, upper)
+        delta = loc[0] if is_x else loc[1]
+        return WireArray(self.track_id.transform(grid, loc=loc, orient=orient), lower + delta, upper + delta)
 
 
 class Port(object):

@@ -501,3 +501,35 @@ class IntervalSet(object):
         eidx = self._get_last_overlap_idx(intv) + 1
         for idx in range(sidx, eidx):
             yield self._start_list[idx], self._end_list[idx]
+
+    def transform(self, scale=1, shift=0):
+        # type: (int, int) -> IntervalSet
+        """Return a new IntervalSet under the given transformation.
+
+        Parameters
+        ----------
+        scale : int
+            multiple all interval values by this scale.  Either 1 or -1.
+        shift : int
+            add this amount to all intervals.
+
+        Returns
+        -------
+        intv_set : IntervalSet
+            the transformed IntervalSet.
+        """
+        if scale < 0:
+            new_start = [-v + shift for v in reversed(self._start_list)]
+            new_end = [-v + shift for v in reversed(self._end_list)]
+            new_val = list(reversed(self._val_list))
+        else:
+            new_start = [v + shift for v in self._start_list]
+            new_end = [v + shift for v in self._end_list]
+            new_val = list(self._val_list)
+
+        result = self.__class__.__new__(self.__class__)
+        result._start_list = new_start
+        result._end_list = new_end
+        result._val_list = new_val
+
+        return result
