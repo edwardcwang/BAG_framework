@@ -164,7 +164,7 @@ class TrackID(object):
         layer_id = self._layer_id
         is_x = grid.get_direction(layer_id) == 'x'
         if orient == 'R180' or (is_x and orient == 'MX') or (not is_x and orient == 'MY'):
-            base_hidx = -self._hidx - self._n * self._hpitch
+            base_hidx = -self._hidx - (self._n - 1) * self._hpitch
         else:
             base_hidx = self._hidx
 
