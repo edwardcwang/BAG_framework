@@ -280,8 +280,8 @@ class AnalogBaseInfo(object):
         dum_space = self.sd_pitch - dum_width
 
         self.grid = grid.copy()
-        self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y', share_track=True)
-        self.grid.add_new_layer(self.dum_port_layer, dum_space, dum_width, 'y', share_track=True)
+        self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y')
+        self.grid.add_new_layer(self.dum_port_layer, dum_space, dum_width, 'y')
         self.grid.update_block_pitch()
         self._mos_cls = mos_cls
 
@@ -1356,8 +1356,8 @@ class SubstrateContact(TemplateBase):
         hm_pitch_unit = self.grid.get_track_pitch(hm_layer, unit_mode=True)
 
         self.grid = self.grid.copy()
-        self.grid.add_new_layer(mconn_layer, vm_space, vm_width, 'y', share_track=True)
-        self.grid.add_new_layer(dum_layer, dum_space, dum_width, 'y', share_track=True)
+        self.grid.add_new_layer(mconn_layer, vm_space, vm_width, 'y')
+        self.grid.add_new_layer(dum_layer, dum_space, dum_width, 'y')
         self.grid.update_block_pitch()
 
         if top_layer < hm_layer:
