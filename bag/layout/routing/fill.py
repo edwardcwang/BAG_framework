@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Union, List, Tuple, Generator, Any, Dict
+from typing import Optional, Union, List, Tuple, Generator, Any, Dict
 
 from bag.util.interval import IntervalSet
 from .base import WireArray, TrackID
@@ -44,10 +44,16 @@ class TrackSet(object):
     ----------
     min_length : int
         Make sure all stored track has at least min_length.
+    init_tracks : Optional[Dict[int, IntervalSet]]
+        Dictionary of initial tracks.
     """
-    def __init__(self, min_length=0):
-        # type: (float) -> None
-        self._tracks = {}  # type: Dict[int, IntervalSet]
+    def __init__(self, min_length=0, init_tracks=None):
+        # type: (float, Optional[Dict[int, IntervalSet]]) -> None
+        if init_tracks is None:
+            init_tracks = {}  # type: Dict[int, IntervalSet]
+        else:
+            pass
+        self._tracks = init_tracks
         self._min_len = min_length
 
     def __contains__(self, item):
@@ -110,6 +116,70 @@ class TrackSet(object):
             # TODO: add more robust checking?
             intv_set.add(intv, val=[width, value], merge=True)
 
+    def transform(self, grid, layer_id, dx, dy, orient='R0'):
+        # type: (RoutingGrid, int, int, int, str) -> TrackSet
+        """Return a new transformed TrackSet.
+
+        Parameters
+        ----------
+        grid : RoutingGrid
+            the RoutingGrid object.
+        layer_id : int
+            the layer ID of this TrackSet.
+        dx : int
+            the X shift in resolution units.
+        dy : int
+            the Y shift in resolution units.
+        orient : str
+            the new orientation.
+
+        Returns
+        -------
+        result : TrackSet
+            the new TrackSet.
+        """
+        is_x = grid.get_direction(layer_id) == 'x'
+        if is_x:
+            hidx_shift = int(2 * grid.coord_to_track(layer_id, dy, unit_mode=True)) + 1
+            intv_shift = dx
+        else:
+            hidx_shift = int(2 * grid.coord_to_track(layer_id, dx, unit_mode=True)) + 1
+            intv_shift = dy
+
+        hidx_scale = intv_scale = 1
+        if orient == 'R180':
+            hidx_scale = -1
+            intv_scale = -1
+        elif orient == 'MX':
+            if is_x:
+                hidx_scale = -1
+            else:
+                intv_scale = -1
+        elif orient == 'MY':
+            if is_x:
+                intv_scale = -1
+            else:
+                hidx_scale = -1
+
+        new_tracks = {}
+        for hidx, intv_set in self._tracks.items():
+            new_tracks[hidx * hidx_scale + hidx_shift] = intv_set.transform(intv_scale, intv_shift)
+
+        return TrackSet(min_length=self._min_len, init_tracks=new_tracks)
+
+    def merge(self, track_set):
+        # type: (TrackSet) -> None
+        """Merge the given TrackSet to this one."""
+        for hidx, new_intv_set in track_set._tracks.items():
+            if hidx not in self._tracks:
+                intv_set = IntervalSet()
+                self._tracks[hidx] = intv_set
+            else:
+                intv_set = self._tracks[hidx]
+
+            for intv, val in new_intv_set.items():
+                intv_set.add(intv, val, merge=True)
+
 
 class UsedTracks(object):
     """A data structure that stores used tracks on the routing grid.
@@ -118,11 +188,17 @@ class UsedTracks(object):
     ----------
     resolution : float
         the layout resolution.
+    init_track_sets : Optional[Dict[int, TrackSet]]
+        Dictionary of initial TrackSets.
     """
 
-    def __init__(self, resolution):
-        # type: (float) -> None
-        self._track_sets = {}
+    def __init__(self, resolution, init_track_sets=None):
+        # type: (float, Dict[int, Optional[Dict[int, TrackSet]]]) -> None
+        if init_track_sets is None:
+            init_track_sets = {}  # type: Dict[int, TrackSet]
+        else:
+            pass
+        self._track_sets = init_track_sets
         self._res = resolution
 
     def get_tracks_info(self, layer_id):
@@ -183,6 +259,45 @@ class UsedTracks(object):
                 hidx = base_hidx + idx * step
                 track_set.add_track(hidx, intv, width, value=(fill_margin, fill_type))
 
+    def transform(self, grid, loc=(0, 0), orient='R0', unit_mode=False):
+        # type: (RoutingGrid, Tuple[Union[float, int], Union[float, int]], str, bool) -> UsedTracks
+        """Return a new transformed UsedTracks.
+
+        Parameters
+        ----------
+        grid : :RoutingGrid
+            the RoutingGrid object.
+        loc : Tuple[Union[float, int], Union[float, int]]
+            the X/Y coordinate shift.
+        orient : str
+            the new orientation.
+        unit_mode : bool
+            True if loc is given in resolution units.
+        """
+        if not unit_mode:
+            res = grid.resolution
+            dx, dy = int(round(loc[0] / res)), int(round(loc[1] / res))
+        else:
+            dx, dy = loc
+
+        new_track_sets = {}
+        for layer_id, track_set in self._track_sets.items():
+            new_track_sets[layer_id] = track_set.transform(grid, layer_id, dx, dy, orient=orient)
+
+        return UsedTracks(self._res, init_track_sets=new_track_sets)
+
+    def merge(self, used_tracks):
+        # type: (UsedTracks) -> None
+        """Merge the given used tracks to this one."""
+        for layer_id, new_track_set in used_tracks._track_sets.items():
+            if layer_id not in self._track_sets:
+                track_set = TrackSet()
+                self._track_sets[layer_id] = track_set
+            else:
+                track_set = self._track_sets[layer_id]
+
+            track_set.merge(new_track_set)
+
 
 def get_power_fill_tracks(grid,  # type: RoutingGrid
                           size,  # type: Tuple[int, int, int]
@@ -236,7 +351,7 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
             for sub_idx in range(hidx0, hidx1 + 1):
                 fill_track_set.subtract(sub_idx, sub_intv)
                 # TODO: more robust error/warning messages?
-                if sub_idx not in sup_type:
+                if sub_idx not in sup_type and (fill_type == 'VDD' or fill_type == 'VSS'):
                     sup_type[sub_idx] = fill_type
 
     # count remaining fill tracks

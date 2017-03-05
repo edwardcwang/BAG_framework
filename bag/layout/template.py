@@ -392,6 +392,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self._array_box = None  # type: BBox
         self._finalized = False
         self._used_tracks = UsedTracks(self._grid.resolution)
+        self._added_inst_tracks = False
 
         # set parameters
         self.params = {}
@@ -410,6 +411,10 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self._cell_name = self._get_unique_cell_name(used_names)
 
         self._key = self.compute_unique_key()
+
+    def get_used_tracks(self):
+        # type: () -> UsedTracks
+        return self._used_tracks
 
     def new_template_with(self, **kwargs):
         # type: (TempBase, **Any) -> TempBase
@@ -676,7 +681,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             yaml.dump(info, f)
 
     def get_flat_geometries(self):
-        # type: () -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]
+        # type: () -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]
         """Returns flattened geometries in this template."""
         return self._layout.get_flat_geometries()
 
@@ -1838,6 +1843,13 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             res = self.grid.resolution
             fill_margin = int(round(fill_margin / res))
             edge_margin = int(round(edge_margin / res))
+
+        if not self._added_inst_tracks:
+            self._added_inst_tracks = True
+            for inst in self._layout.inst_iter():
+                inst_used_tracks = inst.get_used_tracks()
+                self._used_tracks.merge(inst_used_tracks)
+
         top_vdd, top_vss = get_power_fill_tracks(self.grid, self.size, layer_id,
                                                  self._used_tracks.get_tracks_info(layer_id),
                                                  sup_width, fill_margin, edge_margin)

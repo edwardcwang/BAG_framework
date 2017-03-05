@@ -32,7 +32,7 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
-from typing import List
+from typing import List, Generator
 from itertools import chain
 
 import bag
@@ -942,6 +942,10 @@ class BagLayout(object):
     def pin_purpose(self):
         """Returns the default pin layer purpose name."""
         return self._pin_purpose
+
+    def inst_iter(self):
+        # type: () -> Generator[Instance]
+        return iter(self._inst_list)
 
     def finalize(self):
         """Prevents any further changes to this layout.

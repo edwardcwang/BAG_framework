@@ -37,7 +37,8 @@ import numpy as np
 from copy import deepcopy
 
 from .util import transform_table, BBox, BBoxArray, transform_point, transform_orient
-from .routing import Port, WireArray
+from .routing.base import Port, WireArray
+from .routing.fill import UsedTracks
 
 import bag.io
 
@@ -426,6 +427,11 @@ class Instance(Arrayable):
         """
         self._master = self._master.new_template_with(**kwargs)
 
+    def get_used_tracks(self):
+        # type: () -> UsedTracks
+        return self._master.get_used_tracks().transform(self._master.grid, self._loc_unit, self._orient,
+                                                        unit_mode=True)
+
     @property
     def master(self):
         # type: () -> 'TemplateBase'
@@ -577,8 +583,8 @@ class Instance(Arrayable):
         for obj in flat_inst_list:
             nx = obj['num_cols']
             ny = obj['num_rows']
-            spx = obj['sp_rows']
-            spy = obj['sp_cols']
+            spx = obj['sp_cols']
+            spy = obj['sp_rows']
             xc, yc = obj['loc']
             # use BBoxArray to calculate new inst arrays
             barr = BBoxArray(BBox(xc - 1, yc - 1, xc + 1, yc + 1, res), nx=nx, ny=ny,
@@ -618,8 +624,10 @@ class Instance(Arrayable):
             rect_list.extend((Rect(rect['layer'], box_arr).content for box_arr in bcol))
 
         # add transformed paths
-        path_list = [path.transform(loc=my_loc_unit, orient=my_orient, unit_mode=True, copy=True)
-                     for path in flat_path_list]
+        # TODO: figure out how to transform path dictionary
+        # path_list = [path.transform(loc=my_loc_unit, orient=my_orient, unit_mode=True, copy=True)
+        #              for path in flat_path_list]
+        path_list = []
 
         # add transformed/arrayed vias
         via_list = []
