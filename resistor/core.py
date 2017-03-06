@@ -35,6 +35,7 @@ from future.utils import with_metaclass
 
 import abc
 from typing import Dict, Set, Tuple, Union, Any, Optional
+from itertools import chain
 
 from bag.layout.util import BBox
 from bag.layout.routing import TrackID, WireArray
@@ -584,6 +585,7 @@ class ResLadder(ResArrayBase):
         return dict(
             nx=2,
             ny=2,
+            ndum=1,
             res_type='reference',
         )
 
@@ -608,6 +610,7 @@ class ResLadder(ResArrayBase):
             threshold='the substrate threshold flavor.',
             nx='number of resistors in a row.  Must be even.',
             ny='number of resistors in a column.',
+            ndum='number of dummy resistors.',
             res_type='the resistor type.',
         )
 
@@ -624,6 +627,7 @@ class ResLadder(ResArrayBase):
                             threshold,  # type: str
                             nx,  # type: int
                             ny,  # type: int
+                            ndum,  # type: int
                             res_type  # type: str
                             ):
         # type: (...) -> None
@@ -637,7 +641,7 @@ class ResLadder(ResArrayBase):
         # copy routing grid before calling draw_array so substrate contact can have its own grid
         sub_grid = self.grid.copy()
         min_tracks = (4, 7, nx, 1)
-        self.draw_array(l, w, sub_type, threshold, nx=nx, ny=ny,
+        self.draw_array(l, w, sub_type, threshold, nx=nx + 2 * ndum, ny=ny + 2 * ndum,
                         min_tracks=min_tracks, res_type=res_type)
 
         vm_layer = self.bot_layer_id + 1
@@ -658,27 +662,123 @@ class ResLadder(ResArrayBase):
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact, grid=sub_grid)
         ny_shift = sub_master.size[2]
 
-        # shift whole array to the right by 1 block to reserve room for metals on dummy resistors
-        _, unit_nxblk, _ = self.res_unit_size
-        nx_blk_shift = -(-unit_nxblk // 2)  # ceiling division
-        print(unit_nxblk, nx_blk_shift)
-        self.move_array(nx_blk=nx_blk_shift, ny_blk=ny_shift)
-        dx, _ = self.grid.get_block_size(self.bot_layer_id + 3)
-        dx *= nx_blk_shift
-        bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(dx, 0))
+        self.move_array(ny_blk=ny_shift)
+        bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(0, 0))
         top_yo = (ny_arr + 2 * ny_shift) * self.grid.get_block_pitch(xm_layer)
-        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(dx, top_yo), orient='MX')
+        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0, top_yo), orient='MX')
 
         # export supplies and recompute array_box/size
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
         self.reexport(bot_inst.get_port(port_name))
         self.reexport(top_inst.get_port(port_name))
-        self.size = ym_layer, nx_arr + 2 * nx_blk_shift, ny_arr + 2 * ny_shift
+        self.size = ym_layer, nx_arr, ny_arr + 2 * ny_shift
         self.array_box = bot_inst.array_box.merge(top_inst.array_box)
 
-        self._draw_metal_tracks(nx, ny)
+        hcon_idx_list, vcon_idx_list = self._draw_metal_tracks(nx, ny, ndum)
 
-    def _draw_metal_tracks(self, nx, ny):
+        self._connect_ladder(nx, ny, ndum, hcon_idx_list, vcon_idx_list)
+
+    def _connect_ladder(self, nx, ny, ndum, hcon_idx_list, vcon_idx_list):
+        tp_idx = self.top_port_idx
+        bp_idx = self.bot_port_idx
+        # connect main ladder
+        for row_idx in range(ndum, ny + ndum):
+            rmod = row_idx - ndum
+            for col_idx in range(ndum, nx + ndum):
+                if (col_idx == ndum and rmod % 2 == 1) or (col_idx == nx - 1 + ndum and rmod % 2 == 0):
+                    mode = 1 if row_idx == ny + ndum - 1 else 0
+                    self._connect_tb(row_idx, col_idx, ndum, tp_idx, hcon_idx_list, vcon_idx_list, mode=mode)
+                if col_idx != nx - 1 + ndum:
+                    self._connect_lr(row_idx, col_idx, ndum, tp_idx, bp_idx, hcon_idx_list, vcon_idx_list)
+
+        # connect to ground
+        self._connect_tb(ndum - 1, ndum, ndum, tp_idx, hcon_idx_list, vcon_idx_list, mode=-1)
+        # connect to supplies
+        self._connect_ground(ndum, hcon_idx_list, vcon_idx_list)
+        self._connect_power(ny, ndum, hcon_idx_list, vcon_idx_list)
+
+        # conenct horizontal dummies
+        for row_idx in range(ny + 2 * ndum):
+            if row_idx < ndum or row_idx >= ny + ndum:
+                col_iter = range(nx + 2 * ndum)
+            else:
+                col_iter = chain(range(ndum), range(nx + ndum, nx + 2 * ndum))
+            for col_idx in col_iter:
+                conn_tb = col_idx < ndum or col_idx >= nx + ndum
+                self._connect_dummy(row_idx, col_idx, conn_tb, tp_idx, bp_idx, hcon_idx_list, vcon_idx_list)
+
+    def _connect_power(self, ny, ndum, hcon_idx_list, vcon_idx_list):
+        hm_off, vm_off, _, _ = self.get_track_offsets(ny + ndum, ndum)
+        _, vm_prev, _, _ = self.get_track_offsets(ndum, ndum - 1)
+        hm_layer = self.bot_layer_id
+        hconn = hcon_idx_list[0]
+        self.add_via_on_grid(hm_layer, hm_off + hconn, vm_off + vcon_idx_list[2])
+        self.add_via_on_grid(hm_layer, hm_off + hconn, vm_prev + vcon_idx_list[-3])
+        self.add_via_on_grid(hm_layer, hm_off + hconn, vm_prev + vcon_idx_list[-2])
+
+    def _connect_ground(self, ndum, hcon_idx_list, vcon_idx_list):
+        hm_off, vm_off, _, _ = self.get_track_offsets(ndum, ndum)
+        _, vm_prev, _, _ = self.get_track_offsets(ndum, ndum - 1)
+        hm_layer = self.bot_layer_id
+        hconn = hcon_idx_list[0]
+        self.add_via_on_grid(hm_layer, hm_off + hconn, vm_off + vcon_idx_list[1])
+        self.add_via_on_grid(hm_layer, hm_off + hconn, vm_off + vcon_idx_list[2])
+        self.add_via_on_grid(hm_layer, hm_off + hconn, vm_prev + vcon_idx_list[-3])
+        self.add_via_on_grid(hm_layer, hm_off + hconn, vm_prev + vcon_idx_list[-2])
+        # connect all dummies to ground
+        self.add_via_on_grid(hm_layer, hm_off + hconn, vm_prev + vcon_idx_list[-4])
+
+    def _connect_dummy(self, row_idx, col_idx, conn_tb, tp_idx, bp_idx, hcon_idx_list, vcon_idx_list):
+        hm_off, vm_off, _, _ = self.get_track_offsets(row_idx, col_idx)
+        hm_layer = self.bot_layer_id
+        self.add_via_on_grid(hm_layer, hm_off + tp_idx, vm_off + vcon_idx_list[3])
+        self.add_via_on_grid(hm_layer, hm_off + tp_idx, vm_off + vcon_idx_list[-4])
+        self.add_via_on_grid(hm_layer, hm_off + hcon_idx_list[1], vm_off + vcon_idx_list[3])
+        self.add_via_on_grid(hm_layer, hm_off + hcon_idx_list[1], vm_off + vcon_idx_list[-4])
+        self.add_via_on_grid(hm_layer, hm_off + bp_idx, vm_off + vcon_idx_list[3])
+        self.add_via_on_grid(hm_layer, hm_off + bp_idx, vm_off + vcon_idx_list[-4])
+        if conn_tb:
+            self.add_via_on_grid(hm_layer, hm_off + tp_idx, vm_off + vcon_idx_list[1])
+            self.add_via_on_grid(hm_layer, hm_off + bp_idx, vm_off + vcon_idx_list[1])
+
+    def _connect_lr(self, row_idx, col_idx, ndum, tp_idx, bp_idx, hcon_idx_list, vcon_idx_list):
+        hm_off, vm_off, _, _ = self.get_track_offsets(row_idx, col_idx)
+        _, vm_next, _, _ = self.get_track_offsets(row_idx, col_idx + 1)
+        hm_layer = self.bot_layer_id
+        if (col_idx - ndum) % 2 == 0:
+            port = bp_idx
+            conn = hcon_idx_list[1]
+        else:
+            port = tp_idx
+            conn = hcon_idx_list[0]
+        self.add_via_on_grid(hm_layer, hm_off + port, vm_off + vcon_idx_list[-4])
+        self.add_via_on_grid(hm_layer, hm_off + conn, vm_off + vcon_idx_list[-4])
+        self.add_via_on_grid(hm_layer, hm_off + conn, vm_off + vcon_idx_list[-1])
+        self.add_via_on_grid(hm_layer, hm_off + conn, vm_next + vcon_idx_list[3])
+        self.add_via_on_grid(hm_layer, hm_off + port, vm_next + vcon_idx_list[3])
+
+    def _connect_tb(self, row_idx, col_idx, ndum, tp_idx, hcon_idx_list, vcon_idx_list, mode=0):
+        hm_off, vm_off, _, _ = self.get_track_offsets(row_idx, col_idx)
+        hm_next, _, _, _ = self.get_track_offsets(row_idx + 1, col_idx)
+        hm_layer = self.bot_layer_id
+        if col_idx == ndum:
+            conn1 = vcon_idx_list[1]
+            tap = vcon_idx_list[2]
+            conn2 = vcon_idx_list[3]
+        else:
+            conn1 = vcon_idx_list[-2]
+            tap = vcon_idx_list[-3]
+            conn2 = vcon_idx_list[-4]
+        if mode >= 0:
+            self.add_via_on_grid(hm_layer, hm_off + tp_idx, vm_off + conn1)
+            self.add_via_on_grid(hm_layer, hm_next + hcon_idx_list[0], vm_off + conn1)
+        if mode == 0:
+            self.add_via_on_grid(hm_layer, hm_next + hcon_idx_list[0], vm_off + tap)
+        if mode <= 0:
+            self.add_via_on_grid(hm_layer, hm_next + hcon_idx_list[0], vm_off + conn2)
+            self.add_via_on_grid(hm_layer, hm_next + tp_idx, vm_off + conn2)
+
+    def _draw_metal_tracks(self, nx, ny, ndum):
         num_h_tracks, num_v_tracks = self.num_tracks[0:2]
 
         tp_idx = self.top_port_idx
@@ -687,6 +787,8 @@ class ResLadder(ResArrayBase):
         if tp_idx + hm_dtr >= num_h_tracks or bp_idx - hm_dtr < 0:
             # use inner hm tracks instead.
             hm_dtr = -1
+        bcon_idx = bp_idx - hm_dtr
+        tcon_idx = tp_idx + hm_dtr
 
         # get via extensions
         grid = self.grid
@@ -697,9 +799,13 @@ class ResLadder(ResArrayBase):
         vm_tidx = [-0.5, 0.5, 1.5, 2.5, num_v_tracks - 3.5, num_v_tracks - 2.5,
                    num_v_tracks - 1.5, num_v_tracks - 0.5]
 
+        # get unit block size
+        unit_size = self.res_unit_size
+        blk_w, blk_h = self.grid.get_size_dimension(unit_size, unit_mode=True)
+
         # expand range by +/- 1 to draw metal pattern on dummies too
-        for row_idx in range(-1, ny + 1):
-            for col_idx in range(-1, nx + 1):
+        for row_idx in range(ny + 2 * ndum):
+            for col_idx in range(nx + 2 * ndum):
                 hm_off, vm_off, _, _ = self.get_track_offsets(row_idx, col_idx)
 
                 # extend port tracks on hm layer
@@ -711,10 +817,31 @@ class ResLadder(ResArrayBase):
                 # draw hm layer bridge
                 hm_lower, _ = grid.get_wire_bounds(vm_layer, vm_off + vm_tidx[0], unit_mode=True)
                 _, hm_upper = grid.get_wire_bounds(vm_layer, vm_off + vm_tidx[3], unit_mode=True)
-                pitch = tp_idx - bp_idx + 2 * hm_dtr
-                self.add_wires(hm_layer, hm_off + bp_idx - hm_dtr, hm_lower - hm_ext, hm_upper + hm_ext,
+                pitch = tcon_idx - bcon_idx
+                self.add_wires(hm_layer, hm_off + bcon_idx, hm_lower - hm_ext, hm_upper + hm_ext,
                                num=2, pitch=pitch, unit_mode=True)
                 hm_lower, _ = grid.get_wire_bounds(vm_layer, vm_off + vm_tidx[-4], unit_mode=True)
                 _, hm_upper = grid.get_wire_bounds(vm_layer, vm_off + vm_tidx[-1], unit_mode=True)
-                self.add_wires(hm_layer, hm_off + bp_idx - hm_dtr, hm_lower - hm_ext, hm_upper + hm_ext,
+                self.add_wires(hm_layer, hm_off + bcon_idx, hm_lower - hm_ext, hm_upper + hm_ext,
                                num=2, pitch=pitch, unit_mode=True)
+
+                # draw vm layer bridges
+                vm_lower, _ = grid.get_wire_bounds(hm_layer, hm_off + min(bp_idx, bcon_idx), unit_mode=True)
+                _, vm_upper = grid.get_wire_bounds(hm_layer, hm_off + max(tp_idx, tcon_idx), unit_mode=True)
+                self.add_wires(vm_layer, vm_off + vm_tidx[0], vm_lower - vm_ext, vm_upper + vm_ext,
+                               num=2, pitch=3, unit_mode=True)
+                self.add_wires(vm_layer, vm_off + vm_tidx[-4], vm_lower - vm_ext, vm_upper + vm_ext,
+                               num=2, pitch=3, unit_mode=True)
+
+                _, vm_y1 = grid.get_wire_bounds(hm_layer, hm_off + max(bp_idx, bcon_idx), unit_mode=True)
+                vm_y2, _ = grid.get_wire_bounds(hm_layer, hm_off + min(tp_idx, tcon_idx), unit_mode=True)
+                self.add_wires(vm_layer, vm_off + vm_tidx[1], vm_y2 - blk_h - vm_ext, vm_y1 + vm_ext,
+                               num=2, pitch=1, unit_mode=True)
+                self.add_wires(vm_layer, vm_off + vm_tidx[1], vm_y2 - vm_ext, vm_y1 + blk_h + vm_ext,
+                               num=2, pitch=1, unit_mode=True)
+                self.add_wires(vm_layer, vm_off + vm_tidx[-3], vm_y2 - blk_h - vm_ext, vm_y1 + vm_ext,
+                               num=2, pitch=1, unit_mode=True)
+                self.add_wires(vm_layer, vm_off + vm_tidx[-3], vm_y2 - vm_ext, vm_y1 + blk_h + vm_ext,
+                               num=2, pitch=1, unit_mode=True)
+
+        return [bcon_idx, tcon_idx], vm_tidx
