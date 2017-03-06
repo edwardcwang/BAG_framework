@@ -1212,6 +1212,37 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                                        cut_width=cut_width, cut_height=cut_height,
                                        arr_nx=nx, arr_ny=ny, arr_spx=spx, arr_spy=spy)
 
+    def add_via_on_grid(self, bot_layer_id, bot_track, top_track, bot_width=1, top_width=1):
+        # type: (int, Union[float, int], Union[float, int], int, int) -> Via
+        """Add a via on the routing grid.
+
+        Parameters
+        ----------
+        bot_layer_id : int
+            the bottom layer ID.
+        bot_track : Union[float, int]
+            the bottom track index.
+        top_track : Union[float, int]
+            the top track index.
+        bot_width : int
+            the bottom track width.
+        top_width : int
+            the top track width.
+        """
+        grid = self.grid
+        res = grid.resolution
+        bl, bu = grid.get_wire_bounds(bot_layer_id, bot_track, width=bot_width, unit_mode=True)
+        tl, tu = grid.get_wire_bounds(bot_layer_id + 1, top_track, width=top_width, unit_mode=True)
+        bot_dir = grid.get_direction(bot_layer_id)
+        if bot_dir == 'x':
+            bbox = BBox(tl, bl, tu, bu, res, unit_mode=True)
+        else:
+            bbox = BBox(bl, tl, bu, tu, res, unit_mode=True)
+        bname = grid.get_layer_name(bot_layer_id, bot_track)
+        tname = grid.get_layer_name(bot_layer_id + 1, top_track)
+
+        return self.add_via(bbox, bname, tname, bot_dir)
+
     def add_wires(self,  # type: TemplateBase
                   layer_id,  # type: int
                   track_idx,  # type: Union[float, int]
@@ -1224,7 +1255,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                   fill_type='VSS',  # type: str
                   unit_mode=False  # type: bool
                   ):
-        # type: (...) -> None
+        # type: (...) -> WireArray
         """Add the given wire(s) to this layout.
 
         Parameters
@@ -1249,6 +1280,11 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
         unit_mode: bool
             True if lower/upper/fill_margin is given in resolution units.
+
+        Returns
+        -------
+        warr : WireArray
+            the added WireArray object.
         """
         res = self.grid.resolution
         if unit_mode:
@@ -1263,6 +1299,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
         self._used_tracks.add_wire_arrays(warr, fill_margin=fill_margin, fill_type=fill_type,
                                           unit_mode=unit_mode)
+
+        return warr
 
     def reserve_tracks(self,  # type: TemplateBase
                        layer_id,  # type: int
