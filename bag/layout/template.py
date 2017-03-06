@@ -1264,6 +1264,49 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self._used_tracks.add_wire_arrays(warr, fill_margin=fill_margin, fill_type=fill_type,
                                           unit_mode=unit_mode)
 
+    def reserve_tracks(self,  # type: TemplateBase
+                       layer_id,  # type: int
+                       track_idx,  # type: Union[float, int]
+                       width=1,  # type: int
+                       num=1,  # type: int
+                       pitch=0,  # type: Union[float, int]
+                       fill_margin=0,  # type: Union[int, float]
+                       fill_type='VSS',  # type: str
+                       unit_mode=False  # type: bool
+                       ):
+        # type: (...) -> None
+        """Reserve the given routing tracks so that power fill will not fill these tracks.
+
+        Note: the size of this template should be set before calling this method.
+
+        Parameters
+        ----------
+        layer_id : int
+            the wire layer ID.
+        track_idx : Union[float, int]
+            the smallest wire track index.
+        width : int
+            the wire width in number of tracks.
+        num : int
+            number of wires.
+        pitch : Union[float, int]
+            the wire pitch.
+        fill_margin : Union[float, int]
+            minimum margin between wires and fill.
+        fill_type : str
+            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
+        unit_mode: bool
+            True if fill_margin is given in resolution units.
+        """
+
+        blkw, blkh = self.grid.get_size_dimension(self.size, unit_mode=False)
+
+        tid = TrackID(layer_id, track_idx, width=width, num=num, pitch=pitch)
+        warr = WireArray(tid, 0.0, blkh)
+
+        self._used_tracks.add_wire_arrays(warr, fill_margin=fill_margin, fill_type=fill_type,
+                                          unit_mode=unit_mode)
+
     def connect_wires(self,  # type: TemplateBase
                       wire_arr_list,  # type: Union[WireArray, List[WireArray]]
                       lower=None,  # type: Optional[Union[int, float]]
