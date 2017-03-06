@@ -1212,6 +1212,58 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                                        cut_width=cut_width, cut_height=cut_height,
                                        arr_nx=nx, arr_ny=ny, arr_spx=spx, arr_spy=spy)
 
+    def add_wires(self,  # type: TemplateBase
+                  layer_id,  # type: int
+                  track_idx,  # type: Union[float, int]
+                  lower,  # type: Union[float, int]
+                  upper,  # type: Union[float, int]
+                  width=1,  # type: int
+                  num=1,  # type: int
+                  pitch=0,  # type: Union[float, int]
+                  fill_margin=0,  # type: Union[int, float]
+                  fill_type='VSS',  # type: str
+                  unit_mode=False  # type: bool
+                  ):
+        # type: (...) -> None
+        """Add the given wire(s) to this layout.
+
+        Parameters
+        ----------
+        layer_id : int
+            the wire layer ID.
+        track_idx : Union[float, int]
+            the smallest wire track index.
+        lower : Union[float, int]
+            the wire lower coordinate.
+        upper : Union[float, int]
+            the wire upper coordinate.
+        width : int
+            the wire width in number of tracks.
+        num : int
+            number of wires.
+        pitch : Union[float, int]
+            the wire pitch.
+        fill_margin : Union[float, int]
+            minimum margin between wires and fill.
+        fill_type : str
+            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
+        unit_mode: bool
+            True if lower/upper/fill_margin is given in resolution units.
+        """
+        res = self.grid.resolution
+        if unit_mode:
+            lower *= res
+            upper *= res
+
+        tid = TrackID(layer_id, track_idx, width=width, num=num, pitch=pitch)
+        warr = WireArray(tid, lower, upper)
+
+        for layer_name, bbox_arr in warr.wire_arr_iter(self.grid):
+            self.add_rect(layer_name, bbox_arr)
+
+        self._used_tracks.add_wire_arrays(warr, fill_margin=fill_margin, fill_type=fill_type,
+                                          unit_mode=unit_mode)
+
     def connect_wires(self,  # type: TemplateBase
                       wire_arr_list,  # type: Union[WireArray, List[WireArray]]
                       lower=None,  # type: Optional[Union[int, float]]
