@@ -32,7 +32,7 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
-from typing import Dict, Any, Set
+from typing import Dict, Any, Set, Tuple, List
 
 import yaml
 
@@ -90,26 +90,32 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     @property
     def std_size(self):
+        # type: () -> Tuple[int, int]
         """Returns the number of columns/rows this standard cell occupy."""
         return self._std_size
 
     @property
     def std_routing_layers(self):
+        # type: () -> List[int]
         return self._tech_params['layers']
 
     def set_draw_boundaries(self, draw_boundaries):
+        # type: (bool) -> None
         self._draw_boundaries = draw_boundaries
 
     def get_space_blocks(self):
+        # type: () -> List[Dict[str, Any]]
         return self._spaces
 
     def get_cell_params(self, cell_name):
+        # type: (str) -> Dict[str, Any]
         for key, val in self._cells.items():
             if key == cell_name:
                 return val
         raise ValueError('Cannot find standard cell with name %s' % cell_name)
 
     def set_std_size(self, std_size):
+        # type: (Tuple[int, int]) -> None
         num_col, num_row = std_size
         self._std_size_bare = std_size
         if self._draw_boundaries:
@@ -125,6 +131,7 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self.set_size_from_array_box(self.std_routing_layers[-1])
 
     def update_routing_grid(self):
+        # type: () -> None
         layers = self._tech_params['layers']
         widths = self._tech_params['widths']
         spaces = self._tech_params['spaces']
@@ -135,6 +142,7 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self.grid.add_new_layer(lay_id, sp, w, tdir, override=True)
 
     def get_num_tracks(self, layer_id):
+        # type: (int) -> int
         """Get number of tracks in this cell."""
         ncol, nrow = self.std_size
 
