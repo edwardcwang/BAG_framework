@@ -187,7 +187,8 @@ class RoutingGrid(object):
         pitch = self.w_tracks[layer_id] + self.sp_tracks[layer_id]
         return pitch if unit_mode else pitch * self._resolution
 
-    def get_track_width(self, layer_id, width_ntr):
+    def get_track_width(self, layer_id, width_ntr, unit_mode=False):
+        # type: (int, int, bool) -> Union[float, int]
         """Calculate track width in layout units from number of tracks.
 
         Parameters
@@ -196,15 +197,20 @@ class RoutingGrid(object):
             the track layer ID
         width_ntr : int
             the track width in number of tracks.
+        unit_mode : bool
+            True to return track width in resolution units.
 
         Returns
         -------
-        width : float
+        width : Union[float, int]
             the track width in layout units.
         """
         w = self.w_tracks[layer_id]
         sp = self.sp_tracks[layer_id]
-        return (width_ntr * (w + sp) - sp) * self._resolution
+        w_unit = width_ntr * (w + sp) - sp
+        if unit_mode:
+            return w_unit
+        return w_unit * self._resolution
 
     def get_num_tracks(self, size, layer_id):
         # type: (Tuple[int, int, int], int) -> int
@@ -808,6 +814,50 @@ class RoutingGrid(object):
         else:
             end_track = (hupper_bnd - 1) / 2
         return start_track, end_track
+
+    def get_via_extensions(self, bot_layer_id, bot_width, top_width, unit_mode=False):
+        # type: (int, int, int, bool) -> Tuple[Union[float, int], Union[float, int]]
+        """Returns the via extension.
+
+        Parameters
+        ----------
+        bot_layer_id : int
+            the via bottom layer ID.
+        bot_width : int
+            the bottom track width in number of tracks.
+        top_width : int
+            the top track width in number of tracks.
+        unit_mode : bool
+            True to return extensions in resolution units.
+
+        Returns
+        -------
+        bot_ext : Union[float, int]
+            via extension on the bottom layer.
+        top_ext : Union[float, int]
+            via extension on the top layer.
+        """
+        res = self._resolution
+        bot_dim = self.get_track_width(bot_layer_id, bot_width, unit_mode=True)
+        top_dim = self.get_track_width(bot_layer_id + 1, top_width, unit_mode=True)
+        bot_lay_name = self.get_layer_name(bot_layer_id, 0)
+        top_lay_name = self.get_layer_name(bot_layer_id + 1, 0)
+        bot_dir = self.get_direction(bot_layer_id)
+        if bot_dir == 'x':
+            vbox = BBox(0, 0, top_dim, bot_dim, res, unit_mode=True)
+            vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir)
+            bot_ext = (vinfo['bot_box'].width_unit - top_dim) // 2
+            top_ext = (vinfo['top_box'].height_unit - bot_dim) // 2
+        else:
+            vbox = BBox(0, 0, bot_dim, top_dim, res, unit_mode=True)
+            vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir)
+            bot_ext = (vinfo['bot_box'].height_unit - top_dim) // 2
+            top_ext = (vinfo['top_box'].width_unit - bot_dim) // 2
+
+        if unit_mode:
+            return bot_ext, top_ext
+        else:
+            return bot_ext * res, top_ext * res
 
     def coord_to_track(self, layer_id, coord, unit_mode=False):
         # type: (int, Union[float, int], bool) -> Union[float, int]

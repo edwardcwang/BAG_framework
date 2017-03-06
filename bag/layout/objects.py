@@ -1363,11 +1363,13 @@ class Via(Arrayable):
 
     @property
     def top_box(self):
+        # type: () -> BBox
         """the top via layer bounding box."""
         return self._info['top_box']
 
     @property
     def bottom_box(self):
+        # type: () -> BBox
         """the bottom via layer bounding box."""
         return self._info['bot_box']
 
