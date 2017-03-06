@@ -103,6 +103,26 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         """Returns the track width on each routing layer, in number of tracks."""
         return self._w_tracks
 
+    @property
+    def bot_port_idx(self):
+        # type: () -> int
+        """Returns the relative track index of the bottom resistor port."""
+        return self._bot_port.get_pins()[0].track_id.base_index
+
+    @property
+    def top_port_idx(self):
+        # type: () -> int
+        """Returns the relative track index of the top resistor port."""
+        return self._top_port.get_pins()[0].track_id.base_index
+
+    @property
+    def res_unit_size(self):
+        # type: () -> Tuple[int, int, int]
+        """Returns the size of a unit resistor block."""
+        top_layer = self.bot_layer_id + 3
+        blk_w, blk_h = self.grid.get_block_size(top_layer)
+        return top_layer, int(round(self._core_pitch[0] / blk_w)), int(round(self._core_pitch[1] / blk_h))
+
     def get_res_ports(self, row_idx, col_idx):
         # type: (int, int) -> Tuple[WireArray, WireArray]
         """Returns the port of the given resistor.
@@ -127,6 +147,33 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         bot_port = self._bot_port.transform(self.grid, loc=loc)
         top_port = self._top_port.transform(self.grid, loc=loc)
         return bot_port.get_pins()[0], top_port.get_pins()[0]
+
+    def get_track_offsets(self, row_idx, col_idx):
+        # type: (int, int) -> Tuple[int, int, int, int]
+        """Compute track offsets on each routing layer for the given resistor block.
+
+        Parameters
+        ----------
+        row_idx : int
+            the row index.  0 is the bottom row.
+        col_idx : int
+            the column index.  0 is the left-most column.
+
+        Returns
+        -------
+        offsets : Tuple[int, int, int, int]
+            track index offset on each routing layer.
+        """
+        res = self.grid.resolution
+        dy_unit = int(round((self._core_offset[1] + self._core_pitch[1] * row_idx) / res))
+        dx_unit = int(round((self._core_offset[0] + self._core_pitch[0] * col_idx) / res))
+        hm_layer = self.bot_layer_id
+        hm_pitch = self.grid.get_track_pitch(hm_layer, unit_mode=True)
+        vm_pitch = self.grid.get_track_pitch(hm_layer + 1, unit_mode=True)
+        xm_pitch = self.grid.get_track_pitch(hm_layer + 2, unit_mode=True)
+        ym_pitch = self.grid.get_track_pitch(hm_layer + 3, unit_mode=True)
+
+        return dy_unit // hm_pitch, dx_unit // vm_pitch, dy_unit // xm_pitch, dx_unit // ym_pitch
 
     def get_h_track_index(self, row_idx, tr_idx):
         # type: (int, Union[float, int]) -> Union[float, int]
@@ -341,6 +388,7 @@ class Termination(ResArrayBase):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(Termination, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
@@ -407,7 +455,10 @@ class Termination(ResArrayBase):
         sub_type = self.params['sub_type']
         div_em_specs = em_specs.copy()
         for key in ('idc', 'iac_rms', 'iac_peak'):
-            div_em_specs[key] = div_em_specs[key] / ny
+            if key in div_em_specs:
+                div_em_specs[key] = div_em_specs[key] / ny
+            else:
+                div_em_specs[key] = 0.0
         self.draw_array(em_specs=div_em_specs, **self.params)
 
         vm_layer = self.bot_layer_id + 1
@@ -491,3 +542,179 @@ class Termination(ResArrayBase):
         self.add_pin('inp', yl_warr, show=True)
         self.add_pin('inn', yr_warr, show=True)
         self.add_pin('incm', yc_warr, show=True)
+
+
+class ResLadder(ResArrayBase):
+    """An template for creating a resistor ladder from VDD to VSS.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    **kwargs :
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(ResLadder, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : Dict[str, Any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            nx=2,
+            ny=2,
+            res_type='reference',
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            l='unit resistor length, in meters.',
+            w='unit resistor width, in meters.',
+            sub_lch='substrate contact channel length.',
+            sub_w='substrate contact width.',
+            sub_type='the substrate type.',
+            threshold='the substrate threshold flavor.',
+            nx='number of resistors in a row.  Must be even.',
+            ny='number of resistors in a column.',
+            res_type='the resistor type.',
+        )
+
+    def draw_layout(self):
+        # type: () -> None
+        self._draw_layout_helper(**self.params)
+
+    def _draw_layout_helper(self,  # type: ResLadder
+                            l,  # type: float
+                            w,  # type: float
+                            sub_lch,  # type: float
+                            sub_w,  # type: Union[float, int]
+                            sub_type,  # type: str
+                            threshold,  # type: str
+                            nx,  # type: int
+                            ny,  # type: int
+                            res_type  # type: str
+                            ):
+        # type: (...) -> None
+
+        # error checking
+        if nx % 2 != 0 or nx <= 0:
+            raise ValueError('number of resistors in a row must be even and positive.')
+        if ny % 2 != 0 or ny <= 0:
+            raise ValueError('number of resistors in a column must be even and positive.')
+
+        # copy routing grid before calling draw_array so substrate contact can have its own grid
+        sub_grid = self.grid.copy()
+        min_tracks = (4, 7, nx, 1)
+        self.draw_array(l, w, sub_type, threshold, nx=nx, ny=ny,
+                        min_tracks=min_tracks, res_type=res_type)
+
+        vm_layer = self.bot_layer_id + 1
+        xm_layer = vm_layer + 1
+        ym_layer = xm_layer + 1
+
+        # draw contact and move array up
+        nx_arr, ny_arr = self.size[1], self.size[2]
+        sub_params = dict(
+            lch=sub_lch,
+            w=sub_w,
+            sub_type=sub_type,
+            threshold=threshold,
+            top_layer=ym_layer,
+            blk_width=nx_arr,
+            show_pins=False,
+        )
+        sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact, grid=sub_grid)
+        ny_shift = sub_master.size[2]
+
+        # shift whole array to the right by 1 block to reserve room for metals on dummy resistors
+        _, unit_nxblk, _ = self.res_unit_size
+        nx_blk_shift = -(-unit_nxblk // 2)  # ceiling division
+        print(unit_nxblk, nx_blk_shift)
+        self.move_array(nx_blk=nx_blk_shift, ny_blk=ny_shift)
+        dx, _ = self.grid.get_block_size(self.bot_layer_id + 3)
+        dx *= nx_blk_shift
+        bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(dx, 0))
+        top_yo = (ny_arr + 2 * ny_shift) * self.grid.get_block_pitch(xm_layer)
+        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(dx, top_yo), orient='MX')
+
+        # export supplies and recompute array_box/size
+        port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
+        self.reexport(bot_inst.get_port(port_name))
+        self.reexport(top_inst.get_port(port_name))
+        self.size = ym_layer, nx_arr + 2 * nx_blk_shift, ny_arr + 2 * ny_shift
+        self.array_box = bot_inst.array_box.merge(top_inst.array_box)
+
+        self._draw_metal_tracks(nx, ny)
+
+    def _draw_metal_tracks(self, nx, ny):
+        num_h_tracks, num_v_tracks = self.num_tracks[0:2]
+
+        tp_idx = self.top_port_idx
+        bp_idx = self.bot_port_idx
+        hm_dtr = 1
+        if tp_idx + hm_dtr >= num_h_tracks or bp_idx - hm_dtr < 0:
+            # use inner hm tracks instead.
+            hm_dtr = -1
+
+        # get via extensions
+        grid = self.grid
+        hm_layer = self.bot_layer_id
+        vm_layer = hm_layer + 1
+        hm_ext, vm_ext = grid.get_via_extensions(hm_layer, 1, 1, unit_mode=True)
+
+        vm_tidx = [-0.5, 0.5, 1.5, 2.5, num_v_tracks - 3.5, num_v_tracks - 2.5,
+                   num_v_tracks - 1.5, num_v_tracks - 0.5]
+
+        # expand range by +/- 1 to draw metal pattern on dummies too
+        for row_idx in range(-1, ny + 1):
+            for col_idx in range(-1, nx + 1):
+                hm_off, vm_off, _, _ = self.get_track_offsets(row_idx, col_idx)
+
+                # extend port tracks on hm layer
+                hm_lower, _ = grid.get_wire_bounds(vm_layer, vm_off + vm_tidx[1], unit_mode=True)
+                _, hm_upper = grid.get_wire_bounds(vm_layer, vm_off + vm_tidx[-2], unit_mode=True)
+                self.add_wires(hm_layer, hm_off + bp_idx, hm_lower - hm_ext, hm_upper + hm_ext,
+                               num=2, pitch=tp_idx - bp_idx, unit_mode=True)
+
+                # draw hm layer bridge
+                hm_lower, _ = grid.get_wire_bounds(vm_layer, vm_off + vm_tidx[0], unit_mode=True)
+                _, hm_upper = grid.get_wire_bounds(vm_layer, vm_off + vm_tidx[3], unit_mode=True)
+                pitch = tp_idx - bp_idx + 2 * hm_dtr
+                self.add_wires(hm_layer, hm_off + bp_idx - hm_dtr, hm_lower - hm_ext, hm_upper + hm_ext,
+                               num=2, pitch=pitch, unit_mode=True)
+                hm_lower, _ = grid.get_wire_bounds(vm_layer, vm_off + vm_tidx[-4], unit_mode=True)
+                _, hm_upper = grid.get_wire_bounds(vm_layer, vm_off + vm_tidx[-1], unit_mode=True)
+                self.add_wires(hm_layer, hm_off + bp_idx - hm_dtr, hm_lower - hm_ext, hm_upper + hm_ext,
+                               num=2, pitch=pitch, unit_mode=True)
