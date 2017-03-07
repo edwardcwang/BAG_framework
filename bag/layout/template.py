@@ -517,8 +517,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """A unique key representing this template."""
         return self._key
 
-    def set_size_from_array_box(self, top_layer_id):
-        # type: (int) -> None
+    def set_size_from_array_box(self, top_layer_id, grid=None):
+        # type: (int, Optional[RoutingGrid]) -> None
         """Automatically compute the size from array_box.
 
         Assumes the array box is exactly in the center of the template.
@@ -527,11 +527,15 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         ----------
         top_layer_id : int
             the top level routing layer ID that array box is calculated with.
+        grid : Optional[RoutingGrid]
+            the RoutingGrid object to use to get the block pitch.
+            If a template adds new layers that have larger pitch than parent layers,
+            the block pitch may change.
         """
-        h_pitch = self.grid.get_block_pitch(top_layer_id, unit_mode=True)
-        w_pitch = self.grid.get_block_pitch(top_layer_id - 1, unit_mode=True)
-        if self.grid.get_direction(top_layer_id) == 'y':
-            h_pitch, w_pitch = w_pitch, h_pitch
+        if grid is None:
+            grid = self.grid
+
+        w_pitch, h_pitch = grid.get_block_size(top_layer_id, unit_mode=True)
 
         dx = self.array_box.left_unit
         dy = self.array_box.bottom_unit
