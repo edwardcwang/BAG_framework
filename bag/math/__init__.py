@@ -29,6 +29,8 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
+from typing import Iterable
+
 import numpy as np
 from . import interpolate
 
@@ -85,3 +87,46 @@ def si_string_to_float(si_str):
         return float(si_str[:-1]) * 10**si_mag[idx]
     else:
         return float(si_str)
+
+
+def gcd(a, b):
+    # type: (int, int) -> int
+    """Compute greatest common divisor of two positive integers.
+
+    Parameters
+    ----------
+    a : int
+        the first number.
+    b : int
+        the second number.
+
+    Returns
+    -------
+    ans : int
+        the greatest common divisor of the two given integers.
+    """
+    while b:
+        a, b = b, a % b
+    return a
+
+
+def lcm(arr, init=1):
+    # type: (Iterable[int], int) -> int
+    """Compute least common multiple of all numbers in the given list.
+
+    Parameters
+    ----------
+    arr : Iterable[int]
+        a list of integers.
+    init : int
+        the initial LCM.  Defaults to 1.
+
+    Returns
+    -------
+    ans : int
+        the least common multiple of all the given numbers.
+    """
+    cur_lcm = init
+    for val in arr:
+        cur_lcm = cur_lcm * val // gcd(cur_lcm, val)
+    return cur_lcm

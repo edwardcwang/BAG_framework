@@ -35,29 +35,7 @@ import numpy as np
 
 from ..util import BBox
 from bag.util.search import BinaryIterator
-
-
-def _gcd(a, b):
-    """Compute greater common divisor of two positive integers."""
-    while b:
-        a, b = b, a % b
-    return a
-
-
-def _lcm(arr, init=1):
-    """Compute least common multiple of all numbers in the given list.
-
-    Parameters
-    ----------
-    arr : Iterable[int]
-        a list of integers.
-    init : int
-        the initial LCM.  Defaults to 1.
-    """
-    cur_lcm = init
-    for val in arr:
-        cur_lcm = cur_lcm * val // _gcd(cur_lcm, val)
-    return cur_lcm
+from bag.math import lcm
 
 
 class RoutingGrid(object):
@@ -134,9 +112,12 @@ class RoutingGrid(object):
                 # the pitch of each layer = LCM of all layers below with same direction
                 bot_pitch_iter = (p for idx, p in enumerate(pitch_list) if
                                   self.dir_tracks[self.layers[idx]] == cur_dir)
-                cur_blk_pitch = _lcm(bot_pitch_iter, init=cur_blk_pitch)
+                cur_blk_pitch = lcm(bot_pitch_iter, init=cur_blk_pitch)
             pitch_list.append(cur_blk_pitch)
-            self.block_pitch[lay] = cur_blk_pitch
+            if lay not in self.block_pitch:
+                self.block_pitch[lay] = cur_blk_pitch
+            else:
+                self.block_pitch[lay] = lcm((self.block_pitch[lay], cur_blk_pitch))
             # print('block pitch %d = %d' % (lay, cur_blk_pitch))
 
     @property
@@ -456,35 +437,59 @@ class RoutingGrid(object):
         height : Union[float, int]
             the height in layout units.
         """
-        top_layer_id = size[0]
-        h_pitch = self.get_block_pitch(top_layer_id, unit_mode=True)
-        w_pitch = self.get_block_pitch(top_layer_id - 1, unit_mode=True)
-        if self.get_direction(top_layer_id) == 'y':
-            h_pitch, w_pitch = w_pitch, h_pitch
-
-        w_unit, h_unit = size[1] * w_pitch, size[2] * h_pitch
+        blk_w, blk_h = self.get_block_size(size[0], unit_mode=True)
+        w_unit, h_unit = size[1] * blk_w, size[2] * blk_h
 
         if unit_mode:
             return w_unit, h_unit
         else:
             return w_unit * self.resolution, h_unit * self.resolution
 
-    def get_track_info(self, layer_id):
+    def convert_size(self, size, new_top_layer):
+        # type: (Tuple[int, int, int], int) -> Tuple[int, int, int]
+        """Convert the given size to a new top layer.
+
+        Parameters
+        ----------
+        size : Tuple[int, int, int]
+            size of a block, in (top_layer, nx_blk, ny_blk) format.
+        new_top_layer : int
+            the new top level layer ID.
+
+        Returns
+        -------
+        new_size : Tuple[int, int, int]
+            the new size tuple.
+        """
+        oblk_w, oblk_h = self.get_block_size(size[0], unit_mode=True)
+        nblk_w, nblk_h = self.get_block_size(new_top_layer, unit_mode=True)
+
+        w = oblk_w * size[1]  # type: int
+        h = oblk_h * size[2]  # type: int
+        return new_top_layer, -(-w // nblk_w), -(-h // nblk_h)
+
+    def get_track_info(self, layer_id, unit_mode=False):
+        # type: (int, bool) -> Tuple[Union[float, int], Union[float, int]]
         """Returns the routing track width and spacing on the given layer.
 
         Parameters
         ----------
         layer_id : int
             the routing layer ID.
+        unit_mode : bool
+            True to return track width/spacing in resolution units.
 
         Returns
         -------
-        track_width : float
-            the track width in layout units.
-        track_spacing : float
-            the track spacing in layout units
+        track_width : Union[float, int]
+            the track width in layout/resolution units.
+        track_spacing : Union[float, int]
+            the track spacing in layout/resolution units
         """
-        return self.w_tracks[layer_id] * self._resolution, self.sp_tracks[layer_id] * self._resolution
+        w, sp = self.w_tracks[layer_id], self.sp_tracks[layer_id]
+        if unit_mode:
+            return w, sp
+        return w * self._resolution, sp * self._resolution
 
     def get_layer_name(self, layer_id, tr_idx):
         """Returns the layer name of the given track.
