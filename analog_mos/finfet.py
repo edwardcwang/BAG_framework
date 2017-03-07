@@ -33,11 +33,11 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
-import math
 
 from bag import float_to_si_string
 from bag.layout.template import TemplateBase
 from bag.layout.util import BBox
+from bag.math import lcm
 
 from .core import AnalogMosBase
 
@@ -127,9 +127,13 @@ class AnalogFinfetFoundation(with_metaclass(abc.ABCMeta, TemplateBase)):
         # compute array box
         mos_cls = self.grid.tech_info.tech_params['layout']['mos_template']
         hm_layer_id = mos_cls.port_layer_id() + 1
-        hm_track_pitch = self.grid.get_track_pitch(hm_layer_id)
+        hm_track_pitch_unit = self.grid.get_track_pitch(hm_layer_id, unit_mode=True)
+        fin_pitch_unit = int(round(mos_fin_pitch / res))
+        block_pitch_unit = lcm((hm_track_pitch_unit, fin_pitch_unit))
+        mos_cpo_h_unit = int(round(mos_cpo_h / res))
+
         # pr_bnd_yext = mos_fin_pitch * (np.ceil(mos_cpo_h / mos_fin_pitch - 0.5) + 0.5)
-        pr_bnd_yext = hm_track_pitch * math.ceil(mos_cpo_h / 2.0 / hm_track_pitch)
+        pr_bnd_yext = block_pitch_unit * -(-mos_cpo_h_unit // (2 * block_pitch_unit)) * res
         arr_box_bot = pr_bnd_yext
         arr_box_top = arr_box_bot + nfin * mos_fin_pitch
         arr_box_left = dx
@@ -641,10 +645,12 @@ class AnalogFinfetEdge(with_metaclass(abc.ABCMeta, AnalogFinfetFoundation)):
                                   xl + wgr + wfund, self.array_box.top, self.array_box.resolution)
 
         # set block size from array box
-        tech_params = self.grid.tech_info.tech_params
-        mos_cls = tech_params['layout']['mos_template']
-        h_layer_id = mos_cls.port_layer_id() + 1
-        self.set_size_from_array_box(h_layer_id)
+
+        # edge size is not quantized.
+        # tech_params = self.grid.tech_info.tech_params
+        # mos_cls = tech_params['layout']['mos_template']
+        # h_layer_id = mos_cls.port_layer_id() + 1
+        # self.set_size_from_array_box(h_layer_id)
         od_yc = self.array_box.bottom + tech_constants['mos_edge_od_dy'] + bext * mos_fin_pitch
 
         # draw OD/PODE
@@ -1103,13 +1109,13 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
             mos_ext_nfin_min = tech_constants['mos_gring_ext_nfin_min']
 
         # express track pitch as number of fin pitches
-        track_width, track_space = self.grid.get_track_info(self.port_layer_id() + 1)
-        track_pitch = track_width + track_space
-        track_nfin = int(round(track_pitch * 1.0 / mos_fin_pitch))
-        if abs(track_pitch - track_nfin * mos_fin_pitch) >= self.grid.resolution:
-            # check track_pitch is multiple of nfin.
-            msg = 'track pitch = %.4g not multiples of fin pitch = %.4g' % (track_pitch, mos_fin_pitch)
-            raise ValueError(msg)
+        res = self.grid.resolution
+        track_width_unit, track_space_unit = self.grid.get_track_info(self.port_layer_id() + 1, unit_mode=True)
+        track_pitch_unit = track_width_unit + track_space_unit
+        fin_pitch_unit = int(round(mos_fin_pitch / res))
+        block_pitch_unit = lcm((track_pitch_unit, fin_pitch_unit))
+        block_ntr = block_pitch_unit // track_pitch_unit
+        block_nfin = block_pitch_unit // fin_pitch_unit
 
         # get extension needed to fit integer number of tracks
         core_info = self.get_ds_conn_info(lch, w)
@@ -1119,28 +1125,33 @@ class AnalogFinfetBase(with_metaclass(abc.ABCMeta, AnalogMosBase)):
 
         # compute minimum number of tracks and needed bottom extension
         # make sure always have at least 2 tracks.
-        ntrack_min = -(-core_nfin // track_nfin)
-        bot_ext_nfin = track_nfin * ntrack_min - core_nfin
+        ntrack_min = -(-(core_nfin * fin_pitch_unit) // block_pitch_unit) * block_ntr
+        bot_ext_nfin = (track_pitch_unit * ntrack_min - (core_nfin * fin_pitch_unit)) // fin_pitch_unit
 
         # See if the first track is far enough from core transistor
-        g_tr_top_nfin = int(math.ceil((track_space / 2.0 + track_width) / mos_fin_pitch))
+        g_tr_top_nfin = -(-(track_space_unit // 2 + track_width_unit) // fin_pitch_unit)
         g_tr_nfin_max += bot_ext_nfin
         if g_tr_top_nfin > g_tr_nfin_max:
             # first track from bottom too close to core transistor
-            # add an additional track to increase spacing.
-            bot_ext_nfin += track_nfin
-            ntrack_min += 1
+            # add additional tracks to increase spacing.
+            ntrack_min += block_ntr
+            bot_ext_nfin += block_nfin
 
         # add more gate tracks
-        bot_ext_nfin += max(g_tracks - 1, 0) * track_nfin
+        num_gate_blk = -(-max(g_tracks - 1, 0) // block_ntr)
+        bot_ext_nfin += num_gate_blk * block_nfin
+        ntrack_min += num_gate_blk * block_ntr
         ds_tr_nfin_min += bot_ext_nfin
-        ntrack_min += g_tracks - 1
 
         # find index of bottom drain/source track index
-        self._ds_track_idx = int(math.ceil((ds_tr_nfin_min * mos_fin_pitch - track_space / 2.0) / track_pitch))
+        self._ds_track_idx = -(-(ds_tr_nfin_min * fin_pitch_unit - track_space_unit // 2) // track_pitch_unit)
         self._ds_track_idx = max(self._ds_track_idx, g_tracks + gds_space)
-        # find top extension needed to get drain/source tracks
-        top_ext_nfin = max(0, self._ds_track_idx + ds_tracks - ntrack_min) * track_nfin
+
+        # add drain/source tracks
+        num_ds_add = max(self._ds_track_idx + ds_tracks - ntrack_min, 0)
+        num_ds_blk = -(-num_ds_add // block_ntr)
+        ntrack_min += num_ds_blk * block_ntr
+        top_ext_nfin = num_ds_blk * block_nfin
 
         # determine if we need top/bottom extension blocks, or we should simply extend the core.
         if bot_ext_nfin < mos_ext_nfin_min:

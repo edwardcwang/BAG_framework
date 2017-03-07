@@ -1053,13 +1053,14 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
 
         sub_warr_list = []
+        hm_layer = self.mos_conn_layer + 1
         for row_idx, subinst in zip(row_idx_list, sub_list):
             # Create substrate TrackID
-            # substrate 1 from number of tracks to give some margin for transistor.
-            ntr = self.get_num_tracks(sub_type, row_idx, 'ds')
-            tr_idx1 = self.get_track_index(sub_type, row_idx, 'ds', 0)
-            tr_idx2 = self.get_track_index(sub_type, row_idx, 'ds', ntr - 2)
-            track_id = TrackID(self.mos_conn_layer + 1, min(tr_idx1, tr_idx2), 1, num=ntr - 1, pitch=1)
+            sub_row_idx = self._find_row_index(sub_type, row_idx)
+            ntr = self._num_tracks[sub_row_idx]
+            offset = self._hm_idx0 + self._track_offsets[sub_row_idx]
+            sub_w = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
+            track_id = TrackID(hm_layer, offset + (ntr - 1) / 2, width=sub_w)
 
             # get all wires to connect to supply.
             warr_iter_list = [subinst.get_port(port_name).get_pins(self.mos_conn_layer)]
@@ -1414,7 +1415,7 @@ class SubstrateContact(TemplateBase):
         inst = self.add_instance(master, inst_name='XSUB', loc=(sub_xoff * sd_pitch, sub_yoff * hm_pitch_unit * res))
         self.array_box = inst.array_box
         # find the first horizontal track index inside the array box
-        hm_idx0 = self.grid.coord_to_nearest_track(hm_layer, self.array_box.bottom, mode=2)
+        hm_idx0 = self.grid.coord_to_nearest_track(hm_layer, self.array_box.bottom, mode=1)
         self.size = (top_layer, blk_width, blk_height)
         # add implant layers to cover entire template
         imp_box = self.bound_box
@@ -1423,7 +1424,8 @@ class SubstrateContact(TemplateBase):
 
         # connect to horizontal metal layer.
         ntr = self.array_box.height_unit // hm_pitch_unit  # type: int
-        track_id = TrackID(hm_layer, hm_idx0, width=1, num=ntr, pitch=1)
+        tr_width = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
+        track_id = TrackID(hm_layer, hm_idx0 + (ntr - 1) / 2, width=tr_width)
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
         sub_wires = self.connect_to_tracks(inst.get_port(port_name).get_pins(mconn_layer), track_id)
         self.add_pin(port_name, sub_wires, show=show_pins)
