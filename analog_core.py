@@ -1073,17 +1073,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return sub_warr_list
 
-    def fill_dummy(self, lower=float('inf'), upper=float('-inf')):
-        # type: (float, float) -> Tuple[List[WireArray], List[WireArray]]
+    def fill_dummy(self, lower=None, upper=None):
+        # type: (Optional[float], Optional[float]) -> Tuple[List[WireArray], List[WireArray]]
         """Draw dummy/separator on all unused transistors.
 
         This method should be called last.
 
         Parameters
         ----------
-        lower : float
+        lower : Optional[float]
             lower coordinate for the supply tracks.
-        upper : float
+        upper : Optional[float]
             upper coordinate for the supply tracks.
 
         Returns
