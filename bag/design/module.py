@@ -332,13 +332,28 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         ----------
         inst_name : str
             the child instance to modify.
-        term_name : str
+        term_name : Union[str, List[str]]
             the instance terminal name to reconnect.
-        net_name : str
+            If a list is given, it is applied to each arrayed instance.
+        net_name : Union[str, List[str]]
             the net to connect the instance terminal to.
+            If a list is given, it is applied to each arrayed instance.
         """
-        for rinst in self.instance_map[inst_name]:
-            rinst['term_mapping'][term_name] = net_name
+        rinst_list = self.instance_map[inst_name]
+        if not isinstance(term_name, list) and not isinstance(term_name, tuple):
+            term_name = [term_name] * len(rinst_list)
+        else:
+            if len(term_name) != len(rinst_list):
+                raise ValueError('term_name length = %d != %d' % (len(term_name), len(rinst_list)))
+
+        if not isinstance(net_name, list) and not isinstance(net_name, tuple):
+            net_name = [net_name] * len(rinst_list)
+        else:
+            if len(net_name) != len(rinst_list):
+                raise ValueError('net_name length = %d != %d' % (len(net_name), len(rinst_list)))
+
+        for rinst, tname, nname in zip(rinst_list, term_name, net_name):
+            rinst['term_mapping'][tname] = nname
 
     def restore_instance(self, inst_name):
         """Restore a instance to the original template state.
