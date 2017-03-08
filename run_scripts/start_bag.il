@@ -362,11 +362,12 @@ procedure( create_or_erase_library(lib_name tech_lib lib_path erase "tttg")
 ; any existing cellviews will be overwritten.
 procedure( copy_templates_to_library(lib_name template_list "tl")
     let( (current remaining src_gdm targ_gdm table master_lib master_cell target_cell key cnt
-          empty_spec)
+          empty_spec targ_lib_obj test_cv)
 
         current = template_list
         remaining = '()
         empty_spec = gdmCreateSpecList()
+        targ_lib_obj = ddGetObj(lib_name nil nil nil nil "r")
 
         ; ccpCopy cannot copy the same cell to multiple different cells.
         ; because of this, we need to copy a set of unique cells at a time,
@@ -389,6 +390,17 @@ procedure( copy_templates_to_library(lib_name template_list "tl")
                     ; wait for the next iteration
                     remaining = cons(template_info remaining)
                 else
+                    ; purge target cellview if exist
+                    when( targ_lib_obj
+                        test_cv = dbFindOpenCellView(targ_lib_obj target_cell "schematic")
+                        when(test_cv
+                            dbPurge(test_cv)
+                        )
+                        test_cv = dbFindOpenCellView(targ_lib_obj target_cell "symbol")
+                        when(test_cv
+                            dbPurge(test_cv)
+                        )
+                    )
                     gdmAddSpecToSpecList(gdmCreateSpec(master_lib master_cell nil nil "CDBA") src_gdm)
                     gdmAddSpecToSpecList(gdmCreateSpec(lib_name target_cell nil nil "CDBA") targ_gdm)
                     table[key] = 1
@@ -677,6 +689,8 @@ procedure( check_and_save_schematic(sch "g")
         foreach( ex errs
             warn( "%s__%s (%s) has %d errors." car(ex)~>lib~>name car(ex)~>cellName car(ex)~>viewName cadr(ex))
         )
+        ; make sure all edit locks are gone by reopening in read mode
+        dbReopen(sch, "r")
         dbClose(sch)
     )
 )
@@ -796,7 +810,7 @@ procedure( convert_template_cells(lib_name cell_name pin_map inst_list sympin ip
         printf("*INFO* Updating %s__%s symbol pins.\n" lib_name cell_name)
         update_symbol_pin(lib_name cell_name pin_map sympin simulators)
 
-	; attempt to open schematic in append mode
+        ; attempt to open schematic in append mode
         unless( sch = dbOpenCellViewByType(lib_name cell_name "schematic" nil "a")
             error("Cannot open %s__%s (schematic) in append mode." lib_name cell_name)
         )
