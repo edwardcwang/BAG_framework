@@ -361,10 +361,12 @@ procedure( create_or_erase_library(lib_name tech_lib lib_path erase "tttg")
 ; '("master_lib_name" "master_cell_name" "target_cell_name")
 ; any existing cellviews will be overwritten.
 procedure( copy_templates_to_library(lib_name template_list "tl")
-    let( (current remaining src_gdm targ_gdm table master_lib master_cell target_cell key cnt)
+    let( (current remaining src_gdm targ_gdm table master_lib master_cell target_cell key cnt
+          empty_spec)
 
         current = template_list
         remaining = '()
+        empty_spec = gdmCreateSpecList()
 
         ; ccpCopy cannot copy the same cell to multiple different cells.
         ; because of this, we need to copy a set of unique cells at a time,
@@ -393,7 +395,7 @@ procedure( copy_templates_to_library(lib_name template_list "tl")
                 )
             )
             ; Perform copy
-            ccpCopy(src_gdm targ_gdm 't 'CCP_EXPAND_COMANAGED)
+            ccpCopy(src_gdm targ_gdm 't 'CCP_EXPAND_COMANAGED nil nil "" "" 'CCP_UPDATE_FROM_LIBLIST empty_spec)
 
             ; set current and remaining
             current = remaining
@@ -598,10 +600,12 @@ procedure( update_symbol_pin(lib_name cell_name pin_map sympin simulators "ttlll
 ; single label on the wire.  The wire doesn't connect to anything else.
 ; returns an association list from terminal name to the wire figure object.
 procedure( get_instance_terminal_wires(sch inst "gg")
-    let( (term_name pin_fig xval yval inst_term_xy ans)
+    let( (snap_dist term_name pin_fig xval yval inst_term_xy ans)
         ans = nil
+        snap_dist = schGetEnv("schSnapSpacing")
         foreach( inst_term inst~>instTerms
             term_name = inst_term~>name
+            ; printf("terminal name: %s\n" term_name)
             when( inst_term~>term~>pinCount != 1
                 dbClose(sch)
                 error("Terminal %s must have exactly one pin." term_name)
@@ -612,16 +616,20 @@ procedure( get_instance_terminal_wires(sch inst "gg")
             )
             ; get instance terminal coordinate in schematic
             bbox = dbTransformBBox(pin_fig~>bBox inst~>transform)
+            ; printf("terminal pin fig bbox: %A\n" bbox)
             xval = xCoord(car(bbox)) + (xCoord(cadr(bbox)) - xCoord(car(bbox))) / 2.0
             yval = yCoord(car(bbox)) + (yCoord(cadr(bbox)) - yCoord(car(bbox))) / 2.0
-            inst_term_xy = xval:yval
-
+            ; quantize to schematic snap spacing to avoid floating point rounding error.
+            inst_term_xy = round2(xval / snap_dist) * snap_dist:round2(yval / snap_dist) * snap_dist
+            ; printf("terminal pin x/y: %A\n" inst_term_xy)
             foreach( fig inst_term~>net~>figs
                 points = fig~>points
+                ; printf("figure points: %A\n" points)
                 when( member(inst_term_xy points)
                     when( length(points) != 2
                         error("pin for terminal %s must be connected to a single wire with label" term_name)
                     )
+                    ; printf("adding figure for terminal %s\n" term_name)
                     ans = cons(list(term_name fig) ans)
                 )
             )
@@ -734,7 +742,9 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
                 foreach( rinst rinst_list
                     if( !cur_inst then
                         cur_inst = inst_obj
+                        ; printf("inst %s lib = %s, cell = %s\n" inst_name inst_obj->master->libName inst_obj->master->cellName)
                         wire_list = get_instance_terminal_wires(sch_cv cur_inst)
+                        ; printf("%s wire_list: %A\n" inst_name wire_list)
                         ; figure out bounding box for potential future array
                         xl = xCoord(car(cur_inst~>bBox))
                         xr = xCoord(cadr(cur_inst~>bBox))
@@ -771,7 +781,6 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
                     )
                     ; modify connections
                     ; NOTE: after updating master, the pins may have changed, so we need to re-acquire wire_list.
-                    ; wire_list = get_instance_terminal_wires(sch_cv cur_inst)  ; somehow this is broken?
                     ; printf("%s %A %A\n" inst_name rinst->term_mapping wire_list)
                     modify_instance_terminal(sch_cv cur_inst wire_list rinst->term_mapping)
                 )
