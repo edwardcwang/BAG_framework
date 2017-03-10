@@ -91,19 +91,16 @@ class DynamicLatchChain(SerdesRXBase):
         kwargs['nds_tracks'] = nds_tracks
 
         # draw rows with width/threshold parameters.
-        for key, val in w_dict.items():
-            kwargs['w_' + key] = val
-        for key, val in th_dict.items():
-            kwargs['th_' + key] = val
+        kwargs['w_dict'] = w_dict
+        kwargs['th_dict'] = th_dict
         del kwargs['rename_dict']
         self.draw_rows(lch, fg_tot, ptap_w, ntap_w, **kwargs)
 
         port_list = []
 
-        da_kwargs = {'fg_' + key: val for key, val in fg_dict.items()}
         for idx in range(nstage):
             col_idx = (fg_latch + fg_sep) * idx + nduml
-            _, pdict = self.draw_diffamp(col_idx, cur_track_width=cur_track_width, **da_kwargs)
+            _, pdict = self.draw_diffamp(col_idx, fg_dict, cur_track_width=cur_track_width)
             for pname, port_warr in pdict.items():
                 pname = self.get_pin_name(pname)
                 if pname:
