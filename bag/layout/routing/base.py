@@ -160,7 +160,7 @@ class TrackID(object):
 
     def transform(self, grid, loc=(0, 0), orient="R0", unit_mode=False):
         # type: (RoutingGrid, Tuple[Union[float, int], Union[float, int]], str, bool) -> TrackID
-        """Transform this TrackID."""
+        """returns a transformation of this TrackID."""
         layer_id = self._layer_id
         is_x = grid.get_direction(layer_id) == 'x'
         if orient == 'R180' or (is_x and orient == 'MX') or (not is_x and orient == 'MY'):

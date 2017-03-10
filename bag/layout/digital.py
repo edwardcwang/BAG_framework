@@ -38,6 +38,7 @@ import yaml
 
 from .util import BBox
 from .template import TemplateDB, TemplateBase
+from .objects import Instance
 from .routing import TrackID, WireArray
 
 
@@ -155,12 +156,10 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return tot_dim // pitch
 
     def add_std_instance(self, master, inst_name=None, loc=(0, 0), nx=1, ny=1,
-                         spx=0, spy=0):
+                         spx=0, spy=0, flip_lr=False):
+        # type: (StdCellBase, str, Tuple[int, int], int, int, int, int, bool) -> Instance
         """Add a standard cell instance.
 
-        temp_cls : the template class.
-        temp_params : the template parameters.
-        loc : the instance location in columns/rows.
         """
         col_pitch = self.std_col_width
         row_pitch = self.std_row_height
@@ -170,7 +169,14 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         else:
             orient = 'MX'
             dy = (loc[1] + 1) * row_pitch
+
         dx = loc[0] * col_pitch
+        if flip_lr:
+            dx += master.std_size[0] * col_pitch
+            if orient == 'R0':
+                orient = 'MY'
+            else:
+                orient = 'R180'
 
         if spy % 2 != 0:
             raise ValueError('row pitch must be even')
