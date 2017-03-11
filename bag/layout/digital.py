@@ -32,7 +32,7 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
-from typing import Dict, Any, Set, Tuple, List
+from typing import Dict, Any, Set, Tuple, List, Optional
 
 import yaml
 
@@ -77,17 +77,34 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     @property
     def min_space_width(self):
         # type: () -> int
+        """Returns the minimum space block width in number of standard cell columns."""
         return self._spaces[-1]['num_col']
 
     @property
     def std_col_width(self):
         # type: () -> float
+        """Returns the standard cell column width."""
         return self._tech_params['col_pitch']
+
+    @property
+    def std_col_width_unit(self):
+        # type: () -> float
+        """Returns the standard cell column width in resolution units."""
+        res = self.grid.resolution
+        return int(round(self._tech_params['col_pitch'] / res))
 
     @property
     def std_row_height(self):
         # type: () -> float
+        """Returns the standard cell row height."""
         return self._tech_params['height']
+
+    @property
+    def std_row_height_unit(self):
+        # type: () -> float
+        """Returns the standard cell row height in resolution units."""
+        res = self.grid.resolution
+        return int(round(self._tech_params['height'] / res))
 
     @property
     def std_size(self):
@@ -98,6 +115,7 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     @property
     def std_routing_layers(self):
         # type: () -> List[int]
+        """Returns the routing layers used by this standard cell."""
         return self._tech_params['layers']
 
     def get_num_columns(self, layer_id, num_tr):
@@ -122,20 +140,52 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     def set_draw_boundaries(self, draw_boundaries):
         # type: (bool) -> None
+        """Sets whether this standard cell have boundaries drawn around it.
+
+        To draw boundaries around a standard cell, first call this method
+        with draw_boundaries=True, then call set_std_size() method when
+        all blocks have been placed.  Finally, call draw_boundaries()
+        to draw the boundard cells.
+
+        Parameters
+        ----------
+        draw_boundaries : bool
+            True to draw boundaries around this standard cell.
+        """
         self._draw_boundaries = draw_boundaries
 
     def get_space_blocks(self):
         # type: () -> List[Dict[str, Any]]
+        """Returns the space blocks parameters.  Used internally."""
         return self._spaces
 
     def get_cell_params(self, cell_name):
         # type: (str) -> Dict[str, Any]
+        """Returns parameters for the given standard cell.  Used internally.
+
+        Parameters
+        ----------
+        cell_name : str
+            the standard cell name.
+        """
         for key, val in self._cells.items():
             if key == cell_name:
                 return val
         raise ValueError('Cannot find standard cell with name %s' % cell_name)
 
     def set_std_size(self, std_size):
+        # type: (Tuple[int, int]) -> None
+        """Sets the size of this standard cell.
+
+        This method computes self.size, self.array_box, and self.std_size.
+        If you will draw boundaries around this standard cell,
+        self.set_draw_boundaries(True) should be called first.
+
+        Parameters
+        ----------
+        std_size : Tuple[int, int]
+            the standard cell size as (number of std. columns, number of std. rows) Tuple.
+        """
         # type: (Tuple[int, int]) -> None
         num_col, num_row = std_size
         self._std_size_bare = std_size
@@ -152,6 +202,10 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self.set_size_from_array_box(self.std_routing_layers[-1])
 
     def update_routing_grid(self):
+        """Register standard cell routing layers in the RoutingGrid.
+
+        This method must be called first in draw_layout().
+        """
         # type: () -> None
         layers = self._tech_params['layers']
         widths = self._tech_params['widths']
@@ -164,7 +218,18 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     def get_num_tracks(self, layer_id):
         # type: (int) -> int
-        """Get number of tracks in this cell."""
+        """Get number of tracks in this standard cell.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer ID.
+
+        Returns
+        -------
+        num_tracks : int
+            number of tracks on the given layer in this standard cell.
+        """
         ncol, nrow = self.std_size
 
         tdir = self.grid.get_direction(layer_id)
@@ -177,9 +242,32 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     def add_std_instance(self, master, inst_name=None, loc=(0, 0), nx=1, ny=1,
                          spx=0, spy=0, flip_lr=False):
-        # type: (StdCellBase, str, Tuple[int, int], int, int, int, int, bool) -> Instance
-        """Add a standard cell instance.
+        # type: (StdCellBase, Optional[str], Tuple[int, int], int, int, int, int, bool) -> Instance
+        """Add a new standard cell instance.
 
+        Parameters
+        ----------
+        master : StdCellBase
+            the standard cell template master to add.
+        inst_name : Optional[str]
+            the instance name.
+        loc : Tuple[int, int]
+            lower-left corner of the instance in number of standard cell columns/rows.
+        nx : int
+            horizontal array count.
+        ny : int
+            vertical array count.
+        spx : int
+            horizontal pitch in number of standard cell columns.
+        spy : int
+            vertical pitch in number of standard cell rows.  Must be even.
+        flip_lr : bool
+            True to flip the standard cell over Y axis.
+
+        Returns
+        -------
+        inst : Instance
+            the standard cell instance.
         """
         col_pitch = self.std_col_width
         row_pitch = self.std_row_height
@@ -210,6 +298,7 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                  orient=orient, nx=nx, ny=ny, spx=spx, spy=spy)
 
     def draw_boundaries(self):
+        """Draw the boundary cells around this standard cell."""
         lib_name = self._bound_params['lib_name']
         num_col, num_row = self._std_size_bare
         num_row_even = (num_row + 1) // 2
