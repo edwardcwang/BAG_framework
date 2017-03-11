@@ -36,6 +36,7 @@ from typing import Dict, Any, Set, Tuple, List, Optional
 
 import yaml
 
+from bag.util.interval import IntervalSet
 from .util import BBox
 from .template import TemplateDB, TemplateBase
 from .objects import Instance
@@ -73,6 +74,7 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._std_size = None
         self._std_size_bare = None
         self._draw_boundaries = False
+        self._used_blocks = []  # type: List[IntervalSet]
 
     @property
     def min_space_width(self):
@@ -269,6 +271,23 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         inst : Instance
             the standard cell instance.
         """
+        if spy % 2 != 0:
+            raise ValueError('row pitch must be even')
+
+        # update self._used_blocks
+        inst_ncol, inst_nrow = master.std_size
+        cur_nrow = loc[1] + inst_nrow + (ny - 1) * spy
+        while len(self._used_blocks) < cur_nrow:
+            self._used_blocks.append(IntervalSet())
+        for col_off in range(nx):
+            xoff = col_off * spx + loc[0]
+            for row_off in range(ny):
+                yoff = row_off * spy + loc[1]
+                for std_row_idx in range(yoff, yoff + inst_nrow):
+                    success = self._used_blocks[std_row_idx].add((xoff, xoff + inst_ncol))
+                    if not success:
+                        raise ValueError('Cannot add instance at std loc (%d, %d)' % (xoff, yoff))
+
         col_pitch = self.std_col_width
         row_pitch = self.std_row_height
         if loc[1] % 2 == 0:
@@ -280,14 +299,12 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         dx = loc[0] * col_pitch
         if flip_lr:
-            dx += master.std_size[0] * col_pitch
+            dx += inst_ncol * col_pitch
             if orient == 'R0':
                 orient = 'MY'
             else:
                 orient = 'R180'
 
-        if spy % 2 != 0:
-            raise ValueError('row pitch must be even')
         spx *= col_pitch
         spy *= row_pitch
         if self._draw_boundaries:
@@ -298,6 +315,7 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                  orient=orient, nx=nx, ny=ny, spx=spx, spy=spy)
 
     def draw_boundaries(self):
+        # type: () -> None
         """Draw the boundary cells around this standard cell."""
         lib_name = self._bound_params['lib_name']
         num_col, num_row = self._std_size_bare
@@ -314,7 +332,7 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self.add_instance_primitive(lib_name, 'boundary_left', (0, dy), ny=num_row_even, spy=hrow * 2)
         if num_row_odd > 0:
             self.add_instance_primitive(lib_name, 'boundary_left', (0, dy + 2 * hrow),
-                                        orient='MX', ny=num_row_odd, spy=-hrow * 2)
+                                        orient='MX', ny=num_row_odd, spy=hrow * 2)
 
         # add top-left
         if num_row % 2 == 1:
@@ -342,13 +360,67 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self.add_instance_primitive(lib_name, 'boundary_right', (xc, dy), ny=num_row_even, spy=hrow * 2)
         if num_row_odd > 0:
             self.add_instance_primitive(lib_name, 'boundary_right', (xc, dy + 2 * hrow),
-                                        orient='MX', ny=num_row_odd, spy=-hrow * 2)
+                                        orient='MX', ny=num_row_odd, spy=hrow * 2)
 
         # add top right
         if num_row % 2 == 1:
             self.add_instance_primitive(lib_name, 'boundary_topright', (xc, yc))
         else:
             self.add_instance_primitive(lib_name, 'boundary_bottom', (xc, yc), orient='MX')
+
+    def fill_space(self):
+        # type: () -> None
+        """Fill all unused blocks with spaces."""
+        tot_intv = (0, self.std_size[0])
+        for row_idx, intv_set in enumerate(self._used_blocks):
+            for intv in intv_set.get_complement(tot_intv).intervals():
+                loc = (intv[0], row_idx)
+                num_spaces = intv[1] - intv[0]
+                self.add_std_space(loc, num_spaces, update_used_blks=False)
+
+    def add_std_space(self, loc, num_col, update_used_blks=True):
+        # type: (Tuple[int, int], int, bool) -> None
+        """Add standard cell spaces at the given location.
+
+        Parameters
+        ----------
+        loc : Tuple[int, int]
+            the lower-left corner of the space block.
+        num_col : int
+            the space block width in number of columns.
+        update_used_blks : bool
+            True to register space blocks.  This flag is for internal use only.
+        """
+        if update_used_blks:
+            # update self._used_blocks
+            while len(self._used_blocks) < loc[1] + 1:
+                self._used_blocks.append(IntervalSet())
+            success = self._used_blocks[loc[1]].add((loc[0], loc[0] + num_col))
+            if not success:
+                raise ValueError('Cannot add space at std loc (%d, %d)' % (loc[0], loc[1]))
+
+        col_pitch = self.std_col_width
+        xcur = loc[0] * col_pitch
+        if loc[1] % 2 == 0:
+            orient = 'R0'
+            ycur = loc[1] * self.std_row_height
+        else:
+            orient = 'MX'
+            ycur = (loc[1] + 1) * self.std_row_height
+
+        for blk_params in self.get_space_blocks():
+            lib_name = blk_params['lib_name']
+            cell_name = blk_params['cell_name']
+            blk_col = blk_params['num_col']
+            num_blk, num_col = divmod(num_col, blk_col)
+            blk_width = blk_col * col_pitch
+            if num_blk > 0:
+                self.add_instance_primitive(lib_name, cell_name, (xcur, ycur),
+                                            orient=orient, nx=num_blk, spx=blk_width)
+                xcur += num_blk * blk_width
+
+        if num_col > 0:
+            raise ValueError('has %d columns remaining' % num_col)
 
 
 class StdCellTemplate(StdCellBase):
@@ -428,76 +500,3 @@ class StdCellTemplate(StdCellBase):
                 tr_idx, tr_w = self.grid.interval_to_track(port_lay_id, intv)
                 warr = WireArray(TrackID(port_lay_id, tr_idx, width=tr_w), lower, upper)
                 self.add_pin(port_name, warr, show=False)
-
-
-class StdCellSpace(StdCellBase):
-    """An template for creating termination resistors.
-
-    Parameters
-    ----------
-        temp_db : TemplateDB
-            the template database.
-    lib_name : str
-        the layout library name.
-    params : Dict[str, Any]
-        the parameter values.
-    used_names : Set[str]
-        a set of already used cell names.
-    **kwargs :
-        dictionary of optional parameters.  See documentation of
-        :class:`bag.layout.template.TemplateBase` for details.
-    """
-
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(StdCellSpace, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
-
-    @classmethod
-    def get_params_info(cls):
-        # type: () -> Dict[str, str]
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : Dict[str, str]
-            dictionary from parameter name to description.
-        """
-        return dict(
-            num_col='number of space columns.',
-            config_file='standard cell configuration file name.',
-        )
-
-    def get_layout_basename(self):
-        return 'stdcell_space_%dx' % self.params['num_col']
-
-    def compute_unique_key(self):
-        return self.get_layout_basename() + '_' + self.params['config_file']
-
-    def draw_layout(self):
-        # type: () -> None
-
-        num_col = self.params['num_col']
-
-        # update routing grid
-        self.update_routing_grid()
-        # compute size
-        self.set_std_size((num_col, 1))
-
-        # instantiate space blocks
-        col_pitch = self.std_col_width
-        xcur = 0.0
-        for blk_params in self.get_space_blocks():
-            lib_name = blk_params['lib_name']
-            cell_name = blk_params['cell_name']
-            blk_col = blk_params['num_col']
-            num_blk, num_col = divmod(num_col, blk_col)
-            blk_width = blk_col * col_pitch
-            if num_blk > 0:
-                self.add_instance_primitive(lib_name, cell_name, (xcur, 0.0),
-                                            nx=num_blk, spx=blk_width)
-                xcur += num_blk * blk_width
-
-        if num_col > 0:
-            raise ValueError('has %d columns remaining' % num_col)
