@@ -286,6 +286,17 @@ class InstanceInfo(dict):
         if 'params' in kwargs:
             self.params = kwargs['params']
 
+        # skill/OA array before rotation, while we're doing the opposite.
+        # this is supposed to fix it.
+        orient = self['orient']
+        if orient == 'R180':
+            self['sp_rows'] *= -1
+            self['sp_cols'] *= -1
+        elif orient == 'MX':
+            self['sp_rows'] *= -1
+        elif orient == 'MY':
+            self['sp_cols'] *= -1
+
     @property
     def lib(self):
         # type: () -> str
