@@ -100,6 +100,26 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # type: () -> List[int]
         return self._tech_params['layers']
 
+    def get_num_columns(self, layer_id, num_tr):
+        # type: (int, int) -> int
+        """Returns the number of standard cell columns needed to contain the given amount of tracks.
+
+        Parameters
+        ----------
+        layer_id : int
+            the track layer ID.
+        num_tr : int
+            number of tracks.
+
+        Returns
+        -------
+        num_col : int
+            number of standard cell columns that span the given number of tracks.
+        """
+        col_width_unit = int(round(self._tech_params['col_pitch'] / self.grid.resolution))
+        tr_pitch = self.grid.get_track_pitch(layer_id, unit_mode=True)  # type: int
+        return -(-(tr_pitch * num_tr) // col_width_unit)  # ceiling division
+
     def set_draw_boundaries(self, draw_boundaries):
         # type: (bool) -> None
         self._draw_boundaries = draw_boundaries
