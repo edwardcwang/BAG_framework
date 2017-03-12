@@ -1972,7 +1972,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                       sup_width=1,  # type: int
                       fill_margin=0,  # type: Union[float, int]
                       edge_margin=0,  # type: Union[float, int]
-                      unit_mode=False  # type: bool
+                      unit_mode=False,  # type: bool
+                      sup_spacing=-1  # type: int
                       ):
         # type: (...) -> Tuple[List[WireArray], List[WireArray]]
         """Draw power fill on the given layer."""
@@ -1991,7 +1992,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
         top_vdd, top_vss = get_power_fill_tracks(self.grid, self.size, layer_id,
                                                  self._used_tracks.get_tracks_info(layer_id),
-                                                 sup_width, fill_margin, edge_margin)
+                                                 sup_width, fill_margin, edge_margin,
+                                                 sup_spacing=sup_spacing)
         for warr in chain(top_vdd, top_vss):
             for layer, box_arr in warr.wire_arr_iter(self.grid):
                 self.add_rect(layer, box_arr)
