@@ -305,7 +305,8 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
                           track_set,  # type: TrackSet
                           sup_width,  # type: int
                           fill_margin,  # type: int
-                          edge_margin  # type: int
+                          edge_margin,  # type: int
+                          sup_spacing=-1  # type: int
                           ):
     # type: () -> Tuple[List[WireArray], List[WireArray]]
     """Fill unused tracks with supply tracks.
@@ -322,6 +323,12 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
 
     # find fill track indices in half tracks
     num_space = grid.get_num_space_tracks(layer_id, sup_width, half_space=False)
+    # check if user specify supply spacing
+    if sup_spacing >= 0:
+        if sup_spacing < num_space:
+            raise ValueError('Power fill spacing less then min spacing = %d' % num_space)
+        num_space = sup_spacing
+
     start_tidx, end_tidx = grid.get_track_index_range(layer_id, 0, cupper, num_space=num_space,
                                                       edge_margin=edge_margin, half_track=False,
                                                       unit_mode=True)

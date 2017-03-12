@@ -895,7 +895,8 @@ class RoutingGrid(object):
         else:
             raise ValueError('coordinate %.4g is not on track.' % coord)
 
-    def find_next_track(self, layer_id, coord, tr_width=1, half_track=False, mode=1):
+    def find_next_track(self, layer_id, coord, tr_width=1, half_track=False, mode=1, unit_mode=False):
+        # type: (int, Union[float, int], int, bool, int, bool) -> Union[float, int]
         """Find the track such that its edges are on the same side w.r.t. the given coordinate.
 
         Parameters
@@ -911,19 +912,24 @@ class RoutingGrid(object):
         mode : int
             1 to find track with both edge coordinates larger than or equal to the given one,
             -1 to find track with both edge coordinates less than or equal to the given one.
+        unit_mode : bool
+            True if coordinate is given in resolution units.
 
         Returns
         -------
         tr_idx : int or float
             the center track index.
         """
-        tr_w = self.get_track_width(layer_id, tr_width)
+        if not unit_mode:
+            coord = int(round(coord / self._resolution))
+
+        tr_w = self.get_track_width(layer_id, tr_width, unit_mode=True)
         if mode > 0:
-            return self.coord_to_nearest_track(layer_id, coord + tr_w / 2.0, half_track=half_track,
-                                               mode=mode)
+            return self.coord_to_nearest_track(layer_id, coord + tr_w // 2, half_track=half_track,
+                                               mode=mode, unit_mode=True)
         else:
-            return self.coord_to_nearest_track(layer_id, coord - tr_w / 2.0, half_track=half_track,
-                                               mode=mode)
+            return self.coord_to_nearest_track(layer_id, coord - tr_w // 2, half_track=half_track,
+                                               mode=mode, unit_mode=True)
 
     def coord_to_nearest_track(self, layer_id, coord, half_track=False, mode=0,
                                unit_mode=False):
