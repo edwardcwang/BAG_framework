@@ -438,9 +438,25 @@ class Instance(Arrayable):
         """
         self._master = self._master.new_template_with(**kwargs)
 
-    def get_used_tracks(self):
-        # type: () -> UsedTracks
-        return self._master.get_used_tracks().transform(self._master.grid, self._loc_unit, self._orient,
+    def get_used_tracks(self, row=0, col=0):
+        # type: (int, int) -> UsedTracks
+        """Return the used track object of the given instance in the array.
+
+        Parameters
+        ----------
+        row : int
+            the instance row index.  Index 0 is the bottom-most row.
+        col : int
+            the instance column index.  Index 0 is the left-most column.
+
+        Returns
+        -------
+        used_tracks : UsedTracks
+            the UsedTracks object of the given instance.
+        """
+        dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
+        inst_loc = dx + self._loc_unit[0], dy + self._loc_unit[1]
+        return self._master.get_used_tracks().transform(self._master.grid, inst_loc, self._orient,
                                                         unit_mode=True)
 
     @property

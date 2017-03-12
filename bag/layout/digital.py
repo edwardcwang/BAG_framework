@@ -318,6 +318,7 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # type: () -> None
         """Draw the boundary cells around this standard cell."""
         lib_name = self._bound_params['lib_name']
+        suffix = self._bound_params.get('suffix', '')
         num_col, num_row = self._std_size_bare
         num_row_even = (num_row + 1) // 2
         num_row_odd = num_row - num_row_even
@@ -326,47 +327,47 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         dy = self._bound_params['tb_height'] * hrow
 
         # add bottom-left
-        self.add_instance_primitive(lib_name, 'boundary_bottomleft', (0, 0))
+        self.add_instance_primitive(lib_name, 'boundary_bottomleft' + suffix, (0, 0))
 
         # add left
-        self.add_instance_primitive(lib_name, 'boundary_left', (0, dy), ny=num_row_even, spy=hrow * 2)
+        self.add_instance_primitive(lib_name, 'boundary_left' + suffix, (0, dy), ny=num_row_even, spy=hrow * 2)
         if num_row_odd > 0:
-            self.add_instance_primitive(lib_name, 'boundary_left', (0, dy + 2 * hrow),
+            self.add_instance_primitive(lib_name, 'boundary_left' + suffix, (0, dy + 2 * hrow),
                                         orient='MX', ny=num_row_odd, spy=hrow * 2)
 
         # add top-left
         if num_row % 2 == 1:
             yc = dy + num_row * hrow
-            self.add_instance_primitive(lib_name, 'boundary_topleft', (0, yc))
+            self.add_instance_primitive(lib_name, 'boundary_topleft' + suffix, (0, yc))
         else:
             yc = 2 * dy + num_row * hrow
-            self.add_instance_primitive(lib_name, 'boundary_bottomleft', (0, yc), orient='MX')
+            self.add_instance_primitive(lib_name, 'boundary_bottomleft' + suffix, (0, yc), orient='MX')
 
         # add bottom
-        self.add_instance_primitive(lib_name, 'boundary_bottom', (dx, 0), nx=num_col, spx=wcol)
+        self.add_instance_primitive(lib_name, 'boundary_bottom' + suffix, (dx, 0), nx=num_col, spx=wcol)
 
         # add top
         if num_row % 2 == 1:
-            self.add_instance_primitive(lib_name, 'boundary_top', (dx, yc), nx=num_col, spx=wcol)
+            self.add_instance_primitive(lib_name, 'boundary_top' + suffix, (dx, yc), nx=num_col, spx=wcol)
         else:
-            self.add_instance_primitive(lib_name, 'boundary_bottom', (dx, yc), orient='MX',
+            self.add_instance_primitive(lib_name, 'boundary_bottom' + suffix, (dx, yc), orient='MX',
                                         nx=num_col, spx=wcol)
 
         # add bottom right
         xc = dx + num_col * wcol
-        self.add_instance_primitive(lib_name, 'boundary_bottomright', (xc, 0))
+        self.add_instance_primitive(lib_name, 'boundary_bottomright' + suffix, (xc, 0))
 
         # add right
-        self.add_instance_primitive(lib_name, 'boundary_right', (xc, dy), ny=num_row_even, spy=hrow * 2)
+        self.add_instance_primitive(lib_name, 'boundary_right' + suffix, (xc, dy), ny=num_row_even, spy=hrow * 2)
         if num_row_odd > 0:
-            self.add_instance_primitive(lib_name, 'boundary_right', (xc, dy + 2 * hrow),
+            self.add_instance_primitive(lib_name, 'boundary_right' + suffix, (xc, dy + 2 * hrow),
                                         orient='MX', ny=num_row_odd, spy=hrow * 2)
 
         # add top right
         if num_row % 2 == 1:
-            self.add_instance_primitive(lib_name, 'boundary_topright', (xc, yc))
+            self.add_instance_primitive(lib_name, 'boundary_topright' + suffix, (xc, yc))
         else:
-            self.add_instance_primitive(lib_name, 'boundary_bottom', (xc, yc), orient='MX')
+            self.add_instance_primitive(lib_name, 'boundary_bottomright' + suffix, (xc, yc), orient='MX')
 
     def fill_space(self):
         # type: () -> None

@@ -77,7 +77,7 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_via_drc_info(cls, vname, vtype, mtype, mw):
+    def get_via_drc_info(cls, vname, vtype, mtype, mw, is_bot):
         """Return data structures used to identify VIA DRC rules.
 
         Parameters
@@ -90,6 +90,8 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
             name of the metal layer via is connecting.  Can be either top or bottom.
         mw : float
             width of the metal, in layout units.
+        is_bot : bool
+            True if the given metal is the bottom metal.
 
         Returns
         -------
@@ -484,8 +486,8 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         for vtype, weight in [('square', 1), ('vrect', 2), ('hrect', 2)]:
             try:
                 # get space and enclosure rules for top and bottom layer
-                sp, sp3, dim, encb, arr_encb, arr_testb = self.get_via_drc_info(vname, vtype, bmtype, bw)
-                _, _, _, enct, arr_enct, arr_testt = self.get_via_drc_info(vname, vtype, tmtype, tw)
+                sp, sp3, dim, encb, arr_encb, arr_testb = self.get_via_drc_info(vname, vtype, bmtype, bw, True)
+                _, _, _, enct, arr_enct, arr_testt = self.get_via_drc_info(vname, vtype, tmtype, tw, False)
                 # print _get_via_params(vname, vtype, bmtype, bw)
                 # print _get_via_params(vname, vtype, tmtype, tw)
             except ValueError:
@@ -851,10 +853,13 @@ class DummyTechInfo(TechInfo):
         TechInfo.__init__(self, 0.001, 1e-6, '', tech_params)
 
     @classmethod
-    def get_via_drc_info(cls, vname, vtype, mtype, mw):
+    def get_via_drc_info(cls, vname, vtype, mtype, mw, is_bot):
         return (0.0, 0.0), (0.0, 0.0), (0.0, 0.0), [(0.0, 0.0)], None, None
 
     def get_min_space(self, layer_type, width):
+        return 0.0
+
+    def get_min_length(self, layer_type, width):
         return 0.0
 
     def get_layer_id(self, layer_name):
