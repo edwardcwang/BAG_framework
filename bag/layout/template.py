@@ -1000,7 +1000,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         return path
 
     def reexport(self, port, net_name='', label='', show=True,
-                 fill_margin=0, fill_type='VSS', unit_mode=False):
+                 fill_margin=0, fill_type='', unit_mode=False):
         # type: (Port, str, str, bool, Union[float, int], str, bool) -> None
         """Re-export the given port object.
 
@@ -1256,7 +1256,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                   num=1,  # type: int
                   pitch=0,  # type: Union[float, int]
                   fill_margin=0,  # type: Union[int, float]
-                  fill_type='VSS',  # type: str
+                  fill_type='',  # type: str
                   unit_mode=False  # type: bool
                   ):
         # type: (...) -> WireArray
@@ -1313,7 +1313,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                        num=1,  # type: int
                        pitch=0,  # type: Union[float, int]
                        fill_margin=0,  # type: Union[int, float]
-                       fill_type='VSS',  # type: str
+                       fill_type='',  # type: str
                        unit_mode=False  # type: bool
                        ):
         # type: (...) -> None
@@ -1355,7 +1355,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                       upper=None,  # type: Optional[Union[int, float]]
                       debug=False,  # type: bool
                       fill_margin=0,  # type: Union[int, float]
-                      fill_type='VSS',  # type: str
+                      fill_type='',  # type: str
                       unit_mode=False  # type: bool
                       ):
         # type: (...) -> List[WireArray]
@@ -1575,7 +1575,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                                track_lower=None,  # type: Optional[Union[int, float]]
                                track_upper=None,  # type: Optional[Union[int, float]]
                                fill_margin=0,  # type: Union[int, float]
-                               fill_type='VSS',  # type: str
+                               fill_type='',  # type: str
                                unit_mode=False  # type: bool
                                ):
         # type: (...) -> WireArray
@@ -1655,7 +1655,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                           track_lower=None,  # type: Optional[Union[float, int]]
                           track_upper=None,  # type: Optional[Union[float, int]]
                           fill_margin=0,  # type: Union[int, float]
-                          fill_type='VSS',  # type: str
+                          fill_type='',  # type: str
                           unit_mode=False,  # type: bool
                           debug=False  # type: bool
                           ):
@@ -1768,7 +1768,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                                     track_lower=None,  # type: Optional[Union[float, int]]
                                     track_upper=None,  # type: Optional[Union[float, int]]
                                     fill_margin=0,  # type: Union[int, float]
-                                    fill_type='VSS',  # type: str
+                                    fill_type='',  # type: str
                                     unit_mode=False,  # type: bool
                                     debug=False  # type: bool
                                     ):
@@ -1984,8 +1984,10 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         if not self._added_inst_tracks:
             self._added_inst_tracks = True
             for inst in self._layout.inst_iter():
-                inst_used_tracks = inst.get_used_tracks()
-                self._used_tracks.merge(inst_used_tracks)
+                for cidx in range(inst.nx):
+                    for ridx in range(inst.ny):
+                        inst_used_tracks = inst.get_used_tracks(row=ridx, col=cidx)
+                        self._used_tracks.merge(inst_used_tracks)
 
         top_vdd, top_vss = get_power_fill_tracks(self.grid, self.size, layer_id,
                                                  self._used_tracks.get_tracks_info(layer_id),
