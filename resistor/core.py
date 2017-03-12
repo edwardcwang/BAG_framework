@@ -891,3 +891,112 @@ class ResLadderCore(ResArrayBase):
                                num=2, pitch=1, unit_mode=True)
 
         return [bcon_idx, tcon_idx], vm_tidx
+
+
+class ResLadder(TemplateBase):
+    """An template for creating termination resistors.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    **kwargs :
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(ResLadder, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : Dict[str, Any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            nx=2,
+            ny=2,
+            ndum=1,
+            res_type='reference',
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            l='unit resistor length, in meters.',
+            w='unit resistor width, in meters.',
+            sub_lch='substrate contact channel length.',
+            sub_w='substrate contact width.',
+            sub_type='the substrate type.',
+            threshold='the substrate threshold flavor.',
+            nx='number of resistors in a row.  Must be even.',
+            ny='number of resistors in a column.',
+            ndum='number of dummy resistors.',
+            res_type='the resistor type.',
+        )
+
+    def draw_layout(self):
+        # type: () -> None
+
+        res_params = self.params.copy()
+        sub_lch = res_params.pop('sub_lch')
+        sub_w = res_params.pop('sub_w')
+        sub_type = self.params['sub_type']
+
+        res_master = self.new_template(params=res_params, temp_cls=ResLadderCore)
+
+        # draw contact and move array up
+        top_layer, nx_arr, ny_arr = res_master.size
+        sub_params = dict(
+            lch=sub_lch,
+            w=sub_w,
+            sub_type=sub_type,
+            threshold=self.params['threshold'],
+            top_layer=top_layer,
+            blk_width=nx_arr,
+            show_pins=False,
+        )
+        _, blk_h = self.grid.get_block_size(top_layer)
+        sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
+        ny_shift = sub_master.size[2]
+        bot_inst = self.add_instance(sub_master, inst_name='XBSUB')
+        res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0.0, ny_shift * blk_h))
+        top_yo = (ny_arr + 2 * ny_shift) * blk_h
+        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0.0, top_yo), orient='MX')
+
+        # export supplies and recompute array_box/size
+        port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
+        self.reexport(bot_inst.get_port(port_name))
+        self.reexport(top_inst.get_port(port_name))
+        self.size = top_layer, nx_arr, ny_arr + 2 * ny_shift
+        self.array_box = bot_inst.array_box.merge(top_inst.array_box)
+
+        for port_name in res_inst.port_names_iter():
+            self.reexport(res_inst.get_port(port_name))
