@@ -286,17 +286,18 @@ class UsedTracks(object):
 
         return UsedTracks(self._res, init_track_sets=new_track_sets)
 
-    def merge(self, used_tracks):
+    def merge(self, used_tracks, layers):
         # type: (UsedTracks) -> None
         """Merge the given used tracks to this one."""
         for layer_id, new_track_set in used_tracks._track_sets.items():
-            if layer_id not in self._track_sets:
-                track_set = TrackSet()
-                self._track_sets[layer_id] = track_set
-            else:
-                track_set = self._track_sets[layer_id]
+            if layer_id in layers:
+                if layer_id not in self._track_sets:
+                    track_set = TrackSet()
+                    self._track_sets[layer_id] = track_set
+                else:
+                    track_set = self._track_sets[layer_id]
 
-            track_set.merge(new_track_set)
+                track_set.merge(new_track_set)
 
 
 def get_power_fill_tracks(grid,  # type: RoutingGrid

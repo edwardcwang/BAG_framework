@@ -1988,7 +1988,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                 for cidx in range(inst.nx):
                     for ridx in range(inst.ny):
                         inst_used_tracks = inst.get_used_tracks(row=ridx, col=cidx)
-                        self._used_tracks.merge(inst_used_tracks)
+                        self._used_tracks.merge(inst_used_tracks, self.grid.layers)
 
         top_vdd, top_vss = get_power_fill_tracks(self.grid, self.size, layer_id,
                                                  self._used_tracks.get_tracks_info(layer_id),
