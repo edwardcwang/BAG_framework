@@ -307,7 +307,8 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
                           sup_width,  # type: int
                           fill_margin,  # type: int
                           edge_margin,  # type: int
-                          sup_spacing=-1  # type: int
+                          sup_spacing=-1,  # type: int
+                          debug=False,  # type: bool
                           ):
     # type: () -> Tuple[List[WireArray], List[WireArray]]
     """Fill unused tracks with supply tracks.
@@ -345,6 +346,7 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
     for hidx in fill_hidx_list:
         fill_track_set.add_track(hidx, fill_intv, sup_width, value=False)
 
+    max_fill_hidx = fill_hidx_list[-1]
     # subtract used tracks from fill.
     sup_type = {}
     for hidx, intv_set in track_set.items():
@@ -356,11 +358,36 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
                                                  half_track=True, unit_mode=True)
             hidx0 = int(round(2 * idx0 + 1)) - 2 * (sup_width - 1)
             hidx1 = int(round(2 * idx1 + 1)) + 2 * (sup_width - 1)
+            if debug:
+                print('Found track: hidx = %d, intv = (%d, %d), fill_type = %s' % (hidx, wstart, wstop, fill_type))
+                print('deleting fill in hidx range (inclusive): (%d, %d)' % (hidx0, hidx1))
+
+            # substract fill
             for sub_idx in range(hidx0, hidx1 + 1):
                 fill_track_set.subtract(sub_idx, sub_intv)
                 # TODO: more robust error/warning messages?
                 if sub_idx not in sup_type and (fill_type == 'VDD' or fill_type == 'VSS'):
                     sup_type[sub_idx] = fill_type
+                    if debug:
+                        print('assigning hidx %d fill type %s' % (sub_idx, fill_type))
+            # assign adjacent fill tracks to fill_type
+            if fill_type == 'VDD' or fill_type == 'VSS':
+                for sub_idx in range(hidx0 - 1, -1, -1):
+                    if sub_idx in fill_track_set:
+                        if sub_idx not in sup_type:
+                            # TODO: more robust error/warning messages?
+                            sup_type[sub_idx] = fill_type
+                            if debug:
+                                print('assigning hidx %d fill type %s' % (sub_idx, fill_type))
+                        break
+                for sub_idx in range(hidx1 + 1, max_fill_hidx + 1):
+                    if sub_idx in fill_track_set:
+                        if sub_idx not in sup_type:
+                            # TODO: more robust error/warning messages?
+                            sup_type[sub_idx] = fill_type
+                            if debug:
+                                print('assigning hidx %d fill type %s' % (sub_idx, fill_type))
+                        break
 
     # count remaining fill tracks
     fill_hidx_list = sorted(fill_track_set.keys())
@@ -388,6 +415,8 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
     vdd_warr_list = []
     vss_warr_list = []
     for hidx in fill_hidx_list:
+        if debug:
+            print('creating fill at hidx %d' % hidx)
         # get supply type
         if hidx not in sup_type:
             if cur_idx == next_vdd:
@@ -397,8 +426,12 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
             else:
                 cur_type = 'VSS'
             cur_idx += 1
+            if debug:
+                print('hidx %d, unassigned, pick fill type = %s' % (hidx, cur_type))
         else:
             cur_type = sup_type[hidx]
+            if debug:
+                print('hidx %d, assigned fill type = %s' % (hidx, cur_type))
 
         w_list = vdd_warr_list if cur_type == 'VDD' else vss_warr_list
         tid = TrackID(layer_id, (hidx - 1) / 2, width=sup_width)
