@@ -127,7 +127,6 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             module = self.database.make_design_module(lib_name, cell_name, parent=self, prj=prj)
             rinst = dict(name=inst_name,
                          cell_name=cell_name,
-                         module=module,
                          params={},
                          term_mapping={},
                          )
@@ -313,7 +312,6 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         new_module = self.database.make_design_module(lib_name, cell_name, parent=self)
         rinst = dict(name=inst_name,
                      cell_name=cell_name,
-                     module=new_module,
                      params={},
                      term_mapping={},
                      )
@@ -370,7 +368,6 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         module = self.database.make_design_module(lib_name, cell_name, parent=self)
         rinst = dict(name=inst_name,
                      cell_name=cell_name,
-                     module=module,
                      params={},
                      term_mapping={},
                      )
@@ -411,7 +408,6 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             module = self.database.make_design_module(lib_name, cell_name, parent=self)
             rinst = dict(name=iname,
                          cell_name=cell_name,
-                         module=module,
                          params={},
                          term_mapping=iterm,
                          )
@@ -436,9 +432,12 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         """
         prim_dict = {}
         for inst_name, rinst_list in self.instance_map.items():
-            for rinst in rinst_list:
+            module_list = self.instances[inst_name]
+            if not isinstance(module_list, list):
+                module_list = [module_list]
+
+            for module, rinst in zip(module_list, rinst_list):
                 name = '%s.%s' % (cur_inst_name, rinst['name'])
-                module = rinst['module']
                 if module.is_primitive():
                     prim_dict[name] = module
                 else:
@@ -491,10 +490,14 @@ class Module(with_metaclass(abc.ABCMeta, object)):
                 raise Exception('Parameter %s unset.' % param)
 
         for key, rinst_list in self.instance_map.items():
+            module_list = self.instances[key]
+            if not isinstance(module_list, list):
+                module_list = [module_list]
+
             # Traverse list backward so we can remove instances
             for idx in range(len(rinst_list) - 1, -1, -1):
                 rinst = rinst_list[idx]
-                module = rinst['module']
+                module = module_list[idx]
                 module.update_bag_primitives()
                 if module.should_delete_instance():
                     # check if we need to delete this instance based on its parameters
@@ -612,9 +615,12 @@ class Module(with_metaclass(abc.ABCMeta, object)):
 
             concrete_inst_map = {}
             for inst_name, rinst_list in sorted(self.instance_map.items()):
+                module_list = self.instances[inst_name]
+                if not isinstance(module_list, list):
+                    module_list = [module_list]
+
                 concrete_rinst_list = []
-                for rinst in rinst_list:
-                    module = rinst['module']
+                for module, rinst in zip(module_list, rinst_list):
                     child_cell_name = '%s_%s' % (cur_cell_name, inst_name)
                     child_id = module.populate_hierarchy_graph(hier_graph, used_concrete_names, child_cell_name,
                                                                prefix, suffix)
