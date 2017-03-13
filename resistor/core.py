@@ -1012,8 +1012,6 @@ class ResLadder(TemplateBase):
             dictionary of default parameter values.
         """
         return dict(
-            nx=2,
-            ny=2,
             ndum=1,
             res_type='reference',
         )
@@ -1086,7 +1084,7 @@ class ResLadder(TemplateBase):
             if port_name in sup_table:
                 sup_table[port_name].extend(res_inst.get_all_port_pins(port_name))
             else:
-                self.reexport(res_inst.get_port(port_name), show=True)
+                self.reexport(res_inst.get_port(port_name), show=False)
 
         vdd_warrs, vss_warrs = sup_table['VDD'], sup_table['VSS']
         sup_layer = vdd_warrs[0].layer_id + 1
@@ -1102,5 +1100,5 @@ class ResLadder(TemplateBase):
 
         vdd_warrs, vss_warrs = self.do_power_fill(sup_layer, vdd_warrs, vss_warrs, sup_width=sup_width,
                                                   fill_margin=0.5, edge_margin=0.2, sup_spacing=sup_spacing)
-        self.add_pin('VDD', vdd_warrs, show=True)
-        self.add_pin('VSS', vss_warrs, show=True)
+        self.add_pin('VDD', vdd_warrs, show=False)
+        self.add_pin('VSS', vss_warrs, show=False)
