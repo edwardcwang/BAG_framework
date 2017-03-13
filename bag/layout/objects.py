@@ -610,8 +610,8 @@ class Instance(Arrayable):
         for obj in flat_inst_list:
             nx = obj['num_cols']
             ny = obj['num_rows']
-            spx = obj['sp_cols']
-            spy = obj['sp_rows']
+            spx = abs(obj['sp_cols'])  # TODO: figure out how to work around this hack
+            spy = abs(obj['sp_rows'])  # TODO: figure out how to work around this hack
             xc, yc = obj['loc']
             # use BBoxArray to calculate new inst arrays
             barr = BBoxArray(BBox(xc - 1, yc - 1, xc + 1, yc + 1, res), nx=nx, ny=ny,

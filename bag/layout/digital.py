@@ -175,8 +175,8 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 return val
         raise ValueError('Cannot find standard cell with name %s' % cell_name)
 
-    def set_std_size(self, std_size):
-        # type: (Tuple[int, int]) -> None
+    def set_std_size(self, std_size, top_layer=-1):
+        # type: (Tuple[int, int], int) -> None
         """Sets the size of this standard cell.
 
         This method computes self.size, self.array_box, and self.std_size.
@@ -187,6 +187,8 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         ----------
         std_size : Tuple[int, int]
             the standard cell size as (number of std. columns, number of std. rows) Tuple.
+        top_layer : int
+            the top level routing layer.  If negative, default to standard cell top routing layer.
         """
         # type: (Tuple[int, int]) -> None
         num_col, num_row = std_size
@@ -201,7 +203,9 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             dx, dy = 0, 0
         self.array_box = BBox(0.0, 0.0, num_col * self.std_col_width + 2 * dx,
                               num_row * self.std_row_height + 2 * dy, self.grid.resolution)
-        self.set_size_from_array_box(self.std_routing_layers[-1])
+        if top_layer < 0:
+            top_layer = self.std_routing_layers[-1]
+        self.set_size_from_array_box(top_layer)
 
     def update_routing_grid(self):
         """Register standard cell routing layers in the RoutingGrid.
@@ -217,6 +221,7 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self.grid = self.grid.copy()
         for lay_id, w, sp, tdir in zip(layers, widths, spaces, directions):
             self.grid.add_new_layer(lay_id, sp, w, tdir, override=True)
+        self.grid.update_block_pitch()
 
     def get_num_tracks(self, layer_id):
         # type: (int) -> int
