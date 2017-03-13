@@ -32,6 +32,7 @@ from builtins import *
 import os
 import abc
 from future.utils import with_metaclass
+from typing import List, Dict, Optional
 
 import networkx as nx
 
@@ -375,7 +376,8 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         self.instances[inst_name] = module
         self.instance_map[inst_name] = [rinst, ]
 
-    def array_instance(self, inst_name, inst_name_list, term_list=None):
+    def array_instance(self, inst_name, inst_name_list, term_list=None, same=False):
+        # type: (str, List[str], Optional[List[Dict[str, str]]], bool) -> None
         """Replace the given instance by an array of instances.
 
         This method will replace self.instances[inst_name] by a list of
@@ -385,14 +387,16 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         ----------
         inst_name : str
             the instance to array.
-        inst_name_list : list[str]
+        inst_name_list : List[str]
             a list of the names for each array item.
-        term_list : list[dict[str, str]] or None
+        term_list : Optional[List[Dict[str, str]]]
             a list of modified terminal connections for each array item.  The keys are
             instance terminal names, and the values are the net names to connect
             them to.  Only terminal connections different than the parent instance
             should be listed here.
             If None, assume terminal connections are not changed.
+        same : bool
+            True if all modules in this array is identical.
         """
         if not term_list:
             term_list = [{}] * len(inst_name_list)
@@ -404,15 +408,20 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         lib_name, cell_name = orig_module.lib_name, orig_module.cell_name
         rinst_list = []
         module_list = []
-        for iname, iterm in zip(inst_name_list, term_list):
-            module = self.database.make_design_module(lib_name, cell_name, parent=self)
-            rinst = dict(name=iname,
-                         cell_name=cell_name,
-                         params={},
-                         term_mapping=iterm,
-                         )
-            rinst_list.append(rinst)
-            module_list.append(module)
+        if not same:
+            for iname, iterm in zip(inst_name_list, term_list):
+                module = self.database.make_design_module(lib_name, cell_name, parent=self)
+                rinst = dict(name=iname,
+                             cell_name=cell_name,
+                             params={},
+                             term_mapping=iterm,
+                             )
+                rinst_list.append(rinst)
+                module_list.append(module)
+        else:
+            module_list = [orig_module] * len(inst_name_list)
+            rinst_list = [dict(name=iname, cell_name=cell_name, params={}, term_mapping=iterm)
+                          for iname, iterm in zip(inst_name_list, term_list)]
 
         self.instances[inst_name] = module_list
         self.instance_map[inst_name] = rinst_list
