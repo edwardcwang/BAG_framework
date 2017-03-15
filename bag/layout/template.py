@@ -1834,85 +1834,72 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             if track_upper is not None:
                 track_upper = int(round(track_upper / res))
 
-        # error checking
-        w_lay_id = pwarr_list[0].layer_id
-        w_width = pwarr_list[0].width
-        if w_lay_id != tr_layer_id + 1 and w_lay_id != tr_layer_id - 1:
-            raise ValueError('Cannot connect wire on layer %d to track on layer %d' % (w_lay_id, tr_layer_id))
-        # error checking + get track lower and upper coordinates.
-        tr_lower, tr_upper = None, None
-        for warr in chain(pwarr_list, nwarr_list):
-            warr_tid = warr.track_id  # type: TrackID
-            if warr_tid.layer_id != w_lay_id:
-                raise ValueError('WireArray layer = %d != %d' % (warr.layer_id, w_lay_id))
-            if warr_tid.width != w_width:
-                raise ValueError('WireArray width = %d != %d' % (warr.width, w_width))
-            warr_bounds = warr_tid.get_bounds(grid, unit_mode=True)
-            if tr_lower is None:
-                tr_lower = warr_bounds[0]
-            else:
-                tr_lower = min(tr_lower, warr_bounds[0])
-            if tr_upper is None:
-                tr_upper = warr_bounds[1]
-            else:
-                tr_upper = max(tr_upper, warr_bounds[1])
-
+        # compute wire_lower/upper without via extension
         pos_tid = TrackID(tr_layer_id, ptr_idx, width)
         neg_tid = TrackID(tr_layer_id, ntr_idx, width)
         pos_lower, pos_upper = pos_tid.get_bounds(grid, unit_mode=True)
         neg_lower, neg_upper = neg_tid.get_bounds(grid, unit_mode=True)
         w_lower = min(pos_lower, neg_lower)
         w_upper = max(pos_upper, neg_upper)
-        tr_width = pos_upper - pos_lower
-        tr_dir = grid.get_direction(tr_layer_id)
 
-        # make test via to get extensions
-        w0, w1 = grid.get_wire_bounds(w_lay_id, 0, width=w_width, unit_mode=True)
-        w_width = w1 - w0
-        if tr_dir == 'x':
-            via_box = BBox(0, 0, w_width, tr_width, res, unit_mode=True)
-        else:
-            via_box = BBox(0, 0, tr_width, w_width, res, unit_mode=True)
-        if tr_layer_id > w_lay_id:
-            vtop_layer = grid.get_layer_name(tr_layer_id, 0)
-            vbot_layer = grid.get_layer_name(w_lay_id, 0)
-            bot_dir = grid.get_direction(w_lay_id)
-            via_test = self.add_via(via_box, vbot_layer, vtop_layer, bot_dir)
-            vw_box = via_test.bottom_box
-            vt_box = via_test.top_box
-        else:
-            vbot_layer = grid.get_layer_name(tr_layer_id, 0)
-            vtop_layer = grid.get_layer_name(w_lay_id, 0)
-            bot_dir = grid.get_direction(tr_layer_id)
-            via_test = self.add_via(via_box, vbot_layer, vtop_layer, bot_dir)
-            vw_box = via_test.top_box
-            vt_box = via_test.bottom_box
-        via_test.destroy()
+        # separate wire arrays into bottom/top tracks, and compute wire/track lower/upper coordinates
+        bot_warrs, top_warrs = [[], []], [[], []]
+        bot_bounds, top_bounds = [None, None], [None, None]
+        for idx, warr_list in enumerate((nwarr_list, pwarr_list)):
+            for warr in warr_list:
+                warr_tid = warr.track_id  # type: TrackID
+                cur_layer_id = warr_tid.layer_id
+                cur_width = warr_tid.width
+                if cur_layer_id == tr_layer_id + 1:
+                    tr_ext, w_ext = self.grid.get_via_extensions(tr_layer_id, width, cur_width, unit_mode=True)
+                    top_warrs[idx].append(warr)
+                    cur_bounds = top_bounds
+                elif cur_layer_id == tr_layer_id - 1:
+                    w_ext, tr_ext = self.grid.get_via_extensions(cur_layer_id, cur_width, width, unit_mode=True)
+                    bot_warrs[idx].append(warr)
+                    cur_bounds = bot_bounds
+                else:
+                    raise ValueError('Cannot connect wire on layer %d '
+                                     'to track on layer %d' % (cur_layer_id, tr_layer_id))
 
-        # calculate extension
-        if tr_dir == 'x':
-            t_ext = (vt_box.width_unit - w_width) // 2
-            w_ext = (vw_box.height_unit - tr_width) // 2
-        else:
-            t_ext = (vt_box.height_unit - w_width) // 2
-            w_ext = (vw_box.width_unit - tr_width) // 2
-        w_lower -= w_ext
-        w_upper += w_ext
-        tr_lower -= t_ext
-        tr_upper += t_ext
+                # compute wire lower/upper including via extension
+                if cur_bounds[0] is None:
+                    cur_bounds[0] = w_lower - w_ext
+                else:
+                    cur_bounds[0] = min(cur_bounds[0], w_lower - w_ext)
+                if cur_bounds[1] is None:
+                    cur_bounds[1] = w_upper + w_ext
+                else:
+                    cur_bounds[1] = max(cur_bounds[1], w_upper + w_ext)
 
-        if track_lower is not None:
-            tr_lower = min(tr_lower, track_lower)
-        if track_upper is not None:
-            tr_upper = max(tr_upper, track_upper)
+                # compute track lower/upper including via extension
+                warr_bounds = warr_tid.get_bounds(grid, unit_mode=True)
+                if track_lower is None:
+                    track_lower = warr_bounds[0] - tr_ext
+                else:
+                    track_lower = min(track_lower, warr_bounds[0] - tr_ext)
+                if track_upper is None:
+                    track_upper = warr_bounds[1] + tr_ext
+                else:
+                    track_upper = max(track_upper, warr_bounds[1] + tr_ext)
 
         # draw differential tracks
-        pans = self.connect_to_tracks(pwarr_list, pos_tid, wire_lower=w_lower, wire_upper=w_upper,
-                                      track_lower=tr_lower, track_upper=tr_upper, fill_margin=fill_margin,
-                                      fill_type=fill_type, unit_mode=True, debug=debug)
-        nans = self.connect_to_tracks(nwarr_list, neg_tid, wire_lower=w_lower, wire_upper=w_upper,
-                                      track_lower=tr_lower, track_upper=tr_upper, fill_margin=fill_margin,
-                                      fill_type=fill_type, unit_mode=True, debug=debug)
+        pans, nans = None, None
+        if bot_warrs[0]:
+            pans = self.connect_to_tracks(bot_warrs[1], pos_tid, wire_lower=bot_bounds[0], wire_upper=bot_bounds[1],
+                                          track_lower=track_lower, track_upper=track_upper, fill_margin=fill_margin,
+                                          fill_type=fill_type, unit_mode=True, debug=debug)
+            nans = self.connect_to_tracks(bot_warrs[0], neg_tid, wire_lower=bot_bounds[0], wire_upper=bot_bounds[1],
+                                          track_lower=track_lower, track_upper=track_upper, fill_margin=fill_margin,
+                                          fill_type=fill_type, unit_mode=True, debug=debug)
+        if top_warrs[0]:
+            pans = self.connect_to_tracks(top_warrs[1], pos_tid, wire_lower=top_bounds[0], wire_upper=top_bounds[1],
+                                          track_lower=track_lower, track_upper=track_upper, fill_margin=fill_margin,
+                                          fill_type=fill_type, unit_mode=True, debug=debug)
+            nans = self.connect_to_tracks(top_warrs[0], neg_tid, wire_lower=top_bounds[0], wire_upper=top_bounds[1],
+                                          track_lower=track_lower, track_upper=track_upper, fill_margin=fill_margin,
+                                          fill_type=fill_type, unit_mode=True, debug=debug)
+
         return pans, nans
 
     def draw_vias_on_intersections(self, bot_warr_list, top_warr_list):
