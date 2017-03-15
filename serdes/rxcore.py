@@ -823,7 +823,6 @@ class RXCore(TemplateBase):
         layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf)
         hm_layer_id = layout_info.mconn_port_layer + 1
         vm_layer_id = hm_layer_id + 1
-        xm_layer_id = vm_layer_id + 1
         diff_space = self.params['diff_space']
         vm_width = 1
         xm_width = 1
@@ -832,29 +831,22 @@ class RXCore(TemplateBase):
         # connect inputs of even and odd paths
         route_col_intv = col_idx_dict['integ']
         ptr_idx = layout_info.get_center_tracks(vm_layer_id, diff_track_width, route_col_intv)
-        ntr_idx = ptr_idx + vm_width + diff_space
-        ports = ['integ_in{}']
-        inp, inn = self._connect_diff_tracks(vm_layer_id, ptr_idx, ntr_idx, inst_list, ports, ports)
+        tr_idx_list = [ptr_idx, ptr_idx + vm_width + diff_space]
+        warr_list_list = [[inst_list[0].get_port('integ_inp').get_pins()[0],
+                           inst_list[1].get_port('integ_inp').get_pins()[0],
+                           ],
+                          [inst_list[0].get_port('integ_inn').get_pins()[0],
+                           inst_list[1].get_port('integ_inn').get_pins()[0],
+                           ],
+                          ]
+        inp, inn = self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width)
         self.add_pin('inp', inp, show=True)
         self.add_pin('inn', inn, show=True)
 
         # connect alat0 outputs
-        # step 1: connect ffe inputs to higher metal layers
-        # step 1A: get intermediate vm layer tracks
+        # step 1: connect FFE inputs to xm layer
         ffe_in_intv = col_idx_dict['intsum'][1:3]
-        intsump_tr = layout_info.get_center_tracks(vm_layer_id, diff_track_width, ffe_in_intv)
-        intsumn_tr = intsump_tr + vm_width + diff_space
-        # step 1B: connect ffe to xm layer
-        ffe_in_list = []
-        for parity in (0, 1):
-            intsum_p = inst_list[parity].get_port('intsum_inp<1>').get_pins()
-            intsum_n = inst_list[parity].get_port('intsum_inn<1>').get_pins()
-            ffep, ffen = self.connect_differential_tracks(intsum_p, intsum_n, vm_layer_id, intsump_tr, intsumn_tr)
-            mode = 2 * parity - 1
-            intsumnx_tr = self.grid.find_next_track(xm_layer_id, ffep.middle, tr_width=xm_width, mode=mode)
-            intsumpx_tr = intsumnx_tr - mode * (xm_width + diff_space)
-            ffe_in = self.connect_differential_tracks(ffep, ffen, xm_layer_id, intsumpx_tr, intsumnx_tr)
-            ffe_in_list.extend(ffe_in)
+        ffe_in_list = self._connect_to_xm('intsum_in{}<1>', inst_list, ffe_in_intv, layout_info, vm_width, xm_width)
 
         # step 2: get wires/tracks then connect
         route_col_intv = col_idx_dict['alat']
@@ -881,15 +873,87 @@ class RXCore(TemplateBase):
                           ]
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width)
 
-    def _connect_diff_tracks(self, layer_id, ptr_idx, ntr_idx, inst_list, even_ports, odd_ports):
-        p_list, n_list = [], []
-        for parity, pin_list in zip(('p', 'n'), (p_list, n_list)):
-            for inst, port_names in zip(inst_list, (even_ports, odd_ports)):
-                for fmt in port_names:
-                    name = fmt.format(parity)
-                    pin_list.extend(inst.get_port(name).get_pins())
+        # connect summer outputs
+        route_col_intv = col_idx_dict['summer'][1:3]
+        ptr_idx0 = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
+        tr_idx_list = [ptr_idx0, ptr_idx0 + vm_width + diff_space,
+                       ptr_idx0 + diff_track_width + diff_space,
+                       ptr_idx0 + diff_track_width + vm_width + 2 * diff_space]
+        warr_list_list = [[inst_list[0].get_port('summer_outp').get_pins()[0],
+                           inst_list[0].get_port('dlat0_inp').get_pins()[0],
+                           inst_list[1].get_port('summer_inp<1>').get_pins()[0]
+                           ],
+                          [inst_list[0].get_port('summer_outn').get_pins()[0],
+                           inst_list[0].get_port('dlat0_inn').get_pins()[0],
+                           inst_list[1].get_port('summer_inn<1>').get_pins()[0]
+                           ],
+                          [inst_list[1].get_port('summer_outp').get_pins()[0],
+                           inst_list[1].get_port('dlat0_inp').get_pins()[0],
+                           inst_list[0].get_port('summer_inp<1>').get_pins()[0]
+                           ],
+                          [inst_list[1].get_port('summer_outn').get_pins()[0],
+                           inst_list[1].get_port('dlat0_inn').get_pins()[0],
+                           inst_list[0].get_port('summer_inn<1>').get_pins()[0]
+                           ],
+                          ]
+        self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width)
 
-        return self.connect_differential_tracks(p_list, n_list, layer_id, ptr_idx, ntr_idx)
+        # connect dlat1 outputs
+        # step 1: connect dlat2 inputs to xm layer
+        dlat2_in_intv = col_idx_dict['dlat'][2]
+        dlat2_in_list = self._connect_to_xm('dlat2_in{}', inst_list, dlat2_in_intv, layout_info, vm_width, xm_width)
+        # step 2: get wires/tracks then connect
+        route_col_intv = col_idx_dict['dlat'][1]
+        ptr_idx0 = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
+        tr_idx_list = [ptr_idx0, ptr_idx0 + vm_width + diff_space,
+                       ptr_idx0 + diff_track_width + diff_space,
+                       ptr_idx0 + diff_track_width + vm_width + 2 * diff_space]
+        warr_list_list = [[inst_list[0].get_port('dlat1_outp').get_pins()[0],
+                           inst_list[1].get_port('intsum_inp<3>').get_pins()[0],
+                           dlat2_in_list[0],
+                           ],
+                          [inst_list[0].get_port('dlat1_outn').get_pins()[0],
+                           inst_list[1].get_port('intsum_inn<3>').get_pins()[0],
+                           dlat2_in_list[1],
+                           ],
+                          [inst_list[1].get_port('dlat1_outp').get_pins()[0],
+                           inst_list[0].get_port('intsum_inp<3>').get_pins()[0],
+                           dlat2_in_list[2],
+                           ],
+                          [inst_list[1].get_port('dlat1_outn').get_pins()[0],
+                           inst_list[0].get_port('intsum_inn<3>').get_pins()[0],
+                           dlat2_in_list[3],
+                           ],
+                          ]
+        self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width)
+
+    def _connect_to_xm(self, name_fmt, inst_list, col_intv, layout_info, vm_width, xm_width):
+        """Connect differential ports to xm layer.
+
+        Returns a list of [even_p, even_n, odd_p, odd_n] WireArrays on xm layer.
+        """
+        diff_space = self.params['diff_space']
+        diff_track_width = 2 * vm_width + diff_space
+        hm_layer_id = layout_info.mconn_port_layer + 1
+        vm_layer_id = hm_layer_id + 1
+        xm_layer_id = vm_layer_id + 1
+
+        # get vm tracks
+        p_tr = layout_info.get_center_tracks(vm_layer_id, diff_track_width, col_intv)
+        n_tr = p_tr + vm_width + diff_space
+        # step 1B: connect to vm and xm layer
+        results = []
+        for parity in (0, 1):
+            warr_p = inst_list[parity].get_port(name_fmt.format('p')).get_pins()
+            warr_n = inst_list[parity].get_port(name_fmt.format('n')).get_pins()
+            vmp, vmn = self.connect_differential_tracks(warr_p, warr_n, vm_layer_id, p_tr, n_tr)
+            mode = 2 * parity - 1
+            nx_tr = self.grid.find_next_track(xm_layer_id, vmp.middle, tr_width=xm_width, mode=mode)
+            px_tr = nx_tr - mode * (xm_width + diff_space)
+            xm_warrs = self.connect_differential_tracks(vmp, vmn, xm_layer_id, px_tr, nx_tr)
+            results.extend(xm_warrs)
+
+        return results
 
     @classmethod
     def get_default_param_values(cls):
