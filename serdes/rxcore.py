@@ -839,30 +839,47 @@ class RXCore(TemplateBase):
         self.add_pin('inn', inn, show=True)
 
         # connect alat0 outputs
-        route_col_intv = col_idx_dict['alat']
-        ptr_idx0 = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
-        # get ffe input tracks
+        # step 1: connect ffe inputs to higher metal layers
+        # step 1A: get intermediate vm layer tracks
         ffe_in_intv = col_idx_dict['intsum'][1:3]
         intsump_tr = layout_info.get_center_tracks(vm_layer_id, diff_track_width, ffe_in_intv)
         intsumn_tr = intsump_tr + vm_width + diff_space
-        for parity, ptr_idx in enumerate((ptr_idx0, ptr_idx0 + diff_track_width + diff_space)):
-            ntr_idx = ptr_idx + vm_width + diff_space
-            # connect ffe inputs to higher metal layers
-            intsum_par = 1 - parity
-            intsum_p = inst_list[intsum_par].get_port('intsum_inp<1>').get_pins()
-            intsum_n = inst_list[intsum_par].get_port('intsum_inn<1>').get_pins()
+        # step 1B: connect ffe to xm layer
+        ffe_in_list = []
+        for parity in (0, 1):
+            intsum_p = inst_list[parity].get_port('intsum_inp<1>').get_pins()
+            intsum_n = inst_list[parity].get_port('intsum_inn<1>').get_pins()
             ffep, ffen = self.connect_differential_tracks(intsum_p, intsum_n, vm_layer_id, intsump_tr, intsumn_tr)
-            intsumnx_tr = self.grid.find_next_track(xm_layer_id, ffep.middle, tr_width=xm_width, mode=-1)
-            intsumpx_tr = intsumnx_tr + xm_width + diff_space
-            ffep, ffen = self.connect_differential_tracks(ffep, ffen, xm_layer_id, intsumpx_tr, intsumnx_tr)
+            mode = 2 * parity - 1
+            intsumnx_tr = self.grid.find_next_track(xm_layer_id, ffep.middle, tr_width=xm_width, mode=mode)
+            intsumpx_tr = intsumnx_tr - mode * (xm_width + diff_space)
+            ffe_in = self.connect_differential_tracks(ffep, ffen, xm_layer_id, intsumpx_tr, intsumnx_tr)
+            ffe_in_list.extend(ffe_in)
 
-            # connect
-            p_list, n_list = [ffep], [ffen]
-            p_list.extend(inst_list[parity].get_port('alat0_outp').get_pins())
-            p_list.extend(inst_list[parity].get_port('alat1_inp').get_pins())
-            n_list.extend(inst_list[parity].get_port('alat0_outn').get_pins())
-            n_list.extend(inst_list[parity].get_port('alat1_inn').get_pins())
-            self.connect_differential_tracks(p_list, n_list, vm_layer_id, ptr_idx, ntr_idx)
+        # step 2: get wires/tracks then connect
+        route_col_intv = col_idx_dict['alat']
+        ptr_idx0 = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
+        tr_idx_list = [ptr_idx0, ptr_idx0 + vm_width + diff_space,
+                       ptr_idx0 + diff_track_width + diff_space,
+                       ptr_idx0 + diff_track_width + vm_width + 2 * diff_space]
+        warr_list_list = [[inst_list[0].get_port('alat0_outp').get_pins()[0],
+                           inst_list[0].get_port('alat1_inp').get_pins()[0],
+                           ffe_in_list[2],
+                           ],
+                          [inst_list[0].get_port('alat0_outn').get_pins()[0],
+                           inst_list[0].get_port('alat1_inn').get_pins()[0],
+                           ffe_in_list[3],
+                           ],
+                          [inst_list[1].get_port('alat0_outp').get_pins()[0],
+                           inst_list[1].get_port('alat1_inp').get_pins()[0],
+                           ffe_in_list[0],
+                           ],
+                          [inst_list[1].get_port('alat0_outn').get_pins()[0],
+                           inst_list[1].get_port('alat1_inn').get_pins()[0],
+                           ffe_in_list[1],
+                           ],
+                          ]
+        self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width)
 
     def _connect_diff_tracks(self, layer_id, ptr_idx, ntr_idx, inst_list, even_ports, odd_ports):
         p_list, n_list = [], []
