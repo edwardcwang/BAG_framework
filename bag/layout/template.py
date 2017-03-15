@@ -35,7 +35,7 @@ import time
 import abc
 import copy
 from collections import OrderedDict
-from itertools import chain
+from itertools import chain, islice
 from typing import Union, Dict, Any, List, Set, Type, Optional, Tuple, Generator, TypeVar
 import yaml
 
@@ -1776,7 +1776,6 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """Connect the given differential wires to two tracks symmetrically.
 
         This method makes sure the connections are symmetric and have identical parasitics.
-        This method only works if all given wires are on the same layer and have the same width.
 
         Parameters
         ----------
@@ -1812,18 +1811,57 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         n_track : Optional[WireArray]
             the negative track.
         """
-        if isinstance(pwarr_list, WireArray):
-            pwarr_list = [pwarr_list]
-        else:
-            pass
-        if isinstance(nwarr_list, WireArray):
-            nwarr_list = [nwarr_list]
-        else:
-            pass
+        track_list = self.connect_matching_tracks([pwarr_list, nwarr_list], tr_layer_id, [ptr_idx, ntr_idx],
+                                                  width=width, track_lower=track_lower, track_upper=track_upper,
+                                                  fill_margin=fill_margin, fill_type=fill_type, unit_mode=unit_mode,
+                                                  debug=debug)
+        return track_list[0], track_list[1]
 
-        if not pwarr_list:
-            return None, None
+    def connect_matching_tracks(self,  # type: TemplateBase
+                                warr_list_list,  # type: List[Union[WireArray, List[WireArray]]]
+                                tr_layer_id,  # type: int
+                                tr_idx_list,  # type: List[Union[int, float]]
+                                width=1,  # type: int
+                                track_lower=None,  # type: Optional[Union[float, int]]
+                                track_upper=None,  # type: Optional[Union[float, int]]
+                                fill_margin=0,  # type: Union[int, float]
+                                fill_type='',  # type: str
+                                unit_mode=False,  # type: bool
+                                debug=False  # type: bool
+                                ):
+        # type: (...) -> List[Optional[WireArray]]
+        """Connect wires to tracks with optimal matching.
 
+        This method connects the wires to tracks in a way that minimizes the parasitic mismatches.
+
+        Parameters
+        ----------
+        warr_list_list : List[Union[WireArray, List[WireArray]]]
+            list of signal wires to connect.
+        tr_layer_id : int
+            track layer ID.
+        tr_idx_list : List[Union[int, float]]
+            list of track indices.
+        width : int
+            track width in number of tracks.
+        track_lower : Optional[Union[float, int]]
+            if given, extend track(s) to this lower coordinate.
+        track_upper : Optional[Union[float, int]]
+            if given, extend track(s) to this upper coordinate.
+        fill_margin : Union[int, float]
+            minimum margin between wires and fill.
+        fill_type : str
+            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
+        unit_mode: bool
+            True if track_lower/track_upper/fill_margin is given in resolution units.
+        debug : bool
+            True to print debug messages.
+
+        Returns
+        -------
+        track_list : List[WireArray]
+            list of created tracks.
+        """
         grid = self.grid
         res = grid.resolution
 
@@ -1834,20 +1872,36 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             if track_upper is not None:
                 track_upper = int(round(track_upper / res))
 
+        # simple error checking
+        num_tracks = len(tr_idx_list)
+        if num_tracks != len(warr_list_list):
+            raise ValueError('wire list length and track index list length mismatch.')
+        if num_tracks == 0:
+            raise ValueError('No tracks given')
+
         # compute wire_lower/upper without via extension
-        pos_tid = TrackID(tr_layer_id, ptr_idx, width)
-        neg_tid = TrackID(tr_layer_id, ntr_idx, width)
-        pos_lower, pos_upper = pos_tid.get_bounds(grid, unit_mode=True)
-        neg_lower, neg_upper = neg_tid.get_bounds(grid, unit_mode=True)
-        w_lower = min(pos_lower, neg_lower)
-        w_upper = max(pos_upper, neg_upper)
+        w_lower, w_upper = grid.get_wire_bounds(tr_layer_id, tr_idx_list[0], width=width, unit_mode=True)
+        for tr_idx in islice(tr_idx_list, 1, None):
+            cur_low, cur_up = grid.get_wire_bounds(tr_layer_id, tr_idx, width=width, unit_mode=True)
+            w_lower = min(w_lower, cur_low)
+            w_upper = max(w_upper, cur_up)
 
         # separate wire arrays into bottom/top tracks, and compute wire/track lower/upper coordinates
-        bot_warrs, top_warrs = [[], []], [[], []]
+        bot_warrs = [[] for _ in range(num_tracks)]
+        top_warrs = [[] for _ in range(num_tracks)]
         bot_bounds, top_bounds = [None, None], [None, None]
-        for idx, warr_list in enumerate((nwarr_list, pwarr_list)):
+        for idx, warr_list in enumerate(warr_list_list):
+            # convert to WireArray list
+            if isinstance(warr_list, WireArray):
+                warr_list = [warr_list]
+            else:
+                pass
+
+            if not warr_list:
+                raise ValueError('No wires found for track index %d' % idx)
+
             for warr in warr_list:
-                warr_tid = warr.track_id  # type: TrackID
+                warr_tid = warr.track_id
                 cur_layer_id = warr_tid.layer_id
                 cur_width = warr_tid.width
                 if cur_layer_id == tr_layer_id + 1:
@@ -1883,24 +1937,21 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                 else:
                     track_upper = max(track_upper, warr_bounds[1] + tr_ext)
 
-        # draw differential tracks
-        pans, nans = None, None
-        if bot_warrs[0]:
-            pans = self.connect_to_tracks(bot_warrs[1], pos_tid, wire_lower=bot_bounds[0], wire_upper=bot_bounds[1],
-                                          track_lower=track_lower, track_upper=track_upper, fill_margin=fill_margin,
-                                          fill_type=fill_type, unit_mode=True, debug=debug)
-            nans = self.connect_to_tracks(bot_warrs[0], neg_tid, wire_lower=bot_bounds[0], wire_upper=bot_bounds[1],
-                                          track_lower=track_lower, track_upper=track_upper, fill_margin=fill_margin,
-                                          fill_type=fill_type, unit_mode=True, debug=debug)
-        if top_warrs[0]:
-            pans = self.connect_to_tracks(top_warrs[1], pos_tid, wire_lower=top_bounds[0], wire_upper=top_bounds[1],
-                                          track_lower=track_lower, track_upper=track_upper, fill_margin=fill_margin,
-                                          fill_type=fill_type, unit_mode=True, debug=debug)
-            nans = self.connect_to_tracks(top_warrs[0], neg_tid, wire_lower=top_bounds[0], wire_upper=top_bounds[1],
-                                          track_lower=track_lower, track_upper=track_upper, fill_margin=fill_margin,
-                                          fill_type=fill_type, unit_mode=True, debug=debug)
+        # draw tracks
+        track_list = []
+        for tr_idx in tr_idx_list:
+            track_list.append(self.add_wires(tr_layer_id, tr_idx, track_lower, track_upper, width=width,
+                                             fill_margin=fill_margin, fill_type=fill_type, unit_mode=True))
 
-        return pans, nans
+        # connect wires to tracks
+        for bwarr_list, twarr_list, tr_idx in zip(bot_warrs, top_warrs, tr_idx_list):
+            tr_id = TrackID(tr_layer_id, tr_idx, width=width)
+            self.connect_to_tracks(bwarr_list, tr_id, wire_lower=bot_bounds[0], wire_upper=bot_bounds[1],
+                                   fill_margin=fill_margin, fill_type=fill_type, unit_mode=True, debug=debug)
+            self.connect_to_tracks(twarr_list, tr_id, wire_lower=top_bounds[0], wire_upper=top_bounds[1],
+                                   fill_margin=fill_margin, fill_type=fill_type, unit_mode=True, debug=debug)
+
+        return track_list
 
     def draw_vias_on_intersections(self, bot_warr_list, top_warr_list):
         # type: (Union[WireArray, List[WireArray]], Union[WireArray, List[WireArray]]) -> None
