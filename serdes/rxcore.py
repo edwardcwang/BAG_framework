@@ -125,7 +125,7 @@ class RXHalfTop(SerdesRXBase):
 
         # add pins
         for name, warr_list in alat_ports.items():
-            self.add_pin('alat_' + name, warr_list, show=show_pins)
+            self.add_pin('alat1_' + name, warr_list, show=show_pins)
 
         for (name, idx), warr_list in intsum_ports.items():
             if idx >= 0:
@@ -278,7 +278,7 @@ class RXHalfBottom(SerdesRXBase):
             self.add_pin('integ_' + name, warr_list, show=show_pins)
 
         for name, warr_list in alat_ports.items():
-            self.add_pin('alat_' + name, warr_list, show=show_pins)
+            self.add_pin('alat0_' + name, warr_list, show=show_pins)
 
         for idx, dlat_params in enumerate(dlat_params_list):
             cur_col = dlat_params.pop('col_idx')
@@ -411,7 +411,8 @@ class RXHalf(TemplateBase):
         # create AnalogBaseInfo object
         tech_info = self.grid.tech_info
         vm_layer_id = layout_info.mconn_port_layer + 2
-        diff_track_width = 2 + diff_space
+        vm_width = 1
+        diff_track_width = 2 * vm_width + diff_space
 
         # compute block locations
         col_idx_dict = {}
@@ -589,6 +590,7 @@ class RXHalf(TemplateBase):
         bot_params['integ_params'] = new_integ_params
         bot_params['alat_params'] = alat1_params
         bot_params['dlat_params_list'] = new_dlat_params_list
+        bot_params['show_pins'] = False
         bot_master = self.new_template(params=bot_params, temp_cls=RXHalfBottom)
         bot_inst = self.add_instance(bot_master)
 
@@ -611,6 +613,7 @@ class RXHalf(TemplateBase):
             gm_sep_list=summer_gm_sep_list,
             sgn_list=summer_params['sgn_list'],
         )
+        top_params['show_pins'] = False
         # print('top summer col: %d' % top_params['summer_params']['col_idx'])
         top_master = self.new_template(params=top_params, temp_cls=RXHalfTop)
         top_inst = self.add_instance(top_master, orient='MX')
@@ -618,10 +621,11 @@ class RXHalf(TemplateBase):
         self.array_box = bot_inst.array_box.merge(top_inst.array_box)
         self.set_size_from_array_box(top_master.size[0])
 
+        show_pins = self.params['show_pins']
         for port_name in bot_inst.port_names_iter():
-            self.reexport(bot_inst.get_port(port_name), show=True)
+            self.reexport(bot_inst.get_port(port_name), show=show_pins)
         for port_name in top_inst.port_names_iter():
-            self.reexport(top_inst.get_port(port_name), show=True)
+            self.reexport(top_inst.get_port(port_name), show=show_pins)
 
         return bot_inst, top_inst, col_idx_dict
 
@@ -638,8 +642,8 @@ class RXHalf(TemplateBase):
         ntr_idx = ptr_idx + diff_space + 1
         integ_outp = bot_inst.get_port('integ_outp').get_pins(hm_layer)
         integ_outn = bot_inst.get_port('integ_outn').get_pins(hm_layer)
-        alat0_inp = bot_inst.get_port('alat_inp').get_pins(hm_layer)
-        alat0_inn = bot_inst.get_port('alat_inn').get_pins(hm_layer)
+        alat0_inp = bot_inst.get_port('alat0_inp').get_pins(hm_layer)
+        alat0_inn = bot_inst.get_port('alat0_inn').get_pins(hm_layer)
 
         self.connect_differential_tracks(integ_outp + alat0_inp, integ_outn + alat0_inn,
                                          vm_layer, ptr_idx, ntr_idx)
@@ -649,8 +653,8 @@ class RXHalf(TemplateBase):
         ptr_idx = self.grid.coord_to_nearest_track(vm_layer, layout_info.col_to_coord(route_col),
                                                    mode=2)
         ntr_idx = ptr_idx + diff_space + 1
-        alat1_outp = top_inst.get_port('alat_outp').get_pins(hm_layer)
-        alat1_outn = top_inst.get_port('alat_outn').get_pins(hm_layer)
+        alat1_outp = top_inst.get_port('alat1_outp').get_pins(hm_layer)
+        alat1_outn = top_inst.get_port('alat1_outn').get_pins(hm_layer)
         intsum_inp = top_inst.get_port('intsum_inp<0>').get_pins(hm_layer)
         intsum_inn = top_inst.get_port('intsum_inn<0>').get_pins(hm_layer)
 
@@ -732,6 +736,7 @@ class RXHalf(TemplateBase):
             ndumr=4,
             cur_track_width=1,
             guard_ring_nf=0,
+            show_pins=False
         )
 
     @classmethod
@@ -764,6 +769,7 @@ class RXHalf(TemplateBase):
             diff_space='number of tracks reserved as space between differential tracks.',
             cur_track_width='width of the current-carrying horizontal track wire in number of tracks.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
+            show_pins='True to draw layout pins.',
         )
 
 
@@ -817,21 +823,56 @@ class RXCore(TemplateBase):
         layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf)
         hm_layer_id = layout_info.mconn_port_layer + 1
         vm_layer_id = hm_layer_id + 1
+        xm_layer_id = vm_layer_id + 1
         diff_space = self.params['diff_space']
+        vm_width = 1
+        xm_width = 1
+        diff_track_width = 2 * vm_width + diff_space
 
         # connect inputs of even and odd paths
         route_col_intv = col_idx_dict['integ']
-        ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 + diff_space, route_col_intv)
-        ntr_idx = ptr_idx + diff_space + 1
-        p_list = []
-        n_list = []
-        for inst in inst_list:
-            p_list += inst.get_port('integ_inp').get_pins(hm_layer_id)
-            n_list += inst.get_port('integ_inn').get_pins(hm_layer_id)
-
-        inp, inn = self.connect_differential_tracks(p_list, n_list, vm_layer_id, ptr_idx, ntr_idx)
+        ptr_idx = layout_info.get_center_tracks(vm_layer_id, diff_track_width, route_col_intv)
+        ntr_idx = ptr_idx + vm_width + diff_space
+        ports = ['integ_in{}']
+        inp, inn = self._connect_diff_tracks(vm_layer_id, ptr_idx, ntr_idx, inst_list, ports, ports)
         self.add_pin('inp', inp, show=True)
         self.add_pin('inn', inn, show=True)
+
+        # connect alat0 outputs
+        route_col_intv = col_idx_dict['alat']
+        ptr_idx0 = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
+        # get ffe input tracks
+        ffe_in_intv = col_idx_dict['intsum'][1:3]
+        intsump_tr = layout_info.get_center_tracks(vm_layer_id, diff_track_width, ffe_in_intv)
+        intsumn_tr = intsump_tr + vm_width + diff_space
+        for parity, ptr_idx in enumerate((ptr_idx0, ptr_idx0 + diff_track_width + diff_space)):
+            ntr_idx = ptr_idx + vm_width + diff_space
+            # connect ffe inputs to higher metal layers
+            intsum_par = 1 - parity
+            intsum_p = inst_list[intsum_par].get_port('intsum_inp<1>').get_pins()
+            intsum_n = inst_list[intsum_par].get_port('intsum_inn<1>').get_pins()
+            ffep, ffen = self.connect_differential_tracks(intsum_p, intsum_n, vm_layer_id, intsump_tr, intsumn_tr)
+            intsumnx_tr = self.grid.find_next_track(xm_layer_id, ffep.middle, tr_width=xm_width, mode=-1)
+            intsumpx_tr = intsumnx_tr + xm_width + diff_space
+            ffep, ffen = self.connect_differential_tracks(ffep, ffen, xm_layer_id, intsumpx_tr, intsumnx_tr)
+
+            # connect
+            p_list, n_list = [ffep], [ffen]
+            p_list.extend(inst_list[parity].get_port('alat0_outp').get_pins())
+            p_list.extend(inst_list[parity].get_port('alat1_inp').get_pins())
+            n_list.extend(inst_list[parity].get_port('alat0_outn').get_pins())
+            n_list.extend(inst_list[parity].get_port('alat1_inn').get_pins())
+            self.connect_differential_tracks(p_list, n_list, vm_layer_id, ptr_idx, ntr_idx)
+
+    def _connect_diff_tracks(self, layer_id, ptr_idx, ntr_idx, inst_list, even_ports, odd_ports):
+        p_list, n_list = [], []
+        for parity, pin_list in zip(('p', 'n'), (p_list, n_list)):
+            for inst, port_names in zip(inst_list, (even_ports, odd_ports)):
+                for fmt in port_names:
+                    name = fmt.format(parity)
+                    pin_list.extend(inst.get_port(name).get_pins())
+
+        return self.connect_differential_tracks(p_list, n_list, layer_id, ptr_idx, ntr_idx)
 
     @classmethod
     def get_default_param_values(cls):
