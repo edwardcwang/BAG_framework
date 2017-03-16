@@ -269,18 +269,21 @@ class AnalogBaseInfo(object):
         self.float_dummy = tech_params['layout']['analog_base']['floating_dummy']
 
         # initialize parameters
+        res = grid.resolution
         self.num_fg_per_sd = mos_cls.get_num_fingers_per_sd(lch)
-        self.sd_pitch = mos_cls.get_sd_pitch(lch)
-        self.sd_xc = mos_cls.get_left_sd_xc(lch, guard_ring_nf) + self.sd_pitch * pitch_offset[0]
+        sd_pitch = mos_cls.get_sd_pitch(lch)
+        self._sd_pitch_unit = int(round(sd_pitch / res))
+        left_sd_xc_unit = int(round(mos_cls.get_left_sd_xc(lch, guard_ring_nf) / res))
+        self._sd_xc_unit = left_sd_xc_unit + self._sd_pitch_unit * pitch_offset[0]
         self.mconn_port_layer = mos_cls.port_layer_id()
         self.dum_port_layer = dum_cls.port_layer_id()
         self.pitch_offset = pitch_offset
 
         # register new grid layers
         vm_width = mos_cls.get_port_width(lch)
-        vm_space = self.sd_pitch - vm_width
+        vm_space = sd_pitch - vm_width
         dum_width = dum_cls.get_port_width(lch)
-        dum_space = self.sd_pitch - dum_width
+        dum_space = sd_pitch - dum_width
 
         self.grid = grid.copy()
         self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y')
@@ -288,24 +291,45 @@ class AnalogBaseInfo(object):
         self.grid.update_block_pitch()
         self._mos_cls = mos_cls
 
+    @property
+    def sd_pitch(self):
+        return self._sd_pitch_unit * self.grid.resolution
+
+    @property
+    def sd_pitch_unit(self):
+        return self._sd_pitch_unit
+
+    @property
+    def sd_xc(self):
+        return self._sd_xc_unit * self.grid.resolution
+
+    @property
+    def sd_xc_unit(self):
+        return self._sd_xc_unit
+
     def get_total_width(self, fg_tot, guard_ring_nf=0):
         """Calculate width of final AnalogBase in number of source/drain tracks."""
         return self._mos_cls.get_template_width(fg_tot, guard_ring_nf=guard_ring_nf)
 
-    def col_to_coord(self, col_idx):
+    def col_to_coord(self, col_idx, unit_mode=False):
         """Convert the given transistor column index to X coordinate.
 
         Parameters
         ----------
         col_idx : int
             the transistor index.  0 is left-most transistor.
+        unit_mode : bool
+            True to return coordinate in resolution units.
 
         Returns
         -------
         xcoord : float
             X coordinate of the left source/drain center of the given transistor.
         """
-        return self.sd_xc + (col_idx + self.pitch_offset[0]) * self.sd_pitch
+        coord = self._sd_xc_unit + (col_idx + self.pitch_offset[0]) * self._sd_pitch_unit
+        if unit_mode:
+            return coord
+        return coord * self.grid.resolution
 
     def get_center_tracks(self, layer_id, num_tracks, col_intv):
         """Return the tracks that center on the given column interval.
@@ -324,9 +348,8 @@ class AnalogBaseInfo(object):
         track_id : int
             leftmost track ID of the center tracks.
         """
-        res = self.grid.resolution
-        x0_unit = int(round(self.col_to_coord(col_intv[0]) / res))
-        x1_unit = int(round(self.col_to_coord(col_intv[1]) / res))
+        x0_unit = self.col_to_coord(col_intv[0], unit_mode=True)
+        x1_unit = self.col_to_coord(col_intv[1], unit_mode=True)
         # find track number with coordinate strictly larger than x0
         t_start = self.grid.find_next_track(layer_id, x0_unit, half_track=True, mode=1, unit_mode=True)
         t_stop = self.grid.find_next_track(layer_id, x1_unit, half_track=True, mode=-1, unit_mode=True)
@@ -338,7 +361,7 @@ class AnalogBaseInfo(object):
         offset = (ntracks - num_tracks) / 2
         return t_start + offset
 
-    def num_tracks_to_fingers(self, layer_id, num_tracks, col_idx, even=True):
+    def num_tracks_to_fingers(self, layer_id, num_tracks, col_idx, even=True, fg_margin=0):
         """Returns the minimum number of fingers needed to span given number of tracks.
 
         Returns the smallest N such that the transistor interval [col_idx, col_idx + N)
@@ -354,25 +377,27 @@ class AnalogBaseInfo(object):
             the starting column index.
         even : bool
             True to return even integers.
+        fg_margin : int
+            Ad this many fingers on both sides of tracks to act as margin.
+
         Returns
         -------
         min_fg : int
             minimum number of fingers needed to span the given number of tracks.
         """
-        res = self.grid.resolution
-        x0 = self.col_to_coord(col_idx)
-        x0_unit = int(round(x0 / res))
+        x0 = self.col_to_coord(col_idx, unit_mode=True)
+        x1 = self.col_to_coord(col_idx + fg_margin, unit_mode=True)
         # find track number with coordinate strictly larger than x0
-        t_start = self.grid.find_next_track(layer_id, x0_unit, half_track=True, mode=1, unit_mode=True)
+        t_start = self.grid.find_next_track(layer_id, x1, half_track=True, mode=1, unit_mode=True)
         # find coordinate of last track
-        xlast_unit = self.grid.track_to_coord(layer_id, t_start + num_tracks - 1, unit_mode=True)
-        xlast_unit += self.grid.get_track_width(layer_id, 1, unit_mode=True) // 2
-        sd_pitch_unit = int(round(self.sd_pitch / res))
+        xlast = self.grid.track_to_coord(layer_id, t_start + num_tracks - 1, unit_mode=True)
+        xlast += self.grid.get_track_width(layer_id, 1, unit_mode=True) // 2
 
         # divide by source/drain pitch
-        q, r = divmod(xlast_unit - x0_unit, sd_pitch_unit)
+        q, r = divmod(xlast - x0, self._sd_pitch_unit)
         if r > 0:
             q += 1
+        q += fg_margin
         if even and q % 2 == 1:
             q += 1
         return q

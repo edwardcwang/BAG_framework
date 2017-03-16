@@ -486,6 +486,7 @@ class RXHalf(TemplateBase):
         nduml = self.params['nduml']
         ndumr = self.params['ndumr']
         vm_width = self.params['vm_width']
+        route_fg_margin = 2
 
         # create AnalogBaseInfo object
         vm_layer_id = layout_info.mconn_port_layer + 2
@@ -506,8 +507,9 @@ class RXHalf(TemplateBase):
         integ_fg_tot = integ_info['fg_tot']
         col_idx_dict['integ'] = (cur_col, cur_col + integ_fg_tot)
         cur_col += integ_fg_tot
-        # step 0B: reserve routing tracks between analog latch and intsum
-        route_integ_alat_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width + diff_space, cur_col)
+        # step 0B: reserve routing tracks between integrator and analog latch
+        route_integ_alat_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col,
+                                                                fg_margin=route_fg_margin)
         col_idx_dict['integ_route'] = (cur_col, cur_col + route_integ_alat_fg)
         # print('integ_route_col: %d' % cur_col)
         cur_col += route_integ_alat_fg
@@ -532,7 +534,8 @@ class RXHalf(TemplateBase):
         col_idx_dict['alat'] = (cur_col, cur_col + alat_fg_min)
         cur_col += alat_fg_min
         # step 1C: reserve routing tracks between analog latch and intsum
-        route_alat_intsum_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width + diff_space, cur_col)
+        route_alat_intsum_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col,
+                                                                 fg_margin=route_fg_margin)
         col_idx_dict['alat_route'] = (cur_col, cur_col + route_alat_intsum_fg)
         # print('alat_route_col: %d' % cur_col)
         cur_col += route_alat_intsum_fg
@@ -603,7 +606,8 @@ class RXHalf(TemplateBase):
                 # print('cur_col: %d' % cur_col)
                 if in_route:
                     # allocate input route
-                    route_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col)
+                    route_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col,
+                                                                     fg_margin=route_fg_margin)
                     intsum_gm_sep_list[idx] = route_fg_min
                     col_idx_dict['dlat%d_inroute' % (dfe_idx - 2)] = (cur_col, cur_col + route_fg_min)
                     cur_col += route_fg_min
@@ -626,7 +630,8 @@ class RXHalf(TemplateBase):
             new_intsum_gm_fg_list.append(intsum_dfe_fg_params)
         # print('intsum_last_col: %d' % cur_col)
         # step 2D: reserve routing tracks between intsum and summer
-        route_intsum_sum_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col)
+        route_intsum_sum_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col,
+                                                                fg_margin=route_fg_margin)
         col_idx_dict['summer_route'] = (cur_col, cur_col + route_intsum_sum_fg)
         cur_col += route_intsum_sum_fg
         # print('summer cur_col: %d' % cur_col)
