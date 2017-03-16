@@ -927,16 +927,9 @@ class RXCore(TemplateBase):
         # connect inputs of even and odd paths
         route_col_intv = col_idx_dict['integ']
         ptr_idx = layout_info.get_center_tracks(vm_layer_id, diff_track_width, route_col_intv)
-        tr_idx_list = [ptr_idx, ptr_idx + vm_width + diff_space]
-        warr_list_list = [[inst_list[0].get_port('integ_inp').get_pins()[0],
-                           inst_list[1].get_port('integ_inp').get_pins()[0],
-                           ],
-                          [inst_list[0].get_port('integ_inn').get_pins()[0],
-                           inst_list[1].get_port('integ_inn').get_pins()[0],
-                           ],
-                          ]
-        inp, inn = self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width,
-                                                fill_type='VDD')
+        ports = ['integ_in{}']
+        inp, inn = self._connect_differential(inst_list, ptr_idx, vm_layer_id, vm_width, diff_space,
+                                              ports, ports)
         self.add_pin('inp', inp, show=True)
         self.add_pin('inn', inn, show=True)
 
@@ -947,10 +940,10 @@ class RXCore(TemplateBase):
 
         # step 2: get wires/tracks then connect
         route_col_intv = col_idx_dict['alat']
-        ptr_idx0 = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
-        tr_idx_list = [ptr_idx0, ptr_idx0 + vm_width + diff_space,
-                       ptr_idx0 + diff_track_width + diff_space,
-                       ptr_idx0 + diff_track_width + vm_width + 2 * diff_space]
+        ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
+        tr_idx_list = [ptr_idx, ptr_idx + vm_width + diff_space,
+                       ptr_idx + diff_track_width + diff_space,
+                       ptr_idx + diff_track_width + vm_width + 2 * diff_space]
         warr_list_list = [[inst_list[0].get_port('alat0_outp').get_pins()[0],
                            inst_list[0].get_port('alat1_inp').get_pins()[0],
                            ffe_in_list[2],
@@ -966,34 +959,19 @@ class RXCore(TemplateBase):
                           [inst_list[1].get_port('alat0_outn').get_pins()[0],
                            inst_list[1].get_port('alat1_inn').get_pins()[0],
                            ffe_in_list[1],
-                           ],
-                          ]
+                           ], ]
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width, fill_type='VDD')
 
         # connect summer outputs
         route_col_intv = col_idx_dict['summer'][1]
-        ptr_idx0 = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
-        tr_idx_list = [ptr_idx0, ptr_idx0 + vm_width + diff_space,
-                       ptr_idx0 + diff_track_width + diff_space,
-                       ptr_idx0 + diff_track_width + vm_width + 2 * diff_space]
-        warr_list_list = [[inst_list[0].get_port('summer_outp').get_pins()[0],
-                           inst_list[0].get_port('dlat0_inp').get_pins()[0],
-                           inst_list[1].get_port('summer_inp<1>').get_pins()[0]
-                           ],
-                          [inst_list[0].get_port('summer_outn').get_pins()[0],
-                           inst_list[0].get_port('dlat0_inn').get_pins()[0],
-                           inst_list[1].get_port('summer_inn<1>').get_pins()[0]
-                           ],
-                          [inst_list[1].get_port('summer_outp').get_pins()[0],
-                           inst_list[1].get_port('dlat0_inp').get_pins()[0],
-                           inst_list[0].get_port('summer_inp<1>').get_pins()[0]
-                           ],
-                          [inst_list[1].get_port('summer_outn').get_pins()[0],
-                           inst_list[1].get_port('dlat0_inn').get_pins()[0],
-                           inst_list[0].get_port('summer_inn<1>').get_pins()[0]
-                           ],
-                          ]
-        self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width, fill_type='VDD')
+        ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
+        ports0 = ['summer_out{}', 'dlat0_in{}']
+        ports1 = ['summer_in{}<1>']
+        self._connect_differential(inst_list, ptr_idx, vm_layer_id, vm_width, diff_space,
+                                   ports0, ports1)
+        ptr_idx += diff_track_width + diff_space
+        self._connect_differential(inst_list, ptr_idx, vm_layer_id, vm_width, diff_space,
+                                   ports1, ports0)
 
         # connect dlat1 outputs
         # step 1: connect dlat2 inputs to xm layer
@@ -1001,10 +979,8 @@ class RXCore(TemplateBase):
         dlat2_in_list = self._connect_to_xm('dlat2_in{}', inst_list, dlat2_in_intv, layout_info, vm_width, xm_width)
         # step 2: get wires/tracks then connect
         route_col_intv = col_idx_dict['dlat'][1]
-        ptr_idx0 = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
-        tr_idx_list = [ptr_idx0, ptr_idx0 + vm_width + diff_space,
-                       ptr_idx0 + diff_track_width + diff_space,
-                       ptr_idx0 + diff_track_width + vm_width + 2 * diff_space]
+        ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
+        tr_idx_list = [ptr_idx, ptr_idx + vm_width + diff_space]
         warr_list_list = [[inst_list[0].get_port('dlat1_outp').get_pins()[0],
                            inst_list[1].get_port('intsum_inp<3>').get_pins()[0],
                            dlat2_in_list[0],
@@ -1012,17 +988,34 @@ class RXCore(TemplateBase):
                           [inst_list[0].get_port('dlat1_outn').get_pins()[0],
                            inst_list[1].get_port('intsum_inn<3>').get_pins()[0],
                            dlat2_in_list[1],
-                           ],
-                          [inst_list[1].get_port('dlat1_outp').get_pins()[0],
+                           ], ]
+        self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width, fill_type='VDD')
+        tr_idx_list[0] += diff_track_width + diff_space
+        tr_idx_list[1] += diff_track_width + diff_space
+        warr_list_list = [[inst_list[1].get_port('dlat1_outp').get_pins()[0],
                            inst_list[0].get_port('intsum_inp<3>').get_pins()[0],
                            dlat2_in_list[2],
                            ],
                           [inst_list[1].get_port('dlat1_outn').get_pins()[0],
                            inst_list[0].get_port('intsum_inn<3>').get_pins()[0],
                            dlat2_in_list[3],
-                           ],
-                          ]
+                           ], ]
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width, fill_type='VDD')
+
+    def _connect_differential(self, inst_list, ptr_idx, vm_layer_id, vm_width, diff_space, even_ports, odd_ports):
+        tr_idx_list = [ptr_idx, ptr_idx + vm_width + diff_space]
+        warr_list_list = [[], []]
+        for parity, warr_list in zip(('p', 'n'), warr_list_list):
+            inst = inst_list[0]
+            for name_fmt in even_ports:
+                warr_list.append(inst.get_port(name_fmt.format(parity)).get_pins()[0])
+            inst = inst_list[1]
+            for name_fmt in odd_ports:
+                warr_list.append(inst.get_port(name_fmt.format(parity)).get_pins()[0])
+
+        trp, trn = self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width,
+                                                fill_type='VDD')
+        return trp, trn
 
     def _connect_to_xm(self, name_fmt, inst_list, col_intv, layout_info, vm_width, xm_width):
         """Connect differential ports to xm layer.
