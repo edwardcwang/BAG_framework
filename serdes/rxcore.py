@@ -287,8 +287,8 @@ class RXHalfBottom(SerdesRXBase):
             hm_cur_width = hm_width  # type: int
 
         # figure out number of tracks
-        kwargs['pg_tracks'] = [1]
-        kwargs['pds_tracks'] = [2 + diff_space]
+        kwargs['pg_tracks'] = [hm_width]
+        kwargs['pds_tracks'] = [2 * hm_width + diff_space]
         ng_tracks = []
         nds_tracks = []
 
@@ -502,7 +502,7 @@ class RXHalf(TemplateBase):
         col_idx_dict['integ'] = (cur_col, cur_col + integ_fg_tot)
         cur_col += integ_fg_tot
         # step 0B: reserve routing tracks between analog latch and intsum
-        route_integ_alat_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col)
+        route_integ_alat_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width + diff_space, cur_col)
         col_idx_dict['integ_route'] = (cur_col, cur_col + route_integ_alat_fg)
         # print('integ_route_col: %d' % cur_col)
         cur_col += route_integ_alat_fg
