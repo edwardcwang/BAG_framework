@@ -997,23 +997,28 @@ class RoutingGrid(object):
         else:
             return q / 2
 
-    def track_to_coord(self, layer_id, track_idx):
+    def track_to_coord(self, layer_id, track_idx, unit_mode=False):
+        # type: (int, Union[float, int], bool) -> Union[float, int]
         """Convert given track number to coordinate.
 
         Parameters
         ----------
         layer_id : int
             the layer number.
-        track_idx : float or int
+        track_idx : Union[float, int]
             the track number.
+        unit_mode : bool
+            True to return coordinate in resolution units.
 
         Returns
         -------
-        coord : float
+        coord : Union[float, int]
             the coordinate perpendicular to track direction.
         """
         pitch = self.sp_tracks[layer_id] + self.w_tracks[layer_id]
-        coord_unit = pitch * track_idx + self.offset_tracks[layer_id]
+        coord_unit = int(pitch * track_idx + self.offset_tracks[layer_id])
+        if unit_mode:
+            return coord_unit
         return coord_unit * self._resolution
 
     def interval_to_track(self, layer_id, intv, unit_mode=False):
