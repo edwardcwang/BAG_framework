@@ -542,30 +542,34 @@ class RXHalf(TemplateBase):
         # so we can use gm_info to determine sizing.
         intsum_col_idx = cur_col
         # print('intsum_main_col: %d' % cur_col)
-        col_idx_dict['intsum'] = [intsum_col_idx]
+        col_idx_dict['intsum'] = []
         col_idx_dict['dlat'] = [(0, 0)] * len(dlat_params_list)
         intsum_gm_fg_list = intsum_params['gm_fg_list']
         intsum_gm_sep_list = [layout_info.min_fg_sep] * (len(intsum_gm_fg_list) - 1)
         # step 2A: place main tap.  No requirements.
         intsum_main_info = layout_info.get_gm_info(intsum_gm_fg_list[0])
         new_intsum_gm_fg_list = [intsum_gm_fg_list[0]]
-        cur_col += intsum_main_info['fg_tot'] + intsum_gm_sep_list[0]
+        cur_col += intsum_main_info['fg_tot']
+        col_idx_dict['intsum'].append((intsum_col_idx, cur_col))
+        cur_col += intsum_gm_sep_list[0]
         # print('cur_col: %d' % cur_col)
         # step 2B: place precursor tap.  must fit one differential track
-        col_idx_dict['intsum'].append(cur_col)
         # print('intsum_pre_col: %d' % cur_col)
+        intsum_pre_col_idx = cur_col
         intsum_pre_fg_params = intsum_gm_fg_list[1].copy()
         intsum_pre_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col)
         intsum_pre_fg_params['min'] = intsum_pre_fg_min
         intsum_pre_info = layout_info.get_gm_info(intsum_pre_fg_params)
         new_intsum_gm_fg_list.append(intsum_pre_fg_params)
-        cur_col += intsum_pre_info['fg_tot'] + intsum_gm_sep_list[1]
+        cur_col += intsum_pre_info['fg_tot']
+        col_idx_dict['intsum'].append((intsum_pre_col_idx, cur_col))
+        cur_col += intsum_gm_sep_list[1]
         # print('cur_col: %d' % cur_col)
         # step 2C: place intsum DFE taps
         num_dfe = len(intsum_gm_fg_list) - 2 + 1
         new_dlat_params_list = [None] * len(dlat_params_list)
         for idx in range(2, len(intsum_gm_fg_list)):
-            col_idx_dict['intsum'].append(cur_col)
+            intsum_dfe_cur_col_idx = cur_col
             # print('intsum_idx%d_col: %d' % (idx, cur_col))
             intsum_dfe_fg_params = intsum_gm_fg_list[idx].copy()
             dfe_idx = num_dfe - (idx - 2)
@@ -595,6 +599,7 @@ class RXHalf(TemplateBase):
                 dig_latch_params['col_idx'] = cur_col
                 col_idx_dict['dlat'][dfe_idx - 2] = (cur_col, cur_col + num_fg)
                 cur_col += num_fg
+                col_idx_dict['intsum'].append((intsum_dfe_cur_col_idx, cur_col))
                 # print('cur_col: %d' % cur_col)
                 if in_route:
                     # allocate input route
@@ -614,12 +619,11 @@ class RXHalf(TemplateBase):
                 intsum_dfe_info = layout_info.get_gm_info(intsum_dfe_fg_params)
                 # no need to add gm sep because this is the last tap.
                 cur_col += intsum_dfe_info['fg_tot']
+                col_idx_dict['intsum'].append((intsum_dfe_cur_col_idx, cur_col))
                 # print('cur_col: %d' % cur_col)
             # save modified parameters
             new_dlat_params_list[dfe_idx - 2] = dig_latch_params
             new_intsum_gm_fg_list.append(intsum_dfe_fg_params)
-        # add last column
-        col_idx_dict['intsum'].append(cur_col)
         # print('intsum_last_col: %d' % cur_col)
         # step 2D: reserve routing tracks between intsum and summer
         route_intsum_sum_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col)
@@ -631,23 +635,25 @@ class RXHalf(TemplateBase):
         # assumption: we assume the load fingers < total gm fingers,
         # so we can use gm_info to determine sizing.
         summer_col_idx = cur_col
-        col_idx_dict['summer'] = [cur_col]
+        col_idx_dict['summer'] = []
         summer_gm_fg_list = summer_params['gm_fg_list']
         summer_gm_sep_list = [layout_info.min_fg_sep]
         # step 3A: place main tap.  No requirements.
         summer_main_info = layout_info.get_gm_info(summer_gm_fg_list[0])
         new_summer_gm_fg_list = [summer_gm_fg_list[0]]
-        cur_col += summer_main_info['fg_tot'] + summer_gm_sep_list[0]
+        cur_col += summer_main_info['fg_tot']
+        col_idx_dict['summer'].append((summer_col_idx, cur_col))
+        cur_col += summer_gm_sep_list[0]
         # print('cur_col: %d' % cur_col)
         # step 3B: place DFE tap.  must fit two differential tracks
-        col_idx_dict['summer'].append(cur_col)
+        summer_dfe_col_idx = cur_col
         summer_dfe_fg_params = summer_gm_fg_list[1].copy()
         summer_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * diff_track_width + diff_space, cur_col)
         summer_dfe_fg_params['min'] = summer_dfe_fg_min
         summer_dfe_info = layout_info.get_gm_info(summer_dfe_fg_params)
         new_summer_gm_fg_list.append(summer_dfe_fg_params)
         cur_col += summer_dfe_info['fg_tot']
-        col_idx_dict['summer'].append(cur_col)
+        col_idx_dict['summer'].append((summer_dfe_col_idx, cur_col))
         # print('cur_col: %d' % cur_col)
         # step 3C: place first digital latch
         # only requirement is that the right side line up with summer.
@@ -752,7 +758,7 @@ class RXHalf(TemplateBase):
                                          vm_layer, ptr_idx, ntr_idx, width=vm_width, fill_type='VDD')
 
         # connect DFE tap 2
-        route_col_intv = col_idx_dict['intsum'][-2], col_idx_dict['intsum'][-1]
+        route_col_intv = col_idx_dict['intsum'][-1]
         ptr_idx = layout_info.get_center_tracks(vm_layer, 2 * vm_width + diff_space, route_col_intv)
         ntr_idx = ptr_idx + diff_space + vm_width
         dlat_outp = bot_inst.get_port('dlat0_outp').get_pins(hm_layer)
@@ -772,7 +778,7 @@ class RXHalf(TemplateBase):
         ndfe = nintsum - 2 + 1
         for dfe_idx in range(4, ndfe + 1, 2):
             intsum_idx = nintsum - 1 - (dfe_idx - 2)
-            route_col_intv = col_idx_dict['intsum'][intsum_idx], col_idx_dict['intsum'][intsum_idx + 1]
+            route_col_intv = col_idx_dict['intsum'][intsum_idx]
             ptr_idx = layout_info.get_center_tracks(vm_layer, 2 * vm_width + diff_space, route_col_intv)
             ntr_idx = ptr_idx + diff_space + vm_width
             dlat_outp = bot_inst.get_port('dlat%d_outp' % (dfe_idx - 2)).get_pins(hm_layer)
@@ -931,7 +937,7 @@ class RXCore(TemplateBase):
 
         # connect alat0 outputs
         # step 1: connect FFE inputs to xm layer
-        ffe_in_intv = col_idx_dict['intsum'][1:3]
+        ffe_in_intv = col_idx_dict['intsum'][1]
         ffe_in_list = self._connect_to_xm('intsum_in{}<1>', inst_list, ffe_in_intv, layout_info, vm_width, xm_width)
 
         # step 2: get wires/tracks then connect
@@ -960,7 +966,7 @@ class RXCore(TemplateBase):
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width, fill_type='VDD')
 
         # connect summer outputs
-        route_col_intv = col_idx_dict['summer'][1:3]
+        route_col_intv = col_idx_dict['summer'][1]
         ptr_idx0 = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
         tr_idx_list = [ptr_idx0, ptr_idx0 + vm_width + diff_space,
                        ptr_idx0 + diff_track_width + diff_space,
