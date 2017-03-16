@@ -110,8 +110,11 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         if fg_tot < fg_min:
             # add dummies to get to fg_min
-            nduml = (fg_min - fg_tot) // 2
-            ndumr = fg_min - fg_tot - nduml
+            # TODO: figure out when to even/not even
+            if (fg_min - fg_tot) % 4 != 0:
+                # this code makes sure number of dummies is always even
+                fg_min = fg_min + 4 - ((fg_min - fg_tot) % 4)
+            nduml = ndumr = (fg_min - fg_tot) // 2
             fg_tot = fg_min
         else:
             nduml = ndumr = 0
@@ -278,9 +281,15 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         )
         return results
 
-    def draw_gm(self, col_idx, fg_params, cur_track_width=1,
-                diff_space=1, gate_locs=None):
-        # type: (int, Dict[str, int], int, int, Optional[Dict[str, int]]) -> Tuple[int, Dict[str, List[WireArray]]]
+    def draw_gm(self,  # type: SerdesRXBase
+                col_idx,  # type: int
+                fg_params,  # type: Dict[str, int]
+                hm_width=1,  # type: int
+                hm_cur_width=-1,  # type: int
+                diff_space=1,  # type: int
+                gate_locs=None  # type: Optional[Dict[str, int]]
+                ):
+        # type: (...) -> Tuple[int, Dict[str, List[WireArray]]]
         """Draw a differential gm stage.
 
         a separator is used to separate the positive half and the negative half of the gm stage.
@@ -310,8 +319,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 number of fingers used as separation between P and N side.
             min :
                 minimum number of fingers for this circuit.
-        cur_track_width : int
-            width of the current-carrying horizontal track wire in number of tracks.
+        hm_width : int
+            width of horizontal tracks.
+        hm_cur_width : int
+            width of horizontal current-carrying tracks.  If negative, defaults to hm_width.
         diff_space : int
             number of tracks to reserve as space between differential wires.
         gate_locs : Optional[Dict[str, int]]
@@ -345,6 +356,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             if fg > 0 and name not in self._nrow_idx:
                 raise ValueError('nmos %s row is not drawn.' % name)
 
+        if hm_cur_width < 0:
+            hm_cur_width = hm_width
+
         gate_locs = gate_locs or {}
 
         # find number of fingers per row
@@ -373,8 +387,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 btail_type = 's'
             conn['butp'] = [('butp', 's'), ('inp', btail_type)]
             conn['butn'] = [('butn', 's'), ('inn', btail_type)]
-            track['butp'] = ('nch', self._nrow_idx['but'], 'ds', (cur_track_width - 1) / 2)
-            track['butn'] = ('nch', self._nrow_idx['but'], 'ds', (cur_track_width - 1) / 2)
+            track['butp'] = ('nch', self._nrow_idx['but'], 'ds', (hm_cur_width - 1) / 2)
+            track['butn'] = ('nch', self._nrow_idx['but'], 'ds', (hm_cur_width - 1) / 2)
 
             itail_type = 'd' if btail_type == 's' else 's'
             conn['tail'] = [('inp', itail_type), ('inn', itail_type)]
@@ -384,14 +398,14 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             sd_dir['in'] = (2, 0)
             conn['midp'] = [('cascp', 's'), ('inp', 's')]
             conn['midn'] = [('cascn', 's'), ('inn', 's')]
-            track['midp'] = ('nch', self._nrow_idx['casc'], 'ds', (cur_track_width - 1) / 2)
-            track['midn'] = ('nch', self._nrow_idx['casc'], 'ds', (cur_track_width - 1) / 2)
+            track['midp'] = ('nch', self._nrow_idx['casc'], 'ds', (hm_cur_width - 1) / 2)
+            track['midn'] = ('nch', self._nrow_idx['casc'], 'ds', (hm_cur_width - 1) / 2)
 
             conn['tail'] = [('inp', 'd'), ('inn', 'd')]
             casc_ntr = self.get_num_tracks('nch', self._nrow_idx['casc'], 'g')
             conn['bias_casc'] = [('cascp', 'g'), ('cascn', 'g')]
             track['bias_casc'] = ('nch', self._nrow_idx['casc'], 'g',
-                                  gate_locs.get('bias_casc', casc_ntr - 1))
+                                  gate_locs.get('bias_casc', casc_ntr - (hm_width + 1) / 2))
         else:
             sd_dir['in'] = (0, 2)
             conn['tail'] = [('inp', 's'), ('inn', 's')]
@@ -413,8 +427,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 conn['vddt'] = inst_s
                 conn['tail'].extend(inst_d)
 
-            track['vddt'] = ('nch', self._nrow_idx['sw'], 'ds', (cur_track_width - 1) / 2)
-            track['sw'] = ('nch', self._nrow_idx['sw'], 'g', gate_locs.get('sw', 0))
+            track['vddt'] = ('nch', self._nrow_idx['sw'], 'ds', (hm_cur_width - 1) / 2)
+            track['sw'] = ('nch', self._nrow_idx['sw'], 'g', gate_locs.get('sw', (hm_width - 1) / 2))
 
         # enable
         if fg_en > 0:
@@ -433,8 +447,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 conn['tail'].extend(inst_d)
                 conn['foot'] = inst_s
 
-            track['enable'] = ('nch', self._nrow_idx['en'], 'g', gate_locs.get('enable', 0))
-            track['tail'] = ('nch', self._nrow_idx['en'], 'ds', (cur_track_width - 1) / 2)
+            track['enable'] = ('nch', self._nrow_idx['en'], 'g', gate_locs.get('enable', (hm_width - 1) / 2))
+            track['tail'] = ('nch', self._nrow_idx['en'], 'ds', (hm_cur_width - 1) / 2)
 
         # tail
         if 'foot' in conn:
@@ -460,8 +474,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             conn[key].extend(inst_d)
             conn['VSS'] = inst_s
 
-        track['bias_tail'] = ('nch', self._nrow_idx['tail'], 'g', gate_locs.get('bias_tail', 0))
-        track[key] = ('nch', self._nrow_idx['tail'], 'ds', (cur_track_width - 1) / 2)
+        track['bias_tail'] = ('nch', self._nrow_idx['tail'], 'g', gate_locs.get('bias_tail', (hm_width - 1) / 2))
+        track[key] = ('nch', self._nrow_idx['tail'], 'ds', (hm_cur_width - 1) / 2)
 
         # create mos connections
         mos_dict = {}
@@ -487,12 +501,13 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             # draw differential butterfly connection
             but_ntr = self.get_num_tracks('nch', self._nrow_idx['but'], 'g')
             ptr_idx = self.get_track_index('nch', self._nrow_idx['but'], 'g',
-                                           gate_locs.get('sgnp', but_ntr - 1))
+                                           gate_locs.get('sgnp', but_ntr - (hm_width + 1) / 2))
             ntr_idx = self.get_track_index('nch', self._nrow_idx['but'], 'g',
-                                           gate_locs.get('sgnn', but_ntr - 2 - diff_space))
+                                           gate_locs.get('sgnn', but_ntr - (hm_width + 1) / 2 - hm_width - diff_space))
             p_tr, n_tr = self.connect_differential_tracks([mos_dict['butp']['gp'], mos_dict['butn']['gn']],
                                                           [mos_dict['butp']['gn'], mos_dict['butn']['gp']],
-                                                          self.mos_conn_layer + 1, ptr_idx, ntr_idx)
+                                                          self.mos_conn_layer + 1, ptr_idx, ntr_idx,
+                                                          width=hm_width)
             port_dict['sgnp'] = [p_tr, ]
             port_dict['sgnn'] = [n_tr, ]
         elif fg_casc > 0:
@@ -507,10 +522,11 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         inn_warr = mos_dict['inn']['g']
         in_ntr = self.get_num_tracks('nch', self._nrow_idx['in'], 'g')
         ptr_idx = self.get_track_index('nch', self._nrow_idx['in'], 'g',
-                                       gate_locs.get('inp', in_ntr - 1))
+                                       gate_locs.get('inp', in_ntr - (hm_width + 1) / 2))
         ntr_idx = self.get_track_index('nch', self._nrow_idx['in'], 'g',
-                                       gate_locs.get('inn', in_ntr - 2 - diff_space))
-        p_tr, n_tr = self.connect_differential_tracks(inp_warr, inn_warr, self.mos_conn_layer + 1, ptr_idx, ntr_idx)
+                                       gate_locs.get('inn', in_ntr - (hm_width + 1) / 2 - hm_width - diff_space))
+        p_tr, n_tr = self.connect_differential_tracks(inp_warr, inn_warr, self.mos_conn_layer + 1, ptr_idx, ntr_idx,
+                                                      width=hm_width)
         port_dict['inp'] = [p_tr, ]
         port_dict['inn'] = [n_tr, ]
 
@@ -521,9 +537,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 self.connect_to_substrate('ptap', warr_list)
             else:
                 if conn_list[0][1] == 'g':
-                    tr_width = 1
+                    tr_width = hm_width
                 else:
-                    tr_width = cur_track_width
+                    tr_width = hm_cur_width
 
                 mos_type, ridx, tr_type, tr_idx = track[conn_name]
                 tr_id = self.make_track_id(mos_type, ridx, tr_type, tr_idx, width=tr_width)
@@ -532,9 +548,16 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         return fg_gm_tot, port_dict
 
-    def draw_diffamp(self, col_idx, fg_params, cur_track_width=1,
-                     diff_space=1, gate_locs=None, sign=1):
-        # type: (int, Dict[str, int], int, int, Optional[Dict[str, int]], int) -> Tuple[int, Dict[str, List[WireArray]]]
+    def draw_diffamp(self,  # type: SerdesRXBase
+                     col_idx,  # type: int
+                     fg_params,  # type: Dict[str, int]
+                     hm_width=1,  # type: int
+                     hm_cur_width=-1,  # type: int
+                     diff_space=1,  # type: int
+                     gate_locs=None,  # type: Optional[Dict[str, int]]
+                     sign=1  # type: int
+                     ):
+        # type: (...) -> Tuple[int, Dict[str, List[WireArray]]]
         """Draw a differential amplifier/dynamic latch.
 
         a separator is used to separate the positive half and the negative half of the latch.
@@ -566,8 +589,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 number of fingers used as separation between P and N side.
             min :
                 minimum number of fingers for this circuit.
-        cur_track_width : int
-            width of the current-carrying horizontal track wire in number of tracks.
+        hm_width : int
+            width of horizontal tracks.
+        hm_cur_width : int
+            width of horizontal current-carrying tracks.  If negative, defaults to hm_width.
         diff_space : int
             number of tracks to reserve as space between differential wires.
         gate_locs : Optional[Dict[string, int]]
@@ -603,7 +628,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         # draw Gm.
         gm_params = fg_params.copy()
         gm_params['min'] = max(gm_params.get('min', fg_min), fg_min)
-        fg_amp_tot, port_dict = self.draw_gm(col_idx, fg_params, cur_track_width=cur_track_width,
+        fg_amp_tot, port_dict = self.draw_gm(col_idx, fg_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
                                              diff_space=diff_space, gate_locs=gate_locs)
 
         outp_warrs = port_dict['outp']
@@ -621,7 +646,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             loadn = self.draw_mos_conn('pch', 0, load_col_idx + fg_load + fg_sep, fg_load, sdir, ddir)
 
             # connect load gate bias
-            tr_id = self.make_track_id('pch', 0, 'g', gate_locs.get('bias_load', 0))
+            tr_id = self.make_track_id('pch', 0, 'g', gate_locs.get('bias_load', (hm_width - 1) / 2), width=hm_width)
             warr = self.connect_to_tracks([loadp['g'], loadn['g']], tr_id)
             port_dict['bias_load'] = [warr, ]
 
@@ -633,16 +658,16 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         # connect differential outputs
         out_ntr = self.get_num_tracks('pch', 0, 'ds')
-        ptr_idx = self.get_track_index('pch', 0, 'ds', out_ntr - 2 - diff_space)
-        ntr_idx = self.get_track_index('pch', 0, 'ds', out_ntr - 1)
+        ptr_idx = self.get_track_index('pch', 0, 'ds', out_ntr - (hm_width + 1) / 2 - hm_width - diff_space)
+        ntr_idx = self.get_track_index('pch', 0, 'ds', out_ntr - (hm_width + 1) / 2)
 
         if sign < 0:
             # flip positive/negative wires.
             p_tr, n_tr = self.connect_differential_tracks(outn_warrs, outp_warrs, self.mos_conn_layer + 1,
-                                                          ptr_idx, ntr_idx)
+                                                          ptr_idx, ntr_idx, width=hm_width)
         else:
             p_tr, n_tr = self.connect_differential_tracks(outp_warrs, outn_warrs, self.mos_conn_layer + 1,
-                                                          ptr_idx, ntr_idx)
+                                                          ptr_idx, ntr_idx, width=hm_width)
         port_dict['outp'] = [p_tr, ]
         port_dict['outn'] = [n_tr, ]
 
@@ -654,11 +679,12 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                        gm_fg_list,  # type: List[Dict[str, int]]
                        gm_sep_list=None,  # type: Optional[List[int]]
                        sgn_list=None,  # type: Optional[List[int]]
-                       cur_track_width=1,  # type: int
+                       hm_width=1,  # type: int
+                       hm_cur_width=-1,  # type: int
                        diff_space=1,  # type: int
                        gate_locs=None  # type: Optional[Dict[str, int]]
                        ):
-        # type: (...) -> Tuple[int, Dict[Tuple[str, int], WireArray]]
+        # type: (...) -> Tuple[int, Dict[Tuple[str, int], List[WireArray]]]
         """Draw a differential Gm summer (multiple Gm stage connected to same load).
 
         a separator is used to separate the positive half and the negative half of the latch.
@@ -677,8 +703,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             Defaults to minimum.
         sgn_list : Optional[List[int]]
             a list of 1s or -1s representing the sign of each gm stage.  If None, defautls to all 1s.
-        cur_track_width : int
-            width of the current-carrying horizontal track wire in number of tracks.
+        hm_width : int
+            width of horizontal tracks.
+        hm_cur_width : int
+            width of horizontal current-carrying tracks.  If negative, defaults to hm_width.
         diff_space : int
             number of tracks to reserve as space between differential wires.
         gate_locs : Optional[Dict[str, int]]
@@ -715,8 +743,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                                                                          gm_fg_list, sgn_list)):
             cur_amp_params = gm_fg_dict.copy()
             cur_amp_params['load'] = cur_fg_load
-            _, cur_ports = self.draw_diffamp(col_idx + gm_off, cur_amp_params,
-                                             cur_track_width=cur_track_width, diff_space=diff_space,
+            _, cur_ports = self.draw_diffamp(col_idx + gm_off, cur_amp_params, hm_width=hm_width,
+                                             hm_cur_width=hm_cur_width, diff_space=diff_space,
                                              gate_locs=gate_locs, sign=sgn)
             # register port
             for name, warr_list in cur_ports.items():
