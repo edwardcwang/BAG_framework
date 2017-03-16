@@ -34,49 +34,41 @@ from future.utils import with_metaclass
 import abc
 from typing import Dict, Any, List, Optional, Tuple, Union
 
-from bag.layout.core import TechInfo
-from bag.layout.routing import WireArray
+from bag.layout.routing import WireArray, RoutingGrid
 
-from ..analog_core import AnalogBase
+from ..analog_core import AnalogBase, AnalogBaseInfo
 
 wtype = Union[float, int]
 
 
-# noinspection PyAbstractClass
-class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
-    """Subclass of AmplifierBase that draws serdes circuits.
-
-    To use this class, :py:method:`draw_rows` must be the first function called,
-    which will call :py:method:`draw_base` for you with the right arguments.
+class SerdesRXBaseInfo(AnalogBaseInfo):
+    """A class that calculates informations to assist in SerdesRXBase layout calculations.
 
     Parameters
     ----------
-    temp_db : :class:`bag.layout.template.TemplateDB`
-            the template database.
-    lib_name : str
-        the layout library name.
-    params : dict[str, any]
-        the parameter values.
-    used_names : set[str]
-        a set of already used cell names.
-    **kwargs
-        optional parameters.  See documentation of
-        :class:`bag.layout.template.TemplateBase` for details.
+    grid : RoutingGrid
+        the RoutingGrid object.
+    lch : float
+        the channel length of AnalogBase, in meters.
+    guard_ring_nf : int
+        guard ring width in number of fingers.  0 to disable.
+    pitch_offset : Tuple[int, int]
+        the lower-left corner in track pitches.
+    min_fg_sep : int
+        minimum number of separation fingers.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        super(SerdesRXBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
-        self._nrow_idx = None
+    def __init__(self, grid, lch, guard_ring_nf, pitch_offset=(0, 0), min_fg_sep=0):
+        # type: (RoutingGrid, float, int, Tuple[int, int], int) -> None
+        super(SerdesRXBaseInfo, self).__init__(grid, lch, guard_ring_nf,
+                                               pitch_offset=pitch_offset, min_fg_sep=min_fg_sep)
 
-    @classmethod
-    def get_gm_info(cls, tech_info, fg_params):
-        # type: (TechInfo, Dict[str, int]) -> Dict[str, Any]
+    def get_gm_info(self, fg_params):
+        # type: (Dict[str, int]) -> Dict[str, Any]
         """Return Gm layout information dictionary.
 
         Parameters
         ----------
-        tech_info : TechInfo
-            the TechInfo object.
         fg_params : Dict[str, int]
             a dictionary containing number of fingers per transistor type.
             Possible entries are:
@@ -103,14 +95,13 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         info : Dict[str, Any]
             the Gm stage layout information dictionary.
         """
-        fg_sep = max(fg_params.get('sep', 0), cls.get_min_fg_sep(tech_info))
         fg_min = fg_params.get('min', 0)
         fg_max = max((fg for key, fg in fg_params.items() if key != 'sep' and key != 'min'))
-        fg_tot = fg_max * 2 + fg_sep
+        fg_tot = fg_max * 2 + self.min_fg_sep
 
         if fg_tot < fg_min:
             # add dummies to get to fg_min
-            # TODO: figure out when to even/not even
+            # TODO: figure out when to even/not even depending on technology
             if (fg_min - fg_tot) % 4 != 0:
                 # this code makes sure number of dummies is always even
                 fg_min = fg_min + 4 - ((fg_min - fg_tot) % 4)
@@ -129,7 +120,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         results = dict(
             fg_tot=fg_tot,
             fg_max=fg_max,
-            fg_sep=fg_sep,
+            fg_sep=self.min_fg_sep,
             nduml=nduml,
             ndumr=ndumr,
             out_type=out_type,
@@ -146,15 +137,12 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         return results
 
-    @classmethod
-    def get_diffamp_info(cls, tech_info, fg_params):
-        # type: (TechInfo, Dict[str, int]) -> Dict[str, Any]
+    def get_diffamp_info(self, fg_params):
+        # type: (Dict[str, int]) -> Dict[str, Any]
         """Return DiffAmp layout information dictionary.
 
         Parameters
         ----------
-        tech_info : TechInfo
-            the TechInfo object.
         fg_params : Dict[str, int]
             a dictionary containing number of fingers per transistor type.
             Possible entries are:
@@ -183,22 +171,21 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         info : Dict[str, Any]
             the DiffAmp stage layout information dictionary.
         """
-        fg_sep = max(fg_params.get('sep', 0), cls.get_min_fg_sep(tech_info))
         fg_min = fg_params.get('min', 0)
         fg_load = fg_params['load']
-        fg_load_tot = 2 * fg_load + fg_sep
+        fg_load_tot = 2 * fg_load + self.min_fg_sep
         # this guarantees fg_gm_tot >= fg_load_tot
         fg_min = max(fg_min, fg_load_tot)
         gm_fg_params = fg_params.copy()
         gm_fg_params['min'] = fg_min
-        gm_info = cls.get_gm_info(tech_info, fg_params)
+        gm_info = self.get_gm_info(fg_params)
         fg_gm_tot = gm_info['fg_tot']
         nduml_load = (fg_gm_tot - fg_load_tot) // 2
         ndumr_load = fg_gm_tot - fg_load_tot - nduml_load
 
         results = dict(
             fg_tot=fg_gm_tot,
-            fg_sep=fg_sep,
+            fg_sep=self.min_fg_sep,
             fg_min=fg_min,
             nduml_load=nduml_load,
             ndumr_load=ndumr_load,
@@ -207,15 +194,12 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         return results
 
-    @classmethod
-    def get_summer_info(cls, tech_info, fg_load, gm_fg_list, gm_sep_list=None):
-        # type: (TechInfo, int, List[Dict[str, int]], Optional[List[int]]) -> Dict[str, Any]
+    def get_summer_info(self, fg_load, gm_fg_list, gm_sep_list=None):
+        # type: (int, List[Dict[str, int]], Optional[List[int]]) -> Dict[str, Any]
         """Return GmSummer layout information dictionary.
 
         Parameters
         ----------
-        tech_info : TechInfo
-            the TechInfo object.
         fg_load : int
             number of pmos load fingers (single-sided).
         gm_fg_list : List[Dict[str, int]]
@@ -229,14 +213,13 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         info : Dict[str, Any]
             the GmSummer stage layout information dictionary.
         """
-        min_fg_sep = cls.get_min_fg_sep(tech_info)
         if gm_sep_list is None:
-            gm_sep_list = [min_fg_sep] * (len(gm_fg_list) - 1)
+            gm_sep_list = [self.min_fg_sep] * (len(gm_fg_list) - 1)
         else:
             # error checking
             if len(gm_sep_list) != len(gm_fg_list) - 1:
                 raise ValueError('gm_sep_list length mismatch')
-            gm_sep_list = [max(min_fg_sep, val) for val in gm_sep_list]
+            gm_sep_list = [max(self.min_fg_sep, val) for val in gm_sep_list]
         # append dummy value so we can use zip later.
         gm_sep_list.append(0)
 
@@ -244,7 +227,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         gm_fg_cum_list = []
         gm_fg_tot = 0
         for gm_fg_dict in gm_fg_list:
-            gm_info = cls.get_gm_info(tech_info, gm_fg_dict)
+            gm_info = self.get_gm_info(gm_fg_dict)
             cur_fg_max = (gm_info['fg_tot'] - gm_info['fg_sep']) // 2
             gm_fg_max_list.append(cur_fg_max)
             gm_fg_tot += cur_fg_max
@@ -268,7 +251,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             gm_offsets.append(fg_tot)
             amp_fg_dict = gm_fg_dict.copy()
             amp_fg_dict['load'] = fg_load
-            amp_info = cls.get_diffamp_info(tech_info, amp_fg_dict)
+            amp_info = self.get_diffamp_info(amp_fg_dict)
             fg_tot += amp_info['fg_tot'] + fg_sep_gm
             amp_info_list.append(amp_info)
 
@@ -280,6 +263,34 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             amp_info_list=amp_info_list,
         )
         return results
+
+
+# noinspection PyAbstractClass
+class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
+    """Subclass of AmplifierBase that draws serdes circuits.
+
+    To use this class, :py:method:`draw_rows` must be the first function called,
+    which will call :py:method:`draw_base` for you with the right arguments.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    **kwargs
+        optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        super(SerdesRXBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self._nrow_idx = None
+        self._serdes_info = None  # type: SerdesRXBaseInfo
 
     def draw_gm(self,  # type: SerdesRXBase
                 col_idx,  # type: int
@@ -362,7 +373,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         gate_locs = gate_locs or {}
 
         # find number of fingers per row
-        gm_info = self.get_gm_info(self.grid.tech_info, fg_params)
+        gm_info = self._serdes_info.get_gm_info(fg_params)
         out_type = gm_info['out_type']
         fg_sep = gm_info['fg_sep']
         fg_gm_tot = gm_info['fg_tot']
@@ -608,7 +619,6 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             a dictionary from connection name to the horizontal track associated
             with the connection.
         """
-        fg_sep = max(fg_params.get('sep', 0), self.get_min_fg_sep(self.grid.tech_info))
         fg_load = fg_params['load']
         fg_but = fg_params.get('but', 0)
         if fg_load > fg_but > 0:
@@ -617,13 +627,14 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         gate_locs = gate_locs or {}
 
         # compute Gm stage column index.
-        results = self.get_diffamp_info(self.grid.tech_info, fg_params)
+        results = self._serdes_info.get_diffamp_info(fg_params)
         # import pprint
         # print('draw diffamp at column %d, fg_tot = %d, fg_min = %d' % (col_idx, results['fg_tot'], results['fg_min']))
         # pprint.pprint(fg_params)
         fg_min = results['fg_min']
         offset_load = results['nduml_load']
         out_type = results['out_type']
+        fg_sep = results['fg_sep']
 
         # draw Gm.
         gm_params = fg_params.copy()
@@ -727,7 +738,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         if fg_load <= 0:
             raise ValueError('load transistors num. fingers must be positive.')
 
-        summer_info = self.get_summer_info(self.grid.tech_info, fg_load, gm_fg_list, gm_sep_list=gm_sep_list)
+        summer_info = self._serdes_info.get_summer_info(fg_load, gm_fg_list, gm_sep_list=gm_sep_list)
 
         if len(sgn_list) != len(gm_fg_list):
             raise ValueError('sign list and number of GM stages mistach.')
@@ -816,6 +827,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         th_load = th_dict['load']
         if w_tail <= 0 or w_in <= 0 or w_load <= 0:
             raise ValueError('tail/input/load transistors width must be positive.')
+
+        self._serdes_info = SerdesRXBaseInfo(self.grid, lch, kwargs.get('guard_ring_nf', 0),
+                                             pitch_offset=kwargs.get('pitch_offset', (0, 0)),
+                                             min_fg_sep=kwargs.get('min_fg_sep', 0))
 
         # figure out row indices for each nmos row type,
         # and build nw_list/nth_list

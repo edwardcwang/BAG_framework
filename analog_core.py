@@ -35,7 +35,7 @@ from typing import List, Union, Optional, TypeVar, Type, Dict, Any, Set, Tuple
 from bag.util.interval import IntervalSet
 from bag.util.search import BinaryIterator
 from bag.layout.template import TemplateBase, TemplateDB
-from bag.layout.routing import TrackID, WireArray
+from bag.layout.routing import TrackID, WireArray, RoutingGrid
 from bag.layout.objects import Instance
 from .analog_mos import AnalogMosBase, AnalogMosConn
 from future.utils import with_metaclass
@@ -245,7 +245,7 @@ class AnalogBaseInfo(object):
 
     Parameters
     ----------
-    grid : :class:`~bag.layout.routing.RoutingGrid`
+    grid : RoutingGrid
         the RoutingGrid object.
     lch : float
         the channel length of AnalogBase, in meters.
@@ -253,15 +253,18 @@ class AnalogBaseInfo(object):
         guard ring width in number of fingers.  0 to disable.
     pitch_offset : Tuple[int, int]
         the lower-left corner in track pitches.
+    min_fg_sep : int
+        minimum number of separation fingers.
     """
 
-    def __init__(self, grid, lch, guard_ring_nf, pitch_offset=(0, 0)):
+    def __init__(self, grid, lch, guard_ring_nf, pitch_offset=(0, 0), min_fg_sep=0):
+        # type: (RoutingGrid, float, int, Tuple[int, int], int) -> None
         tech_params = grid.tech_info.tech_params
         mos_cls = tech_params['layout']['mos_template']
         dum_cls = tech_params['layout']['mos_dummy_template']
 
         # get technology parameters
-        self.min_fg_sep = tech_params['layout']['analog_base']['min_fg_sep']
+        self.min_fg_sep = max(min_fg_sep, tech_params['layout']['analog_base']['min_fg_sep'])
         self.mconn_diff = tech_params['layout']['analog_base']['mconn_diff_mode']
         self.float_dummy = tech_params['layout']['analog_base']['floating_dummy']
 
@@ -437,21 +440,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._pitch_offset = 0, 0
         self._hm_idx0 = 0
 
-    @classmethod
-    def get_min_fg_sep(cls, tech_info):
+    @property
+    def min_fg_sep(self):
         """Returns the minimum number of separator fingers.
-
-        Parameters
-        ----------
-        tech_info : :class:`~bag.layout.core.TechInfo`
-            the TechInfo object.
-
-        Returns
-        -------
-        min_fg_sep : int
-            minimum number of separator fingers.
         """
-        return tech_info.tech_params['layout']['analog_base']['min_fg_sep']
+        return self._layout_info.min_fg_sep
 
     @property
     def sd_pitch(self):
@@ -850,7 +843,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                   p_ds_dummy=None,  # type: Optional[List[bool]]
                   pitch_offset=(0, 0),  # type: Tuple[int, int]
                   pgr_w=None,  # type: Optional[Union[float, int]]
-                  ngr_w=None  # type: Optional[Union[float, int]]
+                  ngr_w=None,  # type: Optional[Union[float, int]]
+                  min_fg_sep=0  # type: int
                   ):
         # type: (...) -> None
         """Draw the analog base.
@@ -902,12 +896,15 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             pwell guard ring substrate contact width.
         ngr_w : Optional[Union[float, int]]
             nwell guard ringsubstrate contact width.
+        min_fg_sep : int
+            minimum number of fingers between different transistors.
         """
         numn = len(nw_list)
         nump = len(pw_list)
 
         # make AnalogBaseInfo object.
-        self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, pitch_offset=pitch_offset)
+        self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, pitch_offset=pitch_offset,
+                                           min_fg_sep=min_fg_sep)
         self.grid = self._layout_info.grid
 
         # initialize private attributes.

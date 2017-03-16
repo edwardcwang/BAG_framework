@@ -208,9 +208,12 @@ class NPassGateWClk(AnalogBase):
                             pgr_w, ngr_w):
         """Draw the layout of a transistor for characterization.
         """
+        # get AnalogBaseInfo
+        layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf)
+
         lower_track_width = 1
         clk_width = 2
-        nsep = max(nsep, self.get_min_fg_sep(self.grid.tech_info))
+        nsep = max(nsep, layout_info.min_fg_sep)
         num_inbuf = len(fg_inbuf_list)
         num_outbuf = len(fg_outbuf_list)
 
@@ -251,8 +254,6 @@ class NPassGateWClk(AnalogBase):
 
         fg_tot += (ndumr - nsep)
 
-        # get AnalogBaseInfo to calculate total size
-        layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf)
         cur_width = layout_info.get_total_width(fg_tot, guard_ring_nf=guard_ring_nf)
 
         if cur_width > tot_width:

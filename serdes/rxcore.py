@@ -27,12 +27,12 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Dict, Any, Set
+from typing import Dict, Any, Set, Tuple
 
 from bag.layout.template import TemplateBase, TemplateDB
+from bag.layout.objects import Instance
 
-from abs_templates_ec.analog_core import AnalogBaseInfo
-from abs_templates_ec.serdes import SerdesRXBase
+from .base import SerdesRXBase, SerdesRXBaseInfo
 
 
 class RXHalfTop(SerdesRXBase):
@@ -210,6 +210,7 @@ class RXHalfTop(SerdesRXBase):
             th_dict={},
             gds_space=1,
             diff_space=1,
+            min_fg_sep=0,
             hm_width=1,
             hm_cur_width=-1,
             show_pins=False,
@@ -240,6 +241,7 @@ class RXHalfTop(SerdesRXBase):
             intsum_params='Integrator summer parameters.',
             summer_params='DFE tap-1 summer parameters.',
             fg_tot='Total number of fingers.',
+            min_fg_sep='Minimum separation between transistors.',
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',
             diff_space='number of tracks reserved as space between differential tracks.',
             hm_width='width of horizontal track wires.',
@@ -388,6 +390,7 @@ class RXHalfBottom(SerdesRXBase):
             th_dict={},
             gds_space=1,
             diff_space=1,
+            min_fg_sep=0,
             hm_width=1,
             hm_cur_width=-1,
             show_pins=False,
@@ -418,6 +421,7 @@ class RXHalfBottom(SerdesRXBase):
             alat_params='Analog latch parameters',
             dlat_params_list='Digital latch parameters.',
             fg_tot='Total number of fingers.',
+            min_fg_sep='Minimum separation between transistors.',
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',
             diff_space='number of tracks reserved as space between differential tracks.',
             hm_width='width of horizontal track wires.',
@@ -464,13 +468,15 @@ class RXHalf(TemplateBase):
     def draw_layout(self):
         lch = self.params['lch']
         guard_ring_nf = self.params['guard_ring_nf']
-        layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf)
+        min_fg_sep = self.params['min_fg_sep']
+        layout_info = SerdesRXBaseInfo(self.grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
 
         bot_inst, top_inst, col_idx_dict = self.place(layout_info)
         self.connect(layout_info, bot_inst, top_inst, col_idx_dict)
         self._col_idx_dict = col_idx_dict
 
     def place(self, layout_info):
+        # type: (SerdesRXBaseInfo) -> Tuple[Instance, Instance, Dict[str, Any]]
         alat_params_list = self.params['alat_params_list']
         integ_params = self.params['integ_params']
         intsum_params = self.params['intsum_params']
@@ -482,7 +488,6 @@ class RXHalf(TemplateBase):
         vm_width = self.params['vm_width']
 
         # create AnalogBaseInfo object
-        tech_info = self.grid.tech_info
         vm_layer_id = layout_info.mconn_port_layer + 2
         diff_track_width = 2 * vm_width + diff_space
 
@@ -496,7 +501,7 @@ class RXHalf(TemplateBase):
         new_integ_params = integ_params.copy()
         integ_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col)
         new_integ_params['min'] = integ_fg_min
-        integ_info = SerdesRXBase.get_diffamp_info(tech_info, new_integ_params)
+        integ_info = layout_info.get_diffamp_info(new_integ_params)
         new_integ_params['col_idx'] = integ_col_idx
         integ_fg_tot = integ_info['fg_tot']
         col_idx_dict['integ'] = (cur_col, cur_col + integ_fg_tot)
@@ -516,9 +521,9 @@ class RXHalf(TemplateBase):
         alat_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * diff_track_width + diff_space, cur_col)
         # step 1B: make both analog latches have the same width
         alat1_params['min'] = alat_fg_min
-        alat1_info = SerdesRXBase.get_diffamp_info(tech_info, alat1_params)
+        alat1_info = layout_info.get_diffamp_info(alat1_params)
         alat2_params['min'] = alat_fg_min
-        alat2_info = SerdesRXBase.get_diffamp_info(tech_info, alat2_params)
+        alat2_info = layout_info.get_diffamp_info(alat2_params)
         alat_fg_min = max(alat1_info['fg_tot'], alat2_info['fg_tot'])
         alat1_params['min'] = alat_fg_min
         alat2_params['min'] = alat_fg_min
@@ -527,7 +532,7 @@ class RXHalf(TemplateBase):
         col_idx_dict['alat'] = (cur_col, cur_col + alat_fg_min)
         cur_col += alat_fg_min
         # step 1C: reserve routing tracks between analog latch and intsum
-        route_alat_intsum_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col)
+        route_alat_intsum_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width + diff_space, cur_col)
         col_idx_dict['alat_route'] = (cur_col, cur_col + route_alat_intsum_fg)
         # print('alat_route_col: %d' % cur_col)
         cur_col += route_alat_intsum_fg
@@ -542,7 +547,7 @@ class RXHalf(TemplateBase):
         intsum_gm_fg_list = intsum_params['gm_fg_list']
         intsum_gm_sep_list = [layout_info.min_fg_sep] * (len(intsum_gm_fg_list) - 1)
         # step 2A: place main tap.  No requirements.
-        intsum_main_info = SerdesRXBase.get_gm_info(tech_info, intsum_gm_fg_list[0])
+        intsum_main_info = layout_info.get_gm_info(intsum_gm_fg_list[0])
         new_intsum_gm_fg_list = [intsum_gm_fg_list[0]]
         cur_col += intsum_main_info['fg_tot'] + intsum_gm_sep_list[0]
         # print('cur_col: %d' % cur_col)
@@ -552,7 +557,7 @@ class RXHalf(TemplateBase):
         intsum_pre_fg_params = intsum_gm_fg_list[1].copy()
         intsum_pre_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col)
         intsum_pre_fg_params['min'] = intsum_pre_fg_min
-        intsum_pre_info = SerdesRXBase.get_gm_info(tech_info, intsum_pre_fg_params)
+        intsum_pre_info = layout_info.get_gm_info(intsum_pre_fg_params)
         new_intsum_gm_fg_list.append(intsum_pre_fg_params)
         cur_col += intsum_pre_info['fg_tot'] + intsum_gm_sep_list[1]
         # print('cur_col: %d' % cur_col)
@@ -581,9 +586,9 @@ class RXHalf(TemplateBase):
                 tot_diff_track = diff_track_width * n_diff_tr + (n_diff_tr - 1) * diff_space
                 intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, tot_diff_track, cur_col)
                 dig_latch_params['min'] = intsum_dfe_fg_min
-                dlat_info = SerdesRXBase.get_diffamp_info(tech_info, dig_latch_params)
+                dlat_info = layout_info.get_diffamp_info(dig_latch_params)
                 intsum_dfe_fg_params['min'] = dlat_info['fg_tot']
-                intsum_dfe_info = SerdesRXBase.get_gm_info(tech_info, intsum_dfe_fg_params)
+                intsum_dfe_info = layout_info.get_gm_info(intsum_dfe_fg_params)
                 num_fg = intsum_dfe_info['fg_tot']
                 intsum_dfe_fg_params['min'] = num_fg
                 dig_latch_params['min'] = num_fg
@@ -606,7 +611,7 @@ class RXHalf(TemplateBase):
                 # requirements for digital latch
                 intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col)
                 intsum_dfe_fg_params['min'] = intsum_dfe_fg_min
-                intsum_dfe_info = SerdesRXBase.get_gm_info(tech_info, intsum_dfe_fg_params)
+                intsum_dfe_info = layout_info.get_gm_info(intsum_dfe_fg_params)
                 # no need to add gm sep because this is the last tap.
                 cur_col += intsum_dfe_info['fg_tot']
                 # print('cur_col: %d' % cur_col)
@@ -630,7 +635,7 @@ class RXHalf(TemplateBase):
         summer_gm_fg_list = summer_params['gm_fg_list']
         summer_gm_sep_list = [layout_info.min_fg_sep]
         # step 3A: place main tap.  No requirements.
-        summer_main_info = SerdesRXBase.get_gm_info(tech_info, summer_gm_fg_list[0])
+        summer_main_info = layout_info.get_gm_info(summer_gm_fg_list[0])
         new_summer_gm_fg_list = [summer_gm_fg_list[0]]
         cur_col += summer_main_info['fg_tot'] + summer_gm_sep_list[0]
         # print('cur_col: %d' % cur_col)
@@ -639,7 +644,7 @@ class RXHalf(TemplateBase):
         summer_dfe_fg_params = summer_gm_fg_list[1].copy()
         summer_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * diff_track_width + diff_space, cur_col)
         summer_dfe_fg_params['min'] = summer_dfe_fg_min
-        summer_dfe_info = SerdesRXBase.get_gm_info(tech_info, summer_dfe_fg_params)
+        summer_dfe_info = layout_info.get_gm_info(summer_dfe_fg_params)
         new_summer_gm_fg_list.append(summer_dfe_fg_params)
         cur_col += summer_dfe_info['fg_tot']
         col_idx_dict['summer'].append(cur_col)
@@ -648,7 +653,7 @@ class RXHalf(TemplateBase):
         # only requirement is that the right side line up with summer.
         dig_latch_params = dlat_params_list[0].copy()
         new_dlat_params_list[0] = dig_latch_params
-        dlat_info = SerdesRXBase.get_diffamp_info(tech_info, dig_latch_params)
+        dlat_info = layout_info.get_diffamp_info(dig_latch_params)
         dig_latch_params['col_idx'] = cur_col - dlat_info['fg_tot']
         col_idx_dict['dlat'][0] = (cur_col - dlat_info['fg_tot'], cur_col)
 
@@ -805,7 +810,7 @@ class RXHalf(TemplateBase):
             th_dict={},
             gds_space=1,
             diff_space=1,
-            fg_stage=6,
+            min_fg_sep=0,
             nduml=4,
             ndumr=4,
             vm_width=1,
@@ -838,7 +843,7 @@ class RXHalf(TemplateBase):
             intsum_params='Integrator summer parameters.',
             summer_params='DFE tap-1 summer parameters.',
             dlat_params_list='Digital latch parameters.',
-            fg_stage='separation between stages.',
+            min_fg_sep='Minimum separation between transistors.',
             nduml='number of dummy fingers on the left.',
             ndumr='number of dummy fingers on the right.',
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',
@@ -896,7 +901,8 @@ class RXCore(TemplateBase):
         inst_list = [even_inst, odd_inst]
         lch = self.params['lch']
         guard_ring_nf = self.params['guard_ring_nf']
-        layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf)
+        min_fg_sep = self.params['min_fg_sep']
+        layout_info = SerdesRXBaseInfo(self.grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
         self.connect_signal(inst_list, col_idx_dict, layout_info)
 
     def connect_signal(self, inst_list, col_idx_dict, layout_info):
@@ -1056,7 +1062,7 @@ class RXCore(TemplateBase):
             th_dict={},
             gds_space=1,
             diff_space=1,
-            fg_stage=6,
+            min_fg_sep=0,
             nduml=4,
             ndumr=4,
             xm_width=1,
@@ -1093,7 +1099,7 @@ class RXCore(TemplateBase):
             intsum_params='Integrator summer parameters.',
             summer_params='DFE tap-1 summer parameters.',
             dlat_params_list='Digital latch parameters.',
-            fg_stage='separation between stages.',
+            min_fg_sep='Minimum separation between transistors.',
             nduml='number of dummy fingers on the left.',
             ndumr='number of dummy fingers on the right.',
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',

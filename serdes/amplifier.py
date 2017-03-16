@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from .base import SerdesRXBase
+from .base import SerdesRXBase, SerdesRXBaseInfo
 
 
 class DynamicLatchChain(SerdesRXBase):
@@ -66,27 +66,29 @@ class DynamicLatchChain(SerdesRXBase):
 
     def _draw_layout_helper(self, lch, ptap_w, ntap_w, w_dict, th_dict, fg_dict,
                             nstage, fg_sep, nduml, ndumr, global_gnd_layer, global_gnd_name,
-                            diff_space, cur_track_width, show_pins, **kwargs):
+                            diff_space, hm_width, hm_cur_width, show_pins, **kwargs):
         if nstage <= 0:
             raise ValueError('nstage = %d must be greater than 0' % nstage)
 
+        serdes_info = SerdesRXBaseInfo(self.grid, lch, kwargs.get('guard_ring_nf', 0))
+        fg_sep = max(fg_sep, serdes_info.min_fg_sep)
+
         # calculate total number of fingers.
-        fg_sep = max(fg_sep, self.get_min_fg_sep(self.grid.tech_info))
-        fg_latch = max(fg_dict.values()) * 2 + fg_sep
+        fg_latch = max(fg_dict.values()) * 2 + serdes_info.min_fg_sep
         fg_tot = nstage * fg_latch + (nstage - 1) * fg_sep + nduml + ndumr
 
         # figure out number of tracks
-        kwargs['pg_tracks'] = [1]
-        kwargs['pds_tracks'] = [2 + diff_space]
+        kwargs['pg_tracks'] = [hm_width]
+        kwargs['pds_tracks'] = [2 * hm_width + diff_space]
         ng_tracks = []
         nds_tracks = []
         for row_name in ['tail', 'en', 'sw', 'in', 'casc']:
             if w_dict.get(row_name, -1) > 0:
                 if row_name == 'in' or (row_name == 'casc' and fg_dict.get('but', 0) > 0):
-                    ng_tracks.append(2 + diff_space)
+                    ng_tracks.append(2 * hm_width + diff_space)
                 else:
                     ng_tracks.append(1)
-                nds_tracks.append(cur_track_width + kwargs['gds_space'])
+                nds_tracks.append(hm_cur_width + kwargs['gds_space'])
         kwargs['ng_tracks'] = ng_tracks
         kwargs['nds_tracks'] = nds_tracks
 
@@ -103,7 +105,7 @@ class DynamicLatchChain(SerdesRXBase):
         da_kwargs = {'fg_' + key: val for key, val in fg_dict.items()}
         for idx in range(nstage):
             col_idx = (fg_latch + fg_sep) * idx + nduml
-            _, pdict = self.draw_diffamp(col_idx, cur_track_width=cur_track_width, **da_kwargs)
+            _, pdict = self.draw_diffamp(col_idx, hm_width=hm_width, hm_cur_width=hm_cur_width, **da_kwargs)
             for pname, port_warr in pdict.items():
                 pname = self.get_pin_name(pname)
                 if pname:
