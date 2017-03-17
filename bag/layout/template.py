@@ -1662,7 +1662,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                           fill_margin=0,  # type: Union[int, float]
                           fill_type='',  # type: str
                           unit_mode=False,  # type: bool
-                          min_len_mode=0,  # type: Optional[int]
+                          min_len_mode=None,  # type: Optional[int]
                           debug=False,  # type: bool
                           ):
         # type: (...) -> Optional[WireArray]
