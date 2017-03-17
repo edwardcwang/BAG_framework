@@ -547,7 +547,7 @@ class RXHalfBottom(SerdesRXBase):
         """
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, integ_params, alat_params, dlat_params_list,
+    def _draw_layout_helper(self, integ_params, alat_params, dlat_params_list, tap1_col_intv,
                             show_pins, diff_space, hm_width, hm_cur_width,
                             sig_widths, sig_spaces, clk_widths, clk_spaces,
                             sig_clk_spaces, datapath_parity, **kwargs):
@@ -560,7 +560,7 @@ class RXHalfBottom(SerdesRXBase):
         dlat_info_list = block_info['dlat']
         dlat_inputs = self.connect_sup_io(integ_ports, alat_ports, dlat_info_list, sig_widths, sig_spaces, show_pins)
 
-        self.connect_bias(block_info, integ_ports, alat_ports, dlat_inputs,
+        self.connect_bias(block_info, integ_ports, alat_ports, dlat_inputs, tap1_col_intv,
                           sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces,
                           show_pins, datapath_parity)
 
@@ -680,7 +680,7 @@ class RXHalfBottom(SerdesRXBase):
 
         return dlat_inputs
 
-    def connect_bias(self, block_info, integ_ports, alat_ports, dlat_inputs,
+    def connect_bias(self, block_info, integ_ports, alat_ports, dlat_inputs, tap1_col_intv,
                      sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces,
                      show_pins, datapath_parity):
         layout_info = self.layout_info
@@ -696,20 +696,30 @@ class RXHalfBottom(SerdesRXBase):
         # calculate bias track indices
         dlat_top_tr = dlat_inputs[0].track_id.base_index
         dlat_bot_tr = dlat_inputs[1].track_id.base_index
-        clkn_nmos_ana_tr_xm = dlat_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
-        clkn_nmos_dig_tr_xm = clkn_nmos_ana_tr_xm
-        clkn_nmos_sw_tr_xm = clkn_nmos_ana_tr_xm - clk_width_xm - clk_space_xm
+        clkp_nmos_ana_tr_xm = dlat_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
+        clkn_nmos_dig_tr_xm = clkp_nmos_ana_tr_xm
+        clkn_nmos_sw_tr_xm = clkp_nmos_ana_tr_xm - clk_width_xm - clk_space_xm
         clkp_pmos_integ_tr_xm = dlat_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
         clkn_pmos_dig_tr_xm = clkp_pmos_integ_tr_xm
-        clkp_pmos_ana_tr_xm = clkp_pmos_integ_tr_xm + clk_width_xm + clk_space_xm
-        clkp_pmos_dig_tr_xm = clkp_pmos_ana_tr_xm
-        clkp_nmos_dig_tr_xm = -clkn_nmos_dig_tr_xm - 1
-        clkp_nmos_sw_tr_xm = -clkn_nmos_sw_tr_xm - 1
-        clkp_nmos_ana_tr_xm = -clkn_nmos_ana_tr_xm - 1
+        clkn_pmos_ana_tr_xm = clkp_pmos_integ_tr_xm + clk_width_xm + clk_space_xm
+        clkp_pmos_dig_tr_xm = clkn_pmos_ana_tr_xm
+
+        # mirror to opposite side
+        bot_xm_idx = self.grid.find_next_track(xm_layer, self.array_box.bottom_unit, mode=1, unit_mode=True)
+        clkp_nmos_dig_tr_xm = 2 * bot_xm_idx - clkn_nmos_dig_tr_xm - 1
+        clkp_nmos_sw_tr_xm = 2 * bot_xm_idx - clkn_nmos_sw_tr_xm - 1
 
         clkp_nmos_sw_tr_id = TrackID(xm_layer, clkp_nmos_sw_tr_xm, width=clk_width_xm)
         clkn_nmos_sw_tr_id = TrackID(xm_layer, clkn_nmos_sw_tr_xm, width=clk_width_xm)
         clkp_nmos_sw_list, clkn_nmos_sw_list = [], []
+        clkp_nmos_ana_tr_id = TrackID(xm_layer, clkp_nmos_ana_tr_xm, width=clk_width_xm)
+        clkp_nmos_ana_list = []
+        clkp_nmos_dig_tr_id = TrackID(xm_layer, clkp_nmos_dig_tr_xm, width=clk_width_xm)
+        clkn_nmos_dig_tr_id = TrackID(xm_layer, clkn_nmos_dig_tr_xm, width=clk_width_xm)
+        clkp_nmos_dig_list, clkn_nmos_dig_list = [], []
+        clkp_pmos_dig_tr_id = TrackID(xm_layer, clkp_pmos_dig_tr_xm, width=clk_width_xm)
+        clkn_pmos_dig_tr_id = TrackID(xm_layer, clkn_pmos_dig_tr_xm, width=clk_width_xm)
+        clkp_pmos_dig_list, clkn_pmos_dig_list = [], []
 
         if datapath_parity == 0:
             clkp, clkn = 'clkp', 'clkn'
@@ -723,16 +733,11 @@ class RXHalfBottom(SerdesRXBase):
         left_sig_vm += (sig_width_vm - 1) / 2
         mid_tr_vm = left_sig_vm + (sig_width_vm + sig_space_vm) / 2
         right_tr_vm = left_sig_vm - (sig_width_vm + clk_width_vm) / 2 - sig_clk_space_vm
-        left_tr_vm = right_tr_vm - clk_width_vm - clk_space_vm
-        ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
         rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
         mtr_id = TrackID(vm_layer, mid_tr_vm, width=clk_width_vm)
-        nmos_tr_id = ltr_id if datapath_parity == 0 else rtr_id
         # nmos_analog
-        warr = self.connect_to_tracks(integ_ports['bias_tail'], nmos_tr_id, fill_type='VSS')
-        xtr_id = TrackID(xm_layer, clkp_nmos_ana_tr_xm, width=clk_width_xm)
-        warr = self.connect_to_tracks(warr, xtr_id, fill_type='VSS', min_len_mode=0)
-        self.add_pin(clkp + '_nmos_analog', warr, show=show_pins)
+        warr = self.connect_to_tracks(integ_ports['bias_tail'], rtr_id, fill_type='VSS')
+        clkp_nmos_ana_list.append(warr)
         # pmos_integ
         warr = self.connect_to_tracks(integ_ports['bias_load'], mtr_id, fill_type='VDD')
         xtr_id = TrackID(xm_layer, clkp_pmos_integ_tr_xm, width=clk_width_xm)
@@ -742,10 +747,83 @@ class RXHalfBottom(SerdesRXBase):
         warr = self.connect_to_tracks(integ_ports['sw'], mtr_id, fill_type='VDD')
         clkn_nmos_sw_list.append(warr)
 
-        # warr = self.connect_to_tracks(clkp_nmos_sw_list, clkp_nmos_sw_tr_id, fill_type='VDD')
-        # self.add_pin(clkp + '_nmos_switch', warr, show=show_pins)
+        # connect alat biases
+        alat_col, alat_info = block_info['alat']
+        col_intv = alat_col, alat_col + alat_info['fg_tot']
+        left_tr_vm = layout_info.get_center_tracks(vm_layer, 4 * sig_width_vm + 3 * sig_space_vm, col_intv)
+        left_tr_vm += (sig_width_vm - 1) / 2 + (sig_width_vm + sig_space_vm) / 2
+        right_tr_vm = left_tr_vm + 2 * (sig_width_vm + sig_space_vm)
+        ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
+        rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
+        if datapath_parity == 0:
+            nmos_tr_id, pmos_tr_id, sw_tr_id = ltr_id, ltr_id, rtr_id
+        else:
+            nmos_tr_id, pmos_tr_id, sw_tr_id = rtr_id, rtr_id, ltr_id
+        # nmos_analog
+        warr = self.connect_to_tracks(alat_ports['bias_tail'], nmos_tr_id, fill_type='VSS')
+        clkp_nmos_ana_list.append(warr)
+        # pmos_analog
+        warr = self.connect_to_tracks(alat_ports['bias_load'], pmos_tr_id, fill_type='VDD')
+        xtr_id = TrackID(xm_layer, clkn_pmos_ana_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id, fill_type='VDD', min_len_mode=0)
+        self.add_pin(clkn + '_pmos_analog', warr, show=show_pins)
+        # nmos_switch
+        warr = self.connect_to_tracks(alat_ports['sw'], sw_tr_id, fill_type='VDD')
+        clkn_nmos_sw_list.append(warr)
+
+        # connect dlat
+        for dfe_idx, (dlat_col, dlat_ports, dlat_info) in enumerate(block_info['dlat']):
+
+            if dfe_idx == 0:
+                left_sig_vm = layout_info.get_center_tracks(vm_layer, 4 * sig_width_vm + 3 * sig_space_vm,
+                                                            tap1_col_intv)
+            else:
+                col_intv = dlat_col, dlat_col + dlat_info['fg_tot']
+                left_sig_vm = layout_info.get_center_tracks(vm_layer, 4 * sig_width_vm + 3 * sig_space_vm, col_intv)
+            left_sig_vm += (sig_width_vm - 1) / 2
+            same_tr_vm = left_sig_vm - (sig_width_vm + clk_width_vm) / 2 - sig_clk_space_vm
+            left_tr_vm = left_sig_vm + (sig_width_vm + sig_space_vm) / 2
+            right_tr_vm = left_tr_vm + 2 * (sig_width_vm + sig_space_vm)
+            str_id = TrackID(vm_layer, same_tr_vm, width=clk_width_vm)
+            ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
+            rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
+
+            if dfe_idx % 2 == 1:
+                nmos_tr_id = ltr_id if datapath_parity == 0 else rtr_id
+                pmos_tr_id = nmos_tr_id
+                sw_tr_id = str_id
+            else:
+                nmos_tr_id = str_id
+                pmos_tr_id = nmos_tr_id
+                sw_tr_id = ltr_id if datapath_parity == 0 else rtr_id
+
+            nwarr = self.connect_to_tracks(dlat_ports['bias_tail'], nmos_tr_id, fill_type='VSS')
+            pwarr = self.connect_to_tracks(dlat_ports['bias_load'], pmos_tr_id, fill_type='VDD')
+            swarr = self.connect_to_tracks(dlat_ports['sw'], sw_tr_id, fill_type='VDD')
+
+            if dfe_idx % 2 == 1:
+                clkp_nmos_dig_list.append(nwarr)
+                clkn_pmos_dig_list.append(pwarr)
+                clkn_nmos_sw_list.append(swarr)
+            else:
+                clkn_nmos_dig_list.append(nwarr)
+                clkp_pmos_dig_list.append(pwarr)
+                clkp_nmos_sw_list.append(swarr)
+
+        warr = self.connect_to_tracks(clkp_nmos_sw_list, clkp_nmos_sw_tr_id, fill_type='VDD')
+        self.add_pin(clkp + '_nmos_switch', warr, show=show_pins)
         warr = self.connect_to_tracks(clkn_nmos_sw_list, clkn_nmos_sw_tr_id, fill_type='VDD')
         self.add_pin(clkn + '_nmos_switch', warr, show=show_pins)
+        warr = self.connect_to_tracks(clkp_nmos_ana_list, clkp_nmos_ana_tr_id, fill_type='VSS')
+        self.add_pin(clkp + '_nmos_analog', warr, show=show_pins)
+        warr = self.connect_to_tracks(clkp_nmos_dig_list, clkp_nmos_dig_tr_id, fill_type='VSS')
+        self.add_pin(clkp + '_nmos_digital', warr, show=show_pins)
+        warr = self.connect_to_tracks(clkn_nmos_dig_list, clkn_nmos_dig_tr_id, fill_type='VSS')
+        self.add_pin(clkn + '_nmos_digital', warr, show=show_pins)
+        warr = self.connect_to_tracks(clkp_pmos_dig_list, clkp_pmos_dig_tr_id, fill_type='VDD')
+        self.add_pin(clkp + '_pmos_digital', warr, show=show_pins)
+        warr = self.connect_to_tracks(clkn_pmos_dig_list, clkn_pmos_dig_tr_id, fill_type='VDD')
+        self.add_pin(clkn + '_pmos_digital', warr, show=show_pins)
 
     @classmethod
     def get_default_param_values(cls):
@@ -800,6 +878,7 @@ class RXHalfBottom(SerdesRXBase):
             integ_params='Integrating frontend parameters.',
             alat_params='Analog latch parameters',
             dlat_params_list='Digital latch parameters.',
+            tap1_col_intv='DFE tap1 feedback gm transistor column interval.',
             fg_tot='Total number of fingers.',
             min_fg_sep='Minimum separation between transistors.',
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',
@@ -1036,7 +1115,8 @@ class RXHalf(TemplateBase):
         summer_dfe_info = layout_info.get_gm_info(summer_dfe_fg_params)
         new_summer_gm_fg_list.append(summer_dfe_fg_params)
         cur_col += summer_dfe_info['fg_tot']
-        col_idx_dict['summer'].append((summer_dfe_col_idx, cur_col))
+        tap1_col_intv = (summer_dfe_col_idx, cur_col)
+        col_idx_dict['summer'].append(tap1_col_intv)
         # print('cur_col: %d' % cur_col)
         # step 3C: place first digital latch
         # only requirement is that the right side line up with summer.
@@ -1056,6 +1136,7 @@ class RXHalf(TemplateBase):
         bot_params['integ_params'] = new_integ_params
         bot_params['alat_params'] = alat1_params
         bot_params['dlat_params_list'] = new_dlat_params_list
+        bot_params['tap1_col_intv'] = tap1_col_intv
         bot_params['show_pins'] = False
         bot_master = self.new_template(params=bot_params, temp_cls=RXHalfBottom)
         bot_inst = self.add_instance(bot_master)
