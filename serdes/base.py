@@ -292,6 +292,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         self._nrow_idx = None
         self._serdes_info = None  # type: SerdesRXBaseInfo
 
+    @property
+    def layout_info(self):
+        return self._serdes_info
+
     def draw_gm(self,  # type: SerdesRXBase
                 col_idx,  # type: int
                 fg_params,  # type: Dict[str, int]

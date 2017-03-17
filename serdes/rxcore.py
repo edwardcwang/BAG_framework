@@ -35,6 +35,28 @@ from bag.layout.objects import Instance
 from .base import SerdesRXBase, SerdesRXBaseInfo
 
 
+def connect_to_xm(template, warr_p, warr_n, col_intv, layout_info, vm_width, xm_width, diff_space):
+    """Connect differential ports to xm layer.
+
+    Returns a list of [even_p, even_n, odd_p, odd_n] WireArrays on xm layer.
+    """
+    diff_track_width = 2 * vm_width + diff_space
+    hm_layer_id = layout_info.mconn_port_layer + 1
+    vm_layer_id = hm_layer_id + 1
+    xm_layer_id = vm_layer_id + 1
+
+    # get vm tracks
+    p_tr = layout_info.get_center_tracks(vm_layer_id, diff_track_width, col_intv)
+    n_tr = p_tr + vm_width + diff_space
+    # step 1B: connect to vm and xm layer
+    vmp, vmn = template.connect_differential_tracks(warr_p, warr_n, vm_layer_id, p_tr, n_tr, width=vm_width,
+                                                    fill_type='VDD')
+    nx_tr = template.grid.find_next_track(xm_layer_id, vmp.middle, tr_width=xm_width, mode=-1)
+    px_tr = nx_tr + xm_width + diff_space
+    return template.connect_differential_tracks(vmp, vmn, xm_layer_id, px_tr, nx_tr, width=xm_width,
+                                                fill_type='VDD')
+
+
 class RXHalfTop(SerdesRXBase):
     """The top half of one data path of DDR burst mode RX core.
 
@@ -65,7 +87,8 @@ class RXHalfTop(SerdesRXBase):
     def _draw_layout_helper(self, lch, ptap_w, ntap_w, w_dict, th_dict,
                             alat_params, intsum_params, summer_params,
                             fg_tot, global_gnd_layer, global_gnd_name,
-                            show_pins, diff_space, hm_width, hm_cur_width, **kwargs):
+                            show_pins, diff_space, hm_width, hm_cur_width,
+                            vm_width, xm_width, **kwargs):
         # figure out number of tracks
         kwargs['pg_tracks'] = [hm_width]
         kwargs['pds_tracks'] = [2 * hm_width + diff_space]
@@ -118,9 +141,9 @@ class RXHalfTop(SerdesRXBase):
         # print('rxtop alat cur_col: %d' % cur_col)
         fg_amp, alat_ports = self.draw_diffamp(cur_col, alat_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
                                                diff_space=diff_space, gate_locs=gate_locs)
-        cur_col = intsum_params.pop('col_idx')
+        intsum_col = intsum_params.pop('col_idx')
         # print('rxtop intsum cur_col: %d' % cur_col)
-        fg_intsum, intsum_ports = self.draw_gm_summer(cur_col, hm_width=hm_width, hm_cur_width=hm_cur_width,
+        fg_intsum, intsum_ports = self.draw_gm_summer(intsum_col, hm_width=hm_width, hm_cur_width=hm_cur_width,
                                                       diff_space=diff_space, gate_locs=gate_locs,
                                                       **intsum_params)
         cur_col = summer_params.pop('col_idx')
@@ -139,6 +162,7 @@ class RXHalfTop(SerdesRXBase):
             else:
                 self.add_pin('alat1_' + name, warr_list, show=show_pins)
 
+        ffe_in = {}
         for (name, idx), warr_list in intsum_ports.items():
             if idx >= 0:
                 if name == 'bias_casc':
@@ -148,6 +172,8 @@ class RXHalfTop(SerdesRXBase):
                         cascr_list.extend(warr_list)
                     else:
                         self.add_pin('ffe_casc', warr_list, show=show_pins)
+                elif idx == 1 and (name == 'inp' or name == 'inn'):
+                    ffe_in[name] = warr_list[0]
                 else:
                     self.add_pin('intsum_%s<%d>' % (name, idx), warr_list, show=show_pins)
             else:
@@ -155,6 +181,16 @@ class RXHalfTop(SerdesRXBase):
                     vdd_list.extend(warr_list)
                 else:
                     self.add_pin('intsum_%s' % name, warr_list, show=show_pins)
+
+        # connect FFE inputs to xm layer
+        intsum_info = self.layout_info.get_summer_info(intsum_params['fg_load'], intsum_params['gm_fg_list'],
+                                                       gm_sep_list=intsum_params.get('gm_sep_list', None))
+        ffe_intv_start = intsum_col + intsum_info['gm_offsets'][1]
+        ffe_intv_stop = ffe_intv_start + intsum_info['amp_info_list'][1]['fg_tot']
+        ffe_inp, ffe_inn = connect_to_xm(self, ffe_in['inp'], ffe_in['inn'], (ffe_intv_start, ffe_intv_stop),
+                                         self.layout_info, vm_width, xm_width, diff_space)
+        self.add_pin('ffe_inp', ffe_inp, show=show_pins)
+        self.add_pin('ffe_inn', ffe_inn, show=show_pins)
 
         for (name, idx), warr_list in summer_ports.items():
             if idx >= 0:
@@ -212,6 +248,8 @@ class RXHalfTop(SerdesRXBase):
             diff_space=1,
             min_fg_sep=0,
             hm_width=1,
+            vm_width=1,
+            xm_width=1,
             hm_cur_width=-1,
             show_pins=False,
             guard_ring_nf=0,
@@ -246,6 +284,8 @@ class RXHalfTop(SerdesRXBase):
             diff_space='number of tracks reserved as space between differential tracks.',
             hm_width='width of horizontal track wires.',
             hm_cur_width='width of horizontal current track wires. If negative, defaults to hm_width.',
+            vm_width='width of vertical track wires.',
+            xm_width='width of top horizontal track wires.',
             show_pins='True to create pin labels.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
             global_gnd_layer='layer of the global ground pin.  None to disable drawing global ground.',
@@ -283,7 +323,8 @@ class RXHalfBottom(SerdesRXBase):
     def _draw_layout_helper(self, lch, ptap_w, ntap_w, w_dict, th_dict,
                             integ_params, alat_params, dlat_params_list,
                             fg_tot, global_gnd_layer, global_gnd_name,
-                            show_pins, diff_space, hm_width, hm_cur_width, **kwargs):
+                            show_pins, diff_space, hm_width, hm_cur_width,
+                            vm_width, xm_width, **kwargs):
 
         if hm_cur_width < 0:
             hm_cur_width = hm_width  # type: int
@@ -342,13 +383,27 @@ class RXHalfBottom(SerdesRXBase):
             cur_col = dlat_params.pop('col_idx')
             fg_amp, dlat_ports = self.draw_diffamp(cur_col, dlat_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
                                                    diff_space=diff_space, gate_locs=gate_locs)
+
+            in_to_xm = (idx % 2 == 0) and idx > 0
+            in_ports = {}
             for name, warr_list in dlat_ports.items():
                 if name == 'vddt':
                     vdd_list.extend(warr_list)
                 elif name == 'bias_casc':
                     casc_list.extend(warr_list)
+                elif in_to_xm and (name == 'inp' or name == 'inn'):
+                    in_ports[name] = warr_list[0]
                 else:
                     self.add_pin('dlat%d_%s' % (idx, name), warr_list, show=show_pins)
+
+            # connect inputs to xm layer
+            if in_to_xm:
+                dlat_info = self.layout_info.get_diffamp_info(dlat_params)
+                dlat_intv = cur_col, cur_col + dlat_info['fg_tot']
+                dlat_inp, dlat_inn = connect_to_xm(self, in_ports['inp'], in_ports['inn'], dlat_intv,
+                                                   self.layout_info, vm_width, xm_width, diff_space)
+                self.add_pin('dlat%d_inp' % idx, dlat_inp, show=show_pins)
+                self.add_pin('dlat%d_inn' % idx, dlat_inn, show=show_pins)
 
         # connect and export supplies
         ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy()
@@ -393,6 +448,8 @@ class RXHalfBottom(SerdesRXBase):
             min_fg_sep=0,
             hm_width=1,
             hm_cur_width=-1,
+            vm_width=1,
+            xm_width=1,
             show_pins=False,
             guard_ring_nf=0,
             global_gnd_layer=None,
@@ -426,6 +483,8 @@ class RXHalfBottom(SerdesRXBase):
             diff_space='number of tracks reserved as space between differential tracks.',
             hm_width='width of horizontal track wires.',
             hm_cur_width='width of horizontal current track wires. If negative, defaults to hm_width.',
+            vm_width='width of vertical track wires.',
+            xm_width='width of top horizontal track wires.',
             show_pins='True to create pin labels.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
             global_gnd_layer='layer of the global ground pin.  None to disable drawing global ground.',
@@ -824,9 +883,10 @@ class RXHalf(TemplateBase):
             min_fg_sep=0,
             nduml=4,
             ndumr=4,
-            vm_width=1,
             hm_width=1,
             hm_cur_width=-1,
+            vm_width=1,
+            xm_width=1,
             guard_ring_nf=0,
             show_pins=False
         )
@@ -859,9 +919,10 @@ class RXHalf(TemplateBase):
             ndumr='number of dummy fingers on the right.',
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',
             diff_space='number of tracks reserved as space between differential tracks.',
-            vm_width='width of vertical track wires.',
             hm_width='width of horizontal track wires.',
             hm_cur_width='width of horizontal current track wires. If negative, defaults to hm_width.',
+            vm_width='width of vertical track wires.',
+            xm_width='width of top horizontal track wires.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
             show_pins='True to draw layout pins.',
         )
@@ -921,7 +982,6 @@ class RXCore(TemplateBase):
         vm_layer_id = hm_layer_id + 1
         diff_space = self.params['diff_space']
         vm_width = self.params['vm_width']
-        xm_width = self.params['xm_width']
         diff_track_width = 2 * vm_width + diff_space
 
         # connect inputs of even and odd paths
@@ -934,11 +994,6 @@ class RXCore(TemplateBase):
         self.add_pin('inn', inn, show=True)
 
         # connect alat0 outputs
-        # step 1: connect FFE inputs to xm layer
-        ffe_in_intv = col_idx_dict['intsum'][1]
-        ffe_in_list = self._connect_to_xm('intsum_in{}<1>', inst_list, ffe_in_intv, layout_info, vm_width, xm_width)
-
-        # step 2: get wires/tracks then connect
         route_col_intv = col_idx_dict['alat']
         ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
         tr_idx_list = [ptr_idx, ptr_idx + vm_width + diff_space,
@@ -946,22 +1001,21 @@ class RXCore(TemplateBase):
                        ptr_idx + diff_track_width + vm_width + 2 * diff_space]
         warr_list_list = [[inst_list[0].get_port('alat0_outp').get_pins()[0],
                            inst_list[0].get_port('alat1_inp').get_pins()[0],
-                           ffe_in_list[2],
+                           inst_list[1].get_port('ffe_inp').get_pins()[0],
                            ],
                           [inst_list[0].get_port('alat0_outn').get_pins()[0],
                            inst_list[0].get_port('alat1_inn').get_pins()[0],
-                           ffe_in_list[3],
+                           inst_list[1].get_port('ffe_inn').get_pins()[0],
                            ],
                           [inst_list[1].get_port('alat0_outp').get_pins()[0],
                            inst_list[1].get_port('alat1_inp').get_pins()[0],
-                           ffe_in_list[0],
+                           inst_list[0].get_port('ffe_inp').get_pins()[0],
                            ],
                           [inst_list[1].get_port('alat0_outn').get_pins()[0],
                            inst_list[1].get_port('alat1_inn').get_pins()[0],
-                           ffe_in_list[1],
+                           inst_list[0].get_port('ffe_inn').get_pins()[0],
                            ], ]
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width, fill_type='VDD')
-
         # connect summer outputs
         route_col_intv = col_idx_dict['summer'][1]
         ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
@@ -974,31 +1028,27 @@ class RXCore(TemplateBase):
                                    ports1, ports0)
 
         # connect dlat1 outputs
-        # step 1: connect dlat2 inputs to xm layer
-        dlat2_in_intv = col_idx_dict['dlat'][2]
-        dlat2_in_list = self._connect_to_xm('dlat2_in{}', inst_list, dlat2_in_intv, layout_info, vm_width, xm_width)
-        # step 2: get wires/tracks then connect
         route_col_intv = col_idx_dict['dlat'][1]
         ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + diff_space, route_col_intv)
         tr_idx_list = [ptr_idx, ptr_idx + vm_width + diff_space]
         warr_list_list = [[inst_list[0].get_port('dlat1_outp').get_pins()[0],
+                           inst_list[0].get_port('dlat2_inp').get_pins()[0],
                            inst_list[1].get_port('intsum_inp<3>').get_pins()[0],
-                           dlat2_in_list[0],
                            ],
                           [inst_list[0].get_port('dlat1_outn').get_pins()[0],
+                           inst_list[0].get_port('dlat2_inn').get_pins()[0],
                            inst_list[1].get_port('intsum_inn<3>').get_pins()[0],
-                           dlat2_in_list[1],
                            ], ]
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width, fill_type='VDD')
         tr_idx_list[0] += diff_track_width + diff_space
         tr_idx_list[1] += diff_track_width + diff_space
         warr_list_list = [[inst_list[1].get_port('dlat1_outp').get_pins()[0],
+                           inst_list[1].get_port('dlat2_inp').get_pins()[0],
                            inst_list[0].get_port('intsum_inp<3>').get_pins()[0],
-                           dlat2_in_list[2],
                            ],
                           [inst_list[1].get_port('dlat1_outn').get_pins()[0],
+                           inst_list[1].get_port('dlat2_inn').get_pins()[0],
                            inst_list[0].get_port('intsum_inn<3>').get_pins()[0],
-                           dlat2_in_list[3],
                            ], ]
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width, fill_type='VDD')
 
@@ -1016,36 +1066,6 @@ class RXCore(TemplateBase):
         trp, trn = self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width,
                                                 fill_type='VDD')
         return trp, trn
-
-    def _connect_to_xm(self, name_fmt, inst_list, col_intv, layout_info, vm_width, xm_width):
-        """Connect differential ports to xm layer.
-
-        Returns a list of [even_p, even_n, odd_p, odd_n] WireArrays on xm layer.
-        """
-        diff_space = self.params['diff_space']
-        diff_track_width = 2 * vm_width + diff_space
-        hm_layer_id = layout_info.mconn_port_layer + 1
-        vm_layer_id = hm_layer_id + 1
-        xm_layer_id = vm_layer_id + 1
-
-        # get vm tracks
-        p_tr = layout_info.get_center_tracks(vm_layer_id, diff_track_width, col_intv)
-        n_tr = p_tr + vm_width + diff_space
-        # step 1B: connect to vm and xm layer
-        results = []
-        for parity in (0, 1):
-            warr_p = inst_list[parity].get_port(name_fmt.format('p')).get_pins()
-            warr_n = inst_list[parity].get_port(name_fmt.format('n')).get_pins()
-            vmp, vmn = self.connect_differential_tracks(warr_p, warr_n, vm_layer_id, p_tr, n_tr, width=vm_width,
-                                                        fill_type='VDD')
-            mode = 2 * parity - 1
-            nx_tr = self.grid.find_next_track(xm_layer_id, vmp.middle, tr_width=xm_width, mode=mode)
-            px_tr = nx_tr - mode * (xm_width + diff_space)
-            xm_warrs = self.connect_differential_tracks(vmp, vmn, xm_layer_id, px_tr, nx_tr, width=xm_width,
-                                                        fill_type='VDD')
-            results.extend(xm_warrs)
-
-        return results
 
     @classmethod
     def get_default_param_values(cls):
