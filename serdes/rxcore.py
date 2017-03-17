@@ -328,6 +328,83 @@ class RXHalfTop(SerdesRXBase):
         warr = self.connect_to_tracks(alat_ports['sw'], sw_tr_id, fill_type='VDD')
         clkn_nmos_sw_list.append(warr)
 
+        # connect intsum main tap biases
+        intsum_col, intsum_info = block_info['intsum']
+        intsum_start = intsum_col + intsum_info['gm_offsets'][0]
+        col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][0]['fg_tot']
+        left_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2 * clk_width_vm + clk_space_vm, col_intv)
+        left_tr_vm += (clk_width_vm - 1) / 2
+        ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
+        # pmos intsum
+        warr = self.connect_to_tracks(intsum_ports[('bias_load', -1)], ltr_id, fill_type='VDD')
+        xtr_id = TrackID(xm_layer, clkn_pmos_intsum_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id, fill_type='VDD')
+        self.add_pin('clkn_pmos_intsum', warr, show=show_pins)
+        # nmos switch
+        warr = self.connect_wires(intsum_ports[('sw', 0)] + intsum_ports[('sw', 1)])
+        warr = self.connect_to_tracks(warr, ltr_id, fill_type='VDD')
+        xtr_id = TrackID(xm_layer, clkp_nmos_sw_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id, fill_type='VDD')
+        self.add_pin('clkp_nmos_switch', warr, show=show_pins)
+
+        # connect intsum ffe tap biases
+        intsum_start = intsum_col + intsum_info['gm_offsets'][1]
+        col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][1]['fg_tot']
+        en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2 * sig_width_vm + sig_space_vm, col_intv)
+        en_tr_vm += (sig_width_vm - 1) / 2 + (sig_width_vm + sig_space_vm) / 2
+        # en_ffe
+        en_tr_id = TrackID(vm_layer, en_tr_vm, width=clk_width_vm)
+        warr = self.connect_to_tracks(intsum_ports[('bias_casc', 1)], en_tr_id, fill_type='VDD', track_lower=0)
+        self.add_pin('en_ffe', warr, show=show_pins)
+        # nmos intsum
+        warr = self.connect_wires(intsum_ports[('bias_tail', 0)] + intsum_ports[('bias_tail', 1)])
+        tr_id = TrackID(vm_layer, en_tr_vm - clk_width_vm - clk_space_vm, width=clk_width_vm)
+        warr = self.connect_to_tracks(warr, tr_id, fill_type='VSS', track_lower=0)
+        self.add_pin('clkn_nmos_intsum', warr, show=show_pins)
+
+        # connect intsum dfe tap biases
+        num_dfe = len(intsum_info['gm_offsets']) - 2
+        for fb_idx in range(num_dfe):
+            dfe_idx = num_dfe + 1 - fb_idx
+            intsum_start = intsum_col + intsum_info['gm_offsets'][2 + fb_idx]
+            col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][2 + fb_idx]['fg_tot']
+            if dfe_idx % 2 == 0:
+                en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2 * sig_width_vm + sig_space_vm, col_intv)
+                en_tr_vm += (sig_width_vm - 1) / 2 + (sig_width_vm + sig_space_vm) / 2
+                bias_tr_vm = en_tr_vm - clk_width_vm - clk_space_vm
+            else:
+                en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 4 * sig_width_vm + 3 * sig_space_vm, col_intv)
+                en_tr_vm += (sig_width_vm - 1) / 2
+                if datapath_parity == 0:
+                    en_tr_vm += (sig_width_vm + sig_space_vm) / 2
+                    bias_tr_vm = en_tr_vm + clk_width_vm + clk_space_vm
+                else:
+                    en_tr_vm += (sig_width_vm + sig_space_vm) * 5 / 2
+                    bias_tr_vm = en_tr_vm - clk_width_vm - clk_space_vm
+
+            # en_dfe
+            en_tr_id = TrackID(vm_layer, en_tr_vm, width=clk_width_vm)
+            warr = self.connect_to_tracks(intsum_ports[('bias_casc', 2 + fb_idx)], en_tr_id,
+                                          fill_type='VDD', track_lower=0)
+            self.add_pin('en_dfe<%d>' % (dfe_idx - 1), warr, show=show_pins)
+            # bias_dfe
+            bias_tr_id = TrackID(vm_layer, bias_tr_vm, width=clk_width_vm)
+            warr = self.connect_to_tracks(intsum_ports[('bias_tail', 2 + fb_idx)], bias_tr_id,
+                                          fill_type='VSS', track_lower=0)
+            self.add_pin('bias_dfe<%d>' % (dfe_idx - 1), warr, show=show_pins)
+
+        # pmos intsum
+        warr = self.connect_to_tracks(intsum_ports[('bias_load', -1)], ltr_id, fill_type='VDD')
+        xtr_id = TrackID(xm_layer, clkn_pmos_intsum_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id, fill_type='VDD')
+        self.add_pin('clkn_pmos_intsum', warr, show=show_pins)
+        # nmos switch
+        warr = self.connect_wires(intsum_ports[('sw', 0)] + intsum_ports[('sw', 1)])
+        warr = self.connect_to_tracks(warr, ltr_id, fill_type='VDD')
+        xtr_id = TrackID(xm_layer, clkp_nmos_sw_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id, fill_type='VDD')
+        self.add_pin('clkp_nmos_switch', warr, show=show_pins)
+
         # connect summer main tap biases
         summer_col, summer_info = block_info['summer']
         summer_start = summer_col + summer_info['gm_offsets'][0]
