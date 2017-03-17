@@ -48,6 +48,7 @@ def connect_to_xm(template, warr_p, warr_n, col_intv, layout_info, sig_widths, s
 
     # get vm tracks
     p_tr = layout_info.get_center_tracks(vm_layer_id, 2 * vm_width + vm_space, col_intv)
+    p_tr += (vm_width - 1) / 2
     n_tr = p_tr + vm_width + vm_space
     # step 1B: connect to vm and xm layer
     vmp, vmn = template.connect_differential_tracks(warr_p, warr_n, vm_layer_id, p_tr, n_tr, width=vm_width,
@@ -565,11 +566,10 @@ class RXHalf(TemplateBase):
         nduml = self.params['nduml']
         ndumr = self.params['ndumr']
         vm_width = self.params['sig_widths'][0]
-        route_fg_margin = 2
 
         # create AnalogBaseInfo object
         vm_layer_id = layout_info.mconn_port_layer + 2
-        diff_track_width = 2 * vm_width + vm_space
+        dtr_pitch = vm_width + vm_space
 
         # compute block locations
         col_idx_dict = {}
@@ -579,7 +579,7 @@ class RXHalf(TemplateBase):
         # print('integ_col: %d' % cur_col)
         # step 0A: find minimum number of fingers
         new_integ_params = integ_params.copy()
-        integ_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col)
+        integ_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
         new_integ_params['min'] = integ_fg_min
         integ_info = layout_info.get_diffamp_info(new_integ_params)
         new_integ_params['col_idx'] = integ_col_idx
@@ -587,8 +587,7 @@ class RXHalf(TemplateBase):
         col_idx_dict['integ'] = (cur_col, cur_col + integ_fg_tot)
         cur_col += integ_fg_tot
         # step 0B: reserve routing tracks between integrator and analog latch
-        route_integ_alat_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col,
-                                                                fg_margin=route_fg_margin)
+        route_integ_alat_fg = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
         col_idx_dict['integ_route'] = (cur_col, cur_col + route_integ_alat_fg)
         # print('integ_route_col: %d' % cur_col)
         cur_col += route_integ_alat_fg
@@ -599,7 +598,7 @@ class RXHalf(TemplateBase):
         alat1_params = alat_params_list[0].copy()
         alat2_params = alat_params_list[1].copy()
         # step 1A: find minimum number of fingers
-        alat_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * diff_track_width + vm_space, cur_col)
+        alat_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 4 * dtr_pitch, cur_col)
         # step 1B: make both analog latches have the same width
         alat1_params['min'] = alat_fg_min
         alat1_info = layout_info.get_diffamp_info(alat1_params)
@@ -613,8 +612,7 @@ class RXHalf(TemplateBase):
         col_idx_dict['alat'] = (cur_col, cur_col + alat_fg_min)
         cur_col += alat_fg_min
         # step 1C: reserve routing tracks between analog latch and intsum
-        route_alat_intsum_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col,
-                                                                 fg_margin=route_fg_margin)
+        route_alat_intsum_fg = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
         col_idx_dict['alat_route'] = (cur_col, cur_col + route_alat_intsum_fg)
         # print('alat_route_col: %d' % cur_col)
         cur_col += route_alat_intsum_fg
@@ -639,7 +637,7 @@ class RXHalf(TemplateBase):
         # print('intsum_pre_col: %d' % cur_col)
         intsum_pre_col_idx = cur_col
         intsum_pre_fg_params = intsum_gm_fg_list[1].copy()
-        intsum_pre_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col)
+        intsum_pre_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
         intsum_pre_fg_params['min'] = intsum_pre_fg_min
         intsum_pre_info = layout_info.get_gm_info(intsum_pre_fg_params)
         new_intsum_gm_fg_list.append(intsum_pre_fg_params)
@@ -669,8 +667,7 @@ class RXHalf(TemplateBase):
                     in_route = dfe_idx > 3
 
                 # fit diff tracks and make diglatch and DFE tap have same width
-                tot_diff_track = diff_track_width * n_diff_tr + (n_diff_tr - 1) * vm_space
-                intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, tot_diff_track, cur_col)
+                intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, n_diff_tr * dtr_pitch, cur_col)
                 dig_latch_params['min'] = intsum_dfe_fg_min
                 dlat_info = layout_info.get_diffamp_info(dig_latch_params)
                 intsum_dfe_fg_params['min'] = dlat_info['fg_tot']
@@ -685,8 +682,7 @@ class RXHalf(TemplateBase):
                 # print('cur_col: %d' % cur_col)
                 if in_route:
                     # allocate input route
-                    route_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col,
-                                                                     fg_margin=route_fg_margin)
+                    route_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
                     intsum_gm_sep_list[idx] = route_fg_min
                     col_idx_dict['dlat%d_inroute' % (dfe_idx - 2)] = (cur_col, cur_col + route_fg_min)
                     cur_col += route_fg_min
@@ -697,7 +693,7 @@ class RXHalf(TemplateBase):
             else:
                 # for DFE tap 2, the Gm stage should fit 1 differential track, but we have no
                 # requirements for digital latch
-                intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col)
+                intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
                 intsum_dfe_fg_params['min'] = intsum_dfe_fg_min
                 intsum_dfe_info = layout_info.get_gm_info(intsum_dfe_fg_params)
                 # no need to add gm sep because this is the last tap.
@@ -709,8 +705,7 @@ class RXHalf(TemplateBase):
             new_intsum_gm_fg_list.append(intsum_dfe_fg_params)
         # print('intsum_last_col: %d' % cur_col)
         # step 2D: reserve routing tracks between intsum and summer
-        route_intsum_sum_fg = layout_info.num_tracks_to_fingers(vm_layer_id, diff_track_width, cur_col,
-                                                                fg_margin=route_fg_margin)
+        route_intsum_sum_fg = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
         col_idx_dict['summer_route'] = (cur_col, cur_col + route_intsum_sum_fg)
         cur_col += route_intsum_sum_fg
         # print('summer cur_col: %d' % cur_col)
@@ -732,7 +727,7 @@ class RXHalf(TemplateBase):
         # step 3B: place DFE tap.  must fit two differential tracks
         summer_dfe_col_idx = cur_col
         summer_dfe_fg_params = summer_gm_fg_list[1].copy()
-        summer_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * diff_track_width + vm_space, cur_col)
+        summer_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 4 * dtr_pitch, cur_col)
         summer_dfe_fg_params['min'] = summer_dfe_fg_min
         summer_dfe_info = layout_info.get_gm_info(summer_dfe_fg_params)
         new_summer_gm_fg_list.append(summer_dfe_fg_params)
@@ -805,56 +800,29 @@ class RXHalf(TemplateBase):
         diff_track_width = 2 * vm_width + vm_space
 
         # connect integ to alat1
-        route_col, _ = col_idx_dict['integ_route']
-        ptr_idx = self.grid.coord_to_nearest_track(vm_layer, layout_info.col_to_coord(route_col),
-                                                   mode=2)
-        ntr_idx = ptr_idx + vm_space + vm_width
-        integ_outp = bot_inst.get_port('integ_outp').get_pins(hm_layer)
-        integ_outn = bot_inst.get_port('integ_outn').get_pins(hm_layer)
-        alat0_inp = bot_inst.get_port('alat0_inp').get_pins(hm_layer)
-        alat0_inn = bot_inst.get_port('alat0_inn').get_pins(hm_layer)
-
-        self.connect_differential_tracks(integ_outp + alat0_inp, integ_outn + alat0_inn,
-                                         vm_layer, ptr_idx, ntr_idx, width=vm_width, fill_type='VDD')
+        self._connect_diff_io(bot_inst, col_idx_dict['integ_route'], layout_info, vm_layer,
+                              vm_width, vm_space, 'integ_out{}', 'alat0_in{}')
 
         # connect alat1 to intsum
-        route_col, _ = col_idx_dict['alat_route']
-        ptr_idx = self.grid.coord_to_nearest_track(vm_layer, layout_info.col_to_coord(route_col),
-                                                   mode=2)
-        ntr_idx = ptr_idx + vm_space + vm_width
-        alat1_outp = top_inst.get_port('alat1_outp').get_pins(hm_layer)
-        alat1_outn = top_inst.get_port('alat1_outn').get_pins(hm_layer)
-        intsum_inp = top_inst.get_port('intsum_inp<0>').get_pins(hm_layer)
-        intsum_inn = top_inst.get_port('intsum_inn<0>').get_pins(hm_layer)
-
-        self.connect_differential_tracks(alat1_outp + intsum_inp, alat1_outn + intsum_inn,
-                                         vm_layer, ptr_idx, ntr_idx, width=vm_width, fill_type='VDD')
+        self._connect_diff_io(top_inst, col_idx_dict['alat_route'], layout_info, vm_layer,
+                              vm_width, vm_space, 'alat1_out{}', 'intsum_in{}<0>')
 
         # connect intsum to summer
-        route_col_intv = col_idx_dict['summer_route']
-        ptr_idx = layout_info.get_center_tracks(vm_layer, diff_track_width, route_col_intv)
-        ntr_idx = ptr_idx + vm_space + vm_width
-        intsum_outp = top_inst.get_port('intsum_outp').get_pins(hm_layer)
-        intsum_outn = top_inst.get_port('intsum_outn').get_pins(hm_layer)
-        summer_inp = top_inst.get_port('summer_inp<0>').get_pins(hm_layer)
-        summer_inn = top_inst.get_port('summer_inn<0>').get_pins(hm_layer)
-
-        self.connect_differential_tracks(intsum_outp + summer_inp, intsum_outn + summer_inn,
-                                         vm_layer, ptr_idx, ntr_idx, width=vm_width, fill_type='VDD')
+        self._connect_diff_io(top_inst, col_idx_dict['summer_route'], layout_info, vm_layer,
+                              vm_width, vm_space, 'intsum_out{}', 'summer_in{}<0>')
 
         # connect DFE tap 2
         route_col_intv = col_idx_dict['intsum'][-1]
         ptr_idx = layout_info.get_center_tracks(vm_layer, diff_track_width, route_col_intv)
+        ptr_idx += (vm_width - 1) / 2
         ntr_idx = ptr_idx + vm_space + vm_width
-        dlat_outp = bot_inst.get_port('dlat0_outp').get_pins(hm_layer)
-        dlat_outn = bot_inst.get_port('dlat0_outn').get_pins(hm_layer)
-        tap_inp = top_inst.get_port('intsum_inp<%d>' % (nintsum - 1)).get_pins(hm_layer)
-        tap_inn = top_inst.get_port('intsum_inn<%d>' % (nintsum - 1)).get_pins(hm_layer)
-        p_list = dlat_outp + tap_inp
-        n_list = dlat_outn + tap_inn
+        p_list = [bot_inst.get_port('dlat0_outp').get_pins()[0],
+                  top_inst.get_port('intsum_inp<%d>' % (nintsum - 1)).get_pins()[0], ]
+        n_list = [bot_inst.get_port('dlat0_outn').get_pins()[0],
+                  top_inst.get_port('intsum_inn<%d>' % (nintsum - 1)).get_pins()[0], ]
         if nintsum > 3:
-            p_list.extend(bot_inst.get_port('dlat1_inp').get_pins(hm_layer))
-            n_list.extend(bot_inst.get_port('dlat1_inn').get_pins(hm_layer))
+            p_list.append(bot_inst.get_port('dlat1_inp').get_pins()[0])
+            n_list.append(bot_inst.get_port('dlat1_inn').get_pins()[0])
 
         self.connect_differential_tracks(p_list, n_list, vm_layer, ptr_idx, ntr_idx, width=vm_width,
                                          fill_type='VDD')
@@ -865,22 +833,32 @@ class RXHalf(TemplateBase):
             intsum_idx = nintsum - 1 - (dfe_idx - 2)
             route_col_intv = col_idx_dict['intsum'][intsum_idx]
             ptr_idx = layout_info.get_center_tracks(vm_layer, diff_track_width, route_col_intv)
+            ptr_idx += (vm_width - 1) / 2
             ntr_idx = ptr_idx + vm_space + vm_width
-            dlat_outp = bot_inst.get_port('dlat%d_outp' % (dfe_idx - 2)).get_pins(hm_layer)
-            dlat_outn = bot_inst.get_port('dlat%d_outn' % (dfe_idx - 2)).get_pins(hm_layer)
-            tap_inp = top_inst.get_port('intsum_inp<%d>' % intsum_idx).get_pins(hm_layer)
-            tap_inn = top_inst.get_port('intsum_inn<%d>' % intsum_idx).get_pins(hm_layer)
-            self.connect_differential_tracks(dlat_outp + tap_inp, dlat_outn + tap_inn,
-                                             vm_layer, ptr_idx, ntr_idx, width=vm_width, fill_type='VDD')
+            p_list = [bot_inst.get_port('dlat%d_outp' % (dfe_idx - 2)).get_pins()[0],
+                      top_inst.get_port('intsum_inp<%d>' % intsum_idx).get_pins()[0], ]
+            n_list = [bot_inst.get_port('dlat%d_outn' % (dfe_idx - 2)).get_pins()[0],
+                      top_inst.get_port('intsum_inn<%d>' % intsum_idx).get_pins()[0], ]
+            self.connect_differential_tracks(p_list, n_list, vm_layer, ptr_idx, ntr_idx, width=vm_width,
+                                             fill_type='VDD')
             if dfe_idx + 1 <= ndfe:
                 # connect to next digital latch
-                route_col_intv = col_idx_dict['dlat%d_inroute' % (dfe_idx - 1)]
-                ptr_idx = layout_info.get_center_tracks(vm_layer, diff_track_width, route_col_intv)
-                ntr_idx = ptr_idx + vm_space + vm_width
-                dlat_inp = bot_inst.get_port('dlat%d_inp' % (dfe_idx - 1)).get_pins(hm_layer)
-                dlat_inn = bot_inst.get_port('dlat%d_inn' % (dfe_idx - 1)).get_pins(hm_layer)
-                self.connect_differential_tracks(dlat_outp + dlat_inp, dlat_outn + dlat_inn,
-                                                 vm_layer, ptr_idx, ntr_idx, width=vm_width, fill_type='VDD')
+                self._connect_diff_io(bot_inst, col_idx_dict['dlat%d_inroute' % (dfe_idx - 1)],
+                                      layout_info, vm_layer, vm_width, vm_space,
+                                      'dlat%d_out{}' % (dfe_idx - 2), 'dlat%d_in{}' % (dfe_idx - 1))
+
+    def _connect_diff_io(self, inst, route_col_intv, layout_info, vm_layer, vm_width, vm_space,
+                         out_name, in_name):
+        num_tracks = 2 * vm_width + vm_space
+        ptr_idx = layout_info.get_center_tracks(vm_layer, num_tracks, route_col_intv)
+        ptr_idx += (vm_width - 1) / 2
+        ntr_idx = ptr_idx + vm_space + vm_width
+        p_warrs = [inst.get_port(out_name.format('p')).get_pins()[0],
+                   inst.get_port(in_name.format('p')).get_pins()[0], ]
+        n_warrs = [inst.get_port(out_name.format('n')).get_pins()[0],
+                   inst.get_port(in_name.format('n')).get_pins()[0], ]
+        self.connect_differential_tracks(p_warrs, n_warrs, vm_layer, ptr_idx, ntr_idx,
+                                         width=vm_width, fill_type='VDD')
 
     @classmethod
     def get_default_param_values(cls):
@@ -1014,6 +992,7 @@ class RXCore(TemplateBase):
         # connect inputs of even and odd paths
         route_col_intv = col_idx_dict['integ']
         ptr_idx = layout_info.get_center_tracks(vm_layer_id, diff_track_width, route_col_intv)
+        ptr_idx += (vm_width - 1) / 2
         ports = ['integ_in{}']
         inp, inn = self._connect_differential(inst_list, ptr_idx, vm_layer_id, vm_width, vm_space,
                                               ports, ports)
@@ -1023,6 +1002,7 @@ class RXCore(TemplateBase):
         # connect alat0 outputs
         route_col_intv = col_idx_dict['alat']
         ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + vm_space, route_col_intv)
+        ptr_idx += (vm_width - 1) / 2
         tr_idx_list = [ptr_idx, ptr_idx + vm_width + vm_space,
                        ptr_idx + diff_track_width + vm_space,
                        ptr_idx + diff_track_width + vm_width + 2 * vm_space]
@@ -1046,6 +1026,7 @@ class RXCore(TemplateBase):
         # connect summer outputs
         route_col_intv = col_idx_dict['summer'][1]
         ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + vm_space, route_col_intv)
+        ptr_idx += (vm_width - 1) / 2
         ports0 = ['summer_out{}', 'dlat0_in{}']
         ports1 = ['summer_in{}<1>']
         self._connect_differential(inst_list, ptr_idx, vm_layer_id, vm_width, vm_space,
@@ -1057,6 +1038,7 @@ class RXCore(TemplateBase):
         # connect dlat1 outputs
         route_col_intv = col_idx_dict['dlat'][1]
         ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + vm_space, route_col_intv)
+        ptr_idx += (vm_width - 1) / 2
         tr_idx_list = [ptr_idx, ptr_idx + vm_width + vm_space]
         warr_list_list = [[inst_list[0].get_port('dlat1_outp').get_pins()[0],
                            inst_list[0].get_port('dlat2_inp').get_pins()[0],
