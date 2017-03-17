@@ -91,7 +91,7 @@ class RXHalfTop(SerdesRXBase):
     def _draw_layout_helper(self, alat_params, intsum_params, summer_params,
                             show_pins, diff_space, hm_width, hm_cur_width,
                             sig_widths, sig_spaces, clk_widths, clk_spaces,
-                            sig_clk_spaces, **kwargs):
+                            sig_clk_spaces, datapath_parity, **kwargs):
         draw_params = kwargs.copy()
 
         result = self.place(alat_params, intsum_params, summer_params, draw_params,
@@ -102,7 +102,8 @@ class RXHalfTop(SerdesRXBase):
                                          sig_widths, sig_spaces, clk_widths, clk_spaces, show_pins)
 
         self.connect_bias(block_info, alat_ports, intsum_ports, summer_ports, ffe_inputs,
-                          sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces, show_pins)
+                          sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces,
+                          show_pins, datapath_parity)
 
     def place(self, alat_params, intsum_params, summer_params, draw_params,
               diff_space, hm_width, hm_cur_width):
@@ -257,8 +258,6 @@ class RXHalfTop(SerdesRXBase):
         layout_info = self.layout_info
         hm_layer = layout_info.mconn_port_layer + 1
         vm_layer = hm_layer + 1
-        vm_width = sig_widths[0]
-        vm_space = sig_spaces[0]
         summer_col, summer_info = block_info['summer']
         casc_sum = summer_ports[('bias_casc', 0)]
         summer_start = summer_col + summer_info['gm_offsets'][0]
@@ -277,7 +276,8 @@ class RXHalfTop(SerdesRXBase):
         return ffe_inputs
 
     def connect_bias(self, block_info, alat_ports, intsum_ports, summer_ports, ffe_inputs,
-                     sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces, show_pins):
+                     sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces,
+                     show_pins, datapath_parity):
         layout_info = self.layout_info
         hm_layer = layout_info.mconn_port_layer + 1
         vm_layer = hm_layer + 1
@@ -309,18 +309,23 @@ class RXHalfTop(SerdesRXBase):
         right_tr_vm = left_tr_vm + 2 * (sig_width_vm + sig_space_vm)
         ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
         rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
+        if datapath_parity == 0:
+            nmos_tr_id, pmos_tr_id, sw_tr_id = ltr_id, ltr_id, rtr_id
+        else:
+            nmos_tr_id, pmos_tr_id, sw_tr_id = rtr_id, rtr_id, ltr_id
         # nmos_analog
-        warr = self.connect_to_tracks(alat_ports['bias_tail'], ltr_id, fill_type='VSS')
+        warr = self.connect_to_tracks(alat_ports['bias_tail'], nmos_tr_id, fill_type='VSS')
         xtr_id = TrackID(xm_layer, clkp_nmos_ana_tr_xm, width=clk_width_xm)
         warr = self.connect_to_tracks(warr, xtr_id, fill_type='VSS')
         self.add_pin('clkp_nmos_analog', warr, show=show_pins)
         # pmos_analog
-        warr = self.connect_to_tracks(alat_ports['bias_load'], ltr_id, fill_type='VDD')
+        pmos_tr_id = ltr_id if datapath_parity == 0 else rtr_id
+        warr = self.connect_to_tracks(alat_ports['bias_load'], pmos_tr_id, fill_type='VDD')
         xtr_id = TrackID(xm_layer, clkn_pmos_ana_tr_xm, width=clk_width_xm)
         warr = self.connect_to_tracks(warr, xtr_id, fill_type='VDD')
         self.add_pin('clkn_pmos_analog', warr, show=show_pins)
         # nmos_switch
-        warr = self.connect_to_tracks(alat_ports['sw'], rtr_id, fill_type='VDD')
+        warr = self.connect_to_tracks(alat_ports['sw'], sw_tr_id, fill_type='VDD')
         clkn_nmos_sw_list.append(warr)
 
         # connect summer main tap biases
@@ -353,10 +358,14 @@ class RXHalfTop(SerdesRXBase):
         right_tr_vm = left_tr_vm + 2 * (sig_width_vm + sig_space_vm)
         ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
         rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
+        if datapath_parity == 0:
+            en_tr_id, tap_tr_id = ltr_id, rtr_id
+        else:
+            en_tr_id, tap_tr_id = rtr_id, ltr_id
         # en_dfe
-        warr = self.connect_to_tracks(summer_ports[('bias_casc', 1)], ltr_id, fill_type='VDD', track_lower=0)
+        warr = self.connect_to_tracks(summer_ports[('bias_casc', 1)], en_tr_id, fill_type='VDD', track_lower=0)
         self.add_pin('en_dfe<0>', warr, show=show_pins)
-        warr = self.connect_to_tracks(summer_ports[('bias_tail', 1)], rtr_id, fill_type='VSS', track_lower=0)
+        warr = self.connect_to_tracks(summer_ports[('bias_tail', 1)], tap_tr_id, fill_type='VSS', track_lower=0)
         self.add_pin('clkp_nmos_summer_tap1', warr, show=show_pins)
 
         warr = self.connect_to_tracks(clkn_nmos_sw_list, clkn_nmos_sw_tr_id, fill_type='VDD')
@@ -391,6 +400,7 @@ class RXHalfTop(SerdesRXBase):
             sig_clk_spaces=[1, 1],
             show_pins=False,
             guard_ring_nf=0,
+            data_parity=0,
         )
 
     @classmethod
@@ -427,6 +437,7 @@ class RXHalfTop(SerdesRXBase):
             sig_clk_spaces='spacing between signal and clk on each layer above hm layer.',
             show_pins='True to create pin labels.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
+            datapath_parity='Parity of the DDR datapath.  Either 0 or 1.',
         )
 
 
@@ -460,7 +471,7 @@ class RXHalfBottom(SerdesRXBase):
     def _draw_layout_helper(self, integ_params, alat_params, dlat_params_list,
                             show_pins, diff_space, hm_width, hm_cur_width,
                             sig_widths, sig_spaces, clk_widths, clk_spaces,
-                            sig_clk_spaces, **kwargs):
+                            sig_clk_spaces, datapath_parity, **kwargs):
 
         draw_params = kwargs.copy()
 
@@ -600,6 +611,7 @@ class RXHalfBottom(SerdesRXBase):
             sig_clk_spaces=[1, 1],
             show_pins=False,
             guard_ring_nf=0,
+            data_parity=0,
         )
 
     @classmethod
@@ -636,6 +648,7 @@ class RXHalfBottom(SerdesRXBase):
             sig_clk_spaces='spacing between signal and clk on each layer above hm layer.',
             show_pins='True to create pin labels.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
+            datapath_parity='Parity of the DDR datapath.  Either 0 or 1.',
         )
 
 
@@ -1016,7 +1029,8 @@ class RXHalf(TemplateBase):
             clk_spaces=[1, 1],
             sig_clk_spaces=[1, 1],
             guard_ring_nf=0,
-            show_pins=False
+            show_pins=False,
+            datapath_parity=0,
         )
 
     @classmethod
@@ -1056,6 +1070,7 @@ class RXHalf(TemplateBase):
             sig_clk_spaces='spacing between signal and clk on each layer above hm layer.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
             show_pins='True to draw layout pins.',
+            datapath_parity='Parity of the DDR datapath.  Either 0 or 1.',
         )
 
 
@@ -1090,17 +1105,20 @@ class RXCore(TemplateBase):
     def draw_layout(self):
         half_params = self.params.copy()
 
-        half_master = self.new_template(params=half_params, temp_cls=RXHalf)
-        odd_inst = self.add_instance(half_master, 'X1', orient='MX')
-        odd_inst.move_by(dy=half_master.bound_box.height)
-        even_inst = self.add_instance(half_master, 'X0')
+        half_params['datapath_parity'] = 0
+        even_master = self.new_template(params=half_params, temp_cls=RXHalf)
+        half_params['datapath_parity'] = 1
+        odd_master = self.new_template(params=half_params, temp_cls=RXHalf)
+        odd_inst = self.add_instance(odd_master, 'X1', orient='MX')
+        odd_inst.move_by(dy=odd_master.bound_box.height)
+        even_inst = self.add_instance(even_master, 'X0')
         even_inst.move_by(dy=odd_inst.array_box.top - even_inst.array_box.bottom)
 
         self.array_box = odd_inst.array_box.merge(even_inst.array_box)
-        self.set_size_from_array_box(half_master.size[0])
-        self._fg_tot = half_master.num_fingers
+        self.set_size_from_array_box(even_master.size[0])
+        self._fg_tot = even_master.num_fingers
 
-        col_idx_dict = half_master.get_column_index_table()
+        col_idx_dict = even_master.get_column_index_table()
         inst_list = [even_inst, odd_inst]
         lch = self.params['lch']
         guard_ring_nf = self.params['guard_ring_nf']
