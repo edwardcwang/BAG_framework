@@ -1657,7 +1657,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                           fill_margin=0,  # type: Union[int, float]
                           fill_type='',  # type: str
                           unit_mode=False,  # type: bool
-                          debug=False  # type: bool
+                          min_len_mode=0,  # type: Optional[int]
+                          debug=False,  # type: bool
                           ):
         # type: (...) -> Optional[WireArray]
         """Connect all given WireArrays to the given track(s).
@@ -1682,8 +1683,11 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             minimum margin between wires and fill.
         fill_type : str
             fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
-        unit_mode: bool
+        unit_mode : bool
             True if track_lower/track_upper/fill_margin is given in resolution units.
+        min_len_mode : Optional[int]
+            If not None, will extend track so it satisfy minimum length requirement.
+            Use -1 to extend lower bound, 1 to extend upper bound, 0 to extend both equally.
         debug : bool
             True to print debug messages.
 
@@ -1749,6 +1753,20 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                 for wlayer, box_arr in wire_arr.wire_arr_iter(grid):
                     track_lower, track_upper = self._draw_via_on_track(wlayer, box_arr, track_id,
                                                                        tl_unit=track_lower, tu_unit=track_upper)
+
+        if min_len_mode is not None:
+            # extend track to meet minimum length
+            min_len = self.grid.get_min_length(tr_layer_id, track_id.width, unit_mode=True)
+            tr_len = track_upper - track_lower
+            if min_len > tr_len:
+                ext = min_len - tr_len
+                if min_len_mode < 0:
+                    track_lower -= ext
+                elif min_len_mode > 0:
+                    track_upper += ext
+                else:
+                    track_lower -= ext // 2
+                    track_upper += (ext - ext // 2)
 
         # draw tracks
         result = WireArray(track_id, track_lower * res, track_upper * res)
@@ -1947,9 +1965,11 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         for bwarr_list, twarr_list, tr_idx in zip(bot_warrs, top_warrs, tr_idx_list):
             tr_id = TrackID(tr_layer_id, tr_idx, width=width)
             self.connect_to_tracks(bwarr_list, tr_id, wire_lower=bot_bounds[0], wire_upper=bot_bounds[1],
-                                   fill_margin=fill_margin, fill_type=fill_type, unit_mode=True, debug=debug)
+                                   fill_margin=fill_margin, fill_type=fill_type, unit_mode=True,
+                                   min_len_mode=None, debug=debug)
             self.connect_to_tracks(twarr_list, tr_id, wire_lower=top_bounds[0], wire_upper=top_bounds[1],
-                                   fill_margin=fill_margin, fill_type=fill_type, unit_mode=True, debug=debug)
+                                   fill_margin=fill_margin, fill_type=fill_type, unit_mode=True,
+                                   min_len_mode=None, debug=debug)
 
         return track_list
 
