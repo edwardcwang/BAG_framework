@@ -952,67 +952,50 @@ class BagLayout(object):
         # type: () -> Generator[Instance]
         return iter(self._inst_list)
 
-    def finalize(self):
-        """Prevents any further changes to this layout.
-        """
-        self._finalized = True
+    def flatten(self):
+        self._flat_rect_list = []
+        self._flat_path_list = []
+        self._flat_via_list = []  # type: List[ViaInfo]
+        self._flat_inst_list = []  # type: List[InstanceInfo]
 
         # get rectangles
-        rect_list = []
-        self._flat_rect_list = []
         for obj in self._rect_list:
             if obj.valid:
                 obj_content = obj.content
-                rect_list.append(obj_content)
                 self._flat_rect_list.append(obj_content)
-                if self._oa_layout is not None:
-                    self._oa_layout.add_rect(**obj_content)
+                if self._flat_oa_layout is not None:
                     self._flat_oa_layout.add_rect(**obj_content)
 
-        path_list = []
-        self._flat_path_list = []
         for obj in self._path_list:
             if obj.valid:
                 obj_content = obj.content
-                path_list.append(obj_content)
                 self._flat_path_list.append(obj_content)
-                if self._oa_layout is not None:
-                    self._oa_layout.add_path(**obj_content)
+                if self._flat_oa_layout is not None:
                     self._flat_oa_layout.add_path(**obj_content)
 
         # get vias
-        via_list = []  # type: List[ViaInfo]
-        self._flat_via_list = []  # type: List[ViaInfo]
         for obj in self._via_list:
             if obj.valid:
                 obj_content = obj.content
-                via_list.append(obj_content)
                 self._flat_via_list.append(obj_content)
-                if self._oa_layout is not None:
-                    self._oa_layout.add_via(**obj_content)
+                if self._flat_oa_layout is not None:
                     self._flat_oa_layout.add_via(**obj_content)
+
         # get via primitives
-        via_list.extend(self._via_primitives)
         self._flat_via_list.extend(self._via_primitives)
-        if self._oa_layout is not None:
+        if self._flat_oa_layout is not None:
             for via in self._via_primitives:
-                self._oa_layout.add_via(**via)
                 self._flat_oa_layout.add_via(**via)
 
         # get instances
-        inst_list = []  # type: List[InstanceInfo]
-        self._flat_inst_list = []  # type: List[InstanceInfo]
         for obj in self._inst_list:
             if obj.valid:
-                obj_content = self._format_inst(obj)
-                inst_list.append(obj_content)
                 finst_list, frect_list, fvia_list, fpath_list = obj.flatten()
                 self._flat_inst_list.extend(finst_list)
                 self._flat_rect_list.extend(frect_list)
                 self._flat_via_list.extend(fvia_list)
                 self._flat_path_list.extend(fpath_list)
-                if self._oa_layout is not None:
-                    self._oa_layout.add_inst(**obj_content)
+                if self._flat_oa_layout is not None:
                     for fobj in finst_list:
                         self._flat_oa_layout.add_inst(**fobj)
                     for fobj in frect_list:
@@ -1022,24 +1005,85 @@ class BagLayout(object):
                     for fobj in fpath_list:
                         self._flat_oa_layout.add_path(**fobj)
         # get instance primitives
-        inst_list.extend(self._inst_primitives)
         self._flat_inst_list.extend(self._inst_primitives)
+        if self._flat_oa_layout is not None:
+            for obj in self._inst_primitives:
+                self._flat_oa_layout.add_inst(**obj)
+
+        # add pins to oa layout
+        if self._flat_oa_layout is not None:
+            for pin in self._pin_list:
+                self._flat_oa_layout.add_pin(**pin)
+
+    def finalize(self, flatten=False):
+        # type: (bool) -> None
+        """Prevents any further changes to this layout.
+
+        Parameters
+        ----------
+        flatten : bool
+            True to compute flattened layout.
+        """
+        self._finalized = True
+
+        # get rectangles
+        rect_list = []
+        for obj in self._rect_list:
+            if obj.valid:
+                obj_content = obj.content
+                rect_list.append(obj_content)
+                if self._oa_layout is not None:
+                    self._oa_layout.add_rect(**obj_content)
+
+        path_list = []
+        for obj in self._path_list:
+            if obj.valid:
+                obj_content = obj.content
+                path_list.append(obj_content)
+                if self._oa_layout is not None:
+                    self._oa_layout.add_path(**obj_content)
+
+        # get vias
+        via_list = []  # type: List[ViaInfo]
+        for obj in self._via_list:
+            if obj.valid:
+                obj_content = obj.content
+                via_list.append(obj_content)
+                if self._oa_layout is not None:
+                    self._oa_layout.add_via(**obj_content)
+        # get via primitives
+        via_list.extend(self._via_primitives)
+        if self._oa_layout is not None:
+            for via in self._via_primitives:
+                self._oa_layout.add_via(**via)
+
+        # get instances
+        inst_list = []  # type: List[InstanceInfo]
+        for obj in self._inst_list:
+            if obj.valid:
+                obj_content = self._format_inst(obj)
+                inst_list.append(obj_content)
+                if self._oa_layout is not None:
+                    self._oa_layout.add_inst(**obj_content)
+        # get instance primitives
+        inst_list.extend(self._inst_primitives)
         if self._oa_layout is not None:
             for obj in self._inst_primitives:
                 self._oa_layout.add_inst(**obj)
-                self._flat_oa_layout.add_inst(**obj)
 
         # add pins to oa layout
         if self._oa_layout is not None:
             for pin in self._pin_list:
                 self._oa_layout.add_pin(**pin)
-                self._flat_oa_layout.add_pin(**pin)
 
         self._content = [inst_list,
                          rect_list,
                          via_list,
                          self._pin_list,
                          path_list]
+
+        if flatten:
+            self.flatten()
 
     def get_flat_geometries(self):
         """Returns flattened geometries in this layout."""

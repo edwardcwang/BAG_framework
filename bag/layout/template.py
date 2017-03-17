@@ -78,7 +78,9 @@ class TemplateDB(object):
     name_prefix : str
         the prefix to append to all layout names.
     use_cybagoa : bool
-            True to use cybagoa module to accelerate layout.
+        True to use cybagoa module to accelerate layout.
+    flatten : bool
+        True to compute flattened layout.
     pin_purpose : string
         Default pin purpose name.  Defaults to 'pin'.
     make_pin_rect : bool
@@ -86,8 +88,8 @@ class TemplateDB(object):
     """
 
     def __init__(self, lib_defs, routing_grid, lib_name, name_prefix='', use_cybagoa=False,
-                 pin_purpose='pin', make_pin_rect=True):
-        # type: (str, RoutingGrid, str, str, bool, str, bool) -> None
+                 flatten=False, pin_purpose='pin', make_pin_rect=True):
+        # type: (str, RoutingGrid, str, str, bool, bool, str, bool) -> None
         self._importer = ClassImporter(lib_defs)
 
         self._grid = routing_grid
@@ -96,6 +98,7 @@ class TemplateDB(object):
         self._name_prefix = name_prefix
         self._used_cell_names = set()  # type: Set[str]
         self._use_cybagoa = use_cybagoa and cybagoa is not None
+        self._flatten = flatten
         self._pin_purpose = pin_purpose
         self._make_pin_rect = make_pin_rect
 
@@ -197,7 +200,7 @@ class TemplateDB(object):
                 print('Computing layout')
             start = time.time()
             master.draw_layout()
-            master.finalize()
+            master.finalize(flatten=self._flatten)
             end = time.time()
             self._template_lookup[key] = master
             self._used_cell_names.add(master.cell_name)
@@ -206,7 +209,7 @@ class TemplateDB(object):
 
         return master
 
-    def instantiate_layout(self, prj, template, top_cell_name=None, debug=False, flatten=False):
+    def instantiate_layout(self, prj, template, top_cell_name=None, debug=False):
         # type: (BagProject, TempBase, Optional[str], bool, bool) -> None
         """Instantiate the layout of the given :class:`~bag.layout.template.TemplateBase`.
 
@@ -220,13 +223,11 @@ class TemplateDB(object):
             name of the top level cell.  If None, a default name is used.
         debug : bool
             True to print debugging messages
-        flatten : bool
-            If True, flatten all template layout.
         """
-        self.batch_layout(prj, [template], [top_cell_name], debug=debug, flatten=flatten)
+        self.batch_layout(prj, [template], [top_cell_name], debug=debug)
 
-    def batch_layout(self, prj, template_list, name_list=None, debug=False, flatten=False):
-        # type: (BagProject, List[TempBase], Optional[List[str]], bool, bool) -> None
+    def batch_layout(self, prj, template_list, name_list=None, debug=False):
+        # type: (BagProject, List[TempBase], Optional[List[str]], bool) -> None
         """Instantiate all given templates.
 
         Parameters
@@ -239,8 +240,6 @@ class TemplateDB(object):
             list of template layout names.  If not given, default names will be used.
         debug : bool
             True to print debugging messages
-        flatten : bool
-            If True, flatten all template layout.
         """
         if name_list is None:
             name_list = [None] * len(template_list)
@@ -265,7 +264,7 @@ class TemplateDB(object):
             real_name_list.append(real_name)
         end = time.time()
 
-        if flatten:
+        if self._flatten:
             layout_list = [layout_dict[name].get_layout_content(name, flatten=True)
                            for name in real_name_list]
         else:
@@ -628,9 +627,15 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """
         pass
 
-    def finalize(self):
-        # type: () -> None
-        """Prevents any further changes to this template."""
+    def finalize(self, flatten=False):
+        # type: (bool) -> None
+        """Prevents any further changes to this template.
+
+        Parameters
+        ----------
+        flatten : bool
+            True to compute flattened layout.
+        """
         # construct port objects
         for net_name, port_params in self._port_params.items():
             pin_dict = port_params['pins']
@@ -643,7 +648,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             self._ports[net_name] = Port(net_name, pin_dict)
 
         # finalize layout
-        self._layout.finalize()
+        self._layout.finalize(flatten=flatten)
         # get set of children keys
         self.children = self._layout.get_masters_set()
         self._finalized = True
