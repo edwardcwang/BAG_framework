@@ -53,7 +53,8 @@ def connect_to_xm(template, warr_p, warr_n, col_intv, layout_info, sig_widths, s
     # step 1B: connect to vm and xm layer
     vmp, vmn = template.connect_differential_tracks(warr_p, warr_n, vm_layer_id, p_tr, n_tr, width=vm_width,
                                                     fill_type='VDD')
-    nx_tr = template.grid.find_next_track(xm_layer_id, vmp.middle, tr_width=xm_width, mode=-1)
+    mid_tr = template.grid.coord_to_nearest_track(xm_layer_id, vmp.middle, half_track=True, mode=0)
+    nx_tr = mid_tr - (xm_width + xm_space) / 2
     px_tr = nx_tr + xm_width + xm_space
     return template.connect_differential_tracks(vmp, vmn, xm_layer_id, px_tr, nx_tr, width=xm_width,
                                                 fill_type='VDD')
@@ -655,19 +656,19 @@ class RXHalf(TemplateBase):
             dfe_idx = num_dfe - (idx - 2)
             dig_latch_params = dlat_params_list[dfe_idx - 2].copy()
             in_route = False
-            n_diff_tr = 1
+            num_dtr = 2
             if dfe_idx > 2:
                 # for DFE tap > 2, the intsum Gm stage must align with the corresponding
                 # digital latch.
                 # set digital latch column index
                 if dfe_idx % 2 == 1:
                     # for odd DFE taps, we have criss-cross connections, so fit 2 differential tracks
-                    n_diff_tr = 2
+                    num_dtr = 4
                     # for odd DFE taps > 3, we need to reserve additional input routing tracks
                     in_route = dfe_idx > 3
 
                 # fit diff tracks and make diglatch and DFE tap have same width
-                intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, n_diff_tr * dtr_pitch, cur_col)
+                intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, num_dtr * dtr_pitch, cur_col)
                 dig_latch_params['min'] = intsum_dfe_fg_min
                 dlat_info = layout_info.get_diffamp_info(dig_latch_params)
                 intsum_dfe_fg_params['min'] = dlat_info['fg_tot']
