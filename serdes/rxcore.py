@@ -31,6 +31,7 @@ from typing import Dict, Any, Set, Tuple
 
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.objects import Instance
+from bag.layout.routing import TrackID
 
 from .base import SerdesRXBase, SerdesRXBaseInfo
 
@@ -95,9 +96,13 @@ class RXHalfTop(SerdesRXBase):
 
         result = self.place(alat_params, intsum_params, summer_params, draw_params,
                             diff_space, hm_width, hm_cur_width)
-        alat_ports, intsum_ports, summer_ports, intsum_col, intsum_info = result
-        self.connect_sup_io(intsum_col, intsum_info, alat_ports, intsum_ports, summer_ports,
-                            sig_widths, sig_spaces, show_pins)
+        alat_ports, intsum_ports, summer_ports, block_info = result
+
+        ffe_inputs = self.connect_sup_io(block_info, alat_ports, intsum_ports, summer_ports,
+                                         sig_widths, sig_spaces, clk_widths, clk_spaces, show_pins)
+
+        self.connect_bias(block_info, alat_ports, intsum_ports, summer_ports, ffe_inputs,
+                          sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces, show_pins)
 
     def place(self, alat_params, intsum_params, summer_params, draw_params,
               diff_space, hm_width, hm_cur_width):
@@ -156,28 +161,40 @@ class RXHalfTop(SerdesRXBase):
         self.set_size_from_array_box(self.mos_conn_layer + 2)
 
         # draw blocks
-        cur_col = alat_params.pop('col_idx')
+        alat_col = alat_params.pop('col_idx')
         # print('rxtop alat cur_col: %d' % cur_col)
-        _, alat_ports = self.draw_diffamp(cur_col, alat_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
+        _, alat_ports = self.draw_diffamp(alat_col, alat_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
                                           diff_space=diff_space, gate_locs=gate_locs)
+        alat_info = self.layout_info.get_diffamp_info(alat_params)
+
         intsum_col = intsum_params.pop('col_idx')
         # print('rxtop intsum cur_col: %d' % cur_col)
         _, intsum_ports = self.draw_gm_summer(intsum_col, hm_width=hm_width, hm_cur_width=hm_cur_width,
                                               diff_space=diff_space, gate_locs=gate_locs,
                                               **intsum_params)
-        cur_col = summer_params.pop('col_idx')
-        # print('rxtop summer cur_col: %d' % cur_col)
-        _, summer_ports = self.draw_gm_summer(cur_col, hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                              diff_space=diff_space, gate_locs=gate_locs,
-                                              **summer_params)
-
         intsum_info = self.layout_info.get_summer_info(intsum_params['fg_load'], intsum_params['gm_fg_list'],
                                                        gm_sep_list=intsum_params.get('gm_sep_list', None))
 
-        return alat_ports, intsum_ports, summer_ports, intsum_col, intsum_info
+        summer_col = summer_params.pop('col_idx')
+        # print('rxtop summer cur_col: %d' % cur_col)
+        _, summer_ports = self.draw_gm_summer(summer_col, hm_width=hm_width, hm_cur_width=hm_cur_width,
+                                              diff_space=diff_space, gate_locs=gate_locs,
+                                              **summer_params)
+        summer_info = self.layout_info.get_summer_info(summer_params['fg_load'], summer_params['gm_fg_list'],
+                                                       gm_sep_list=summer_params.get('gm_sep_list', None))
 
-    def connect_sup_io(self, intsum_col, intsum_info, alat_ports, intsum_ports, summer_ports,
-                       sig_widths, sig_spaces, show_pins):
+        block_info = dict(
+            alat=(alat_col, alat_info),
+            intsum=(intsum_col, intsum_info),
+            summer=(summer_col, summer_info),
+        )
+
+        return alat_ports, intsum_ports, summer_ports, block_info
+
+    def connect_sup_io(self, block_info, alat_ports, intsum_ports, summer_ports,
+                       sig_widths, sig_spaces, clk_widths, clk_spaces, show_pins):
+
+        intsum_col, intsum_info = block_info['intsum']
 
         # get vdd/cascode bias pins
         vdd_list, cascl_list = [], []
@@ -186,7 +203,6 @@ class RXHalfTop(SerdesRXBase):
         vdd_list.extend(summer_ports[('vddt', -1)])
         cascl_list.extend(alat_ports['bias_casc'])
         cascl_list.extend(intsum_ports[('bias_casc', 0)])
-        casc_sum = summer_ports[('bias_casc', 0)]
 
         # export alat inout pins
         inout_list = ('inp', 'inn', 'outp', 'outn')
@@ -195,6 +211,7 @@ class RXHalfTop(SerdesRXBase):
 
         # export intsum inout pins
         num_intsum = len(intsum_info['amp_info_list'])
+        ffe_inputs = None
         for idx in range(num_intsum):
             if idx == 1:
                 # connect ffe input to xm layer
@@ -204,6 +221,7 @@ class RXHalfTop(SerdesRXBase):
                 ffe_stop = ffe_start + intsum_info['amp_info_list'][1]['fg_tot']
                 ffe_inp, ffe_inn = connect_to_xm(self, ffe_inp, ffe_inn, (ffe_start, ffe_stop),
                                                  self.layout_info, sig_widths, sig_spaces)
+                ffe_inputs = [ffe_inp, ffe_inn]
                 self.add_pin('ffe_inp', ffe_inp, show=show_pins)
                 self.add_pin('ffe_inn', ffe_inn, show=show_pins)
             else:
@@ -233,9 +251,116 @@ class RXHalfTop(SerdesRXBase):
 
         warr = self.connect_wires(vdd_list, lower=sup_lower, upper=sup_upper)
         self.add_pin(vdd_name, warr, show=show_pins)
+
+        # connect summer cascode
+        # step 1: get vm track
+        layout_info = self.layout_info
+        hm_layer = layout_info.mconn_port_layer + 1
+        vm_layer = hm_layer + 1
+        vm_width = sig_widths[0]
+        vm_space = sig_spaces[0]
+        summer_col, summer_info = block_info['summer']
+        casc_sum = summer_ports[('bias_casc', 0)]
+        summer_start = summer_col + summer_info['gm_offsets'][0]
+        col_intv = summer_start, summer_start + summer_info['amp_info_list'][0]['fg_tot']
+        clk_width_vm = clk_widths[0]
+        clk_space_vm = clk_spaces[0]
+        casc_tr = self.layout_info.get_center_tracks(vm_layer, 2 * clk_width_vm + clk_space_vm, col_intv)
+        casc_tr += (clk_width_vm - 1) / 2
+        # step 2: connect summer cascode to vdd
+        casc_tr_id = TrackID(vm_layer, casc_tr, width=clk_width_vm)
+        self.connect_to_tracks(ntap_wire_arrs + warr + casc_sum, casc_tr_id)
+
         warr = self.connect_wires(cascl_list, lower=sup_lower)
         self.add_pin(vdd_name, warr, show=show_pins)
-        self.add_pin(vdd_name, casc_sum, show=show_pins)
+
+        return ffe_inputs
+
+    def connect_bias(self, block_info, alat_ports, intsum_ports, summer_ports, ffe_inputs,
+                     sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces, show_pins):
+        layout_info = self.layout_info
+        hm_layer = layout_info.mconn_port_layer + 1
+        vm_layer = hm_layer + 1
+        xm_layer = vm_layer + 1
+        sig_width_vm, sig_width_xm = sig_widths
+        clk_width_vm, clk_width_xm = clk_widths
+        sig_space_vm = sig_spaces[0]
+        clk_space_vm, clk_space_xm = clk_spaces
+        sig_clk_space_xm = sig_clk_spaces[1]
+
+        # calculate bias track indices
+        ffe_top_tr = ffe_inputs[0].track_id.base_index
+        ffe_bot_tr = ffe_inputs[1].track_id.base_index
+        clkn_nmos_sw_tr_xm = ffe_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
+        clkp_nmos_sw_tr_xm = clkn_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
+        clkp_nmos_ana_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
+        clkn_pmos_intsum_tr_xm = ffe_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
+        clkn_pmos_summer_tr_xm = clkn_pmos_intsum_tr_xm
+        clkn_pmos_ana_tr_xm = clkn_pmos_intsum_tr_xm + clk_width_xm + clk_space_xm
+
+        clkn_nmos_sw_tr_id = TrackID(xm_layer, clkn_nmos_sw_tr_xm, width=clk_width_xm)
+        clkn_nmos_sw_list = []
+
+        # connect alat biases
+        alat_col, alat_info = block_info['alat']
+        col_intv = alat_col, alat_col + alat_info['fg_tot']
+        left_tr_vm = layout_info.get_center_tracks(vm_layer, 4 * sig_width_vm + 3 * sig_space_vm, col_intv)
+        left_tr_vm += (sig_width_vm + sig_space_vm) / 2
+        right_tr_vm = left_tr_vm + 2 * (sig_width_vm + sig_space_vm)
+        ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
+        rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
+        # nmos_analog
+        warr = self.connect_to_tracks(alat_ports['bias_tail'], ltr_id, fill_type='VSS')
+        xtr_id = TrackID(xm_layer, clkp_nmos_ana_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id, fill_type='VSS')
+        self.add_pin('clkp_nmos_analog', warr, show=show_pins)
+        # pmos_analog
+        warr = self.connect_to_tracks(alat_ports['bias_load'], ltr_id, fill_type='VDD')
+        xtr_id = TrackID(xm_layer, clkn_pmos_ana_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id, fill_type='VDD')
+        self.add_pin('clkn_pmos_analog', warr, show=show_pins)
+        # nmos_switch
+        warr = self.connect_to_tracks(alat_ports['sw'], rtr_id, fill_type='VDD')
+        clkn_nmos_sw_list.append(warr)
+
+        # connect summer main tap biases
+        summer_col, summer_info = block_info['summer']
+        summer_start = summer_col + summer_info['gm_offsets'][0]
+        col_intv = summer_start, summer_start + summer_info['amp_info_list'][0]['fg_tot']
+        left_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2 * clk_width_vm + clk_space_vm, col_intv)
+        left_tr_vm += (clk_width_vm - 1) / 2
+        right_tr_vm = left_tr_vm + clk_width_vm + clk_space_vm
+        ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
+        rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
+        # pmos summer
+        warr = self.connect_to_tracks(summer_ports[('bias_load', -1)], rtr_id, fill_type='VDD')
+        xtr_id = TrackID(xm_layer, clkn_pmos_summer_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id, fill_type='VDD')
+        self.add_pin('clkn_pmos_summer', warr, show=show_pins)
+        # nmos summer
+        warr = self.connect_to_tracks(summer_ports[('bias_tail', 0)], ltr_id, fill_type='VSS', track_lower=0)
+        self.add_pin('clkp_nmos_summer', warr, show=show_pins)
+        # nmos switch
+        sw_wire = self.connect_wires(summer_ports[('sw', 0)] + summer_ports[('sw', 1)], fill_type='VDD')
+        warr = self.connect_to_tracks(sw_wire, rtr_id, fill_type='VDD')
+        clkn_nmos_sw_list.append(warr)
+
+        # connect summer feedback biases
+        summer_start = summer_col + summer_info['gm_offsets'][1]
+        col_intv = summer_start, summer_start + summer_info['amp_info_list'][1]['fg_tot']
+        left_tr_vm = self.layout_info.get_center_tracks(vm_layer, 4 * sig_width_vm + 3 * sig_space_vm, col_intv)
+        left_tr_vm += (sig_width_vm + sig_space_vm) / 2
+        right_tr_vm = left_tr_vm + 2 * (sig_width_vm + sig_space_vm)
+        ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
+        rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
+        # en_dfe
+        warr = self.connect_to_tracks(summer_ports[('bias_casc', 1)], ltr_id, fill_type='VDD', track_lower=0)
+        self.add_pin('en_dfe<0>', warr, show=show_pins)
+        warr = self.connect_to_tracks(summer_ports[('bias_tail', 1)], rtr_id, fill_type='VSS', track_lower=0)
+        self.add_pin('clkp_nmos_summer_tap1', warr, show=show_pins)
+
+        warr = self.connect_to_tracks(clkn_nmos_sw_list, clkn_nmos_sw_tr_id, fill_type='VDD')
+        self.add_pin('clkn_nmos_switch', warr, show=show_pins)
 
     @classmethod
     def get_default_param_values(cls):
