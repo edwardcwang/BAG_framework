@@ -1388,6 +1388,8 @@ class RXCore(TemplateBase):
         min_fg_sep = self.params['min_fg_sep']
         layout_info = SerdesRXBaseInfo(self.grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
         self.connect_signal(inst_list, col_idx_dict, layout_info)
+        self.connect_bias(inst_list, layout_info)
+        self.connect_supplies(inst_list)
 
     def connect_signal(self, inst_list, col_idx_dict, layout_info):
         hm_layer_id = layout_info.mconn_port_layer + 1
@@ -1470,6 +1472,68 @@ class RXCore(TemplateBase):
                            inst_list[0].get_port('intsum_inn<3>').get_pins()[0],
                            ], ]
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width, fill_type='VDD')
+
+    def connect_bias(self, inst_list, layout_info):
+        show_pins = self.params['show_pins']
+        clk_width = self.params['clk_widths'][-1]
+        clk_space = self.params['clk_spaces'][-1]
+        clk_pitch = clk_width + clk_space
+        clk_layer = layout_info.mconn_port_layer + 1 + len(self.params['clk_widths'])
+        clk_top_list = [('nmos_analog', 2),
+                        ('pmos_integ', 1),
+                        ('pmos_analog', 2),
+                        ('pmos_intsum', 1),
+                        ('nmos_switch', 2),
+                        ('pmos_digital', 2),
+                        ('nmos_digital', 1),
+                        ('pmos_summer', 2),
+                        ]
+        clk_wires = {}
+        for inst in inst_list:
+            for name in inst.port_names_iter():
+                if name.startswith('clk'):
+                    if name not in clk_wires:
+                        clk_wires[name] = []
+                    clk_wires[name].extend(inst.get_all_port_pins(name))
+
+        tr_idx = clk_space + (clk_width - 1) / 2
+        blk_h = self.grid.get_size_dimension(self.size, unit_mode=True)[1]
+        for base_name, num_tracks in clk_top_list:
+            pname = 'clkp_' + base_name
+            nname = 'clkn_' + base_name
+            pwires = self.connect_wires(clk_wires.pop(pname))
+            nwires = self.connect_wires(clk_wires.pop(nname))
+
+            if num_tracks == 2:
+                ptr = tr_idx
+                ntr = tr_idx + clk_pitch
+                tr_idx += clk_pitch * 2
+                ckp_tr, ckn_tr = self.connect_differential_tracks(pwires, nwires, clk_layer, ptr, ntr, width=clk_width)
+            else:
+                tr_id = TrackID(clk_layer, tr_idx, width=clk_width)
+                tr_idx += clk_pitch
+                ckp_tr = self.connect_to_tracks(pwires, tr_id, track_upper=blk_h, unit_mode=True)
+                ckn_tr = self.connect_to_tracks(nwires, tr_id, track_lower=0, unit_mode=True)
+
+            self.add_pin(pname, ckp_tr, show=show_pins)
+            self.add_pin(nname, ckn_tr, show=show_pins)
+
+        for name, wires in clk_wires.items():
+            self.add_pin(name, wires, show=show_pins)
+
+        num_dfe = len(self.params['intsum_params']['gm_fg_list']) - 1
+        for inst, prefix in zip(inst_list, ('even_', 'odd_')):
+            pname = 'bias_ffe'
+            self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins, fill_type='VDD')
+            for idx in range(num_dfe):
+                pname = 'en_dfe<%d>' % idx
+                self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins, fill_type='VDD')
+                if idx > 0:
+                    pname = 'bias_dfe<%d>' % idx
+                    self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins, fill_type='VSS')
+
+    def connect_supplies(self, inst_list):
+        pass
 
     def _connect_differential(self, inst_list, ptr_idx, vm_layer_id, vm_width, vm_space, even_ports, odd_ports):
         tr_idx_list = [ptr_idx, ptr_idx + vm_width + vm_space]
