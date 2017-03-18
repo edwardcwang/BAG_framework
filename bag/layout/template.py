@@ -1414,7 +1414,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         layer_id = a.layer_id
         direction = grid.get_direction(layer_id)
         perp_dir = 'y' if direction == 'x' else 'x'
-        track_pitch = grid.get_track_pitch(layer_id, unit_mode=True)
+        htr_pitch = grid.get_track_pitch(layer_id, unit_mode=True) // 2
         intv_set = IntervalSet()
 
         for wire_arr in wire_arr_list:
@@ -1445,7 +1445,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         base_intv = None
         base_width = None
         count = 0
-        pitch = 0
+        hpitch = 0
         last_lower = 0
         for intv, wrange in intv_set.items():
             if debug:
@@ -1457,24 +1457,24 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                 base_intv = intv
                 base_width = intv[1] - intv[0]
                 count = 1
-                pitch = 0
+                hpitch = 0
             else:
                 if wrange[0] == base_range[0] and \
                                 wrange[1] == base_range[1] and \
                                 base_width == cur_width:
                     # length and width matches
-                    cur_pitch = cur_lower - last_lower
+                    cur_hpitch = (cur_lower - last_lower) // htr_pitch
                     if count == 1:
-                        # second wire, set pitch
-                        pitch = cur_pitch // track_pitch
+                        # second wire, set half pitch
+                        hpitch = cur_hpitch
                         count += 1
-                    elif pitch == cur_pitch:
+                    elif hpitch == cur_hpitch:
                         # pitch matches
                         count += 1
                     else:
                         # pitch does not match, add current wires and start anew
                         tr_idx, tr_width = self.grid.interval_to_track(layer_id, base_intv, unit_mode=True)
-                        track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=pitch)
+                        track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
                         warr = WireArray(track_id, base_range[0] * res, base_range[1] * res)
                         for layer_name, bbox_arr in warr.wire_arr_iter(self.grid):
                             self.add_rect(layer_name, bbox_arr)
@@ -1483,11 +1483,11 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                         base_intv = intv
                         base_width = cur_width
                         count = 1
-                        pitch = 0.0
+                        hpitch = 0
                 else:
                     # length/width does not match, add cumulated wires and start anew
                     tr_idx, tr_width = self.grid.interval_to_track(layer_id, base_intv, unit_mode=True)
-                    track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=pitch)
+                    track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
                     warr = WireArray(track_id, base_range[0] * res, base_range[1] * res)
                     for layer_name, bbox_arr in warr.wire_arr_iter(self.grid):
                         self.add_rect(layer_name, bbox_arr)
@@ -1496,14 +1496,14 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                     base_intv = intv
                     base_width = cur_width
                     count = 1
-                    pitch = 0.0
+                    hpitch = 0
 
             # update last lower coordinate
             last_lower = cur_lower
 
         # add last wires
         tr_idx, tr_width = self.grid.interval_to_track(layer_id, base_intv, unit_mode=True)
-        track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=pitch)
+        track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
         warr = WireArray(track_id, base_range[0] * res, base_range[1] * res)
         for layer_name, bbox_arr in warr.wire_arr_iter(self.grid):
             self.add_rect(layer_name, bbox_arr)

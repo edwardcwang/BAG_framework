@@ -288,19 +288,24 @@ class WireArray(object):
         tid = self.track_id
         layer_id = tid.layer_id
         tr_width = tid.width
-        track_pitch = grid.get_track_pitch(layer_id)
+        track_pitch = grid.get_track_pitch(layer_id, unit_mode=True)
         res = grid.resolution
+        lower_unit = int(round(self._lower / res))
+        upper_unit = int(round(self._upper / res))
         is_x = grid.get_direction(layer_id) == 'x'
         for track_idx in tid.sub_tracks_iter(grid):
             base_idx = track_idx.base_index
             cur_layer = grid.get_layer_name(layer_id, base_idx)
             cur_num = track_idx.num
             wire_pitch = track_idx.pitch * track_pitch
-            tl, tu = grid.get_wire_bounds(layer_id, base_idx, width=tr_width)
+            tl, tu = grid.get_wire_bounds(layer_id, base_idx, width=tr_width, unit_mode=True)
             if is_x:
-                box_arr = BBoxArray(BBox(self._lower, tl, self._upper, tu, res), ny=cur_num, spy=wire_pitch)
+                base_box = BBox(lower_unit, tl, upper_unit, tu, res, unit_mode=True)
+                box_arr = BBoxArray(base_box, ny=cur_num, spy=wire_pitch, unit_mode=True)
             else:
-                box_arr = BBoxArray(BBox(tl, self._lower, tu, self._upper, res), nx=cur_num, spx=wire_pitch)
+                base_box = BBox(tl, lower_unit, tu, upper_unit, res, unit_mode=True)
+                box_arr = BBoxArray(base_box, nx=cur_num, spx=wire_pitch, unit_mode=True)
+
             yield cur_layer, box_arr
 
     def transform(self, grid, loc=(0, 0), orient='R0'):
