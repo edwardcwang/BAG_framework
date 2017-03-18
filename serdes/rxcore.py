@@ -48,8 +48,7 @@ def connect_to_xm(template, warr_p, warr_n, col_intv, layout_info, sig_widths, s
     xm_layer_id = vm_layer_id + 1
 
     # get vm tracks
-    p_tr = layout_info.get_center_tracks(vm_layer_id, 2 * vm_width + vm_space, col_intv)
-    p_tr += (vm_width - 1) / 2
+    p_tr = layout_info.get_center_tracks(vm_layer_id, 2, col_intv, width=vm_width, space=vm_space)
     n_tr = p_tr + vm_width + vm_space
     # step 1B: connect to vm and xm layer
     vmp, vmn = template.connect_differential_tracks(warr_p, warr_n, vm_layer_id, p_tr, n_tr, width=vm_width,
@@ -264,15 +263,14 @@ class RXHalfTop(SerdesRXBase):
         col_intv = summer_start, summer_start + summer_info['amp_info_list'][0]['fg_tot']
         clk_width_vm = clk_widths[0]
         clk_space_vm = clk_spaces[0]
-        casc_tr = self.layout_info.get_center_tracks(vm_layer, 2 * clk_width_vm + clk_space_vm, col_intv)
-        casc_tr += (clk_width_vm - 1) / 2
+        casc_tr = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=clk_width_vm, space=clk_space_vm)
         # step 2: connect summer cascode to vdd
         casc_tr_id = TrackID(vm_layer, casc_tr, width=clk_width_vm)
-        self.connect_to_tracks(ntap_wire_arrs + warr + casc_sum, casc_tr_id)
+        warr = self.connect_to_tracks(ntap_wire_arrs + warr + casc_sum, casc_tr_id)
+        self.add_pin(vdd_name, warr, show=show_pins)
 
         warr = self.connect_wires(cascl_list, lower=sup_lower)
         self.add_pin(vdd_name, warr, show=show_pins)
-
         return ffe_inputs
 
     def connect_bias(self, block_info, alat_ports, intsum_ports, summer_ports, ffe_inputs,
@@ -286,7 +284,7 @@ class RXHalfTop(SerdesRXBase):
         clk_width_vm, clk_width_xm = clk_widths
         sig_space_vm = sig_spaces[0]
         clk_space_vm, clk_space_xm = clk_spaces
-        sig_clk_space_xm = sig_clk_spaces[1]
+        sig_clk_space_vm, sig_clk_space_xm = sig_clk_spaces
 
         # calculate bias track indices
         ffe_top_tr = ffe_inputs[0].track_id.base_index
@@ -309,9 +307,9 @@ class RXHalfTop(SerdesRXBase):
         # connect alat biases
         alat_col, alat_info = block_info['alat']
         col_intv = alat_col, alat_col + alat_info['fg_tot']
-        left_tr_vm = layout_info.get_center_tracks(vm_layer, 4 * sig_width_vm + 3 * sig_space_vm, col_intv)
-        left_tr_vm += (sig_width_vm - 1) / 2 + (sig_width_vm + sig_space_vm) / 2
-        right_tr_vm = left_tr_vm + 2 * (sig_width_vm + sig_space_vm)
+        left_sig_vm = layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm, space=sig_space_vm)
+        right_tr_vm = left_sig_vm - (sig_width_vm + clk_width_vm) / 2 - sig_clk_space_vm
+        left_tr_vm = right_tr_vm - clk_space_vm - clk_width_vm
         ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
         rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
         if datapath_parity == 0:
@@ -338,8 +336,7 @@ class RXHalfTop(SerdesRXBase):
         intsum_col, intsum_info = block_info['intsum']
         intsum_start = intsum_col + intsum_info['gm_offsets'][0]
         col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][0]['fg_tot']
-        left_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2 * clk_width_vm + clk_space_vm, col_intv)
-        left_tr_vm += (clk_width_vm - 1) / 2
+        left_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=clk_width_vm, space=clk_space_vm)
         ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
         # pmos intsum
         warr = self.connect_to_tracks(intsum_ports[('bias_load', -1)], ltr_id, fill_type='VDD')
@@ -354,8 +351,8 @@ class RXHalfTop(SerdesRXBase):
         # connect intsum ffe tap biases
         intsum_start = intsum_col + intsum_info['gm_offsets'][1]
         col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][1]['fg_tot']
-        en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2 * sig_width_vm + sig_space_vm, col_intv)
-        en_tr_vm += (sig_width_vm - 1) / 2 + (sig_width_vm + sig_space_vm) / 2
+        en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=sig_width_vm, space=sig_space_vm)
+        en_tr_vm += (sig_width_vm + sig_space_vm) / 2
         # bias_ffe
         en_tr_id = TrackID(vm_layer, en_tr_vm, width=clk_width_vm)
         warr = self.connect_to_tracks(intsum_ports[('bias_casc', 1)], en_tr_id, fill_type='VDD', track_lower=0)
@@ -373,12 +370,13 @@ class RXHalfTop(SerdesRXBase):
             intsum_start = intsum_col + intsum_info['gm_offsets'][2 + fb_idx]
             col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][2 + fb_idx]['fg_tot']
             if dfe_idx % 2 == 0:
-                en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2 * sig_width_vm + sig_space_vm, col_intv)
-                en_tr_vm += (sig_width_vm - 1) / 2 + (sig_width_vm + sig_space_vm) / 2
+                en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=sig_width_vm,
+                                                              space=sig_space_vm)
+                en_tr_vm += (sig_width_vm + sig_space_vm) / 2
                 bias_tr_vm = en_tr_vm - clk_width_vm - clk_space_vm
             else:
-                en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 4 * sig_width_vm + 3 * sig_space_vm, col_intv)
-                en_tr_vm += (sig_width_vm - 1) / 2
+                en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm,
+                                                              space=sig_space_vm)
                 if datapath_parity == 0:
                     en_tr_vm += (sig_width_vm + sig_space_vm) / 2
                     bias_tr_vm = en_tr_vm + clk_width_vm + clk_space_vm
@@ -411,8 +409,7 @@ class RXHalfTop(SerdesRXBase):
         summer_col, summer_info = block_info['summer']
         summer_start = summer_col + summer_info['gm_offsets'][0]
         col_intv = summer_start, summer_start + summer_info['amp_info_list'][0]['fg_tot']
-        left_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2 * clk_width_vm + clk_space_vm, col_intv)
-        left_tr_vm += (clk_width_vm - 1) / 2
+        left_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=clk_width_vm, space=clk_space_vm)
         right_tr_vm = left_tr_vm + clk_width_vm + clk_space_vm
         ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
         rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
@@ -432,8 +429,8 @@ class RXHalfTop(SerdesRXBase):
         # connect summer feedback biases
         summer_start = summer_col + summer_info['gm_offsets'][1]
         col_intv = summer_start, summer_start + summer_info['amp_info_list'][1]['fg_tot']
-        left_tr_vm = self.layout_info.get_center_tracks(vm_layer, 4 * sig_width_vm + 3 * sig_space_vm, col_intv)
-        left_tr_vm += (sig_width_vm - 1) / 2 + (sig_width_vm + sig_space_vm) / 2
+        left_tr_vm = self.layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm, space=sig_space_vm)
+        left_tr_vm += (sig_width_vm + sig_space_vm) / 2
         right_tr_vm = left_tr_vm + 2 * (sig_width_vm + sig_space_vm)
         ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
         rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
@@ -729,8 +726,7 @@ class RXHalfBottom(SerdesRXBase):
         # connect integ biases
         integ_col, integ_info = block_info['integ']
         col_intv = integ_col, integ_col + integ_info['fg_tot']
-        left_sig_vm = layout_info.get_center_tracks(vm_layer, 2 * sig_width_vm + sig_space_vm, col_intv)
-        left_sig_vm += (sig_width_vm - 1) / 2
+        left_sig_vm = layout_info.get_center_tracks(vm_layer, 2, col_intv, width=sig_width_vm, space=sig_space_vm)
         mid_tr_vm = left_sig_vm + (sig_width_vm + sig_space_vm) / 2
         right_tr_vm = left_sig_vm - (sig_width_vm + clk_width_vm) / 2 - sig_clk_space_vm
         rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
@@ -750,8 +746,8 @@ class RXHalfBottom(SerdesRXBase):
         # connect alat biases
         alat_col, alat_info = block_info['alat']
         col_intv = alat_col, alat_col + alat_info['fg_tot']
-        left_tr_vm = layout_info.get_center_tracks(vm_layer, 4 * sig_width_vm + 3 * sig_space_vm, col_intv)
-        left_tr_vm += (sig_width_vm - 1) / 2 + (sig_width_vm + sig_space_vm) / 2
+        left_tr_vm = layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm, space=sig_space_vm)
+        left_tr_vm += (sig_width_vm + sig_space_vm) / 2
         right_tr_vm = left_tr_vm + 2 * (sig_width_vm + sig_space_vm)
         ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
         rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
@@ -775,12 +771,12 @@ class RXHalfBottom(SerdesRXBase):
         for dfe_idx, (dlat_col, dlat_ports, dlat_info) in enumerate(block_info['dlat']):
 
             if dfe_idx == 0:
-                left_sig_vm = layout_info.get_center_tracks(vm_layer, 4 * sig_width_vm + 3 * sig_space_vm,
-                                                            tap1_col_intv)
+                left_sig_vm = layout_info.get_center_tracks(vm_layer, 4, tap1_col_intv, width=sig_width_vm,
+                                                            space=sig_space_vm)
             else:
                 col_intv = dlat_col, dlat_col + dlat_info['fg_tot']
-                left_sig_vm = layout_info.get_center_tracks(vm_layer, 4 * sig_width_vm + 3 * sig_space_vm, col_intv)
-            left_sig_vm += (sig_width_vm - 1) / 2
+                left_sig_vm = layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm,
+                                                            space=sig_space_vm)
             same_tr_vm = left_sig_vm - (sig_width_vm + clk_width_vm) / 2 - sig_clk_space_vm
             left_tr_vm = left_sig_vm + (sig_width_vm + sig_space_vm) / 2
             right_tr_vm = left_tr_vm + 2 * (sig_width_vm + sig_space_vm)
@@ -1182,7 +1178,6 @@ class RXHalf(TemplateBase):
         vm_layer = hm_layer + 1
         vm_width = self.params['sig_widths'][0]
         nintsum = len(self.params['intsum_params']['gm_fg_list'])
-        diff_track_width = 2 * vm_width + vm_space
 
         # connect integ to alat1
         self._connect_diff_io(bot_inst, col_idx_dict['integ_route'], layout_info, vm_layer,
@@ -1198,8 +1193,7 @@ class RXHalf(TemplateBase):
 
         # connect DFE tap 2
         route_col_intv = col_idx_dict['intsum'][-1]
-        ptr_idx = layout_info.get_center_tracks(vm_layer, diff_track_width, route_col_intv)
-        ptr_idx += (vm_width - 1) / 2
+        ptr_idx = layout_info.get_center_tracks(vm_layer, 2, route_col_intv, width=vm_width, space=vm_space)
         ntr_idx = ptr_idx + vm_space + vm_width
         p_list = [bot_inst.get_port('dlat0_outp').get_pins()[0],
                   top_inst.get_port('intsum_inp<%d>' % (nintsum - 1)).get_pins()[0], ]
@@ -1217,8 +1211,7 @@ class RXHalf(TemplateBase):
         for dfe_idx in range(4, ndfe + 1, 2):
             intsum_idx = nintsum - 1 - (dfe_idx - 2)
             route_col_intv = col_idx_dict['intsum'][intsum_idx]
-            ptr_idx = layout_info.get_center_tracks(vm_layer, diff_track_width, route_col_intv)
-            ptr_idx += (vm_width - 1) / 2
+            ptr_idx = layout_info.get_center_tracks(vm_layer, 2, route_col_intv, width=vm_width, space=vm_space)
             ntr_idx = ptr_idx + vm_space + vm_width
             p_list = [bot_inst.get_port('dlat%d_outp' % (dfe_idx - 2)).get_pins()[0],
                       top_inst.get_port('intsum_inp<%d>' % intsum_idx).get_pins()[0], ]
@@ -1234,9 +1227,7 @@ class RXHalf(TemplateBase):
 
     def _connect_diff_io(self, inst, route_col_intv, layout_info, vm_layer, vm_width, vm_space,
                          out_name, in_name):
-        num_tracks = 2 * vm_width + vm_space
-        ptr_idx = layout_info.get_center_tracks(vm_layer, num_tracks, route_col_intv)
-        ptr_idx += (vm_width - 1) / 2
+        ptr_idx = layout_info.get_center_tracks(vm_layer, 2, route_col_intv, width=vm_width, space=vm_space)
         ntr_idx = ptr_idx + vm_space + vm_width
         p_warrs = [inst.get_port(out_name.format('p')).get_pins()[0],
                    inst.get_port(in_name.format('p')).get_pins()[0], ]
@@ -1350,10 +1341,11 @@ class RXCore(TemplateBase):
 
     def draw_layout(self):
         half_params = self.params.copy()
-
         half_params['datapath_parity'] = 0
+        half_params['show_pins'] = False
         even_master = self.new_template(params=half_params, temp_cls=RXHalf)
         half_params['datapath_parity'] = 1
+        half_params['show_pins'] = False
         odd_master = self.new_template(params=half_params, temp_cls=RXHalf)
         odd_inst = self.add_instance(odd_master, 'X1', orient='MX')
         odd_inst.move_by(dy=odd_master.bound_box.height)
@@ -1377,25 +1369,30 @@ class RXCore(TemplateBase):
         vm_layer_id = hm_layer_id + 1
         vm_space = self.params['sig_spaces'][0]
         vm_width = self.params['sig_widths'][0]
-        diff_track_width = 2 * vm_width + vm_space
+        vm_pitch = vm_width + vm_space
+        show_pins = self.params['show_pins']
 
         # connect inputs of even and odd paths
         route_col_intv = col_idx_dict['integ']
-        ptr_idx = layout_info.get_center_tracks(vm_layer_id, diff_track_width, route_col_intv)
-        ptr_idx += (vm_width - 1) / 2
+        ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2, route_col_intv, width=vm_width, space=vm_space)
         ports = ['integ_in{}']
         inp, inn = self._connect_differential(inst_list, ptr_idx, vm_layer_id, vm_width, vm_space,
                                               ports, ports)
-        self.add_pin('inp', inp, show=True)
-        self.add_pin('inn', inn, show=True)
+
+        # export inputs/outputs
+        self.add_pin('inp', inp, show=show_pins)
+        self.add_pin('inn', inn, show=show_pins)
+        for idx in (0, 1):
+            for pname, oname in (('summer', 'summer'), ('dlat0', 'data')):
+                self.reexport(inst_list[idx].get_port('%s_outp' % pname),
+                              net_name='outp_%s<%d>' % (oname, idx), show=show_pins)
+                self.reexport(inst_list[idx].get_port('%s_outn' % pname),
+                              net_name='outn_%s<%d>' % (oname, idx), show=show_pins)
 
         # connect alat0 outputs
         route_col_intv = col_idx_dict['alat']
-        ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + vm_space, route_col_intv)
-        ptr_idx += (vm_width - 1) / 2
-        tr_idx_list = [ptr_idx, ptr_idx + vm_width + vm_space,
-                       ptr_idx + diff_track_width + vm_space,
-                       ptr_idx + diff_track_width + vm_width + 2 * vm_space]
+        ptr_idx = layout_info.get_center_tracks(vm_layer_id, 4, route_col_intv, width=vm_width, space=vm_space)
+        tr_idx_list = [ptr_idx, ptr_idx + vm_pitch, ptr_idx + 2 * vm_pitch, ptr_idx + 3 * vm_pitch]
         warr_list_list = [[inst_list[0].get_port('alat0_outp').get_pins()[0],
                            inst_list[0].get_port('alat1_inp').get_pins()[0],
                            inst_list[1].get_port('ffe_inp').get_pins()[0],
@@ -1415,20 +1412,18 @@ class RXCore(TemplateBase):
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width, fill_type='VDD')
         # connect summer outputs
         route_col_intv = col_idx_dict['summer'][1]
-        ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + vm_space, route_col_intv)
-        ptr_idx += (vm_width - 1) / 2
+        ptr_idx = layout_info.get_center_tracks(vm_layer_id, 4, route_col_intv, width=vm_width, space=vm_space)
         ports0 = ['summer_out{}', 'dlat0_in{}']
         ports1 = ['summer_in{}<1>']
         self._connect_differential(inst_list, ptr_idx, vm_layer_id, vm_width, vm_space,
                                    ports0, ports1)
-        ptr_idx += diff_track_width + vm_space
+        ptr_idx += 2 * vm_pitch
         self._connect_differential(inst_list, ptr_idx, vm_layer_id, vm_width, vm_space,
                                    ports1, ports0)
 
         # connect dlat1 outputs
         route_col_intv = col_idx_dict['dlat'][1]
-        ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2 * diff_track_width + vm_space, route_col_intv)
-        ptr_idx += (vm_width - 1) / 2
+        ptr_idx = layout_info.get_center_tracks(vm_layer_id, 4, route_col_intv, width=vm_width, space=vm_space)
         tr_idx_list = [ptr_idx, ptr_idx + vm_width + vm_space]
         warr_list_list = [[inst_list[0].get_port('dlat1_outp').get_pins()[0],
                            inst_list[0].get_port('dlat2_inp').get_pins()[0],
@@ -1439,8 +1434,8 @@ class RXCore(TemplateBase):
                            inst_list[1].get_port('intsum_inn<3>').get_pins()[0],
                            ], ]
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width, fill_type='VDD')
-        tr_idx_list[0] += diff_track_width + vm_space
-        tr_idx_list[1] += diff_track_width + vm_space
+        tr_idx_list[0] += 2 * vm_pitch
+        tr_idx_list[1] += 2 * vm_pitch
         warr_list_list = [[inst_list[1].get_port('dlat1_outp').get_pins()[0],
                            inst_list[1].get_port('dlat2_inp').get_pins()[0],
                            inst_list[0].get_port('intsum_inp<3>').get_pins()[0],

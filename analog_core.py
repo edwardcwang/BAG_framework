@@ -331,8 +331,9 @@ class AnalogBaseInfo(object):
             return coord
         return coord * self.grid.resolution
 
-    def get_center_tracks(self, layer_id, num_tracks, col_intv):
-        """Return the tracks that center on the given column interval.
+    def get_center_tracks(self, layer_id, num_tracks, col_intv, width=1, space=0):
+        # type: (int, int, Tuple[int, int], int, Union[float, int]) -> int
+        """Return tracks that center on the given column interval.
 
         Parameters
         ----------
@@ -342,6 +343,10 @@ class AnalogBaseInfo(object):
             number of tracks
         col_intv : Tuple[int, int]
             the column interval.
+        width : int
+            width of each track.
+        space : Union[float, int]
+            space between tracks.
 
         Returns
         -------
@@ -354,12 +359,12 @@ class AnalogBaseInfo(object):
         t_start = self.grid.find_next_track(layer_id, x0_unit, half_track=True, mode=1, unit_mode=True)
         t_stop = self.grid.find_next_track(layer_id, x1_unit, half_track=True, mode=-1, unit_mode=True)
         ntracks = int(t_stop - t_start + 1)
-        if ntracks < num_tracks:
+        tot_tracks = num_tracks * width + (num_tracks - 1) * space
+        if ntracks < tot_tracks:
             raise ValueError('There are only %d tracks in column interval [%d, %d)'
                              % (ntracks, col_intv[0], col_intv[1]))
 
-        offset = (ntracks - num_tracks) / 2
-        return t_start + offset
+        return t_start + (ntracks - tot_tracks + width - 1) / 2
 
     def num_tracks_to_fingers(self, layer_id, num_tracks, col_idx, even=True, fg_margin=0):
         """Returns the minimum number of fingers needed to span given number of tracks.
