@@ -701,7 +701,7 @@ class RXHalfBottom(SerdesRXBase):
         dlat_top_tr = dlat_inputs[0].track_id.base_index
         dlat_bot_tr = dlat_inputs[1].track_id.base_index
         clkp_nmos_ana_tr_xm = dlat_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
-        clkn_nmos_dig_tr_xm = clkp_nmos_ana_tr_xm
+        clkp_nmos_dig_tr_xm = clkp_nmos_ana_tr_xm
         clkn_nmos_sw_tr_xm = clkp_nmos_ana_tr_xm - clk_width_xm - clk_space_xm
         clkp_pmos_integ_tr_xm = dlat_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
         clkn_pmos_dig_tr_xm = clkp_pmos_integ_tr_xm
@@ -710,7 +710,7 @@ class RXHalfBottom(SerdesRXBase):
 
         # mirror to opposite side
         bot_xm_idx = self.grid.find_next_track(xm_layer, self.array_box.bottom_unit, mode=1, unit_mode=True)
-        clkp_nmos_dig_tr_xm = 2 * bot_xm_idx - clkn_nmos_dig_tr_xm - 1
+        clkn_nmos_dig_tr_xm = 2 * bot_xm_idx - clkp_nmos_dig_tr_xm - 1
         clkp_nmos_sw_tr_xm = 2 * bot_xm_idx - clkn_nmos_sw_tr_xm - 1
 
         clkp_nmos_sw_tr_id = TrackID(xm_layer, clkp_nmos_sw_tr_xm, width=clk_width_xm)
@@ -733,76 +733,82 @@ class RXHalfBottom(SerdesRXBase):
         # connect integ biases
         integ_col, integ_info = block_info['integ']
         col_intv = integ_col, integ_col + integ_info['fg_tot']
-        left_sig_vm = layout_info.get_center_tracks(vm_layer, 2, col_intv, width=sig_width_vm, space=sig_space_vm)
-        mid_tr_vm = left_sig_vm + (sig_width_vm + sig_space_vm) / 2
-        right_tr_vm = left_sig_vm - (sig_width_vm + clk_width_vm) / 2 - sig_clk_space_vm
-        rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
-        mtr_id = TrackID(vm_layer, mid_tr_vm, width=clk_width_vm)
+        ltr_vm, rtr_vm = get_bias_tracks(layout_info, vm_layer, col_intv, sig_width_vm, sig_space_vm,
+                                         clk_width_vm, sig_clk_space_vm)
+        ltr_id = TrackID(vm_layer, ltr_vm, width=clk_width_vm)
+        rtr_id = TrackID(vm_layer, rtr_vm, width=clk_width_vm)
         # nmos_analog
         warr = self.connect_to_tracks(integ_ports['bias_tail'], rtr_id, fill_type='VSS')
         clkp_nmos_ana_list.append(warr)
         # pmos_integ
-        warr = self.connect_to_tracks(integ_ports['bias_load'], mtr_id, fill_type='VDD')
+        warr = self.connect_to_tracks(integ_ports['bias_load'], ltr_id, fill_type='VDD')
         xtr_id = TrackID(xm_layer, clkp_pmos_integ_tr_xm, width=clk_width_xm)
         warr = self.connect_to_tracks(warr, xtr_id, fill_type='VDD', min_len_mode=0)
         self.add_pin(clkp + '_pmos_integ', warr, show=show_pins)
         # nmos_switch
-        warr = self.connect_to_tracks(integ_ports['sw'], mtr_id, fill_type='VDD')
+        warr = self.connect_to_tracks(integ_ports['sw'], ltr_id, fill_type='VDD')
         clkn_nmos_sw_list.append(warr)
 
         # connect alat biases
         alat_col, alat_info = block_info['alat']
         col_intv = alat_col, alat_col + alat_info['fg_tot']
-        left_tr_vm = layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm, space=sig_space_vm)
-        left_tr_vm += (sig_width_vm + sig_space_vm) / 2
-        right_tr_vm = left_tr_vm + 2 * (sig_width_vm + sig_space_vm)
-        ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
-        rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
-        if datapath_parity == 0:
-            nmos_tr_id, pmos_tr_id, sw_tr_id = ltr_id, ltr_id, rtr_id
-        else:
-            nmos_tr_id, pmos_tr_id, sw_tr_id = rtr_id, rtr_id, ltr_id
+        right_sig_vm = layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm, space=sig_space_vm)
+        right_sig_vm += 3 * (sig_width_vm + sig_space_vm)
+        ltr_vm = right_sig_vm + sig_clk_space_vm + (sig_width_vm + clk_width_vm) / 2
+        rtr_vm = ltr_vm + clk_space_vm + clk_width_vm
+        ltr_id = TrackID(vm_layer, ltr_vm, width=clk_width_vm)
+        rtr_id = TrackID(vm_layer, rtr_vm, width=clk_width_vm)
         # nmos_analog
-        warr = self.connect_to_tracks(alat_ports['bias_tail'], nmos_tr_id, fill_type='VSS')
+        warr = self.connect_to_tracks(alat_ports['bias_tail'], ltr_id, fill_type='VSS')
         clkp_nmos_ana_list.append(warr)
         # pmos_analog
-        warr = self.connect_to_tracks(alat_ports['bias_load'], pmos_tr_id, fill_type='VDD')
+        warr = self.connect_to_tracks(alat_ports['bias_load'], ltr_id, fill_type='VDD')
         xtr_id = TrackID(xm_layer, clkn_pmos_ana_tr_xm, width=clk_width_xm)
         warr = self.connect_to_tracks(warr, xtr_id, fill_type='VDD', min_len_mode=0)
         self.add_pin(clkn + '_pmos_analog', warr, show=show_pins)
         # nmos_switch
-        warr = self.connect_to_tracks(alat_ports['sw'], sw_tr_id, fill_type='VDD')
+        warr = self.connect_to_tracks(alat_ports['sw'], rtr_id, fill_type='VDD')
         clkn_nmos_sw_list.append(warr)
 
         # connect dlat
         for dfe_idx, (dlat_col, dlat_ports, dlat_info) in enumerate(block_info['dlat']):
+            col_intv = dlat_col, dlat_col + dlat_info['fg_tot']
 
-            if dfe_idx == 0:
+            if dfe_idx % 2 == 0 and dfe_idx > 0:
+                tr_idx0 = layout_info.get_center_tracks(vm_layer, 4, col_intv, width=clk_width_vm,
+                                                        space=clk_space_vm)
+                if datapath_parity == 0:
+                    ntr_vm = tr_idx0 + (clk_width_vm + clk_space_vm) * 3
+                    str_vm = tr_idx0 + (clk_width_vm + clk_space_vm)
+                else:
+                    ntr_vm = tr_idx0
+                    str_vm = tr_idx0 + (clk_width_vm + clk_space_vm) * 2
+                ptr_vm = tr_idx0
+            elif dfe_idx == 0:
                 left_sig_vm = layout_info.get_center_tracks(vm_layer, 4, tap1_col_intv, width=sig_width_vm,
                                                             space=sig_space_vm)
+                tr_idx3 = left_sig_vm - (sig_width_vm + clk_width_vm) / 2 - sig_clk_space_vm
+                if datapath_parity == 0:
+                    ntr_vm = tr_idx3 - 1 * (clk_width_vm + clk_space_vm)
+                    str_vm = tr_idx3 - 3 * (clk_width_vm + clk_space_vm)
+                else:
+                    ntr_vm = tr_idx3 - 2 * (clk_width_vm + clk_space_vm)
+                    str_vm = tr_idx3
+                ptr_vm = tr_idx3
             else:
-                col_intv = dlat_col, dlat_col + dlat_info['fg_tot']
                 left_sig_vm = layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm,
                                                             space=sig_space_vm)
-            same_tr_vm = left_sig_vm - (sig_width_vm + clk_width_vm) / 2 - sig_clk_space_vm
-            left_tr_vm = left_sig_vm + (sig_width_vm + sig_space_vm) / 2
-            right_tr_vm = left_tr_vm + 2 * (sig_width_vm + sig_space_vm)
-            str_id = TrackID(vm_layer, same_tr_vm, width=clk_width_vm)
-            ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
-            rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
+                right_sig_vm = left_sig_vm + 3 * (sig_width_vm + sig_space_vm)
+                ntr_vm = left_sig_vm - (sig_width_vm + clk_width_vm) / 2 - sig_clk_space_vm
+                str_vm = right_sig_vm + (sig_width_vm + clk_width_vm) / 2 + sig_clk_space_vm
+                ptr_vm = ntr_vm
 
-            if dfe_idx % 2 == 1:
-                nmos_tr_id = ltr_id if datapath_parity == 0 else rtr_id
-                pmos_tr_id = nmos_tr_id
-                sw_tr_id = str_id
-            else:
-                nmos_tr_id = str_id
-                pmos_tr_id = nmos_tr_id
-                sw_tr_id = ltr_id if datapath_parity == 0 else rtr_id
-
-            nwarr = self.connect_to_tracks(dlat_ports['bias_tail'], nmos_tr_id, fill_type='VSS')
-            pwarr = self.connect_to_tracks(dlat_ports['bias_load'], pmos_tr_id, fill_type='VDD')
-            swarr = self.connect_to_tracks(dlat_ports['sw'], sw_tr_id, fill_type='VDD')
+            str_id = TrackID(vm_layer, str_vm, width=clk_width_vm)
+            ntr_id = TrackID(vm_layer, ntr_vm, width=clk_width_vm)
+            ptr_id = TrackID(vm_layer, ptr_vm, width=clk_width_vm)
+            nwarr = self.connect_to_tracks(dlat_ports['bias_tail'], ntr_id, fill_type='VSS')
+            pwarr = self.connect_to_tracks(dlat_ports['bias_load'], ptr_id, fill_type='VDD')
+            swarr = self.connect_to_tracks(dlat_ports['sw'], str_id, fill_type='VDD')
 
             if dfe_idx % 2 == 1:
                 clkp_nmos_dig_list.append(nwarr)
@@ -953,6 +959,7 @@ class RXHalf(TemplateBase):
         sig_width_vm = self.params['sig_widths'][0]
         sig_space_vm = self.params['sig_spaces'][0]
         clk_width_vm = self.params['clk_widths'][0]
+        clk_space_vm = self.params['clk_spaces'][0]
         sig_clk_space_vm = self.params['sig_clk_spaces'][0]
         # create AnalogBaseInfo object
         vm_layer_id = layout_info.mconn_port_layer + 2
@@ -1036,6 +1043,7 @@ class RXHalf(TemplateBase):
         # step 2C: place intsum DFE taps
         num_dfe = len(intsum_gm_fg_list) - 2 + 1
         new_dlat_params_list = [None] * len(dlat_params_list)
+        # NOTE: here DFE index start at 1.
         for idx in range(2, len(intsum_gm_fg_list)):
             # print('intsum_idx%d_col: %d' % (idx, cur_col))
             intsum_dfe_fg_params = intsum_gm_fg_list[idx].copy()
@@ -1048,10 +1056,13 @@ class RXHalf(TemplateBase):
                 # digital latch.
                 # set digital latch column index
                 if dfe_idx % 2 == 1:
-                    # for odd DFE taps, we have criss-cross connections, so fit 2 diff tracks + 2 clk tracks
+                    # for odd DFE taps, we have criss-cross signal connections, so fit 2 diff tracks + 2 clk tracks
                     num_route_tracks = 4 * sig_width_vm + 2 * clk_width_vm + 3 * sig_space_vm + 3 * sig_clk_space_vm
                     # for odd DFE taps > 3, we need to reserve additional input routing tracks
                     in_route = dfe_idx > 3
+                else:
+                    # for even DFE taps, we have criss-cross bias connections, so fit 4 clk tracks
+                    num_route_tracks = max(4 * clk_width_vm + 4 * clk_space_vm, num_route_tracks)
 
                 # fit diff tracks and make diglatch and DFE tap have same width
                 intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, num_route_tracks, cur_col)
