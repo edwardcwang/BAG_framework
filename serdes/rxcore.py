@@ -288,9 +288,9 @@ class RXHalfTop(SerdesRXBase):
         vm_layer = hm_layer + 1
         xm_layer = vm_layer + 1
         sig_width_vm, sig_width_xm = sig_widths
-        clk_width_vm, clk_width_xm = clk_widths
+        clk_width_vm, clk_width_xm = clk_widths[:2]
         sig_space_vm = sig_spaces[0]
-        clk_space_vm, clk_space_xm = clk_spaces
+        clk_space_vm, clk_space_xm = clk_spaces[:2]
         sig_clk_space_vm, sig_clk_space_xm = sig_clk_spaces
 
         # calculate bias track indices
@@ -478,8 +478,8 @@ class RXHalfTop(SerdesRXBase):
             hm_cur_width=-1,
             sig_widths=[1, 1],
             sig_spaces=[1, 1],
-            clk_widths=[1, 1],
-            clk_spaces=[1, 1],
+            clk_widths=[1, 1, 1],
+            clk_spaces=[1, 1, 1],
             sig_clk_spaces=[1, 1],
             show_pins=False,
             guard_ring_nf=0,
@@ -692,9 +692,9 @@ class RXHalfBottom(SerdesRXBase):
         vm_layer = hm_layer + 1
         xm_layer = vm_layer + 1
         sig_width_vm, sig_width_xm = sig_widths
-        clk_width_vm, clk_width_xm = clk_widths
+        clk_width_vm, clk_width_xm = clk_widths[:2]
         sig_space_vm = sig_spaces[0]
-        clk_space_vm, clk_space_xm = clk_spaces
+        clk_space_vm, clk_space_xm = clk_spaces[:2]
         sig_clk_space_vm, sig_clk_space_xm = sig_clk_spaces
 
         # calculate bias track indices
@@ -858,8 +858,8 @@ class RXHalfBottom(SerdesRXBase):
             hm_cur_width=-1,
             sig_widths=[1, 1],
             sig_spaces=[1, 1],
-            clk_widths=[1, 1],
-            clk_spaces=[1, 1],
+            clk_widths=[1, 1, 1],
+            clk_spaces=[1, 1, 1],
             sig_clk_spaces=[1, 1],
             show_pins=False,
             guard_ring_nf=0,
@@ -1287,8 +1287,8 @@ class RXHalf(TemplateBase):
             hm_cur_width=-1,
             sig_widths=[1, 1],
             sig_spaces=[1, 1],
-            clk_widths=[1, 1],
-            clk_spaces=[1, 1],
+            clk_widths=[1, 1, 1],
+            clk_spaces=[1, 1, 1],
             sig_clk_spaces=[1, 1],
             guard_ring_nf=0,
             show_pins=False,
@@ -1512,8 +1512,8 @@ class RXCore(TemplateBase):
             hm_cur_width=-1,
             sig_widths=[1, 1],
             sig_spaces=[1, 1],
-            clk_widths=[1, 1],
-            clk_spaces=[1, 1],
+            clk_widths=[1, 1, 1],
+            clk_spaces=[1, 1, 1],
             sig_clk_spaces=[1, 1],
             show_pins=True,
             rename_dict={},
