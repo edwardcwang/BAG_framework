@@ -308,7 +308,21 @@ class AnalogBaseInfo(object):
         return self._sd_xc_unit
 
     def get_total_width(self, fg_tot, guard_ring_nf=0):
-        """Calculate width of final AnalogBase in number of source/drain tracks."""
+        # type: (int, int) -> int
+        """Returns the width of the AnalogMosBase in number of source/drain tracks.
+
+        Parameters
+        ----------
+        fg_tot : int
+            number of fingers.
+        guard_ring_nf : int
+            width of guard ring in number of fingers.  0 to disable guard ring.
+
+        Returns
+        -------
+        mos_width : int
+            the AnalogMosBase width in number of source/drain tracks.
+        """
         return self._mos_cls.get_template_width(fg_tot, guard_ring_nf=guard_ring_nf)
 
     def col_to_coord(self, col_idx, unit_mode=False):

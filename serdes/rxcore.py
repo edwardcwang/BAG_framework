@@ -158,7 +158,7 @@ class RXHalfTop(SerdesRXBase):
 
         self.draw_rows(**draw_params)
         # set size based on 2 layer up.
-        self.set_size_from_array_box(self.mos_conn_layer + 2)
+        self.set_size_from_array_box(self.mos_conn_layer + 3)
 
         # draw blocks
         alat_col = alat_params.pop('col_idx')
@@ -589,7 +589,7 @@ class RXHalfBottom(SerdesRXBase):
 
         self.draw_rows(**draw_params)
         # set size based on 2 layer up.
-        self.set_size_from_array_box(self.mos_conn_layer + 2)
+        self.set_size_from_array_box(self.mos_conn_layer + 3)
 
         # draw blocks
         gate_locs = {'inp': (hm_width - 1) / 2 + hm_width + diff_space,
@@ -941,14 +941,16 @@ class RXHalf(TemplateBase):
         intsum_params = self.params['intsum_params']
         summer_params = self.params['summer_params']
         dlat_params_list = self.params['dlat_params_list']
-        vm_space = self.params['sig_spaces'][0]
         nduml = self.params['nduml']
         ndumr = self.params['ndumr']
-        vm_width = self.params['sig_widths'][0]
-
+        sig_width_vm = self.params['sig_widths'][0]
+        sig_space_vm = self.params['sig_spaces'][0]
+        clk_width_vm = self.params['clk_widths'][0]
+        sig_clk_space_vm = self.params['sig_clk_spaces'][0]
         # create AnalogBaseInfo object
         vm_layer_id = layout_info.mconn_port_layer + 2
-        dtr_pitch = vm_width + vm_space
+        dtr_pitch = sig_width_vm + sig_space_vm
+        diff_clk_route_tracks = 2 * sig_width_vm + 2 * clk_width_vm + sig_space_vm + 3 * sig_clk_space_vm
 
         # compute block locations
         col_idx_dict = {}
@@ -958,7 +960,7 @@ class RXHalf(TemplateBase):
         # print('integ_col: %d' % cur_col)
         # step 0A: find minimum number of fingers
         new_integ_params = integ_params.copy()
-        integ_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
+        integ_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_clk_route_tracks, cur_col)
         new_integ_params['min'] = integ_fg_min
         integ_info = layout_info.get_diffamp_info(new_integ_params)
         new_integ_params['col_idx'] = integ_col_idx
@@ -1012,11 +1014,11 @@ class RXHalf(TemplateBase):
         col_idx_dict['intsum'].append((intsum_col_idx, cur_col))
         cur_col += intsum_gm_sep_list[0]
         # print('cur_col: %d' % cur_col)
-        # step 2B: place precursor tap.  must fit one differential track
+        # step 2B: place precursor tap.  must fit one differential track + 2 clk rout track
         # print('intsum_pre_col: %d' % cur_col)
         intsum_pre_col_idx = cur_col
         intsum_pre_fg_params = intsum_gm_fg_list[1].copy()
-        intsum_pre_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
+        intsum_pre_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_clk_route_tracks, cur_col)
         intsum_pre_fg_params['min'] = intsum_pre_fg_min
         intsum_pre_info = layout_info.get_gm_info(intsum_pre_fg_params)
         new_intsum_gm_fg_list.append(intsum_pre_fg_params)
@@ -1034,19 +1036,19 @@ class RXHalf(TemplateBase):
             dfe_idx = num_dfe - (idx - 2)
             dig_latch_params = dlat_params_list[dfe_idx - 2].copy()
             in_route = False
-            num_dtr = 2
+            num_route_tracks = diff_clk_route_tracks
             if dfe_idx > 2:
                 # for DFE tap > 2, the intsum Gm stage must align with the corresponding
                 # digital latch.
                 # set digital latch column index
                 if dfe_idx % 2 == 1:
-                    # for odd DFE taps, we have criss-cross connections, so fit 2 differential tracks
-                    num_dtr = 4
+                    # for odd DFE taps, we have criss-cross connections, so fit 2 diff tracks + 2 clk tracks
+                    num_route_tracks = 4 * sig_width_vm + 2 * clk_width_vm + 3 * sig_space_vm + 3 * sig_clk_space_vm
                     # for odd DFE taps > 3, we need to reserve additional input routing tracks
                     in_route = dfe_idx > 3
 
                 # fit diff tracks and make diglatch and DFE tap have same width
-                intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, num_dtr * dtr_pitch, cur_col)
+                intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, num_route_tracks, cur_col)
                 dig_latch_params['min'] = intsum_dfe_fg_min
                 dlat_info = layout_info.get_diffamp_info(dig_latch_params)
                 intsum_dfe_fg_params['min'] = dlat_info['fg_tot']
@@ -1123,6 +1125,12 @@ class RXHalf(TemplateBase):
         col_idx_dict['dlat'][0] = (cur_col - dlat_info['fg_tot'], cur_col)
 
         fg_tot = cur_col + ndumr
+        # add dummies until we have multiples of block pitch
+        blk_w = self.grid.get_block_size(layout_info.mconn_port_layer + 3, unit_mode=True)[0]
+        sd_pitch_unit = layout_info.sd_pitch_unit
+        cur_width = layout_info.get_total_width(fg_tot) * sd_pitch_unit
+        final_w = -(-cur_width // blk_w) * blk_w
+        fg_tot = final_w // sd_pitch_unit
         self._fg_tot = fg_tot
 
         # make RXHalfBottom
