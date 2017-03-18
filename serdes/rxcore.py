@@ -60,6 +60,13 @@ def connect_to_xm(template, warr_p, warr_n, col_intv, layout_info, sig_widths, s
                                                 fill_type='VDD')
 
 
+def get_bias_tracks(layout_info, layer_id, col_intv, sig_width, sig_space, clk_width, sig_clk_space):
+    sig_left = layout_info.get_center_tracks(layer_id, 2, col_intv, width=sig_width, space=sig_space)
+    left_tr = sig_left - (sig_width + clk_width) / 2 - sig_clk_space
+    right_tr = sig_left + (sig_width + sig_space) + (sig_width + clk_width) / 2 + sig_clk_space
+    return left_tr, right_tr
+
+
 class RXHalfTop(SerdesRXBase):
     """The top half of one data path of DDR burst mode RX core.
 
@@ -351,15 +358,15 @@ class RXHalfTop(SerdesRXBase):
         # connect intsum ffe tap biases
         intsum_start = intsum_col + intsum_info['gm_offsets'][1]
         col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][1]['fg_tot']
-        en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=sig_width_vm, space=sig_space_vm)
-        en_tr_vm += (sig_width_vm + sig_space_vm) / 2
+        ltr_vm, rtr_vm = get_bias_tracks(self.layout_info, vm_layer, col_intv, sig_width_vm, sig_space_vm,
+                                         clk_width_vm, sig_clk_space_vm)
         # bias_ffe
-        en_tr_id = TrackID(vm_layer, en_tr_vm, width=clk_width_vm)
+        en_tr_id = TrackID(vm_layer, rtr_vm, width=clk_width_vm)
         warr = self.connect_to_tracks(intsum_ports[('bias_casc', 1)], en_tr_id, fill_type='VDD', track_lower=0)
         self.add_pin('bias_ffe', warr, show=show_pins)
         # nmos intsum
         warr = self.connect_wires(intsum_ports[('bias_tail', 0)] + intsum_ports[('bias_tail', 1)])
-        tr_id = TrackID(vm_layer, en_tr_vm - clk_width_vm - clk_space_vm, width=clk_width_vm)
+        tr_id = TrackID(vm_layer, ltr_vm, width=clk_width_vm)
         warr = self.connect_to_tracks(warr, tr_id, fill_type='VSS', track_lower=0)
         self.add_pin(clkp + '_nmos_intsum', warr, show=show_pins)
 
@@ -370,11 +377,11 @@ class RXHalfTop(SerdesRXBase):
             intsum_start = intsum_col + intsum_info['gm_offsets'][2 + fb_idx]
             col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][2 + fb_idx]['fg_tot']
             if dfe_idx % 2 == 0:
-                en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=sig_width_vm,
-                                                              space=sig_space_vm)
-                en_tr_vm += (sig_width_vm + sig_space_vm) / 2
-                bias_tr_vm = en_tr_vm - clk_width_vm - clk_space_vm
+                # no criss-cross inputs.
+                bias_tr_vm, en_tr_vm = get_bias_tracks(self.layout_info, vm_layer, col_intv, sig_width_vm, sig_space_vm,
+                                                       clk_width_vm, sig_clk_space_vm)
             else:
+                # criss-cross inputs
                 en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm,
                                                               space=sig_space_vm)
                 if datapath_parity == 0:
@@ -1030,7 +1037,6 @@ class RXHalf(TemplateBase):
         num_dfe = len(intsum_gm_fg_list) - 2 + 1
         new_dlat_params_list = [None] * len(dlat_params_list)
         for idx in range(2, len(intsum_gm_fg_list)):
-            intsum_dfe_cur_col_idx = cur_col
             # print('intsum_idx%d_col: %d' % (idx, cur_col))
             intsum_dfe_fg_params = intsum_gm_fg_list[idx].copy()
             dfe_idx = num_dfe - (idx - 2)
@@ -1058,8 +1064,8 @@ class RXHalf(TemplateBase):
                 dig_latch_params['min'] = num_fg
                 dig_latch_params['col_idx'] = cur_col
                 col_idx_dict['dlat'][dfe_idx - 2] = (cur_col, cur_col + num_fg)
+                col_idx_dict['intsum'].append((cur_col, cur_col + num_fg))
                 cur_col += num_fg
-                col_idx_dict['intsum'].append((intsum_dfe_cur_col_idx, cur_col))
                 # print('cur_col: %d' % cur_col)
                 if in_route:
                     # allocate input route
@@ -1072,14 +1078,14 @@ class RXHalf(TemplateBase):
                     cur_col += intsum_gm_sep_list[idx]
                     # print('cur_col: %d' % cur_col)
             else:
-                # for DFE tap 2, the Gm stage should fit 1 differential track, but we have no
-                # requirements for digital latch
-                intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
+                # for DFE tap 2, we have no requirements for digital latch
+                intsum_dfe_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, num_route_tracks, cur_col)
                 intsum_dfe_fg_params['min'] = intsum_dfe_fg_min
                 intsum_dfe_info = layout_info.get_gm_info(intsum_dfe_fg_params)
+                num_fg = intsum_dfe_info['fg_tot']
+                col_idx_dict['intsum'].append((cur_col, cur_col + num_fg))
                 # no need to add gm sep because this is the last tap.
-                cur_col += intsum_dfe_info['fg_tot']
-                col_idx_dict['intsum'].append((intsum_dfe_cur_col_idx, cur_col))
+                cur_col += num_fg
                 # print('cur_col: %d' % cur_col)
             # save modified parameters
             new_dlat_params_list[dfe_idx - 2] = dig_latch_params
