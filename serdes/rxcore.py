@@ -244,18 +244,22 @@ class RXHalfTop(SerdesRXBase):
         self.add_pin('summer_outn', summer_ports[('outn', -1)], show=show_pins)
 
         # connect and export supplies
-        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy()
-        sup_lower = ntap_wire_arrs[0].lower
-        sup_upper = ntap_wire_arrs[0].upper
-        for warr in ptap_wire_arrs:
-            self.add_pin('VSS', warr, show=show_pins)
-
+        vss_name = self.get_pin_name('VSS')
         vdd_name = self.get_pin_name('VDD')
+        vdd_warrs = []
+        sup_lower, sup_upper = self.array_box.left_unit, self.array_box.right_unit
+        vddt = self.connect_wires(vdd_list, lower=sup_lower, upper=sup_upper, unit_mode=True)
+        vdd_warrs.extend(vddt)
+        self.add_pin(vdd_name, vdd_warrs, show=show_pins)
+        warr = self.connect_wires(cascl_list, lower=sup_lower, unit_mode=True)
+        vdd_warrs.extend(warr)
+        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(lower=sup_lower, upper=sup_upper,
+                                                         vdd_warrs=vdd_warrs, sup_margin=1, unit_mode=True)
+        for warr in ptap_wire_arrs:
+            self.add_pin(vss_name, warr, show=show_pins)
+
         for warr in ntap_wire_arrs:
             self.add_pin(vdd_name, warr, show=show_pins)
-
-        warr = self.connect_wires(vdd_list, lower=sup_lower, upper=sup_upper)
-        self.add_pin(vdd_name, warr, show=show_pins)
 
         # connect summer cascode
         # step 1: get vm track
@@ -271,11 +275,9 @@ class RXHalfTop(SerdesRXBase):
         casc_tr = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=clk_width_vm, space=clk_space_vm)
         # step 2: connect summer cascode to vdd
         casc_tr_id = TrackID(vm_layer, casc_tr, width=clk_width_vm)
-        warr = self.connect_to_tracks(ntap_wire_arrs + warr + casc_sum, casc_tr_id)
+        warr = self.connect_to_tracks(ntap_wire_arrs + vddt + casc_sum, casc_tr_id)
         self.add_pin(vdd_name, warr, show=show_pins)
 
-        warr = self.connect_wires(cascl_list, lower=sup_lower)
-        self.add_pin(vdd_name, warr, show=show_pins)
         return ffe_inputs
 
     def connect_bias(self, block_info, alat_ports, intsum_ports, summer_ports, ffe_inputs,
@@ -663,20 +665,19 @@ class RXHalfBottom(SerdesRXBase):
             self.add_pin('dlat%d_outn' % idx, dlat_ports['outn'], show=show_pins)
 
         # connect and export supplies
-        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy()
-        sup_lower = ntap_wire_arrs[0].lower
-        sup_upper = ntap_wire_arrs[0].upper
+        vdd_name = self.get_pin_name('VDD')
+        sup_lower, sup_upper = self.array_box.left_unit, self.array_box.right_unit
+        vdd_warrs = self.connect_wires(vdd_list, lower=sup_lower, upper=sup_upper, unit_mode=True)
+        vdd_warrs.extend(self.connect_wires(casc_list, lower=sup_lower, upper=sup_upper, unit_mode=True))
+        self.add_pin(vdd_name, vdd_warrs, show=show_pins)
+
+        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(lower=sup_lower, upper=sup_upper,
+                                                         vdd_warrs=vdd_warrs, sup_margin=1, unit_mode=True)
         for warr in ptap_wire_arrs:
             self.add_pin(self.get_pin_name('VSS'), warr, show=show_pins)
 
-        vdd_name = self.get_pin_name('VDD')
         for warr in ntap_wire_arrs:
             self.add_pin(vdd_name, warr, show=show_pins)
-
-        warr = self.connect_wires(vdd_list, lower=sup_lower, upper=sup_upper)
-        self.add_pin(vdd_name, warr, show=show_pins)
-        warr = self.connect_wires(casc_list, lower=sup_lower, upper=sup_upper)
-        self.add_pin(vdd_name, warr, show=show_pins)
 
         return dlat_inputs
 

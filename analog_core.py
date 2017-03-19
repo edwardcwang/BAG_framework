@@ -345,6 +345,15 @@ class AnalogBaseInfo(object):
             return coord
         return coord * self.grid.resolution
 
+    def track_to_col_intv(self, layer_id, tr_idx, width=1):
+        # type: (int, Union[float, int], int) -> Tuple[int, int]
+        """Returns the smallest column interval that covers the given vertical track."""
+        lower, upper = self.grid.get_wire_bounds(layer_id, tr_idx, width=width, unit_mode=True)
+
+        lower_col_idx = (lower - self._sd_xc_unit) // self._sd_pitch_unit - self.pitch_offset[0]
+        upper_col_idx = -(-(upper - self._sd_xc_unit) // self._sd_pitch_unit) - self.pitch_offset[0]
+        return lower_col_idx, upper_col_idx
+
     def get_center_tracks(self, layer_id, num_tracks, col_intv, width=1, space=0):
         # type: (int, int, Tuple[int, int], int, Union[float, int]) -> int
         """Return tracks that center on the given column interval.
@@ -483,6 +492,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._layout_info = None
         self._pitch_offset = 0, 0
         self._hm_idx0 = 0
+
+    @property
+    def layout_info(self):
+        # type: () -> AnalogBaseInfo
+        return self._layout_info
 
     @property
     def min_fg_sep(self):
@@ -736,6 +750,14 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient)
 
         return conn_inst.get_port().get_pins(self.dum_conn_layer)
+
+    def mos_conn_track_used(self, tidx, margin=0):
+        col_start, col_stop = self.layout_info.track_to_col_intv(self.mos_conn_layer, tidx)
+        col_intv = col_start - margin, col_stop + margin
+        for intv_set in chain(self._p_intvs, self._n_intvs):
+            if intv_set.has_overlap(col_intv):
+                return True
+        return False
 
     def draw_mos_conn(self, mos_type, row_idx, col_idx, fg, sdir, ddir, **kwargs):
         """Draw transistor connection.
@@ -1069,7 +1091,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # set size from array box
         self.set_size_from_array_box(hm_layer)
 
-    def _connect_substrate(self, sub_type, sub_list, row_idx_list, lower=float('inf'), upper=float('-inf')):
+    def _connect_substrate(self,  # type: AnalogBase
+                           sub_type,  # type: str
+                           sub_list,  # type: List[Instance]
+                           row_idx_list,  # type: List[int]
+                           lower=None,  # type: Optional[Union[float, int]]
+                           upper=None,  # type: Optional[Union[float, int]]
+                           sup_wires=None,  # type: Optional[Union[WireArray, List[WireArray]]]
+                           sup_margin=0,  # type: int
+                           unit_mode=False  # type: bool
+                           ):
         """Connect all given substrates to horizontal tracks
 
         Parameters
@@ -1080,10 +1111,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             list of substrates to connect.
         row_idx_list : List[int]
             list of substrate row indices.
-        lower : float
+        lower : Optional[Union[float, int]]
             lower supply track coordinates.
-        upper : float
-            upper supplu track coordinates.
+        upper : Optional[Union[float, int]]
+            upper supply track coordinates.
+        sup_wires : Optional[Union[WireArray, List[WireArray]]]
+            If given, will connect these horizontal wires to supply on mconn layer.
+        sup_margin : int
+            supply wires mconn layer connection horizontal margin in number of tracks.
+        unit_mode : bool
+            True if lower/upper is specified in resolution units.
 
         Returns
         -------
@@ -1091,6 +1128,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             list of substrate tracks buses.
         """
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
+
+        if sup_wires is not None and isinstance(sup_wires, WireArray):
+            sup_wires = [sup_wires]
+        else:
+            pass
 
         sub_warr_list = []
         hm_layer = self.mos_conn_layer + 1
@@ -1108,24 +1150,56 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 warr_iter_list.append(subinst.get_port('b').get_pins(self.mos_conn_layer))
 
             warr_list = list(chain(*warr_iter_list))
-            track_warr = self.connect_to_tracks(warr_list, track_id, track_lower=lower, track_upper=upper)
+            track_warr = self.connect_to_tracks(warr_list, track_id, track_lower=lower, track_upper=upper,
+                                                unit_mode=unit_mode)
             sub_warr_list.append(track_warr)
+            if sup_wires is not None:
+                wlower, wupper = warr_list[0].lower, warr_list[0].upper
+                for conn_warr in sup_wires:
+                    if conn_warr.layer_id != hm_layer:
+                        raise ValueError('vdd/vss wires must be on layer %d' % hm_layer)
+                    tmin, tmax = self.grid.get_overlap_tracks(hm_layer - 1, conn_warr.lower,
+                                                              conn_warr.upper, half_track=True)
+                    new_warr_list = []
+                    for warr in warr_list:
+                        for tid in warr.track_id:
+                            if tid > tmax:
+                                break
+                            elif tmin <= tid:
+                                if not self.mos_conn_track_used(tid, margin=sup_margin):
+                                    new_warr_list.append(
+                                        WireArray(TrackID(hm_layer - 1, tid), lower=wlower, upper=wupper))
+                    self.connect_to_tracks(new_warr_list, conn_warr.track_id)
 
         return sub_warr_list
 
-    def fill_dummy(self, lower=None, upper=None):
-        # type: (Optional[float], Optional[float]) -> Tuple[List[WireArray], List[WireArray]]
+    def fill_dummy(self,  # type: AnalogBase
+                   lower=None,  # type: Optional[Union[float, int]]
+                   upper=None,  # type: Optional[Union[float, int]]
+                   vdd_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
+                   vss_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
+                   sup_margin=0,  # type: int
+                   unit_mode=False  # type: bool
+                   ):
+        # type: (...) -> Tuple[List[WireArray], List[WireArray]]
         """Draw dummy/separator on all unused transistors.
 
         This method should be called last.
 
         Parameters
         ----------
-        lower : Optional[float]
+        lower : Optional[Union[float, int]]
             lower coordinate for the supply tracks.
-        upper : Optional[float]
+        upper : Optional[Union[float, int]]
             upper coordinate for the supply tracks.
-
+        vdd_warrs : Optional[Union[WireArray, List[WireArray]]]
+            vdd wires to be connected.
+        vss_warrs : Optional[Union[WireArray, List[WireArray]]]
+            vss wires to be connected.
+        sup_margin : int
+            vdd/vss wires mos conn layer margin in number of tracks.
+        unit_mode : bool
+            True if lower/upper are specified in resolution units.
         Returns
         -------
         ptap_wire_arrs : List[WireArray]
@@ -1166,11 +1240,13 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if not self._ntap_list:
             # connect both substrates if NMOS only
             ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list, list(range(len(self._ptap_list))),
-                                                     lower=lower, upper=upper)
+                                                     lower=lower, upper=upper, sup_wires=vss_warrs,
+                                                     sup_margin=sup_margin, unit_mode=unit_mode)
         elif self._ptap_list:
             # NMOS exists, only connect bottom substrate to upper level metal
             ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list[:1], [0],
-                                                     lower=lower, upper=upper)
+                                                     lower=lower, upper=upper, sup_wires=vss_warrs,
+                                                     sup_margin=sup_margin, unit_mode=unit_mode)
         else:
             ptap_wire_arrs = []
 
@@ -1178,19 +1254,28 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if not self._ptap_list:
             # connect both substrates if PMOS only
             ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list, list(range(len(self._ntap_list))),
-                                                     lower=lower, upper=upper)
+                                                     lower=lower, upper=upper, sup_wires=vdd_warrs,
+                                                     sup_margin=sup_margin, unit_mode=unit_mode)
         elif self._ntap_list:
             # PMOS exists, only connect top substrate to upper level metal
             ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list[-1:], [len(self._ntap_list) - 1],
-                                                     lower=lower, upper=upper)
+                                                     lower=lower, upper=upper, sup_wires=vdd_warrs,
+                                                     sup_margin=sup_margin, unit_mode=unit_mode)
         else:
             ntap_wire_arrs = []
 
         return ptap_wire_arrs, ntap_wire_arrs
 
-    def _fill_dummy_helper(self, mos_type, intv_set_list, bot_sub_inst, top_sub_inst,
-                           bot_tracks, top_tracks, export_both):
-        # type: (str, List[IntervalSet], Instance, Instance, List[int], List[int], bool) -> None
+    def _fill_dummy_helper(self,  # type: AnalogBase
+                           mos_type,  # type: str
+                           intv_set_list,  # type: List[IntervalSet]
+                           bot_sub_inst,  # type: Optional[Instance]
+                           top_sub_inst,  # type: Optional[Instance]
+                           bot_tracks,  # type: List[int]
+                           top_tracks,  # type: List[int]
+                           export_both  # type: bool
+                           ):
+        # type: (...) -> None
         num_rows = len(intv_set_list)
         bot_conn = top_conn = []
 
