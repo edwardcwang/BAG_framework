@@ -477,6 +477,21 @@ class BagProject(object):
 
         return self.impl_db.get_cells_in_library(lib_name)
 
+    def create_library(self, lib_name, lib_path=''):
+        """Create a new library if one does not exist yet.
+
+        Parameters
+        ----------
+        lib_name : string
+            the library name.
+        lib_path : string
+            directory to create the library in.  If Empty, use default location.
+        """
+        if self.impl_db is None:
+            raise Exception('BAG Server is not set up.')
+
+        return self.impl_db.create_library(lib_name, lib_path=lib_path)
+
     def create_design_module(self, lib_name, cell_name, **kwargs):
         """Create a new top level design module for the given schematic template
 
