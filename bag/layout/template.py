@@ -636,6 +636,9 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         flatten : bool
             True to compute flattened layout.
         """
+        # update used tracks
+        self._merge_inst_used_tracks()
+
         # construct port objects
         for net_name, port_params in self._port_params.items():
             pin_dict = port_params['pins']
@@ -2028,6 +2031,15 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                                 top_lay_name = self.grid.get_layer_name(top_layer_id, top_index)
                                 self.add_via(box, bot_lay_name, top_lay_name, bot_dir)
 
+    def _merge_inst_used_tracks(self):
+        if not self._added_inst_tracks:
+            self._added_inst_tracks = True
+            for inst in self._layout.inst_iter():
+                for cidx in range(inst.nx):
+                    for ridx in range(inst.ny):
+                        inst_used_tracks = inst.get_used_tracks(row=ridx, col=cidx)
+                        self._used_tracks.merge(inst_used_tracks, self.grid.layers)
+
     def do_power_fill(self,  # type: TemplateBase
                       layer_id,  # type: int
                       vdd_warrs,  # type: Union[WireArray, List[WireArray]]
@@ -2046,14 +2058,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             fill_margin = int(round(fill_margin / res))
             edge_margin = int(round(edge_margin / res))
 
-        if not self._added_inst_tracks:
-            self._added_inst_tracks = True
-            for inst in self._layout.inst_iter():
-                for cidx in range(inst.nx):
-                    for ridx in range(inst.ny):
-                        inst_used_tracks = inst.get_used_tracks(row=ridx, col=cidx)
-                        self._used_tracks.merge(inst_used_tracks, self.grid.layers)
-
+        self._merge_inst_used_tracks()
         top_vdd, top_vss = get_power_fill_tracks(self.grid, self.size, layer_id,
                                                  self._used_tracks.get_tracks_info(layer_id),
                                                  sup_width, fill_margin, edge_margin,

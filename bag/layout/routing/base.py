@@ -385,7 +385,8 @@ class Port(object):
         track_bus_list : list[:class:`~bag.layout.routing.WireArray`]
             pins on the given layer representing as WireArrays.
         """
-        return self._pin_dict[self._get_layer(layer)]
+        layer_id = self._get_layer(layer)
+        return self._pin_dict.get(layer_id, [])
 
     def get_bounding_box(self, grid, layer=-1):
         """Calculate the overall bounding box of this port on the given layer.
