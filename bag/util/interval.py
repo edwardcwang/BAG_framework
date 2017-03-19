@@ -519,8 +519,8 @@ class IntervalSet(object):
             the transformed IntervalSet.
         """
         if scale < 0:
-            new_start = [-v + shift for v in reversed(self._start_list)]
-            new_end = [-v + shift for v in reversed(self._end_list)]
+            new_start = [-v + shift for v in reversed(self._end_list)]
+            new_end = [-v + shift for v in reversed(self._start_list)]
             new_val = list(reversed(self._val_list))
         else:
             new_start = [v + shift for v in self._start_list]
