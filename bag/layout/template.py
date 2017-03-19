@@ -273,6 +273,9 @@ class TemplateDB(object):
         if debug:
             print('layout retrieval took %.4g seconds' % (end - start))
 
+        # create library if it does not exist
+        prj.create_library(self._lib_name)
+
         if self._use_cybagoa:
             # remove write locks from old layouts
             cell_view_list = [(item[0], 'layout') for item in layout_list]
