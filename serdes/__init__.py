@@ -31,4 +31,3 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 from .base import SerdesRXBase
-from .amplifier import DynamicLatchChain

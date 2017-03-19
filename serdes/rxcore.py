@@ -582,7 +582,7 @@ class RXHalfBottom(SerdesRXBase):
         draw_params['pds_tracks'] = [2 * hm_width + diff_space]
         ng_tracks = []
         nds_tracks = []
-        for row_name in ['tail', 'w_en', 'sw', 'in', 'casc']:
+        for row_name in ['tail', 'en', 'sw', 'in', 'casc']:
             if w_dict.get(row_name, -1) > 0:
                 if row_name == 'in':
                     ng_tracks.append(2 * hm_width + diff_space)
