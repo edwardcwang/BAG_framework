@@ -777,48 +777,10 @@ class RoutingGrid(object):
             lower = int(round(lower / self._resolution))
             upper = int(round(upper / self._resolution))
 
-        tr_w = self.w_tracks[layer_id]
-        tr_sp = self.sp_tracks[layer_id]
-        tr_wh = tr_w // 2
-        tr_ph = (tr_w + tr_sp) // 2
+        lower_tr = self.find_next_track(layer_id, lower, half_track=half_track, mode=1, unit_mode=True)
+        upper_tr = self.find_next_track(layer_id, upper, half_track=half_track, mode=-1, unit_mode=True)
 
-        # get start track half index
-        lower_bnd = self.coord_to_nearest_track(layer_id, lower, half_track=True,
-                                                mode=-1, unit_mode=True)
-
-        hlower_bnd = int(round(2 * lower_bnd + 1))
-
-        # check if overlap
-        if hlower_bnd * tr_ph + tr_wh < lower:
-            hlower_bnd += 1
-        # check if half track is allowed
-        if not half_track and hlower_bnd % 2 == 0:
-            hlower_bnd += 1
-
-        # get end track half index
-        upper_bnd = self.coord_to_nearest_track(layer_id, upper, half_track=True,
-                                                mode=1, unit_mode=True)
-        hupper_bnd = int(round(2 * upper_bnd + 1))
-        # check if overlap
-        if hupper_bnd * tr_ph - tr_wh > upper:
-            hupper_bnd -= 1
-        # check if half track is allowed
-        if not half_track and hupper_bnd % 2 == 0:
-            hupper_bnd -= 1
-
-        if hupper_bnd < hlower_bnd:
-            # no solution
-            return None, None
-        # convert to track
-        if hlower_bnd % 2 == 1:
-            start_track = (hlower_bnd - 1) // 2
-        else:
-            start_track = (hlower_bnd - 1) / 2
-        if hupper_bnd % 2 == 1:
-            end_track = (hupper_bnd - 1) // 2
-        else:
-            end_track = (hupper_bnd - 1) / 2
-        return start_track, end_track
+        return lower_tr, upper_tr
 
     def get_via_extensions(self, bot_layer_id, bot_width, top_width, unit_mode=False):
         # type: (int, int, int, bool) -> Tuple[Union[float, int], Union[float, int]]
