@@ -201,7 +201,8 @@ def export_schematic(proc_id, quit_dict, lib_name, cell_name, sch_view, source_a
     """
     write_file(log_file, '**********************\n'
                          'Exporting netlist file\n'
-                         '**********************\n\n')
+                         '**********************\n\n',
+               append=True)
 
     run_dir = os.path.abspath(run_dir)
     if not os.path.exists(run_dir):
