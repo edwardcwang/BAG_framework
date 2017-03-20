@@ -34,7 +34,7 @@ import os
 import abc
 import itertools
 import pprint
-from typing import List
+from typing import List, Union, Tuple
 
 import numpy as np
 import h5py
@@ -42,7 +42,7 @@ import openmdao.api as omdao
 
 from .. import data
 from ..math.interpolate import interpolate_grid
-from bag.math.dfun import VectorDiffFunction
+from bag.math.dfun import VectorDiffFunction, DiffFunction
 from ..mdao.core import GroupBuilder
 from ..io import fix_string, to_bytes
 
@@ -880,18 +880,19 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
         return fidx_list
 
     def _get_function_helper(self, name, fidx_list):
+        # type: (str, Union[List[int], Tuple[int]]) -> DiffFunction
         """Helper method for get_function()
 
         Parameters
         ----------
         name : str
             name of the function.
-        fidx_list : list[int] or tuple[int]
+        fidx_list : Union[List[int], Tuple[int]]
             function index.
 
         Returns
         -------
-        fun : bag.math.dfun.DiffFunction
+        fun : DiffFunction
             the interpolator function.
         """
         # get function table index
@@ -904,14 +905,14 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
 
                 # get scale list and data index
                 scale_list = []
-                didx = list(fidx_list)  # type: List[int or slice]
+                didx = list(fidx_list)
                 for vec in self._cont_values:
                     scale_list.append((vec[0], vec[1] - vec[0]))
                     didx.append(slice(0, vec.size))
 
                 # make interpolator.
                 cur_data = char_data[didx]
-                method = self.get_config('method')  # type: str
+                method = self.get_config('method')
                 ftable[fidx_list] = interpolate_grid(scale_list, cur_data, method=method)
             else:
                 # derived parameter
@@ -923,27 +924,55 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
         return ftable[fidx_list]
 
     def get_function(self, name, **kwargs):
+        # type: (str, **kwargs) -> VectorDiffFunction
         """Returns a function for the given output.
 
         Parameters
         ----------
         name : str
             name of the function.
-        kwargs : dict[str, any]
+        kwargs :
             dictionary of discrete parameter values.
 
         Returns
         -------
-        output : bag.math.dfun.VectorDiffFunction
+        output : VectorDiffFunction
             the output vector function.
         """
         fidx_list = self._get_function_index(**kwargs)
         fun_list = []
-        for idx, env in enumerate(self.env_list):
+        for env in self.env_list:
             env_idx = np.where(self._env_values == env)[0][0]
             fidx_list[0] = env_idx
             fun_list.append(self._get_function_helper(name, fidx_list))
         return VectorDiffFunction(fun_list)
+
+    def get_scalar_function(self, name, env='', **kwargs):
+        # type: (str, str, **kwargs) -> DiffFunction
+        """Returns a scalar function for the given output for one simulation environment.
+
+        Parameters
+        ----------
+        name : str
+            name of the function.
+        env : str
+            the simulation environment name.
+        kwargs :
+            dictionary of discrete parameter values.
+
+        Returns
+        -------
+        output : DiffFunction
+            the output vector function.
+        """
+        if not env:
+            if len(self._env_list) > 1:
+                raise ValueError('More than one simulation environment is defined.')
+            env = self._env_list[0]
+        fidx_list = self._get_function_index(**kwargs)
+        env_idx = np.where(self._env_values == env)[0][0]
+        fidx_list[0] = env_idx
+        return self._get_function_helper(name, fidx_list)
 
     def get_fun_sweep_params(self):
         """Returns interpolation function sweep parameter names and values.
