@@ -191,11 +191,12 @@ class DiffAmp(SerdesRXBase):
                                          diff_space=diff_space, gate_locs=gate_locs)
 
         vdd_warrs = None
+        hide_pins = {'midp', 'midn', 'tail', 'foot'}
         for pname, warrs in amp_ports.items():
             if pname == 'vddt':
                 vdd_warrs = self.connect_wires(warrs, lower=sup_lower, upper=sup_upper, unit_mode=True)
             else:
-                self.add_pin(pname, warrs, show=show_pins)
+                self.add_pin(pname, warrs, show=show_pins and pname not in hide_pins)
 
         ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(lower=sup_lower, upper=sup_upper, vdd_warrs=vdd_warrs,
                                                          unit_mode=True, sup_margin=1)
