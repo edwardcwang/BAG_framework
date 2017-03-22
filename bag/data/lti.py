@@ -143,7 +143,7 @@ class LTICircuit(object):
             self._cmat[node_n, node_n] += cap
             self._cmat[node_n, node_p] -= cap
 
-    def add_transistor(self, tran_info, g_name, d_name, s_name, b_name='gnd', fg=1):
+    def add_transistor(self, tran_info, d_name, g_name, s_name, b_name='gnd', fg=1):
         # type: (Dict[str, float], str, str, str, str, int) -> None
         """Adds a small signal transistor model to the circuit.
 
@@ -152,10 +152,10 @@ class LTICircuit(object):
         tran_info : Dict[str, float]
             a dictionary of 1-finger transistor small signal parameters.  Should contain gm, gds, gb,
             cgd, cgs, cgb, cds, cdb, and csb.
-        g_name : str
-            gate net name.
         d_name : str
             drain net name.
+        g_name : str
+            gate net name.
         s_name : str
             source net name.
         b_name : str
