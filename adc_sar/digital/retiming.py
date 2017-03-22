@@ -297,6 +297,11 @@ class RetimeBufferRow(StdCellBase):
         super(RetimeBufferRow, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(num_buf_dig=0)
+
+    @classmethod
     def get_params_info(cls):
         # type: () -> Dict[str, str]
         """Returns a dictionary containing parameter descriptions.
@@ -314,6 +319,7 @@ class RetimeBufferRow(StdCellBase):
             adc_width='ADC width in number of columns.',
             cells_per_tap='Number of latch cells per tap connection.',
             config_file='Standard cell configuration file.',
+            num_buf_dig='Number of clock buffers to draw for digital block.',
         )
 
     def draw_layout(self):
@@ -324,12 +330,15 @@ class RetimeBufferRow(StdCellBase):
         adc_width = self.params['adc_width']
         config_file = self.params['config_file']
         cells_per_tap = self.params['cells_per_tap']
+        num_buf_dig = self.params['num_buf_dig']
 
         if num_bits % cells_per_tap != 0:
             raise ValueError('num_bits = %d must be multiple of cells_per_tap = %d' % (num_bits, cells_per_tap))
         if num_buf > num_bits:
             raise ValueError('Must have num_buf = %d < num_bits = %d' % (num_buf, num_bits))
-
+        num_buf_dig_max = (num_bits - num_buf) // 2
+        if num_buf_dig_max < num_buf_dig:
+            raise ValueError('Must have num_buf_out = %d <= %d' % (num_buf_dig, num_buf_dig_max))
         # use standard cell routing grid
         self.update_routing_grid()
 
@@ -352,11 +361,13 @@ class RetimeBufferRow(StdCellBase):
         # figure out buffer/fill indices
         master_list = [None] * num_bits  # type: List[Optional[StdCellBase]]
         buf_start = (num_bits - num_buf) // 2
-        for idx in range(buf_start, buf_start + num_buf):
+        for idx in range(buf_start, buf_start + num_buf + num_buf_dig):
             master_list[idx] = buf_master
         # add fill, buffer, and taps
         in_list = []
         out_list = []
+        dig_out_list = []
+        cur_buf_idx = 0
         for idx, master in enumerate(master_list):
             if master is not None:
                 inst = self.add_std_instance(master, 'X%d' % idx, loc=(xcur, 0))
@@ -366,8 +377,13 @@ class RetimeBufferRow(StdCellBase):
             if idx % cells_per_tap == (cells_per_tap - 1):
                 xcur = add_tap(self, xcur, tap_master, 1, port_table)
             if inst is not None:
-                in_list.extend(inst.get_port('I').get_pins())
-                out_list.extend(inst.get_port('O').get_pins())
+                if cur_buf_idx < num_buf:
+                    in_list.extend(inst.get_port('I').get_pins())
+                    out_list.extend(inst.get_port('O').get_pins())
+                else:
+                    out_list.extend(inst.get_port('I').get_pins())
+                    dig_out_list.extend(inst.get_port('O').get_pins())
+                cur_buf_idx += 1
 
         # set template size
         self.set_std_size((adc_width, 1))
@@ -391,8 +407,11 @@ class RetimeBufferRow(StdCellBase):
             self.connect_to_tracks(in_list, in_tidx, fill_type='')
             out_warr = self.connect_to_tracks(out_list, out_tidx, fill_type='')
 
-            self.add_pin('in', in_list[1], show=False)
+            self.add_pin('in', in_list[num_buf // 2], show=False)
             self.add_pin('out', out_warr, show=False)
+            if dig_out_list:
+                dig_out_warr = self.connect_to_tracks(dig_out_list, in_tidx, fill_type='')
+                self.add_pin('out_dig', dig_out_warr, show=False)
 
         # export supplies
         self.add_pin('VDD', port_table['VDD'], show=False)
@@ -431,6 +450,7 @@ class Retimer(StdCellBase):
         # type: () -> Dict[str, str]
         return dict(
             num_buf='number of clock buffers.',
+            num_buf_dig='number of digital clock buffers.',
             num_bits='number of output bits per ADC.',
             num_adc='number of ADCs.',
             adc_width='ADC width in number of columns.',
@@ -445,6 +465,7 @@ class Retimer(StdCellBase):
         # type: () -> None
 
         num_buf = self.params['num_buf']
+        num_buf_dig = self.params['num_buf_dig']
         num_bits = self.params['num_bits']
         num_adc = self.params['num_adc']
         adc_width = self.params['adc_width']
@@ -477,14 +498,17 @@ class Retimer(StdCellBase):
             cells_per_tap=cells_per_tap,
             config_file=config_file,
         )
+        space_master = self.new_template(params=space_params, temp_cls=RetimeSpaceRow)
         buf_params = dict(
             num_buf=num_buf,
+            num_buf_dig=num_buf_dig,
             num_bits=num_bits,
             adc_width=adc_width,
             cells_per_tap=cells_per_tap,
             config_file=config_file,
         )
-        space_master = self.new_template(params=space_params, temp_cls=RetimeSpaceRow)
+        buf_dig_master = self.new_template(params=buf_params, temp_cls=RetimeBufferRow)
+        buf_params['num_buf_dig'] = 0
         buf_master = self.new_template(params=buf_params, temp_cls=RetimeBufferRow)
         buf_params['num_buf'] = 0
         buf_fill_master = self.new_template(params=buf_params, temp_cls=RetimeBufferRow)
@@ -529,6 +553,7 @@ class Retimer(StdCellBase):
         ck1_list = []
         ck5_list = []
         buf_dict = {}
+        out_dig_warr = None
         for col_idx, adc_idx in enumerate(adc_order):
             if adc_idx < 4:
                 finst = self.add_std_instance(space_master, loc=(spx * col_idx, 2 * spy))
@@ -553,13 +578,19 @@ class Retimer(StdCellBase):
                 self.add_pin(name, in_pin, show=True)
             # clock buffers/fills
             if adc_idx in [1, 3, 5, 7]:
-                cfinst = self.add_std_instance(buf_master, loc=(spx * col_idx, 4 * spy))
+                if adc_idx == 3:
+                    cur_master = buf_dig_master
+                else:
+                    cur_master = buf_master
+                cfinst = self.add_std_instance(cur_master, loc=(spx * col_idx, 4 * spy))
                 vdd_list.extend(cfinst.get_all_port_pins('VDD'))
                 vss_list.extend(cfinst.get_all_port_pins('VSS'))
                 in_pin = cfinst.get_port('in').get_pins()[0]
                 in_pin = self.connect_wires(in_pin, upper=blk_h)
                 self.add_pin('clk%d' % adc_idx, in_pin)
                 buf_dict[adc_idx] = cfinst.get_port('out').get_pins()[0]
+                if cfinst.has_port('out_dig'):
+                    out_dig_warr = cfinst.get_port('out_dig').get_pins()[0]
             else:
                 cfinst = self.add_std_instance(buf_fill_master, loc=(spx * col_idx, 4 * spy))
                 vdd_list.extend(cfinst.get_all_port_pins('VDD'))
@@ -575,10 +606,13 @@ class Retimer(StdCellBase):
             ck_wires = ck_dict[ck_idx]
             tr_id = self.grid.coord_to_nearest_track(buf_layer + 1, buf_out.middle, mode=0)
             tr_id = TrackID(buf_layer + 1, tr_id, width=buf_ck_width)
-            track_lower = 0 if ck_idx == 3 else None
-            warr = self.connect_to_tracks([buf_out, ] + ck_wires, tr_id, fill_type='', track_lower=track_lower)
-            if ck_idx == 3:
-                self.add_pin('ckb_out', warr, show=True)
+            self.connect_to_tracks([buf_out, ] + ck_wires, tr_id, fill_type='')
+
+        # export digital output
+        tr_id = self.grid.coord_to_nearest_track(out_dig_warr.layer_id + 1, out_dig_warr.middle, mode=0)
+        tr_id = TrackID(out_dig_warr.layer_id + 1, tr_id, width=buf_ck_width)
+        warr = self.connect_to_tracks(out_dig_warr, tr_id, fill_type='', track_lower=0)
+        self.add_pin('ck_out', warr, show=True)
 
         sup_layer = vdd_list[0].layer_id + 1
         vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_list, vss_list, sup_width=2,
