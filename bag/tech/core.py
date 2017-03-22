@@ -34,7 +34,7 @@ import os
 import abc
 import itertools
 import pprint
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Dict, Any, Optional, Set
 
 import numpy as np
 import h5py
@@ -448,14 +448,14 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
     ----------
     root_dir : str
         path to the root characterization data directory.  Supports environment variables.
-    constants : dict[str, any]
+    constants : Dict[str, Any]
         constants dictionary.
-    discrete_params : list[string]
+    discrete_params : List[str]
         a list of parameters that should take on discrete values.
-    init_params : dict[str, any]
+    init_params : Dict[str, Any]
         a dictionary of initial parameter values.  All parameters should be specified,
         and None should be used if the parameter value is not set.
-    env_list : list[str]
+    env_list : List[str]
         list of simulation environments to consider.
     update : bool
         By default, CharDB saves and load post-processed data directly.  If update is True,
@@ -469,20 +469,33 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
         HDF5 compression method.  Used only during post-processing.
     method : str
         interpolation method.
-    opt_package : string
+    opt_package : str
         default Python optimization package.  Supports 'scipy' or 'pyoptsparse'.  Defaults
         to 'scipy'.
-    opt_method : string
+    opt_method : str
         default optimization method.  Valid values depends on the optimization package.
         Defaults to 'SLSQP'.
-    opt_settings : dict[str, any]
+    opt_settings : Optional[Dict[str, Any]]
         optimizer specific settings.
     """
 
-    def __init__(self, root_dir, constants, discrete_params, init_params, env_list,
-                 update=None, rtol=1e-5, atol=1e-18, compression='gzip',
-                 method='spline', opt_package='scipy', opt_method='SLSQP',
-                 opt_settings=None, **kwargs):
+    def __init__(self,  # type: CharDB
+                 root_dir,  # type: str
+                 constants,  # type: Dict[str, Any]
+                 discrete_params,  # type: List[str]
+                 init_params,  # type: Dict[str, Any]
+                 env_list,  # type: List[str]
+                 update=False,  # type: bool
+                 rtol=1e-5,  # type: float
+                 atol=1e-18,  # type: float
+                 compression='gzip',  # type: str
+                 method='spline',  # type: str
+                 opt_package='scipy',  # type: str
+                 opt_method='SLSQP',  # type: str
+                 opt_settings=None,  # type: Optional[Dict[str, Any]]
+                 **kwargs  # type: **kwargs
+                 ):
+        # type: (...) -> None
 
         root_dir = os.path.abspath(os.path.expandvars(root_dir))
 
@@ -492,16 +505,21 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
         if 'env' in discrete_params:
             discrete_params.remove('env')
 
+        if opt_settings is None:
+            opt_settings = {}
+        else:
+            pass
+
         if opt_method == 'IPOPT' and not opt_settings:
             # set default IPOPT settings
-            opt_settings = dict(option_file_name='')
+            opt_settings['option_file_name'] = ''
 
         self._discrete_params = discrete_params
         self._params = init_params.copy()
         self._env_list = env_list
         self._config = dict(opt_package=opt_package,
                             opt_method=opt_method,
-                            opt_settings=opt_settings or {},
+                            opt_settings=opt_settings,
                             rtol=rtol,
                             atol=atol,
                             method=method,
@@ -569,32 +587,38 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
 
     @staticmethod
     def _convert_hdf5_array(arr):
+        # type: (np.ndarray) -> np.ndarray
         """Check if raw bytes array, if so convert to unicode array."""
         if arr.dtype.kind == 'S':
             return arr.astype('U')
         return arr
 
-    def _load_sim_data(self, fname, constants, discrete_params):
+    def _load_sim_data(self,  # type: CharDB
+                       fname,  # type: str
+                       constants,  # type: Dict[str, Any]
+                       discrete_params  # type: List[str]
+                       ):
+        # type: (...) -> Tuple[Dict[str, np.ndarray], List[str], List[np.ndarray], Dict[str, Any]]
         """Returns the simulation data.
 
         Parameters
         ----------
         fname : str
             the simulation filename.
-        constants : dict[str, any]
+        constants : Dict[str, Any]
             the constants dictionary.
-        discrete_params : list[str]
+        discrete_params : List[str]
             a list of parameters that should take on discrete values.
 
         Returns
         -------
-        data_dict : dict[str, numpy.array]
+        data_dict : Dict[str, np.ndarray]
             a dictionary from output name to data as numpy array.
-        master_attrs : list[str]
+        master_attrs : List[str]
             list of attribute name for each dimension of numpy array.
-        master_values : list[numpy.array]
+        master_values : List[np.ndarray]
             list of attribute values for each dimension.
-        file_constants : dict[str, any]
+        file_constants : Dict[str, Any]
             the constants dictionary in file.
         """
         if not os.path.exists(fname):
@@ -689,6 +713,7 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
         return master_dict, master_attrs, master_values, file_constants
 
     def __getitem__(self, param):
+        # type: (str) -> Any
         """Returns the given parameter value.
 
         Parameters
@@ -698,19 +723,20 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
 
         Returns
         -------
-        val : any
+        val : Any
             parameter value.
         """
         return self._params[param]
 
     def __setitem__(self, key, value):
+        # type: (str, Any) -> None
         """Sets the given parameter value.
 
         Parameters
         ----------
         key : str
             parameter name.
-        value : any
+        value : Any
             parameter value.  None to unset.
         """
         rtol, atol = self.get_config('rtol'), self.get_config('atol')
@@ -732,28 +758,30 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
         self._params[key] = value
 
     def get_config(self, name):
+        # type: (str) -> Any
         """Returns the configuration value.
 
         Parameters
         ----------
-        name : string
+        name : str
             configuration name.
 
         Returns
         -------
-        val : any
+        val : Any
             configuration value.
         """
         return self._config[name]
 
     def set_config(self, name, value):
+        # type: (str, Any) -> None
         """Sets the configuration value.
 
         Parameters
         ----------
-        name : string
+        name : str
             configuration name.
-        value : any
+        value : Any
             configuration value.
         """
         if name not in self._config:
@@ -762,23 +790,26 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
 
     @property
     def env_list(self):
+        # type: () -> List[str]
         """The list of simulation environments to consider."""
         return self._env_list
 
     @env_list.setter
     def env_list(self, new_env_list):
+        # type: (List[str]) -> None
         """Sets the list of simulation environments to consider."""
         self._env_list = new_env_list
 
     @classmethod
     def get_sim_file(cls, root_dir, constants):
+        # type: (str, Dict[str, Any]) -> str
         """Returns the simulation data file name.
 
         Parameters
         ----------
         root_dir : str
             absolute path to the root characterization data directory.
-        constants : dict[str, any]
+        constants : Dict[str, Any]
             constants dictionary.
 
         Returns
@@ -790,13 +821,14 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     def get_cache_file(cls, root_dir, constants):
+        # type: (str, Dict[str, Any]) -> str
         """Returns the post-processed characterization data file name.
 
         Parameters
         ----------
         root_dir : str
             absolute path to the root characterization data directory.
-        constants : dict[str, any]
+        constants : Dict[str, Any]
             constants dictionary.
 
         Returns
@@ -808,60 +840,64 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     def post_process_data(cls, sim_data, sweep_params, sweep_values, constants):
+        # type: (Dict[str, np.ndarray], List[str], List[np.ndarray], Dict[str, Any]) -> Dict[str, np.ndarray]
         """Postprocess simulation data.
 
         Parameters
         ----------
-        sim_data : dict[str, np.array]
+        sim_data : Dict[str, np.ndarray]
             the simulation data as a dictionary from output name to numpy array.
-        sweep_params : list[str]
+        sweep_params : List[str]
             list of parameter name for each dimension of numpy array.
-        sweep_values : list[numpy.array]
+        sweep_values : List[np.ndarray]
             list of parameter values for each dimension.
-        constants : dict[str, any]
+        constants : Dict[str, Any]
             the constants dictionary.
 
         Returns
         -------
-        data : dict[str, np.array]
+        data : Dict[str, np.ndarray]
             a dictionary of post-processed data.
         """
         raise NotImplementedError('Not implemented')
 
     @classmethod
     def derived_parameters(cls):
+        # type: () -> List[str]
         """Returns a list of derived parameters."""
         return []
 
     @classmethod
     def compute_derived_parameters(cls, fdict):
+        # type: (Dict[str, DiffFunction]) -> Dict[str, DiffFunction]
         """Compute derived parameter functions.
 
         Parameters
         ----------
-        fdict : dict[str, bag.math.dfun.DiffFunction]
+        fdict : Dict[str, DiffFunction]
             a dictionary from core parameter name to the corresponding function.
 
         Returns
         -------
-        deriv_dict : dict[str, bag.math.dfun.DiffFunction]
+        deriv_dict : Dict[str, DiffFunction]
             a dictionary from derived parameter name to the corresponding function.
         """
         return {}
 
     def _get_function_index(self, **kwargs):
+        # type: (**kwargs) -> List[int]
         """Returns the function index corresponding to given discrete parameter values.
 
         simulation environment index will be set to 0
 
         Parameters
         ----------
-        kwargs : dict[str, any]
-            dictionary of discrete parameter values.
+        **kwargs :
+            discrete parameter values.
 
         Returns
         -------
-        fidx_list : list[int]
+        fidx_list : List[int]
             the function index.
         """
         rtol, atol = self.get_config('rtol'), self.get_config('atol')
@@ -905,7 +941,7 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
 
                 # get scale list and data index
                 scale_list = []
-                didx = list(fidx_list)
+                didx = list(fidx_list)  # type: List[Union[int, slice]]
                 for vec in self._cont_values:
                     scale_list.append((vec[0], vec[1] - vec[0]))
                     didx.append(slice(0, vec.size))
@@ -931,7 +967,7 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
         ----------
         name : str
             name of the function.
-        kwargs :
+        **kwargs :
             dictionary of discrete parameter values.
 
         Returns
@@ -975,18 +1011,20 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
         return self._get_function_helper(name, fidx_list)
 
     def get_fun_sweep_params(self):
+        # type: () -> Tuple[List[str], List[Tuple[float, float]]]
         """Returns interpolation function sweep parameter names and values.
 
         Returns
         -------
-        sweep_params : list[str]
+        sweep_params : List[str]
             list of parameter names.
-        sweep_range : list[(float, float)]
+        sweep_range : List[Tuple[float, float]]
             list of parameter range
         """
         return self._cont_params, [(vec[0], vec[-1]) for vec in self._cont_values]
 
     def _get_fun_arg(self, **kwargs):
+        # type: (**kwargs) -> np.ndarray
         """Make numpy array of interpolation function arguments."""
         val_list = []
         for par in self._cont_params:
@@ -998,18 +1036,19 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
         return np.array(val_list)
 
     def query(self, **kwargs):
+        # type: (**kwargs) -> Dict[str, float]
         """Query the database for the values associated with the given parameters.
 
         All parameters must be specified.
 
         Parameters
         ----------
-        kwargs : dict[str, any]
+        **kwargs :
             parameter values.
 
         Returns
         -------
-        results : dict[str, float]
+        results : Dict[str, float]
             the characterization results.
         """
         results = {}
@@ -1025,14 +1064,22 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
 
         return results
 
-    def minimize(self, objective, define=None, cons=None, vector_params=None, debug=False, **kwargs):
+    def minimize(self,  # type: CharDB
+                 objective,  # type: str
+                 define=None,  # type: List[Tuple[str, int]]
+                 cons=None,  # type: Dict[str, Dict[str, float]]
+                 vector_params=None,  # type: Set[str]
+                 debug=False,  # type: bool
+                 **kwargs  # type: **kwargs
+                 ):
+        # type: (...) -> Dict[str, Union[np.ndarray, float]]
         """Find operating point that minimizes the given objective.
 
         Parameters
         ----------
         objective : str
             the objective to minimize.  Must be a scalar.
-        define : list[(str, int)]
+        define : List[Tuple[str, int]]
             list of expressions to define new variables.  Each
             element of the list is a tuple of string and integer.  The string
             contains a python assignment that computes the variable from
@@ -1042,20 +1089,20 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
             existing variables.  Using transistor as an example, defining
             'vgs = vds' will force the vgs of vds of the transistor to be
             equal.
-        cons : dict[string, dict[string, float]]
+        cons : Dict[str, Dict[str, float]]
             a dictionary from variable name to constraints of that variable.
             see OpenMDAO documentations for details on constraints.
-        vector_params : set[str]
+        vector_params : Set[str]
             set of input variables that are vector instead of scalar.  An input
             variable is a vector if it can change across simulation environments.
         debug : bool
             True to enable debugging messages.  Defaults to False.
-        kwargs : dict[str, any]
+        **kwargs :
             known parameter values.
 
         Returns
         -------
-        results : dict[str, np.array or float]
+        results : Dict[str, Union[np.ndarray, float]]
             the results dictionary.
         """
         cons = cons or {}
