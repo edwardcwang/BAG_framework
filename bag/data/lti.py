@@ -29,6 +29,8 @@ from typing import Dict, List
 
 import numpy as np
 import scipy.signal
+import scipy.sparse
+import scipy.sparse.linalg
 from scipy.signal.ltisys import TransferFunctionContinuous
 
 
@@ -39,19 +41,23 @@ class LTICircuit(object):
     we support resistors, capacitors, voltage controlled current sources, and small-signal model transistors.
 
     Note: Since this class work with Ac transfer functions, 'gnd' in this circuit is AC ground.
-
-    Parameters
-    ----------
-    node_list : List[str]
-        a list of all the nodes in the circuit.
     """
-    def __init__(self, node_list):
+    def __init__(self):
         # type: (List[str]) -> None
-        self._n = len(node_list)
-        self._gmat = np.zeros((self._n, self._n))
-        self._cmat = np.zeros((self._n, self._n))
-        self._node_id = {val: idx for idx, val in enumerate(node_list)}
-        self._node_id['gnd'] = -1
+        self._n = 0
+        self._gmat_data = {}
+        self._cmat_data = {}
+        self._node_id = {'gnd': -1, 'vss': -1, 'vdd': -1}
+
+    def _get_node_id(self, name):
+        # type: (str) -> int
+        if name not in self._node_id:
+            ans = self._n
+            self._node_id[name] = ans
+            self._n += 1
+            return ans
+        else:
+            return self._node_id[name]
 
     def add_res(self, res, p_name, n_name):
         # type: (float, str, str) -> None
@@ -66,19 +72,20 @@ class LTICircuit(object):
         n_name : str
             the negative terminal net name.
         """
-        node_p = self._node_id[p_name]
-        node_n = self._node_id[n_name]
+        node_p = self._get_node_id(p_name)
+        node_n = self._get_node_id(n_name)
 
         if node_p == node_n:
             return
         if node_p < node_n:
             node_p, node_n = node_n, node_p
+
         g = 1 / res
-        self._gmat[node_p, node_p] += g
+        self._gmat_data[(node_p, node_p)] += g
         if node_n >= 0:
-            self._gmat[node_p, node_n] -= g
-            self._gmat[node_n, node_n] += g
-            self._gmat[node_n, node_p] -= g
+            self._gmat_data[(node_p, node_n)] -= g
+            self._gmat_data[(node_n, node_n)] += g
+            self._gmat_data[(node_n, node_p)] -= g
 
     def add_gm(self, gm, p_name, n_name, cp_name, cn_name='gnd'):
         # type: (float, str, str, str, str) -> None
@@ -97,24 +104,24 @@ class LTICircuit(object):
         cn_name : str
             the negative voltage control terminal.  Defaults to 'gnd'.
         """
-        node_p = self._node_id[p_name]
-        node_n = self._node_id[n_name]
-        node_cp = self._node_id[cp_name]
-        node_cn = self._node_id[cn_name]
+        node_p = self._get_node_id(p_name)
+        node_n = self._get_node_id(n_name)
+        node_cp = self._get_node_id(cp_name)
+        node_cn = self._get_node_id(cn_name)
 
         if node_p == node_n or node_cp == node_cn:
             return
 
         if node_cp >= 0:
             if node_p >= 0:
-                self._gmat[node_p, node_cp] += gm
+                self._gmat_data[(node_p, node_cp)] += gm
             if node_n >= 0:
-                self._gmat[node_n, node_cp] -= gm
+                self._gmat_data[(node_n, node_cp)] -= gm
         if node_cn >= 0:
             if node_p >= 0:
-                self._gmat[node_p, node_cn] -= gm
+                self._gmat_data[(node_p, node_cn)] -= gm
             if node_n >= 0:
-                self._gmat[node_n, node_cn] += gm
+                self._gmat_data[(node_n, node_cn)] += gm
 
     def add_cap(self, cap, p_name, n_name):
         # type: (float, str, str) -> None
@@ -129,19 +136,19 @@ class LTICircuit(object):
         n_name : str
             the negative terminal net name.
         """
-        node_p = self._node_id[p_name]
-        node_n = self._node_id[n_name]
+        node_p = self._get_node_id(p_name)
+        node_n = self._get_node_id(n_name)
 
         if node_p == node_n:
             return
         if node_p < node_n:
             node_p, node_n = node_n, node_p
 
-        self._cmat[node_p, node_p] += cap
+        self._cmat_data[(node_p, node_p)] += cap
         if node_n >= 0:
-            self._cmat[node_p, node_n] -= cap
-            self._cmat[node_n, node_n] += cap
-            self._cmat[node_n, node_p] -= cap
+            self._cmat_data[(node_p, node_n)] -= cap
+            self._cmat_data[(node_n, node_n)] += cap
+            self._cmat_data[(node_n, node_p)] -= cap
 
     def add_transistor(self, tran_info, d_name, g_name, s_name, b_name='gnd', fg=1):
         # type: (Dict[str, float], str, str, str, str, int) -> None
@@ -183,6 +190,19 @@ class LTICircuit(object):
         self.add_cap(cdb, d_name, b_name)
         self.add_cap(csb, s_name, b_name)
 
+    @staticmethod
+    def dict_to_csc_mat(table, shape, ignore_row=-1, ignore_col=-1):
+        row_list = []
+        col_list = []
+        data_list = []
+        for (row, col), data in table.items():
+            if row != ignore_row and col != ignore_col:
+                row_list.append(row)
+                col_list.append(col)
+                data_list.append(data)
+
+        return scipy.sparse.csc_matrix((data_list, (row_list, col_list)), shape=shape)
+
     def get_voltage_gain_system(self, in_name, out_name, atol=0.0):
         # type: (str, str, float) -> TransferFunctionContinuous
         """Computes and return the voltage gain transfer function between the two given nodes.
@@ -207,34 +227,34 @@ class LTICircuit(object):
         if node_in == node_out:
             raise ValueError('Input and output nodes are the same.')
 
-        # remove KCL constraint from input node
-        new_gmat = np.delete(self._gmat, node_in, axis=0)
-        new_cmat = np.delete(self._cmat, node_in, axis=0)
+        mat_shape = (self._n - 1, self._n)
+        gmat = self.dict_to_csc_mat(self._gmat_data, mat_shape, ignore_row=node_in)
+        cmat = self.dict_to_csc_mat(self._cmat_data, mat_shape, ignore_row=node_in)
 
         # separate input voltage from state space
         col_core = [idx for idx in range(self._n) if idx != node_in]
-        cmat_core = new_cmat[:, col_core]
-        gmat_core = new_gmat[:, col_core]
+        cmat_core = cmat[:, col_core]
+        gmat_core = gmat[:, col_core]
 
-        mat_rank = np.linalg.matrix_rank(cmat_core)
-        if mat_rank != cmat_core.shape[0]:
+        try:
+            solve_fun = scipy.sparse.linalg.factorized(cmat_core)
+        except RuntimeError:
             raise ValueError('cap matrix is singular.')
 
-        inv_mat = np.linalg.inv(cmat_core)
-        cvec_in = new_cmat[:, node_in:node_in + 1]
-        gvec_in = new_gmat[:, node_in:node_in + 1]
+        cvec_in = cmat[:, node_in:node_in + 1]
+        gvec_in = gmat[:, node_in:node_in + 1]
 
         if node_out > node_in:
             node_out -= 1
 
         # modify state variables so we don't have input derivative term
-        weight_vec = np.dot(inv_mat, cvec_in)
+        weight_vec = solve_fun(cvec_in)
         gvec_in -= np.dot(gmat_core, weight_vec)
         dmat = np.ones((1, 1)) * -weight_vec[node_out, 0]
 
         # construct state space model.
-        amat = np.dot(inv_mat, -gmat_core)
-        bmat = np.dot(inv_mat, -gvec_in)
+        amat = solve_fun(-gmat_core)
+        bmat = solve_fun(-gvec_in)
         cmat = np.zeros((1, self._n - 1))
         cmat[0, node_out] = 1
 
@@ -277,31 +297,30 @@ class LTICircuit(object):
                 raise ValueError('Shorting input/output.')
 
             # remove node that's shorted to ground
-            new_gmat = np.delete(self._gmat, node_short, axis=0)
-            new_cmat = np.delete(self._cmat, node_short, axis=0)
-            col_list = [idx for idx in range(self._n) if idx != node_short]
-            new_gmat = new_gmat[:, col_list]
-            new_cmat = new_cmat[:, col_list]
+            mat_shape = (self._n - 1, self._n - 1)
+            gmat = self.dict_to_csc_mat(self._gmat_data, mat_shape, ignore_row=node_short, ignore_col=node_short)
+            cmat = self.dict_to_csc_mat(self._cmat_data, mat_shape, ignore_row=node_short, ignore_col=node_short)
             if node_in > node_short:
                 node_in -= 1
             if node_out > node_short:
                 node_out -= 1
         else:
-            new_gmat = self._gmat.copy()
-            new_cmat = self._cmat.copy()
+            mat_shape = (self._n, self._n)
+            gmat = self.dict_to_csc_mat(self._gmat_data, mat_shape)
+            cmat = self.dict_to_csc_mat(self._cmat_data, mat_shape)
 
-        mat_rank = np.linalg.matrix_rank(new_cmat)
-        if mat_rank != new_cmat.shape[0]:
+        try:
+            solve_fun = scipy.sparse.linalg.factorized(cmat)
+        except RuntimeError:
             raise ValueError('cap matrix is singular.')
 
-        inv_mat = np.linalg.inv(new_cmat)
-        bmat = np.zeros((mat_rank, 1))
+        bmat = np.zeros((mat_shape[0], 1))
         bmat[node_in, 0] = -1
 
         # construct state space model
-        amat = np.dot(inv_mat, -new_gmat)
-        bmat = np.dot(inv_mat, -bmat)
-        cmat = np.zeros((1, mat_rank))
+        amat = solve_fun(-gmat)
+        bmat = solve_fun(-bmat)
+        cmat = np.zeros((1, mat_shape[0]))
         cmat[0, node_out] = 1
         dmat = np.zeros((1, 1))
 
