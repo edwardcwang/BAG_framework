@@ -57,8 +57,6 @@ def interpolate_grid(scale_list, values, method='spline',
         Defaults to 'spline'.
     extrapolate : bool
         True to extrapolate data output of given bounds.  Defaults to False.
-        For spline interpolation on 3D data or greater, extrapolation is not
-        supported.
     delta : float
         the finite difference step size.  Finite difference is only used for
         linear interpolation and spline interpolation on 3D data or greater.
@@ -82,10 +80,8 @@ def interpolate_grid(scale_list, values, method='spline',
         if ndim == 2:
             return Spline2D(scale_list, values, extrapolate=extrapolate)
         else:
-            if extrapolate:
-                raise ValueError('Extrapolation not supported for spline interpolation'
-                                 'on 3 or more dimensional data.')
-            return MapCoordinateSpline(scale_list, values, delta=delta, num_points=num_extrapolate)
+            return MapCoordinateSpline(scale_list, values, delta=delta, extrapolate=extrapolate,
+                                       num_extrapolate=num_extrapolate)
     else:
         raise ValueError('Unsupported interpolation method: %s' % method)
 
@@ -322,6 +318,9 @@ class MapCoordinateSpline(DiffFunction):
     scipy.ndimage.interpolation package.  The derivative is done using
     finite difference.
 
+    if extrapolate is True, we use linear interpolation for values outside of
+    bounds.
+
     Note: By default, map_coordinate uses the nearest value for all points
     outside the boundary.  This will cause undesired interpolation
     behavior near boundary points.  To solve this, we linearly
@@ -333,17 +332,16 @@ class MapCoordinateSpline(DiffFunction):
         a list of (offset, spacing) for each input dimension.
     values : numpy.array
         The output data.
-    num_points : int
+    extrapolate : bool
+        True to linearly extrapolate outside of bounds.
+    num_extrapolate : int
         number of points to extrapolate in each dimension in each direction.
     delta : float
         the finite difference step size.  Defaults to 1e-4 (relative to a spacing of 1).
-    rtol : float
-        relative tolerance used to check out of bounds error.
-    atol : float
-        absolute tolerance used to check out of bounds error.
     """
 
-    def __init__(self, scale_list, values, num_points=2, delta=1e-4, rtol=1e-6, atol=1e-4):
+    def __init__(self, scale_list, values, extrapolate=False, num_extrapolate=2,
+                 delta=1e-4):
         shape = values.shape
         ndim = len(shape)
 
@@ -355,16 +353,17 @@ class MapCoordinateSpline(DiffFunction):
 
         self._scale_list = scale_list
         self._max = values.shape
-        self._ext = num_points
+        self._ext = num_extrapolate
 
         # linearly extrapolate given values
-        fun = LinearInterpolator([(0, 1)] * ndim, values, extrapolate=True)
+        self._extfun = LinearInterpolator([(0, 1)] * ndim, values, extrapolate=True)
+        self._extrapolate = extrapolate
         swp_values = []
         ext_xi_shape = []
         delta_list = []
         for (offset, scale), n in zip(scale_list, shape):
-            swp_values.append(np.arange(-num_points, n + num_points))
-            ext_xi_shape.append(n + 2 * num_points)
+            swp_values.append(np.arange(-num_extrapolate, n + num_extrapolate))
+            ext_xi_shape.append(n + 2 * num_extrapolate)
             delta_list.append(scale * delta)
 
         ext_xi_shape.append(ndim)
@@ -373,10 +372,8 @@ class MapCoordinateSpline(DiffFunction):
         for idx, xmat in enumerate(xmat_list):
             xi[..., idx] = xmat
 
-        values_ext = fun(xi)
+        values_ext = self._extfun(xi)
         self._filt_values = imag_interp.spline_filter(values_ext)
-        self._rtol = rtol
-        self._atol = atol
         DiffFunction.__init__(self, ndim, delta_list=delta_list)
 
     def _normalize_inputs(self, xi):
@@ -387,29 +384,26 @@ class MapCoordinateSpline(DiffFunction):
                              "but this interpolator has dimension %d" % (xi.shape[-1], self.ndim))
 
         xi = np.atleast_2d(xi.copy())
+        need_extrapolate = False
         for idx, (offset, scale) in enumerate(self._scale_list):
             xi[..., idx] -= offset
             xi[..., idx] /= scale
             max_val = np.max(xi[..., idx])
             if max_val > self._max[idx]:
-                # check if we're really out of bounds or is it just floating point error
-                if (max_val - self._max[idx]) < self._max[idx] * self._rtol:
-                    xi[..., idx] = np.minimum(xi[..., idx], self._max[idx])
-                else:
+                if not self._extrapolate:
                     raise ValueError('Some inputs on dimension %d out of bounds.  Max value = %.4g' % (idx, max_val))
-
+                else:
+                    need_extrapolate = True
         min_val = np.min(xi)
         if min_val < 0.0:
-            # check if we're really out of bounds or is it just floating point error
-            if -min_val < self._atol:
-                xi = np.maximum(xi, 0.0)
-            else:
+            if not self._extrapolate:
                 raise ValueError('Some inputs are negative.  Min Value = %.4g' % min_val)
-
+            else:
+                need_extrapolate = True
         # take extension input account.
         xi += self._ext
 
-        return xi
+        return xi, need_extrapolate
 
     def __call__(self, xi):
         """Interpolate at the given coordinate.
@@ -424,6 +418,8 @@ class MapCoordinateSpline(DiffFunction):
         val : numpy.array
             The interpolated values at the given coordinates.
         """
-        xi = self._normalize_inputs(xi)
-        # noinspection PyTypeChecker
-        return imag_interp.map_coordinates(self._filt_values, xi.T, mode='nearest', prefilter=False).T
+        xi, extrapolate = self._normalize_inputs(xi)
+        if extrapolate:
+            return self._extfun(xi)
+        else:
+            return imag_interp.map_coordinates(self._filt_values, xi.T, mode='nearest', prefilter=False).T
