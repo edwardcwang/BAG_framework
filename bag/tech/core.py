@@ -949,7 +949,7 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
                 # make interpolator.
                 cur_data = char_data[didx]
                 method = self.get_config('method')
-                ftable[fidx_list] = interpolate_grid(scale_list, cur_data, method=method)
+                ftable[fidx_list] = interpolate_grid(scale_list, cur_data, method=method, extrapolate=True)
             else:
                 # derived parameter
                 core_fdict = {fn: self._get_function_helper(fn, fidx_list) for fn in self._data}
@@ -959,56 +959,36 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
 
         return ftable[fidx_list]
 
-    def get_function(self, name, **kwargs):
-        # type: (str, **kwargs) -> VectorDiffFunction
+    def get_function(self, name, env='', **kwargs):
+        # type: (str, str, **kwargs) -> Union[VectorDiffFunction, DiffFunction]
         """Returns a function for the given output.
 
         Parameters
         ----------
         name : str
             name of the function.
+        env : str
+            if not empty, we will return function for just the given simulation environment.
         **kwargs :
             dictionary of discrete parameter values.
 
         Returns
         -------
-        output : VectorDiffFunction
+        output : Union[VectorDiffFunction, DiffFunction]
             the output vector function.
         """
         fidx_list = self._get_function_index(**kwargs)
-        fun_list = []
-        for env in self.env_list:
+        if not env:
+            fun_list = []
+            for env in self.env_list:
+                env_idx = np.where(self._env_values == env)[0][0]
+                fidx_list[0] = env_idx
+                fun_list.append(self._get_function_helper(name, fidx_list))
+            return VectorDiffFunction(fun_list)
+        else:
             env_idx = np.where(self._env_values == env)[0][0]
             fidx_list[0] = env_idx
-            fun_list.append(self._get_function_helper(name, fidx_list))
-        return VectorDiffFunction(fun_list)
-
-    def get_scalar_function(self, name, env='', **kwargs):
-        # type: (str, str, **kwargs) -> DiffFunction
-        """Returns a scalar function for the given output for one simulation environment.
-
-        Parameters
-        ----------
-        name : str
-            name of the function.
-        env : str
-            the simulation environment name.
-        kwargs :
-            dictionary of discrete parameter values.
-
-        Returns
-        -------
-        output : DiffFunction
-            the output vector function.
-        """
-        if not env:
-            if len(self._env_list) > 1:
-                raise ValueError('More than one simulation environment is defined.')
-            env = self._env_list[0]
-        fidx_list = self._get_function_index(**kwargs)
-        env_idx = np.where(self._env_values == env)[0][0]
-        fidx_list[0] = env_idx
-        return self._get_function_helper(name, fidx_list)
+            return self._get_function_helper(name, fidx_list)
 
     def get_fun_sweep_params(self):
         # type: () -> Tuple[List[str], List[Tuple[float, float]]]
