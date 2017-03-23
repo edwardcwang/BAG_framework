@@ -249,7 +249,7 @@ class LTICircuit(object):
 
         # modify state variables so we don't have input derivative term
         weight_vec = solve_fun(cvec_in)
-        gvec_in -= np.dot(gmat_core, weight_vec)
+        gvec_in -= gmat_core.dot(weight_vec)
         dmat = np.ones((1, 1)) * -weight_vec[node_out, 0]
 
         # construct state space model.

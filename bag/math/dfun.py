@@ -30,6 +30,7 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 import abc
+from typing import Union
 
 import numpy as np
 from future.utils import with_metaclass
@@ -190,6 +191,24 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
             ans[..., idx] = (val[2 * idx, ...] - val[2 * idx + 1, ...]) / delta
         return ans
 
+    def transform_input(self, amat, bmat):
+        # type: (np.ndarray, np.ndarray) -> DiffFunction
+        """Returns f(Ax + B), where f is this function and A, B are matrices.
+
+        Parameters
+        ----------
+        amat : np.ndarray
+            the input transform matrix.
+        bmat : np.ndarray
+            the input shift matrix.
+
+        Returns
+        -------
+        dfun : DiffFunction
+            a scalar differential function.
+        """
+        return InLinTransformFunction(self, amat, bmat)
+
     def __add__(self, other):
         if isinstance(other, DiffFunction):
             return SumDiffFunction(self, other, f2_sgn=1.0)
@@ -204,6 +223,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
         return self.__add__(other)
 
     def __sub__(self, other):
+        # type: (Union[DiffFunction, float, int, np.ndarray]) -> DiffFunction
         if isinstance(other, DiffFunction):
             return SumDiffFunction(self, other, f2_sgn=-1.0)
         elif isinstance(other, float) or isinstance(other, int):
@@ -272,6 +292,57 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
 
     def __neg__(self):
         return ScaleAddFunction(self, 0.0, -1.0)
+
+
+class InLinTransformFunction(DiffFunction):
+    """A DiffFunction where the input undergoes a linear transformation first.
+
+    This function computes f(Ax + B), where A and B are matrices.
+
+    Parameters
+    ----------
+    f1 : DiffFunction
+        the parent function.
+    amat : np.ndarray
+        the input transform matrix.
+    bmat : np.ndarray
+        the input shift matrix.
+    """
+    def __init__(self, f1, amat, bmat):
+        # type: (DiffFunction, np.ndarray, np.ndarray) -> None
+        if amat.shape[0] != f1.ndim or bmat.shape[0] != f1.ndim:
+            raise ValueError('amat/bmat number of rows must be %d' % f1.ndim)
+        if len(bmat.shape) != 1:
+            raise ValueError('bmat must be 1 dimension.')
+
+        super(InLinTransformFunction, self).__init__(amat.shape[1], delta_list=None)
+        self._f1 = f1
+        self._amat = amat
+        self._bmat = bmat.reshape(-1, 1)
+
+    def _get_arg(self, xi):
+        xi = np.asarray(xi)
+        xi_shape = xi.shape
+        my_ndim = self.ndim
+        if xi_shape[-1] != my_ndim:
+            raise ValueError('Last dimension must have size %d' % my_ndim)
+
+        xi = xi.reshape(-1, my_ndim)
+        return (self._amat.dot(xi.T) + self._bmat).T, xi_shape
+
+    def __call__(self, xi):
+        farg, xi_shape = self._get_arg(xi)
+        result = self._f1(farg)
+        return result.reshape(xi_shape[:-1])
+
+    def deriv(self, xi, j):
+        jmat = self.jacobian(xi)
+        return jmat[..., 0, j]
+
+    def jacobian(self, xi):
+        farg, xi_shape = self._get_arg(xi)
+        jmat = self._f1.jacobian(farg).dot(self._amat)
+        return jmat.reshape(xi_shape[:-1] + (1, self.ndim))
 
 
 class ScaleAddFunction(DiffFunction):
