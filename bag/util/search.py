@@ -79,9 +79,9 @@ class BinaryIterator(object):
         # type: () -> None
         """Increment this iterator."""
         if self.is_float:
-            self.low = self.current + self.step
-        else:
             self.low = self.current
+        else:
+            self.low = self.current + self.step
         if self.high is not None:
             if self.is_float:
                 self.current = (self.low + self.high) / 2
