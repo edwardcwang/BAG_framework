@@ -30,58 +30,84 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
+from typing import Union, Optional
+
 
 class BinaryIterator(object):
-    """A class that returns the next index to evaluate for binary search.
+    """A class that performs binary search over integer or float range.
 
     This class simplifies binary search algorithm writing, whether it be bounded or unbounded.
 
     Parameters
     ----------
-    low : int
-        the lower index (inclusive).
-    high : int or None
+    low : Union[float, int]
+        the lower index/bound (inclusive).
+    high : Optional[Union[float, int]]
         the higher index (exclusive).  None for unbounded binary search.
+    step : Union[float, int]
+        the step size.
+    is_float : bool
+        True if this BinaryIterator is used for float values.
     """
-    def __init__(self, low, high):
+
+    def __init__(self, low, high, step=1, is_float=False):
+        # type: (Union[float, int], Optional[Union[float, int]], Union[float, int], bool) -> None
         self.low = low
         self.high = high
+        self.step = step
+        self.is_float = is_float
         if high is not None:
-            self.current = (low + high) // 2
+            if is_float:
+                self.current = (low + high) / 2
+            else:
+                self.current = (low + high) // 2
         else:
             self.current = low
-        self.save_index = None
+        self.save_marker = None
 
     def has_next(self):
+        # type: () -> bool
         """returns True if this iterator is not finished yet."""
-        return self.high is None or self.low < self.high
+        return self.high is None or self.low + self.step <= self.high
 
     def get_next(self):
-        """Returns the next index to look at."""
-        if self.high is None or self.low < self.high:
-            return self.current
-        return None
+        # type: () -> Union[float, int]
+        """Returns the next value to look at."""
+        return self.current
 
     def up(self):
+        # type: () -> None
         """Increment this iterator."""
-        self.low = self.current + 1
+        if self.is_float:
+            self.low = self.current + self.step
+        else:
+            self.low = self.current
         if self.high is not None:
-            self.current = (self.low + self.high) // 2
+            if self.is_float:
+                self.current = (self.low + self.high) / 2
+            else:
+                self.current = (self.low + self.high) // 2
         else:
             if self.current > 0:
                 self.current *= 2
             else:
-                self.current = 1
+                self.current = self.step
 
     def down(self):
+        # type: () -> None
         """Decrement this iterator."""
         self.high = self.current
-        self.current = (self.low + self.high) // 2
+        if self.is_float:
+            self.current = (self.low + self.high) / 2
+        else:
+            self.current = (self.low + self.high) // 2
 
     def save(self):
+        # type: () -> None
         """Save the current index"""
-        self.save_index = self.current
+        self.save_marker = self.current
 
     def get_last_save(self):
-        """Returns the saved index."""
-        return self.save_index
+        # type: () -> Union[float, int]
+        """Returns the last saved index."""
+        return self.save_marker
