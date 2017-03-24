@@ -24,6 +24,10 @@
 
 """This module defines functions and classes useful for characterizing linear time-invariant circuits.
 """
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+# noinspection PyUnresolvedReferences,PyCompatibility
+from builtins import *
 
 from typing import Dict, List
 
@@ -47,7 +51,7 @@ class LTICircuit(object):
         self._n = 0
         self._gmat_data = {}
         self._cmat_data = {}
-        self._node_id = {'gnd': -1, 'vss': -1, 'vdd': -1}
+        self._node_id = {'gnd': -1, 'vss': -1, 'VSS': -1, 'vdd': -2, 'VDD': -2}
 
     def _get_node_id(self, name):
         # type: (str) -> int
