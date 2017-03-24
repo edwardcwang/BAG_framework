@@ -44,7 +44,7 @@ class DCCircuit(object):
     Parameters
     ----------
     ndb : MosCharDB
-            nmos characterization database.
+        nmos characterization database.
     pdb : MosCharDB
         pmos characterization database.
     """
