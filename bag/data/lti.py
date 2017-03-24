@@ -59,6 +59,13 @@ class LTICircuit(object):
         else:
             return self._node_id[name]
 
+    @staticmethod
+    def _add(mat, key, val):
+        if key in mat:
+            mat[key] += val
+        else:
+            mat[key] = val
+
     def add_res(self, res, p_name, n_name):
         # type: (float, str, str) -> None
         """Adds a resistor to the circuit.
@@ -81,11 +88,11 @@ class LTICircuit(object):
             node_p, node_n = node_n, node_p
 
         g = 1 / res
-        self._gmat_data[(node_p, node_p)] += g
+        self._add(self._gmat_data, (node_p, node_p), g)
         if node_n >= 0:
-            self._gmat_data[(node_p, node_n)] -= g
-            self._gmat_data[(node_n, node_n)] += g
-            self._gmat_data[(node_n, node_p)] -= g
+            self._add(self._gmat_data, (node_p, node_n), -g)
+            self._add(self._gmat_data, (node_n, node_p), -g)
+            self._add(self._gmat_data, (node_n, node_n), g)
 
     def add_gm(self, gm, p_name, n_name, cp_name, cn_name='gnd'):
         # type: (float, str, str, str, str) -> None
@@ -114,14 +121,14 @@ class LTICircuit(object):
 
         if node_cp >= 0:
             if node_p >= 0:
-                self._gmat_data[(node_p, node_cp)] += gm
+                self._add(self._gmat_data, (node_p, node_cp), gm)
             if node_n >= 0:
-                self._gmat_data[(node_n, node_cp)] -= gm
+                self._add(self._gmat_data, (node_n, node_cp), -gm)
         if node_cn >= 0:
             if node_p >= 0:
-                self._gmat_data[(node_p, node_cn)] -= gm
+                self._add(self._gmat_data, (node_p, node_cn), -gm)
             if node_n >= 0:
-                self._gmat_data[(node_n, node_cn)] += gm
+                self._add(self._gmat_data, (node_n, node_cn), gm)
 
     def add_cap(self, cap, p_name, n_name):
         # type: (float, str, str) -> None
@@ -144,19 +151,19 @@ class LTICircuit(object):
         if node_p < node_n:
             node_p, node_n = node_n, node_p
 
-        self._cmat_data[(node_p, node_p)] += cap
+        self._add(self._cmat_data, (node_p, node_p), cap)
         if node_n >= 0:
-            self._cmat_data[(node_p, node_n)] -= cap
-            self._cmat_data[(node_n, node_n)] += cap
-            self._cmat_data[(node_n, node_p)] -= cap
+            self._add(self._cmat_data, (node_p, node_n), -cap)
+            self._add(self._cmat_data, (node_n, node_p), -cap)
+            self._add(self._cmat_data, (node_n, node_n), cap)
 
     def add_transistor(self, tran_info, d_name, g_name, s_name, b_name='gnd', fg=1):
-        # type: (Dict[str, float], str, str, str, str, int) -> None
+        # type: (Dict[str, np.ndarray], str, str, str, str, int) -> None
         """Adds a small signal transistor model to the circuit.
 
         Parameters
         ----------
-        tran_info : Dict[str, float]
+        tran_info : Dict[str, np.ndarray]
             a dictionary of 1-finger transistor small signal parameters.  Should contain gm, gds, gb,
             cgd, cgs, cgb, cds, cdb, and csb.
         d_name : str
@@ -170,15 +177,15 @@ class LTICircuit(object):
         fg : int
             number of transistor fingers.
         """
-        gm = tran_info['gm'] * fg
-        ro = 1 / (tran_info['gds'] * fg)
-        gb = tran_info['gb'] * fg
-        cgd = tran_info['cgd'] * fg
-        cgs = tran_info['cgs'] * fg
-        cgb = tran_info['cgb'] * fg
-        cds = tran_info['cds'] * fg
-        cdb = tran_info['cdb'] * fg
-        csb = tran_info['csb'] * fg
+        gm = tran_info['gm'][0] * fg
+        ro = 1 / (tran_info['gds'][0] * fg)
+        gb = tran_info['gb'][0] * fg
+        cgd = tran_info['cgd'][0] * fg
+        cgs = tran_info['cgs'][0] * fg
+        cgb = tran_info['cgb'][0] * fg
+        cds = tran_info['cds'][0] * fg
+        cdb = tran_info['cdb'][0] * fg
+        csb = tran_info['csb'][0] * fg
 
         self.add_gm(gm, d_name, s_name, g_name, s_name)
         self.add_res(ro, d_name, s_name)
@@ -197,6 +204,10 @@ class LTICircuit(object):
         data_list = []
         for (row, col), data in table.items():
             if row != ignore_row and col != ignore_col:
+                if row > ignore_row >= 0:
+                    row -= 1
+                if col > ignore_col >= 0:
+                    col -= 1
                 row_list.append(row)
                 col_list.append(col)
                 data_list.append(data)
@@ -236,25 +247,23 @@ class LTICircuit(object):
         cmat_core = cmat[:, col_core]
         gmat_core = gmat[:, col_core]
 
-        try:
-            solve_fun = scipy.sparse.linalg.factorized(cmat_core)
-        except RuntimeError:
-            raise ValueError('cap matrix is singular.')
-
-        cvec_in = cmat[:, node_in:node_in + 1]
-        gvec_in = gmat[:, node_in:node_in + 1]
+        cvec_in = cmat[:, node_in].todense().A1
+        gvec_in = gmat[:, node_in].todense().A1
 
         if node_out > node_in:
             node_out -= 1
 
         # modify state variables so we don't have input derivative term
-        weight_vec = solve_fun(cvec_in)
+        weight_vec = scipy.sparse.linalg.spsolve(cmat_core, cvec_in)
+        if np.any(np.isnan(weight_vec)):
+            raise ValueError('cap matrix is singular.')
+
         gvec_in -= gmat_core.dot(weight_vec)
-        dmat = np.ones((1, 1)) * -weight_vec[node_out, 0]
+        dmat = np.ones((1, 1)) * -weight_vec[node_out]
 
         # construct state space model.
-        amat = solve_fun(-gmat_core)
-        bmat = solve_fun(-gvec_in)
+        amat = scipy.sparse.linalg.spsolve(cmat_core, -gmat_core).todense().A
+        bmat = scipy.sparse.linalg.spsolve(cmat_core, -gvec_in).reshape(-1, 1)
         cmat = np.zeros((1, self._n - 1))
         cmat[0, node_out] = 1
 
@@ -309,17 +318,17 @@ class LTICircuit(object):
             gmat = self.dict_to_csc_mat(self._gmat_data, mat_shape)
             cmat = self.dict_to_csc_mat(self._cmat_data, mat_shape)
 
-        try:
-            solve_fun = scipy.sparse.linalg.factorized(cmat)
-        except RuntimeError:
-            raise ValueError('cap matrix is singular.')
-
         bmat = np.zeros((mat_shape[0], 1))
         bmat[node_in, 0] = -1
 
         # construct state space model
-        amat = solve_fun(-gmat)
-        bmat = solve_fun(-bmat)
+        try:
+            amat = scipy.sparse.linalg.spsolve(cmat, -gmat)
+        except RuntimeError:
+            raise ValueError('cap matrix is singular.')
+
+        amat = amat.todense().A
+        bmat = scipy.sparse.linalg.spsolve(cmat, -bmat).reshape(-1, 1)
         cmat = np.zeros((1, mat_shape[0]))
         cmat[0, node_out] = 1
         dmat = np.zeros((1, 1))
