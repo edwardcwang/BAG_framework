@@ -157,7 +157,7 @@ class DCCircuit(object):
         ndim = len(node_list)
 
         # step 2: get Av and bv
-        amatv = scipy.sparse.csc_matrix(([1] * ndim, (node_list, np.arange(ndim))), shape=(self._n, ndim))
+        amatv = scipy.sparse.csr_matrix(([1] * ndim, (node_list, np.arange(ndim))), shape=(self._n, ndim))
         bmatv = np.zeros(self._n)
         for nid, val in self._node_voltage.items():
             bmatv[nid] = val
@@ -174,7 +174,7 @@ class DCCircuit(object):
             # step 3A: compute Ai and bi
             num_tran = len(fg_list)
             adata = [1, -1] * (3 * num_tran)
-            amati = scipy.sparse.csc_matrix((adata, (arow, acol)), shape=(4 * num_tran, self._n))
+            amati = scipy.sparse.csr_matrix((adata, (arow, acol)), shape=(4 * num_tran, self._n))
             bmati = np.zeros(4 * num_tran)
             bmati[0::4] = bdata
 
@@ -195,7 +195,7 @@ class DCCircuit(object):
                     out_col.append(out_col_cnt)
                 out_col_cnt += 1
         # construct output matrix
-        out_mat = scipy.sparse.csc_matrix((out_data, (out_row, out_col)), shape=(ndim, out_col_cnt))
+        out_mat = scipy.sparse.csr_matrix((out_data, (out_row, out_col)), shape=(ndim, out_col_cnt))
 
         # step 4: define zero function
         def zero_fun(varr):
@@ -209,11 +209,26 @@ class DCCircuit(object):
                 offset += num_out
             return out_mat.dot(iarr)
 
+        # step 5: define zero function
+        def jac_fun(varr):
+            jarr = np.empty((out_col_cnt, ndim))
+            offset = 0
+            for idsf, smat, ai, bi in ifun_list:
+                num_out = smat.shape[0]
+                # reshape going row first instead of column
+                arg = (ai.dot(varr) + bi).reshape(4, -1, order='F').T
+                jcur = smat.dot(idsf.jacobian(arg))
+                for idx in range(num_out):
+                    # ai is sparse matrix; multiplication is matrix
+                    jarr[offset + idx, :] = jcur[idx, :] @ ai[4 * idx:4 * idx + 4, :]
+                offset += num_out
+            return out_mat.dot(jarr)
+
         xguess = np.empty(ndim)
         for name, guess_val in guess_dict.items():
             xguess[reverse_dict[self._node_id[name]]] = guess_val
 
-        result = scipy.optimize.root(zero_fun, xguess, tol=itol / inorm, method='hybr')
+        result = scipy.optimize.root(zero_fun, xguess, jac=jac_fun, tol=itol / inorm, method='hybr')
         if not result.success:
             raise ValueError('solution failed.')
 
