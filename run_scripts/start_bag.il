@@ -1204,9 +1204,19 @@ procedure( open_adexl_session(tb_lib tb_cell tb_view session_name mode "ttttt")
 )
 
 ; Enables only the given corners in the simulation setup database.
-procedure( enable_adexl_corners( sdb corner_list "gl")
-    foreach(cur_name cadr(axlGetCorners(sdb))
-        axlSetEnabled( axlGetCorner(sdb cur_name) member(cur_name corner_list) )
+procedure( enable_adexl_corners( sdb corner_list env_param_list "gll")
+    let( (env_name par_val_list corner)
+        foreach(cur_name cadr(axlGetCorners(sdb))
+            axlSetEnabled( axlGetCorner(sdb cur_name) member(cur_name corner_list) )
+        )
+        foreach(env_par_obj env_param_list
+            env_name = car(env_par_obj)
+            par_val_list = cadr(env_par_obj)
+            corner = axlGetCorner(sdb env_name)
+            foreach(par_val par_val_list
+                axlPutVar(corner car(par_val) cadr(par_val))
+            )
+        )
     )
 )
 
@@ -1367,7 +1377,7 @@ procedure( instantiate_testbench(tb_lib tb_cell targ_lib dut_lib dut_cell
 
         ; set default corner
 	corner_list = list(default_corner)
-        enable_adexl_corners(sdb corner_list)
+        enable_adexl_corners(sdb corner_list nil)
 
 	; write testbench information to file
 	write_testbench_info_to_file(sdb result_file output_list corner_list)
@@ -1447,8 +1457,8 @@ procedure( set_run_options(session sdb run_params "ggl")
 ; opt_file contains the association list of run mode options.
 ; corner_file contains a list of corners to simulate.
 ; param_file contains the association list of parameter values.
-procedure( modify_testbench(tb_lib tb_cell conf_file opt_file corner_file param_file "tttttt")
-    let( (tmp_list session sdb conf_list run_params corner_list param_values session_name)
+procedure( modify_testbench(tb_lib tb_cell conf_file opt_file corner_file param_file env_params_file "ttttttt")
+    let( (tmp_list session sdb conf_list run_params corner_list param_values env_param_values session_name)
         sprintf(session_name "bag_sim_adexl_%s" getCurrentTime())
 
         ; read inputs from file.
@@ -1456,6 +1466,7 @@ procedure( modify_testbench(tb_lib tb_cell conf_file opt_file corner_file param_
         run_params = parse_data_from_file(opt_file)
         corner_list = parse_data_from_file(corner_file)
         param_values = parse_data_from_file(param_file)
+        env_param_values = parse_data_from_file(env_params_file)
 
         ; modify config view
         when( conf_list
@@ -1467,7 +1478,7 @@ procedure( modify_testbench(tb_lib tb_cell conf_file opt_file corner_file param_
         sdb = cadr(tmp_list)
 
         ; change corners, parameters, and run options
-        enable_adexl_corners( sdb corner_list )
+        enable_adexl_corners( sdb corner_list env_param_values)
         set_adexl_parameters( sdb param_values )
         set_run_options( session sdb run_params )
 
