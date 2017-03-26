@@ -32,6 +32,7 @@ from builtins import *
 import os
 import abc
 import traceback
+from typing import List, Dict, Tuple
 
 from jinja2 import Template
 import yaml
@@ -305,7 +306,8 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
         return [], [], {}, {}
 
     @abc.abstractmethod
-    def update_testbench(self, lib, cell, parameters, sim_envs, config_rules):
+    def update_testbench(self, lib, cell, parameters, sim_envs, config_rules, env_parameters):
+        # type: (str, str, Dict[str, str], List[str], List[List[str]], List[List[Tuple[str, str]]]) -> None
         """Update the given testbench configuration.
 
         Parameters
@@ -314,12 +316,14 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
             testbench library.
         cell : str
             testbench cell.
-        parameters : dict[str, str]
+        parameters : Dict[str, str]
             testbench parameters.
-        sim_envs : list[str]
+        sim_envs : List[str]
             list of enabled simulation environments.
-        config_rules : list[list[str]]
+        config_rules : List[List[str]]
             config view mapping rules, list of (lib, cell, view) rules.
+        env_parameters : List[List[Tuple[str, str]]]
+            list of param/value list for each simulation environment.
         """
         pass
 
@@ -546,19 +550,19 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
             self._import_design(inst_lib_name, inst_cell_name, imported_cells, dsn_db,
                                 new_lib_path)
 
-    def implement_design(self, lib_name, module, lib_path=''):
+    def implement_design(self, lib_name, dsn_module, lib_path=''):
         """Implement the given design.
 
         Parameters
         ----------
         lib_name : str
             name of the new library to put the concrete schematics.
-        module : :class:`bag.design.Module`
+        dsn_module : :class:`bag.design.Module`
             the design module to create schematics for.
         lib_path : str
             the path to create the library in.  If empty, use default location.
         """
-        hierarchy_graph = module.hierarchy_graph
+        hierarchy_graph = dsn_module.hierarchy_graph
 
         # sort the netlist graph in reverse order.
         nodes = nx.topological_sort(hierarchy_graph, reverse=True)

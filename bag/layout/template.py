@@ -108,6 +108,12 @@ class TemplateDB(object):
         """Returns the default routing grid instance."""
         return self._grid
 
+    @property
+    def lib_name(self):
+        # type: () -> str
+        """Returns the layout library name."""
+        return self._lib_name
+
     def append_library(self, lib_name, lib_path):
         # type: (str, str) -> None
         """Adds a new library to the library definition file.

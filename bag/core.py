@@ -32,6 +32,7 @@ from builtins import *
 import os
 import string
 import importlib
+from typing import List
 
 # noinspection PyPackageRequirements
 import yaml
@@ -154,6 +155,7 @@ class Testbench(object):
         self.lib = lib
         self.cell = cell
         self.parameters = parameters
+        self.env_parameters = {}
         self.env_list = env_list
         self.sim_envs = default_envs
         self.config_rules = {}
@@ -197,6 +199,38 @@ class Testbench(object):
         """
         param_config = dict(type='single', value=val)
         self.parameters[name] = self.sim.format_parameter_value(param_config, precision)
+
+    def set_env_parameter(self, name, val_list, precision=6):
+        # type: (str, List[float], int) -> None
+        """Configure the given parameter to have different value across simulation environments.
+
+        Parameters
+        ----------
+        name : str
+            the parameter name.
+        val_list : List[float]
+            the parameter values for each simulation environment.  the order of the simulation
+            environments can be found in self.sim_envs
+        precision : int
+            the parameter value will be rounded to this precision.
+        """
+        if len(self.sim_envs) != len(val_list):
+            raise ValueError('env parameter must have %d values.' % len(self.sim_envs))
+
+        default_val = None
+        for env, val in zip(self.sim_envs, val_list):
+            if env not in self.env_parameters:
+                cur_dict = {}
+                self.env_parameters[env] = cur_dict
+            else:
+                cur_dict = self.env_parameters[env]
+
+            param_config = dict(type='single', value=val)
+            cur_val = self.sim.format_parameter_value(param_config, precision)
+            if default_val is None:
+                default_val = cur_val
+            cur_dict[name] = self.sim.format_parameter_value(param_config, precision)
+        self.parameters[name] = default_val
 
     def set_sweep_parameter(self, name, precision=6, **kwargs):
         """Set to sweep the given parameter.
@@ -297,7 +331,13 @@ class Testbench(object):
         for key, view in self.config_rules.items():
             lib, cell = key.split('__')
             config_list.append([lib, cell, view])
-        self.db.update_testbench(self.lib, self.cell, self.parameters, self.sim_envs, config_list)
+
+        env_params = []
+        for env in self.sim_envs:
+            val_table = self.env_parameters[env]
+            env_params.append(list(val_table.items()))
+        self.db.update_testbench(self.lib, self.cell, self.parameters, self.sim_envs, config_list,
+                                 env_params)
 
         # if self.inst_map:
         #     # update schematic
@@ -529,6 +569,7 @@ class BagProject(object):
         self.impl_db.implement_design(lib_name, design_module, lib_path=lib_path)
 
     def create_testbench(self, tb_lib, tb_cell, dut_lib, dut_cell, targ_lib, lib_path=''):
+        # type: (str, str, str, str, str, str) -> Testbench
         """Create a new testbench for the given DUT.
 
         This method copies a pre-made testbench template, then replaces the

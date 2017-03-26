@@ -71,7 +71,7 @@ class MosCharDB(CharDB):
         the Vds voltage.
     vbs : float or None
         the Vbs voltage.
-    kwargs : dict[str, any]
+    **kwargs :
         additional characterization database parameters.  See documentation for CharDB.
     """
 
