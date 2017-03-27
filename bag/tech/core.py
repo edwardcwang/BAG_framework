@@ -1016,7 +1016,7 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
         return np.array(val_list)
 
     def query(self, **kwargs):
-        # type: (**kwargs) -> Dict[str, float]
+        # type: (**kwargs) -> Dict[str, np.ndarray]
         """Query the database for the values associated with the given parameters.
 
         All parameters must be specified.
@@ -1028,7 +1028,7 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
 
         Returns
         -------
-        results : Dict[str, float]
+        results : Dict[str, np.ndarray]
             the characterization results.
         """
         results = {}
