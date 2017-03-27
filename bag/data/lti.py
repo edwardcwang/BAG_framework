@@ -29,13 +29,13 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
 import scipy.signal
 import scipy.sparse
 import scipy.sparse.linalg
-from scipy.signal.ltisys import TransferFunctionContinuous
+from scipy.signal.ltisys import StateSpaceContinuous, TransferFunctionContinuous
 
 
 class LTICircuit(object):
@@ -306,6 +306,11 @@ class LTICircuit(object):
         v = vh.T
         # truncate the bottom 0 part of S, now S_top*y_top + B_top*w = 0
         rank = cls._count_rank(s)
+        # check bottom part of B.  If not 0, there's no solution
+        b_abs = np.abs(b)
+        zero_tol = np.amax(b_abs) * cls._float_min
+        if np.count_nonzero(b_abs[rank:, :] > zero_tol) > 0:
+            raise ValueError('B matrix bottom is not zero.  This circuit has no solution.')
         b_top = b[:rank, :]
         s_top_inv = 1 / s[:rank]  # type: np.ndarray
         s_top_inv = np.diag(s_top_inv)
@@ -377,39 +382,40 @@ class LTICircuit(object):
             e[:, :kw.shape[1]] -= d.dot(kw)
         return g, c, b, d, e
 
-    def get_system(self, in_name, out_name, in_type='v', atol=0.0):
-        # type: (str, str, str, float) -> TransferFunctionContinuous
-        """Computes and return the transfer function between the two given nodes.
+    def _build_mna_matrices(self, inputs, outputs, in_type='v'):
+        # type: (Union[str, List[str]], Union[str, List[str]], str) -> Tuple[np.ndarray, ...]
+        """Create and return MNA matrices representing this circuit.
 
         Parameters
         ----------
-        in_name : str
-            the input node name.
-        out_name : str
-            the output node name.  The output will be the voltage on this node.
+        inputs : Union[str, List[str]]
+            the input voltage/current node name(s).
+        outputs : Union[str, List[str]]
+            the output voltage node name(s).
         in_type : str
-            if 'v', assume voltage input.  Otherwise, assume current input.
-        atol : float
-            absolute-tolerance for checking if transfer function numerator coefficients are zeroes.
-            If you get scipy bad-conditioning warnings consider tweaking this parameter.
+            set to 'v' for input voltage sources.  Otherwise, current sources.
 
         Returns
         -------
-        system : TransferFunctionContinuous
-            the scipy transfer function object.  See scipy.signal package on how to use this object.
-
-        Notes
-        -----
-        This function uses the algorithm described by "A systematic method for obtaining state
-        equations using MNA".
+        g : np.ndarray
+            the conductance matrix
+        c : np.ndarray
+            the capacitance/inductance matrix.
+        d : np.ndarray
+            the state-to-output matrix.
+        e : np.ndarray
+            the input-to-output matrix.
         """
+        if isinstance(inputs, list) or isinstance(inputs, tuple):
+            node_ins = [self._node_id[name] for name in inputs]
+        else:
+            node_ins = [self._node_id[inputs]]
+        if isinstance(outputs, list) or isinstance(outputs, tuple):
+            node_outs = [self._node_id[name] for name in outputs]
+        else:
+            node_outs = [self._node_id[outputs]]
+
         is_voltage = (in_type == 'v')
-        node_in = self._node_id[in_name]
-        node_out = self._node_id[out_name]
-        if is_voltage and node_in == node_out:
-            raise ValueError('Input and output nodes are the same.')
-        if node_in < 0 or node_out < 0:
-            raise ValueError('Input/output cannot be AC ground.')
 
         # step 1: construct matrices
         gdata, grows, gcols = [], [], []
@@ -476,40 +482,91 @@ class LTICircuit(object):
                 gcols.append(node_cn)
             num_states += 1
 
+        ndim_in = len(node_ins)
         if is_voltage:
             # step 1E: add current/voltage from input voltage source
-            gdata.append(1)
-            grows.append(node_in)
-            gcols.append(num_states)
-            gdata.append(-1)
-            grows.append(num_states)
-            gcols.append(node_in)
-            num_states += 1
-            b0 = np.zeros((num_states, 1))
-            b0[num_states - 1, 0] = 1
+            b0 = np.zeros((num_states + ndim_in, ndim_in))
+            for in_idx, node_in in enumerate(node_ins):
+                gdata.append(1)
+                grows.append(node_in)
+                gcols.append(num_states)
+                gdata.append(-1)
+                grows.append(num_states)
+                gcols.append(node_in)
+                b0[num_states + in_idx, in_idx] = 1
         else:
             # inject current to node_in
-            b0 = np.zeros((num_states, 1))
-            b0[node_in, 0] = 1
+            b0 = np.zeros((num_states + ndim_in, ndim_in))
+            for in_idx, node_in in enumerate(node_ins):
+                b0[node_in, in_idx] = -1
+
+        num_states += ndim_in
 
         # step 2: create matrices
         shape = (num_states, num_states)
-        g0 = scipy.sparse.csc_matrix((gdata, (grows, gcols)), shape=shape).todense().A
-        c0 = scipy.sparse.csc_matrix((cdata, (crows, ccols)), shape=shape).todense().A
-        d0 = np.zeros((1, num_states))
-        d0[0, node_out] = 1
-        e0 = np.zeros((1, 1))
+        g = scipy.sparse.csc_matrix((gdata, (grows, gcols)), shape=shape).todense().A
+        c = scipy.sparse.csc_matrix((cdata, (crows, ccols)), shape=shape).todense().A
+        ndim_out = len(node_outs)
+        d = scipy.sparse.csc_matrix((np.ones(ndim_out), (np.arange(ndim_out), node_outs)),
+                                    shape=(ndim_out, num_states)).todense().A
+        e = np.zeros((ndim_out, ndim_in))
 
-        g, c, b, d, e = self._reduce_state_space(g0, c0, b0, d0, e0, 1)
+        return g, c, d, e
+
+    def get_state_space(self, inputs, outputs, in_type='v'):
+        # type: (Union[str, List[str]], Union[str, List[str]], str) -> StateSpaceContinuous
+        """Compute the state space model from the given inputs to outputs.
+
+        Parameters
+        ----------
+        inputs : Union[str, List[str]]
+            the input voltage/current node name(s).
+        outputs : Union[str, List[str]]
+            the output voltage node name(s).
+        in_type : str
+            set to 'v' for input voltage sources.  Otherwise, current sources.
+
+        Returns
+        -------
+        system : StateSpaceContinuous
+            the scipy state space object.  See scipy.signal package on how to use this object.
+        """
+        g0, c0, b0, d0, e0 = self._build_mna_matrices(inputs, outputs, in_type)
+        ndim_in = e0.shape[1]
+        g, c, b, d, e = self._reduce_state_space(g0, c0, b0, d0, e0, ndim_in)
         amat = scipy.linalg.solve_triangular(c, -g)
         bmat = scipy.linalg.solve_triangular(c, -b)
         cmat = d
-        tol = np.amax(np.abs(e)) * self._float_min
-        if np.count_nonzero(e[:, 1:] > tol) > 0:
+        e_abs = np.abs(e)
+        tol = np.amax(e_abs) * self._float_min
+        if np.count_nonzero(e_abs[:, ndim_in:] > tol) > 0:
             print('WARNING: output depends on input derivatives.  Ignored.')
-        dmat = e[:, :1]
+        dmat = e[:, :ndim_in]
 
-        num, den = scipy.signal.ss2tf(amat, bmat, cmat, dmat)
+        return StateSpaceContinuous(amat, bmat, cmat, dmat)
+
+    def get_transfer_function(self, in_name, out_name, in_type='v', atol=0.0):
+        # type: (str, str, str, float) -> TransferFunctionContinuous
+        """Compute the transfer function between the two given nodes.
+
+        Parameters
+        ----------
+        in_name : str
+            the input voltage/current node name.
+        out_name : Union[str, List[str]]
+            the output voltage node name.
+        in_type : str
+            set to 'v' for input voltage sources.  Otherwise, current sources.
+        atol : float
+            absolute tolerance for checking zeros in the numerator.  Used to filter out scipy warnings.
+
+        Returns
+        -------
+        system : TransferFunctionContinuous
+            the scipy transfer function object.  See scipy.signal package on how to use this object.
+        """
+        state_space = self.get_state_space(in_name, out_name, in_type=in_type)
+        num, den = scipy.signal.ss2tf(state_space.A, state_space.B, state_space.C, state_space.D)
         num = num[0, :]
         # check if numerator has leading zeros.
         # this makes it so the user have full control over numerical precision, and
@@ -530,15 +587,14 @@ class LTICircuit(object):
         freq : float
             the frequency to compute the impedance at, in Hertz.
         atol : float
-            absolute-tolerance for checking if transfer function numerator coefficients are zeroes.
-            If you get scipy bad-conditioning warnings consider tweaking this parameter.
+            absolute tolerance for checking zeros in the numerator.  Used to filter out scipy warnings.
 
         Returns
         -------
         impedance : complex
             the impedance value, in Ohms.
         """
-        sys = self.get_system(node_name, node_name, in_type='i', atol=atol)
+        sys = self.get_transfer_function(node_name, node_name, in_type='i', atol=atol)
         w_test = 2 * np.pi * freq
         _, zin_vec = sys.freqresp(w=[w_test])
         return zin_vec[0]
