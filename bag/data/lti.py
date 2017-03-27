@@ -401,6 +401,8 @@ class LTICircuit(object):
             the conductance matrix
         c : np.ndarray
             the capacitance/inductance matrix.
+        b : np.ndarray
+            the input-to-state matrix.
         d : np.ndarray
             the state-to-output matrix.
         e : np.ndarray
@@ -485,7 +487,7 @@ class LTICircuit(object):
         ndim_in = len(node_ins)
         if is_voltage:
             # step 1E: add current/voltage from input voltage source
-            b0 = np.zeros((num_states + ndim_in, ndim_in))
+            b = np.zeros((num_states + ndim_in, ndim_in))
             for in_idx, node_in in enumerate(node_ins):
                 gdata.append(1)
                 grows.append(node_in)
@@ -493,12 +495,12 @@ class LTICircuit(object):
                 gdata.append(-1)
                 grows.append(num_states)
                 gcols.append(node_in)
-                b0[num_states + in_idx, in_idx] = 1
+                b[num_states + in_idx, in_idx] = 1
         else:
             # inject current to node_in
-            b0 = np.zeros((num_states + ndim_in, ndim_in))
+            b = np.zeros((num_states + ndim_in, ndim_in))
             for in_idx, node_in in enumerate(node_ins):
-                b0[node_in, in_idx] = -1
+                b[node_in, in_idx] = -1
 
         num_states += ndim_in
 
@@ -511,7 +513,7 @@ class LTICircuit(object):
                                     shape=(ndim_out, num_states)).todense().A
         e = np.zeros((ndim_out, ndim_in))
 
-        return g, c, d, e
+        return g, c, b, d, e
 
     def get_state_space(self, inputs, outputs, in_type='v'):
         # type: (Union[str, List[str]], Union[str, List[str]], str) -> StateSpaceContinuous
