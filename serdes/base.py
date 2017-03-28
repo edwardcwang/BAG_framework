@@ -763,8 +763,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             self.connect_to_substrate('ntap', [loadp[sup_type], loadn[sup_type]])
 
             # collect pmos outputs
-            outp_warrs = outp_warrs + [loadp[out_type], ]
-            outn_warrs = outn_warrs + [loadn[out_type], ]
+            outp_warrs.append(loadp[out_type])
+            outn_warrs.append(loadn[out_type])
 
         # connect differential outputs
         out_ntr = self.get_num_tracks('pch', 0, 'ds')

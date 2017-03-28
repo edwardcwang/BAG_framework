@@ -703,6 +703,7 @@ class RXHalfBottom(SerdesRXBase):
         dlat_top_tr = dlat_inputs[0].track_id.base_index
         dlat_bot_tr = dlat_inputs[1].track_id.base_index
         clkp_nmos_ana_tr_xm = dlat_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
+        clkp_nmos_integ_tr_xm = clkp_nmos_ana_tr_xm + clk_width_xm + clk_space_xm
         clkp_nmos_dig_tr_xm = clkp_nmos_ana_tr_xm
         clkn_nmos_sw_tr_xm = clkp_nmos_ana_tr_xm - clk_width_xm - clk_space_xm
         clkp_pmos_integ_tr_xm = dlat_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
@@ -718,8 +719,6 @@ class RXHalfBottom(SerdesRXBase):
         clkp_nmos_sw_tr_id = TrackID(xm_layer, clkp_nmos_sw_tr_xm, width=clk_width_xm)
         clkn_nmos_sw_tr_id = TrackID(xm_layer, clkn_nmos_sw_tr_xm, width=clk_width_xm)
         clkp_nmos_sw_list, clkn_nmos_sw_list = [], []
-        clkp_nmos_ana_tr_id = TrackID(xm_layer, clkp_nmos_ana_tr_xm, width=clk_width_xm)
-        clkp_nmos_ana_list = []
         clkp_nmos_dig_tr_id = TrackID(xm_layer, clkp_nmos_dig_tr_xm, width=clk_width_xm)
         clkn_nmos_dig_tr_id = TrackID(xm_layer, clkn_nmos_dig_tr_xm, width=clk_width_xm)
         clkp_nmos_dig_list, clkn_nmos_dig_list = [], []
@@ -739,9 +738,11 @@ class RXHalfBottom(SerdesRXBase):
                                          clk_width_vm, sig_clk_space_vm)
         ltr_id = TrackID(vm_layer, ltr_vm, width=clk_width_vm)
         rtr_id = TrackID(vm_layer, rtr_vm, width=clk_width_vm)
-        # nmos_analog
+        # integ_nmos
         warr = self.connect_to_tracks(integ_ports['bias_tail'], rtr_id)
-        clkp_nmos_ana_list.append(warr)
+        xtr_id = TrackID(xm_layer, clkp_nmos_integ_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
+        self.add_pin(clkp + '_nmos_integ', warr, show=show_pins)
         # pmos_integ
         warr = self.connect_to_tracks(integ_ports['bias_load'], ltr_id)
         xtr_id = TrackID(xm_layer, clkp_pmos_integ_tr_xm, width=clk_width_xm)
@@ -762,7 +763,10 @@ class RXHalfBottom(SerdesRXBase):
         rtr_id = TrackID(vm_layer, rtr_vm, width=clk_width_vm)
         # nmos_analog
         warr = self.connect_to_tracks(alat_ports['bias_tail'], ltr_id)
-        clkp_nmos_ana_list.append(warr)
+        xtr_id = TrackID(xm_layer, clkp_nmos_ana_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
+        self.add_pin(clkp + '_nmos_analog', warr, show=show_pins)
+
         # pmos_analog
         warr = self.connect_to_tracks(alat_ports['bias_load'], ltr_id)
         xtr_id = TrackID(xm_layer, clkn_pmos_ana_tr_xm, width=clk_width_xm)
@@ -825,8 +829,6 @@ class RXHalfBottom(SerdesRXBase):
         self.add_pin(clkp + '_nmos_switch', warr, show=show_pins)
         warr = self.connect_to_tracks(clkn_nmos_sw_list, clkn_nmos_sw_tr_id)
         self.add_pin(clkn + '_nmos_switch', warr, show=show_pins)
-        warr = self.connect_to_tracks(clkp_nmos_ana_list, clkp_nmos_ana_tr_id)
-        self.add_pin(clkp + '_nmos_analog', warr, show=show_pins)
         warr = self.connect_to_tracks(clkp_nmos_dig_list, clkp_nmos_dig_tr_id)
         self.add_pin(clkp + '_nmos_digital', warr, show=show_pins)
         warr = self.connect_to_tracks(clkn_nmos_dig_list, clkn_nmos_dig_tr_id)
@@ -1480,7 +1482,8 @@ class RXCore(TemplateBase):
         clk_space = self.params['clk_spaces'][-1]
         clk_pitch = clk_width + clk_space
         clk_layer = layout_info.mconn_port_layer + 1 + len(self.params['clk_widths'])
-        clk_top_list = [('nmos_analog', 2),
+        clk_top_list = [('nmos_integ', 1),
+                        ('nmos_analog', 2),
                         ('pmos_integ', 1),
                         ('pmos_analog', 2),
                         ('pmos_intsum', 1),
@@ -1538,6 +1541,7 @@ class RXCore(TemplateBase):
         fill_margin = 0.6
         edge_margin = 0.2
 
+        """
         vdd_warrs, vss_warrs = [], []
         for sup_bot_layer in range(bot_layer, top_layer):
             for inst in inst_list:
@@ -1548,6 +1552,7 @@ class RXCore(TemplateBase):
                                                       edge_margin=edge_margin)
         self.add_pin(self.get_pin_name('VSS'), vss_warrs)
         self.add_pin(self.get_pin_name('VDD'), vdd_warrs)
+        """
 
     def _connect_differential(self, inst_list, ptr_idx, vm_layer_id, vm_width, vm_space, even_ports, odd_ports):
         tr_idx_list = [ptr_idx, ptr_idx + vm_width + vm_space]
