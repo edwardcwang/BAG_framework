@@ -150,9 +150,9 @@ class RXHalfTop(SerdesRXBase):
             gate_locs = {'inp': inp_idx,
                          'inn': inn_idx}
 
-        gate_locs['bias_load'] = (hm_width - 1) / 2
+        gate_locs['bias_offp'] = (hm_width - 1) / 2
         gate_locs['bias_offn'] = (hm_width - 1) / 2 + hm_width
-        gate_locs['bias_offp'] = (hm_width - 1) / 2 + 2 * hm_width
+        gate_locs['bias_load'] = (hm_width - 1) / 2 + 2 * hm_width
 
         # compute nmos gate/drain/source number of tracks
         for row_name in ['tail', 'w_en', 'sw', 'in', 'casc']:
@@ -400,6 +400,17 @@ class RXHalfTop(SerdesRXBase):
             en_tr_id = TrackID(vm_layer, en_tr_vm, width=clk_width_vm)
             warr = self.connect_to_tracks(intsum_ports[('bias_casc', 2 + fb_idx)], en_tr_id, track_lower=0)
             self.add_pin('en_dfe<%d>' % (dfe_idx - 1), warr, show=show_pins)
+            # TODO: hardcode offset cancellation biases to route between DFE<3> and DFE<2> for now
+            if dfe_idx == 4:
+                offp_tr_vm = en_tr_vm + clk_width_vm + clk_space_vm
+                offn_tr_vm = offp_tr_vm + clk_width_vm + clk_space_vm
+                offp_tr_id = TrackID(vm_layer, offp_tr_vm, width=clk_width_vm)
+                offn_tr_id = TrackID(vm_layer, offn_tr_vm, width=clk_width_vm)
+                warr = self.connect_to_tracks(intsum_ports[('bias_offp', -1)], offp_tr_id, track_lower=0)
+                self.add_pin('bias_offp', warr, show=show_pins)
+                warr = self.connect_to_tracks(intsum_ports[('bias_offn', -1)], offn_tr_id, track_lower=0)
+                self.add_pin('bias_offn', warr, show=show_pins)
+
             # bias_dfe
             bias_tr_id = TrackID(vm_layer, bias_tr_vm, width=clk_width_vm)
             warr = self.connect_to_tracks(intsum_ports[('bias_tail', 2 + fb_idx)], bias_tr_id, track_lower=0)
@@ -1527,8 +1538,8 @@ class RXCore(TemplateBase):
 
         num_dfe = len(self.params['intsum_params']['gm_fg_list']) - 1
         for inst, prefix in zip(inst_list, ('even_', 'odd_')):
-            pname = 'bias_ffe'
-            self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
+            for pname in ('bias_ffe', 'bias_offp', 'bias_offn'):
+                self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
             for idx in range(num_dfe):
                 pname = 'en_dfe<%d>' % idx
                 self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
