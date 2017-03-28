@@ -122,8 +122,8 @@ class RXHalfTop(SerdesRXBase):
 
         # draw AnalogBase rows
         # compute pmos/nmos gate/drain/source number of tracks
-        draw_params['pg_tracks'] = [hm_width]
-        draw_params['pds_tracks'] = [2 * hm_width + diff_space]
+        draw_params['pg_tracks'] = [hm_width * 3]
+        draw_params['pds_tracks'] = [2 * hm_cur_width + diff_space]
         ng_tracks = []
         nds_tracks = []
 
@@ -150,6 +150,10 @@ class RXHalfTop(SerdesRXBase):
             gate_locs = {'inp': inp_idx,
                          'inn': inn_idx}
 
+        gate_locs['bias_load'] = (hm_width - 1) / 2
+        gate_locs['bias_offn'] = (hm_width - 1) / 2 + hm_width
+        gate_locs['bias_offp'] = (hm_width - 1) / 2 + 2 * hm_width
+
         # compute nmos gate/drain/source number of tracks
         for row_name in ['tail', 'w_en', 'sw', 'in', 'casc']:
             if w_dict.get(row_name, -1) > 0:
@@ -174,11 +178,12 @@ class RXHalfTop(SerdesRXBase):
 
         intsum_col = intsum_params.pop('col_idx')
         # print('rxtop intsum cur_col: %d' % cur_col)
-        _, intsum_ports = self.draw_gm_summer(intsum_col, hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                              diff_space=diff_space, gate_locs=gate_locs,
-                                              **intsum_params)
-        intsum_info = self.layout_info.get_summer_info(intsum_params['fg_load'], intsum_params['gm_fg_list'],
-                                                       gm_sep_list=intsum_params.get('gm_sep_list', None))
+        _, intsum_ports = self.draw_gm_summer_offset(intsum_col, hm_width=hm_width, hm_cur_width=hm_cur_width,
+                                                     diff_space=diff_space, gate_locs=gate_locs,
+                                                     **intsum_params)
+        intsum_info = self.layout_info.get_summer_offset_info(intsum_params['fg_load'], intsum_params['fg_offset'],
+                                                              intsum_params['gm_fg_list'],
+                                                              gm_sep_list=intsum_params.get('gm_sep_list', None))
 
         summer_col = summer_params.pop('col_idx')
         # print('rxtop summer cur_col: %d' % cur_col)
@@ -579,7 +584,7 @@ class RXHalfBottom(SerdesRXBase):
         # draw AnalogBase rows
         # compute pmos/nmos gate/drain/source number of tracks
         draw_params['pg_tracks'] = [hm_width]
-        draw_params['pds_tracks'] = [2 * hm_width + diff_space]
+        draw_params['pds_tracks'] = [2 * hm_cur_width + diff_space]
         ng_tracks = []
         nds_tracks = []
         for row_name in ['tail', 'en', 'sw', 'in', 'casc']:
@@ -1167,6 +1172,7 @@ class RXHalf(TemplateBase):
         top_params['intsum_params'] = dict(
             col_idx=intsum_col_idx,
             fg_load=intsum_params['fg_load'],
+            fg_offset=intsum_params['fg_offset'],
             gm_fg_list=new_intsum_gm_fg_list,
             gm_sep_list=intsum_gm_sep_list,
             sgn_list=intsum_params['sgn_list'],
