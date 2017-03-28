@@ -342,7 +342,8 @@ class RXHalfTop(SerdesRXBase):
         warr = self.connect_to_tracks(alat_ports['sw'], sw_tr_id)
         xtr_id = TrackID(xm_layer, clkp_nmos_sw_tr_xm, width=clk_width_xm)
         warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
-        self.add_pin(clkp + '_nmos_switch', warr, show=show_pins)
+        # separate nmos switch of analog latch 1, since it has better n
+        self.add_pin(clkp + '_nmos_switch_alat1', warr, show=show_pins)
 
         # connect intsum main tap biases
         intsum_col, intsum_info = block_info['intsum']
@@ -1494,15 +1495,15 @@ class RXCore(TemplateBase):
         clk_pitch = clk_width + clk_space
         clk_layer = layout_info.mconn_port_layer + 1 + len(self.params['clk_widths'])
         clk_top_list = [('nmos_integ', 1),
+                        ('clk1', 1),
                         ('nmos_analog', 2),
-                        ('pmos_integ', 1),
                         ('pmos_analog', 2),
-                        ('pmos_intsum', 1),
-                        ('nmos_switch', 2),
+                        ('clk2', 2),
                         ('pmos_digital', 2),
                         ('nmos_digital', 1),
                         ('pmos_summer', 2),
                         ]
+        clk_ports = {'clk1': ['pmos_integ', 'nmos_switch_alat1'], 'clk2': ['pmos_intsum', 'nmos_switch']}
         clk_wires = {}
         for inst in inst_list:
             for name in inst.port_names_iter():
@@ -1514,10 +1515,23 @@ class RXCore(TemplateBase):
         tr_idx = clk_space + (clk_width - 1) / 2
         blk_h = self.grid.get_size_dimension(self.size, unit_mode=True)[1]
         for base_name, num_tracks in clk_top_list:
-            pname = 'clkp_' + base_name
-            nname = 'clkn_' + base_name
-            pwires = self.connect_wires(clk_wires.pop(pname))
-            nwires = self.connect_wires(clk_wires.pop(nname))
+            if base_name.startswith('clk'):
+                pwires = []
+                nwires = []
+                for clk_port_name in clk_ports[base_name]:
+                    pwires.extend(clk_wires.pop('clkp_' + clk_port_name))
+                    nwires.extend(clk_wires.pop('clkn_' + clk_port_name))
+                pname = 'clkp'
+                nname = 'clkn'
+                labelp = 'clkp:'
+                labeln = 'clkn:'
+            else:
+                pname = 'clkp_' + base_name
+                nname = 'clkn_' + base_name
+                pwires = self.connect_wires(clk_wires.pop(pname))
+                nwires = self.connect_wires(clk_wires.pop(nname))
+                labelp = ''
+                labeln = ''
 
             if num_tracks == 2:
                 ptr = tr_idx
@@ -1525,13 +1539,18 @@ class RXCore(TemplateBase):
                 tr_idx += clk_pitch * 2
                 ckp_tr, ckn_tr = self.connect_differential_tracks(pwires, nwires, clk_layer, ptr, ntr, width=clk_width)
             else:
+                if base_name.startswith('clk'):
+                    clktr_upper = clktr_lower = None
+                else:
+                    clktr_upper = blk_h
+                    clktr_lower = 0
                 tr_id = TrackID(clk_layer, tr_idx, width=clk_width)
                 tr_idx += clk_pitch
-                ckp_tr = self.connect_to_tracks(pwires, tr_id, track_upper=blk_h, unit_mode=True)
-                ckn_tr = self.connect_to_tracks(nwires, tr_id, track_lower=0, unit_mode=True)
+                ckp_tr = self.connect_to_tracks(pwires, tr_id, track_upper=clktr_upper, unit_mode=True)
+                ckn_tr = self.connect_to_tracks(nwires, tr_id, track_lower=clktr_lower, unit_mode=True)
 
-            self.add_pin(pname, ckp_tr, show=show_pins)
-            self.add_pin(nname, ckn_tr, show=show_pins)
+            self.add_pin(pname, ckp_tr, label=labelp, show=show_pins)
+            self.add_pin(nname, ckn_tr, label=labeln, show=show_pins)
 
         for name, wires in clk_wires.items():
             self.add_pin(name, wires, show=show_pins)
