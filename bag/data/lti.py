@@ -496,13 +496,12 @@ class LTICircuit(object):
                 grows.append(num_states)
                 gcols.append(node_in)
                 b[num_states + in_idx, in_idx] = 1
+            num_states += ndim_in
         else:
             # inject current to node_in
-            b = np.zeros((num_states + ndim_in, ndim_in))
+            b = np.zeros((num_states, ndim_in))
             for in_idx, node_in in enumerate(node_ins):
                 b[node_in, in_idx] = -1
-
-        num_states += ndim_in
 
         # step 2: create matrices
         shape = (num_states, num_states)
