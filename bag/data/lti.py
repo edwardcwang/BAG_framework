@@ -44,18 +44,24 @@ class LTICircuit(object):
     This class computes AC transfer functions for linear-time-invariant circuits.
 
     Note: Since this class work with AC transfer functions, 'gnd' in this circuit is AC ground.
+
+    Parameters
+    ----------
+    udot_tol : float
+        tolerance to determine if dependency on input derivatives is zero.
     """
 
     _float_min = np.finfo(np.float64).eps
 
-    def __init__(self):
-        # type: (List[str]) -> None
+    def __init__(self, udot_tol=1e-12):
+        # type: (float) -> None
         self._num_n = 0
         self._gmat_data = {}
         self._cmat_data = {}
         self._vcvs_list = []
         self._ind_data = {}
         self._node_id = {'gnd': -1}
+        self._udot_tol = udot_tol
 
     def _get_node_id(self, name):
         # type: (str) -> int
@@ -323,6 +329,23 @@ class LTICircuit(object):
         return vr, kw
 
     @classmethod
+    def _transform_c_qr(cls, g, c, b, d):
+        """Reveal redundant variables by transforming C matrix using QR decomposition"""
+        q, r, p = scipy.linalg.qr(c, pivoting=True)
+        rank = cls._count_rank(np.diag(r))
+        qh = q.T
+        return rank, qh.dot(g[:, p]), r, qh.dot(b), d[:, p]
+
+    # @classmethod
+    # def _transform_c_svd(cls, g, c, b, d):
+    #     """Reveal redundant variables by transforming C matrix using SVD decomposition"""
+    #     u, s, vh = scipy.linalg.svd(c, full_matrices=True, overwrite_a=True)
+    #     uh = u.T
+    #     v = vh.T
+    #     rank = cls._count_rank(s)
+    #     return rank, uh.dot(g).dot(v), np.diag(s), uh.dot(b), d.dot(v)
+
+    @classmethod
     def _reduce_state_space(cls, g, c, b, d, e, ndim_w):
         """Reduce state space variables.
 
@@ -330,25 +353,19 @@ class LTICircuit(object):
         y = D*x + E*[w, w', w'', ...].T, check if C is full rank.  If not,
         we compute new G, C, and B matrices with reduced dimensions.
         """
-        # step 0: perform QR factorization of C, and obtain rank
-        q, r, p = scipy.linalg.qr(c, pivoting=True)
-        rank = cls._count_rank(np.diag(r))
-        # step 0A: multiply through so that c is upper triangular
-        qh = q.T
-        c = r
-        g = qh.dot(g[:, p])
-        d = d[:, p]
-        b = qh.dot(b)
-        while rank < r.shape[0]:
-            # step 2: eliminate x' term by looking at bottom part of matrices
+        # step 0: transform C and obtain rank
+        rank, g, c, b, d = cls._transform_c_qr(g, c, b, d)
+        # rank, g, c, b, d = cls._transform_c_svd(g, c, b, d)
+        while rank < c.shape[0]:
+            # step 1: eliminate x' term by looking at bottom part of matrices
             ctop = c[:rank, :]
             gtop = g[:rank, :]
             gbot = g[rank:, :]
             btop = b[:rank, :]
             bbot = b[rank:, :]
-            # step 3: find ka and kw from bottom
+            # step 2: find ka and kw from bottom
             ka, kw = cls._solve_gx_bw(gbot, bbot)
-            # step 4: substitute x = ka * a + kw * [w, w', w'', ...].T
+            # step 3: substitute x = ka * a + kw * [w, w', w'', ...].T
             g = gtop.dot(ka)
             c = ctop.dot(ka)
             b = np.zeros((btop.shape[0], btop.shape[1] + ndim_w))
@@ -358,14 +375,9 @@ class LTICircuit(object):
             enew[:, :-ndim_w] = e + d.dot(kw)
             e = enew
             d = d.dot(ka)
-            # step 5: update QR factorization
-            q, r, p = scipy.linalg.qr(c, pivoting=True)
-            rank = cls._count_rank(np.diag(r))
-            qh = q.T
-            c = r
-            g = qh.dot(g[:, p])
-            d = d[:, p]
-            b = qh.dot(b)
+            # step 4: transform C to prepare for next iteration
+            rank, g, c, b, d = cls._transform_c_qr(g, c, b, d)
+            # rank, g, c, b, d = cls._transform_c_svd(g, c, b, d)
 
         g, c, b, d, e = cls._simplify(g, c, b, d, e, ndim_w)
         return g, c, b, d, e
@@ -539,9 +551,11 @@ class LTICircuit(object):
         bmat = scipy.linalg.solve_triangular(c, -b)
         cmat = d
         e_abs = np.abs(e)
-        tol = np.amax(e_abs) * self._float_min
+        tol = np.amax(e_abs) * self._udot_tol
         if np.count_nonzero(e_abs[:, ndim_in:] > tol) > 0:
             print('WARNING: output depends on input derivatives.  Ignored.')
+            print('D matrix: ')
+            print(e)
         dmat = e[:, :ndim_in]
 
         return StateSpaceContinuous(amat, bmat, cmat, dmat)
