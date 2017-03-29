@@ -204,7 +204,7 @@ class ResLadderDAC(TemplateBase):
             port_list.extend(rmux_inst.get_all_port_pins(port_name))
         for mux_idx in range(num_mux_right):
             old_name = 'out<%d>' % mux_idx
-            new_name = 'out<%d>' % (mux_idx + out_off)
+            new_name = 'out' if num_out == 1 else 'out<%d>' % (mux_idx + out_off)
             self.reexport(rmux_inst.get_port(old_name), net_name=new_name, show=True)
             for bit_idx in range(nbits_tot):
                 old_name = 'code<%d>' % (bit_idx + mux_idx * nbits_tot)

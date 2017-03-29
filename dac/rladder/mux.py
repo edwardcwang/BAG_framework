@@ -501,6 +501,7 @@ class RLadderMux(StdCellBase):
             self.add_pin('code<%d>' % idx, code_warr, show=False)
 
         # connect buffers to column decoder
+        max_col_tid = -1
         for bit_idx in range(col_nbits):
             col_in = cdec_inst.get_port('in<%d>' % bit_idx).get_pins()[0]
             col_inb = cdec_inst.get_port('inb<%d>' % bit_idx).get_pins()[0]
@@ -508,10 +509,11 @@ class RLadderMux(StdCellBase):
             buf_outb = buf_inst.get_port('outb<%d>' % bit_idx).get_pins()
             self.connect_to_tracks(buf_out, col_in.track_id, track_lower=col_in.lower)
             self.connect_to_tracks(buf_outb, col_inb.track_id, track_lower=col_inb.lower)
+            max_col_tid = max(max_col_tid, col_in.track_id.base_index, col_inb.track_id.base_index)
 
         # connect buffers to row decoder.
         rdec_in_route_layer = rdec_in_layer + 1
-        base_tr = self.grid.find_next_track(rdec_in_route_layer, buf_master.array_box.top, mode=1)
+        base_tr = max_col_tid + 1
         for bit_idx in range(col_nbits, col_nbits + row_nbits):
             row_in = rdec_inst.get_port('in<%d>' % (bit_idx - col_nbits)).get_pins()
             row_inb = rdec_inst.get_port('inb<%d>' % (bit_idx - col_nbits)).get_pins()
