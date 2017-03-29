@@ -32,6 +32,8 @@ from builtins import *
 
 from typing import Optional, Union, List, Tuple, Generator, Any, Dict
 
+import numpy as np
+
 from bag.util.interval import IntervalSet
 from .base import WireArray, TrackID
 from .grid import RoutingGrid
@@ -298,6 +300,43 @@ class UsedTracks(object):
                     track_set = self._track_sets[layer_id]
 
                 track_set.merge(new_track_set)
+
+
+def get_available_tracks(grid,  # type: RoutingGrid
+                         layer_id,  # type: int
+                         tr_idx_list,  # type: List[int]
+                         lower,  # type: int
+                         upper,  # type: int
+                         width,  # type: int
+                         margin,  # type: int
+                         track_set,  # type: TrackSet
+                         ):
+    # type: () -> List[int]
+    """Fill unused tracks with supply tracks.
+    """
+    avail_track_set = TrackSet(min_length=upper - lower)
+    for tidx in tr_idx_list:
+        avail_track_set.add_track(2 * tidx + 1, (lower, upper), width, value=False)
+
+    # subtract used tracks.
+    for hidx, intv_set in track_set.items():
+        for (wstart, wstop), (wwidth, (fmargin, fill_type)) in intv_set.items():
+            fmargin = max(margin, fmargin)
+            sub_intv = (wstart - fmargin, wstop + fmargin)
+            cbeg, cend = grid.get_wire_bounds(layer_id, (hidx - 1) / 2, width=wwidth, unit_mode=True)
+            idx0, idx1 = grid.get_overlap_tracks(layer_id, cbeg - fmargin, cend + fmargin,
+                                                 half_track=True, unit_mode=True)
+            hidx0 = int(round(2 * idx0 + 1)) - 2 * (width - 1)
+            hidx1 = int(round(2 * idx1 + 1)) + 2 * (width - 1)
+
+            # substract
+            for sub_idx in range(hidx0, hidx1 + 1):
+                avail_track_set.subtract(sub_idx, sub_intv)
+
+    # return available tracks
+    hidx_arr = np.array(sorted(avail_track_set.keys()), dtype=int)
+    ans = ((hidx_arr - 1) // 2).tolist()  # type: List[int]
+    return ans
 
 
 def get_power_fill_tracks(grid,  # type: RoutingGrid

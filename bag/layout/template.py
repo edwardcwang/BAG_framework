@@ -46,7 +46,7 @@ from .core import BagLayout
 from .util import BBox, BBoxArray
 from ..io import fix_string, get_encoding, open_file
 from .routing import Port, TrackID, WireArray, RoutingGrid
-from .routing.fill import UsedTracks, get_power_fill_tracks
+from .routing.fill import UsedTracks, get_power_fill_tracks, get_available_tracks
 from .objects import Instance, Rect, Via, Path
 from future.utils import with_metaclass
 
@@ -2048,6 +2048,27 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                     for ridx in range(inst.ny):
                         inst_used_tracks = inst.get_used_tracks(row=ridx, col=cidx)
                         self._used_tracks.merge(inst_used_tracks, self.grid.layers)
+
+    def get_available_tracks(self,  # type: TemplateBase
+                             layer_id,  # type: int
+                             tr_idx_list,  # type: List[int]
+                             lower,  # type: Union[float, int]
+                             upper,  # type: Union[float, int]
+                             width=1,  # type: int
+                             margin=0,  # type: Union[float, int]
+                             unit_mode=False,  # type: bool
+                             ):
+        # type: (...) -> List[int]
+        """Returns empty tracks"""
+        if not unit_mode:
+            res = self.grid.resolution
+            lower = int(round(lower / res))
+            upper = int(round(upper / res))
+            margin = int(round(margin / res))
+
+        self._merge_inst_used_tracks()
+        return get_available_tracks(self.grid, layer_id, tr_idx_list, lower, upper,
+                                    width, margin, self._used_tracks.get_tracks_info(layer_id))
 
     def do_power_fill(self,  # type: TemplateBase
                       layer_id,  # type: int
