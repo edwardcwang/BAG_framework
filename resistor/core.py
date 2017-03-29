@@ -227,6 +227,8 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                    min_tracks=(1, 1, 1, 1),  # type: Tuple[int, int, int, int]
                    res_type='reference',  # type: str
                    em_specs=None,  # type: Optional[Dict[str, Any]]
+                   grid_type='standard',  # type: str
+                   edge_space=False,  # type: bool
                    ):
         # type: (...) -> None
         """Draws the resistor array.
@@ -254,11 +256,15 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             the resistor type.
         em_specs : Union[None, Dict[str, Any]]
             resistor EM specifications dictionary.
+        grid_type : str
+            the lower resistor routing grid name.
+        edge_space : bool
+            True to reserve space on left/right edge to transistor blocks.
         """
         # add resistor array layers to RoutingGrid
         parent_grid = self.grid
         self.grid = parent_grid.copy()
-        grid_layers = self.grid.tech_info.tech_params['layout']['analog_res']['grid_layers']
+        grid_layers = self.grid.tech_info.tech_params['layout']['analog_res'][grid_type]
         for lay_id, tr_w, tr_sp, tr_dir in grid_layers:
             self.grid.add_new_layer(lay_id, tr_sp, tr_w, tr_dir)
         self.grid.update_block_pitch()
@@ -272,6 +278,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             res_type=res_type,
             parity=0,
             em_specs=em_specs or {},
+            edge_space=edge_space,
         )
         # create BL corner
         master = self.new_template(params=layout_params, temp_cls=self._corner_cls)
@@ -453,7 +460,7 @@ class TerminationCore(ResArrayBase):
                 div_em_specs[key] = div_em_specs[key] / ny
             else:
                 div_em_specs[key] = 0.0
-        self.draw_array(em_specs=div_em_specs, **self.params)
+        self.draw_array(em_specs=div_em_specs, grid_type='low_res', **self.params)
 
         vm_layer = self.bot_layer_id + 1
         xm_layer = vm_layer + 1
@@ -717,7 +724,7 @@ class ResLadderCore(ResArrayBase):
         # copy routing grid before calling draw_array so substrate contact can have its own grid
         min_tracks = (4 + 2 * hcon_space, 7 + vcon_space, nx, 1)
         self.draw_array(l, w, sub_type, threshold, nx=nx + 2 * ndum, ny=ny + 2 * ndum,
-                        min_tracks=min_tracks, res_type=res_type)
+                        min_tracks=min_tracks, res_type=res_type, grid_type='low_res')
 
         # export supplies and recompute array_box/size
         hcon_idx_list, vcon_idx_list, xm_bot_idx, num_xm_sup = self._draw_metal_tracks(nx, ny, ndum, hcon_space)

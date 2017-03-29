@@ -231,6 +231,7 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, TemplateBase)):
             parity=0,
             res_type='reference',
             em_specs={},
+            edge_space=False,
         )
 
     @classmethod
@@ -254,6 +255,7 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, TemplateBase)):
             threshold='substrate threshold flavor.',
             res_type='the resistor type.',
             em_specs='resistor EM spec specifications.',
+            edge_space='True to reserve space to adjacent transistor blocks.',
         )
 
     @abc.abstractmethod
@@ -292,6 +294,8 @@ class AnalogResLREdge(with_metaclass(abc.ABCMeta, TemplateBase)):
                                                         l_str, w_str, ntrx, ntry)
         if res_cls.use_parity():
             main += '_par%d' % self.params['parity']
+        if self.params['edge_space']:
+            main += '_edge'
 
         return main
 
@@ -447,6 +451,7 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, TemplateBase)):
             parity=0,
             res_type='reference',
             em_specs={},
+            edge_space=False,
         )
 
     @classmethod
@@ -470,6 +475,7 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, TemplateBase)):
             threshold='substrate threshold flavor.',
             res_type='the resistor type.',
             em_specs='resistor EM specifications.',
+            edge_space='True to reserve space to adjacent transistor blocks.',
         )
 
     @abc.abstractmethod
@@ -508,5 +514,6 @@ class AnalogResCorner(with_metaclass(abc.ABCMeta, TemplateBase)):
                                                         l_str, w_str, ntrx, ntry)
         if res_cls.use_parity():
             main += '_par%d' % self.params['parity']
-
+        if self.params['edge_space']:
+            main += '_edge'
         return main
