@@ -749,10 +749,14 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 pgtop_tr = pgbot_tr + hm_width
                 optr_id = self.make_track_id('pch', 0, 'g', gate_locs.get('bias_offp', pgtop_tr), width=hm_width)
                 ontr_id = self.make_track_id('pch', 0, 'g', gate_locs.get('bias_offn', pgbot_tr), width=hm_width)
-                warr = self.connect_to_tracks([loadp['g']], optr_id)
-                port_dict['bias_offp'] = [warr, ]
-                warr = self.connect_to_tracks([loadn['g']], ontr_id)
-                port_dict['bias_offn'] = [warr, ]
+                pwarr = self.connect_to_tracks([loadp['g']], optr_id)
+                nwarr = self.connect_to_tracks([loadn['g']], ontr_id)
+                if sign < 0:
+                    port_dict['bias_offp'] = [nwarr, ]
+                    port_dict['bias_offn'] = [pwarr, ]
+                else:
+                    port_dict['bias_offp'] = [pwarr, ]
+                    port_dict['bias_offn'] = [nwarr, ]
             else:
                 # connect load gate bias
                 tr_id = self.make_track_id('pch', 0, 'g', gate_locs.get('bias_load', pgbot_tr), width=hm_width)

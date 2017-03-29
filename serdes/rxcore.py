@@ -464,7 +464,7 @@ class RXHalfTop(SerdesRXBase):
         warr = self.connect_to_tracks(summer_ports[('bias_casc', 1)], en_tr_id, track_lower=0)
         self.add_pin('en_dfe<0>', warr, show=show_pins)
         warr = self.connect_to_tracks(summer_ports[('bias_tail', 1)], tap_tr_id, track_lower=0)
-        self.add_pin(clkp + '_nmos_summer_tap1', warr, show=show_pins)
+        self.add_pin(clkp + '_nmos_tap1', warr, show=show_pins)
 
         warr = self.connect_to_tracks(clkn_nmos_sw_list, clkn_nmos_sw_tr_id)
         self.add_pin(clkn + '_nmos_switch', warr, show=show_pins)
@@ -1404,7 +1404,8 @@ class RXCore(TemplateBase):
         layout_info = SerdesRXBaseInfo(self.grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
         self.connect_signal(inst_list, col_idx_dict, layout_info)
         self.connect_bias(inst_list, layout_info)
-        self.connect_supplies(inst_list, layout_info.mconn_port_layer + 1, layout_info.mconn_port_layer + 4)
+        self.connect_supplies(inst_list, layout_info.mconn_port_layer + 1,
+                              layout_info.mconn_port_layer + 4)
 
     def connect_signal(self, inst_list, col_idx_dict, layout_info):
         hm_layer_id = layout_info.mconn_port_layer + 1
@@ -1507,7 +1508,7 @@ class RXCore(TemplateBase):
         clk_wires = {}
         for inst in inst_list:
             for name in inst.port_names_iter():
-                if name.startswith('clk'):
+                if name.startswith('clk') and not name.endswith('tap1'):
                     if name not in clk_wires:
                         clk_wires[name] = []
                     clk_wires[name].extend(inst.get_all_port_pins(name))
@@ -1557,8 +1558,9 @@ class RXCore(TemplateBase):
 
         num_dfe = len(self.params['intsum_params']['gm_fg_list']) - 1
         for inst, prefix in zip(inst_list, ('even_', 'odd_')):
-            for pname in ('bias_ffe', 'bias_offp', 'bias_offn'):
-                self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
+            for pname in ('bias_ffe', 'bias_offp', 'bias_offn', 'clkn_nmos_tap1', 'clkp_nmos_tap1'):
+                if inst.has_port(pname):
+                    self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
             for idx in range(num_dfe):
                 pname = 'en_dfe<%d>' % idx
                 self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
@@ -1570,8 +1572,8 @@ class RXCore(TemplateBase):
         sup_width = 1
         fill_margin = 0.6
         edge_margin = 0.2
+        show_pins = self.params['show_pins']
 
-        """
         vdd_warrs, vss_warrs = [], []
         for sup_bot_layer in range(bot_layer, top_layer):
             for inst in inst_list:
@@ -1580,9 +1582,8 @@ class RXCore(TemplateBase):
             vdd_warrs, vss_warrs = self.do_power_fill(sup_bot_layer + 1, vdd_warrs, vss_warrs,
                                                       sup_width=sup_width, fill_margin=fill_margin,
                                                       edge_margin=edge_margin)
-        self.add_pin(self.get_pin_name('VSS'), vss_warrs)
-        self.add_pin(self.get_pin_name('VDD'), vdd_warrs)
-        """
+        self.add_pin(self.get_pin_name('VSS'), vss_warrs, label='VSS:', show=show_pins)
+        self.add_pin(self.get_pin_name('VDD'), vdd_warrs, label='VDD:', show=show_pins)
 
     def _connect_differential(self, inst_list, ptr_idx, vm_layer_id, vm_width, vm_space, even_ports, odd_ports):
         tr_idx_list = [ptr_idx, ptr_idx + vm_width + vm_space]
