@@ -36,7 +36,7 @@ from bag.layout.routing import TrackID
 from .base import SerdesRXBase, SerdesRXBaseInfo
 
 
-def connect_to_xm(template, warr_p, warr_n, col_intv, layout_info, sig_widths, sig_spaces):
+def connect_to_xm(template, warr_p, warr_n, col_intv, layout_info, sig_widths, sig_spaces, xm_mid_tr):
     """Connect differential ports to xm layer.
 
     Returns a list of [even_p, even_n, odd_p, odd_n] WireArrays on xm layer.
@@ -52,8 +52,9 @@ def connect_to_xm(template, warr_p, warr_n, col_intv, layout_info, sig_widths, s
     n_tr = p_tr + vm_width + vm_space
     # step 1B: connect to vm and xm layer
     vmp, vmn = template.connect_differential_tracks(warr_p, warr_n, vm_layer_id, p_tr, n_tr, width=vm_width)
-    mid_tr = template.grid.coord_to_nearest_track(xm_layer_id, vmp.middle, half_track=True, mode=0)
-    nx_tr = mid_tr - (xm_width + xm_space) / 2
+    if xm_mid_tr is None:
+        xm_mid_tr = template.grid.coord_to_nearest_track(xm_layer_id, vmp.middle, half_track=True, mode=0)
+    nx_tr = xm_mid_tr - (xm_width + xm_space) / 2
     px_tr = nx_tr + xm_width + xm_space
     return template.connect_differential_tracks(vmp, vmn, xm_layer_id, px_tr, nx_tr, width=xm_width)
 
@@ -219,6 +220,10 @@ class RXHalfTop(SerdesRXBase):
         for name in inout_list:
             self.add_pin('alat1_%s' % name, alat_ports[name], show=show_pins)
 
+        # connect ffe input to middle xm layer tracks, so we have room for vdd/vss wires.
+        xm_layer_id = self.layout_info.mconn_port_layer + 3
+        ffe_in_xm_mid_tr = (self.grid.get_num_tracks(self.size, xm_layer_id) - 1) / 2
+
         # export intsum inout pins
         num_intsum = len(intsum_info['amp_info_list'])
         ffe_inputs = None
@@ -229,8 +234,8 @@ class RXHalfTop(SerdesRXBase):
                 ffe_inn = intsum_ports[('inn', 1)][0]
                 ffe_start = intsum_col + intsum_info['gm_offsets'][1]
                 ffe_stop = ffe_start + intsum_info['amp_info_list'][1]['fg_tot']
-                ffe_inp, ffe_inn = connect_to_xm(self, ffe_inp, ffe_inn, (ffe_start, ffe_stop),
-                                                 self.layout_info, sig_widths, sig_spaces)
+                ffe_inp, ffe_inn = connect_to_xm(self, ffe_inp, ffe_inn, (ffe_start, ffe_stop), self.layout_info,
+                                                 sig_widths, sig_spaces, ffe_in_xm_mid_tr)
                 ffe_inputs = [ffe_inp, ffe_inn]
                 self.add_pin('ffe_inp', ffe_inp, show=show_pins)
                 self.add_pin('ffe_inn', ffe_inn, show=show_pins)
@@ -255,7 +260,6 @@ class RXHalfTop(SerdesRXBase):
         sup_lower, sup_upper = self.array_box.left_unit, self.array_box.right_unit
         vddt = self.connect_wires(vdd_list, lower=sup_lower, upper=sup_upper, unit_mode=True)
         vdd_warrs.extend(vddt)
-        self.add_pin(vdd_name, vdd_warrs, show=show_pins)
         warr = self.connect_wires(cascl_list, lower=sup_lower, unit_mode=True)
         vdd_warrs.extend(warr)
         ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(lower=sup_lower, upper=sup_upper,
@@ -280,8 +284,7 @@ class RXHalfTop(SerdesRXBase):
         casc_tr = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=clk_width_vm, space=clk_space_vm)
         # step 2: connect summer cascode to vdd
         casc_tr_id = TrackID(vm_layer, casc_tr, width=clk_width_vm)
-        warr = self.connect_to_tracks(ntap_wire_arrs + vddt + casc_sum, casc_tr_id)
-        self.add_pin(vdd_name, warr, show=show_pins)
+        self.connect_to_tracks(ntap_wire_arrs + vddt + casc_sum, casc_tr_id)
 
         return ffe_inputs
 
@@ -659,6 +662,10 @@ class RXHalfBottom(SerdesRXBase):
             self.add_pin('integ_%s' % name, integ_ports[name], show=show_pins)
             self.add_pin('alat0_%s' % name, alat_ports[name], show=show_pins)
 
+        # connect digital latch input to middle xm layer tracks, so we have room for vdd/vss wires.
+        xm_layer_id = self.layout_info.mconn_port_layer + 3
+        dlat_in_xm_mid_tr = (self.grid.get_num_tracks(self.size, xm_layer_id) - 1) / 2
+
         dlat_inputs = None
         for idx, (cur_col, dlat_ports, dlat_info) in enumerate(dlat_info_list):
             vdd_list.extend(dlat_ports['vddt'])
@@ -669,8 +676,8 @@ class RXHalfBottom(SerdesRXBase):
                 dlat_inp = dlat_ports['inp'][0]
                 dlat_inn = dlat_ports['inn'][0]
                 dlat_intv = cur_col, cur_col + dlat_info['fg_tot']
-                dlat_inp, dlat_inn = connect_to_xm(self, dlat_inp, dlat_inn, dlat_intv,
-                                                   self.layout_info, sig_widths, sig_spaces)
+                dlat_inp, dlat_inn = connect_to_xm(self, dlat_inp, dlat_inn, dlat_intv, self.layout_info,
+                                                   sig_widths, sig_spaces, dlat_in_xm_mid_tr)
                 self.add_pin('dlat%d_inp' % idx, dlat_inp, show=show_pins)
                 self.add_pin('dlat%d_inn' % idx, dlat_inn, show=show_pins)
                 dlat_inputs = [dlat_inp, dlat_inn]
@@ -686,7 +693,6 @@ class RXHalfBottom(SerdesRXBase):
         sup_lower, sup_upper = self.array_box.left_unit, self.array_box.right_unit
         vdd_warrs = self.connect_wires(vdd_list, lower=sup_lower, upper=sup_upper, unit_mode=True)
         vdd_warrs.extend(self.connect_wires(casc_list, lower=sup_lower, upper=sup_upper, unit_mode=True))
-        self.add_pin(vdd_name, vdd_warrs, show=show_pins)
 
         ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(lower=sup_lower, upper=sup_upper,
                                                          vdd_warrs=vdd_warrs, sup_margin=1, unit_mode=True)
@@ -961,7 +967,45 @@ class RXHalf(TemplateBase):
 
         bot_inst, top_inst, col_idx_dict = self.place(layout_info)
         self.connect(layout_info, bot_inst, top_inst, col_idx_dict)
+        self.draw_xm_supplies(bot_inst, top_inst)
         self._col_idx_dict = col_idx_dict
+
+    def draw_xm_supplies(self, bot_inst, top_inst):
+        show_pins = self.params['show_pins']
+        # draw xm VDD wire
+        bot_vdd = bot_inst.get_all_port_pins('VDD')[0]
+        top_vdd = top_inst.get_all_port_pins('VDD')[0]
+        hm_layer = bot_vdd.layer_id
+        lower = self.grid.get_wire_bounds(hm_layer, bot_vdd.track_id.base_index, bot_vdd.track_id.width,
+                                          unit_mode=True)[0]
+        upper = self.grid.get_wire_bounds(hm_layer, top_vdd.track_id.base_index, top_vdd.track_id.width,
+                                          unit_mode=True)[1]
+        xm_layer = hm_layer + 2
+        xtr_bot = self.grid.find_next_track(xm_layer, lower, half_track=False, mode=1, unit_mode=True)
+        xtr_top = self.grid.find_next_track(xm_layer, upper, half_track=False, mode=-1, unit_mode=True)
+        xnum_tr = xtr_top - xtr_bot + 1
+        xmid_tr = (xtr_top + xtr_bot) / 2
+        xm_upper = bot_inst.array_box.right_unit
+        warr = self.add_wires(xm_layer, xmid_tr, lower=0, upper=xm_upper, width=xnum_tr, unit_mode=True)
+        self.add_pin('VDDX', warr, show=show_pins)
+        # draw xm bottom VSS wire
+        bot_vss = bot_inst.get_all_port_pins('VSS')[0]
+        top_vss = top_inst.get_all_port_pins('VSS')[0]
+        upper = self.grid.get_wire_bounds(hm_layer, bot_vss.track_id.base_index, bot_vss.track_id.width,
+                                          unit_mode=True)[1]
+        xtr_top = self.grid.find_next_track(xm_layer, upper, half_track=False, mode=-1, unit_mode=True)
+        xmid_tr = xtr_top - (xnum_tr - 1) / 2
+        warr = self.add_wires(xm_layer, xmid_tr, lower=0, upper=xm_upper, width=xnum_tr, unit_mode=True)
+        self.add_pin('VSSX', warr, show=show_pins)
+        # draw xm top VSS wire
+        lower = self.grid.get_wire_bounds(hm_layer, top_vss.track_id.base_index, top_vss.track_id.width,
+                                          unit_mode=True)[0]
+        xtr_bot = self.grid.find_next_track(xm_layer, lower, half_track=False, mode=1, unit_mode=True)
+        xtr_top = self.grid.get_num_tracks(self.size, xm_layer) - 1
+        xnum_tr = xtr_top - xtr_bot + 1
+        xmid_tr = (xtr_top + xtr_bot) / 2
+        warr = self.add_wires(xm_layer, xmid_tr, lower=0, upper=xm_upper, width=xnum_tr, unit_mode=True)
+        self.add_pin('VSSX', warr, show=show_pins)
 
     def place(self, layout_info):
         # type: (SerdesRXBaseInfo) -> Tuple[Instance, Instance, Dict[str, Any]]
@@ -1207,10 +1251,9 @@ class RXHalf(TemplateBase):
         self.set_size_from_array_box(top_master.size[0])
 
         show_pins = self.params['show_pins']
-        for port_name in bot_inst.port_names_iter():
-            self.reexport(bot_inst.get_port(port_name), show=show_pins)
-        for port_name in top_inst.port_names_iter():
-            self.reexport(top_inst.get_port(port_name), show=show_pins)
+        for inst in (bot_inst, top_inst):
+            for port_name in inst.port_names_iter():
+                self.reexport(inst.get_port(port_name), show=show_pins)
 
         return bot_inst, top_inst, col_idx_dict
 
@@ -1404,8 +1447,7 @@ class RXCore(TemplateBase):
         layout_info = SerdesRXBaseInfo(self.grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
         self.connect_signal(inst_list, col_idx_dict, layout_info)
         self.connect_bias(inst_list, layout_info)
-        self.connect_supplies(inst_list, layout_info.mconn_port_layer + 1,
-                              layout_info.mconn_port_layer + 4)
+        self.connect_supplies(inst_list)
 
     def connect_signal(self, inst_list, col_idx_dict, layout_info):
         hm_layer_id = layout_info.mconn_port_layer + 1
@@ -1568,22 +1610,53 @@ class RXCore(TemplateBase):
                     pname = 'bias_dfe<%d>' % idx
                     self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
 
-    def connect_supplies(self, inst_list, bot_layer, top_layer):
-        sup_width = 1
-        fill_margin = 0.6
-        edge_margin = 0.2
+    def connect_supplies(self, inst_list):
         show_pins = self.params['show_pins']
 
         vdd_warrs, vss_warrs = [], []
-        for sup_bot_layer in range(bot_layer, top_layer):
-            for inst in inst_list:
-                vdd_warrs.extend(inst.get_all_port_pins('VDD', layer=sup_bot_layer))
-                vss_warrs.extend(inst.get_all_port_pins('VSS', layer=sup_bot_layer))
-            vdd_warrs, vss_warrs = self.do_power_fill(sup_bot_layer + 1, vdd_warrs, vss_warrs,
-                                                      sup_width=sup_width, fill_margin=fill_margin,
-                                                      edge_margin=edge_margin)
-        self.add_pin(self.get_pin_name('VSS'), vss_warrs, label='VSS:', show=show_pins)
-        self.add_pin(self.get_pin_name('VDD'), vdd_warrs, label='VDD:', show=show_pins)
+        vddx_warrs, vssx_warrs = [], []
+        for inst in inst_list:
+            vdd_warrs.extend(inst.get_all_port_pins('VDD'))
+            vss_warrs.extend(inst.get_all_port_pins('VSS'))
+            vddx_warrs.extend(inst.get_all_port_pins('VDDX'))
+            vssx_warrs.extend(inst.get_all_port_pins('VSSX'))
+
+        vddx_warrs = self.connect_wires(vddx_warrs)
+        vssx_warrs = self.connect_wires(vssx_warrs)
+
+        # connect X layer supplies to lower supplies
+        hm_layer = vdd_warrs[0].layer_id
+        vm_layer = hm_layer + 1
+        xm_layer = vm_layer + 1
+        hw = vdd_warrs[0].track_id.width
+        vidx_list = list(range(self.grid.get_num_tracks(self.size, vm_layer)))
+        margin = int(round(0.5 / self.grid.resolution))
+        for xwires, hwires in zip([vddx_warrs, vssx_warrs], [vdd_warrs, vss_warrs]):
+            for xwarr in xwires:
+                xtid = xwarr.track_id
+                xw = xtid.width
+                for xidx in xtid:
+                    # get all hm wires to connect to this one
+                    xlower, xupper = self.grid.get_wire_bounds(xm_layer, xidx, width=xw, unit_mode=True)
+                    hidx_list = []
+                    for hwarr in hwires:
+                        for hidx in hwarr.track_id:
+                            hlower, hupper = self.grid.get_wire_bounds(hm_layer, hidx, width=hw, unit_mode=True)
+                            if hlower >= xlower and hupper <= xupper:
+                                hidx_list.append(hidx)
+                    # get all available vm wires to use as vias
+                    avail_list = self.get_available_tracks(vm_layer, vidx_list, xlower, xupper,
+                                                           width=1, margin=margin, unit_mode=True)
+                    # connect
+                    vm_warr_list = []
+                    for vidx in avail_list:
+                        vm_warr_list.append(self.add_wires(vm_layer, vidx, xlower, xupper, unit_mode=True))
+                    self.connect_to_tracks(vm_warr_list, TrackID(xm_layer, xidx, width=xw))
+                    for hidx in hidx_list:
+                        self.connect_to_tracks(vm_warr_list, TrackID(hm_layer, hidx, width=hw))
+
+        self.add_pin('VDD', vddx_warrs, label='VDD:', show=show_pins)
+        self.add_pin('VSS', vssx_warrs, label='VSS:', show=show_pins)
 
     def _connect_differential(self, inst_list, ptr_idx, vm_layer_id, vm_width, vm_space, even_ports, odd_ports):
         tr_idx_list = [ptr_idx, ptr_idx + vm_width + vm_space]

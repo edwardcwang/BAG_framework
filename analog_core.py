@@ -1200,6 +1200,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             vdd/vss wires mos conn layer margin in number of tracks.
         unit_mode : bool
             True if lower/upper are specified in resolution units.
+
         Returns
         -------
         ptap_wire_arrs : List[WireArray]
