@@ -40,6 +40,7 @@ from itertools import chain
 from bag.layout.util import BBox
 from bag.layout.routing import TrackID, WireArray
 from bag.layout.template import TemplateBase, TemplateDB
+from bag.layout.core import TechInfo
 
 from .base import AnalogResCore
 from ..analog_core import SubstrateContact
@@ -85,6 +86,11 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._num_corner_tracks = None
         self._w_tracks = None
         self._hm_layer = self._core_cls.port_layer_id()
+
+    @classmethod
+    def get_port_layer_id(cls, tech_info):
+        # type: (TechInfo) -> int
+        return tech_info.tech_params['layout']['res_core_template'].port_layer_id()
 
     @property
     def num_tracks(self):
