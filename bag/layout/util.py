@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 import pprint
-from typing import Generator, Union, Tuple
+from typing import Generator, Union, Tuple, List
 
 import numpy as np
 
@@ -225,6 +225,31 @@ class BBox(object):
     def yc(self):
         """The center Y coordinate, rounded to nearest grid point."""
         return ((self._bot_unit + self._top_unit) // 2) * self._res
+
+    def get_points(self, unit_mode=False):
+        # type: (bool) -> List[Tuple[Union[float, int], Union[float, int]]]
+        """Returns this bounding box as a list of points.
+
+        Parameters
+        ----------
+        unit_mode : bool
+            True to return points in resolution units.
+
+        Returns
+        -------
+        points : List[Tuple[Union[float, int], Union[float, int]]]
+            this bounding box as a list of points.
+        """
+        if unit_mode:
+            return [(self._left_unit, self._bot_unit),
+                    (self._left_unit, self._top_unit),
+                    (self._right_unit, self._top_unit),
+                    (self._right_unit, self._bot_unit)]
+        else:
+            return [(self.left, self.bottom),
+                    (self.left, self.top),
+                    (self.right, self.top),
+                    (self.right, self.bottom)]
 
     def as_bbox_array(self):
         """Cast this BBox as a BBoxArray."""
@@ -906,58 +931,3 @@ class Pin(object):
     def __repr__(self):
         return '%s(%s, %s, %s, %s)' % (self.__class__.__name__, self._pin_name,
                                        self._term_name, self._layer, self._bbox)
-
-
-class InstPin(object):
-    """An instance pin.
-
-    This class represents the pin of a specific instance.  It takes instance orientation and
-    location into account.
-
-    Parameters
-    ----------
-    inst : bag.layout.placement.TemplateInst
-        the instance associated with the pin.
-    pin_name : str
-        name of this pin.
-
-    Attributes
-    ----------
-    inst : bag.layout.placement.TemplateInst
-        the instance associated with the pin.
-    pin_name : str
-        name of this pin.
-    """
-
-    def __init__(self, inst, pin_name):
-        self.inst = inst
-        self.pin_name = pin_name
-
-    def resize(self, new_num_tr):
-        """Resize this pin.
-
-        Parameters
-        ----------
-        new_num_tr : int
-            the new number of tracks of this pin.
-        """
-        self.inst.resize_pin(self.pin_name, new_num_tr)
-
-    @property
-    def bbox(self):
-        pin_master = self.inst.get_master_pin(self.pin_name)
-        return pin_master.bbox.transform(self.inst.get_instance_location(), self.inst.get_orientation())
-
-    @property
-    def term_name(self):
-        return self.inst.get_master_pin(self.pin_name).term_name
-
-    @property
-    def layer(self):
-        return self.inst.get_master_pin(self.pin_name).layer
-
-    def __str__(self):
-        return repr(self)
-
-    def __repr__(self):
-        return '%s(%s, %s, %s, %s)' % (self.__class__.__name__, self.pin_name, self.term_name, self.layer, self.bbox)

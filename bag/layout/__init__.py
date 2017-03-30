@@ -32,12 +32,10 @@ from builtins import *
 from .core import BagLayout, TechInfo
 from .routing import RoutingGrid
 from .template import TemplateDB
-from .placement import GridGroup
 from . import util
 from . import connection
 
 
 __all__ = ['BagLayout', 'TechInfo',
            'RoutingGrid',
-           'TemplateDB',
-           'GridGroup', ]
+           'TemplateDB',]

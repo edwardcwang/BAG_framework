@@ -47,7 +47,7 @@ from .util import BBox, BBoxArray
 from ..io import fix_string, get_encoding, open_file
 from .routing import Port, TrackID, WireArray, RoutingGrid
 from .routing.fill import UsedTracks, get_power_fill_tracks, get_available_tracks
-from .objects import Instance, Rect, Via, Path
+from .objects import Instance, Rect, Via, Path, Blockage
 from future.utils import with_metaclass
 
 # try to import cybagoa module
@@ -1006,15 +1006,38 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         return rect
 
     def add_path(self, path):
+        # type: (Path) -> Path
         """Add a new path.
 
         Parameters
         ----------
         path : Path
             the path to add.
+
+        Returns
+        -------
+        path : Path
+            the added path object.
         """
         self._layout.add_path(path)
         return path
+
+    def add_blockage(self, blockage):
+        # type: (Blockage) -> Blockage
+        """Add a new blockage.
+
+        Parameters
+        ----------
+        blockage : Blockage
+            the blockage to add.
+
+        Returns
+        -------
+        blockage : Blockage
+            the added blockage object.
+        """
+        self._layout.add_blockage(blockage)
+        return blockage
 
     def reexport(self, port, net_name='', label='', show=True,
                  fill_margin=0, fill_type='', unit_mode=False):
