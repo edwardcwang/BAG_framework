@@ -38,7 +38,7 @@ from itertools import chain
 import bag
 import bag.io
 from .util import BBox
-from .objects import Rect, Via, ViaInfo, Instance, InstanceInfo, PinInfo, Path
+from .objects import Rect, Via, ViaInfo, Instance, InstanceInfo, PinInfo, Path, Blockage
 from bag.util.search import BinaryIterator
 
 # try to import cybagoa module
@@ -927,6 +927,7 @@ class BagLayout(object):
         self._via_primitives = []  # type: List[ViaInfo]
         self._pin_list = []  # type: List[PinInfo]
         self._path_list = []  # type: List[Path]
+        self._blockage_list = []  # type: List[Blockage]
         self._used_inst_names = set()
         self._used_pin_names = set()
         self._content = None
@@ -935,6 +936,7 @@ class BagLayout(object):
         self._flat_rect_list = None
         self._flat_via_list = None
         self._flat_path_list = None
+        self._flat_blockage_list = None
         if use_cybagoa and cybagoa is not None:
             encoding = bag.io.get_encoding()
             self._oa_layout = cybagoa.PyLayout(encoding)
@@ -955,6 +957,7 @@ class BagLayout(object):
     def flatten(self):
         self._flat_rect_list = []
         self._flat_path_list = []
+        self._flat_blockage_list = []
         self._flat_via_list = []  # type: List[ViaInfo]
         self._flat_inst_list = []  # type: List[InstanceInfo]
 
@@ -973,6 +976,13 @@ class BagLayout(object):
                 if self._flat_oa_layout is not None:
                     self._flat_oa_layout.add_path(**obj_content)
 
+        for obj in self._blockage_list:
+            if obj.valid:
+                obj_content = obj.content
+                self._flat_blockage_list.append(obj_content)
+                if self._flat_oa_layout is not None:
+                    self._flat_oa_layout.add_blockage(**obj_content)
+
         # get vias
         for obj in self._via_list:
             if obj.valid:
@@ -990,6 +1000,7 @@ class BagLayout(object):
         # get instances
         for obj in self._inst_list:
             if obj.valid:
+                # TODO: add support for flatten blockage
                 finst_list, frect_list, fvia_list, fpath_list = obj.flatten()
                 self._flat_inst_list.extend(finst_list)
                 self._flat_rect_list.extend(frect_list)
@@ -1043,6 +1054,14 @@ class BagLayout(object):
                 if self._oa_layout is not None:
                     self._oa_layout.add_path(**obj_content)
 
+        blockage_list = []
+        for obj in self._blockage_list:
+            if obj.valid:
+                obj_content = obj.content
+                blockage_list.append(obj_content)
+                if self._oa_layout is not None:
+                    self._oa_layout.add_blockage(**obj_content)
+
         # get vias
         via_list = []  # type: List[ViaInfo]
         for obj in self._via_list:
@@ -1076,17 +1095,20 @@ class BagLayout(object):
             for pin in self._pin_list:
                 self._oa_layout.add_pin(**pin)
 
+        # TODO: add blockage support
         self._content = [inst_list,
                          rect_list,
                          via_list,
                          self._pin_list,
-                         path_list]
+                         path_list,
+                         ]
 
         if flatten:
             self.flatten()
 
     def get_flat_geometries(self):
         """Returns flattened geometries in this layout."""
+        # TODO: add blockage support
         return self._flat_inst_list, self._flat_rect_list, self._flat_via_list, self._flat_path_list
 
     def get_masters_set(self):
@@ -1132,6 +1154,7 @@ class BagLayout(object):
             raise Exception('Layout is not finalized.')
 
         if flatten:
+            # TODO: add blockage support
             if self._flat_oa_layout is not None:
                 return cell_name, self._flat_oa_layout
             return [cell_name, self._flat_inst_list, self._flat_rect_list,
@@ -1174,7 +1197,8 @@ class BagLayout(object):
             raise Exception('Layout is already finalized.')
 
         for obj in chain(self._inst_list, self._inst_primitives, self._rect_list,
-                         self._via_primitives, self._via_list, self._pin_list, self._path_list):
+                         self._via_primitives, self._via_list, self._pin_list,
+                         self._path_list, self._blockage_list):
             obj.move_by(dx=dx, dy=dy)
 
     def add_instance_primitive(self, lib_name, cell_name, loc,
@@ -1268,6 +1292,19 @@ class BagLayout(object):
         if self._finalized:
             raise Exception('Layout is already finalized.')
         self._path_list.append(path)
+
+    def add_blockage(self, blockage):
+        # type: (Blockage) -> None
+        """Add a new blockage.
+
+        Parameters
+        ----------
+        blockage : Blockage
+            the blockage object to add.
+        """
+        if self._finalized:
+            raise Exception('Layout is already finalized.')
+        self._blockage_list.append(blockage)
 
     def add_via(self, via):
         """Add a new (arrayed) via.
