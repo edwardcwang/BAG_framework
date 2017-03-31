@@ -394,7 +394,9 @@ class CircuitCharacterization(with_metaclass(abc.ABCMeta, object)):
         fname = os.path.join(self._root_dir, self.get_sim_file_name(constants))
 
         attr_list, total_combo = self._get_missing_sweep_config(fname, constants, sweep_attrs, env_list, sweep_params)
-
+        print('sweeping the following:')
+        for val in total_combo:
+            print(val)
         for attr_values, env_list in total_combo:
             attr_table = dict(zip(attr_list, attr_values))
 
@@ -981,12 +983,18 @@ class CharDB(with_metaclass(abc.ABCMeta, object)):
         if not env:
             fun_list = []
             for env in self.env_list:
-                env_idx = np.where(self._env_values == env)[0][0]
+                occur_list = np.where(self._env_values == env)[0]
+                if occur_list.size == 0:
+                    raise ValueError('environment %s not found.')
+                env_idx = occur_list[0]
                 fidx_list[0] = env_idx
                 fun_list.append(self._get_function_helper(name, fidx_list))
             return VectorDiffFunction(fun_list)
         else:
-            env_idx = np.where(self._env_values == env)[0][0]
+            occur_list = np.where(self._env_values == env)[0]
+            if occur_list.size == 0:
+                raise ValueError('environment %s not found.')
+            env_idx = occur_list[0]
             fidx_list[0] = env_idx
             return self._get_function_helper(name, fidx_list)
 
