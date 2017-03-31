@@ -118,7 +118,7 @@ class BiasResistorDiff(ResArrayBase):
         for idx in col_iter:
             bot_warr, top_warr = self.get_res_ports(0, idx)
             if last_port is None:
-                last_port = top_warr, 0
+                last_port = top_warr, 1
                 port_out = bot_warr
             else:
                 if last_port[1] == 0:
@@ -251,6 +251,7 @@ class HighPassFilterDiff(TemplateBase):
         diff_margin = int(round(self.params['cap_diff_margin'] / layout_unit / res))
         num_cap_layer = self.params['num_cap_layer']
         cap_port_width = self.params['cap_port_width']
+        show_pins = self.params['show_pins']
 
         # place instances
         io_layer, io_idx_list, io_width, bias_tr_id = self.place()
@@ -276,14 +277,22 @@ class HighPassFilterDiff(TemplateBase):
         xnl = (blk_w + diff_margin) // 2
         xnr = blk_w - edge_margin
 
-        cap_box = BBox(xpl, yb, xpr, yt, res, unit_mode=True)
-        pwarr, nwarr = self.draw_cap(cap_box, cap_port_width, io_layer, io_idx_list[:2], io_width, num_cap_layer)
+        # draw mom caps and get cap ports
         cap_box = BBox(xnl, yb, xnr, yt, res, unit_mode=True)
-        pwarr, nwarr = self.draw_cap(cap_box, cap_port_width, io_layer, io_idx_list[2:], io_width, num_cap_layer)
-
-    def draw_cap(self, cap_box, cap_port_width, io_layer, io_idx_list, io_width, num_cap_layer):
         cap_ports = self.add_mom_cap(cap_box, io_layer, num_cap_layer, port_width=cap_port_width)
-        return None, None
+        cap_on, cap_in = cap_ports[io_layer + 1]
+        cap_box = BBox(xpl, yb, xpr, yt, res, unit_mode=True)
+        cap_ports = self.add_mom_cap(cap_box, io_layer, num_cap_layer, port_width=cap_port_width)
+        cap_ip, cap_op = cap_ports[io_layer + 1]
+
+        # connect cap to io, then export
+        tr_list = self.connect_matching_tracks([cap_ip, cap_op, cap_on, cap_in], io_layer,
+                                               [io_idx_list[0], io_idx_list[1], io_idx_list[3], io_idx_list[2]],
+                                               width=io_width)
+        self.add_pin('inp', tr_list[0], show=show_pins)
+        self.add_pin('outp', tr_list[1], show=show_pins)
+        self.add_pin('outn', tr_list[2], show=show_pins)
+        self.add_pin('inn', tr_list[3], show=show_pins)
 
     def place(self):
         # type: () -> Tuple[int, List[float], int, TrackID]
