@@ -571,7 +571,8 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
 
             if opt_nxy is not None:
                 opt_num = weight * opt_nxy[0] * opt_nxy[1]
-                if best_num is None or opt_num > best_num:
+                if (best_num is None or opt_num > best_num or
+                        (opt_num == best_num and self._via_better(opt_mdim_list, best_mdim_list))):
                     best_num = opt_num
                     best_nxy = opt_nxy
                     best_mdim_list = opt_mdim_list
@@ -583,6 +584,19 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         if best_num is None:
             return None
         return best_nxy, best_mdim_list, best_type, best_vdim, best_sp, best_adim
+
+    def _via_better(self, mdim_list1, mdim_list2):
+        """Returns true if the via in mdim_list1 has smaller area compared with via in mdim_list2"""
+        res = self._resolution
+        better = False
+        for mdim1, mdim2 in zip(mdim_list1, mdim_list2):
+            area1 = int(round(mdim1[0] / res)) * int(round(mdim1[1] / res))
+            area2 = int(round(mdim2[0] / res)) * int(round(mdim2[1] / res))
+            if area1 < area2:
+                better = True
+            elif area1 > area2:
+                return False
+        return better
 
     # noinspection PyMethodMayBeStatic
     def get_via_id(self, bot_layer, top_layer):

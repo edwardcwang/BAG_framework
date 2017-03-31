@@ -57,6 +57,7 @@ except ImportError:
     cybagoa = None
 
 Layer = Union[str, Tuple[str, str]]
+ldim = Union[float, int]
 
 TempBase = TypeVar('TempBase', bound='TemplateBase')
 
@@ -1345,6 +1346,199 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                                           unit_mode=unit_mode)
 
         return warr
+
+    def add_mom_cap(self,  # type: TemplateBase
+                    cap_box,  # type: BBox
+                    bot_layer,  # type: int
+                    num_layer,  # type: int
+                    port_width=1,  # type: int
+                    fill_margin=0,  # type: ldim
+                    fill_type='',  # type: str
+                    unit_mode=False  # type: bool
+                    ):
+        # type: (...) -> Dict[int, Tuple[WireArray, WireArray]]
+        """Draw mom cap in the defined bounding box."""
+        if num_layer <= 1:
+            raise ValueError('Must have at least 2 layers for MOM cap.')
+
+        res = self.grid.resolution
+        tech_info = self.grid.tech_info
+        if not unit_mode:
+            fill_margin = int(round(fill_margin / res))
+
+        top_layer = bot_layer + num_layer - 1
+        mom_cap_dict = tech_info.tech_params['layout']['mom_cap']
+        cap_margins = mom_cap_dict['margins']
+        cap_info = mom_cap_dict['width_space']
+
+        via_ext_dict = {lay: 0 for lay in range(bot_layer, top_layer + 1)}
+        # get via extensions on each layer
+        for vbot_layer in range(bot_layer, top_layer):
+            vtop_layer = vbot_layer + 1
+            bport_w = self.grid.get_track_width(vbot_layer, port_width, unit_mode=True)
+            tport_w = self.grid.get_track_width(vtop_layer, port_width, unit_mode=True)
+            bcap_w = int(round(cap_info[vbot_layer][0] / res))
+            tcap_w = int(round(cap_info[vtop_layer][0] / res))
+
+            # port-to-port via
+            vbext1, vtext1 = self.grid.get_via_extensions_dim(vbot_layer, bport_w, tport_w, unit_mode=True)
+            # cap-to-port via
+            vbext2 = self.grid.get_via_extensions_dim(vbot_layer, bcap_w, tport_w, unit_mode=True)[0]
+            # port-to-cap via
+            vtext2 = self.grid.get_via_extensions_dim(vbot_layer, bport_w, tcap_w, unit_mode=True)[1]
+
+            # record extension due to via
+            via_ext_dict[vbot_layer] = max(via_ext_dict[vbot_layer], vbext1, vbext2)
+            via_ext_dict[vtop_layer] = max(via_ext_dict[vtop_layer], vtext1, vtext2)
+
+        # find port locations and cap boundaries.
+        port_tracks = {}
+        cap_bounds = {}
+        cap_exts = {}
+        for cur_layer in range(bot_layer, top_layer + 1):
+            if self.grid.get_direction(cur_layer) == 'x':
+                cur_lower, cur_upper = cap_box.bottom_unit, cap_box.top_unit
+            else:
+                cur_lower, cur_upper = cap_box.left_unit, cap_box.right_unit
+            # make sure adjacent layer via extension will not extend outside of cap bounding box.
+            adj_via_ext = 0
+            if cur_layer != bot_layer:
+                adj_via_ext = via_ext_dict[cur_layer - 1]
+            if cur_layer != top_layer:
+                adj_via_ext = max(adj_via_ext, via_ext_dict[cur_layer + 1])
+            # find track indices
+            tr_lower = self.grid.find_next_track(cur_layer, cur_lower + adj_via_ext, tr_width=port_width,
+                                                 half_track=True, mode=1, unit_mode=True)
+            tr_upper = self.grid.find_next_track(cur_layer, cur_upper - adj_via_ext, tr_width=port_width,
+                                                 half_track=True, mode=-1, unit_mode=True)
+            tll, tlu = self.grid.get_wire_bounds(cur_layer, tr_lower, width=port_width, unit_mode=True)
+            tul, tuu = self.grid.get_wire_bounds(cur_layer, tr_upper, width=port_width, unit_mode=True)
+
+            # compute space from MOM cap wires to port wires
+            lay_name = tech_info.get_layer_name(cur_layer)
+            if isinstance(lay_name, tuple) or isinstance(lay_name, list):
+                lay_name = lay_name[0]
+            lay_type = tech_info.get_layer_type(lay_name)
+            cur_margin = max(cap_margins[cur_layer], tech_info.get_min_space(lay_type, (tlu - tll) * res))
+            cur_margin = int(round(cur_margin / res))
+
+            port_tracks[cur_layer] = (tr_lower, tr_upper)
+            cap_bounds[cur_layer] = (tlu + cur_margin, tul - cur_margin)
+            cap_exts[cur_layer] = (tll, tuu)
+
+        port_dict = {}
+        cap_wire_dict = {}
+        # draw ports/wires
+        for cur_layer in range(bot_layer, top_layer + 1):
+            # find port/cap wires lower/upper coordinates
+            lower, upper = None, None
+            if cur_layer != top_layer:
+                lower, upper = cap_exts[cur_layer + 1]
+            if cur_layer != bot_layer:
+                tmpl, tmpu = cap_exts[cur_layer - 1]
+                lower = tmpl if lower is None else min(lower, tmpl)
+                upper = tmpu if upper is None else max(upper, tmpu)
+
+            via_ext = via_ext_dict[cur_layer]
+            lower -= via_ext
+            upper += via_ext
+
+            tr_lower, tr_upper = port_tracks[cur_layer]
+            if cur_layer == bot_layer:
+                pwarr = self.add_wires(cur_layer, tr_lower, lower, upper, width=port_width,
+                                       fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
+                nwarr = self.add_wires(cur_layer, tr_upper, lower, upper, width=port_width,
+                                       fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
+            else:
+                pwarr, nwarr = port_dict[cur_layer - 1]
+                pwarr, nwarr = self.connect_differential_tracks(pwarr, nwarr, cur_layer, tr_lower, tr_upper,
+                                                                track_lower=lower, track_upper=upper, width=port_width,
+                                                                fill_margin=fill_margin, fill_type=fill_type,
+                                                                unit_mode=True)
+            port_dict[cur_layer] = (pwarr, nwarr)
+            # mark all in-between tracks as used
+            fake_warr = WireArray(TrackID(cur_layer, tr_lower + 1, num=int(tr_upper - tr_lower) + 1, pitch=1),
+                                  lower * res, upper * res)
+            self._used_tracks.add_wire_arrays(fake_warr)
+
+            # draw cap wires
+            cap_lower, cap_upper = cap_bounds[cur_layer]
+            cap_tot_space = cap_upper - cap_lower
+            cap_w, cap_sp = cap_info[cur_layer]
+            cap_w = int(round(cap_w / res))
+            cap_sp = int(round(cap_sp / res))
+            cap_pitch = cap_w + cap_sp
+            num_cap_wires = cap_tot_space // (cap_pitch * 2) * 2
+            cap_lower += (cap_tot_space - (num_cap_wires * cap_pitch - cap_sp)) // 2
+
+            is_horizontal = (self.grid.get_direction(cur_layer) == 'x')
+
+            if is_horizontal:
+                wbox = BBox(lower, cap_lower, upper, cap_lower + cap_w, res, unit_mode=True)
+            else:
+                wbox = BBox(cap_lower, lower, cap_lower + cap_w, upper, res, unit_mode=True)
+
+            lay_name = tech_info.get_layer_name(cur_layer)
+            if isinstance(lay_name, tuple) or isinstance(lay_name, list):
+                if len(lay_name) != 2:
+                    # TODO: support triple+ patterning layers?
+                    raise ValueError('Only double patterning is supported.')
+
+                num_dbl = num_cap_wires // 2
+                pitch_dbl = cap_pitch * 2 * res
+                if is_horizontal:
+                    wbox2 = wbox.move_by(dy=cap_pitch, unit_mode=True)
+                    self.add_rect(lay_name[0], wbox, ny=num_dbl, spy=pitch_dbl)
+                    self.add_rect(lay_name[1], wbox2, ny=num_dbl, spy=pitch_dbl)
+                else:
+                    wbox2 = wbox.move_by(dx=cap_pitch, unit_mode=True)
+                    self.add_rect(lay_name[0], wbox, nx=num_dbl, spx=pitch_dbl)
+                    self.add_rect(lay_name[1], wbox2, nx=num_dbl, spx=pitch_dbl)
+                cap_wire_dict[cur_layer] = [(lay_name[0], wbox), (lay_name[1], wbox2)], num_dbl, pitch_dbl
+            else:
+                pitch_single = cap_pitch * res
+                if is_horizontal:
+                    wbox2 = wbox.move_by(dy=cap_pitch, unit_mode=True)
+                    self.add_rect(lay_name, wbox, ny=num_cap_wires, spy=pitch_single)
+                else:
+                    wbox2 = wbox.move_by(dx=cap_pitch, unit_mode=True)
+                    self.add_rect(lay_name, wbox, nx=num_cap_wires, spx=pitch_single)
+                cap_wire_dict[cur_layer] = [(lay_name, wbox), (lay_name, wbox2)], num_cap_wires // 2, pitch_single * 2
+
+        # draw cap wires and vias
+        for cur_layer in range(bot_layer, top_layer):
+            cur_infos, cur_num, cur_pitch = cap_wire_dict[cur_layer]
+            next_infos, next_num, next_pitch = cap_wire_dict[cur_layer + 1]
+            cur_ports = port_dict[cur_layer]
+            next_ports = port_dict[cur_layer + 1]
+            cur_dir = self.grid.get_direction(cur_layer)
+            is_horizontal = (cur_dir == 'x')
+            if is_horizontal:
+                nx, ny, spx, spy = next_num, cur_num, next_pitch, cur_pitch
+            else:
+                nx, ny, spx, spy = cur_num, next_num, cur_pitch, next_pitch
+
+            for (cur_name, cur_box), (next_name, next_box), cpwarr, npwarr in zip(cur_infos, next_infos,
+                                                                                  cur_ports, next_ports):
+                # connect cap wire to cap wire
+                vbox = cur_box.intersect(next_box)
+                self.add_via(vbox, cur_name, next_name, cur_dir, nx=nx, ny=ny, spx=spx, spy=spy)
+                # connect cap wire to port
+                port_lay_name = self.grid.get_layer_name(cur_layer + 1, npwarr.track_id.base_index)
+                vbox = cur_box.intersect(npwarr.get_bbox_array(self.grid).base)
+                if is_horizontal:
+                    self.add_via(vbox, cur_name, port_lay_name, cur_dir, ny=ny, spy=spy)
+                else:
+                    self.add_via(vbox, cur_name, port_lay_name, cur_dir, nx=nx, spx=spx)
+                # connect port to cap wire
+                port_lay_name = self.grid.get_layer_name(cur_layer, cpwarr.track_id.base_index)
+                vbox = next_box.intersect(cpwarr.get_bbox_array(self.grid).base)
+                if is_horizontal:
+                    self.add_via(vbox, port_lay_name, next_name, cur_dir, nx=nx, spx=spx)
+                else:
+                    self.add_via(vbox, port_lay_name, next_name, cur_dir, ny=ny, spy=spy)
+
+        return port_dict
 
     def reserve_tracks(self,  # type: TemplateBase
                        layer_id,  # type: int

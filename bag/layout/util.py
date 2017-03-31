@@ -260,6 +260,7 @@ class BBox(object):
         return BBoxCollection([BBoxArray(self)])
 
     def merge(self, bbox):
+        # type: (BBox) -> BBox
         """Returns a new bounding box that's the union of this bounding box and the given one.
 
         Parameters
@@ -281,6 +282,26 @@ class BBox(object):
                     min(self._bot_unit, bbox._bot_unit),
                     max(self._right_unit, bbox._right_unit),
                     max(self._top_unit, bbox._top_unit),
+                    self._res, unit_mode=True)
+
+    def intersect(self, bbox):
+        # type: (BBox) -> BBox
+        """Returns a new bounding box that's the intersection of this bounding box and the given one.
+
+        Parameters
+        ----------
+        bbox : bag.layout.util.BBox
+            the bounding box to intersect with.
+
+        Returns
+        -------
+        intersect : bag.layout.util.BBox
+            the intersection bounding box.
+        """
+        return BBox(max(self._left_unit, bbox._left_unit),
+                    max(self._bot_unit, bbox._bot_unit),
+                    min(self._right_unit, bbox._right_unit),
+                    min(self._top_unit, bbox._top_unit),
                     self._res, unit_mode=True)
 
     def extend(self, x=None, y=None, unit_mode=False):
