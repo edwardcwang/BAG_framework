@@ -232,6 +232,7 @@ class HighPassFilterDiff(TemplateBase):
             num_cap_layer='number of layers to use for AC coupling cap.',
             tr_idx_list='input track indices',
             io_width='input/output track width',
+            cap_port_width='MOM cap port wire width.',
             sub_lch='substrate contact channel length.',
             sub_w='substrate contact width.',
             sub_type='the substrate type.',
@@ -244,9 +245,12 @@ class HighPassFilterDiff(TemplateBase):
     def draw_layout(self):
         # type: () -> None
 
-        edge_margin = self.params['cap_edge_margin'] / self.grid.layout_unit
-        diff_margin = self.params['cap_diff_margin'] / self.grid.layout_unit
+        res = self.grid.resolution
+        layout_unit = self.grid.layout_unit
+        edge_margin = int(round(self.params['cap_edge_margin'] / layout_unit / res))
+        diff_margin = int(round(self.params['cap_diff_margin'] / layout_unit / res))
         num_cap_layer = self.params['num_cap_layer']
+        cap_port_width = self.params['cap_port_width']
 
         # place instances
         io_layer, io_idx_list, io_width, bias_tr_id = self.place()
@@ -254,29 +258,31 @@ class HighPassFilterDiff(TemplateBase):
         # draw AC coupling caps bounding boxes
         # step 1: figure out cap bottom Y coordinate
         top_io_idx = max(io_idx_list)
-        num_space = self.grid.get_num_space_tracks(io_layer, io_width)
+        adj_yt = self.grid.get_wire_bounds(io_layer, top_io_idx, width=io_width, unit_mode=True)[1]
+        num_space = self.grid.get_num_space_tracks(io_layer, max(cap_port_width, io_width))
         bot_avail_track = top_io_idx + num_space + (io_width + 1) / 2
         yb = self.grid.get_wire_bounds(io_layer, bot_avail_track, unit_mode=True)[0]
+        yb = max(adj_yt + diff_margin, yb)
         # step 2: figure out cap top Y coordinate
         bias_idx = bias_tr_id.base_index
-        num_space = self.grid.get_num_space_tracks(io_layer, bias_tr_id.width)
-        top_avail_track = bias_idx - num_space - (bias_tr_id.width + 1) / 2
+        bias_width = bias_tr_id.width
+        num_space = self.grid.get_num_space_tracks(io_layer, max(cap_port_width, bias_width))
+        top_avail_track = bias_idx - num_space - (bias_width + 1) / 2
         yt = self.grid.get_wire_bounds(io_layer, top_avail_track, unit_mode=True)[1]
         # step 3: figure out cap left/right X coordinate
-        res = self.grid.resolution
-        blk_w = self.grid.get_size_dimension(self.size, unit_mode=False)[0]
-        xpl = int(round(edge_margin / res))
-        xpr = int(round((blk_w - diff_margin) / (2 * res)))
-        xnl = int(round((blk_w + diff_margin) / (2 * res)))
-        xnr = int(round((blk_w - edge_margin) / res))
+        blk_w = self.grid.get_size_dimension(self.size, unit_mode=True)[0]
+        xpl = edge_margin
+        xpr = (blk_w - diff_margin) // 2
+        xnl = (blk_w + diff_margin) // 2
+        xnr = blk_w - edge_margin
 
-        pwarr, nwarr = self.draw_cap(xpl, yb, xpr, yt, io_layer, io_idx_list[:2], io_width, num_cap_layer)
-        pwarr, nwarr = self.draw_cap(xnl, yb, xnr, yt, io_layer, io_idx_list[2:], io_width, num_cap_layer)
+        cap_box = BBox(xpl, yb, xpr, yt, res, unit_mode=True)
+        pwarr, nwarr = self.draw_cap(cap_box, cap_port_width, io_layer, io_idx_list[:2], io_width, num_cap_layer)
+        cap_box = BBox(xnl, yb, xnr, yt, res, unit_mode=True)
+        pwarr, nwarr = self.draw_cap(cap_box, cap_port_width, io_layer, io_idx_list[2:], io_width, num_cap_layer)
 
-    def draw_cap(self, xl, yb, xr, yt, io_layer, io_idx_list, io_width, num_cap_layer):
-        cap_box = BBox(xl, yb, xr, yt, self.grid.resolution, unit_mode=True)
-        top_layer = io_layer + num_cap_layer - 1
-        self.add_rect(self.grid.tech_info.get_layer_name(top_layer), cap_box)
+    def draw_cap(self, cap_box, cap_port_width, io_layer, io_idx_list, io_width, num_cap_layer):
+        cap_ports = self.add_mom_cap(cap_box, io_layer, num_cap_layer, port_width=cap_port_width)
         return None, None
 
     def place(self):
