@@ -782,6 +782,52 @@ class RoutingGrid(object):
 
         return lower_tr, upper_tr
 
+    def get_via_extensions_dim(self, bot_layer_id, bot_dim, top_dim, unit_mode=False):
+        # type: (int, Union[float, int], Union[float, int], bool) -> Tuple[Union[float, int], Union[float, int]]
+        """Returns the via extension.
+
+        Parameters
+        ----------
+        bot_layer_id : int
+            the via bottom layer ID.
+        bot_dim : Union[float, int]
+            the bottom track width in layout/resolution units.
+        top_dim : Union[float, int]
+            the top track width in layout/resolution units.
+        unit_mode : bool
+            True if given widths are in resolution units.
+
+        Returns
+        -------
+        bot_ext : Union[float, int]
+            via extension on the bottom layer.
+        top_ext : Union[float, int]
+            via extension on the top layer.
+        """
+        res = self._resolution
+        if not unit_mode:
+            bot_dim = int(round(bot_dim / res))
+            top_dim = int(round(top_dim / res))
+
+        bot_lay_name = self.get_layer_name(bot_layer_id, 0)
+        top_lay_name = self.get_layer_name(bot_layer_id + 1, 0)
+        bot_dir = self.get_direction(bot_layer_id)
+        if bot_dir == 'x':
+            vbox = BBox(0, 0, top_dim, bot_dim, res, unit_mode=True)
+            vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir)
+            bot_ext = (vinfo['bot_box'].width_unit - top_dim) // 2
+            top_ext = (vinfo['top_box'].height_unit - bot_dim) // 2
+        else:
+            vbox = BBox(0, 0, bot_dim, top_dim, res, unit_mode=True)
+            vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir)
+            bot_ext = (vinfo['bot_box'].height_unit - top_dim) // 2
+            top_ext = (vinfo['top_box'].width_unit - bot_dim) // 2
+
+        if unit_mode:
+            return bot_ext, top_ext
+        else:
+            return bot_ext * res, top_ext * res
+
     def get_via_extensions(self, bot_layer_id, bot_width, top_width, unit_mode=False):
         # type: (int, int, int, bool) -> Tuple[Union[float, int], Union[float, int]]
         """Returns the via extension.
@@ -804,27 +850,9 @@ class RoutingGrid(object):
         top_ext : Union[float, int]
             via extension on the top layer.
         """
-        res = self._resolution
-        bot_dim = self.get_track_width(bot_layer_id, bot_width, unit_mode=True)
-        top_dim = self.get_track_width(bot_layer_id + 1, top_width, unit_mode=True)
-        bot_lay_name = self.get_layer_name(bot_layer_id, 0)
-        top_lay_name = self.get_layer_name(bot_layer_id + 1, 0)
-        bot_dir = self.get_direction(bot_layer_id)
-        if bot_dir == 'x':
-            vbox = BBox(0, 0, top_dim, bot_dim, res, unit_mode=True)
-            vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir)
-            bot_ext = (vinfo['bot_box'].width_unit - top_dim) // 2
-            top_ext = (vinfo['top_box'].height_unit - bot_dim) // 2
-        else:
-            vbox = BBox(0, 0, bot_dim, top_dim, res, unit_mode=True)
-            vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir)
-            bot_ext = (vinfo['bot_box'].height_unit - top_dim) // 2
-            top_ext = (vinfo['top_box'].width_unit - bot_dim) // 2
-
-        if unit_mode:
-            return bot_ext, top_ext
-        else:
-            return bot_ext * res, top_ext * res
+        bot_dim = self.get_track_width(bot_layer_id, bot_width, unit_mode=unit_mode)
+        top_dim = self.get_track_width(bot_layer_id + 1, top_width, unit_mode=unit_mode)
+        return self.get_via_extensions_dim(bot_layer_id, bot_dim, top_dim, unit_mode=unit_mode)
 
     def coord_to_track(self, layer_id, coord, unit_mode=False):
         # type: (int, Union[float, int], bool) -> Union[float, int]
