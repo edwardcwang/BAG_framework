@@ -165,7 +165,7 @@ class DiffAmp(SerdesRXBase):
             th_dict=th_dict,
             gds_space=gds_space,
             pg_tracks=[hm_width],
-            pds_tracks=[2 * hm_width + diff_space],
+            pds_tracks=[2 * hm_cur_width + diff_space],
             min_fg_sep=min_fg_sep,
             guard_ring_nf=guard_ring_nf,
         )
