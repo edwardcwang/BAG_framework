@@ -334,8 +334,9 @@ class Testbench(object):
 
         env_params = []
         for env in self.sim_envs:
-            val_table = self.env_parameters[env]
-            env_params.append(list(val_table.items()))
+            if env in self.env_parameters:
+                val_table = self.env_parameters[env]
+                env_params.append(list(val_table.items()))
         self.db.update_testbench(self.lib, self.cell, self.parameters, self.sim_envs, config_list,
                                  env_params)
 
