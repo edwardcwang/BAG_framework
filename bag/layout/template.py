@@ -295,7 +295,11 @@ class TemplateDB(object):
             cds_lib_path = os.environ.get('CDS_LIB_PATH', './cds.lib')
             with cybagoa.PyOALayoutLibrary(cds_lib_path, self._lib_name, get_encoding()) as lib:
                 lib.add_layer('prBoundary', 235)
+                lib.add_purpose('drawing1', 241)
+                lib.add_purpose('drawing2', 242)
+                lib.add_purpose('drawing3', 243)
                 lib.add_purpose('drawing4', 244)
+                lib.add_purpose('drawing5', 245)
                 lib.add_purpose('drawing6', 246)
                 lib.add_purpose('drawing7', 247)
                 lib.add_purpose('drawing8', 248)
