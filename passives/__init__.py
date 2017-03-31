@@ -22,12 +22,10 @@
 #
 ########################################################################################################################
 
-"""This package defines templates used in high speed links.
-"""
 
+"""This package defines various passives template classes.
+"""
 from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
-
-from .base import SerdesRXBase

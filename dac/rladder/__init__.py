@@ -22,12 +22,9 @@
 #
 ########################################################################################################################
 
-"""This package defines templates used in high speed links.
-"""
-
 from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from .base import SerdesRXBase
+from .core import ResLadderDAC

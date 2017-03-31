@@ -30,98 +30,44 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from .base import SerdesRXBase
+from typing import Dict, Any, Set, Union
+
+from bag.layout.template import TemplateDB
+
+from .base import SerdesRXBase, SerdesRXBaseInfo
 
 
-class DynamicLatchChain(SerdesRXBase):
-    """A chain of dynamic latches.
+class DiffAmp(SerdesRXBase):
+    """A single diff amp.
 
     Parameters
     ----------
-    grid : :class:`bag.layout.routing.RoutingGrid`
-            the :class:`~bag.layout.routing.RoutingGrid` instance.
+    temp_db : TemplateDB
+            the template database.
     lib_name : str
         the layout library name.
-    params : dict
-        the parameter values.  Must have the following entries:
-    used_names : set[str]
+    params : Dict[str, Any]
+        the parameter values.
+    used_names : Set[str]
         a set of already used cell names.
+    **kwargs
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        SerdesRXBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(DiffAmp, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self._num_fg = -1
 
-    @staticmethod
-    def _rename_port(pname, idx, nstage):
-        """Rename the given port."""
-        if nstage == 1:
-            return pname
-        else:
-            return '%s<%d>' % (pname, idx)
-
-    def draw_layout(self):
-        """Draw the layout of a dynamic latch chain.
-        """
-        self._draw_layout_helper(**self.params)
-
-    def _draw_layout_helper(self, lch, ptap_w, ntap_w, w_dict, th_dict, fg_dict,
-                            nstage, fg_sep, nduml, ndumr, global_gnd_layer, global_gnd_name,
-                            diff_space, cur_track_width, show_pins, **kwargs):
-        if nstage <= 0:
-            raise ValueError('nstage = %d must be greater than 0' % nstage)
-
-        # calculate total number of fingers.
-        fg_sep = max(fg_sep, self.get_min_fg_sep(self.grid.tech_info))
-        fg_latch = max(fg_dict.values()) * 2 + fg_sep
-        fg_tot = nstage * fg_latch + (nstage - 1) * fg_sep + nduml + ndumr
-
-        # figure out number of tracks
-        kwargs['pg_tracks'] = [1]
-        kwargs['pds_tracks'] = [2 + diff_space]
-        ng_tracks = []
-        nds_tracks = []
-        for row_name in ['tail', 'en', 'sw', 'in', 'casc']:
-            if w_dict.get(row_name, -1) > 0:
-                if row_name == 'in' or (row_name == 'casc' and fg_dict.get('but', 0) > 0):
-                    ng_tracks.append(2 + diff_space)
-                else:
-                    ng_tracks.append(1)
-                nds_tracks.append(cur_track_width + kwargs['gds_space'])
-        kwargs['ng_tracks'] = ng_tracks
-        kwargs['nds_tracks'] = nds_tracks
-
-        # draw rows with width/threshold parameters.
-        kwargs['w_dict'] = w_dict
-        kwargs['th_dict'] = th_dict
-        del kwargs['rename_dict']
-        self.draw_rows(lch, fg_tot, ptap_w, ntap_w, **kwargs)
-
-        port_list = []
-
-        for idx in range(nstage):
-            col_idx = (fg_latch + fg_sep) * idx + nduml
-            _, pdict = self.draw_diffamp(col_idx, fg_dict, cur_track_width=cur_track_width)
-            for pname, port_warr in pdict.items():
-                pname = self.get_pin_name(pname)
-                if pname:
-                    pin_name = self._rename_port(pname, idx, nstage)
-                    port_list.append((pin_name, port_warr))
-
-        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy()
-        # export supplies
-        port_list.extend((('VSS', warr) for warr in ptap_wire_arrs))
-        port_list.extend((('VDD', warr) for warr in ntap_wire_arrs))
-
-        for pname, warr in port_list:
-            self.add_pin(pname, warr, show=show_pins)
-
-        # add global ground
-        if global_gnd_layer is not None:
-            _, global_gnd_box = next(ptap_wire_arrs[0].wire_iter(self.grid))
-            self.add_pin_primitive(global_gnd_name, global_gnd_layer, global_gnd_box)
+    @property
+    def num_fingers(self):
+        # type: () -> int
+        return self._num_fg
 
     @classmethod
     def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
         """Returns a dictionary containing default parameter values.
 
         Override this method to define default parameter values.  As good practice,
@@ -136,18 +82,15 @@ class DynamicLatchChain(SerdesRXBase):
         """
         return dict(
             th_dict={},
-            gds_space=1,
-            diff_space=1,
-            nstage=1,
-            fg_sep=0,
             nduml=4,
             ndumr=4,
-            cur_track_width=1,
+            min_fg_sep=0,
+            gds_space=1,
+            diff_space=1,
+            hm_width=1,
+            hm_cur_width=-1,
             show_pins=True,
-            rename_dict={},
             guard_ring_nf=0,
-            global_gnd_layer=None,
-            global_gnd_name='gnd!',
         )
 
     @classmethod
@@ -168,16 +111,96 @@ class DynamicLatchChain(SerdesRXBase):
             w_dict='NMOS/PMOS width dictionary.',
             th_dict='NMOS/PMOS threshold flavor dictionary.',
             fg_dict='NMOS/PMOS number of fingers dictionary.',
+            nduml='Number of left dummy fingers.',
+            ndumr='Number of right dummy fingers.',
+            min_fg_sep='Minimum separation between transistors.',
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',
             diff_space='number of tracks reserved as space between differential tracks.',
-            nstage='number of dynamic latch stages.',
-            fg_sep='number of separator finger between stages',
-            nduml='number of dummy fingers on the left.',
-            ndumr='number of dummy fingers on the right.',
-            cur_track_width='width of the current-carrying horizontal track wire in number of tracks.',
+            hm_width='width of horizontal track wires.',
+            hm_cur_width='width of horizontal current track wires. If negative, defaults to hm_width.',
             show_pins='True to create pin labels.',
-            rename_dict='port renaming dictionary',
             guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
-            global_gnd_layer='layer of the global ground pin.  None to disable drawing global ground.',
-            global_gnd_name='name of global ground pin.',
         )
+
+    def draw_layout(self):
+        """Draw the layout of a dynamic latch chain.
+        """
+        self._draw_layout_helper(**self.params)
+
+    def _draw_layout_helper(self,  # type: DiffAmp
+                            lch,  # type: float
+                            ptap_w,  # type: Union[float, int]
+                            ntap_w,  # type: Union[float, int]
+                            w_dict,  # type: Dict[str, Union[float, int]]
+                            th_dict,  # type: Dict[str, str]
+                            fg_dict,  # type: Dict[str, int]
+                            nduml,  # type: int
+                            ndumr,  # type: int
+                            min_fg_sep,  # type: int
+                            gds_space,  # type: int
+                            diff_space,  # type: int
+                            hm_width,  # type: int
+                            hm_cur_width,  # type: int
+                            show_pins,  # type: bool
+                            guard_ring_nf  # type: int
+                            ):
+        # type: (...) -> None
+
+        serdes_info = SerdesRXBaseInfo(self.grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
+        # calculate total number of fingers.
+        fg_tot = max(fg_dict.values()) * 2 + serdes_info.min_fg_sep + nduml + ndumr
+        self._num_fg = fg_tot
+
+        if hm_cur_width < 0:
+            hm_cur_width = hm_width  # type: int
+
+        # draw AnalogBase rows
+        # compute pmos/nmos gate/drain/source number of tracks
+        draw_params = dict(
+            lch=lch,
+            fg_tot=fg_tot,
+            ptap_w=ptap_w,
+            ntap_w=ntap_w,
+            w_dict=w_dict,
+            th_dict=th_dict,
+            gds_space=gds_space,
+            pg_tracks=[hm_width],
+            pds_tracks=[2 * hm_cur_width + diff_space],
+            min_fg_sep=min_fg_sep,
+            guard_ring_nf=guard_ring_nf,
+        )
+        ng_tracks = []
+        nds_tracks = []
+        for row_name in ['tail', 'en', 'sw', 'in', 'casc']:
+            if w_dict.get(row_name, -1) > 0:
+                if row_name == 'in':
+                    ng_tracks.append(2 * hm_width + diff_space)
+                else:
+                    ng_tracks.append(hm_width)
+                nds_tracks.append(hm_cur_width + gds_space)
+        draw_params['ng_tracks'] = ng_tracks
+        draw_params['nds_tracks'] = nds_tracks
+
+        self.draw_rows(**draw_params)
+        self.set_size_from_array_box(self.mos_conn_layer + 1)
+        sup_lower, sup_upper = self.array_box.left_unit, self.array_box.right_unit
+
+        gate_locs = {'inp': (hm_width - 1) / 2 + hm_width + diff_space,
+                     'inn': (hm_width - 1) / 2}
+        _, amp_ports = self.draw_diffamp(nduml, fg_dict, hm_width=hm_width, hm_cur_width=hm_cur_width,
+                                         diff_space=diff_space, gate_locs=gate_locs)
+
+        vdd_warrs = None
+        hide_pins = {'midp', 'midn', 'tail', 'foot'}
+        for pname, warrs in amp_ports.items():
+            if pname == 'vddt':
+                vdd_warrs = self.connect_wires(warrs, lower=sup_lower, upper=sup_upper, unit_mode=True)
+            else:
+                self.add_pin(pname, warrs, show=show_pins and pname not in hide_pins)
+
+        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(lower=sup_lower, upper=sup_upper, vdd_warrs=vdd_warrs,
+                                                         unit_mode=True, sup_margin=1)
+        self.add_pin('VSS', ptap_wire_arrs)
+        self.add_pin('VDD', ntap_wire_arrs)
+        if vdd_warrs is not None:
+            self.add_pin('VDD', vdd_warrs)

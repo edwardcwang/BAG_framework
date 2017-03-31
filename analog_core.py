@@ -35,7 +35,7 @@ from typing import List, Union, Optional, TypeVar, Type, Dict, Any, Set, Tuple
 from bag.util.interval import IntervalSet
 from bag.util.search import BinaryIterator
 from bag.layout.template import TemplateBase, TemplateDB
-from bag.layout.routing import TrackID, WireArray
+from bag.layout.routing import TrackID, WireArray, RoutingGrid
 from bag.layout.objects import Instance
 from .analog_mos import AnalogMosBase, AnalogMosConn
 from future.utils import with_metaclass
@@ -245,7 +245,7 @@ class AnalogBaseInfo(object):
 
     Parameters
     ----------
-    grid : :class:`~bag.layout.routing.RoutingGrid`
+    grid : RoutingGrid
         the RoutingGrid object.
     lch : float
         the channel length of AnalogBase, in meters.
@@ -253,31 +253,37 @@ class AnalogBaseInfo(object):
         guard ring width in number of fingers.  0 to disable.
     pitch_offset : Tuple[int, int]
         the lower-left corner in track pitches.
+    min_fg_sep : int
+        minimum number of separation fingers.
     """
 
-    def __init__(self, grid, lch, guard_ring_nf, pitch_offset=(0, 0)):
+    def __init__(self, grid, lch, guard_ring_nf, pitch_offset=(0, 0), min_fg_sep=0):
+        # type: (RoutingGrid, float, int, Tuple[int, int], int) -> None
         tech_params = grid.tech_info.tech_params
         mos_cls = tech_params['layout']['mos_template']
         dum_cls = tech_params['layout']['mos_dummy_template']
 
         # get technology parameters
-        self.min_fg_sep = tech_params['layout']['analog_base']['min_fg_sep']
+        self.min_fg_sep = max(min_fg_sep, tech_params['layout']['analog_base']['min_fg_sep'])
         self.mconn_diff = tech_params['layout']['analog_base']['mconn_diff_mode']
         self.float_dummy = tech_params['layout']['analog_base']['floating_dummy']
 
         # initialize parameters
+        res = grid.resolution
         self.num_fg_per_sd = mos_cls.get_num_fingers_per_sd(lch)
-        self.sd_pitch = mos_cls.get_sd_pitch(lch)
-        self.sd_xc = mos_cls.get_left_sd_xc(lch, guard_ring_nf) + self.sd_pitch * pitch_offset[0]
+        sd_pitch = mos_cls.get_sd_pitch(lch)
+        self._sd_pitch_unit = int(round(sd_pitch / res))
+        left_sd_xc_unit = int(round(mos_cls.get_left_sd_xc(lch, guard_ring_nf) / res))
+        self._sd_xc_unit = left_sd_xc_unit + self._sd_pitch_unit * pitch_offset[0]
         self.mconn_port_layer = mos_cls.port_layer_id()
         self.dum_port_layer = dum_cls.port_layer_id()
         self.pitch_offset = pitch_offset
 
         # register new grid layers
         vm_width = mos_cls.get_port_width(lch)
-        vm_space = self.sd_pitch - vm_width
+        vm_space = sd_pitch - vm_width
         dum_width = dum_cls.get_port_width(lch)
-        dum_space = self.sd_pitch - dum_width
+        dum_space = sd_pitch - dum_width
 
         self.grid = grid.copy()
         self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y')
@@ -285,27 +291,72 @@ class AnalogBaseInfo(object):
         self.grid.update_block_pitch()
         self._mos_cls = mos_cls
 
+    @property
+    def sd_pitch(self):
+        return self._sd_pitch_unit * self.grid.resolution
+
+    @property
+    def sd_pitch_unit(self):
+        return self._sd_pitch_unit
+
+    @property
+    def sd_xc(self):
+        return self._sd_xc_unit * self.grid.resolution
+
+    @property
+    def sd_xc_unit(self):
+        return self._sd_xc_unit
+
     def get_total_width(self, fg_tot, guard_ring_nf=0):
-        """Calculate width of final AnalogBase in number of source/drain tracks."""
+        # type: (int, int) -> int
+        """Returns the width of the AnalogMosBase in number of source/drain tracks.
+
+        Parameters
+        ----------
+        fg_tot : int
+            number of fingers.
+        guard_ring_nf : int
+            width of guard ring in number of fingers.  0 to disable guard ring.
+
+        Returns
+        -------
+        mos_width : int
+            the AnalogMosBase width in number of source/drain tracks.
+        """
         return self._mos_cls.get_template_width(fg_tot, guard_ring_nf=guard_ring_nf)
 
-    def col_to_coord(self, col_idx):
+    def col_to_coord(self, col_idx, unit_mode=False):
         """Convert the given transistor column index to X coordinate.
 
         Parameters
         ----------
         col_idx : int
             the transistor index.  0 is left-most transistor.
+        unit_mode : bool
+            True to return coordinate in resolution units.
 
         Returns
         -------
         xcoord : float
             X coordinate of the left source/drain center of the given transistor.
         """
-        return self.sd_xc + (col_idx + self.pitch_offset[0]) * self.sd_pitch
+        coord = self._sd_xc_unit + (col_idx + self.pitch_offset[0]) * self._sd_pitch_unit
+        if unit_mode:
+            return coord
+        return coord * self.grid.resolution
 
-    def get_center_tracks(self, layer_id, num_tracks, col_intv):
-        """Return the tracks that center on the given column interval.
+    def track_to_col_intv(self, layer_id, tr_idx, width=1):
+        # type: (int, Union[float, int], int) -> Tuple[int, int]
+        """Returns the smallest column interval that covers the given vertical track."""
+        lower, upper = self.grid.get_wire_bounds(layer_id, tr_idx, width=width, unit_mode=True)
+
+        lower_col_idx = (lower - self._sd_xc_unit) // self._sd_pitch_unit - self.pitch_offset[0]
+        upper_col_idx = -(-(upper - self._sd_xc_unit) // self._sd_pitch_unit) - self.pitch_offset[0]
+        return lower_col_idx, upper_col_idx
+
+    def get_center_tracks(self, layer_id, num_tracks, col_intv, width=1, space=0):
+        # type: (int, int, Tuple[int, int], int, Union[float, int]) -> int
+        """Return tracks that center on the given column interval.
 
         Parameters
         ----------
@@ -315,28 +366,30 @@ class AnalogBaseInfo(object):
             number of tracks
         col_intv : Tuple[int, int]
             the column interval.
+        width : int
+            width of each track.
+        space : Union[float, int]
+            space between tracks.
 
         Returns
         -------
         track_id : int
             leftmost track ID of the center tracks.
         """
-        x0 = self.col_to_coord(col_intv[0])
+        x0_unit = self.col_to_coord(col_intv[0], unit_mode=True)
+        x1_unit = self.col_to_coord(col_intv[1], unit_mode=True)
         # find track number with coordinate strictly larger than x0
-        t_start = self.grid.coord_to_nearest_track(layer_id, x0, mode=2)
-        x1 = self.col_to_coord(col_intv[1])
-        # find track number with coordinate strictly less than x1
-        t_stop = self.grid.coord_to_nearest_track(layer_id, x1, mode=-2)
-
-        ntracks = t_stop - t_start + 1
-        if ntracks < num_tracks:
+        t_start = self.grid.find_next_track(layer_id, x0_unit, half_track=True, mode=1, unit_mode=True)
+        t_stop = self.grid.find_next_track(layer_id, x1_unit, half_track=True, mode=-1, unit_mode=True)
+        ntracks = int(t_stop - t_start + 1)
+        tot_tracks = num_tracks * width + (num_tracks - 1) * space
+        if ntracks < tot_tracks:
             raise ValueError('There are only %d tracks in column interval [%d, %d)'
                              % (ntracks, col_intv[0], col_intv[1]))
 
-        offset = (ntracks - num_tracks) // 2
-        return t_start + offset
+        return t_start + (ntracks - tot_tracks + width - 1) / 2
 
-    def num_tracks_to_fingers(self, layer_id, num_tracks, col_idx, even=True):
+    def num_tracks_to_fingers(self, layer_id, num_tracks, col_idx, even=True, fg_margin=0):
         """Returns the minimum number of fingers needed to span given number of tracks.
 
         Returns the smallest N such that the transistor interval [col_idx, col_idx + N)
@@ -352,28 +405,30 @@ class AnalogBaseInfo(object):
             the starting column index.
         even : bool
             True to return even integers.
+        fg_margin : int
+            Ad this many fingers on both sides of tracks to act as margin.
+
         Returns
         -------
         min_fg : int
             minimum number of fingers needed to span the given number of tracks.
         """
-        res = self.grid.resolution
-        x0 = self.col_to_coord(col_idx)
+        x0 = self.col_to_coord(col_idx, unit_mode=True)
+        x1 = self.col_to_coord(col_idx + fg_margin, unit_mode=True)
         # find track number with coordinate strictly larger than x0
-        t_start = self.grid.coord_to_nearest_track(layer_id, x0, mode=2)
+        t_start = self.grid.find_next_track(layer_id, x1, half_track=True, mode=1, unit_mode=True)
         # find coordinate of last track
-        xlast = self.grid.track_to_coord(layer_id, t_start + num_tracks - 1)
-        x0_unit = int(round(x0 / res))
-        xlast_unit = int(round(xlast / res))
-        sd_pitch_unit = int(round(self.sd_pitch / res))
+        xlast = self.grid.track_to_coord(layer_id, t_start + num_tracks - 1, unit_mode=True)
+        xlast += self.grid.get_track_width(layer_id, 1, unit_mode=True) // 2
 
         # divide by source/drain pitch
-        q, r = divmod(xlast_unit - x0_unit, sd_pitch_unit)
-        # +1 for strict inclusion.
-        ans = int(q + 1)
-        if even and ans % 2 == 1:
-            ans += 1
-        return ans
+        q, r = divmod(xlast - x0, self._sd_pitch_unit)
+        if r > 0:
+            q += 1
+        q += fg_margin
+        if even and q % 2 == 1:
+            q += 1
+        return q
 
 
 # noinspection PyAbstractClass
@@ -438,21 +493,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._pitch_offset = 0, 0
         self._hm_idx0 = 0
 
-    @classmethod
-    def get_min_fg_sep(cls, tech_info):
+    @property
+    def layout_info(self):
+        # type: () -> AnalogBaseInfo
+        return self._layout_info
+
+    @property
+    def min_fg_sep(self):
         """Returns the minimum number of separator fingers.
-
-        Parameters
-        ----------
-        tech_info : :class:`~bag.layout.core.TechInfo`
-            the TechInfo object.
-
-        Returns
-        -------
-        min_fg_sep : int
-            minimum number of separator fingers.
         """
-        return tech_info.tech_params['layout']['analog_base']['min_fg_sep']
+        return self._layout_info.min_fg_sep
 
     @property
     def sd_pitch(self):
@@ -701,6 +751,14 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return conn_inst.get_port().get_pins(self.dum_conn_layer)
 
+    def mos_conn_track_used(self, tidx, margin=0):
+        col_start, col_stop = self.layout_info.track_to_col_intv(self.mos_conn_layer, tidx)
+        col_intv = col_start - margin, col_stop + margin
+        for intv_set in chain(self._p_intvs, self._n_intvs):
+            if intv_set.has_overlap(col_intv):
+                return True
+        return False
+
     def draw_mos_conn(self, mos_type, row_idx, col_idx, fg, sdir, ddir, **kwargs):
         """Draw transistor connection.
 
@@ -851,7 +909,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                   p_ds_dummy=None,  # type: Optional[List[bool]]
                   pitch_offset=(0, 0),  # type: Tuple[int, int]
                   pgr_w=None,  # type: Optional[Union[float, int]]
-                  ngr_w=None  # type: Optional[Union[float, int]]
+                  ngr_w=None,  # type: Optional[Union[float, int]]
+                  min_fg_sep=0  # type: int
                   ):
         # type: (...) -> None
         """Draw the analog base.
@@ -903,12 +962,15 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             pwell guard ring substrate contact width.
         ngr_w : Optional[Union[float, int]]
             nwell guard ringsubstrate contact width.
+        min_fg_sep : int
+            minimum number of fingers between different transistors.
         """
         numn = len(nw_list)
         nump = len(pw_list)
 
         # make AnalogBaseInfo object.
-        self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, pitch_offset=pitch_offset)
+        self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, pitch_offset=pitch_offset,
+                                           min_fg_sep=min_fg_sep)
         self.grid = self._layout_info.grid
 
         # initialize private attributes.
@@ -1029,7 +1091,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # set size from array box
         self.set_size_from_array_box(hm_layer)
 
-    def _connect_substrate(self, sub_type, sub_list, row_idx_list, lower=float('inf'), upper=float('-inf')):
+    def _connect_substrate(self,  # type: AnalogBase
+                           sub_type,  # type: str
+                           sub_list,  # type: List[Instance]
+                           row_idx_list,  # type: List[int]
+                           lower=None,  # type: Optional[Union[float, int]]
+                           upper=None,  # type: Optional[Union[float, int]]
+                           sup_wires=None,  # type: Optional[Union[WireArray, List[WireArray]]]
+                           sup_margin=0,  # type: int
+                           unit_mode=False  # type: bool
+                           ):
         """Connect all given substrates to horizontal tracks
 
         Parameters
@@ -1040,10 +1111,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             list of substrates to connect.
         row_idx_list : List[int]
             list of substrate row indices.
-        lower : float
+        lower : Optional[Union[float, int]]
             lower supply track coordinates.
-        upper : float
-            upper supplu track coordinates.
+        upper : Optional[Union[float, int]]
+            upper supply track coordinates.
+        sup_wires : Optional[Union[WireArray, List[WireArray]]]
+            If given, will connect these horizontal wires to supply on mconn layer.
+        sup_margin : int
+            supply wires mconn layer connection horizontal margin in number of tracks.
+        unit_mode : bool
+            True if lower/upper is specified in resolution units.
 
         Returns
         -------
@@ -1051,6 +1128,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             list of substrate tracks buses.
         """
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
+
+        if sup_wires is not None and isinstance(sup_wires, WireArray):
+            sup_wires = [sup_wires]
+        else:
+            pass
 
         sub_warr_list = []
         hm_layer = self.mos_conn_layer + 1
@@ -1068,23 +1150,56 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 warr_iter_list.append(subinst.get_port('b').get_pins(self.mos_conn_layer))
 
             warr_list = list(chain(*warr_iter_list))
-            track_warr = self.connect_to_tracks(warr_list, track_id, track_lower=lower, track_upper=upper)
+            track_warr = self.connect_to_tracks(warr_list, track_id, track_lower=lower, track_upper=upper,
+                                                unit_mode=unit_mode)
             sub_warr_list.append(track_warr)
+            if sup_wires is not None:
+                wlower, wupper = warr_list[0].lower, warr_list[0].upper
+                for conn_warr in sup_wires:
+                    if conn_warr.layer_id != hm_layer:
+                        raise ValueError('vdd/vss wires must be on layer %d' % hm_layer)
+                    tmin, tmax = self.grid.get_overlap_tracks(hm_layer - 1, conn_warr.lower,
+                                                              conn_warr.upper, half_track=True)
+                    new_warr_list = []
+                    for warr in warr_list:
+                        for tid in warr.track_id:
+                            if tid > tmax:
+                                break
+                            elif tmin <= tid:
+                                if not self.mos_conn_track_used(tid, margin=sup_margin):
+                                    new_warr_list.append(
+                                        WireArray(TrackID(hm_layer - 1, tid), lower=wlower, upper=wupper))
+                    self.connect_to_tracks(new_warr_list, conn_warr.track_id)
 
         return sub_warr_list
 
-    def fill_dummy(self, lower=None, upper=None):
-        # type: (Optional[float], Optional[float]) -> Tuple[List[WireArray], List[WireArray]]
+    def fill_dummy(self,  # type: AnalogBase
+                   lower=None,  # type: Optional[Union[float, int]]
+                   upper=None,  # type: Optional[Union[float, int]]
+                   vdd_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
+                   vss_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
+                   sup_margin=0,  # type: int
+                   unit_mode=False  # type: bool
+                   ):
+        # type: (...) -> Tuple[List[WireArray], List[WireArray]]
         """Draw dummy/separator on all unused transistors.
 
         This method should be called last.
 
         Parameters
         ----------
-        lower : Optional[float]
+        lower : Optional[Union[float, int]]
             lower coordinate for the supply tracks.
-        upper : Optional[float]
+        upper : Optional[Union[float, int]]
             upper coordinate for the supply tracks.
+        vdd_warrs : Optional[Union[WireArray, List[WireArray]]]
+            vdd wires to be connected.
+        vss_warrs : Optional[Union[WireArray, List[WireArray]]]
+            vss wires to be connected.
+        sup_margin : int
+            vdd/vss wires mos conn layer margin in number of tracks.
+        unit_mode : bool
+            True if lower/upper are specified in resolution units.
 
         Returns
         -------
@@ -1126,11 +1241,13 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if not self._ntap_list:
             # connect both substrates if NMOS only
             ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list, list(range(len(self._ptap_list))),
-                                                     lower=lower, upper=upper)
+                                                     lower=lower, upper=upper, sup_wires=vss_warrs,
+                                                     sup_margin=sup_margin, unit_mode=unit_mode)
         elif self._ptap_list:
             # NMOS exists, only connect bottom substrate to upper level metal
             ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list[:1], [0],
-                                                     lower=lower, upper=upper)
+                                                     lower=lower, upper=upper, sup_wires=vss_warrs,
+                                                     sup_margin=sup_margin, unit_mode=unit_mode)
         else:
             ptap_wire_arrs = []
 
@@ -1138,19 +1255,28 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if not self._ptap_list:
             # connect both substrates if PMOS only
             ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list, list(range(len(self._ntap_list))),
-                                                     lower=lower, upper=upper)
+                                                     lower=lower, upper=upper, sup_wires=vdd_warrs,
+                                                     sup_margin=sup_margin, unit_mode=unit_mode)
         elif self._ntap_list:
             # PMOS exists, only connect top substrate to upper level metal
             ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list[-1:], [len(self._ntap_list) - 1],
-                                                     lower=lower, upper=upper)
+                                                     lower=lower, upper=upper, sup_wires=vdd_warrs,
+                                                     sup_margin=sup_margin, unit_mode=unit_mode)
         else:
             ntap_wire_arrs = []
 
         return ptap_wire_arrs, ntap_wire_arrs
 
-    def _fill_dummy_helper(self, mos_type, intv_set_list, bot_sub_inst, top_sub_inst,
-                           bot_tracks, top_tracks, export_both):
-        # type: (str, List[IntervalSet], Instance, Instance, List[int], List[int], bool) -> None
+    def _fill_dummy_helper(self,  # type: AnalogBase
+                           mos_type,  # type: str
+                           intv_set_list,  # type: List[IntervalSet]
+                           bot_sub_inst,  # type: Optional[Instance]
+                           top_sub_inst,  # type: Optional[Instance]
+                           bot_tracks,  # type: List[int]
+                           top_tracks,  # type: List[int]
+                           export_both  # type: bool
+                           ):
+        # type: (...) -> None
         num_rows = len(intv_set_list)
         bot_conn = top_conn = []
 
