@@ -208,6 +208,7 @@ class LogViewer(QtWidgets.QWidget):
             self.combo_box.removeItem(idx)
 
     def add_log(self, log_tag, log_file):
+        self.remove_log(log_tag)
         if os.path.isfile(log_file):
             self.log_files.append(log_file)
             self.combo_box.addItem(log_tag)

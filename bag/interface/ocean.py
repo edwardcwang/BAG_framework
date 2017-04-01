@@ -82,6 +82,9 @@ class OceanInterface(SimProcessManager):
         else:
             callback_wrapper = None
 
+
+        # create empty log file to make sure it exists, so log viewer window can find it.
+        bag.io.write_file(log_fname, '')
         # launch process
         sim_id = self.new_sim_process(sim_cmd, save_dir, basename=basename, env=env,
                                       cwd=cwd, callback=callback_wrapper)
