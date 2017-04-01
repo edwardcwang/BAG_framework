@@ -317,14 +317,16 @@ class CircuitCharacterization(with_metaclass(abc.ABCMeta, object)):
             for gname in f:
                 grp = f[gname]
                 key = tuple((grp.attrs[attr_name] for attr_name in attr_list))
+                cur_env = fix_string(grp.attrs['env'])
                 for combo, env_list in total_combo:
-                    if _equal_list(combo, key, self._rtol, self._atol):
-                        # remove existing environment.
-                        try:
-                            env_list.remove(grp.attrs['env'])
-                        except ValueError:
-                            pass
-                        break
+                    if env_list:
+                        if _equal_list(combo, key, self._rtol, self._atol):
+                            # remove existing environment.
+                            try:
+                                env_list.remove(cur_env)
+                            except ValueError:
+                                pass
+                            break
 
         return attr_list, total_combo
 
