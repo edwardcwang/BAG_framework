@@ -32,7 +32,7 @@ from builtins import *
 import os
 import string
 import importlib
-from typing import List
+from typing import List, Optional
 
 # noinspection PyPackageRequirements
 import yaml
@@ -799,21 +799,22 @@ class BagProject(object):
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
+        # type: (str, str, str, Optional[str], **kwargs) -> None
         """Create a schematic from a netlist.
 
         This is mainly used to create extracted schematic from an extracted netlist.
 
         Parameters
         ----------
-        netlist : string
+        netlist : str
             the netlist file name.
         lib_name : str
             library name.
         cell_name : str
             cell_name
-        sch_view : string or None
+        sch_view : Optional[str]
             schematic view name.  The default value is implemendation dependent.
-        kwargs : dict[string, any]
+        **kwargs
             additional implementation-dependent arguments.
         """
         if self.impl_db is None:
@@ -821,3 +822,27 @@ class BagProject(object):
 
         return self.impl_db.create_schematic_from_netlist(netlist, lib_name, cell_name,
                                                           sch_view=sch_view, **kwargs)
+
+    def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
+        # type: (str, str, str, **kwargs) -> None
+        """Create a verilog view for mix-signal simulation.
+
+        Parameters
+        ----------
+        verilog_file : str
+            the verilog file name.
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        **kwargs
+            additional implementation-dependent arguments.
+        """
+        if self.impl_db is None:
+            raise Exception('BAG Server is not set up.')
+
+        verilog_file = os.path.abspath(verilog_file)
+        if not os.path.isfile(verilog_file):
+            raise ValueError('%s is not a file.' % verilog_file)
+
+        return self.impl_db.create_verilog_view(verilog_file, lib_name, cell_name, **kwargs)

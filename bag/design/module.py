@@ -119,6 +119,8 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         self.pin_map = {}
         self._lib_name = self.sch_info['lib_name']
         self._cell_name = self.sch_info['cell_name']
+        self._generated_lib_name = None
+        self._generated_cell_name = None
         self.orig_instances = {}
 
         # populate instance map
@@ -138,6 +140,16 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         # fill in pin map
         for pin in self.sch_info['pins']:
             self.pin_map[pin] = pin
+
+    @property
+    def generated_lib_name(self):
+        """The generated instance library name"""
+        return self._generated_lib_name
+
+    @property
+    def generated_cell_name(self):
+        """The sgenerated instance cell name"""
+        return self._generated_cell_name
 
     @property
     def lib_name(self):
@@ -516,7 +528,7 @@ class Module(with_metaclass(abc.ABCMeta, object)):
                     rinst['params'] = module.get_schematic_parameters()
                     rinst['cell_name'] = module.get_cell_name_from_parameters()
 
-    def update_structure(self, top_cell_name='', prefix='', suffix='', used_names=None):
+    def update_structure(self, lib_name, top_cell_name='', prefix='', suffix='', used_names=None):
         """Update the generated schematic structure.
 
         This function should be called after :func:`.design` to prepare this design module
@@ -524,6 +536,8 @@ class Module(with_metaclass(abc.ABCMeta, object)):
 
         Parameters
         ----------
+        lib_name : str
+            name of the new library to put the generated schematics.
         top_cell_name : str
             the cell name of the top level design.
         prefix : str
@@ -543,7 +557,8 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         # Create the instance hierarchy graph
         self.hierarchy_graph = nx.MultiDiGraph()
         used_concrete_names = used_names or set()
-        self.populate_hierarchy_graph(self.hierarchy_graph, used_concrete_names, top_cell_name, prefix, suffix)
+        self.populate_hierarchy_graph(lib_name, self.hierarchy_graph, used_concrete_names,
+                                      top_cell_name, prefix, suffix, 'XTOP')
 
     def implement_design(self, lib_name, top_cell_name='', prefix='', suffix='', lib_path='', erase=False):
         """Implement this design module in the given library.
@@ -578,15 +593,19 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             used_names = set(self.prj.get_cells_in_library(lib_name))
         else:
             used_names = set()
-        self.update_structure(top_cell_name=top_cell_name, prefix=prefix, suffix=suffix, used_names=used_names)
+        self.update_structure(lib_name, top_cell_name=top_cell_name, prefix=prefix,
+                              suffix=suffix, used_names=used_names)
 
         self.prj.implement_design(lib_name, self, lib_path=lib_path)
 
-    def populate_hierarchy_graph(self, hier_graph, used_concrete_names, cur_cell_name, prefix, suffix):
+    def populate_hierarchy_graph(self, lib_name, hier_graph, used_concrete_names,
+                                 cur_cell_name, prefix, suffix, inst_identifier):
         """Internal method.  Populate the instance hierarchy graph.
 
         Parameters
         ----------
+        lib_name : str
+            name of the new library to put the generated schematics.
         hier_graph : :class:`networkx.MultiDiGraph`
             a multi-edge directed graph representing physical design hierarchy.
         used_concrete_names : set[str]
@@ -597,6 +616,8 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             prefix to add to cell names.
         suffix : str
             suffix to add to cell names.
+        inst_identifier : str
+            instance identifier string
 
         Returns
         -------
@@ -604,20 +625,28 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             the PyNetlistCell representing this module.
         """
         if self.is_primitive():
+            self._generated_lib_name = self.lib_name
+            self._generated_cell_name = self.get_cell_name_from_parameters()
             return None
 
         if not cur_cell_name:
-            cur_cell_name = self.cell_name
+            cur_cell_name = self._cell_name
 
         cell_id = ModuleID(self.lib_name, self.cell_name, self.get_iden_str())
         if cell_id not in hier_graph:
-            # update hierarchy graph only if we never seen this instantiation
-            # of the schematic before.
-            counter = 0
+            # find new unsed name
             new_concrete_cell_name = prefix + cur_cell_name + suffix
+            if new_concrete_cell_name in used_concrete_names:
+                new_concrete_cell_name = '%s%s_%s%s' % (prefix, cur_cell_name, inst_identifier, suffix)
+            counter = 0
             while new_concrete_cell_name in used_concrete_names:
                 counter += 1
-                new_concrete_cell_name = '%s%s_%d%s' % (prefix, cur_cell_name, counter, suffix)
+                new_concrete_cell_name = '%s%s_%s_%d%s' % (prefix, cur_cell_name, inst_identifier, counter, suffix)
+
+            # update hierarchy graph and set generated lib/cell name
+            self._generated_lib_name = lib_name
+            self._generated_cell_name = new_concrete_cell_name
+
             used_concrete_names.add(new_concrete_cell_name)
             hier_graph.add_node(cell_id, concrete_cell_name=new_concrete_cell_name,
                                 pin_map=self.pin_map)
@@ -628,11 +657,12 @@ class Module(with_metaclass(abc.ABCMeta, object)):
                 if not isinstance(module_list, list):
                     module_list = [module_list]
 
+                child_inst_id = '%s_%s' % (inst_identifier, inst_name)
                 concrete_rinst_list = []
                 for module, rinst in zip(module_list, rinst_list):
-                    child_cell_name = '%s_%s' % (cur_cell_name, inst_name)
-                    child_id = module.populate_hierarchy_graph(hier_graph, used_concrete_names, child_cell_name,
-                                                               prefix, suffix)
+                    child_cell_name = module.cell_name
+                    child_id = module.populate_hierarchy_graph(lib_name, hier_graph, used_concrete_names,
+                                                               child_cell_name, prefix, suffix, child_inst_id)
                     if not module.is_primitive():
                         hier_graph.add_edge(cell_id, child_id)
                         concrete_lib_name = None
