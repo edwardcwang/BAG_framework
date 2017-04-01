@@ -608,21 +608,22 @@ class SkillInterface(DbAccess):
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
+        # type: (str, str, str, Optional[str], **kwargs) -> None
         """Create a schematic from a netlist.
 
         This is mainly used to create extracted schematic from an extracted netlist.
 
         Parameters
         ----------
-        netlist : string
+        netlist : str
             the netlist file name.
         lib_name : str
             library name.
         cell_name : str
             cell_name
-        sch_view : string or None
+        sch_view : Optional[str]
             schematic view name.  The default value is implemendation dependent.
-        kwargs : dict[string, any]
+        **kwargs
             additional implementation-dependent arguments.
         """
         calview_config = self.db_config['calibreview']
@@ -644,4 +645,22 @@ class SkillInterface(DbAccess):
         self._eval_skill(cmd)
         # make extracted schematic
         cmd = 'mgc_rve_load_setup_file( "%s" )' % fname
+        self._eval_skill(cmd)
+
+    def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
+        # type: (str, str, str, **kwargs) -> None
+        """Create a verilog view for mix-signal simulation.
+
+        Parameters
+        ----------
+        verilog_file : str
+            the verilog file name.
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        **kwargs
+            additional implementation-dependent arguments.
+        """
+        cmd = 'schInstallHDL("%s" "%s" "verilog" "%s" t)' % (lib_name, cell_name, verilog_file)
         self._eval_skill(cmd)
