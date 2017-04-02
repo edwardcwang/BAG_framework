@@ -79,6 +79,7 @@ class Transistor(AnalogBase):
             min_ds_cap='True to minimize parasitic Cds.',
             global_gnd_layer='layer of the global ground pin.  None to disable drawing global ground.',
             global_gnd_name='name of global ground pin.',
+            draw_other='True to draw the other type of transistor as dummies.',
         )
 
     @classmethod
@@ -99,6 +100,7 @@ class Transistor(AnalogBase):
             min_ds_cap=False,
             global_gnd_layer=None,
             global_gnd_name='gnd!',
+            draw_other=False,
         )
 
     def draw_layout(self):
@@ -116,6 +118,7 @@ class Transistor(AnalogBase):
         num_track_sep = self.params['num_track_sep']
         global_gnd_layer = self.params['global_gnd_layer']
         global_gnd_name = self.params['global_gnd_name']
+        draw_other = self.params['draw_other']
 
         fg_tot = fg + 2 * fg_dum
 
@@ -128,12 +131,12 @@ class Transistor(AnalogBase):
         pg_tracks = []
         pds_tracks = []
         num_gate_tr = 2 + num_track_sep
-        if mos_type == 'nch':
+        if mos_type == 'nch' or draw_other:
             nw_list.append(w)
             nth_list.append(threshold)
             ng_tracks.append(num_gate_tr)
             nds_tracks.append(1)
-        else:
+        if mos_type == 'pch' or draw_other:
             pw_list.append(w)
             pth_list.append(threshold)
             pg_tracks.append(num_gate_tr)
@@ -164,8 +167,9 @@ class Transistor(AnalogBase):
 
         ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy()
         # export body
-        self.add_pin('b', ptap_wire_arrs, show=True)
-        self.add_pin('b', ntap_wire_arrs, show=True)
+        blabel = 'b:' if draw_other else 'b'
+        self.add_pin('b', ptap_wire_arrs, label=blabel, show=True)
+        self.add_pin('b', ntap_wire_arrs, label=blabel, show=True)
 
         if global_gnd_layer is not None:
             _, global_gnd_box = next(ptap_wire_arrs[0].wire_iter(self.grid))
