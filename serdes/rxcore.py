@@ -346,16 +346,20 @@ class RXHalfTop(SerdesRXBase):
         self.add_pin('intsum_outp', intsum_ports[('outp', -1)], show=show_pins)
         self.add_pin('intsum_outn', intsum_ports[('outn', -1)], show=show_pins)
 
+        # export dlev input pins
+        self.add_pin('dlev_outp', acoff_ports['dp'], show=show_pins)
+        self.add_pin('dlev_outn', acoff_ports['dn'], show=show_pins)
+        wire_upper = acoff_ports['dp'].upper
+
         # export summer inout pins
         for name in ('inp', 'inn'):
             self.add_pin('summer_%s<0>' % name, summer_ports[(name, 0)], show=show_pins)
             self.add_pin('summer_%s<1>' % name, summer_ports[(name, 1)], show=show_pins)
-        self.add_pin('summer_outp', summer_ports[('outp', -1)], show=show_pins)
-        self.add_pin('summer_outn', summer_ports[('outn', -1)], show=show_pins)
+        sum_outp = self.connect_wires(summer_ports[('outp', -1)], upper=wire_upper)
+        sum_outn = self.connect_wires(summer_ports[('outn', -1)], upper=wire_upper)
 
-        # export dlev input pins
-        self.add_pin('dlev_inp', acoff_ports['dp'], show=show_pins)
-        self.add_pin('dlev_inn', acoff_ports['dn'], show=show_pins)
+        self.add_pin('summer_outp', sum_outp, show=show_pins)
+        self.add_pin('summer_outn', sum_outn, show=show_pins)
 
         # connect and export supplies
         vss_name = self.get_pin_name('VSS')
@@ -586,9 +590,9 @@ class RXHalfTop(SerdesRXBase):
         ntr_id = TrackID(vm_layer, ntr_vm, width=clk_width_vm)
 
         warr = self.connect_to_tracks(acp, ptr_id, track_lower=0)
-        self.add_pin('bias_dlevp', warr, show=show_pins)
+        self.add_pin('bias_dlev_outp', warr, show=show_pins)
         warr = self.connect_to_tracks(acn, ntr_id, track_lower=0)
-        self.add_pin('bias_dlevn', warr, show=show_pins)
+        self.add_pin('bias_dlev_outn', warr, show=show_pins)
 
 
 class RXHalfBottom(SerdesRXBase):
@@ -1530,7 +1534,7 @@ class RXCore(TemplateBase):
         self.add_pin('inp', inp, show=show_pins)
         self.add_pin('inn', inn, show=show_pins)
         for idx in (0, 1):
-            for pname, oname in (('summer', 'summer'), ('dlat0', 'data')):
+            for pname, oname in (('dlev', 'dlev'), ('dlat0', 'data')):
                 self.reexport(inst_list[idx].get_port('%s_outp' % pname),
                               net_name='outp_%s<%d>' % (oname, idx), show=show_pins)
                 self.reexport(inst_list[idx].get_port('%s_outn' % pname),
@@ -1662,7 +1666,8 @@ class RXCore(TemplateBase):
 
         num_dfe = len(self.params['intsum_params']['gm_fg_list']) - 1
         for inst, prefix in zip(inst_list, ('even_', 'odd_')):
-            for pname in ('bias_ffe', 'bias_offp', 'bias_offn', 'clkn_nmos_tap1', 'clkp_nmos_tap1'):
+            for pname in ('bias_ffe', 'bias_offp', 'bias_offn', 'clkn_nmos_tap1', 'clkp_nmos_tap1',
+                          'bias_dlev_outp', 'bias_dlev_outn'):
                 if inst.has_port(pname):
                     self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
             for idx in range(num_dfe):
