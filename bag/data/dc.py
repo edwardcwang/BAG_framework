@@ -205,7 +205,12 @@ class DCCircuit(object):
                 num_out = smat.shape[0]
                 # reshape going row first instead of column
                 arg = (ai.dot(varr) + bi).reshape(4, -1, order='F').T
-                iarr[offset:offset + num_out] = smat.dot(idsf(arg))
+                if idsf.ndim == 3:
+                    # handle case where transistor source and body are shorted
+                    tmpval = idsf(arg[:, [0, 2, 3]])
+                else:
+                    tmpval = idsf(arg)
+                iarr[offset:offset + num_out] = smat.dot(tmpval)
                 offset += num_out
             return out_mat.dot(iarr)
 
@@ -217,7 +222,14 @@ class DCCircuit(object):
                 num_out = smat.shape[0]
                 # reshape going row first instead of column
                 arg = (ai.dot(varr) + bi).reshape(4, -1, order='F').T
-                jcur = smat.dot(idsf.jacobian(arg))
+                if idsf.ndim == 3:
+                    # handle case where transistor source and body are shorted
+                    tmpval = idsf.jacobian(arg[:, [0, 2, 3]])
+                    # noinspection PyTypeChecker
+                    tmpval = np.insert(tmpval, 1, 0.0, axis=len(tmpval.shape) - 1)
+                else:
+                    tmpval = idsf.jacobian(arg)
+                jcur = smat.dot(tmpval)
                 for idx in range(num_out):
                     # ai is sparse matrix; multiplication is matrix
                     jarr[offset + idx, :] = jcur[idx, :] @ ai[4 * idx:4 * idx + 4, :]

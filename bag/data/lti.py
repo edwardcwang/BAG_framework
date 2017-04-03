@@ -255,23 +255,27 @@ class LTICircuit(object):
         """
         gm = tran_info['gm'][0] * fg
         ro = 1 / (tran_info['gds'][0] * fg)
-        gb = tran_info['gb'][0] * fg
         cgd = tran_info['cgd'][0] * fg
         cgs = tran_info['cgs'][0] * fg
-        cgb = tran_info['cgb'][0] * fg
         cds = tran_info['cds'][0] * fg
-        cdb = tran_info['cdb'][0] * fg
-        csb = tran_info['csb'][0] * fg
 
         self.add_vccs(gm, d_name, s_name, g_name, s_name)
         self.add_res(ro, d_name, s_name)
-        self.add_vccs(gb, d_name, s_name, b_name, s_name)
         self.add_cap(cgd, g_name, d_name)
         self.add_cap(cgs, g_name, s_name)
-        self.add_cap(cgb, g_name, b_name)
         self.add_cap(cds, d_name, s_name)
-        self.add_cap(cdb, d_name, b_name)
-        self.add_cap(csb, s_name, b_name)
+
+        if 'gb' in tran_info:
+            # only add these if source is not shorted to body.
+            gb = tran_info['gb'][0] * fg
+            cgb = tran_info['cgb'][0] * fg
+            cdb = tran_info['cdb'][0] * fg
+            csb = tran_info['csb'][0] * fg
+
+            self.add_vccs(gb, d_name, s_name, b_name, s_name)
+            self.add_cap(cgb, g_name, b_name)
+            self.add_cap(cdb, d_name, b_name)
+            self.add_cap(csb, s_name, b_name)
 
     @classmethod
     def _count_rank(cls, diag):
