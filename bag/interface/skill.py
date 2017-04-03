@@ -662,5 +662,8 @@ class SkillInterface(DbAccess):
         **kwargs
             additional implementation-dependent arguments.
         """
+        # delete old verilog view
+        cmd = 'delete_cellview( "%s" "%s" "verilog" )' % (lib_name, cell_name)
+        self._eval_skill(cmd)
         cmd = 'schInstallHDL("%s" "%s" "verilog" "%s" t)' % (lib_name, cell_name, verilog_file)
         self._eval_skill(cmd)
