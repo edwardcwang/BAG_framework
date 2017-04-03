@@ -302,8 +302,8 @@ class MosCharGDDB(CharDB):
         fg = constants['fg']
 
         ids = sim_data['ids']
-        gm = sim_data['y21'].real / 2.0
-        gds = sim_data['y22'].real / 2.0
+        gm = sim_data['y21'].real
+        gds = sim_data['y22'].real
 
         cgd = -0.5 / w * (sim_data['y12'].imag + sim_data['y21'].imag)
         cgs = sim_data['y11'].imag / w - cgd
