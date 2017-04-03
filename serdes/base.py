@@ -374,6 +374,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
     def layout_info(self):
         return self._serdes_info
 
+    def get_nmos_row_index(self, name):
+        """Returns the index of the given nmos row type."""
+        return self._nrow_idx.get(name, -1)
+
     def draw_gm(self,  # type: SerdesRXBase
                 col_idx,  # type: int
                 fg_params,  # type: Dict[str, int]
