@@ -280,7 +280,7 @@ class RXHalfTop(SerdesRXBase):
         dntr_idx = dptr_idx - 3 * (hm_cur_width + diff_space)
         hm_layer = self.mos_conn_layer + 1
 
-        gtr = self.connect_to_tracks([acp['g'], acn['g']], TrackID(hm_layer, gtr_idx, width=hm_width))
+        self.connect_to_substrate('ptap', [acp['g'], acn['g']])
         sid = TrackID(hm_layer, str_idx, width=hm_width)
         sptr = self.connect_to_tracks(acp['s'], sid)
         sntr = self.connect_to_tracks(acn['s'], sid)
@@ -288,7 +288,6 @@ class RXHalfTop(SerdesRXBase):
                                                       dptr_idx, dntr_idx, width=hm_cur_width)
 
         acoff_ports = dict(
-            g=gtr,
             sp=sptr,
             sn=sntr,
             dp=dptr,
@@ -323,7 +322,6 @@ class RXHalfTop(SerdesRXBase):
 
         # connect ffe input to middle xm layer tracks, so we have room for vdd/vss wires.
         xm_layer_id = self.layout_info.mconn_port_layer + 3
-        vm_layer_id = xm_layer_id - 1
         ffe_in_xm_mid_tr = (self.grid.get_num_tracks(self.size, xm_layer_id) - 1) / 2
 
         # export intsum inout pins
@@ -371,17 +369,6 @@ class RXHalfTop(SerdesRXBase):
         ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(lower=sup_lower, upper=sup_upper,
                                                          vdd_warrs=vdd_warrs, sup_margin=1, unit_mode=True)
 
-        acp = acoff_ports['sp']
-        acn = acoff_ports['sn']
-        acg = acoff_ports['g']
-        clk_width_vm, clk_width_xm = clk_widths[:2]
-        clk_space_vm, clk_space_xm = clk_spaces[:2]
-        ptr_vm = self.grid.coord_to_nearest_track(vm_layer_id, acp.middle, half_track=True)
-        ntr_vm = self.grid.coord_to_nearest_track(vm_layer_id, acn.middle, half_track=True)
-        gtr_vm = max(ptr_vm, ntr_vm) + clk_width_vm / 2 + clk_space_vm
-        gtr_id = TrackID(vm_layer_id, gtr_vm, width=1)
-        self.connect_to_tracks(ptap_wire_arrs + [acg], gtr_id)
-        
         for warr in ptap_wire_arrs:
             self.add_pin(vss_name, warr, show=show_pins)
 
