@@ -222,9 +222,19 @@ class BBox(object):
         return ((self._left_unit + self._right_unit) // 2) * self._res
 
     @property
+    def xc_unit(self):
+        """The center X coordinate in resolution units."""
+        return (self._left_unit + self._right_unit) // 2
+
+    @property
     def yc(self):
         """The center Y coordinate, rounded to nearest grid point."""
         return ((self._bot_unit + self._top_unit) // 2) * self._res
+
+    @property
+    def yc_unit(self):
+        """The center Y coordinate in resolution units."""
+        return (self._bot_unit + self._top_unit) // 2
 
     def get_points(self, unit_mode=False):
         # type: (bool) -> List[Tuple[Union[float, int], Union[float, int]]]
