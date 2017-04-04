@@ -1417,6 +1417,12 @@ class SubstrateContact(TemplateBase):
         super(SubstrateContact, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
+    def default_top_layer(cls, tech_info):
+        mos_cls = tech_info.tech_params['layout']['mos_template']
+        mconn_layer = mos_cls.port_layer_id()
+        return mconn_layer + 1
+
+    @classmethod
     def get_default_param_values(cls):
         # type: () -> Dict[str, Any]
         """Returns a dictionary containing default parameter values.
