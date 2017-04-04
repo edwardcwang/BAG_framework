@@ -392,7 +392,7 @@ class RXHalfTop(SerdesRXBase):
         casc_tr = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=clk_width_vm, space=clk_space_vm)
         # step 2: connect summer cascode to vdd
         casc_tr_id = TrackID(vm_layer, casc_tr, width=clk_width_vm)
-        self.connect_to_tracks(ntap_wire_arrs + vddt + casc_sum, casc_tr_id)
+        self.connect_to_tracks(ntap_wire_arrs + casc_sum, casc_tr_id)
 
         return ffe_inputs
 
@@ -413,7 +413,10 @@ class RXHalfTop(SerdesRXBase):
         ffe_top_tr = ffe_inputs[0].track_id.base_index
         ffe_bot_tr = ffe_inputs[1].track_id.base_index
         clkp_nmos_sw_tr_xm = ffe_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
-        clkn_nmos_sw_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
+        clkn_nmos_sw_tr_xm = clkp_nmos_sw_tr_xm
+        clkp_nmos_intsum_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
+        clkp_nmos_summer_tr_xm = clkp_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
+        clkp_nmos_tap1_tr_xm = clkp_nmos_intsum_tr_xm
         clkn_nmos_ana_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
         clkp_pmos_intsum_tr_xm = ffe_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
         clkn_pmos_summer_tr_xm = clkp_pmos_intsum_tr_xm
@@ -484,7 +487,9 @@ class RXHalfTop(SerdesRXBase):
         # nmos intsum
         warr = self.connect_wires(intsum_ports[('bias_tail', 0)] + intsum_ports[('bias_tail', 1)])
         tr_id = TrackID(vm_layer, ltr_vm, width=clk_width_vm)
-        warr = self.connect_to_tracks(warr, tr_id, track_lower=0)
+        warr = self.connect_to_tracks(warr, tr_id)
+        xtr_id = TrackID(xm_layer, clkp_nmos_intsum_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id)
         self.add_pin(clkp + '_nmos_intsum', warr, show=show_pins)
 
         # connect intsum dfe tap biases
@@ -552,7 +557,9 @@ class RXHalfTop(SerdesRXBase):
         warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
         self.add_pin(clkn + '_pmos_summer', warr, show=show_pins)
         # nmos summer
-        warr = self.connect_to_tracks(summer_ports[('bias_tail', 0)], ltr_id, track_lower=0)
+        warr = self.connect_to_tracks(summer_ports[('bias_tail', 0)], ltr_id)
+        xtr_id = TrackID(xm_layer, clkp_nmos_summer_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id)
         self.add_pin(clkp + '_nmos_summer', warr, show=show_pins)
         # nmos switch
         sw_wire = self.connect_wires(summer_ports[('sw', 0)] + summer_ports[('sw', 1)])
@@ -574,7 +581,9 @@ class RXHalfTop(SerdesRXBase):
         # en_dfe
         warr = self.connect_to_tracks(summer_ports[('bias_casc', 1)], en_tr_id, track_lower=0)
         self.add_pin('en_dfe<0>', warr, show=show_pins)
-        warr = self.connect_to_tracks(summer_ports[('bias_tail', 1)], tap_tr_id, track_lower=0)
+        warr = self.connect_to_tracks(summer_ports[('bias_tail', 1)], tap_tr_id)
+        xtr_id = TrackID(xm_layer, clkp_nmos_tap1_tr_xm, width=clk_width_xm)
+        warr = self.connect_to_tracks(warr, xtr_id)
         self.add_pin(clkp + '_nmos_tap1', warr, show=show_pins)
 
         warr = self.connect_to_tracks(clkn_nmos_sw_list, clkn_nmos_sw_tr_id)
@@ -1393,7 +1402,8 @@ class RXHalf(TemplateBase):
         show_pins = self.params['show_pins']
         for inst in (bot_inst, top_inst):
             for port_name in inst.port_names_iter():
-                self.reexport(inst.get_port(port_name), show=show_pins)
+                if port_name != 'dlev_outp' and port_name != 'dlev_outn':
+                    self.reexport(inst.get_port(port_name), show=show_pins)
 
         return bot_inst, top_inst, col_idx_dict
 
@@ -1404,6 +1414,7 @@ class RXHalf(TemplateBase):
         vm_width = self.params['sig_widths'][0]
         nintsum = len(self.params['intsum_params']['gm_fg_list'])
         dlev_cap_params = self.params['dlev_cap_params']
+        show_pins = self.params['show_pins']
 
         # connect integ to alat1
         self._connect_diff_io(bot_inst, col_idx_dict['integ_route'], layout_info, vm_layer,
@@ -1462,16 +1473,23 @@ class RXHalf(TemplateBase):
         summer_outp = top_inst.get_all_port_pins('summer_outp')[0]
         summer_outn = top_inst.get_all_port_pins('summer_outn')[0]
         dlev_outn_track = dlev_outn.track_id.base_index
-        tr_diff = dlev_outn_track - summer_outn.track_id.base_index
-        tr_width = dlev_outn.track_id.width
         cap_yb = dlev_outn.get_bbox_array(self.grid).top_unit + cap_sp
-
+        # step 2: draw caps
         cap_bot_layer = hm_layer
         cap_xl = self.bound_box.right_unit
         cap_bboxl = BBox(cap_xl, cap_yb, cap_xl + cap_w, cap_yb + cap_h, res, unit_mode=True)
         cap_bboxr = cap_bboxl.move_by(dx=cap_w + cap_sp, unit_mode=True)
         capl_ports = self.add_mom_cap(cap_bboxl, cap_bot_layer, num_cap_layer, port_widths=port_widths)
         capr_ports = self.add_mom_cap(cap_bboxr, cap_bot_layer, num_cap_layer, port_widths=port_widths)
+        # step 3: connect caps to dlev/summer inputs/outputs
+        tr_list = [dlev_outp.track_id.base_index, summer_outp.track_id.base_index,
+                   dlev_outn.track_id.base_index, summer_outn.track_id.base_index]
+        warr_list = [capl_ports[vm_layer][0], capl_ports[vm_layer][1],
+                     capr_ports[vm_layer][1], capr_ports[vm_layer][0]]
+        hwarr_list = self.connect_matching_tracks(warr_list, hm_layer, tr_list, width=dlev_outp.track_id.width,
+                                                  track_lower=dlev_outn.lower)
+        self.add_pin('dlev_outp', hwarr_list[0], show=show_pins)
+        self.add_pin('dlev_outn', hwarr_list[2], show=show_pins)
 
     def _connect_diff_io(self, inst, route_col_intv, layout_info, vm_layer, vm_width, vm_space,
                          out_name, in_name):
@@ -1707,16 +1725,19 @@ class RXCore(TemplateBase):
                         ('clk1', 1),
                         ('nmos_analog', 2),
                         ('pmos_analog', 2),
+                        ('nmos_intsum', 1),
                         ('clk2', 2),
                         ('pmos_digital', 2),
                         ('nmos_digital', 1),
                         ('pmos_summer', 2),
+                        ('nmos_summer', 1),
+                        ('nmos_tap1', 1),
                         ]
         clk_ports = {'clk1': ['pmos_integ', 'nmos_switch_alat1'], 'clk2': ['pmos_intsum', 'nmos_switch']}
         clk_wires = {}
         for inst in inst_list:
             for name in inst.port_names_iter():
-                if name.startswith('clk') and not name.endswith('tap1'):
+                if name.startswith('clk'):
                     if name not in clk_wires:
                         clk_wires[name] = []
                     clk_wires[name].extend(inst.get_all_port_pins(name))
@@ -1741,6 +1762,9 @@ class RXCore(TemplateBase):
                 nwires = self.connect_wires(clk_wires.pop(nname))
                 labelp = ''
                 labeln = ''
+                if base_name.endswith('tap1'):
+                    pname = 'even_' + pname
+                    nname = 'odd_' + nname
 
             if num_tracks == 2:
                 ptr = tr_idx
@@ -1766,8 +1790,7 @@ class RXCore(TemplateBase):
 
         num_dfe = len(self.params['intsum_params']['gm_fg_list']) - 1
         for inst, prefix in zip(inst_list, ('even_', 'odd_')):
-            for pname in ('bias_ffe', 'bias_offp', 'bias_offn', 'clkn_nmos_tap1', 'clkp_nmos_tap1',
-                          'bias_dlev_outp', 'bias_dlev_outn'):
+            for pname in ('bias_ffe', 'bias_offp', 'bias_offn', 'bias_dlev_outp', 'bias_dlev_outn'):
                 if inst.has_port(pname):
                     self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
             for idx in range(num_dfe):
