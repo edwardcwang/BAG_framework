@@ -366,13 +366,11 @@ class RXHalfTop(SerdesRXBase):
         vss_name = self.get_pin_name('VSS')
         vdd_name = self.get_pin_name('VDD')
         vdd_warrs = []
-        sup_lower, sup_upper = self.array_box.left_unit, self.array_box.right_unit
-        vddt = self.connect_wires(vdd_list, lower=sup_lower, upper=sup_upper, unit_mode=True)
+        vddt = self.connect_wires(vdd_list, unit_mode=True)
         vdd_warrs.extend(vddt)
-        warr = self.connect_wires(cascl_list, lower=sup_lower, unit_mode=True)
+        warr = self.connect_wires(cascl_list, unit_mode=True)
         vdd_warrs.extend(warr)
-        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(lower=sup_lower, upper=sup_upper,
-                                                         vdd_warrs=vdd_warrs, sup_margin=1, unit_mode=True)
+        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(vdd_warrs=vdd_warrs, sup_margin=1, unit_mode=True)
 
         for warr in ptap_wire_arrs:
             self.add_pin(vss_name, warr, show=show_pins)
@@ -744,12 +742,10 @@ class RXHalfBottom(SerdesRXBase):
 
         # connect and export supplies
         vdd_name = self.get_pin_name('VDD')
-        sup_lower, sup_upper = self.array_box.left_unit, self.array_box.right_unit
-        vdd_warrs = self.connect_wires(vdd_list, lower=sup_lower, upper=sup_upper, unit_mode=True)
-        vdd_warrs.extend(self.connect_wires(casc_list, lower=sup_lower, upper=sup_upper, unit_mode=True))
+        vdd_warrs = self.connect_wires(vdd_list, unit_mode=True)
+        vdd_warrs.extend(self.connect_wires(casc_list, unit_mode=True))
 
-        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(lower=sup_lower, upper=sup_upper,
-                                                         vdd_warrs=vdd_warrs, sup_margin=1, unit_mode=True)
+        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(vdd_warrs=vdd_warrs, sup_margin=1, unit_mode=True)
         for warr in ptap_wire_arrs:
             self.add_pin(self.get_pin_name('VSS'), warr, show=show_pins)
 
@@ -1116,8 +1112,10 @@ class RXHalf(TemplateBase):
         xtr_top = self.grid.find_next_track(xm_layer, upper, half_track=False, mode=-1, unit_mode=True)
         xnum_tr = xtr_top - xtr_bot + 1
         xmid_tr = (xtr_top + xtr_bot) / 2
-        xm_upper = bot_inst.array_box.right_unit
-        warr = self.add_wires(xm_layer, xmid_tr, lower=0, upper=xm_upper, width=xnum_tr, unit_mode=True)
+        bot_vdd_box = bot_vdd.get_bbox_array(self.grid).base
+        xm_lower = bot_vdd_box.left_unit
+        xm_upper = bot_vdd_box.right_unit
+        warr = self.add_wires(xm_layer, xmid_tr, lower=xm_lower, upper=xm_upper, width=xnum_tr, unit_mode=True)
         self.add_pin('VDDX', warr, show=show_pins)
         # draw xm bottom VSS wire
         bot_vss = bot_inst.get_all_port_pins('VSS')[0]
@@ -1126,7 +1124,7 @@ class RXHalf(TemplateBase):
                                           unit_mode=True)[1]
         xtr_top = self.grid.find_next_track(xm_layer, upper, half_track=False, mode=-1, unit_mode=True)
         xmid_tr = xtr_top - (xnum_tr - 1) / 2
-        warr = self.add_wires(xm_layer, xmid_tr, lower=0, upper=xm_upper, width=xnum_tr, unit_mode=True)
+        warr = self.add_wires(xm_layer, xmid_tr, lower=xm_lower, upper=xm_upper, width=xnum_tr, unit_mode=True)
         self.add_pin('VSSX', warr, show=show_pins)
         # draw xm top VSS wire
         lower = self.grid.get_wire_bounds(hm_layer, top_vss.track_id.base_index, top_vss.track_id.width,
@@ -1135,7 +1133,7 @@ class RXHalf(TemplateBase):
         xtr_top = self.grid.get_num_tracks(self.size, xm_layer) - 1
         xnum_tr = xtr_top - xtr_bot + 1
         xmid_tr = (xtr_top + xtr_bot) / 2
-        warr = self.add_wires(xm_layer, xmid_tr, lower=0, upper=xm_upper, width=xnum_tr, unit_mode=True)
+        warr = self.add_wires(xm_layer, xmid_tr, lower=xm_lower, upper=xm_upper, width=xnum_tr, unit_mode=True)
         self.add_pin('VSSX', warr, show=show_pins)
 
     def place(self, layout_info):
