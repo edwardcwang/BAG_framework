@@ -1355,7 +1355,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                     cap_box,  # type: BBox
                     bot_layer,  # type: int
                     num_layer,  # type: int
-                    port_width=1,  # type: int
+                    port_widths=1,  # type: Union[int, List[int]]
                     fill_margin=0,  # type: ldim
                     fill_type='',  # type: str
                     unit_mode=False  # type: bool
@@ -1365,12 +1365,18 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         if num_layer <= 1:
             raise ValueError('Must have at least 2 layers for MOM cap.')
 
+        top_layer = bot_layer + num_layer - 1
+
+        if isinstance(port_widths, int):
+            port_widths = {lay: port_widths for lay in range(bot_layer, top_layer + 1)}
+        else:
+            port_widths = dict(zip(range(bot_layer, top_layer + 1), port_widths))
+
         res = self.grid.resolution
         tech_info = self.grid.tech_info
         if not unit_mode:
             fill_margin = int(round(fill_margin / res))
 
-        top_layer = bot_layer + num_layer - 1
         mom_cap_dict = tech_info.tech_params['layout']['mom_cap']
         cap_margins = mom_cap_dict['margins']
         cap_info = mom_cap_dict['width_space']
@@ -1379,8 +1385,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         # get via extensions on each layer
         for vbot_layer in range(bot_layer, top_layer):
             vtop_layer = vbot_layer + 1
-            bport_w = self.grid.get_track_width(vbot_layer, port_width, unit_mode=True)
-            tport_w = self.grid.get_track_width(vtop_layer, port_width, unit_mode=True)
+            bport_w = self.grid.get_track_width(vbot_layer, port_widths[vbot_layer], unit_mode=True)
+            tport_w = self.grid.get_track_width(vtop_layer, port_widths[vtop_layer], unit_mode=True)
             bcap_w = int(round(cap_info[vbot_layer][0] / res))
             tcap_w = int(round(cap_info[vtop_layer][0] / res))
 
@@ -1400,6 +1406,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         cap_bounds = {}
         cap_exts = {}
         for cur_layer in range(bot_layer, top_layer + 1):
+            cur_port_width = port_widths[cur_layer]
             if self.grid.get_direction(cur_layer) == 'x':
                 cur_lower, cur_upper = cap_box.bottom_unit, cap_box.top_unit
             else:
@@ -1411,12 +1418,12 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             if cur_layer != top_layer:
                 adj_via_ext = max(adj_via_ext, via_ext_dict[cur_layer + 1])
             # find track indices
-            tr_lower = self.grid.find_next_track(cur_layer, cur_lower + adj_via_ext, tr_width=port_width,
+            tr_lower = self.grid.find_next_track(cur_layer, cur_lower + adj_via_ext, tr_width=cur_port_width,
                                                  half_track=True, mode=1, unit_mode=True)
-            tr_upper = self.grid.find_next_track(cur_layer, cur_upper - adj_via_ext, tr_width=port_width,
+            tr_upper = self.grid.find_next_track(cur_layer, cur_upper - adj_via_ext, tr_width=cur_port_width,
                                                  half_track=True, mode=-1, unit_mode=True)
-            tll, tlu = self.grid.get_wire_bounds(cur_layer, tr_lower, width=port_width, unit_mode=True)
-            tul, tuu = self.grid.get_wire_bounds(cur_layer, tr_upper, width=port_width, unit_mode=True)
+            tll, tlu = self.grid.get_wire_bounds(cur_layer, tr_lower, width=cur_port_width, unit_mode=True)
+            tul, tuu = self.grid.get_wire_bounds(cur_layer, tr_upper, width=cur_port_width, unit_mode=True)
 
             # compute space from MOM cap wires to port wires
             lay_name = tech_info.get_layer_name(cur_layer)
@@ -1434,6 +1441,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         cap_wire_dict = {}
         # draw ports/wires
         for cur_layer in range(bot_layer, top_layer + 1):
+            cur_port_width = port_widths[cur_layer]
             # find port/cap wires lower/upper coordinates
             lower, upper = None, None
             if cur_layer != top_layer:
@@ -1449,16 +1457,16 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
             tr_lower, tr_upper = port_tracks[cur_layer]
             if cur_layer == bot_layer:
-                pwarr = self.add_wires(cur_layer, tr_lower, lower, upper, width=port_width,
+                pwarr = self.add_wires(cur_layer, tr_lower, lower, upper, width=cur_port_width,
                                        fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
-                nwarr = self.add_wires(cur_layer, tr_upper, lower, upper, width=port_width,
+                nwarr = self.add_wires(cur_layer, tr_upper, lower, upper, width=cur_port_width,
                                        fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
             else:
                 pwarr, nwarr = port_dict[cur_layer - 1]
                 pwarr, nwarr = self.connect_differential_tracks(pwarr, nwarr, cur_layer, tr_lower, tr_upper,
-                                                                track_lower=lower, track_upper=upper, width=port_width,
-                                                                fill_margin=fill_margin, fill_type=fill_type,
-                                                                unit_mode=True)
+                                                                track_lower=lower, track_upper=upper,
+                                                                width=cur_port_width, fill_margin=fill_margin,
+                                                                fill_type=fill_type, unit_mode=True)
             port_dict[cur_layer] = (pwarr, nwarr)
             # mark all in-between tracks as used
             fake_warr = WireArray(TrackID(cur_layer, tr_lower + 1, num=int(tr_upper - tr_lower) + 1, pitch=1),
@@ -1498,7 +1506,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                     wbox2 = wbox.move_by(dx=cap_pitch, unit_mode=True)
                     self.add_rect(lay_name[0], wbox, nx=num_dbl, spx=pitch_dbl)
                     self.add_rect(lay_name[1], wbox2, nx=num_dbl, spx=pitch_dbl)
-                cap_wire_dict[cur_layer] = [(lay_name[0], wbox), (lay_name[1], wbox2)], num_dbl, pitch_dbl
+                cap_wire_dict[cur_layer] = [(lay_name[0], wbox2), (lay_name[1], wbox)], num_dbl, pitch_dbl
             else:
                 pitch_single = cap_pitch * res
                 if is_horizontal:
@@ -1507,7 +1515,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                 else:
                     wbox2 = wbox.move_by(dx=cap_pitch, unit_mode=True)
                     self.add_rect(lay_name, wbox, nx=num_cap_wires, spx=pitch_single)
-                cap_wire_dict[cur_layer] = [(lay_name, wbox), (lay_name, wbox2)], num_cap_wires // 2, pitch_single * 2
+                cap_wire_dict[cur_layer] = [(lay_name, wbox2), (lay_name, wbox)], num_cap_wires // 2, pitch_single * 2
 
         # draw cap wires and vias
         for cur_layer in range(bot_layer, top_layer):
