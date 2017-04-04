@@ -32,6 +32,7 @@ from typing import Dict, Any, Set, Tuple
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.objects import Instance
 from bag.layout.routing import TrackID
+from bag.layout.util import BBox
 
 from .base import SerdesRXBase, SerdesRXBaseInfo
 
@@ -1062,6 +1063,7 @@ class RXHalf(TemplateBase):
             intsum_params='Integrator summer parameters.',
             summer_params='DFE tap-1 summer parameters.',
             dlat_params_list='Digital latch parameters.',
+            dlev_cap_params='dlev AC coupling cap parameters.',
             min_fg_sep='Minimum separation between transistors.',
             nduml='number of dummy fingers on the left.',
             ndumr='number of dummy fingers on the right.',
@@ -1403,6 +1405,7 @@ class RXHalf(TemplateBase):
         vm_layer = hm_layer + 1
         vm_width = self.params['sig_widths'][0]
         nintsum = len(self.params['intsum_params']['gm_fg_list'])
+        dlev_cap_params = self.params['dlev_cap_params']
 
         # connect integ to alat1
         self._connect_diff_io(bot_inst, col_idx_dict['integ_route'], layout_info, vm_layer,
@@ -1448,6 +1451,30 @@ class RXHalf(TemplateBase):
                                       layout_info, vm_layer, vm_width, vm_space,
                                       'dlat%d_out{}' % (dfe_idx - 2), 'dlat%d_in{}' % (dfe_idx - 1))
 
+        # draw AC coupling caps for dlev inputs
+        res = self.grid.resolution
+        num_cap_layer = dlev_cap_params['num_layer']
+        port_widths = dlev_cap_params['port_widths']
+        cap_w = int(round(dlev_cap_params['width'] / res))
+        cap_h = int(round(dlev_cap_params['height'] / res))
+        cap_sp = int(round(dlev_cap_params['cap_space'] / res))
+        # step 1: find bottom coordinate of cap
+        dlev_outp = top_inst.get_all_port_pins('dlev_outp')[0]
+        dlev_outn = top_inst.get_all_port_pins('dlev_outn')[0]
+        summer_outp = top_inst.get_all_port_pins('summer_outp')[0]
+        summer_outn = top_inst.get_all_port_pins('summer_outn')[0]
+        dlev_outn_track = dlev_outn.track_id.base_index
+        tr_diff = dlev_outn_track - summer_outn.track_id.base_index
+        tr_width = dlev_outn.track_id.width
+        cap_yb = dlev_outn.get_bbox_array(self.grid).top_unit + cap_sp
+
+        cap_bot_layer = hm_layer
+        cap_xl = self.bound_box.right_unit
+        cap_bboxl = BBox(cap_xl, cap_yb, cap_xl + cap_w, cap_yb + cap_h, res, unit_mode=True)
+        cap_bboxr = cap_bboxl.move_by(dx=cap_w + cap_sp, unit_mode=True)
+        capl_ports = self.add_mom_cap(cap_bboxl, cap_bot_layer, num_cap_layer, port_widths=port_widths)
+        capr_ports = self.add_mom_cap(cap_bboxr, cap_bot_layer, num_cap_layer, port_widths=port_widths)
+
     def _connect_diff_io(self, inst, route_col_intv, layout_info, vm_layer, vm_width, vm_space,
                          out_name, in_name):
         ptr_idx = layout_info.get_center_tracks(vm_layer, 2, route_col_intv, width=vm_width, space=vm_space)
@@ -1482,6 +1509,81 @@ class RXCore(TemplateBase):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(RXCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._fg_tot = 0
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : Dict[str, Any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            th_dict={},
+            gds_space=1,
+            min_fg_sep=0,
+            nduml=4,
+            ndumr=4,
+            diff_space=1,
+            hm_width=1,
+            hm_cur_width=-1,
+            sig_widths=[1, 1],
+            sig_spaces=[1, 1],
+            clk_widths=[1, 1, 1],
+            clk_spaces=[1, 1, 1],
+            sig_clk_spaces=[1, 1],
+            show_pins=True,
+            rename_dict={},
+            guard_ring_nf=0,
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            ptap_w='NMOS substrate width, in meters/number of fins.',
+            ntap_w='PMOS substrate width, in meters/number of fins.',
+            w_dict='NMOS/PMOS width dictionary.',
+            th_dict='NMOS/PMOS threshold flavor dictionary.',
+            integ_params='Integrating frontend parameters.',
+            alat_params_list='Analog latch parameters',
+            intsum_params='Integrator summer parameters.',
+            summer_params='DFE tap-1 summer parameters.',
+            dlat_params_list='Digital latch parameters.',
+            dlev_cap_params='dlev AC coupling cap parameters.',
+            min_fg_sep='Minimum separation between transistors.',
+            nduml='number of dummy fingers on the left.',
+            ndumr='number of dummy fingers on the right.',
+            gds_space='number of tracks reserved as space between gate and drain/source tracks.',
+            diff_space='number of tracks reserved as space between differential tracks.',
+            hm_width='width of horizontal track wires.',
+            hm_cur_width='width of horizontal current track wires. If negative, defaults to hm_width.',
+            sig_widths='signal wire widths on each layer above hm layer.',
+            sig_spaces='signal wire spacing on each layer above hm layer.',
+            clk_widths='clk wire widths on each layer above hm layer.',
+            clk_spaces='clk wire spacing on each layer above hm layer.',
+            sig_clk_spaces='spacing between signal and clk on each layer above hm layer.',
+            show_pins='True to create pin labels.',
+            rename_dict='port renaming dictionary',
+            guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
+        )
 
     @property
     def num_fingers(self):
@@ -1738,77 +1840,3 @@ class RXCore(TemplateBase):
 
         trp, trn = self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width)
         return trp, trn
-
-    @classmethod
-    def get_default_param_values(cls):
-        # type: () -> Dict[str, Any]
-        """Returns a dictionary containing default parameter values.
-
-        Override this method to define default parameter values.  As good practice,
-        you should avoid defining default values for technology-dependent parameters
-        (such as channel length, transistor width, etc.), but only define default
-        values for technology-independent parameters (such as number of tracks).
-
-        Returns
-        -------
-        default_params : Dict[str, Any]
-            dictionary of default parameter values.
-        """
-        return dict(
-            th_dict={},
-            gds_space=1,
-            min_fg_sep=0,
-            nduml=4,
-            ndumr=4,
-            diff_space=1,
-            hm_width=1,
-            hm_cur_width=-1,
-            sig_widths=[1, 1],
-            sig_spaces=[1, 1],
-            clk_widths=[1, 1, 1],
-            clk_spaces=[1, 1, 1],
-            sig_clk_spaces=[1, 1],
-            show_pins=True,
-            rename_dict={},
-            guard_ring_nf=0,
-        )
-
-    @classmethod
-    def get_params_info(cls):
-        # type: () -> Dict[str, str]
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : Dict[str, str]
-            dictionary from parameter name to description.
-        """
-        return dict(
-            lch='channel length, in meters.',
-            ptap_w='NMOS substrate width, in meters/number of fins.',
-            ntap_w='PMOS substrate width, in meters/number of fins.',
-            w_dict='NMOS/PMOS width dictionary.',
-            th_dict='NMOS/PMOS threshold flavor dictionary.',
-            integ_params='Integrating frontend parameters.',
-            alat_params_list='Analog latch parameters',
-            intsum_params='Integrator summer parameters.',
-            summer_params='DFE tap-1 summer parameters.',
-            dlat_params_list='Digital latch parameters.',
-            min_fg_sep='Minimum separation between transistors.',
-            nduml='number of dummy fingers on the left.',
-            ndumr='number of dummy fingers on the right.',
-            gds_space='number of tracks reserved as space between gate and drain/source tracks.',
-            diff_space='number of tracks reserved as space between differential tracks.',
-            hm_width='width of horizontal track wires.',
-            hm_cur_width='width of horizontal current track wires. If negative, defaults to hm_width.',
-            sig_widths='signal wire widths on each layer above hm layer.',
-            sig_spaces='signal wire spacing on each layer above hm layer.',
-            clk_widths='clk wire widths on each layer above hm layer.',
-            clk_spaces='clk wire spacing on each layer above hm layer.',
-            sig_clk_spaces='spacing between signal and clk on each layer above hm layer.',
-            show_pins='True to create pin labels.',
-            rename_dict='port renaming dictionary',
-            guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
-        )
