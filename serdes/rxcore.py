@@ -1472,7 +1472,6 @@ class RXHalf(TemplateBase):
         dlev_outn = top_inst.get_all_port_pins('dlev_outn')[0]
         summer_outp = top_inst.get_all_port_pins('summer_outp')[0]
         summer_outn = top_inst.get_all_port_pins('summer_outn')[0]
-        dlev_outn_track = dlev_outn.track_id.base_index
         cap_yb = dlev_outn.get_bbox_array(self.grid).top_unit + cap_sp
         # step 2: draw caps
         cap_bot_layer = hm_layer

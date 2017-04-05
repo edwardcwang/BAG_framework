@@ -271,8 +271,10 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         parent_grid = self.grid
         self.grid = parent_grid.copy()
         grid_layers = self.grid.tech_info.tech_params['layout']['analog_res'][grid_type]
-        for lay_id, tr_w, tr_sp, tr_dir in grid_layers:
-            self.grid.add_new_layer(lay_id, tr_sp, tr_w, tr_dir)
+        for lay_id, tr_w, tr_sp, tr_dir, necessary in grid_layers:
+            if necessary or lay_id not in self.grid:
+                self.grid.add_new_layer(lay_id, tr_sp, tr_w, tr_dir, override=True)
+
         self.grid.update_block_pitch()
 
         layout_params = dict(
