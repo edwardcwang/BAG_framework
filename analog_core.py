@@ -493,6 +493,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._pitch_offset = 0, 0
         self._hm_idx0 = 0
 
+    @classmethod
+    def get_mos_conn_layer(cls, tech_info):
+        mos_cls = tech_info.tech_params['layout']['mos_template']
+        return mos_cls.port_layer_id()
+
     @property
     def layout_info(self):
         # type: () -> AnalogBaseInfo

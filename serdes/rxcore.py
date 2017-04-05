@@ -32,7 +32,6 @@ from typing import Dict, Any, Set, Tuple
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.objects import Instance
 from bag.layout.routing import TrackID
-from bag.layout.util import BBox
 
 from .base import SerdesRXBase, SerdesRXBaseInfo
 
@@ -1068,7 +1067,6 @@ class RXHalf(TemplateBase):
             intsum_params='Integrator summer parameters.',
             summer_params='DFE tap-1 summer parameters.',
             dlat_params_list='Digital latch parameters.',
-            dlev_cap_params='dlev AC coupling cap parameters.',
             min_fg_sep='Minimum separation between transistors.',
             nduml='number of dummy fingers on the left.',
             ndumr='number of dummy fingers on the right.',
@@ -1402,8 +1400,7 @@ class RXHalf(TemplateBase):
         show_pins = self.params['show_pins']
         for inst in (bot_inst, top_inst):
             for port_name in inst.port_names_iter():
-                if port_name != 'dlev_outp' and port_name != 'dlev_outn':
-                    self.reexport(inst.get_port(port_name), show=show_pins)
+                self.reexport(inst.get_port(port_name), show=show_pins)
 
         return bot_inst, top_inst, col_idx_dict
 
@@ -1413,8 +1410,6 @@ class RXHalf(TemplateBase):
         vm_layer = hm_layer + 1
         vm_width = self.params['sig_widths'][0]
         nintsum = len(self.params['intsum_params']['gm_fg_list'])
-        dlev_cap_params = self.params['dlev_cap_params']
-        show_pins = self.params['show_pins']
 
         # connect integ to alat1
         self._connect_diff_io(bot_inst, col_idx_dict['integ_route'], layout_info, vm_layer,
@@ -1459,36 +1454,6 @@ class RXHalf(TemplateBase):
                 self._connect_diff_io(bot_inst, col_idx_dict['dlat%d_inroute' % (dfe_idx - 1)],
                                       layout_info, vm_layer, vm_width, vm_space,
                                       'dlat%d_out{}' % (dfe_idx - 2), 'dlat%d_in{}' % (dfe_idx - 1))
-
-        # draw AC coupling caps for dlev inputs
-        res = self.grid.resolution
-        num_cap_layer = dlev_cap_params['num_layer']
-        port_widths = dlev_cap_params['port_widths']
-        cap_w = int(round(dlev_cap_params['width'] / res))
-        cap_h = int(round(dlev_cap_params['height'] / res))
-        cap_sp = int(round(dlev_cap_params['cap_space'] / res))
-        # step 1: find bottom coordinate of cap
-        dlev_outp = top_inst.get_all_port_pins('dlev_outp')[0]
-        dlev_outn = top_inst.get_all_port_pins('dlev_outn')[0]
-        summer_outp = top_inst.get_all_port_pins('summer_outp')[0]
-        summer_outn = top_inst.get_all_port_pins('summer_outn')[0]
-        cap_yb = dlev_outn.get_bbox_array(self.grid).top_unit + cap_sp
-        # step 2: draw caps
-        cap_bot_layer = hm_layer
-        cap_xl = self.bound_box.right_unit
-        cap_bboxl = BBox(cap_xl, cap_yb, cap_xl + cap_w, cap_yb + cap_h, res, unit_mode=True)
-        cap_bboxr = cap_bboxl.move_by(dx=cap_w + cap_sp, unit_mode=True)
-        capl_ports = self.add_mom_cap(cap_bboxl, cap_bot_layer, num_cap_layer, port_widths=port_widths)
-        capr_ports = self.add_mom_cap(cap_bboxr, cap_bot_layer, num_cap_layer, port_widths=port_widths)
-        # step 3: connect caps to dlev/summer inputs/outputs
-        tr_list = [dlev_outp.track_id.base_index, summer_outp.track_id.base_index,
-                   dlev_outn.track_id.base_index, summer_outn.track_id.base_index]
-        warr_list = [capl_ports[vm_layer][0], capl_ports[vm_layer][1],
-                     capr_ports[vm_layer][1], capr_ports[vm_layer][0]]
-        hwarr_list = self.connect_matching_tracks(warr_list, hm_layer, tr_list, width=dlev_outp.track_id.width,
-                                                  track_lower=dlev_outn.lower)
-        self.add_pin('dlev_outp', hwarr_list[0], show=show_pins)
-        self.add_pin('dlev_outn', hwarr_list[2], show=show_pins)
 
     def _connect_diff_io(self, inst, route_col_intv, layout_info, vm_layer, vm_width, vm_space,
                          out_name, in_name):
@@ -1582,7 +1547,6 @@ class RXCore(TemplateBase):
             intsum_params='Integrator summer parameters.',
             summer_params='DFE tap-1 summer parameters.',
             dlat_params_list='Digital latch parameters.',
-            dlev_cap_params='dlev AC coupling cap parameters.',
             min_fg_sep='Minimum separation between transistors.',
             nduml='number of dummy fingers on the left.',
             ndumr='number of dummy fingers on the right.',
@@ -1629,7 +1593,7 @@ class RXCore(TemplateBase):
         min_fg_sep = self.params['min_fg_sep']
         layout_info = SerdesRXBaseInfo(self.grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
         self.connect_signal(inst_list, col_idx_dict, layout_info)
-        self.connect_bias(inst_list, layout_info)
+        self.connect_bias(inst_list)
         self.connect_supplies(inst_list)
 
     def connect_signal(self, inst_list, col_idx_dict, layout_info):
@@ -1651,7 +1615,7 @@ class RXCore(TemplateBase):
         self.add_pin('inp', inp, show=show_pins)
         self.add_pin('inn', inn, show=show_pins)
         for idx in (0, 1):
-            for pname, oname in (('dlev', 'dlev'), ('dlat0', 'data')):
+            for pname, oname in (('summer', 'summer'), ('dlev', 'dlev'), ('dlat0', 'data')):
                 self.reexport(inst_list[idx].get_port('%s_outp' % pname),
                               net_name='outp_%s<%d>' % (oname, idx), show=show_pins)
                 self.reexport(inst_list[idx].get_port('%s_outn' % pname),
@@ -1714,12 +1678,8 @@ class RXCore(TemplateBase):
                            ], ]
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width)
 
-    def connect_bias(self, inst_list, layout_info):
+    def connect_bias(self, inst_list):
         show_pins = self.params['show_pins']
-        clk_width = self.params['clk_widths'][-1]
-        clk_space = self.params['clk_spaces'][-1]
-        clk_pitch = clk_width + clk_space
-        clk_layer = layout_info.mconn_port_layer + 1 + len(self.params['clk_widths'])
         clk_top_list = [('nmos_integ', 1),
                         ('clk1', 1),
                         ('nmos_analog', 2),
@@ -1741,9 +1701,7 @@ class RXCore(TemplateBase):
                         clk_wires[name] = []
                     clk_wires[name].extend(inst.get_all_port_pins(name))
 
-        tr_idx = clk_space + (clk_width - 1) / 2
-        blk_h = self.grid.get_size_dimension(self.size, unit_mode=True)[1]
-        for base_name, num_tracks in clk_top_list:
+        for base_name, _ in clk_top_list:
             if base_name.startswith('clk'):
                 pwires = []
                 nwires = []
@@ -1759,30 +1717,14 @@ class RXCore(TemplateBase):
                 nname = 'clkn_' + base_name
                 pwires = self.connect_wires(clk_wires.pop(pname))
                 nwires = self.connect_wires(clk_wires.pop(nname))
-                labelp = ''
-                labeln = ''
+                labelp = pname + ':'
+                labeln = nname + ':'
                 if base_name.endswith('tap1'):
                     pname = 'even_' + pname
                     nname = 'odd_' + nname
 
-            if num_tracks == 2:
-                ptr = tr_idx
-                ntr = tr_idx + clk_pitch
-                tr_idx += clk_pitch * 2
-                ckp_tr, ckn_tr = self.connect_differential_tracks(pwires, nwires, clk_layer, ptr, ntr, width=clk_width)
-            else:
-                if base_name.startswith('clk'):
-                    clktr_upper = clktr_lower = None
-                else:
-                    clktr_upper = blk_h
-                    clktr_lower = 0
-                tr_id = TrackID(clk_layer, tr_idx, width=clk_width)
-                tr_idx += clk_pitch
-                ckp_tr = self.connect_to_tracks(pwires, tr_id, track_upper=clktr_upper, unit_mode=True)
-                ckn_tr = self.connect_to_tracks(nwires, tr_id, track_lower=clktr_lower, unit_mode=True)
-
-            self.add_pin(pname, ckp_tr, label=labelp, show=show_pins)
-            self.add_pin(nname, ckn_tr, label=labeln, show=show_pins)
+            self.add_pin(pname, pwires, label=labelp, show=show_pins)
+            self.add_pin(nname, nwires, label=labeln, show=show_pins)
 
         for name, wires in clk_wires.items():
             self.add_pin(name, wires, show=show_pins)
