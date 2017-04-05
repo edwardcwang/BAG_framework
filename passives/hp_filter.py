@@ -251,11 +251,16 @@ class HighPassFilter(TemplateBase):
 
         # draw mom caps and get cap ports
         cap_box = BBox(xl, 0, xr, cap_yt, res, unit_mode=True)
-        cap_ports = self.add_mom_cap(cap_box, io_layer, num_cap_layer, port_widths=io_width)
+        # make sure both left and right ports on vertical layers are in
+        port_parity = {lay: (0, 1) for lay in range(io_layer, io_layer + num_cap_layer, 2)}
+        for lay in range(io_layer + 1, io_layer + num_cap_layer, 2):
+            port_parity[lay] = (1, 1)
+        cap_ports = self.add_mom_cap(cap_box, io_layer, num_cap_layer,
+                                     port_widths=io_width, port_parity=port_parity)
 
         out_layer = io_layer + num_cap_layer - 1
-        self.add_pin('out', cap_ports[out_layer][1], show=show_pins)
-        self.add_pin('in', cap_ports[out_layer][0], show=show_pins)
+        self.add_pin('out', cap_ports[out_layer][0], show=show_pins)
+        self.add_pin('in', cap_ports[out_layer][1], show=show_pins)
 
     def place(self):
         # type: () -> Tuple[int, int, int]
