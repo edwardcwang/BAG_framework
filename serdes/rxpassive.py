@@ -229,8 +229,8 @@ class RXClkArray(TemplateBase):
         # add high pass filters
         num_blocks = len(clk_names)
         hpf_master = self.new_template(params=hpf_params, temp_cls=HighPassFilter)
-        blk_w = self.grid.get_size_dimension(hpf_master.size, unit_mode=True)[0]
-        inst = self.add_instance(hpf_master, 'XHPF', nx=num_blocks, spx=blk_w, unit_mode=True)
+        hpfw, hpfh = self.grid.get_size_dimension(hpf_master.size, unit_mode=True)
+        inst = self.add_instance(hpf_master, 'XHPF', nx=num_blocks, spx=hpfw, unit_mode=True)
         io_layer = inst.get_all_port_pins('in')[0].layer_id + 1
 
         num_tracks = self.grid.get_num_tracks(hpf_master.size, io_layer)
@@ -261,3 +261,11 @@ class RXClkArray(TemplateBase):
         iid = self.grid.coord_to_nearest_track(io_layer + 1, in_list[0].middle)
         inwarr = self.connect_to_tracks(in_list, TrackID(io_layer + 1, iid, width=in_width), min_len_mode=0)
         self.add_pin(prefix, inwarr, show=show_pins)
+
+        # calculate size
+        top_layer = io_layer + 1
+        blkw, blkh = self.grid.get_block_size(top_layer, unit_mode=True)
+        nx = -(-hpfw * num_blocks // blkw)
+        ny = -(-hpfh // blkh)
+        self.size = top_layer, nx, ny
+        self.array_box = BBox(0, 0, nx * blkw, ny*blkh, self.grid.resolution, unit_mode=True)
