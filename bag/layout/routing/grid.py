@@ -102,6 +102,25 @@ class RoutingGrid(object):
 
         self.update_block_pitch()
 
+    def __contains__(self, layer):
+        """Returns True if this RoutingGrid contains the given layer. """
+        return layer in self.sp_tracks
+
+    @property
+    def tech_info(self):
+        """The TechInfo technology object."""
+        return self._tech_info
+
+    @property
+    def resolution(self):
+        """Returns the grid resolution."""
+        return self._resolution
+
+    @property
+    def layout_unit(self):
+        """Returns the layout unit length, in meters."""
+        return self._layout_unit
+
     def update_block_pitch(self):
         """Update block pitch."""
         pitch_list = []
@@ -119,21 +138,6 @@ class RoutingGrid(object):
             else:
                 self.block_pitch[lay] = lcm((self.block_pitch[lay], cur_blk_pitch))
             # print('block pitch %d = %d' % (lay, cur_blk_pitch))
-
-    @property
-    def tech_info(self):
-        """The TechInfo technology object."""
-        return self._tech_info
-
-    @property
-    def resolution(self):
-        """Returns the grid resolution."""
-        return self._resolution
-
-    @property
-    def layout_unit(self):
-        """Returns the layout unit length, in meters."""
-        return self._layout_unit
 
     def get_direction(self, layer_id):
         """Returns the track direction of the given layer.
