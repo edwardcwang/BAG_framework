@@ -1355,7 +1355,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                     cap_box,  # type: BBox
                     bot_layer,  # type: int
                     num_layer,  # type: int
-                    port_widths=1,  # type: Union[int, List[int]]
+                    port_widths=1,  # type: Union[int, List[int], Dict[int, int]
                     fill_margin=0,  # type: ldim
                     fill_type='',  # type: str
                     unit_mode=False  # type: bool
@@ -1369,8 +1369,10 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
         if isinstance(port_widths, int):
             port_widths = {lay: port_widths for lay in range(bot_layer, top_layer + 1)}
-        else:
+        elif isinstance(port_widths, list):
             port_widths = dict(zip(range(bot_layer, top_layer + 1), port_widths))
+        else:
+            pass
 
         res = self.grid.resolution
         tech_info = self.grid.tech_info
