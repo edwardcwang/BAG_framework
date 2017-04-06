@@ -412,12 +412,12 @@ class RXHalfTop(SerdesRXBase):
         ffe_top_tr = ffe_inputs[0].track_id.base_index
         ffe_bot_tr = ffe_inputs[1].track_id.base_index
         clkp_nmos_sw_tr_xm = ffe_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
-        clkn_nmos_sw_tr_xm = clkp_nmos_sw_tr_xm
         clkp_nmos_intsum_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
         clkp_nmos_summer_tr_xm = clkp_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
         clkp_nmos_tap1_tr_xm = clkp_nmos_intsum_tr_xm
         clkn_nmos_ana_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
-        clkp_pmos_intsum_tr_xm = ffe_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
+        clkn_nmos_sw_tr_xm = ffe_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
+        clkp_pmos_intsum_tr_xm = clkn_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
         clkn_pmos_summer_tr_xm = clkp_pmos_intsum_tr_xm
         clkp_pmos_ana_tr_xm = clkp_pmos_intsum_tr_xm + clk_width_xm + clk_space_xm
 
@@ -623,6 +623,7 @@ class RXHalfBottom(SerdesRXBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(RXHalfBottom, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self.in_xm_track = None
 
     def draw_layout(self):
         """Draw the layout of a dynamic latch chain.
@@ -786,6 +787,7 @@ class RXHalfBottom(SerdesRXBase):
         clkn_pmos_dig_tr_xm = clkp_pmos_integ_tr_xm
         clkn_pmos_ana_tr_xm = clkp_pmos_integ_tr_xm + clk_width_xm + clk_space_xm
         clkp_pmos_dig_tr_xm = clkn_pmos_ana_tr_xm
+        self.in_xm_track = clkn_nmos_sw_tr_xm
 
         # mirror to opposite side
         bot_xm_idx = self.grid.find_next_track(xm_layer, self.array_box.bottom_unit, mode=1, unit_mode=True)
@@ -812,7 +814,7 @@ class RXHalfBottom(SerdesRXBase):
         col_intv = integ_col, integ_col + integ_info['fg_tot']
         ltr_vm, rtr_vm = get_bias_tracks(layout_info, vm_layer, col_intv, sig_width_vm, sig_space_vm,
                                          clk_width_vm, sig_clk_space_vm)
-        ltr_id = TrackID(vm_layer, ltr_vm, width=clk_width_vm)
+        ltr_id = TrackID(vm_layer, (ltr_vm + rtr_vm) / 2, width=clk_width_vm)
         rtr_id = TrackID(vm_layer, rtr_vm, width=clk_width_vm)
         # integ_nmos
         warr = self.connect_to_tracks(integ_ports['bias_tail'], rtr_id)
@@ -1008,6 +1010,7 @@ class RXHalf(TemplateBase):
         super(RXHalf, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._fg_tot = 0
         self._col_idx_dict = None
+        self.in_xm_track = None
 
     @classmethod
     def get_default_param_values(cls):
@@ -1364,6 +1367,7 @@ class RXHalf(TemplateBase):
         bot_params['show_pins'] = False
         bot_master = self.new_template(params=bot_params, temp_cls=RXHalfBottom)
         bot_inst = self.add_instance(bot_master)
+        self.in_xm_track = bot_inst.master.in_xm_track
 
         # make RXHalfTop
         top_params = {key: self.params[key] for key in RXHalfBottom.get_params_info().keys()
@@ -1599,6 +1603,7 @@ class RXCore(TemplateBase):
     def connect_signal(self, inst_list, col_idx_dict, layout_info):
         hm_layer_id = layout_info.mconn_port_layer + 1
         vm_layer_id = hm_layer_id + 1
+        xm_layer_id = vm_layer_id + 1
         vm_space = self.params['sig_spaces'][0]
         vm_width = self.params['sig_widths'][0]
         vm_pitch = vm_width + vm_space
@@ -1607,10 +1612,16 @@ class RXCore(TemplateBase):
         # connect inputs of even and odd paths
         route_col_intv = col_idx_dict['integ']
         ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2, route_col_intv, width=vm_width, space=vm_space)
+        vm_sig_clk_space = self.params['sig_clk_spaces'][0]
+        vm_clk_width = self.params['clk_widths'][0]
+        ptr_idx -= vm_sig_clk_space + (vm_space + vm_clk_width) / 2 + vm_width
         ports = ['integ_in{}']
         inp, inn = self._connect_differential(inst_list, ptr_idx, vm_layer_id, vm_width, vm_space,
                                               ports, ports)
-
+        inp_track = inst_list[0].translate_master_track(xm_layer_id, inst_list[0].master.in_xm_track)
+        inn_track = inst_list[1].translate_master_track(xm_layer_id, inst_list[1].master.in_xm_track)
+        inp, inn = self.connect_differential_tracks(inp, inn, xm_layer_id, inp_track, inn_track,
+                                                    width=self.params['sig_widths'][1])
         # export inputs/outputs
         self.add_pin('inp', inp, show=show_pins)
         self.add_pin('inn', inn, show=show_pins)
@@ -1719,9 +1730,6 @@ class RXCore(TemplateBase):
                 nwires = self.connect_wires(clk_wires.pop(nname))
                 labelp = pname + ':'
                 labeln = nname + ':'
-                if base_name.endswith('tap1'):
-                    pname = 'even_' + pname
-                    nname = 'odd_' + nname
 
             self.add_pin(pname, pwires, label=labelp, show=show_pins)
             self.add_pin(nname, nwires, label=labeln, show=show_pins)

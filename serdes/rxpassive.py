@@ -176,6 +176,15 @@ class RXClkArray(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(RXClkArray, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self._left_tr = self._right_tr = None
+
+    @property
+    def left_track(self):
+        return self._left_tr
+
+    @property
+    def right_track(self):
+        return self._right_tr
 
     @classmethod
     def get_default_param_values(cls):
@@ -210,8 +219,7 @@ class RXClkArray(TemplateBase):
         """
         return dict(
             passive_params='High-pass filter passives parameters.',
-            out_width='input/output track width.',
-            in_width='input track width on upper layer.',
+            io_width='input/output track width.',
             clk_names='output clock names.',
             clk_locs='output clock locations.',
             parity='input/output clock parity.',
@@ -222,7 +230,7 @@ class RXClkArray(TemplateBase):
         # type: () -> None
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, passive_params, out_width, in_width, clk_names, clk_locs, parity, show_pins):
+    def _draw_layout_helper(self, passive_params, io_width, clk_names, clk_locs, parity, show_pins):
         hpf_params = passive_params.copy()
         hpf_params['show_pins'] = False
 
@@ -234,8 +242,9 @@ class RXClkArray(TemplateBase):
         io_layer = inst.get_all_port_pins('in')[0].layer_id + 1
 
         num_tracks = self.grid.get_num_tracks(hpf_master.size, io_layer)
-        ltr, rtr = self.grid.get_evenly_spaced_tracks(2, num_tracks, out_width, half_end_space=True)
-        mtr = (ltr + rtr) / 2
+        ltr, mtr, rtr = self.grid.get_evenly_spaced_tracks(3, num_tracks, io_width, half_end_space=True)
+        self._left_tr = ltr
+        self._right_tr = rtr
 
         prefix = 'clkp' if parity == 1 else 'clkn'
 
@@ -252,8 +261,8 @@ class RXClkArray(TemplateBase):
 
             inwarr = inst.get_port('in', col=idx).get_pins()[0]
             outwarr = inst.get_port('out', col=idx).get_pins()[0]
-            inwarr = self.connect_to_tracks(inwarr, TrackID(io_layer, iid, width=out_width), min_len_mode=0)
-            outwarr = self.connect_to_tracks(outwarr, TrackID(io_layer, oid, width=out_width), min_len_mode=-1)
+            inwarr = self.connect_to_tracks(inwarr, TrackID(io_layer, iid, width=io_width), min_len_mode=0)
+            outwarr = self.connect_to_tracks(outwarr, TrackID(io_layer, oid, width=io_width), min_len_mode=-1)
             in_list.append(inwarr)
             self.add_pin(prefix + '_' + out_name, outwarr, show=show_pins)
             self.reexport(inst.get_port('bias', col=idx), net_name='bias_' + out_name, show=show_pins)
@@ -404,14 +413,15 @@ class BiasBusIO(TemplateBase):
         sup_warr_list = None
         for lay in wire_layers:
             tr_max = self.grid.find_next_track(lay, bus_upper, mode=1, unit_mode=True)
-            tr_idx_list = list(range(0, tr_max + 1, 2))
+            tr_idx_list = list(range(1, tr_max + 1, 2))
             avail_list = self.get_available_tracks(lay, tr_idx_list, bus_wl, bus_wu, unit_mode=True)
             # connect
             sup_warr_list = []
             for aidx in avail_list:
                 sup_warr_list.append(self.add_wires(lay, aidx, bus_wl, bus_wu, unit_mode=True))
             self.connect_to_tracks(sup_warr_list, TrackID(bus_layer, bus_margin, width=1,
-                                                          num=2, pitch=cur_idx - bus_margin))
+                                                          num=2, pitch=cur_idx - bus_margin),
+                                   track_lower=0)
 
         num_sup_tracks = self.grid.get_num_tracks(self.size, bus_layer + 2)
         sup_w = self.grid.get_max_track_width(bus_layer + 2, 1, num_sup_tracks)

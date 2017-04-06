@@ -30,6 +30,7 @@ from builtins import *
 from typing import Dict, Any, Set
 
 from bag.layout.template import TemplateBase, TemplateDB
+from bag.layout.routing import TrackID
 
 from .rxpassive import RXClkArray, BiasBusIO
 from .rxcore import RXCore
@@ -96,11 +97,64 @@ class RXFrontend(TemplateBase):
 
     def draw_layout(self):
         # type: () -> None
-        self._draw_layout_helper(**self.params)
+        clk_inst0, clk_inst1, core_inst, vdd_list, vss_list = self._place()
 
-    def _draw_layout_helper(self, core_params, rxclk_params, show_pins):
-        rxclk_params = rxclk_params.copy()
-        core_params = core_params.copy()
+        self._connect_clks(clk_inst0, clk_inst1, core_inst, vdd_list, vss_list)
+
+    def _connect_clks(self, clk_inst0, clk_inst1, core_inst, vdd_list, vss_list):
+        clk_names = self.params['rxclk_params']['clk_names']
+        ltr = clk_inst0.master.left_track
+        rtr = clk_inst0.master.right_track
+        mtr = (ltr + rtr) / 2
+        ltr -= mtr
+        rtr -= mtr
+
+        sup_indices = []
+        player = -1
+        pwidth = 1
+        clkp_warr, clkn_warr = None, None
+        for name in clk_names:
+            nname = 'clkn_' + name
+            pname = 'clkp_' + name
+            nport = clk_inst0.get_all_port_pins(nname)[0]
+            pport = clk_inst1.get_all_port_pins(pname)[0]
+            cur_pid = pport.track_id.base_index
+            cur_nid = nport.track_id.base_index
+            mid = (cur_pid + cur_nid) / 2
+            if cur_pid != cur_nid:
+                sup_indices.append(mid)
+
+            for cur_name, port in ((nname, nport), (pname, pport)):
+                self.connect_to_tracks(core_inst.get_all_port_pins(cur_name), port.track_id,
+                                       track_lower=port.lower, track_upper=port.upper)
+            if name == 'nmos_intsum':
+                # draw clkp and clkn wires
+                player = nport.layer_id
+                pwidth = nport.track_id.width
+                clkp_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkp'),
+                                                   TrackID(player, rtr + mid, width=pwidth))
+                clkn_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkn'),
+                                                   TrackID(player, ltr + mid, width=pwidth))
+            elif cur_pid == cur_nid:
+                sup_indices.append(ltr + mid)
+                sup_indices.append(rtr + mid)
+
+        # connect supplies to M7
+        vdd_list.extend(core_inst.get_all_port_pins('VDD'))
+        vss_list.extend(core_inst.get_all_port_pins('VSS'))
+        vdd_indices = sup_indices[0::2]
+        vss_indices = sup_indices[1::2]
+        vdd_top_list, vss_top_list = [], []
+        for idx_list, warr_list, top_list in ((vdd_indices, vdd_list, vdd_top_list),
+                                              (vss_indices, vss_list, vss_top_list)):
+            for idx in idx_list:
+                top_list.append(self.connect_to_tracks(warr_list, TrackID(player, idx, width=pwidth)))
+
+        return vdd_top_list, vss_top_list, clkp_warr, clkn_warr
+
+    def _place(self):
+        rxclk_params = self.params['rxclk_params'].copy()
+        core_params = self.params['core_params'].copy()
 
         rxclk_params['parity'] = 0
         rxclk_params['show_pins'] = False
@@ -131,11 +185,17 @@ class RXFrontend(TemplateBase):
         en_names = ['{}_en_dfe<0>', '{}_en_dfe<1>', '{}_en_dfe<2>', '{}_en_dfe<3>']
 
         bus_order = [(vss_names, 'VSS'), (vdd_names, 'VDD'), (en_names, 'VDD')]
-        self._connect_bias_wires(clk_inst0, core_inst, [core_inst, clk_inst1], clkh, 'odd', bus_order)
+        vdd_list = []
+        vss_list = []
+        self._connect_bias_wires(clk_inst0, core_inst, [core_inst, clk_inst1], clkh, 'odd', bus_order,
+                                 vdd_list, vss_list)
         bus_order = bus_order[::-1]
-        self._connect_bias_wires(clk_inst1, core_inst, [clk_inst1], clk_inst1.location_unit[1], 'even', bus_order)
+        self._connect_bias_wires(clk_inst1, core_inst, [clk_inst1], clk_inst1.location_unit[1], 'even', bus_order,
+                                 vdd_list, vss_list)
 
-    def _connect_bias_wires(self, clk_inst, core_inst, move_insts, yb, prefix, bus_order):
+        return clk_inst0, clk_inst1, core_inst, vdd_list, vss_list
+
+    def _connect_bias_wires(self, clk_inst, core_inst, move_insts, yb, prefix, bus_order, vdd_list, vss_list):
         show_pins = self.params['show_pins']
 
         reserve_tracks = []
@@ -163,7 +223,7 @@ class RXFrontend(TemplateBase):
                 reserve_tracks=reserve_tracks,
                 bus_layer=bus_layer,
                 bus_margin=1,
-                show_pins=True,
+                show_pins=False,
             )
             bus_master = self.new_template(params=bus_params, temp_cls=BiasBusIO)
             bus_inst = self.add_instance(bus_master, loc=(0, cur_yb), unit_mode=True)
@@ -174,6 +234,11 @@ class RXFrontend(TemplateBase):
             for name in io_names:
                 self.reexport(bus_inst.get_port(name), show=show_pins)
                 warr_dict[name] = bus_inst.get_all_port_pins(name + '_in')[0]
+
+            if sup_name == 'VDD':
+                vdd_list.extend(bus_inst.get_all_port_pins('VDD'))
+            else:
+                vss_list.extend(bus_inst.get_all_port_pins('VSS'))
 
         for minst in move_insts:
             minst.move_by(dy=delta_y, unit_mode=True)
