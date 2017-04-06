@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Dict, Set, Any, Tuple
+from typing import Dict, Set, Any
 
 from bag.layout.util import BBox
 from bag.layout.routing import TrackID
@@ -97,8 +97,6 @@ class BiasResistor(ResArrayBase):
         return dict(
             l='unit resistor length, in meters.',
             w='unit resistor width, in meters.',
-            out_idx=' output track index',
-            output_width='output track width',
             num_seg='number of resistor segments.',
             sub_type='the substrate type.',
             threshold='the substrate threshold flavor.',
@@ -130,8 +128,6 @@ class BiasResistor(ResArrayBase):
 
         kwargs = self.params.copy()
         num_seg = kwargs.pop('num_seg')
-        out_idx = kwargs.pop('out_idx')
-        output_width = kwargs.pop('output_width')
 
         if num_seg % 2 != 0:
             raise ValueError('num_seg = %d must be even.' % num_seg)
@@ -143,15 +139,12 @@ class BiasResistor(ResArrayBase):
         port_out, port_bias = self.connect_series_resistor(num_seg)
 
         vm_layer = self.bot_layer_id + 1
-        xm_layer = vm_layer + 1
         vm_width = self.w_tracks[1]
 
         # connect output
         vtid = self.grid.coord_to_nearest_track(vm_layer, port_out.middle, half_track=True)
         vtid = TrackID(vm_layer, vtid, width=vm_width)
         warr = self.connect_to_tracks(port_out, vtid)
-        tid = TrackID(xm_layer, out_idx, width=output_width)
-        warr = self.connect_to_tracks(warr, tid)
         self.add_pin('out', warr, show=False)
 
         # connect bias
@@ -241,7 +234,7 @@ class HighPassFilter(TemplateBase):
         show_pins = self.params['show_pins']
 
         # place instances
-        io_layer, io_width, cap_yt = self.place()
+        io_layer, io_width, cap_yt, resout = self.place()
 
         # draw AC coupling caps bounding boxes
         # figure out cap left/right X coordinate
@@ -250,7 +243,7 @@ class HighPassFilter(TemplateBase):
         xr = blk_w - edge_margin
 
         # draw mom caps and get cap ports
-        cap_box = BBox(xl, 0, xr, cap_yt, res, unit_mode=True)
+        cap_box = BBox(xl, edge_margin, xr, cap_yt, res, unit_mode=True)
         # make sure both left and right ports on vertical layers are in
         port_parity = {lay: (0, 1) for lay in range(io_layer, io_layer + num_cap_layer, 2)}
         for lay in range(io_layer + 1, io_layer + num_cap_layer, 2):
@@ -259,11 +252,11 @@ class HighPassFilter(TemplateBase):
                                      port_widths=io_width, port_parity=port_parity)
 
         out_layer = io_layer + num_cap_layer - 1
+        self.connect_to_tracks(resout, cap_ports[io_layer][0][0].track_id)
         self.add_pin('out', cap_ports[out_layer][0], show=show_pins)
         self.add_pin('in', cap_ports[out_layer][1], show=show_pins)
 
     def place(self):
-        # type: () -> Tuple[int, int, int]
         res_params = self.params.copy()
         sub_lch = res_params.pop('sub_lch')
         sub_w = res_params.pop('sub_w')
@@ -271,8 +264,6 @@ class HighPassFilter(TemplateBase):
 
         # compute resistor output track indices and create resistor
         io_layer = BiasResistor.get_port_layer_id(self.grid.tech_info) + 2
-        res_params['out_idx'] = (io_width - 1) / 2
-        res_params['output_width'] = io_width
 
         res_master = self.new_template(params=res_params, temp_cls=BiasResistor)
 
@@ -306,4 +297,4 @@ class HighPassFilter(TemplateBase):
         bias_warr = res_inst.get_all_port_pins('bias')[0]
         self.add_pin('bias', bias_warr, show=show_pins)
 
-        return io_layer, io_width, top_inst.array_box.bottom_unit
+        return io_layer, io_width, top_inst.array_box.bottom_unit, res_inst.get_all_port_pins('out')[0]
