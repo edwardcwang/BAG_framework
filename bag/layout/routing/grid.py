@@ -992,6 +992,55 @@ class RoutingGrid(object):
         else:
             return q / 2
 
+    def transform_track(self, layer_id, track_idx, dx=0, dy=0, orient='R0', unit_mode=False):
+        # type: (int, Union[float, int], Union[float, int], Union[float, int], str, bool) -> Union[float, int]
+        """Transform the given track index.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer ID.
+        track_idx : Union[float, int]
+            the track index.
+        dx : Union[float, int]
+            X shift.
+        dy : Union[float, int]
+            Y shift.
+        orient : str
+            orientation.
+        unit_mode : bool
+            True if dx/dy are given in resolution units.
+
+        Returns
+        -------
+        new_track_idx : Union[float, int]
+            the transformed track index.
+        """
+        if not unit_mode:
+            dx = int(round(dx / self._resolution))
+            dy = int(round(dy / self._resolution))
+
+        is_x = self.get_direction(layer_id) == 'x'
+        if is_x:
+            hidx_shift = int(2 * self.coord_to_track(layer_id, dy, unit_mode=True)) + 1
+        else:
+            hidx_shift = int(2 * self.coord_to_track(layer_id, dx, unit_mode=True)) + 1
+
+        hidx_scale = 1
+        if orient == 'R180':
+            hidx_scale = -1
+        elif orient == 'MX' and is_x:
+            hidx_scale = -1
+        elif orient == 'MY' and not is_x:
+            hidx_scale = -1
+
+        old_hidx = int(track_idx * 2 + 1)
+        new_hidx = old_hidx * hidx_scale + hidx_shift
+        if new_hidx % 2 == 1:
+            return (new_hidx - 1) // 2
+        else:
+            return (new_hidx - 1) / 2
+
     def track_to_coord(self, layer_id, track_idx, unit_mode=False):
         # type: (int, Union[float, int], bool) -> Union[float, int]
         """Convert given track number to coordinate.

@@ -582,6 +582,26 @@ class Instance(Arrayable):
             return p[0], p[1]
         return p[0] * res, p[1] * res
 
+    def translate_master_track(self, layer_id, track_idx):
+        # type: (int, Union[float, int]) -> Union[float, int]
+        """Returns the actual track index of the given track in master template.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer ID.
+        track_idx : Union[float, int]
+            the track index.
+
+        Returns
+        -------
+        new_idx : Union[float, int]
+            the new track index.
+        """
+        dx, dy = self.location_unit
+        return self._master.grid.transform_track(layer_id, track_idx, dx=dx, dy=dy,
+                                                 orient=self.orientation, unit_mode=True)
+
     def flatten(self):
         """Flatten this instance and return the geometries.
 
