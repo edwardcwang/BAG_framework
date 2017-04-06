@@ -781,8 +781,9 @@ class RoutingGrid(object):
             lower = int(round(lower / self._resolution))
             upper = int(round(upper / self._resolution))
 
-        lower_tr = self.find_next_track(layer_id, lower, half_track=half_track, mode=1, unit_mode=True)
-        upper_tr = self.find_next_track(layer_id, upper, half_track=half_track, mode=-1, unit_mode=True)
+        wtr = self.w_tracks[layer_id]
+        lower_tr = self.find_next_track(layer_id, lower - wtr, half_track=half_track, mode=1, unit_mode=True)
+        upper_tr = self.find_next_track(layer_id, upper + wtr, half_track=half_track, mode=-1, unit_mode=True)
 
         return lower_tr, upper_tr
 
