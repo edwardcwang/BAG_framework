@@ -318,12 +318,22 @@ def get_available_tracks(grid,  # type: RoutingGrid
     for tidx in tr_idx_list:
         avail_track_set.add_track(2 * tidx + 1, (lower, upper), width, value=False)
 
+    tech_info = grid.tech_info
+    res = grid.resolution
+    layer_name = tech_info.get_layer_name(layer_id)
+    if isinstance(layer_name, tuple) or isinstance(layer_name, list):
+        layer_name = layer_name[0]
+    layer_type = tech_info.get_layer_type(layer_name)
+
     # subtract used tracks.
     for hidx, intv_set in track_set.items():
         for (wstart, wstop), (wwidth, (fmargin, fill_type)) in intv_set.items():
-            fmargin = max(margin, fmargin)
-            sub_intv = (wstart - fmargin, wstop + fmargin)
             cbeg, cend = grid.get_wire_bounds(layer_id, (hidx - 1) / 2, width=wwidth, unit_mode=True)
+            min_space = tech_info.get_min_space(layer_type, (cend - cbeg) * res)
+            min_space = int(round(min_space / res))
+            fmargin = max(margin, fmargin, min_space)
+
+            sub_intv = (wstart - fmargin, wstop + fmargin)
             idx0, idx1 = grid.get_overlap_tracks(layer_id, cbeg - fmargin, cend + fmargin,
                                                  half_track=True, unit_mode=True)
             hidx0 = int(round(2 * idx0 + 1)) - 2 * (width - 1)
