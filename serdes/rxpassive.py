@@ -540,9 +540,9 @@ class CTLECore(ResArrayBase):
         # calculate capacitor bounding box
         res = self.grid.resolution
         cap_edge_margin = int(round(cap_edge_margin / res))
-        hm_layer = outcm.layer_id
+        hm_layer = outcm.layer_id + 1
         io_layer = hm_layer + 2
-        mid_coord = self.grid.track_to_coord(outcm.layer_id, outcm.track_id.base_index, unit_mode=True)
+        mid_coord = int(round(outcm.middle / res))
         cm_tr = self.grid.coord_to_track(io_layer, mid_coord, unit_mode=True)
         io_width = cap_port_widths[2]
         cap_yb = self.grid.get_wire_bounds(io_layer, cap_port_offset + cm_tr, width=io_width, unit_mode=True)[0]
@@ -625,9 +625,9 @@ class CTLECore(ResArrayBase):
         vm_tr = self.grid.coord_to_nearest_track(vm_layer, cmp.middle, half_track=True)
         vm_tid = TrackID(vm_layer, vm_tr, width=io_width)
         outcm = self.connect_to_tracks([cmp, cmn], vm_tid)
-        hm_layer = vm_layer + 1
-        hm_tr = self.grid.coord_to_nearest_track(hm_layer, outcm.middle, half_track=True)
-        outcm = self.connect_to_tracks(outcm, TrackID(hm_layer, hm_tr, width=io_width), track_lower=0)
+        # hm_layer = vm_layer + 1
+        # hm_tr = self.grid.coord_to_nearest_track(hm_layer, outcm.middle, half_track=True)
+        # outcm = self.connect_to_tracks(outcm, TrackID(hm_layer, hm_tr, width=io_width), track_lower=0)
         self.add_pin('outcm', outcm, show=show_pins)
 
         return inp, inn, outp, outn, outcm

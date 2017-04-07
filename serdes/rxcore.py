@@ -1493,6 +1493,7 @@ class RXCore(TemplateBase):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(RXCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._fg_tot = 0
+        self._in_xm_offset = None
 
     @classmethod
     def get_default_param_values(cls):
@@ -1573,6 +1574,11 @@ class RXCore(TemplateBase):
         # type: () -> int
         return self._fg_tot
 
+    @property
+    def in_offset(self):
+        # type: () -> int
+        return self._in_xm_offset
+
     def draw_layout(self):
         half_params = self.params.copy()
         half_params['datapath_parity'] = 0
@@ -1618,8 +1624,11 @@ class RXCore(TemplateBase):
         ports = ['integ_in{}']
         inp, inn = self._connect_differential(inst_list, ptr_idx, vm_layer_id, vm_width, vm_space,
                                               ports, ports)
-        inp_track = inst_list[0].translate_master_track(xm_layer_id, inst_list[0].master.in_xm_track)
-        inn_track = inst_list[1].translate_master_track(xm_layer_id, inst_list[1].master.in_xm_track)
+        in_xm_track = inst_list[0].master.in_xm_track
+        inp_track = inst_list[0].translate_master_track(xm_layer_id, in_xm_track)
+        inn_track = inst_list[1].translate_master_track(xm_layer_id, in_xm_track)
+        self._in_xm_offset = (inp_track - inn_track) / 2
+
         inp, inn = self.connect_differential_tracks(inp, inn, xm_layer_id, inp_track, inn_track,
                                                     width=self.params['sig_widths'][1])
         # export inputs/outputs
