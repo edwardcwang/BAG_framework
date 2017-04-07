@@ -1490,6 +1490,8 @@ class Via(Arrayable):
         self._top_layer = bot_layer[0], bot_layer[1]
         self._bot_dir = bot_dir
         self._info = self._tech.get_via_info(self._bbox, bot_layer, top_layer, bot_dir)
+        if self._info is None:
+            raise ValueError('Cannot make via with bounding box %s' % self._bbox)
 
     def _update(self):
         """Update via parameters."""
