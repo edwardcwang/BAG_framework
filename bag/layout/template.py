@@ -887,8 +887,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """
         self._layout.move_all_by(dx=dx, dy=dy)
 
-    def add_instance(self, master, inst_name=None, loc=(0.0, 0.0),
-                     orient="R0", nx=1, ny=1, spx=0.0, spy=0.0, unit_mode=False):
+    def add_instance(self, master, inst_name=None, loc=(0, 0),
+                     orient="R0", nx=1, ny=1, spx=0, spy=0, unit_mode=False):
         # type: (TempBase, Optional[str], Tuple[float, float], str, int, int, float, float) -> Instance
         """Adds a new (arrayed) instance to layout.
 

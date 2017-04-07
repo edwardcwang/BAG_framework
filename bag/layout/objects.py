@@ -134,7 +134,7 @@ class Arrayable(with_metaclass(abc.ABCMeta, Figure)):
         True if spx/spy are specified in resolution units.
     """
 
-    def __init__(self, res, nx=1, ny=1, spx=0.0, spy=0.0, unit_mode=False):
+    def __init__(self, res, nx=1, ny=1, spx=0, spy=0, unit_mode=False):
         # type: (float, int, int, ldim, ldim, bool) -> None
         super(Arrayable, self).__init__(res)
         self._nx = nx
@@ -410,7 +410,7 @@ class Instance(Arrayable):
     """
 
     def __init__(self, lib_name, master, loc, orient, res, name=None,
-                 nx=1, ny=1, spx=0.0, spy=0.0, unit_mode=False):
+                 nx=1, ny=1, spx=0, spy=0, unit_mode=False):
         # type: (str, 'TemplateBase', Tuple[ldim, ldim], str, float, str, int, int, ldim, ldim, bool) -> None
         Arrayable.__init__(self, res, nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=unit_mode)
         self._lib_name = lib_name
