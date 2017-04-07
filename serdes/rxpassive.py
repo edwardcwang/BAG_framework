@@ -34,7 +34,7 @@ from bag.layout.routing import TrackID
 from bag.layout.util import BBox
 
 from ..resistor.core import ResArrayBase
-from ..analog_core import AnalogBase
+from ..analog_core import AnalogBase, SubstrateContact
 from ..passives.hp_filter import HighPassFilter
 
 
@@ -489,6 +489,10 @@ class CTLECore(ResArrayBase):
         return dict(
             l='unit resistor length, in meters.',
             w='unit resistor width, in meters.',
+            cap_edge_margin='margin between cap to block edge',
+            num_cap_layer='number of layers to use for AC coupling cap.',
+            cap_port_widths='capacitor port widths.',
+            cap_port_offset='capacitor port index offset from common mode wire.',
             num_r1='number of r1 segments.',
             num_r2='number of r2 segments.',
             num_dumc='number of dummy columns.',
@@ -511,6 +515,10 @@ class CTLECore(ResArrayBase):
         num_dumr = kwargs.pop('num_dumr')
         show_pins = kwargs.pop('show_pins')
         io_width = kwargs.pop('io_width')
+        cap_edge_margin = kwargs.pop('cap_edge_margin')
+        num_cap_layer = kwargs.pop('num_cap_layer')
+        cap_port_widths = kwargs.pop('cap_port_widths')
+        cap_port_offset = kwargs.pop('cap_port_offset')
 
         if num_r1 % 2 != 0 or num_r2 % 2 != 0:
             raise ValueError('num_r1 and num_r2 must be even.')
@@ -520,12 +528,58 @@ class CTLECore(ResArrayBase):
         # draw array
         nr1 = num_r1 // 2
         nr2 = num_r2 // 2
+        parent_grid = self.grid
         self.draw_array(nx=4 + num_dumc * 2, ny=2 * (max(nr1, nr2) + num_dumr),
                         edge_space=False, **kwargs)
 
+        # connect wires
         sup_name = 'VDD' if kwargs['sub_type'] == 'ntap' else 'VSS'
-        self._connect_dummies(nr1, nr2, num_dumr, num_dumc, sup_name, show_pins)
-        self._connect_snake(nr1, nr2, num_dumr, num_dumc, io_width, show_pins)
+        supt, supb = self._connect_dummies(nr1, nr2, num_dumr, num_dumc, sup_name, show_pins)
+        inp, inn, outp, outn, outcm = self._connect_snake(nr1, nr2, num_dumr, num_dumc, io_width, show_pins)
+
+        # calculate capacitor bounding box
+        res = self.grid.resolution
+        cap_edge_margin = int(round(cap_edge_margin / res))
+        hm_layer = outcm.layer_id
+        io_layer = hm_layer + 2
+        mid_coord = self.grid.track_to_coord(outcm.layer_id, outcm.track_id.base_index, unit_mode=True)
+        cm_tr = self.grid.coord_to_track(io_layer, mid_coord, unit_mode=True)
+        io_width = cap_port_widths[2]
+        cap_yb = self.grid.get_wire_bounds(io_layer, cap_port_offset + cm_tr, width=io_width, unit_mode=True)[0]
+        num_sp = self.grid.get_num_space_tracks(hm_layer, cap_port_widths[0])
+        cap_yt = self.grid.get_wire_bounds(hm_layer, supt.track_id.base_index - num_sp - 1, unit_mode=True)[1]
+        cap_xl = cap_edge_margin
+        cap_xr = self.array_box.right_unit - cap_edge_margin
+
+        # construct port parity
+        top_parity, bot_parity = {}, {}
+        for cap_lay in range(hm_layer, hm_layer + num_cap_layer):
+            if self.grid.get_direction(cap_lay) == 'x':
+                top_parity[cap_lay] = (1, 0)
+                bot_parity[cap_lay] = (0, 1)
+            else:
+                top_parity[cap_lay] = (0, 1)
+                bot_parity[cap_lay] = (0, 1)
+
+        cap_top = self.add_mom_cap(BBox(cap_xl, cap_yb, cap_xr, cap_yt, res, unit_mode=True), hm_layer,
+                                   num_cap_layer, port_widths=cap_port_widths, port_parity=top_parity)
+        cap_yb = 2 * mid_coord - cap_yb
+        cap_yt = 2 * mid_coord - cap_yt
+        cap_bot = self.add_mom_cap(BBox(cap_xl, cap_yt, cap_xr, cap_yb, res, unit_mode=True), hm_layer,
+                                   num_cap_layer, port_widths=cap_port_widths, port_parity=bot_parity)
+
+        self.connect_to_tracks(inp, cap_top[hm_layer][0][0].track_id)
+        self.connect_to_tracks(outp, cap_top[hm_layer][1][0].track_id)
+        self.connect_to_tracks(inn, cap_bot[hm_layer][0][0].track_id)
+        self.connect_to_tracks(outn, cap_bot[hm_layer][1][0].track_id)
+
+        top_layer = hm_layer + num_cap_layer - 1
+        self.add_pin('inp', cap_top[top_layer][0], show=show_pins)
+        self.add_pin('outp', cap_top[io_layer][1], show=show_pins)
+        self.add_pin('inn', cap_bot[top_layer][0], show=show_pins)
+        self.add_pin('outn', cap_bot[io_layer][1], show=show_pins)
+
+        self.set_size_from_array_box(top_layer, parent_grid)
 
     def _connect_snake(self, nr1, nr2, ndumr, ndumc, io_width, show_pins):
         nrow_half = max(nr1, nr2) + ndumr
@@ -565,11 +619,6 @@ class CTLECore(ResArrayBase):
         inp = self.connect_to_tracks(inp, vm_tid, min_len_mode=1)
         inn = self.connect_to_tracks(inn, vm_tid, min_len_mode=-1)
 
-        self.add_pin('outp', outp, show=show_pins)
-        self.add_pin('outn', outn, show=show_pins)
-        self.add_pin('inp', inp, show=show_pins)
-        self.add_pin('inn', inn, show=show_pins)
-
         # connect outcm
         cmp = self.get_res_ports(nrow_half, ndumc + 3)[0]
         cmn = self.get_res_ports(nrow_half - 1, ndumc + 3)[1]
@@ -580,6 +629,8 @@ class CTLECore(ResArrayBase):
         hm_tr = self.grid.coord_to_nearest_track(hm_layer, outcm.middle, half_track=True)
         outcm = self.connect_to_tracks(outcm, TrackID(hm_layer, hm_tr, width=io_width), track_lower=0)
         self.add_pin('outcm', outcm, show=show_pins)
+
+        return inp, inn, outp, outn, outcm
 
     def _connect_mirror(self, offset, loc1, loc2, port1, port2):
         r1, c1 = loc1
@@ -637,5 +688,140 @@ class CTLECore(ResArrayBase):
         num_hm_tracks = self.array_box.height_unit // hm_pitch
         btr = self.connect_to_tracks(bot_warrs, TrackID(hm_layer, 0))
         ttr = self.connect_to_tracks(top_warrs, TrackID(hm_layer, num_hm_tracks - 1))
-        self.add_pin(sup_name, btr, show=show_pins)
-        self.add_pin(sup_name, ttr, show=show_pins)
+        self.add_pin(sup_name + 'B', btr, show=show_pins)
+        self.add_pin(sup_name + 'T', ttr, show=show_pins)
+
+        return ttr, btr
+
+
+class CTLE(TemplateBase):
+    """differential bias resistor for differential high pass filter.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    **kwargs :
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(CTLE, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : Dict[str, Any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            res_type='reference',
+            em_specs={},
+            show_pins=True,
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            l='unit resistor length, in meters.',
+            w='unit resistor width, in meters.',
+            cap_edge_margin='margin between cap to block edge',
+            num_cap_layer='number of layers to use for AC coupling cap.',
+            cap_port_widths='capacitor port widths.',
+            cap_port_offset='capacitor port index offset from common mode wire.',
+            num_r1='number of r1 segments.',
+            num_r2='number of r2 segments.',
+            num_dumc='number of dummy columns.',
+            num_dumr='number of dummy rows.',
+            io_width='input/output track width.',
+            sub_type='the substrate type.',
+            threshold='the substrate threshold flavor.',
+            res_type='the resistor type.',
+            em_specs='EM specifications for the termination network.',
+            show_pins='True to draw pin layous.',
+            sup_width='supply track width.',
+            sub_lch='substrate contact channel length.',
+            sub_w='substrate contact width.',
+        )
+
+    def draw_layout(self):
+        # type: () -> None
+        core_params = self.params.copy()
+        sub_lch = core_params.pop('sub_lch')
+        sub_w = core_params.pop('sub_w')
+        sup_width = core_params.pop('sup_width')
+        show_pins = self.params['show_pins']
+        core_params['show_pins'] = False
+
+        core_master = self.new_template(params=core_params, temp_cls=CTLECore)
+
+        # draw contact and move array up
+        sub_type = self.params['sub_type']
+        top_layer, nx_arr, ny_arr = core_master.size
+        sub_params = dict(
+            lch=sub_lch,
+            w=sub_w,
+            sub_type=sub_type,
+            threshold=self.params['threshold'],
+            top_layer=top_layer,
+            blk_width=nx_arr,
+            show_pins=False,
+        )
+        _, blk_h = self.grid.get_block_size(top_layer)
+        sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
+        bot_inst = self.add_instance(sub_master, inst_name='XBSUB')
+        ny_shift = sub_master.size[2]
+        core_inst = self.add_instance(core_master, loc=(0, ny_shift * blk_h), inst_name='XRES')
+        top_yo = (ny_arr + 2 * ny_shift) * blk_h
+        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0.0, top_yo), orient='MX')
+
+        # connect supplies
+        port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
+        warrt = self._connect_supply(core_inst, top_inst, port_name, 'T', sup_width)
+        warrb = self._connect_supply(core_inst, bot_inst, port_name, 'B', sup_width)
+        self.add_pin(port_name, warrt, show=show_pins)
+        self.add_pin(port_name, warrb, show=show_pins)
+
+        # export ports
+        for pname in core_inst.port_names_iter():
+            if not pname.startswith(port_name):
+                self.reexport(core_inst.get_port(pname), show=show_pins)
+
+        # compute size
+        self.array_box = top_inst.array_box.merge(bot_inst.array_box)
+        self.set_size_from_array_box(top_layer)
+
+    def _connect_supply(self, core, sub, name, suffix, sup_width):
+        warr1 = sub.get_all_port_pins(name)[0]
+        warr2 = core.get_all_port_pins(name + suffix)[0]
+        hm_layer = warr1.layer_id
+        vm_layer = hm_layer + 1
+        vm_id = self.grid.coord_to_nearest_track(vm_layer, warr1.middle, half_track=True)
+        return self.connect_to_tracks([warr1, warr2], TrackID(vm_layer, vm_id, sup_width))
