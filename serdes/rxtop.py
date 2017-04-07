@@ -33,12 +33,13 @@ from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.routing import TrackID
 from bag.layout.util import BBox
 
+from ..analog_core import AnalogBase
 from .rxpassive import RXClkArray, BiasBusIO, CTLE, DLevCap
 from .rxcore import RXCore
 
 
-class RXFrontend(TemplateBase):
-    """one data path of DDR burst mode RX core.
+class RXFrontendCore(TemplateBase):
+    """RX frontend
 
     Parameters
     ----------
@@ -57,7 +58,7 @@ class RXFrontend(TemplateBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(RXFrontend, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        super(RXFrontendCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
@@ -75,7 +76,8 @@ class RXFrontend(TemplateBase):
             dictionary of default parameter values.
         """
         return dict(
-            show_pins=True
+            bus_margin=1,
+            show_pins=True,
         )
 
     @classmethod
@@ -95,6 +97,7 @@ class RXFrontend(TemplateBase):
             rxclk_params='RXClkArray parameters.',
             ctle_params='passive CTLE parameters.',
             dlev_cap_params='dlev ac coupling cap parameters.',
+            bus_margin='margin between bus wires and adjacent blocks.',
             show_pins='True to draw pin layouts.',
         )
 
@@ -206,8 +209,10 @@ class RXFrontend(TemplateBase):
         core_params = self.params['core_params'].copy()
         ctle_params = self.params['ctle_params'].copy()
         dlev_cap_params = self.params['dlev_cap_params'].copy()
+        bus_margin = self.params['bus_margin']
         show_pins = self.params['show_pins']
 
+        # create template masters
         rxclk_params['parity'] = 0
         rxclk_params['show_pins'] = False
         clk_master0 = self.new_template(params=rxclk_params, temp_cls=RXClkArray)
@@ -230,31 +235,38 @@ class RXFrontend(TemplateBase):
         clkw, clkh = self.grid.get_size_dimension(clk_master0.size, unit_mode=True)
         corew, coreh = self.grid.get_size_dimension(core_master.size, unit_mode=True)
         ctlew, ctleh = self.grid.get_size_dimension(ctle_master.size, unit_mode=True)
+
+        # compute X coordinate
+        bus_vss_names = ['bias_nmos_integ', 'bias_nmos_analog', 'bias_nmos_intsum',
+                         'bias_nmos_digital', 'bias_nmos_summer', 'bias_nmos_tap1',
+                         '{}_bias_dfe<1>', '{}_bias_dfe<2>', '{}_bias_dfe<3>']
+        bus_vdd_names = ['bias_pmos_analog', 'bias_pmos_digital', 'bias_pmos_summer',
+                         '{}_bias_ffe', '{}_bias_offp', '{}_bias_offn', '{}_bias_dlev_outp',
+                         '{}_bias_dlev_outn', ]
+        bus_en_names = ['{}_en_dfe<0>', '{}_en_dfe<1>', '{}_en_dfe<2>', '{}_en_dfe<3>']
+
+        num_track_tot = len(bus_vss_names) + len(bus_vdd_names) + len(bus_en_names) + (2 + bus_margin * 2) * 3
+        vbus_layer = AnalogBase.get_mos_conn_layer(self.grid.tech_info) + 2
+        # TODO: handle cases where vbus_layer's pitch is not multiple of all lower vertical layer's pitch
+        bias_width = self.grid.get_track_pitch(vbus_layer, unit_mode=True) * num_track_tot
+
         maxw = max(clkw, corew)
-        x_clk = ctlew + maxw - clkw
-        x_core = ctlew + maxw - corew
+        x_clk = bias_width + ctlew + maxw - clkw
+        x_core = bias_width + ctlew + maxw - corew
 
         clk_inst0 = self.add_instance(clk_master0, 'XCLK0', loc=(x_clk, clkh), orient='MX', unit_mode=True)
         core_inst = self.add_instance(core_master, 'XCORE', loc=(x_core, clkh), unit_mode=True)
         clk_inst1 = self.add_instance(clk_master1, 'XCLK1', loc=(x_clk, clkh + coreh), unit_mode=True)
-        ctle_inst = self.add_instance(ctle_master, 'XCTLE', loc=(0, 0), unit_mode=True)
+        ctle_inst = self.add_instance(ctle_master, 'XCTLE', loc=(bias_width, 0), unit_mode=True)
 
-        vss_names = ['bias_nmos_integ', 'bias_nmos_analog', 'bias_nmos_intsum',
-                     'bias_nmos_digital', 'bias_nmos_summer', 'bias_nmos_tap1',
-                     '{}_bias_dfe<1>', '{}_bias_dfe<2>', '{}_bias_dfe<3>']
-        vdd_names = ['bias_pmos_analog', 'bias_pmos_digital', 'bias_pmos_summer',
-                     '{}_bias_ffe', '{}_bias_offp', '{}_bias_offn', '{}_bias_dlev_outp',
-                     '{}_bias_dlev_outn', ]
-        en_names = ['{}_en_dfe<0>', '{}_en_dfe<1>', '{}_en_dfe<2>', '{}_en_dfe<3>']
-
-        bus_order = [(vss_names, 'VSS'), (vdd_names, 'VDD'), (en_names, 'VDD')]
+        bus_order = [(bus_vss_names, 'VSS'), (bus_vdd_names, 'VDD'), (bus_en_names, 'VDD')]
         vdd_list = []
         vss_list = []
         self._connect_bias_wires(clk_inst0, core_inst, [core_inst, clk_inst1], clkh, 'odd', bus_order,
-                                 vdd_list, vss_list)
+                                 vdd_list, vss_list, bias_width)
         bus_order = bus_order[::-1]
         self._connect_bias_wires(clk_inst1, core_inst, [clk_inst1], clk_inst1.location_unit[1], 'even', bus_order,
-                                 vdd_list, vss_list)
+                                 vdd_list, vss_list, bias_width)
 
         # move ctle to center of rxcore
         mid = core_inst.location_unit[1] + coreh // 2
@@ -287,14 +299,17 @@ class RXFrontend(TemplateBase):
 
         return clk_inst0, clk_inst1, core_inst, ctle_inst, vdd_list, vss_list
 
-    def _connect_bias_wires(self, clk_inst, core_inst, move_insts, yb, prefix, bus_order, vdd_list, vss_list):
+    def _connect_bias_wires(self, clk_inst, core_inst, move_insts, yb, prefix, bus_order,
+                            vdd_list, vss_list, bus_xo):
         show_pins = self.params['show_pins']
 
         reserve_tracks = []
         for port_name in clk_inst.port_names_iter():
             if port_name.startswith('bias_'):
                 warr = clk_inst.get_all_port_pins(port_name)[0]
-                reserve_tracks.append((port_name, warr.layer_id, warr.track_id.base_index, warr.track_id.width))
+                cur_layer = warr.layer_id
+                troff = bus_xo // self.grid.get_track_pitch(cur_layer, unit_mode=True)
+                reserve_tracks.append((port_name, warr.layer_id, warr.track_id.base_index - troff, warr.track_id.width))
 
         bus_layer = reserve_tracks[0][1] + 1
         bias_prefix = '%s_bias_' % prefix
@@ -302,7 +317,9 @@ class RXFrontend(TemplateBase):
         for port_name in core_inst.port_names_iter():
             if port_name.startswith(bias_prefix) or port_name.startswith(en_prefix):
                 warr = core_inst.get_all_port_pins(port_name)[0]
-                reserve_tracks.append((port_name, warr.layer_id, warr.track_id.base_index, warr.track_id.width))
+                cur_layer = warr.layer_id
+                troff = bus_xo // self.grid.get_track_pitch(cur_layer, unit_mode=True)
+                reserve_tracks.append((port_name, warr.layer_id, warr.track_id.base_index - troff, warr.track_id.width))
 
         cur_yb = yb
         delta_y = 0
@@ -318,7 +335,7 @@ class RXFrontend(TemplateBase):
                 show_pins=False,
             )
             bus_master = self.new_template(params=bus_params, temp_cls=BiasBusIO)
-            bus_inst = self.add_instance(bus_master, loc=(0, cur_yb), unit_mode=True)
+            bus_inst = self.add_instance(bus_master, loc=(bus_xo, cur_yb), unit_mode=True)
             bush = self.grid.get_size_dimension(bus_master.size, unit_mode=True)[1]
             cur_yb += bush
             delta_y += bush

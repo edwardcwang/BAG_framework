@@ -363,9 +363,9 @@ class BiasBusIO(TemplateBase):
             return min(dim_lower, dim_upper)
 
     def _draw_layout_helper(self, io_names, sup_name, reserve_tracks, bus_layer, bus_margin, show_pins):
-        io_names = set(io_names)
-
         # compute bus length
+        num_wires = len(io_names) + 2
+        io_names = {name: idx for idx, name in enumerate(io_names)}
         bus_lower = None
         bus_upper = None
         reserve_list = []
@@ -382,26 +382,25 @@ class BiasBusIO(TemplateBase):
                     bus_lower = min(bus_lower, lower)
                     bus_upper = max(bus_upper, upper)
 
-                if name in io_names:
-                    io_dict[layer].append((name, track, width))
+                idx = io_names.get(name, -1)
+                if idx >= 0:
+                    io_dict[layer].append((name, idx, track, width))
 
         bus_upper = self._get_bound(bus_upper, bus_layer, 1)
         # draw input buses
-        cur_idx = bus_margin + 1
         wire_layers = (bus_layer - 1, bus_layer + 1)
         for lay in wire_layers:
-            for name, track, width in io_dict[lay]:
+            for name, idx, track, width in io_dict[lay]:
                 mid = self.grid.track_to_coord(lay, track, unit_mode=True)
-                w = self.add_wires(bus_layer, cur_idx, 0, mid, unit_mode=True)
+                w = self.add_wires(bus_layer, idx + 1 + bus_margin, 0, mid, unit_mode=True)
                 w_in = self.connect_to_tracks(w, TrackID(lay, track, width=width), min_len_mode=0)
                 self.add_pin(name, w, show=show_pins)
                 self.add_pin(name + '_in', w_in, show=show_pins)
-                cur_idx += 1
 
         # compute size
         bus_wl = self.grid.get_wire_bounds(bus_layer, bus_margin, unit_mode=True)[0]
-        bus_wu = self.grid.get_wire_bounds(bus_layer, cur_idx, unit_mode=True)[1]
-        size_wu = self.grid.get_wire_bounds(bus_layer, cur_idx + bus_margin, unit_mode=True)[1]
+        bus_wu = self.grid.get_wire_bounds(bus_layer, bus_margin + num_wires, unit_mode=True)[1]
+        size_wu = self.grid.get_wire_bounds(bus_layer, 2 * bus_margin + num_wires, unit_mode=True)[1]
         blkw, blkh = self.grid.get_block_size(bus_layer + 2, unit_mode=True)
         if self.grid.get_direction(bus_layer) == 'x':
             nxblk = -(-bus_upper // blkw)
@@ -427,7 +426,7 @@ class BiasBusIO(TemplateBase):
             for aidx in avail_list:
                 sup_warr_list.append(self.add_wires(lay, aidx, bus_wl, bus_wu, unit_mode=True))
             self.connect_to_tracks(sup_warr_list, TrackID(bus_layer, bus_margin, width=1,
-                                                          num=2, pitch=cur_idx - bus_margin),
+                                                          num=2, pitch=num_wires - 1),
                                    track_lower=0)
 
         num_sup_tracks = self.grid.get_num_tracks(self.size, bus_layer + 2)
@@ -435,6 +434,112 @@ class BiasBusIO(TemplateBase):
         sup_tr = (num_sup_tracks - 1) / 2
         sup_warr = self.connect_to_tracks(sup_warr_list, TrackID(bus_layer + 2, sup_tr, width=sup_w))
         self.add_pin(sup_name, sup_warr, show=show_pins)
+
+
+class BiasBusCorner(TemplateBase):
+    """An template for AC coupling clock arrays
+
+        Parameters
+        ----------
+        temp_db : :class:`bag.layout.template.TemplateDB`
+                the template database.
+        lib_name : str
+            the layout library name.
+        params : dict[str, any]
+            the parameter values.
+        used_names : set[str]
+            a set of already used cell names.
+        **kwargs :
+            dictionary of optional parameters.  See documentation of
+            :class:`bag.layout.template.TemplateBase` for details.
+        """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(BiasBusCorner, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : Dict[str, Any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            show_pins=True,
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            io_names='names of wires to connect.',
+            sup_name='supply port name.',
+            hm_layer='horizontal wire layer.',
+            vm_layer='vertical wire layer.',
+            show_pins='True to draw pin layout.',
+            bus_margin='number of tracks to save as margins to adjacent blocks.',
+        )
+
+    def draw_layout(self):
+        # type: () -> None
+        self._draw_layout_helper(**self.params)
+
+    def _draw_layout_helper(self, io_names, sup_name, hm_layer, vm_layer, bus_margin, show_pins):
+        num_wires = 2 + io_names
+
+        # compute size
+        top_layer = max(hm_layer, vm_layer) + 1
+        blkw, blkh = self.grid.get_block_size(top_layer, unit_mode=True)
+        width = self.grid.get_track_pitch(vm_layer, unit_mode=True) * (num_wires + 2 * bus_margin)
+        height = self.grid.get_track_pitch(hm_layer, unit_mode=True) * (num_wires + 2 * bus_margin)
+        nxblk = -(-width // blkw)
+        nyblk = -(-height // blkh)
+        self.size = top_layer, nxblk, nyblk
+        self.array_box = BBox(0, 0, nxblk * blkw, nyblk * blkh, self.grid.resolution, unit_mode=True)
+        xr = self.array_box.right_unit
+        yt = self.array_box.top_unit
+
+        # get via extension
+        bext, text = self.grid.get_via_extensions(min(hm_layer, vm_layer), 1, 1, unit_mode=True)
+        if hm_layer < vm_layer:
+            hext, vext = bext, text
+        else:
+            hext, vext = text, bext
+
+        # draw supply wires on signal layers
+        xl = self.grid.get_wire_bounds(vm_layer, bus_margin, unit_mode=True)[0]
+        xl -= hext
+        supb = self.add_wires(hm_layer, bus_margin, xl, xr)
+        supt = self.add_wires(hm_layer, bus_margin + num_wires - 1, xl, xr)
+        supl, supr = self.connect_differential_tracks(supb, supt, vm_layer, bus_margin,
+                                                      bus_margin + num_wires - 1, track_upper=yt)
+
+        # draw signal wires
+        for idx, name in enumerate(sup_name):
+            tidx = bus_margin + 1 + idx
+            xl = self.grid.get_wire_bounds(vm_layer, tidx, unit_mode=True)[0] - hext
+            wh = self.add_wires(hm_layer, tidx, xl, xr)
+            self.add_pin(name + '_h', wh, show=show_pins)
+            wv = self.connect_to_tracks(wh, TrackID(vm_layer, tidx), track_upper=yt)
+            self.add_pin(name + '_v', wv, show=show_pins)
 
 
 class CTLECore(ResArrayBase):
