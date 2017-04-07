@@ -128,7 +128,7 @@ class DLevCap(TemplateBase):
         cap_yb += space
 
         # draw caps
-        cap_bboxl = BBox(0, cap_yb, width, cap_yb + height, res, unit_mode=True)
+        cap_bboxl = BBox(space, cap_yb, width + space, cap_yb + height, res, unit_mode=True)
         cap_bboxr = cap_bboxl.move_by(dx=width + space, unit_mode=True)
         capl_ports = self.add_mom_cap(cap_bboxl, bot_layer, num_layer, port_widths=port_widths)
         capr_ports = self.add_mom_cap(cap_bboxr, bot_layer, num_layer, port_widths=port_widths)
@@ -150,7 +150,7 @@ class DLevCap(TemplateBase):
             xr = capr_ports[top_layer][1][0].get_bbox_array(self.grid).right_unit
 
         w_blk, h_blk = self.grid.get_block_size(top_layer, unit_mode=True)
-        nx = -(-xr // w_blk)
+        nx = -(-(xr + space) // w_blk)
         ny = -(-yt // h_blk)
         self.size = top_layer, nx, ny
         self.array_box = BBox(0, 0, nx * w_blk, ny * h_blk, res, unit_mode=True)

@@ -31,8 +31,9 @@ from typing import Dict, Any, Set
 
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.routing import TrackID
+from bag.layout.util import BBox
 
-from .rxpassive import RXClkArray, BiasBusIO, CTLE
+from .rxpassive import RXClkArray, BiasBusIO, CTLE, DLevCap
 from .rxcore import RXCore
 
 
@@ -93,6 +94,7 @@ class RXFrontend(TemplateBase):
             core_params='RXCore parameters.',
             rxclk_params='RXClkArray parameters.',
             ctle_params='passive CTLE parameters.',
+            dlev_cap_params='dlev ac coupling cap parameters.',
             show_pins='True to draw pin layouts.',
         )
 
@@ -191,7 +193,6 @@ class RXFrontend(TemplateBase):
                 else:
                     top_list.append(self.connect_to_tracks(warr_list + ex_list, TrackID(player, idx, width=pwidth)))
 
-
         show_pins = self.params['show_pins']
         self.add_pin('VDD', vdd_top_list, show=show_pins)
         self.add_pin('VSS', vss_top_list, show=show_pins)
@@ -204,6 +205,8 @@ class RXFrontend(TemplateBase):
         rxclk_params = self.params['rxclk_params'].copy()
         core_params = self.params['core_params'].copy()
         ctle_params = self.params['ctle_params'].copy()
+        dlev_cap_params = self.params['dlev_cap_params'].copy()
+        show_pins = self.params['show_pins']
 
         rxclk_params['parity'] = 0
         rxclk_params['show_pins'] = False
@@ -218,6 +221,11 @@ class RXFrontend(TemplateBase):
         ctle_params['cap_port_offset'] = in_xm_offset
         ctle_params['show_pins'] = False
         ctle_master = self.new_template(params=ctle_params, temp_cls=CTLE)
+
+        dlev_cap_params['show_pins'] = False
+        dlev_cap_params['io_width'] = core_params['hm_cur_width']
+        dlev_cap_params['io_space'] = core_params['diff_space']
+        dcap_master = self.new_template(params=dlev_cap_params, temp_cls=DLevCap)
 
         clkw, clkh = self.grid.get_size_dimension(clk_master0.size, unit_mode=True)
         corew, coreh = self.grid.get_size_dimension(core_master.size, unit_mode=True)
@@ -251,6 +259,31 @@ class RXFrontend(TemplateBase):
         # move ctle to center of rxcore
         mid = core_inst.location_unit[1] + coreh // 2
         ctle_inst.move_by(dy=mid - ctleh // 2, unit_mode=True)
+
+        dcap_inst1 = self.add_instance(dcap_master, 'XDCAP1', loc=(x_core + corew, 0), orient='MX', unit_mode=True)
+        dcap_inst0 = self.add_instance(dcap_master, 'XDCAP0', loc=(x_core + corew, 0), unit_mode=True)
+        # move dcap inst to right Y location, then connect and export
+        for idx, dinst in enumerate((dcap_inst0, dcap_inst1)):
+            core_outp = core_inst.get_all_port_pins('outp_dlev<%d>' % idx)[0]
+            dcap_outp = dinst.get_all_port_pins('outp')[0]
+            hm_layer = core_outp.layer_id
+            hm_pitch = self.grid.get_track_pitch(hm_layer)
+            delta = core_outp.track_id.base_index - dcap_outp.track_id.base_index
+            dinst.move_by(dy=hm_pitch * delta)
+
+            for dname, cname in zip(['outp', 'outn', 'inp', 'inn'],
+                                    ['outp_dlev', 'outn_dlev', 'outp_summer', 'outn_summer']):
+                cname += '<%d>' % idx
+                wlist = core_inst.get_all_port_pins(cname) + dinst.get_all_port_pins(dname)
+                w = self.connect_wires(wlist)
+                if dname.startswith('out'):
+                    self.add_pin(cname, w, show=show_pins)
+
+        # compute size
+        xr = dcap_inst0.array_box.right_unit
+        yt = clk_inst1.array_box.top_unit
+        self.array_box = BBox(0, 0, xr, yt, self.grid.resolution, unit_mode=True)
+        self.set_size_from_array_box(clk_master1.size[0])
 
         return clk_inst0, clk_inst1, core_inst, ctle_inst, vdd_list, vss_list
 
