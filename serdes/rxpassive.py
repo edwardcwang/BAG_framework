@@ -33,6 +33,7 @@ from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.routing import TrackID
 from bag.layout.util import BBox
 
+from ..resistor.core import ResArrayBase
 from ..analog_core import AnalogBase
 from ..passives.hp_filter import HighPassFilter
 
@@ -428,3 +429,213 @@ class BiasBusIO(TemplateBase):
         sup_tr = (num_sup_tracks - 1) / 2
         sup_warr = self.connect_to_tracks(sup_warr_list, TrackID(bus_layer + 2, sup_tr, width=sup_w))
         self.add_pin(sup_name, sup_warr, show=show_pins)
+
+
+class CTLECore(ResArrayBase):
+    """differential bias resistor for differential high pass filter.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    **kwargs :
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(CTLECore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : Dict[str, Any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            res_type='reference',
+            em_specs={},
+            show_pins=True,
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            l='unit resistor length, in meters.',
+            w='unit resistor width, in meters.',
+            num_r1='number of r1 segments.',
+            num_r2='number of r2 segments.',
+            num_dumc='number of dummy columns.',
+            num_dumr='number of dummy rows.',
+            io_width='input/output track width.',
+            sub_type='the substrate type.',
+            threshold='the substrate threshold flavor.',
+            res_type='the resistor type.',
+            em_specs='EM specifications for the termination network.',
+            show_pins='True to draw pin layous.',
+        )
+
+    def draw_layout(self):
+        # type: () -> None
+
+        kwargs = self.params.copy()
+        num_r1 = kwargs.pop('num_r1')
+        num_r2 = kwargs.pop('num_r2')
+        num_dumc = kwargs.pop('num_dumc')
+        num_dumr = kwargs.pop('num_dumr')
+        show_pins = kwargs.pop('show_pins')
+        io_width = kwargs.pop('io_width')
+
+        if num_r1 % 2 != 0 or num_r2 % 2 != 0:
+            raise ValueError('num_r1 and num_r2 must be even.')
+        if num_dumc <= 0 or num_dumr <= 0:
+            raise ValueError('num_dumr and num_dumc must be greater than 0.')
+
+        # draw array
+        nr1 = num_r1 // 2
+        nr2 = num_r2 // 2
+        self.draw_array(nx=4 + num_dumc * 2, ny=2 * (max(nr1, nr2) + num_dumr),
+                        edge_space=False, **kwargs)
+
+        sup_name = 'VDD' if kwargs['sub_type'] == 'ntap' else 'VSS'
+        self._connect_dummies(nr1, nr2, num_dumr, num_dumc, sup_name, show_pins)
+        self._connect_snake(nr1, nr2, num_dumr, num_dumc, io_width, show_pins)
+
+    def _connect_snake(self, nr1, nr2, ndumr, ndumc, io_width, show_pins):
+        nrow_half = max(nr1, nr2) + ndumr
+        for idx in range(nr1):
+            if idx != 0:
+                self._connect_mirror(nrow_half, (idx - 1, ndumc), (idx, ndumc), 1, 0)
+                self._connect_mirror(nrow_half, (idx - 1, ndumc + 1), (idx, ndumc + 1), 1, 0)
+            if idx == nr1 - 1:
+                self._connect_mirror(nrow_half, (idx, ndumc), (idx, ndumc + 1), 1, 1)
+        for idx in range(nr2):
+            if idx != 0:
+                self._connect_mirror(nrow_half, (idx - 1, ndumc + 2), (idx, ndumc + 2), 1, 0)
+                self._connect_mirror(nrow_half, (idx - 1, ndumc + 3), (idx, ndumc + 3), 1, 0)
+            if idx == nr2 - 1:
+                self._connect_mirror(nrow_half, (idx, ndumc + 2), (idx, ndumc + 3), 1, 1)
+
+        # connect outp/outn
+        outpl = self.get_res_ports(nrow_half, ndumc + 1)[0]
+        outpr = self.get_res_ports(nrow_half, ndumc + 2)[0]
+        outp = self.connect_wires([outpl, outpr])[0]
+        outnl = self.get_res_ports(nrow_half - 1, ndumc + 1)[1]
+        outnr = self.get_res_ports(nrow_half - 1, ndumc + 2)[1]
+        outn = self.connect_wires([outnl, outnr])[0]
+
+        vm_layer = outp.layer_id + 1
+        vm_tr = self.grid.coord_to_nearest_track(vm_layer, outp.middle, half_track=True)
+        vm_tid = TrackID(vm_layer, vm_tr, width=io_width)
+        outp = self.connect_to_tracks(outp, vm_tid, min_len_mode=1)
+        outn = self.connect_to_tracks(outn, vm_tid, min_len_mode=-1)
+
+        # connect inp/inn
+        inp = self.get_res_ports(nrow_half, ndumc)[0]
+        inn = self.get_res_ports(nrow_half - 1, ndumc)[1]
+        mid = (self.get_res_ports(nrow_half, ndumc - 1)[0].middle + inp.middle) / 2
+        vm_tr = self.grid.coord_to_nearest_track(vm_layer, mid, half_track=True)
+        vm_tid = TrackID(vm_layer, vm_tr, width=io_width)
+        inp = self.connect_to_tracks(inp, vm_tid, min_len_mode=1)
+        inn = self.connect_to_tracks(inn, vm_tid, min_len_mode=-1)
+
+        self.add_pin('outp', outp, show=show_pins)
+        self.add_pin('outn', outn, show=show_pins)
+        self.add_pin('inp', inp, show=show_pins)
+        self.add_pin('inn', inn, show=show_pins)
+
+        # connect outcm
+        cmp = self.get_res_ports(nrow_half, ndumc + 3)[0]
+        cmn = self.get_res_ports(nrow_half - 1, ndumc + 3)[1]
+        vm_tr = self.grid.coord_to_nearest_track(vm_layer, cmp.middle, half_track=True)
+        vm_tid = TrackID(vm_layer, vm_tr, width=io_width)
+        outcm = self.connect_to_tracks([cmp, cmn], vm_tid)
+        hm_layer = vm_layer + 1
+        hm_tr = self.grid.coord_to_nearest_track(hm_layer, outcm.middle, half_track=True)
+        outcm = self.connect_to_tracks(outcm, TrackID(hm_layer, hm_tr, width=io_width), track_lower=0)
+        self.add_pin('outcm', outcm, show=show_pins)
+
+    def _connect_mirror(self, offset, loc1, loc2, port1, port2):
+        r1, c1 = loc1
+        r2, c2 = loc2
+        for sgn in (-1, 1):
+            cur_r1 = offset + sgn * r1
+            cur_r2 = offset + sgn * r2
+            if sgn < 0:
+                cur_r1 -= 1
+                cur_r2 -= 1
+            if sgn < 0:
+                cur_port1 = 1 - port1
+                cur_port2 = 1 - port2
+            else:
+                cur_port1 = port1
+                cur_port2 = port2
+            wa1 = self.get_res_ports(cur_r1, c1)[cur_port1]
+            wa2 = self.get_res_ports(cur_r2, c2)[cur_port2]
+            if wa1.track_id.base_index == wa2.track_id.base_index:
+                self.connect_wires([wa1, wa2])
+            else:
+                vm_layer = wa1.layer_id + 1
+                vm = self.grid.coord_to_nearest_track(vm_layer, wa1.middle, half_track=True)
+                self.connect_to_tracks([wa1, wa2], TrackID(vm_layer, vm))
+
+    def _connect_dummies(self, nr1, nr2, ndumr, ndumc, sup_name, show_pins):
+        num_per_col = [0] * ndumc + [nr1, nr1, nr2, nr2] + [0] * ndumc
+        nrow_half = max(nr1, nr2) + ndumr
+        bot_warrs, top_warrs = [], []
+        for col_idx, res_num in enumerate(num_per_col):
+            if res_num == 0:
+                cur_ndum = nrow_half * 2
+                bot_idx_list = [0]
+            else:
+                cur_ndum = nrow_half - res_num
+                bot_idx_list = [0, nrow_half + res_num]
+
+            for bot_idx in bot_idx_list:
+                top_idx = bot_idx + cur_ndum
+                warr_list = []
+                for ridx in range(bot_idx, top_idx):
+                    bp, tp = self.get_res_ports(ridx, col_idx)
+                    warr_list.append(bp)
+                    warr_list.append(tp)
+                vm_layer = warr_list[0].layer_id + 1
+                vm = self.grid.coord_to_nearest_track(vm_layer, warr_list[0].middle, half_track=True)
+                sup_warr = self.connect_to_tracks(warr_list, TrackID(vm_layer, vm))
+                if bot_idx == 0:
+                    bot_warrs.append(sup_warr)
+                if bot_idx != 0 or res_num == 0:
+                    top_warrs.append(sup_warr)
+
+        hm_layer = bot_warrs[0].layer_id + 1
+        hm_pitch = self.grid.get_track_pitch(hm_layer, unit_mode=True)
+        num_hm_tracks = self.array_box.height_unit // hm_pitch
+        btr = self.connect_to_tracks(bot_warrs, TrackID(hm_layer, 0))
+        ttr = self.connect_to_tracks(top_warrs, TrackID(hm_layer, num_hm_tracks - 1))
+        self.add_pin(sup_name, btr, show=show_pins)
+        self.add_pin(sup_name, ttr, show=show_pins)
