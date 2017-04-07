@@ -222,6 +222,7 @@ class HighPassFilter(TemplateBase):
             threshold='the substrate threshold flavor.',
             res_type='the resistor type.',
             em_specs='EM specifications for the termination network.',
+            sup_width='supply track width.',
             show_pins='True to draw pin layouts.',
         )
 
@@ -261,6 +262,7 @@ class HighPassFilter(TemplateBase):
         sub_lch = res_params.pop('sub_lch')
         sub_w = res_params.pop('sub_w')
         io_width = res_params.pop('io_width')
+        sup_width = res_params.pop('sup_width')
 
         # compute resistor output track indices and create resistor
         io_layer = BiasResistor.get_port_layer_id(self.grid.tech_info) + 2
@@ -287,11 +289,23 @@ class HighPassFilter(TemplateBase):
         top_yo = (ny_arr + ny_shift) * blk_h
         top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0.0, top_yo), orient='MX')
 
-        # export supply and recompute array_box/size
-        port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
-        self.reexport(top_inst.get_port(port_name), show=show_pins)
+        # recompute array_box/size
         self.size = top_layer, nx_arr, ny_arr + ny_shift
         self.array_box = top_inst.array_box.extend(y=0, unit_mode=True)
+
+        # export supply
+        port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
+        sup_wa = top_inst.get_all_port_pins(port_name)[0]
+        hm_layer = sup_wa.layer_id
+        vm_layer = hm_layer + 1
+        xm_layer = vm_layer + 1
+        vm_tr = self.grid.coord_to_nearest_track(vm_layer, sup_wa.middle, half_track=True)
+        sup_wa = self.connect_to_tracks(sup_wa, TrackID(vm_layer, vm_tr, width=sup_width))
+        num_xm = self.grid.get_num_tracks(self.size, xm_layer)
+        # TODO: remove hard-coded one track margin
+        sup_wa = self.connect_to_tracks(sup_wa, TrackID(xm_layer, num_xm - (sup_width + 3) / 2, width=sup_width),
+                                        min_len_mode=0)
+        self.add_pin(port_name, sup_wa, show=show_pins)
 
         # export bias ports
         bias_warr = res_inst.get_all_port_pins('bias')[0]

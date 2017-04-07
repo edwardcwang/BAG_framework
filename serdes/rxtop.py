@@ -129,7 +129,9 @@ class RXFrontend(TemplateBase):
         self.connect_to_tracks(ctle_vdds[1], tid_list[1], track_upper=core_vdds.upper)
 
     def _connect_clks(self, clk_inst0, clk_inst1, core_inst, vdd_list, vss_list):
-        clk_names = self.params['rxclk_params']['clk_names']
+        rxclk_params = self.params['rxclk_params']
+        clk_names = rxclk_params['clk_names']
+        sup_name = 'VDD' if rxclk_params['passive_params']['sub_type'] == 'ntap' else 'VSS'
         ltr = clk_inst0.master.left_track
         rtr = clk_inst0.master.right_track
         mtr = (ltr + rtr) / 2
@@ -149,7 +151,7 @@ class RXFrontend(TemplateBase):
             cur_nid = nport.track_id.base_index
             mid = (cur_pid + cur_nid) / 2
             if cur_pid != cur_nid:
-                sup_indices.append(mid)
+                sup_indices.append((mid, False))
 
             for cur_name, port in ((nname, nport), (pname, pport)):
                 self.connect_to_tracks(core_inst.get_all_port_pins(cur_name), port.track_id,
@@ -163,21 +165,40 @@ class RXFrontend(TemplateBase):
                 clkn_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkn'),
                                                    TrackID(player, ltr + mid, width=pwidth))
             elif cur_pid == cur_nid:
-                sup_indices.append(ltr + mid)
-                sup_indices.append(rtr + mid)
+                sup_indices.append((ltr + mid, True))
+                sup_indices.append((rtr + mid, True))
 
         # connect supplies to M7
         vdd_list.extend(core_inst.get_all_port_pins('VDD'))
         vss_list.extend(core_inst.get_all_port_pins('VSS'))
+        if sup_name == 'VDD':
+            ext_vdd_list = clk_inst0.get_all_port_pins('VDD')
+            ext_vdd_list.extend(clk_inst1.get_all_port_pins('VDD'))
+            ext_vss_list = []
+        else:
+            ext_vss_list = clk_inst0.get_all_port_pins('VSS')
+            ext_vss_list.extend(clk_inst1.get_all_port_pins('VSS'))
+            ext_vdd_list = []
+
         vdd_indices = sup_indices[0::2]
         vss_indices = sup_indices[1::2]
         vdd_top_list, vss_top_list = [], []
-        for idx_list, warr_list, top_list in ((vdd_indices, vdd_list, vdd_top_list),
-                                              (vss_indices, vss_list, vss_top_list)):
-            for idx in idx_list:
-                top_list.append(self.connect_to_tracks(warr_list, TrackID(player, idx, width=pwidth)))
+        for idx_list, warr_list, ex_list, top_list in ((vdd_indices, vdd_list, ext_vdd_list, vdd_top_list),
+                                                       (vss_indices, vss_list, ext_vss_list, vss_top_list)):
+            for idx, extend in idx_list:
+                if not extend:
+                    top_list.append(self.connect_to_tracks(warr_list, TrackID(player, idx, width=pwidth)))
+                else:
+                    top_list.append(self.connect_to_tracks(warr_list + ex_list, TrackID(player, idx, width=pwidth)))
 
-        return vdd_top_list, vss_top_list, clkp_warr, clkn_warr
+
+        show_pins = self.params['show_pins']
+        self.add_pin('VDD', vdd_top_list, show=show_pins)
+        self.add_pin('VSS', vss_top_list, show=show_pins)
+        self.add_pin('clkp', clkp_warr, show=show_pins)
+        self.add_pin('clkn', clkn_warr, show=show_pins)
+        self.reexport(clk_inst0.get_all_port_pins('clkn'), net_name='clkno')
+        self.reexport(clk_inst1.get_all_port_pins('clkp'), net_name='clkpo')
 
     def _place(self):
         rxclk_params = self.params['rxclk_params'].copy()

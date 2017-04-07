@@ -242,6 +242,12 @@ class RXClkArray(TemplateBase):
         inst = self.add_instance(hpf_master, 'XHPF', nx=num_blocks, spx=hpfw, unit_mode=True)
         io_layer = inst.get_all_port_pins('in')[0].layer_id + 1
 
+        # export supplies
+        port_name = 'VDD' if passive_params['sub_type'] == 'ntap' else 'VSS'
+        sup_warrs = inst.get_all_port_pins(port_name)
+        sup_warrs = self.connect_wires(sup_warrs)
+        self.add_pin(port_name, sup_warrs, show=show_pins)
+
         num_tracks = self.grid.get_num_tracks(hpf_master.size, io_layer)
         ltr, mtr, rtr = self.grid.get_evenly_spaced_tracks(3, num_tracks, io_width, half_end_space=True)
         self._left_tr = ltr
