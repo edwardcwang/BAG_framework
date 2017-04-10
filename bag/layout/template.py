@@ -1359,7 +1359,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                     port_parity=None,  # type: Optional[Dict[int, Tuple[int, int]]]
                     fill_margin=0,  # type: ldim
                     fill_type='',  # type: str
-                    unit_mode=False  # type: bool
+                    unit_mode=False,  # type: bool
+                    array=False,  # type: bool
                     ):
         # type: (...) -> Dict[int, Tuple[List[WireArray], List[WireArray]]]
         """Draw mom cap in the defined bounding box."""
@@ -1426,10 +1427,15 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             if cur_layer != top_layer:
                 adj_via_ext = max(adj_via_ext, via_ext_dict[cur_layer + 1])
             # find track indices
-            tr_lower = self.grid.find_next_track(cur_layer, cur_lower + adj_via_ext, tr_width=cur_port_width,
-                                                 half_track=True, mode=1, unit_mode=True)
-            tr_upper = self.grid.find_next_track(cur_layer, cur_upper - adj_via_ext, tr_width=cur_port_width,
-                                                 half_track=True, mode=-1, unit_mode=True)
+            if array:
+                tr_lower = self.grid.coord_to_track(cur_layer, cur_lower, unit_mode=True)
+                tr_upper = self.grid.coord_to_track(cur_layer, cur_upper, unit_mode=True)
+            else:
+                tr_lower = self.grid.find_next_track(cur_layer, cur_lower + adj_via_ext, tr_width=cur_port_width,
+                                                     half_track=True, mode=1, unit_mode=True)
+                tr_upper = self.grid.find_next_track(cur_layer, cur_upper - adj_via_ext, tr_width=cur_port_width,
+                                                     half_track=True, mode=-1, unit_mode=True)
+
             tll, tlu = self.grid.get_wire_bounds(cur_layer, tr_lower, width=cur_port_width, unit_mode=True)
             tul, tuu = self.grid.get_wire_bounds(cur_layer, tr_upper, width=cur_port_width, unit_mode=True)
 
