@@ -141,3 +141,86 @@ class MOMCap(TemplateBase):
         cp, cn = cap_ports[cap_top_layer]
         self.add_pin('plus', cp, show=show_pins)
         self.add_pin('minus', cn, show=show_pins)
+
+
+class MOMCapUnit(TemplateBase):
+    """differential bias resistor for differential high pass filter.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    **kwargs :
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(MOMCapUnit, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : Dict[str, Any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            show_pins=False,
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            cap_bot_layer='MOM cap bottom layer.',
+            cap_top_layer='MOM cap top layer.',
+            cap_width='MOM cap width.',
+            cap_height='MOM cap height.',
+            port_width='port track width.',
+            show_pins='True to show pin labels.',
+        )
+
+    def draw_layout(self):
+        # type: () -> None
+        self._draw_layout_helper(**self.params)
+
+    def _draw_layout_helper(self, cap_bot_layer, cap_top_layer, cap_width, cap_height, port_width, show_pins):
+        res = self.grid.resolution
+        cap_width = int(round(cap_width / res))
+        cap_height = int(round(cap_height / res))
+
+        blk_w, blk_h = self.grid.get_block_size(cap_top_layer, unit_mode=True)
+        nx_blk = -(-cap_width // blk_w)
+        ny_blk = -(-cap_height // blk_h)
+        self.size = cap_top_layer, nx_blk, ny_blk
+        self.array_box = BBox(0, 0, nx_blk * blk_w, ny_blk * blk_h, res, unit_mode=True)
+        cap_ports = self.add_mom_cap(self.array_box, cap_bot_layer, cap_top_layer - cap_bot_layer + 1,
+                                     port_width, array=True)
+        cp, cn = cap_ports[cap_top_layer]
+        self.add_pin('plus', cp, show=show_pins)
+        self.add_pin('minus', cn, show=show_pins)
