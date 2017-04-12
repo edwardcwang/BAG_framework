@@ -599,7 +599,9 @@ class SkillInterface(DbAccess):
             if create_schematic:
                 if value is None:
                     return False, log_fname
-                self.create_schematic_from_netlist(value, lib_name, cell_name)
+                if value:
+                    # create schematic only if netlist name is not empty.
+                    self.create_schematic_from_netlist(value, lib_name, cell_name)
                 return True, log_fname
             else:
                 return value, log_fname
