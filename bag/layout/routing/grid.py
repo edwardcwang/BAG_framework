@@ -124,6 +124,7 @@ class RoutingGrid(object):
     def update_block_pitch(self):
         """Update block pitch."""
         pitch_list = []
+        self.block_pitch = {}
         for lay in self.layers:
             cur_blk_pitch = self.sp_tracks[lay] + self.w_tracks[lay]
             cur_dir = self.dir_tracks[lay]

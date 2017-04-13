@@ -377,7 +377,7 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def fill_space(self):
         # type: () -> None
         """Fill all unused blocks with spaces."""
-        tot_intv = (0, self.std_size[0])
+        tot_intv = (0, self._std_size_bare[0])
         for row_idx, intv_set in enumerate(self._used_blocks):
             for intv in intv_set.get_complement(tot_intv).intervals():
                 loc = (intv[0], row_idx)
@@ -414,6 +414,12 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             orient = 'MX'
             ycur = (loc[1] + 1) * self.std_row_height
 
+        if self._draw_boundaries:
+            dx = self._bound_params['lr_width'] * self.std_col_width
+            dy = self._bound_params['tb_height'] * self.std_row_height
+        else:
+            dx = dy = 0
+
         for blk_params in self.get_space_blocks():
             lib_name = blk_params['lib_name']
             cell_name = blk_params['cell_name']
@@ -421,7 +427,7 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             num_blk, num_col = divmod(num_col, blk_col)
             blk_width = blk_col * col_pitch
             if num_blk > 0:
-                self.add_instance_primitive(lib_name, cell_name, (xcur, ycur),
+                self.add_instance_primitive(lib_name, cell_name, (xcur + dx, ycur + dy),
                                             orient=orient, nx=num_blk, spx=blk_width)
                 xcur += num_blk * blk_width
 
