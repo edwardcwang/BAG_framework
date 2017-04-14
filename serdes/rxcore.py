@@ -419,7 +419,7 @@ class RXHalfTop(SerdesRXBase):
         clkn_nmos_sw_tr_xm = ffe_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
         clkp_pmos_intsum_tr_xm = clkn_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
         clkn_pmos_summer_tr_xm = clkp_pmos_intsum_tr_xm
-        clkp_pmos_ana_tr_xm = clkp_pmos_intsum_tr_xm + clk_width_xm + clk_space_xm
+        clkp_pmos_ana_tr_xm = clkp_pmos_intsum_tr_xm
 
         clkn_nmos_sw_tr_id = TrackID(xm_layer, clkn_nmos_sw_tr_xm, width=clk_width_xm)
         clkn_nmos_sw_list = []
@@ -597,9 +597,9 @@ class RXHalfTop(SerdesRXBase):
         ntr_id = TrackID(vm_layer, ntr_vm, width=clk_width_vm)
 
         warr = self.connect_to_tracks(acp, ptr_id, track_lower=0)
-        self.add_pin('bias_dlev_outp', warr, show=show_pins)
+        self.add_pin('bias_dlevp', warr, show=show_pins)
         warr = self.connect_to_tracks(acn, ntr_id, track_lower=0)
-        self.add_pin('bias_dlev_outn', warr, show=show_pins)
+        self.add_pin('bias_dlevn', warr, show=show_pins)
 
 
 class RXHalfBottom(SerdesRXBase):
@@ -1034,7 +1034,6 @@ class RXHalf(TemplateBase):
             min_fg_sep=0,
             nduml=4,
             ndumr=4,
-            nac_off=4,
             hm_width=1,
             hm_cur_width=-1,
             sig_widths=[1, 1],
@@ -1552,6 +1551,7 @@ class RXCore(TemplateBase):
             intsum_params='Integrator summer parameters.',
             summer_params='DFE tap-1 summer parameters.',
             dlat_params_list='Digital latch parameters.',
+            nac_off='Number of off transistors for dlev AC coupling',
             min_fg_sep='Minimum separation between transistors.',
             nduml='number of dummy fingers on the left.',
             ndumr='number of dummy fingers on the right.',
@@ -1737,6 +1737,9 @@ class RXCore(TemplateBase):
                 nname = 'clkn_' + base_name
                 pwires = self.connect_wires(clk_wires.pop(pname))
                 nwires = self.connect_wires(clk_wires.pop(nname))
+                if base_name == 'nmos_tap1':
+                    pname = 'even_' + pname
+                    nname = 'odd_' + nname
                 labelp = pname + ':'
                 labeln = nname + ':'
 
@@ -1748,7 +1751,7 @@ class RXCore(TemplateBase):
 
         num_dfe = len(self.params['intsum_params']['gm_fg_list']) - 1
         for inst, prefix in zip(inst_list, ('even_', 'odd_')):
-            for pname in ('bias_ffe', 'bias_offp', 'bias_offn', 'bias_dlev_outp', 'bias_dlev_outn'):
+            for pname in ('bias_ffe', 'bias_offp', 'bias_offn', 'bias_dlevp', 'bias_dlevn'):
                 if inst.has_port(pname):
                     self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
             for idx in range(num_dfe):
