@@ -30,7 +30,7 @@ from builtins import *
 from typing import Dict, Any, Set
 
 from bag.layout.template import TemplateBase, TemplateDB
-from bag.layout.routing import TrackID
+from bag.layout.routing import TrackID, WireArray
 from bag.layout.util import BBox
 
 from ..resistor.core import ResArrayBase
@@ -394,7 +394,8 @@ class BiasBusIO(TemplateBase):
                 mid = self.grid.track_to_coord(lay, track, unit_mode=True)
                 w = self.add_wires(bus_layer, idx + 1 + bus_margin, 0, mid, unit_mode=True)
                 w_in = self.connect_to_tracks(w, TrackID(lay, track, width=width), min_len_mode=0)
-                self.add_pin(name, w, show=show_pins)
+                pin_w = WireArray(TrackID(bus_layer, idx + 1 + bus_margin), 0, self.grid.get_min_length(bus_layer, 1))
+                self.add_pin(name, pin_w, show=show_pins)
                 self.add_pin(name + '_in', w_in, show=show_pins)
 
         # compute size
@@ -735,13 +736,13 @@ class CTLECore(ResArrayBase):
         cmn = self.get_res_ports(nrow_half - 1, ndumc + 3)[1]
         vm_tr = self.grid.coord_to_nearest_track(vm_layer, cmp.middle, half_track=True)
         vm_tid = TrackID(vm_layer, vm_tr, width=io_width)
-        outcm = self.connect_to_tracks([cmp, cmn], vm_tid)
-        # hm_layer = vm_layer + 1
-        # hm_tr = self.grid.coord_to_nearest_track(hm_layer, outcm.middle, half_track=True)
-        # outcm = self.connect_to_tracks(outcm, TrackID(hm_layer, hm_tr, width=io_width), track_lower=0)
+        outcm_v = self.connect_to_tracks([cmp, cmn], vm_tid)
+        hm_layer = vm_layer + 1
+        hm_tr = self.grid.coord_to_nearest_track(hm_layer, outcm_v.middle, half_track=True)
+        outcm = self.connect_to_tracks(outcm_v, TrackID(hm_layer, hm_tr, width=io_width), track_lower=0)
         self.add_pin('outcm', outcm, show=show_pins)
 
-        return inp, inn, outp, outn, outcm
+        return inp, inn, outp, outn, outcm_v
 
     def _connect_mirror(self, offset, loc1, loc2, port1, port2):
         r1, c1 = loc1

@@ -41,7 +41,7 @@ from ..analog_core import SubstrateContact
 
 
 class BiasResistor(ResArrayBase):
-    """differential bias resistor for differential high pass filter.
+    """bias resistor for differential high pass filter.
 
     Parameters
     ----------
@@ -97,19 +97,30 @@ class BiasResistor(ResArrayBase):
         return dict(
             l='unit resistor length, in meters.',
             w='unit resistor width, in meters.',
-            num_seg='number of resistor segments.',
+            nx='number of columns.',
+            ny='number of rows.',
             sub_type='the substrate type.',
             threshold='the substrate threshold flavor.',
             res_type='the resistor type.',
             em_specs='EM specifications for the termination network.',
         )
 
-    def connect_series_resistor(self, num_seg):
+    def connect_series_resistor(self, nx, ny):
         last_port = None
         port_out = None
 
-        for idx in range(0, num_seg):
-            bot_warr, top_warr = self.get_res_ports(0, idx)
+        for cidx in range(0, nx):
+            # connect all resistors in the column
+            for ridx in range(1, ny):
+                _, a = self.get_res_ports(ridx - 1, cidx)
+                b, _ = self.get_res_ports(ridx, cidx)
+                vlay = a.layer_id + 1
+                vtr = self.grid.coord_to_nearest_track(vlay, a.middle, half_track=True)
+                self.connect_to_tracks([a, b], TrackID(vlay, vtr))
+
+            # snake between columns
+            bot_warr, _ = self.get_res_ports(0, cidx)
+            _, top_warr = self.get_res_ports(ny - 1, cidx)
             if last_port is None:
                 last_port = top_warr, 1
                 port_out = bot_warr
@@ -127,16 +138,17 @@ class BiasResistor(ResArrayBase):
         # type: () -> None
 
         kwargs = self.params.copy()
-        num_seg = kwargs.pop('num_seg')
+        nx = kwargs.pop('nx')
+        ny = kwargs.pop('ny')
 
-        if num_seg % 2 != 0:
-            raise ValueError('num_seg = %d must be even.' % num_seg)
+        if nx % 2 != 0:
+            raise ValueError('nx = %d must be even.' % nx)
 
         # draw array
-        self.draw_array(nx=num_seg, ny=1, edge_space=True, **kwargs)
+        self.draw_array(nx=nx, ny=ny, edge_space=True, **kwargs)
 
         # connect resistor in series
-        port_out, port_bias = self.connect_series_resistor(num_seg)
+        port_out, port_bias = self.connect_series_resistor(nx, ny)
 
         vm_layer = self.bot_layer_id + 1
         vm_width = self.w_tracks[1]
@@ -213,8 +225,10 @@ class HighPassFilter(TemplateBase):
             l='unit resistor length, in meters.',
             w='unit resistor width, in meters.',
             cap_edge_margin='margin between cap to block edge',
-            num_seg='number of segments in each resistor.',
+            nx='number of resistor columns.',
+            ny='number of resistor rows.',
             num_cap_layer='number of layers to use for AC coupling cap.',
+            cap_height='capacitor height.',
             io_width='input/output track width',
             sub_lch='substrate contact channel length.',
             sub_w='substrate contact width.',
@@ -231,6 +245,7 @@ class HighPassFilter(TemplateBase):
 
         res = self.grid.resolution
         edge_margin = int(round(self.params['cap_edge_margin'] / res))
+        cap_height = int(round(self.params['cap_height'] / res))
         num_cap_layer = self.params['num_cap_layer']
         show_pins = self.params['show_pins']
 
@@ -244,6 +259,7 @@ class HighPassFilter(TemplateBase):
         xr = blk_w - edge_margin
 
         # draw mom caps and get cap ports
+        cap_yt = min(cap_yt, edge_margin + cap_height)
         cap_box = BBox(xl, edge_margin, xr, cap_yt, res, unit_mode=True)
         # make sure both left and right ports on vertical layers are in
         port_parity = {lay: (0, 1) for lay in range(io_layer, io_layer + num_cap_layer, 2)}

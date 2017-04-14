@@ -103,17 +103,28 @@ class RXFrontendCore(TemplateBase):
 
     def draw_layout(self):
         # type: () -> None
-        clk_inst0, clk_inst1, core_inst, ctle_inst, vdd_list, vss_list = self._place()
+        show_pins = self.params['show_pins']
+        clk_inst0, clk_inst1, core_inst, ctle_inst, vdd_list, vss_list, x0 = self._place()
 
-        self._connect_ctle(ctle_inst, core_inst)
+        self.reexport(core_inst.get_port('outp_data<0>'), show=show_pins)
+        self.reexport(core_inst.get_port('outp_data<1>'), show=show_pins)
+        self.reexport(core_inst.get_port('outn_data<0>'), show=show_pins)
+        self.reexport(core_inst.get_port('outn_data<1>'), show=show_pins)
+
+        self._connect_ctle(ctle_inst, core_inst, x0)
         self._connect_clks(clk_inst0, clk_inst1, core_inst, vdd_list, vss_list)
 
-    def _connect_ctle(self, ctle_inst, core_inst):
+    def _connect_ctle(self, ctle_inst, core_inst, x0):
         show_pins = self.params['show_pins']
 
         # export input
         self.reexport(ctle_inst.get_port('inp'), show=show_pins)
         self.reexport(ctle_inst.get_port('inn'), show=show_pins)
+
+        # export input common mode
+        warrs = ctle_inst.get_all_port_pins('outcm')
+        warr = self.connect_wires(warrs, lower=x0, unit_mode=True)
+        self.add_pin('bias_incm', warr, show=show_pins)
 
         # connect signal
         for par in ('p', 'n'):
@@ -159,6 +170,10 @@ class RXFrontendCore(TemplateBase):
                 sup_indices.append((mid, False))
 
             for cur_name, port in ((nname, nport), (pname, pport)):
+                if cur_name == 'clkp_nmos_tap1':
+                    cur_name = 'even_clkp_nmos_tap1'
+                if cur_name == 'clkn_nmos_tap1':
+                    cur_name = 'odd_clkn_nmos_tap1'
                 self.connect_to_tracks(core_inst.get_all_port_pins(cur_name), port.track_id,
                                        track_lower=port.lower, track_upper=port.upper)
             if name == 'nmos_intsum':
@@ -177,32 +192,33 @@ class RXFrontendCore(TemplateBase):
         vdd_list.extend(core_inst.get_all_port_pins('VDD'))
         vss_list.extend(core_inst.get_all_port_pins('VSS'))
         if sup_name == 'VDD':
-            ext_vdd_list = clk_inst0.get_all_port_pins('VDD')
-            ext_vdd_list.extend(clk_inst1.get_all_port_pins('VDD'))
-            ext_vss_list = []
+            vdd_label = 'VDD:'
+            vss_label = 'VSS'
+            self.reexport(clk_inst0.get_port('VDD'), label=vdd_label)
+            self.reexport(clk_inst1.get_port('VDD'), label=vdd_label)
+
         else:
-            ext_vss_list = clk_inst0.get_all_port_pins('VSS')
-            ext_vss_list.extend(clk_inst1.get_all_port_pins('VSS'))
-            ext_vdd_list = []
+            vdd_label = 'VDD'
+            vss_label = 'VSS:'
+            self.reexport(clk_inst0.get_port('VSS'), label=vss_label)
+            self.reexport(clk_inst1.get_port('VSS'), label=vss_label)
 
         vdd_indices = sup_indices[0::2]
         vss_indices = sup_indices[1::2]
         vdd_top_list, vss_top_list = [], []
-        for idx_list, warr_list, ex_list, top_list in ((vdd_indices, vdd_list, ext_vdd_list, vdd_top_list),
-                                                       (vss_indices, vss_list, ext_vss_list, vss_top_list)):
-            for idx, extend in idx_list:
-                if not extend:
-                    top_list.append(self.connect_to_tracks(warr_list, TrackID(player, idx, width=pwidth)))
-                else:
-                    top_list.append(self.connect_to_tracks(warr_list + ex_list, TrackID(player, idx, width=pwidth)))
+        for idx_list, warr_list, top_list in ((vdd_indices, vdd_list, vdd_top_list),
+                                              (vss_indices, vss_list, vss_top_list)):
+            for idx, _ in idx_list:
+                top_list.append(self.connect_to_tracks(warr_list, TrackID(player, idx, width=pwidth)))
 
         show_pins = self.params['show_pins']
-        self.add_pin('VDD', vdd_top_list, show=show_pins)
-        self.add_pin('VSS', vss_top_list, show=show_pins)
-        self.add_pin('clkp', clkp_warr, show=show_pins)
-        self.add_pin('clkn', clkn_warr, show=show_pins)
-        self.reexport(clk_inst0.get_all_port_pins('clkn'), net_name='clkno')
-        self.reexport(clk_inst1.get_all_port_pins('clkp'), net_name='clkpo')
+        self.add_pin('VDD', vdd_top_list, show=show_pins, label=vdd_label)
+        self.add_pin('VSS', vss_top_list, show=show_pins, label=vss_label)
+
+        self.add_pin('clkp', clkp_warr, show=show_pins, label='clkp:')
+        self.add_pin('clkn', clkn_warr, show=show_pins, label='clkn:')
+        self.reexport(clk_inst0.get_all_port_pins('clkn'), net_name='clkn', label='clkn:')
+        self.reexport(clk_inst1.get_all_port_pins('clkp'), net_name='clkp', label='clkp:')
 
     def _place(self):
         rxclk_params = self.params['rxclk_params'].copy()
@@ -241,8 +257,8 @@ class RXFrontendCore(TemplateBase):
                          'bias_nmos_digital', 'bias_nmos_summer', 'bias_nmos_tap1',
                          '{}_bias_dfe<1>', '{}_bias_dfe<2>', '{}_bias_dfe<3>']
         bus_vdd_names = ['bias_pmos_analog', 'bias_pmos_digital', 'bias_pmos_summer',
-                         '{}_bias_ffe', '{}_bias_offp', '{}_bias_offn', '{}_bias_dlev_outp',
-                         '{}_bias_dlev_outn', ]
+                         '{}_bias_ffe', '{}_bias_offp', '{}_bias_offn', '{}_bias_dlevp',
+                         '{}_bias_dlevn', ]
         bus_en_names = ['{}_en_dfe<0>', '{}_en_dfe<1>', '{}_en_dfe<2>', '{}_en_dfe<3>']
 
         num_track_tot = len(bus_vss_names) + len(bus_vdd_names) + len(bus_en_names) + (2 + bus_margin * 2) * 3
@@ -297,7 +313,7 @@ class RXFrontendCore(TemplateBase):
         self.array_box = BBox(0, 0, xr, yt, self.grid.resolution, unit_mode=True)
         self.set_size_from_array_box(clk_master1.size[0])
 
-        return clk_inst0, clk_inst1, core_inst, ctle_inst, vdd_list, vss_list
+        return clk_inst0, clk_inst1, core_inst, ctle_inst, vdd_list, vss_list, bias_width
 
     def _connect_bias_wires(self, clk_inst, core_inst, move_insts, yb, prefix, bus_order,
                             vdd_list, vss_list, bus_xo):
@@ -341,7 +357,17 @@ class RXFrontendCore(TemplateBase):
             delta_y += bush
 
             for name in io_names:
-                self.reexport(bus_inst.get_port(name), show=show_pins)
+                if name == 'bias_nmos_tap1':
+                    exp_name = prefix + '_bias_dfe<0>'
+                    label = exp_name
+                elif name.startswith(prefix):
+                    exp_name = name
+                    label = name
+                else:
+                    exp_name = name
+                    label = name + ':'
+
+                self.reexport(bus_inst.get_port(name), net_name=exp_name, label=label, show=show_pins)
                 warr_dict[name] = bus_inst.get_all_port_pins(name + '_in')[0]
 
             if sup_name == 'VDD':
