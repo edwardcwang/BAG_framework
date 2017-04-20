@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Dict, Any, Set, Union, List
+from typing import Dict, Any, Set, Union, List, Optional
 
 from bag.layout.template import TemplateDB
 
@@ -260,6 +260,7 @@ class IntegSummer(SerdesRXBase):
             hm_cur_width=-1,
             show_pins=True,
             guard_ring_nf=0,
+            flip_sd_list=None,
         )
 
     @classmethod
@@ -291,6 +292,7 @@ class IntegSummer(SerdesRXBase):
             hm_cur_width='width of horizontal current track wires. If negative, defaults to hm_width.',
             show_pins='True to create pin labels.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
+            flip_sd_list='List of whether to flip source/drain connections.',
         )
 
     def draw_layout(self):
@@ -315,7 +317,8 @@ class IntegSummer(SerdesRXBase):
                             hm_width,  # type: int
                             hm_cur_width,  # type: int
                             show_pins,  # type: bool
-                            guard_ring_nf  # type: int
+                            guard_ring_nf,  # type: int
+                            flip_sd_list  # type: Optional[List[bool]]
                             ):
         # type: (...) -> None
 
@@ -363,7 +366,8 @@ class IntegSummer(SerdesRXBase):
                      'inn': (hm_width - 1) / 2}
         _, summer_ports = self.draw_gm_summer(nduml, fg_load, gm_fg_list, sgn_list=sgn_list,
                                               hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                              diff_space=diff_space, gate_locs=gate_locs)
+                                              diff_space=diff_space, gate_locs=gate_locs,
+                                              flip_sd_list=flip_sd_list)
 
         vdd_warrs = None
         hide_pins = {'midp', 'midn', 'tail', 'foot'}

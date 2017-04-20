@@ -63,7 +63,7 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         super(SerdesRXBaseInfo, self).__init__(grid, lch, guard_ring_nf,
                                                pitch_offset=pitch_offset, min_fg_sep=min_fg_sep)
 
-    def get_gm_info(self, fg_params):
+    def get_gm_info(self, fg_params, flip_sd=False):
         # type: (Dict[str, int]) -> Dict[str, Any]
         """Return Gm layout information dictionary.
 
@@ -89,6 +89,8 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
                 number of fingers used as separation between P and N side.
             min :
                 minimum number of fingers for this circuit.
+        flip_sd : bool
+            True to flip source/drain connections.
 
         Returns
         -------
@@ -117,6 +119,9 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         else:
             out_type = 'd'
 
+        if flip_sd:
+            out_type = 's' if out_type == 'd' else 's'
+
         results = dict(
             fg_tot=fg_tot,
             fg_max=fg_max,
@@ -137,7 +142,7 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
 
         return results
 
-    def get_diffamp_info(self, fg_params):
+    def get_diffamp_info(self, fg_params, flip_sd=False):
         # type: (Dict[str, int]) -> Dict[str, Any]
         """Return DiffAmp layout information dictionary.
 
@@ -167,6 +172,8 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
                 number of fingers used as separation between P and N side.
             min :
                 minimum number of fingers for this circuit.
+        flip_sd : bool
+            True to flip source/drain connections.
 
         Returns
         -------
@@ -182,7 +189,7 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         fg_min = max(fg_min, fg_pmos_tot)
         gm_fg_params = fg_params.copy()
         gm_fg_params['min'] = fg_min
-        gm_info = self.get_gm_info(fg_params)
+        gm_info = self.get_gm_info(fg_params, flip_sd=flip_sd)
         fg_gm_tot = gm_info['fg_tot']
         nduml_pmos = (fg_gm_tot - fg_pmos_tot) // 2
         ndumr_load = fg_gm_tot - fg_pmos_tot - nduml_pmos
@@ -198,8 +205,8 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
 
         return results
 
-    def get_summer_info(self, fg_load, gm_fg_list, gm_sep_list=None):
-        # type: (int, List[Dict[str, int]], Optional[List[int]]) -> Dict[str, Any]
+    def get_summer_info(self, fg_load, gm_fg_list, gm_sep_list=None, flip_sd_list=None):
+        # type: (int, List[Dict[str, int]], Optional[List[int]], Optional[List[bool]]) -> Dict[str, Any]
         """Return GmSummer layout information dictionary.
 
         Parameters
@@ -211,12 +218,20 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         gm_sep_list : Optional[List[int]]
             list of number of separator fingers between Gm stages.
             Defaults to minimum.
+        flip_sd_list : Optional[List[bool]]
+            list of whether to flip source/drain connections for each Gm cell.
+            Defaults to False.
 
         Returns
         -------
         info : Dict[str, Any]
             the GmSummer stage layout information dictionary.
         """
+        if flip_sd_list is None:
+            flip_sd_list = [False] * (len(gm_fg_list))
+        elif len(flip_sd_list) != len(gm_fg_list):
+            raise ValueError('flip_sd_list length mismatch')
+
         if gm_sep_list is None:
             gm_sep_list = [self.min_fg_sep] * (len(gm_fg_list) - 1)
         else:
@@ -229,15 +244,12 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
 
         gm_fg_cum_list = []
         gm_fg_tot = 0
-        for gm_fg_dict in gm_fg_list:
-            gm_info = self.get_gm_info(gm_fg_dict)
+        fg_load_list = []
+        for gm_fg_dict, flip_sd in zip(gm_fg_list, flip_sd_list):
+            gm_info = self.get_gm_info(gm_fg_dict, flip_sd=flip_sd)
             cur_fg_max = (gm_info['fg_max'] - gm_info['fg_sep']) // 2
             gm_fg_tot += cur_fg_max
             gm_fg_cum_list.append(cur_fg_max)
-
-        fg_load_list = []
-        for gm_fg_dict in gm_fg_list:
-            gm_info = self.get_gm_info(gm_fg_dict)
             cur_fg_tot = (gm_info['fg_tot'] - gm_info['fg_sep']) // 2
             if fg_load > 0:
                 cur_fg_load = min(fg_load, cur_fg_tot)
@@ -250,11 +262,11 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         fg_tot = 0
         amp_info_list = []
         gm_offsets = []
-        for gm_fg_dict, fg_load, fg_sep_gm in zip(gm_fg_list, fg_load_list, gm_sep_list):
+        for gm_fg_dict, fg_load, fg_sep_gm, flip_sd in zip(gm_fg_list, fg_load_list, gm_sep_list, flip_sd_list):
             gm_offsets.append(fg_tot)
             amp_fg_dict = gm_fg_dict.copy()
             amp_fg_dict['load'] = fg_load
-            amp_info = self.get_diffamp_info(amp_fg_dict)
+            amp_info = self.get_diffamp_info(amp_fg_dict, flip_sd=flip_sd)
             fg_tot += amp_info['fg_tot'] + fg_sep_gm
             amp_info_list.append(amp_info)
 
@@ -267,8 +279,8 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         )
         return results
 
-    def get_summer_offset_info(self, fg_load, fg_offset, gm_fg_list, gm_sep_list=None):
-        # type: (int, int, List[Dict[str, int]], Optional[List[int]]) -> Dict[str, Any]
+    def get_summer_offset_info(self, fg_load, fg_offset, gm_fg_list, gm_sep_list=None, flip_sd_list=None):
+        # type: (int, int, List[Dict[str, int]], Optional[List[int]], Optional[List[bool]]) -> Dict[str, Any]
         """Return GmSummerOffset layout information dictionary.
 
         Parameters
@@ -282,12 +294,20 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         gm_sep_list : Optional[List[int]]
             list of number of separator fingers between Gm stages.
             Defaults to minimum.
+        flip_sd_list : Optional[List[bool]]
+            list of whether to flip source/drain connections for each Gm cell.
+            Defaults to False.
 
         Returns
         -------
         info : Dict[str, Any]
             the GmSummer stage layout information dictionary.
         """
+        if flip_sd_list is None:
+            flip_sd_list = [False] * (len(gm_fg_list))
+        elif len(flip_sd_list) != len(gm_fg_list):
+            raise ValueError('flip_sd_list length mismatch')
+
         if gm_sep_list is None:
             gm_sep_list = [self.min_fg_sep] * (len(gm_fg_list) - 1)
         else:
@@ -301,8 +321,8 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         # use all offset cancellation fingers first, then load fingers
         fg_load_list = []
         fg_offset_list = []
-        for gm_fg_dict in gm_fg_list:
-            gm_info = self.get_gm_info(gm_fg_dict)
+        for gm_fg_dict, flip_sd in zip(gm_fg_list, flip_sd_list):
+            gm_info = self.get_gm_info(gm_fg_dict, flip_sd=flip_sd)
             cur_fg_tot = (gm_info['fg_tot'] - gm_info['fg_sep']) // 2
             if fg_offset > 0:
                 cur_fg_offset = min(fg_offset, cur_fg_tot)
@@ -322,14 +342,15 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         fg_tot = 0
         amp_info_list = []
         gm_offsets = []
-        for gm_fg_dict, fg_load, fg_offset, fg_sep_gm in zip(gm_fg_list, fg_load_list, fg_offset_list, gm_sep_list):
+        for gm_fg_dict, fg_load, fg_offset, fg_sep_gm, flip_sd in \
+                zip(gm_fg_list, fg_load_list, fg_offset_list, gm_sep_list, flip_sd_list):
             gm_offsets.append(fg_tot)
             amp_fg_dict = gm_fg_dict.copy()
             if fg_offset == 0:
                 amp_fg_dict['load'] = fg_load
             else:
                 amp_fg_dict['offset'] = fg_offset
-            amp_info = self.get_diffamp_info(amp_fg_dict)
+            amp_info = self.get_diffamp_info(amp_fg_dict, flip_sd=flip_sd)
             fg_tot += amp_info['fg_tot'] + fg_sep_gm
             amp_info_list.append(amp_info)
 
@@ -385,7 +406,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 hm_width=1,  # type: int
                 hm_cur_width=-1,  # type: int
                 diff_space=1,  # type: int
-                gate_locs=None  # type: Optional[Dict[str, int]]
+                gate_locs=None,  # type: Optional[Dict[str, int]]
+                flip_sd=False,  # type: bool
                 ):
         # type: (...) -> Tuple[int, Dict[str, List[WireArray]]]
         """Draw a differential gm stage.
@@ -425,6 +447,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             number of tracks to reserve as space between differential wires.
         gate_locs : Optional[Dict[str, int]]
             dictionary from gate names to relative track index.  If None uses default.
+        flip_sd : bool
+            True to flip source/drain.  This is to help draw layout where certain configuration
+            of number of fingers and source/drain directions may not be possible.
 
         Returns
         -------
@@ -460,7 +485,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         gate_locs = gate_locs or {}
 
         # find number of fingers per row
-        gm_info = self._serdes_info.get_gm_info(fg_params)
+        gm_info = self._serdes_info.get_gm_info(fg_params, flip_sd=flip_sd)
         out_type = gm_info['out_type']
         fg_sep = gm_info['fg_sep']
         fg_gm_tot = gm_info['fg_tot']
@@ -492,21 +517,32 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             conn['tail'] = [('inp', itail_type), ('inn', itail_type)]
         elif fg_casc > 0:
             # if cascode, flip input source/drain
-            sd_dir['casc'] = (0, 2)
-            sd_dir['in'] = (2, 0)
-            conn['midp'] = [('cascp', 's'), ('inp', 's')]
-            conn['midn'] = [('cascn', 's'), ('inn', 's')]
+            if out_type == 'd':
+                sd_dir['casc'] = (0, 2)
+                sd_dir['in'] = (2, 0)
+                mid_type = 's'
+            else:
+                sd_dir['casc'] = (2, 0)
+                sd_dir['in'] = (0, 2)
+                mid_type = 'd'
+            conn['midp'] = [('cascp', mid_type), ('inp', mid_type)]
+            conn['midn'] = [('cascn', mid_type), ('inn', mid_type)]
             track['midp'] = ('nch', self._nrow_idx['casc'], 'ds', (hm_cur_width - 1) / 2)
             track['midn'] = ('nch', self._nrow_idx['casc'], 'ds', (hm_cur_width - 1) / 2)
 
-            conn['tail'] = [('inp', 'd'), ('inn', 'd')]
+            conn['tail'] = [('inp', out_type), ('inn', out_type)]
             casc_ntr = self.get_num_tracks('nch', self._nrow_idx['casc'], 'g')
             conn['bias_casc'] = [('cascp', 'g'), ('cascn', 'g')]
             track['bias_casc'] = ('nch', self._nrow_idx['casc'], 'g',
                                   gate_locs.get('bias_casc', casc_ntr - (hm_width + 1) / 2))
         else:
-            sd_dir['in'] = (0, 2)
-            conn['tail'] = [('inp', 's'), ('inn', 's')]
+            if out_type == 'd':
+                sd_dir['in'] = (0, 2)
+                tail_type = 's'
+            else:
+                sd_dir['in'] = (2, 0)
+                tail_type = 'd'
+            conn['tail'] = [('inp', tail_type), ('inn', tail_type)]
 
         # switch
         if fg_sw > 0:
@@ -593,8 +629,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         # get output WireArrays
         port_dict = {}
         if fg_but > 0:
-            port_dict['outp'] = [mos_dict['butp']['dp'], mos_dict['butn']['dp']]
-            port_dict['outn'] = [mos_dict['butp']['dn'], mos_dict['butn']['dn']]
+            op_sd = out_type + 'p'
+            on_sd = out_type + 'n'
+            port_dict['outp'] = [mos_dict['butp'][op_sd], mos_dict['butn'][op_sd]]
+            port_dict['outn'] = [mos_dict['butp'][on_sd], mos_dict['butn'][on_sd]]
 
             # draw differential butterfly connection
             but_ntr = self.get_num_tracks('nch', self._nrow_idx['but'], 'g')
@@ -609,11 +647,11 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             port_dict['sgnp'] = [p_tr, ]
             port_dict['sgnn'] = [n_tr, ]
         elif fg_casc > 0:
-            port_dict['outp'] = [mos_dict['cascn']['d'], ]
-            port_dict['outn'] = [mos_dict['cascp']['d'], ]
+            port_dict['outp'] = [mos_dict['cascn'][out_type], ]
+            port_dict['outn'] = [mos_dict['cascp'][out_type], ]
         else:
-            port_dict['outp'] = [mos_dict['inn']['d'], ]
-            port_dict['outn'] = [mos_dict['inp']['d'], ]
+            port_dict['outp'] = [mos_dict['inn'][out_type], ]
+            port_dict['outn'] = [mos_dict['inp'][out_type], ]
 
         # draw differential input connection
         inp_warr = mos_dict['inp']['g']
@@ -653,7 +691,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                      hm_cur_width=-1,  # type: int
                      diff_space=1,  # type: int
                      gate_locs=None,  # type: Optional[Dict[str, float]]
-                     sign=1  # type: int
+                     sign=1,  # type: int
+                     flip_sd=False  # type: bool
                      ):
         # type: (...) -> Tuple[int, Dict[str, List[WireArray]]]
         """Draw a differential amplifier/dynamic latch.
@@ -699,6 +738,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             dictionary from gate names to relative track index.  If None uses default.
         sign : int
             the sign of the gain.  If negative, flip output connection.
+        flip_sd : bool
+            True to flip source/drain.  This is to help draw layout where certain configuration
+            of number of fingers and source/drain directions may not be possible.
 
         Returns
         -------
@@ -719,7 +761,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         gate_locs = gate_locs or {}
 
         # compute Gm stage column index.
-        results = self._serdes_info.get_diffamp_info(fg_params)
+        results = self._serdes_info.get_diffamp_info(fg_params, flip_sd=flip_sd)
         # import pprint
         # print('draw diffamp at column %d, fg_tot = %d, fg_min = %d' % (col_idx, results['fg_tot'], results['fg_min']))
         # pprint.pprint(fg_params)
@@ -732,7 +774,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         gm_params = fg_params.copy()
         gm_params['min'] = max(gm_params.get('min', fg_min), fg_min)
         fg_amp_tot, port_dict = self.draw_gm(col_idx, fg_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                             diff_space=diff_space, gate_locs=gate_locs)
+                                             diff_space=diff_space, gate_locs=gate_locs, flip_sd=flip_sd)
 
         outp_warrs = port_dict['outp']
         outn_warrs = port_dict['outn']
@@ -807,7 +849,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                        hm_width=1,  # type: int
                        hm_cur_width=-1,  # type: int
                        diff_space=1,  # type: int
-                       gate_locs=None  # type: Optional[Dict[str, int]]
+                       gate_locs=None,  # type: Optional[Dict[str, float]]
+                       flip_sd_list=None  # type: Optional[List[bool]]
                        ):
         # type: (...) -> Tuple[int, Dict[Tuple[str, int], List[WireArray]]]
         """Draw a differential Gm summer (multiple Gm stage connected to same load).
@@ -836,6 +879,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             number of tracks to reserve as space between differential wires.
         gate_locs : Optional[Dict[str, int]]
             dictionary from gate names to relative track index.  If None uses default.
+        flip_sd_list : Optional[List[bool]]
+            list of whether to flip source/drain connections for each Gm cell.
+            Defaults to False.
 
         Returns
         -------
@@ -852,7 +898,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         if fg_load <= 0:
             raise ValueError('load transistors num. fingers must be positive.')
 
-        summer_info = self._serdes_info.get_summer_info(fg_load, gm_fg_list, gm_sep_list=gm_sep_list)
+        summer_info = self._serdes_info.get_summer_info(fg_load, gm_fg_list, gm_sep_list=gm_sep_list,
+                                                        flip_sd_list=flip_sd_list)
 
         if len(sgn_list) != len(gm_fg_list):
             raise ValueError('sign list and number of GM stages mistach.')
@@ -864,13 +911,13 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         # draw each Gm stage and load.
         conn_dict = {'vddt': [], 'bias_load': [], 'outp': [], 'outn': []}
         port_dict = {}
-        for idx, (cur_fg_load, gm_off, gm_fg_dict, sgn) in enumerate(zip(fg_load_list, gm_offsets,
-                                                                         gm_fg_list, sgn_list)):
+        for idx, (cur_fg_load, gm_off, gm_fg_dict, sgn, flip_sd) in \
+                enumerate(zip(fg_load_list, gm_offsets, gm_fg_list, sgn_list, flip_sd_list)):
             cur_amp_params = gm_fg_dict.copy()
             cur_amp_params['load'] = cur_fg_load
             _, cur_ports = self.draw_diffamp(col_idx + gm_off, cur_amp_params, hm_width=hm_width,
                                              hm_cur_width=hm_cur_width, diff_space=diff_space,
-                                             gate_locs=gate_locs, sign=sgn)
+                                             gate_locs=gate_locs, sign=sgn, flip_sd=flip_sd)
             # register port
             for name, warr_list in cur_ports.items():
                 if name in conn_dict:

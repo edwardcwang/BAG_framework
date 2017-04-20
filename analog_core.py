@@ -781,7 +781,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             source connection direction.  0 for down, 1 for middle, 2 for up.
         ddir : int
             drain connection direction.  0 for down, 1 for middle, 2 for up.
-        kwargs : dict[string, any]
+        **kwargs :
             optional arguments for AnalogMosConn.
         Returns
         -------
