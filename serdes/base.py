@@ -611,8 +611,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             port_dict['outp'] = [mos_dict['cascn']['d'], ]
             port_dict['outn'] = [mos_dict['cascp']['d'], ]
         else:
-            port_dict['outp'] = [mos_dict['inp']['d'], ]
-            port_dict['outn'] = [mos_dict['inn']['d'], ]
+            port_dict['outp'] = [mos_dict['inn']['d'], ]
+            port_dict['outn'] = [mos_dict['inp']['d'], ]
 
         # draw differential input connection
         inp_warr = mos_dict['inp']['g']
