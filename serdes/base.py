@@ -235,15 +235,16 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
             gm_fg_tot += cur_fg_max
             gm_fg_cum_list.append(cur_fg_max)
 
-        # distrbute load across gm stages to minimize horizontal current.
         fg_load_list = []
-        last_fg = 0
-        for fg_cum in gm_fg_cum_list:
-            cur_fg = fg_cum * fg_load / gm_fg_tot
-            # round to even
-            cur_fg = int(round(cur_fg / 2)) * 2
-            fg_load_list.append(cur_fg - last_fg)
-            last_fg = cur_fg
+        for gm_fg_dict in gm_fg_list:
+            gm_info = self.get_gm_info(gm_fg_dict)
+            cur_fg_tot = (gm_info['fg_tot'] - gm_info['fg_sep']) // 2
+            if fg_load > 0:
+                cur_fg_load = min(fg_load, cur_fg_tot)
+                fg_load_list.append(cur_fg_load)
+                fg_load -= cur_fg_load
+            else:
+                fg_load_list.append(0)
 
         # get each diffamp info and calculate total number of fingers.
         fg_tot = 0
@@ -297,22 +298,22 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         # append dummy value so we can use zip later.
         gm_sep_list.append(0)
 
-        # use all load fingers first, then offset cancellation fingers
+        # use all offset cancellation fingers first, then load fingers
         fg_load_list = []
         fg_offset_list = []
         for gm_fg_dict in gm_fg_list:
             gm_info = self.get_gm_info(gm_fg_dict)
             cur_fg_tot = (gm_info['fg_tot'] - gm_info['fg_sep']) // 2
-            if fg_load > 0:
-                cur_fg_load = min(fg_load, cur_fg_tot)
-                fg_load_list.append(cur_fg_load)
-                fg_load -= cur_fg_load
-                fg_offset_list.append(0)
-            elif fg_offset > 0:
+            if fg_offset > 0:
                 cur_fg_offset = min(fg_offset, cur_fg_tot)
                 fg_offset_list.append(cur_fg_offset)
                 fg_offset -= cur_fg_offset
                 fg_load_list.append(0)
+            elif fg_load > 0:
+                cur_fg_load = min(fg_load, cur_fg_tot)
+                fg_load_list.append(cur_fg_load)
+                fg_load -= cur_fg_load
+                fg_offset_list.append(0)
             else:
                 fg_load_list.append(0)
                 fg_offset_list.append(0)
@@ -651,7 +652,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                      hm_width=1,  # type: int
                      hm_cur_width=-1,  # type: int
                      diff_space=1,  # type: int
-                     gate_locs=None,  # type: Optional[Dict[str, int]]
+                     gate_locs=None,  # type: Optional[Dict[str, float]]
                      sign=1  # type: int
                      ):
         # type: (...) -> Tuple[int, Dict[str, List[WireArray]]]
@@ -751,8 +752,14 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             if fg_offset > 0:
                 # connect offset cancellation gate bias
                 pgtop_tr = pgbot_tr + hm_width
-                optr_id = self.make_track_id('pch', 0, 'g', gate_locs.get('bias_offp', pgtop_tr), width=hm_width)
-                ontr_id = self.make_track_id('pch', 0, 'g', gate_locs.get('bias_offn', pgbot_tr), width=hm_width)
+                if sign < 0:
+                    opg_tr = pgbot_tr
+                    ong_tr = pgtop_tr
+                else:
+                    opg_tr = pgtop_tr
+                    ong_tr = pgbot_tr
+                optr_id = self.make_track_id('pch', 0, 'g', gate_locs.get('bias_offp', opg_tr), width=hm_width)
+                ontr_id = self.make_track_id('pch', 0, 'g', gate_locs.get('bias_offn', ong_tr), width=hm_width)
                 pwarr = self.connect_to_tracks([loadp['g']], optr_id)
                 nwarr = self.connect_to_tracks([loadn['g']], ontr_id)
                 if sign < 0:
@@ -892,7 +899,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                               hm_width=1,  # type: int
                               hm_cur_width=-1,  # type: int
                               diff_space=1,  # type: int
-                              gate_locs=None  # type: Optional[Dict[str, int]]
+                              gate_locs=None  # type: Optional[Dict[str, float]]
                               ):
         # type: (...) -> Tuple[int, Dict[Tuple[str, int], List[WireArray]]]
         """Draw a differential Gm summer (multiple Gm stage connected to same load).
