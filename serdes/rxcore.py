@@ -249,12 +249,12 @@ class RXHalfTop(SerdesRXBase):
 
         intsum_col = intsum_params.pop('col_idx')
         # print('rxtop intsum cur_col: %d' % cur_col)
-        _, intsum_ports = self.draw_gm_summer_offset(intsum_col, hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                                     diff_space=diff_space, gate_locs=gate_locs,
-                                                     **intsum_params)
-        intsum_info = self.layout_info.get_summer_offset_info(intsum_params['fg_load'], intsum_params['fg_offset'],
-                                                              intsum_params['gm_fg_list'],
-                                                              gm_sep_list=intsum_params.get('gm_sep_list', None))
+        _, intsum_ports = self.draw_gm_summer(intsum_col, hm_width=hm_width, hm_cur_width=hm_cur_width,
+                                              diff_space=diff_space, gate_locs=gate_locs,
+                                              **intsum_params)
+        intsum_info = self.layout_info.get_summer_info(intsum_params['fg_load'], intsum_params['gm_fg_list'],
+                                                       gm_sep_list=intsum_params.get('gm_sep_list', None),
+                                                       flip_sd_list=intsum_params.get('flip_sd_list', None))
 
         summer_col = summer_params.pop('col_idx')
         # print('rxtop summer cur_col: %d' % cur_col)
@@ -262,7 +262,8 @@ class RXHalfTop(SerdesRXBase):
                                               diff_space=diff_space, gate_locs=gate_locs,
                                               **summer_params)
         summer_info = self.layout_info.get_summer_info(summer_params['fg_load'], summer_params['gm_fg_list'],
-                                                       gm_sep_list=summer_params.get('gm_sep_list', None))
+                                                       gm_sep_list=summer_params.get('gm_sep_list', None),
+                                                       flip_sd_list=summer_params.get('flip_sd_list', None))
 
         col_intv = acoff_params['col_intv']
         nac_off = acoff_params['nac_off']
@@ -313,7 +314,6 @@ class RXHalfTop(SerdesRXBase):
         vdd_list.extend(intsum_ports[('vddt', -1)])
         vdd_list.extend(summer_ports[('vddt', -1)])
         cascl_list.extend(alat_ports['bias_casc'])
-        cascl_list.extend(intsum_ports[('bias_casc', 0)])
 
         # export alat inout pins
         inout_list = ('inp', 'inn', 'outp', 'outn')
@@ -470,7 +470,13 @@ class RXHalfTop(SerdesRXBase):
         warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
         self.add_pin(clkp + '_pmos_intsum', warr, show=show_pins)
         # nmos switch
-        warr = self.connect_wires(intsum_ports[('sw', 0)] + intsum_ports[('sw', 1)])
+        nmax = len(intsum_info['gm_offsets'])
+        warr_list = []
+        for idx in range(nmax):
+            key = 'sw', idx
+            if key in intsum_ports:
+                warr_list.extend(intsum_ports[key])
+        warr = self.connect_wires(warr_list)
         warr = self.connect_to_tracks(warr, ltr_id)
         clkn_nmos_sw_list.append(warr)
 
@@ -492,11 +498,12 @@ class RXHalfTop(SerdesRXBase):
         self.add_pin(clkp + '_nmos_intsum', warr, show=show_pins)
 
         # connect intsum dfe tap biases
-        num_dfe = len(intsum_info['gm_offsets']) - 2
+        num_dfe = nmax - 3
         for fb_idx in range(num_dfe):
+            gm_idx = fb_idx + 3
             dfe_idx = num_dfe + 1 - fb_idx
-            intsum_start = intsum_col + intsum_info['gm_offsets'][2 + fb_idx]
-            col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][2 + fb_idx]['fg_tot']
+            intsum_start = intsum_col + intsum_info['gm_offsets'][gm_idx]
+            col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][gm_idx]['fg_tot']
             if dfe_idx % 2 == 0:
                 # no criss-cross inputs.
                 bias_tr_vm, en_tr_vm = get_bias_tracks(self.layout_info, vm_layer, col_intv, sig_width_vm, sig_space_vm,
@@ -512,24 +519,9 @@ class RXHalfTop(SerdesRXBase):
                     en_tr_vm += (sig_width_vm + sig_space_vm) * 5 / 2
                     bias_tr_vm = en_tr_vm - clk_width_vm - clk_space_vm
 
-            # en_dfe
-            en_tr_id = TrackID(vm_layer, en_tr_vm, width=clk_width_vm)
-            warr = self.connect_to_tracks(intsum_ports[('bias_casc', 2 + fb_idx)], en_tr_id, track_lower=0)
-            self.add_pin('en_dfe<%d>' % (dfe_idx - 1), warr, show=show_pins)
-            # TODO: hardcode offset cancellation biases to route between DFE<3> and DFE<2> for now
-            if dfe_idx == 4:
-                offp_tr_vm = en_tr_vm + clk_width_vm + clk_space_vm
-                offn_tr_vm = offp_tr_vm + clk_width_vm + clk_space_vm
-                offp_tr_id = TrackID(vm_layer, offp_tr_vm, width=clk_width_vm)
-                offn_tr_id = TrackID(vm_layer, offn_tr_vm, width=clk_width_vm)
-                warr = self.connect_to_tracks(intsum_ports[('bias_offp', -1)], offp_tr_id, track_lower=0)
-                self.add_pin('bias_offp', warr, show=show_pins)
-                warr = self.connect_to_tracks(intsum_ports[('bias_offn', -1)], offn_tr_id, track_lower=0)
-                self.add_pin('bias_offn', warr, show=show_pins)
-
             # bias_dfe
             bias_tr_id = TrackID(vm_layer, bias_tr_vm, width=clk_width_vm)
-            warr = self.connect_to_tracks(intsum_ports[('bias_tail', 2 + fb_idx)], bias_tr_id, track_lower=0)
+            warr = self.connect_to_tracks(intsum_ports[('bias_tail', gm_idx)], bias_tr_id, track_lower=0)
             self.add_pin('bias_dfe<%d>' % (dfe_idx - 1), warr, show=show_pins)
 
         # pmos intsum
@@ -537,10 +529,6 @@ class RXHalfTop(SerdesRXBase):
         xtr_id = TrackID(xm_layer, clkp_pmos_intsum_tr_xm, width=clk_width_xm)
         warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
         self.add_pin(clkp + '_pmos_intsum', warr, show=show_pins)
-        # nmos switch
-        warr = self.connect_wires(intsum_ports[('sw', 0)] + intsum_ports[('sw', 1)])
-        warr = self.connect_to_tracks(warr, ltr_id)
-        clkn_nmos_sw_list.append(warr)
 
         # connect summer main tap biases
         summer_col, summer_info = block_info['summer']
@@ -579,7 +567,7 @@ class RXHalfTop(SerdesRXBase):
             en_tr_id, tap_tr_id = rtr_id, ltr_id
         # en_dfe
         warr = self.connect_to_tracks(summer_ports[('bias_casc', 1)], en_tr_id, track_lower=0)
-        self.add_pin('en_dfe<0>', warr, show=show_pins)
+        self.add_pin('en_dfe1', warr, show=show_pins)
         warr = self.connect_to_tracks(summer_ports[('bias_tail', 1)], tap_tr_id)
         xtr_id = TrackID(xm_layer, clkp_nmos_tap1_tr_xm, width=clk_width_xm)
         warr = self.connect_to_tracks(warr, xtr_id)
@@ -714,7 +702,6 @@ class RXHalfBottom(SerdesRXBase):
         vdd_list, casc_list = [], []
         vdd_list.extend(integ_ports['vddt'])
         vdd_list.extend(alat_ports['vddt'])
-        casc_list.extend(integ_ports['bias_casc'])
         casc_list.extend(alat_ports['bias_casc'])
 
         # export inout pins
@@ -1227,7 +1214,7 @@ class RXHalf(TemplateBase):
         col_idx_dict['intsum'].append((intsum_col_idx, cur_col))
         cur_col += intsum_gm_sep_list[0]
         # print('cur_col: %d' % cur_col)
-        # step 2B: place precursor tap.  must fit one differential track + 2 clk rout track
+        # step 2B: place precursor tap.  must fit one differential track + 2 clk route track
         # print('intsum_pre_col: %d' % cur_col)
         intsum_pre_col_idx = cur_col
         intsum_pre_fg_params = intsum_gm_fg_list[1].copy()
@@ -1238,16 +1225,28 @@ class RXHalf(TemplateBase):
         cur_col += intsum_pre_info['fg_tot']
         col_idx_dict['intsum'].append((intsum_pre_col_idx, cur_col))
         cur_col += intsum_gm_sep_list[1]
+        # step 2B + 0.5: place offset cancellation.   Must fit 3 bias tracks
+        intsum_off_col_idx = cur_col
+        intsum_off_fg_params = intsum_gm_fg_list[2].copy()
+        intsum_off_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_clk_route_tracks, cur_col)
+        intsum_off_fg_params['min'] = intsum_off_fg_min
+        intsum_off_info = layout_info.get_gm_info(intsum_off_fg_params)
+        new_intsum_gm_fg_list.append(intsum_off_fg_params)
+        cur_col += intsum_off_info['fg_tot']
+        col_idx_dict['intsum'].append((intsum_off_col_idx, cur_col))
+        cur_col += intsum_gm_sep_list[2]
         # print('cur_col: %d' % cur_col)
         # step 2C: place intsum DFE taps
-        num_dfe = len(intsum_gm_fg_list) - 2 + 1
+        num_intsum_gm = len(intsum_gm_fg_list)
+        num_dfe = num_intsum_gm - 3 + 1
         new_dlat_params_list = [None] * len(dlat_params_list)
         # NOTE: here DFE index start at 1.
-        for idx in range(2, len(intsum_gm_fg_list)):
+        for idx in range(3, num_intsum_gm):
             # print('intsum_idx%d_col: %d' % (idx, cur_col))
             intsum_dfe_fg_params = intsum_gm_fg_list[idx].copy()
-            dfe_idx = num_dfe - (idx - 2)
-            dig_latch_params = dlat_params_list[dfe_idx - 2].copy()
+            dfe_idx = num_dfe - (idx - 3)
+            dlat_idx = dfe_idx - 2
+            dig_latch_params = dlat_params_list[dlat_idx].copy()
             in_route = False
             num_route_tracks = diff_clk_route_tracks
             if dfe_idx > 2:
@@ -1273,7 +1272,7 @@ class RXHalf(TemplateBase):
                 intsum_dfe_fg_params['min'] = num_fg
                 dig_latch_params['min'] = num_fg
                 dig_latch_params['col_idx'] = cur_col
-                col_idx_dict['dlat'][dfe_idx - 2] = (cur_col, cur_col + num_fg)
+                col_idx_dict['dlat'][dlat_idx] = (cur_col, cur_col + num_fg)
                 col_idx_dict['intsum'].append((cur_col, cur_col + num_fg))
                 cur_col += num_fg
                 # print('cur_col: %d' % cur_col)
@@ -1281,7 +1280,7 @@ class RXHalf(TemplateBase):
                     # allocate input route
                     route_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
                     intsum_gm_sep_list[idx] = route_fg_min
-                    col_idx_dict['dlat%d_inroute' % (dfe_idx - 2)] = (cur_col, cur_col + route_fg_min)
+                    col_idx_dict['dlat%d_inroute' % dlat_idx] = (cur_col, cur_col + route_fg_min)
                     cur_col += route_fg_min
                     # print('cur_col: %d' % cur_col)
                 else:
@@ -1298,7 +1297,7 @@ class RXHalf(TemplateBase):
                 cur_col += num_fg
                 # print('cur_col: %d' % cur_col)
             # save modified parameters
-            new_dlat_params_list[dfe_idx - 2] = dig_latch_params
+            new_dlat_params_list[dlat_idx] = dig_latch_params
             new_intsum_gm_fg_list.append(intsum_dfe_fg_params)
         # print('intsum_last_col: %d' % cur_col)
         # step 2D: reserve routing tracks between intsum and summer
@@ -1376,10 +1375,10 @@ class RXHalf(TemplateBase):
         top_params['intsum_params'] = dict(
             col_idx=intsum_col_idx,
             fg_load=intsum_params['fg_load'],
-            fg_offset=intsum_params['fg_offset'],
             gm_fg_list=new_intsum_gm_fg_list,
             gm_sep_list=intsum_gm_sep_list,
             sgn_list=intsum_params['sgn_list'],
+            flip_sd_list=intsum_params.get('flip_sd_list', None),
         )
         top_params['summer_params'] = dict(
             col_idx=summer_col_idx,
@@ -1434,16 +1433,17 @@ class RXHalf(TemplateBase):
                   top_inst.get_port('intsum_inp<%d>' % (nintsum - 1)).get_pins()[0], ]
         n_list = [bot_inst.get_port('dlat0_outn').get_pins()[0],
                   top_inst.get_port('intsum_inn<%d>' % (nintsum - 1)).get_pins()[0], ]
-        if nintsum > 3:
+        if nintsum > 4:
             p_list.append(bot_inst.get_port('dlat1_inp').get_pins()[0])
             n_list.append(bot_inst.get_port('dlat1_inn').get_pins()[0])
 
         self.connect_differential_tracks(p_list, n_list, vm_layer, ptr_idx, ntr_idx, width=vm_width)
 
         # connect even DFE taps
-        ndfe = nintsum - 2 + 1
+        ndfe = nintsum - 3 + 1
         for dfe_idx in range(4, ndfe + 1, 2):
-            intsum_idx = nintsum - 1 - (dfe_idx - 2)
+            dlat_idx = dfe_idx - 2
+            intsum_idx = nintsum - 1 - dlat_idx
             route_col_intv = col_idx_dict['intsum'][intsum_idx]
             ptr_idx = layout_info.get_center_tracks(vm_layer, 2, route_col_intv, width=vm_width, space=vm_space)
             ntr_idx = ptr_idx + vm_space + vm_width
@@ -1679,22 +1679,22 @@ class RXCore(TemplateBase):
         tr_idx_list = [ptr_idx, ptr_idx + vm_width + vm_space]
         warr_list_list = [[inst_list[0].get_port('dlat1_outp').get_pins()[0],
                            inst_list[0].get_port('dlat2_inp').get_pins()[0],
-                           inst_list[1].get_port('intsum_inp<3>').get_pins()[0],
+                           inst_list[1].get_port('intsum_inp<4>').get_pins()[0],
                            ],
                           [inst_list[0].get_port('dlat1_outn').get_pins()[0],
                            inst_list[0].get_port('dlat2_inn').get_pins()[0],
-                           inst_list[1].get_port('intsum_inn<3>').get_pins()[0],
+                           inst_list[1].get_port('intsum_inn<4>').get_pins()[0],
                            ], ]
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width)
         tr_idx_list[0] += 2 * vm_pitch
         tr_idx_list[1] += 2 * vm_pitch
         warr_list_list = [[inst_list[1].get_port('dlat1_outp').get_pins()[0],
                            inst_list[1].get_port('dlat2_inp').get_pins()[0],
-                           inst_list[0].get_port('intsum_inp<3>').get_pins()[0],
+                           inst_list[0].get_port('intsum_inp<4>').get_pins()[0],
                            ],
                           [inst_list[1].get_port('dlat1_outn').get_pins()[0],
                            inst_list[1].get_port('dlat2_inn').get_pins()[0],
-                           inst_list[0].get_port('intsum_inn<3>').get_pins()[0],
+                           inst_list[0].get_port('intsum_inn<4>').get_pins()[0],
                            ], ]
         self.connect_matching_tracks(warr_list_list, vm_layer_id, tr_idx_list, width=vm_width)
 
@@ -1749,15 +1749,15 @@ class RXCore(TemplateBase):
         for name, wires in clk_wires.items():
             self.add_pin(name, wires, show=show_pins)
 
-        num_dfe = len(self.params['intsum_params']['gm_fg_list']) - 1
+        num_dfe = len(self.params['intsum_params']['gm_fg_list']) - 3 + 1
         for inst, prefix in zip(inst_list, ('even_', 'odd_')):
-            for pname in ('bias_ffe', 'bias_offp', 'bias_offn', 'bias_dlevp', 'bias_dlevn'):
+            for pname in ('bias_ffe', 'bias_dlevp', 'bias_dlevn'):
                 if inst.has_port(pname):
                     self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
             for idx in range(num_dfe):
-                pname = 'en_dfe<%d>' % idx
-                self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
-                if idx > 0:
+                if idx == 0:
+                    self.reexport(inst.get_port('en_dfe1'), net_name=prefix + pname, show=show_pins)
+                else:
                     pname = 'bias_dfe<%d>' % idx
                     self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
 

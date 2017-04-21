@@ -891,6 +891,11 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             a dictionary from connection name/index pair to the horizontal track associated
             with the connection.
         """
+        if flip_sd_list is None:
+            flip_sd_list = [False] * (len(gm_fg_list))
+        elif len(flip_sd_list) != len(gm_fg_list):
+            raise ValueError('flip_sd_list length mismatch')
+
         if sgn_list is None:
             sgn_list = [1] * len(gm_fg_list)
 
