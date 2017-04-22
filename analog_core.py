@@ -470,6 +470,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._sub_cls = tech_params['layout']['sub_template']
         self._sep_cls = tech_params['layout']['mos_sep_template']
         self._dum_cls = tech_params['layout']['mos_dummy_template']
+        self._cap_cls = tech_params['layout'].get('mos_decap_template', None)
 
         # initialize parameters
         self._lch = None
@@ -480,6 +481,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._gds_space = None
         self._n_intvs = None  # type: List[IntervalSet]
         self._p_intvs = None  # type: List[IntervalSet]
+        self._capn_intvs = None
+        self._capp_intvs = None
+        self._capp_wires = {-1: [], 1: []}
+        self._capn_wires = {-1: [], 1: []}
         self._num_tracks = None
         self._track_offsets = None
         self._ds_tr_indices = None
@@ -764,6 +769,46 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 return True
         return False
 
+    def draw_mos_decap(self, mos_type, row_idx, col_idx, fg, gate_ext_mode,
+                       inner=False, **kwargs):
+        """Draw decap connection."""
+        if self._cap_cls is None:
+            raise ValueError('MOS decap primitive not found in this technology.')
+
+        # mark transistors as connected
+        val = -1 if inner else 1
+        if mos_type == 'pch':
+            intv_set = self._p_intvs[row_idx]
+            cap_intv_set = self._capp_intvs[row_idx]
+            wires_dict = self._capp_wires
+        else:
+            intv_set = self._n_intvs[row_idx]
+            cap_intv_set = self._capn_intvs[row_idx]
+            wires_dict = self._capn_wires
+
+        intv = col_idx, col_idx + fg
+        if intv_set.has_overlap(intv) or not cap_intv_set.add(intv, val=val):
+            msg = 'Cannot connect %s row %d [%d, %d); some are already connected.'
+            raise ValueError(msg % (mos_type, row_idx, intv[0], intv[1]))
+
+        ridx = self._ridx_lookup[mos_type][row_idx]
+        orient = self._orient_list[ridx]
+        w = self._w_list[ridx]
+        xc, yc = self._layout_info.sd_xc, self._sd_yc_list[ridx]
+        xc += col_idx * self.sd_pitch
+
+        conn_params = dict(
+            lch=self._lch,
+            w=w,
+            fg=fg,
+            gate_ext_mode=gate_ext_mode,
+        )
+        conn_params.update(kwargs)
+
+        conn_master = self.new_template(params=conn_params, temp_cls=self._cap_cls)
+        inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient)
+        wires_dict[val].extend(inst.get_all_port_pins('supply'))
+
     def draw_mos_conn(self, mos_type, row_idx, col_idx, fg, sdir, ddir, **kwargs):
         """Draw transistor connection.
 
@@ -788,16 +833,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         ports : dict[str, :class:`~bag.layout.routing.WireArray`]
             a dictionary of ports as WireArrays.  The keys are 'g', 'd', and 's'.
         """
-        if col_idx + fg >= self._fg_tot:
-            print(mos_type, row_idx, col_idx, fg, col_idx + fg)
         # mark transistors as connected
         if mos_type == 'pch':
             intv_set = self._p_intvs[row_idx]
+            cap_intv_set = self._capp_intvs[row_idx]
         else:
             intv_set = self._n_intvs[row_idx]
+            cap_intv_set = self._capn_intvs[row_idx]
 
         intv = col_idx, col_idx + fg
-        if not intv_set.add(intv):
+        if cap_intv_set.has_overlap(intv) or not intv_set.add(intv):
             msg = 'Cannot connect %s row %d [%d, %d); some are already connected.'
             raise ValueError(msg % (mos_type, row_idx, intv[0], intv[1]))
 
@@ -993,6 +1038,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._ridx_lookup = dict(nch=[], pch=[], ntap=[], ptap=[])
         self._n_intvs = [IntervalSet() for _ in range(numn)]
         self._p_intvs = [IntervalSet() for _ in range(nump)]
+        self._capn_intvs = [IntervalSet() for _ in range(numn)]
+        self._capp_intvs = [IntervalSet() for _ in range(nump)]
         self._pitch_offset = pitch_offset
 
         if pgr_w is None:
@@ -1227,7 +1274,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             if len(self._ptap_list) > 1:
                 top_sub_inst = self._ptap_list[1]
                 top_tracks = self._ptap_exports[1]
-            self._fill_dummy_helper('nch', n_intvs, bot_sub_inst, top_sub_inst,
+            self._fill_dummy_helper('nch', n_intvs, self._capn_intvs, self._capn_wires, bot_sub_inst, top_sub_inst,
                                     bot_tracks, top_tracks, not self._ntap_list)
 
         # connect PMOS dummies
@@ -1239,7 +1286,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             if len(self._ntap_list) > 1:
                 bot_sub_inst = self._ntap_list[0]
                 bot_tracks = self._ntap_exports[0]
-            self._fill_dummy_helper('pch', p_intvs, bot_sub_inst, top_sub_inst,
+            self._fill_dummy_helper('pch', p_intvs, self._capp_intvs, self._capp_wires, bot_sub_inst, top_sub_inst,
                                     bot_tracks, top_tracks, not self._ptap_list)
 
         # connect NMOS substrates to horizontal tracks.
@@ -1275,6 +1322,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def _fill_dummy_helper(self,  # type: AnalogBase
                            mos_type,  # type: str
                            intv_set_list,  # type: List[IntervalSet]
+                           cap_intv_set_list,  # type: List[IntervalSet]
+                           cap_wires_dict,  # type: Dict[int, List[WireArray]]
                            bot_sub_inst,  # type: Optional[Instance]
                            top_sub_inst,  # type: Optional[Instance]
                            bot_tracks,  # type: List[int]
@@ -1294,7 +1343,15 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             top_conn = _get_dummy_connections(list(reversed(intv_set_list)))
 
         # make list of unconnected interval sets.
-        unconn_intv_set_list = [intv_set.copy() for intv_set in intv_set_list]
+        unconn_intv_set_list = []
+        dum_avail_intv_set_list = []
+        # subtract cap interval sets.
+        for intv_set, cap_intv_set in zip(intv_set_list, cap_intv_set_list):
+            unconn_intv_set_list.append(intv_set.copy())
+            temp_intv = intv_set.copy()
+            for intv in cap_intv_set:
+                temp_intv.subtract(intv)
+            dum_avail_intv_set_list.append(temp_intv)
 
         if num_sub == 2:
             # we have both top and bottom substrate, so we can connect all dummies together
@@ -1331,7 +1388,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 for distance in range(num_rows):
                     ridx = distance if sign > 0 else num_rows - 1 - distance
                     gate_intv_set = gintvs[distance]
-                    for dummy_intv in intv_set_list[ridx]:
+                    for dummy_intv in dum_avail_intv_set_list[ridx]:
                         key = ridx, dummy_intv[0], dummy_intv[1]
                         overlaps = list(gate_intv_set.overlap_intervals(dummy_intv))
                         val_list = [0 if ovl_intv in all_conn_set else sign for ovl_intv in overlaps]
@@ -1361,6 +1418,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     wire_groups[sub_val].append(gate_warr)
             elif not self.floating_dummy:
                 raise Exception('Dummy (%d, %d) at row %d unconnected.' % (start, stop, ridx))
+
+        for sign in (-1, 1):
+            wire_groups[sign].extend(cap_wires_dict[sign])
 
         grid = self.grid
         sub_yb = sub_yt = None

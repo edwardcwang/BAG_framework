@@ -408,6 +408,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 diff_space=1,  # type: int
                 gate_locs=None,  # type: Optional[Dict[str, int]]
                 flip_sd=False,  # type: bool
+                tail_decap=False,  # type: bool
                 ):
         # type: (...) -> Tuple[int, Dict[str, List[WireArray]]]
         """Draw a differential gm stage.
@@ -450,6 +451,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         flip_sd : bool
             True to flip source/drain.  This is to help draw layout where certain configuration
             of number of fingers and source/drain directions may not be possible.
+        tail_decap : bool
+            True to draw mos decap for tail gate bias.
 
         Returns
         -------
@@ -621,10 +624,24 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 sdir, ddir = sd_dir[name]
                 ridx = self._nrow_idx[name]
                 is_diff = (name == 'but')
+                if tail_decap and name == 'tail':
+                    fgr = col_offsets[name]
+                    fgl = fgr - 2
+                    self.draw_mos_decap('nch', ridx, col_idx, fgl, 2)
+                    diode_ports = self.draw_mos_conn('nch', ridx, col_idx + fgl, 2, 0, 0, diode_conn=True,
+                                                     gate_ext_mode=3)
+                    self.connect_to_substrate('ptap', diode_ports['s'])
+                    self.draw_mos_decap('nch', ridx, col_start + fg, fg_sep, 3)
+                    self.draw_mos_decap('nch', ridx, col_start + 2 * fg + fg_sep, fgr, 1)
+                    gate_ext_mode = 3
+                else:
+                    gate_ext_mode = 0
+
                 mos_dict['%sp' % name] = self.draw_mos_conn('nch', ridx, col_start, fg, sdir, ddir,
-                                                            is_diff=is_diff)
+                                                            is_diff=is_diff, gate_ext_mode=gate_ext_mode)
                 mos_dict['%sn' % name] = self.draw_mos_conn('nch', ridx, col_start + fg + fg_sep,
-                                                            fg, sdir, ddir, is_diff=is_diff)
+                                                            fg, sdir, ddir, is_diff=is_diff,
+                                                            gate_ext_mode=gate_ext_mode)
 
         # get output WireArrays
         port_dict = {}
@@ -692,7 +709,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                      diff_space=1,  # type: int
                      gate_locs=None,  # type: Optional[Dict[str, float]]
                      sign=1,  # type: int
-                     flip_sd=False  # type: bool
+                     flip_sd=False,  # type: bool
+                     tail_decap=False  # type: bool
                      ):
         # type: (...) -> Tuple[int, Dict[str, List[WireArray]]]
         """Draw a differential amplifier/dynamic latch.
@@ -741,7 +759,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         flip_sd : bool
             True to flip source/drain.  This is to help draw layout where certain configuration
             of number of fingers and source/drain directions may not be possible.
-
+        tail_decap : bool
+            True to use tail dummy transistors as decaps.
         Returns
         -------
         fg_amp : int
@@ -774,7 +793,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         gm_params = fg_params.copy()
         gm_params['min'] = max(gm_params.get('min', fg_min), fg_min)
         fg_amp_tot, port_dict = self.draw_gm(col_idx, fg_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                             diff_space=diff_space, gate_locs=gate_locs, flip_sd=flip_sd)
+                                             diff_space=diff_space, gate_locs=gate_locs, flip_sd=flip_sd,
+                                             tail_decap=tail_decap)
 
         outp_warrs = port_dict['outp']
         outn_warrs = port_dict['outn']

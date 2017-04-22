@@ -480,6 +480,8 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, TemplateBase)):
             gate_pref_loc="Preferred gate vertical track location.  Either 's' or 'd'.",
             is_ds_dummy='True if this is only a drain/source dummy metal connection.',
             is_diff='True to draw a differential pair connection instead (shared source).',
+            diode_conn='True to short drain/gate',
+            gate_ext_mode='connect gate using lower level metal to adjacent transistors.',
         )
 
     @classmethod
@@ -501,6 +503,8 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, TemplateBase)):
             gate_pref_loc='d',
             is_ds_dummy=False,
             is_diff=False,
+            diode_conn=False,
+            gate_ext_mode=0,
         )
 
     def get_layout_basename(self):
@@ -528,6 +532,11 @@ class AnalogMosConn(with_metaclass(abc.ABCMeta, TemplateBase)):
             basename += '_minds'
         if self.params['is_ds_dummy']:
             basename += '_dsdummy'
+        if self.params['diode_conn']:
+            basename += '_diode'
+        gext = self.params['gate_ext_mode']
+        if gext > 0:
+            basename += '_gext%d' % gext
         return basename
 
     def compute_unique_key(self):
@@ -719,3 +728,81 @@ class AnalogMosDummy(with_metaclass(abc.ABCMeta, TemplateBase)):
     def compute_unique_key(self):
         base_name = self.get_layout_basename()
         return '%s_%s' % (base_name, repr(self.params['gate_intv_list']))
+
+
+# noinspection PyAbstractClass
+class AnalogMosDecap(with_metaclass(abc.ABCMeta, TemplateBase)):
+    """An abstract template for analog mosfet dummy.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        super(AnalogMosDecap, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            w='transistor width, in meters/number of fins.',
+            fg='number of fingers.',
+            gate_ext_mode='connect gate using lower level metal to adjacent transistors.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : dict[str, any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            gate_ext_mode=0,
+        )
+
+    def get_layout_basename(self):
+        """Returns the base name for this template.
+
+        Returns
+        -------
+        base_name : str
+            the base name of this template.
+        """
+
+        lch_str = float_to_si_string(self.params['lch'])
+        w_str = float_to_si_string(self.params['w'])
+        gext = self.params['gate_ext_mode']
+        basename = 'mdecap_l%s_w%s_fg%d_gext%d' % (lch_str, w_str, self.params['fg'], gext)
+
+        return basename
+
+    def compute_unique_key(self):
+        return self.get_layout_basename()
