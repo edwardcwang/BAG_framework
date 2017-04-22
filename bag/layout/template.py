@@ -1292,6 +1292,63 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
         return self.add_via(bbox, bname, tname, bot_dir)
 
+    def extend_wires(self,  # type: TemplateBase
+                     warr_list,  # type: Union[WireArray, List[WireArray]]
+                     lower=None,  # type: Optional[Union[float, int]]
+                     upper=None,  # # type: Optional[Union[float, int]]
+                     fill_margin=0,  # type: Union[int, float]
+                     fill_type='',  # type: str
+                     unit_mode=False  # type: bool
+                     ):
+        # type: (...) -> WireArray
+        """Extend the given wires to the given coordinates.
+
+        Parameters
+        ----------
+        warr_list : Union[WireArray, List[WireArray]]
+            the wires to extend.
+        lower : Optional[Union[float, int]]
+            the wire lower coordinate.
+        upper : Optional[Union[float, int]]
+            the wire upper coordinate.
+        fill_margin : Union[float, int]
+            minimum margin between wires and fill.
+        fill_type : str
+            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
+        unit_mode: bool
+            True if lower/upper/fill_margin is given in resolution units.
+
+        Returns
+        -------
+        warr_list : List[WireArray]
+            list of added wire arrays.
+        """
+        if isinstance(warr_list, WireArray):
+            warr_list = [warr_list]
+        else:
+            pass
+
+        new_warr_list = []
+        for warr in warr_list:
+            if lower is None:
+                cur_lower = warr.lower
+            else:
+                cur_lower = min(lower, warr.lower)
+            if upper is None:
+                cur_upper = warr.upper
+            else:
+                cur_upper = max(upper, warr.upper)
+
+            new_warr = WireArray(warr.track_id, cur_lower, cur_upper)
+            for layer_name, bbox_arr in new_warr.wire_arr_iter(self.grid):
+                self.add_rect(layer_name, bbox_arr)
+
+            self._used_tracks.add_wire_arrays(new_warr, fill_margin=fill_margin, fill_type=fill_type,
+                                              unit_mode=unit_mode)
+            new_warr_list.append(new_warr)
+
+        return new_warr_list
+
     def add_wires(self,  # type: TemplateBase
                   layer_id,  # type: int
                   track_idx,  # type: Union[float, int]
