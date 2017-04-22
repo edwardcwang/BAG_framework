@@ -412,9 +412,9 @@ class RXHalfTop(SerdesRXBase):
         ffe_top_tr = ffe_inputs[0].track_id.base_index
         ffe_bot_tr = ffe_inputs[1].track_id.base_index
         clkp_nmos_sw_tr_xm = ffe_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
-        clkp_nmos_intsum_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
+        ibias_nmos_intsum_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
         clkp_nmos_summer_tr_xm = clkp_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
-        clkp_nmos_tap1_tr_xm = clkp_nmos_intsum_tr_xm
+        clkp_nmos_tap1_tr_xm = ibias_nmos_intsum_tr_xm
         clkn_nmos_ana_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
         clkn_nmos_sw_tr_xm = ffe_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
         clkp_pmos_intsum_tr_xm = clkn_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
@@ -471,11 +471,7 @@ class RXHalfTop(SerdesRXBase):
         self.add_pin(clkp + '_pmos_intsum', warr, show=show_pins)
         # nmos switch
         nmax = len(intsum_info['gm_offsets'])
-        warr_list = []
-        for idx in range(nmax):
-            key = 'sw', idx
-            if key in intsum_ports:
-                warr_list.extend(intsum_ports[key])
+        warr_list = intsum_ports[('sw', 0)] + intsum_ports[('sw', 1)]
         warr = self.connect_wires(warr_list)
         warr = self.connect_to_tracks(warr, ltr_id)
         clkn_nmos_sw_list.append(warr)
@@ -493,9 +489,26 @@ class RXHalfTop(SerdesRXBase):
         warr = self.connect_wires(intsum_ports[('bias_tail', 0)] + intsum_ports[('bias_tail', 1)])
         tr_id = TrackID(vm_layer, ltr_vm, width=clk_width_vm)
         warr = self.connect_to_tracks(warr, tr_id)
-        xtr_id = TrackID(xm_layer, clkp_nmos_intsum_tr_xm, width=clk_width_xm)
+        xtr_id = TrackID(xm_layer, ibias_nmos_intsum_tr_xm, width=clk_width_xm)
         warr = self.connect_to_tracks(warr, xtr_id)
-        self.add_pin(clkp + '_nmos_intsum', warr, show=show_pins)
+        self.add_pin('ibias_nmos_intsum', warr, show=show_pins)
+
+        # connect offset biases/sign control
+        intsum_start = intsum_col + intsum_info['gm_offsets'][2]
+        col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][2]['fg_tot']
+        ltr_vm, rtr_vm = get_bias_tracks(self.layout_info, vm_layer, col_intv, sig_width_vm, sig_space_vm,
+                                         clk_width_vm, sig_clk_space_vm)
+        tr_id = TrackID(vm_layer, rtr_vm, width=clk_width_vm)
+        warr = self.connect_to_tracks(intsum_ports[('bias_tail', 0)], tr_id, track_lower=0)
+        self.add_pin('ibias_offset', warr, show=show_pins)
+        p_tr = layout_info.get_center_tracks(vm_layer, 2, col_intv, width=sig_width_vm, space=sig_space_vm)
+        n_tr = p_tr + sig_width_vm + sig_space_vm
+        ptr_id = TrackID(vm_layer, p_tr, width=sig_width_vm)
+        ntr_id = TrackID(vm_layer, n_tr, width=sig_width_vm)
+        pwarr = self.connect_to_tracks(intsum_ports[('inp', 2)], ptr_id, track_lower=0)
+        nwarr = self.connect_to_tracks(intsum_ports[('inn', 2)], ntr_id, track_lower=0)
+        self.add_pin('offp', pwarr, show=show_pins)
+        self.add_pin('offn', nwarr, show=show_pins)
 
         # connect intsum dfe tap biases
         num_dfe = nmax - 3
@@ -506,23 +519,27 @@ class RXHalfTop(SerdesRXBase):
             col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][gm_idx]['fg_tot']
             if dfe_idx % 2 == 0:
                 # no criss-cross inputs.
-                bias_tr_vm, en_tr_vm = get_bias_tracks(self.layout_info, vm_layer, col_intv, sig_width_vm, sig_space_vm,
+                bias_tr_vm, sw_tr_vm = get_bias_tracks(self.layout_info, vm_layer, col_intv, sig_width_vm, sig_space_vm,
                                                        clk_width_vm, sig_clk_space_vm)
             else:
                 # criss-cross inputs
-                en_tr_vm = self.layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm,
+                sw_tr_vm = self.layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm,
                                                               space=sig_space_vm)
                 if datapath_parity == 0:
-                    en_tr_vm += (sig_width_vm + sig_space_vm) / 2
-                    bias_tr_vm = en_tr_vm + clk_width_vm + clk_space_vm
+                    sw_tr_vm += (sig_width_vm + sig_space_vm) / 2
+                    bias_tr_vm = sw_tr_vm + clk_width_vm + clk_space_vm
                 else:
-                    en_tr_vm += (sig_width_vm + sig_space_vm) * 5 / 2
-                    bias_tr_vm = en_tr_vm - clk_width_vm - clk_space_vm
+                    sw_tr_vm += (sig_width_vm + sig_space_vm) * 5 / 2
+                    bias_tr_vm = sw_tr_vm - clk_width_vm - clk_space_vm
 
             # bias_dfe
             bias_tr_id = TrackID(vm_layer, bias_tr_vm, width=clk_width_vm)
             warr = self.connect_to_tracks(intsum_ports[('bias_tail', gm_idx)], bias_tr_id, track_lower=0)
-            self.add_pin('bias_dfe<%d>' % (dfe_idx - 1), warr, show=show_pins)
+            self.add_pin('ibias_dfe<%d>' % (dfe_idx - 1), warr, show=show_pins)
+            # tail switch
+            sw_tr_id = TrackID(vm_layer, sw_tr_vm, width=clk_width_vm)
+            warr = self.connect_to_tracks(intsum_ports[('sw', gm_idx)], sw_tr_id)
+            clkn_nmos_sw_list.append(warr)
 
         # pmos intsum
         warr = self.connect_to_tracks(intsum_ports[('bias_load', -1)], ltr_id)
@@ -767,7 +784,7 @@ class RXHalfBottom(SerdesRXBase):
         dlat_top_tr = dlat_inputs[0].track_id.base_index
         dlat_bot_tr = dlat_inputs[1].track_id.base_index
         clkp_nmos_ana_tr_xm = dlat_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
-        clkp_nmos_integ_tr_xm = clkp_nmos_ana_tr_xm + clk_width_xm + clk_space_xm
+        ibias_nmos_integ_tr_xm = clkp_nmos_ana_tr_xm + clk_width_xm + clk_space_xm
         clkp_nmos_dig_tr_xm = clkp_nmos_ana_tr_xm
         clkn_nmos_sw_tr_xm = clkp_nmos_ana_tr_xm - clk_width_xm - clk_space_xm
         clkp_pmos_integ_tr_xm = dlat_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
@@ -805,9 +822,9 @@ class RXHalfBottom(SerdesRXBase):
         rtr_id = TrackID(vm_layer, rtr_vm, width=clk_width_vm)
         # integ_nmos
         warr = self.connect_to_tracks(integ_ports['bias_tail'], rtr_id)
-        xtr_id = TrackID(xm_layer, clkp_nmos_integ_tr_xm, width=clk_width_xm)
+        xtr_id = TrackID(xm_layer, ibias_nmos_integ_tr_xm, width=clk_width_xm)
         warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
-        self.add_pin(clkp + '_nmos_integ', warr, show=show_pins)
+        self.add_pin('ibias_nmos_integ', warr, show=show_pins)
         # pmos_integ
         warr = self.connect_to_tracks(integ_ports['bias_load'], ltr_id)
         xtr_id = TrackID(xm_layer, clkp_pmos_integ_tr_xm, width=clk_width_xm)
@@ -1700,11 +1717,9 @@ class RXCore(TemplateBase):
 
     def connect_bias(self, inst_list):
         show_pins = self.params['show_pins']
-        clk_top_list = [('nmos_integ', 1),
-                        ('clk1', 1),
+        clk_top_list = [('clk1', 1),
                         ('nmos_analog', 2),
                         ('pmos_analog', 2),
-                        ('nmos_intsum', 1),
                         ('clk2', 2),
                         ('pmos_digital', 2),
                         ('nmos_digital', 1),
@@ -1751,14 +1766,16 @@ class RXCore(TemplateBase):
 
         num_dfe = len(self.params['intsum_params']['gm_fg_list']) - 3 + 1
         for inst, prefix in zip(inst_list, ('even_', 'odd_')):
-            for pname in ('bias_ffe', 'bias_dlevp', 'bias_dlevn'):
+            for pname in ('bias_ffe', 'bias_dlevp', 'bias_dlevn',
+                          'ibias_nmos_integ', 'ibias_nmos_intsum', 'ibias_offset',
+                          'offp', 'offn'):
                 if inst.has_port(pname):
                     self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
             for idx in range(num_dfe):
                 if idx == 0:
-                    self.reexport(inst.get_port('en_dfe1'), net_name=prefix + pname, show=show_pins)
+                    self.reexport(inst.get_port('en_dfe1'), net_name=prefix + 'en_dfe1', show=show_pins)
                 else:
-                    pname = 'bias_dfe<%d>' % idx
+                    pname = 'ibias_dfe<%d>' % idx
                     self.reexport(inst.get_port(pname), net_name=prefix + pname, show=show_pins)
 
     def connect_supplies(self, inst_list):
