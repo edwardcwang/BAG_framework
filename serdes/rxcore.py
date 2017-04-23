@@ -453,7 +453,7 @@ class RXHalfTop(SerdesRXBase):
         clkn_nmos_sw_tr_xm = ffe_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
         clkp_pmos_intsum_tr_xm = clkn_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
         clkn_pmos_summer_tr_xm = clkp_pmos_intsum_tr_xm
-        clkp_pmos_ana_tr_xm = clkp_pmos_intsum_tr_xm
+        clkp_pmos_ana_tr_xm = clkn_nmos_sw_tr_xm
 
         clkn_nmos_sw_tr_id = TrackID(xm_layer, clkn_nmos_sw_tr_xm, width=clk_width_xm)
         clkn_nmos_sw_list = []
@@ -825,9 +825,8 @@ class RXHalfBottom(SerdesRXBase):
         ibias_nmos_integ_tr_xm = clkp_nmos_ana_tr_xm + clk_width_xm + clk_space_xm
         clkp_nmos_dig_tr_xm = clkp_nmos_ana_tr_xm
         clkn_nmos_sw_tr_xm = clkp_nmos_ana_tr_xm - clk_width_xm - clk_space_xm
-        clkp_pmos_integ_tr_xm = dlat_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
-        clkn_pmos_dig_tr_xm = clkp_pmos_integ_tr_xm
-        clkn_pmos_ana_tr_xm = clkp_pmos_integ_tr_xm + clk_width_xm + clk_space_xm
+        clkn_pmos_dig_tr_xm = dlat_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
+        clkn_pmos_ana_tr_xm = clkn_pmos_dig_tr_xm + clk_width_xm + clk_space_xm
         clkp_pmos_dig_tr_xm = clkn_pmos_ana_tr_xm
         self.in_xm_track = clkn_nmos_sw_tr_xm
 
@@ -863,10 +862,8 @@ class RXHalfBottom(SerdesRXBase):
         xtr_id = TrackID(xm_layer, ibias_nmos_integ_tr_xm, width=clk_width_xm)
         warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
         self.add_pin('ibias_nmos_integ', warr, show=show_pins)
-        # pmos_integ
+        # pmos_integ.  export on M5
         warr = self.connect_to_tracks(integ_ports['bias_load'], ltr_id)
-        xtr_id = TrackID(xm_layer, clkp_pmos_integ_tr_xm, width=clk_width_xm)
-        warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
         self.add_pin(clkp + '_pmos_integ', warr, show=show_pins)
         # nmos_switch
         warr = self.connect_to_tracks(integ_ports['sw'], ltr_id)
@@ -1460,7 +1457,8 @@ class RXHalf(TemplateBase):
         show_pins = self.params['show_pins']
         for inst in (bot_inst, top_inst):
             for port_name in inst.port_names_iter():
-                self.reexport(inst.get_port(port_name), show=show_pins)
+                if not (port_name.endswith('pmos_integ') or port_name.endswith('pmos_intsum')):
+                    self.reexport(inst.get_port(port_name), show=show_pins)
 
         # record parameters for schematic
         w_dict = self.params['w_dict'].copy()
@@ -1510,11 +1508,20 @@ class RXHalf(TemplateBase):
         return bot_inst, top_inst, col_idx_dict
 
     def connect(self, layout_info, bot_inst, top_inst, col_idx_dict):
+        show_pins = self.params['show_pins']
         vm_space = self.params['sig_spaces'][0]
         hm_layer = layout_info.mconn_port_layer + 1
         vm_layer = hm_layer + 1
         vm_width = self.params['sig_widths'][0]
         nintsum = len(self.params['intsum_params']['gm_fg_list'])
+
+        # connect clkp of integrators
+        clk_prefix = 'clkp' if self.params['datapath_parity'] == 0 else 'clkn'
+        clkpb = bot_inst.get_all_port_pins(clk_prefix + '_pmos_integ')
+        clkpt = top_inst.get_all_port_pins(clk_prefix + '_pmos_intsum')
+        warr = self.connect_to_tracks(clkpb, clkpt[0].track_id)
+        warr = self.connect_wires([warr] + clkpt)
+        self.add_pin('clkpd', warr, show=show_pins)
 
         # connect integ to alat1
         self._connect_diff_io(bot_inst, col_idx_dict['integ_route'], layout_info, vm_layer,
@@ -1821,11 +1828,15 @@ class RXCore(TemplateBase):
                         ('nmos_summer', 1),
                         ('nmos_tap1', 1),
                         ]
-        clk_ports = {'clk1': ['pmos_integ', 'nmos_switch_alat1'], 'clk2': ['pmos_intsum', 'nmos_switch']}
+        # export delayed clocks
+        self.reexport(inst_list[0].get_port('clkpd'), net_name='clkpd', show=show_pins)
+        self.reexport(inst_list[1].get_port('clkpd'), net_name='clknd', show=show_pins)
+
+        clk_ports = {'clk1': ['nmos_switch_alat1'], 'clk2': ['nmos_switch']}
         clk_wires = {}
         for inst in inst_list:
             for name in inst.port_names_iter():
-                if name.startswith('clk'):
+                if name.startswith('clk') and name != 'clkpd':
                     if name not in clk_wires:
                         clk_wires[name] = []
                     clk_wires[name].extend(inst.get_all_port_pins(name))
