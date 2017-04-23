@@ -468,6 +468,11 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         fg_casc = fg_params.get('casc', 0)
         fg_sw = fg_params.get('sw', 0)
         fg_en = fg_params.get('en', 0)
+        fg_ref = fg_params.get('ref', 0)
+        if fg_ref > 0:
+            # enable tail decap if using reference
+            tail_decap = True
+
         # error checking
         if fg_in <= 0 or fg_tail <= 0:
             raise ValueError('tail/input number of fingers must be positive.')
@@ -611,6 +616,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             conn[key].extend(inst_d)
             conn['VSS'] = inst_s
 
+        if fg_ref > 0:
+            conn['VSS'].append(('ref', 's'))
+            conn['bias_tail'].append(('ref', 'g'))
+
         track['bias_tail'] = ('nch', self._nrow_idx['tail'], 'g', gate_locs.get('bias_tail', (hm_width - 1) / 2))
         track[key] = ('nch', self._nrow_idx['tail'], 'ds', (hm_cur_width - 1) / 2)
 
@@ -626,11 +635,13 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 is_diff = (name == 'but')
                 if tail_decap and name == 'tail':
                     fgr = col_offsets[name]
-                    fgl = fgr - 2
+                    fgl = fgr - fg_ref if fg_ref > 0 else fgr
+                    if fgl < 0:
+                        raise ValueError('Do not have room for reference current mirror.')
                     self.draw_mos_decap('nch', ridx, col_idx, fgl, 2)
-                    diode_ports = self.draw_mos_conn('nch', ridx, col_idx + fgl, 2, 0, 0, diode_conn=True,
-                                                     gate_ext_mode=3)
-                    self.connect_to_substrate('ptap', diode_ports['s'])
+                    if fg_ref > 0:
+                        mos_dict['ref'] = self.draw_mos_conn('nch', ridx, col_idx + fgl, fg_ref, 0, 0, diode_conn=True,
+                                                             gate_ext_mode=3)
                     self.draw_mos_decap('nch', ridx, col_start + fg, fg_sep, 3)
                     self.draw_mos_decap('nch', ridx, col_start + 2 * fg + fg_sep, fgr, 1)
                     gate_ext_mode = 3

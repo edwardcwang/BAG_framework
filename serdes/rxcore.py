@@ -686,10 +686,10 @@ class RXHalfBottom(SerdesRXBase):
         gate_locs = {'inp': (hm_width - 1) / 2 + hm_width + diff_space,
                      'inn': (hm_width - 1) / 2}
         integ_col = integ_params.pop('col_idx')
-        # TODO: make integrator flip_sd option controllable
+        # if drawing current mirror, we must have ground on the outside of tail
+        integ_flip_sd = (integ_params.get('ref', 0) > 0)
         _, integ_ports = self.draw_diffamp(integ_col, integ_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                           diff_space=diff_space, gate_locs=gate_locs, flip_sd=True,
-                                           tail_decap=True)
+                                           diff_space=diff_space, gate_locs=gate_locs, flip_sd=integ_flip_sd)
         integ_info = self.layout_info.get_diffamp_info(integ_params)
 
         alat_col = alat_params.pop('col_idx')
