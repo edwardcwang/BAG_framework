@@ -98,7 +98,10 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
             the Gm stage layout information dictionary.
         """
         fg_min = fg_params.get('min', 0)
-        fg_max = max((fg for key, fg in fg_params.items() if key != 'sep' and key != 'min'))
+        fg_max = max((fg for key, fg in fg_params.items() if key != 'sep' and key != 'min' and key != 'ref'))
+        fg_ref = fg_params.get('ref', 0)
+        if fg_ref > 0:
+            fg_max = max(fg_max, fg_ref + fg_params['tail'])
         fg_tot = fg_max * 2 + self.min_fg_sep
 
         if fg_tot < fg_min:
@@ -633,26 +636,40 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 sdir, ddir = sd_dir[name]
                 ridx = self._nrow_idx[name]
                 is_diff = (name == 'but')
+                lgate_ext_mode = rgate_ext_mode = 0
                 if tail_decap and name == 'tail':
                     fgr = col_offsets[name]
+
+                    # determine whether to draw left decap, and left tail transistor gate extension mode
                     fgl = fgr - fg_ref if fg_ref > 0 else fgr
                     if fgl < 0:
                         raise ValueError('Do not have room for reference current mirror.')
-                    self.draw_mos_decap('nch', ridx, col_idx, fgl, 2)
+                    if fgl > 0:
+                        self.draw_mos_decap('nch', ridx, col_idx, fgl, 2)
+                        lgate_ext_mode = 3
+                    elif fg_ref > 0:
+                        lgate_ext_mode = 3
+                    else:
+                        lgate_ext_mode = 2
+
+                    # draw reference if needed
                     if fg_ref > 0:
                         mos_dict['ref'] = self.draw_mos_conn('nch', ridx, col_idx + fgl, fg_ref, 0, 0, diode_conn=True,
-                                                             gate_ext_mode=3)
+                                                             gate_ext_mode=3 if fgl > 0 else 2)
+
                     self.draw_mos_decap('nch', ridx, col_start + fg, fg_sep, 3)
-                    self.draw_mos_decap('nch', ridx, col_start + 2 * fg + fg_sep, fgr, 1)
-                    gate_ext_mode = 3
-                else:
-                    gate_ext_mode = 0
+
+                    if fgr > 0:
+                        self.draw_mos_decap('nch', ridx, col_start + 2 * fg + fg_sep, fgr, 1)
+                        rgate_ext_mode = 3
+                    else:
+                        rgate_ext_mode = 1
 
                 mos_dict['%sp' % name] = self.draw_mos_conn('nch', ridx, col_start, fg, sdir, ddir,
-                                                            is_diff=is_diff, gate_ext_mode=gate_ext_mode)
+                                                            is_diff=is_diff, gate_ext_mode=lgate_ext_mode)
                 mos_dict['%sn' % name] = self.draw_mos_conn('nch', ridx, col_start + fg + fg_sep,
                                                             fg, sdir, ddir, is_diff=is_diff,
-                                                            gate_ext_mode=gate_ext_mode)
+                                                            gate_ext_mode=rgate_ext_mode)
 
         # get output WireArrays
         port_dict = {}
@@ -881,7 +898,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                        hm_cur_width=-1,  # type: int
                        diff_space=1,  # type: int
                        gate_locs=None,  # type: Optional[Dict[str, float]]
-                       flip_sd_list=None  # type: Optional[List[bool]]
+                       flip_sd_list=None,  # type: Optional[List[bool]]
+                       decap_list=None,  # type: Optional[List[bool]]
                        ):
         # type: (...) -> Tuple[int, Dict[Tuple[str, int], List[WireArray]]]
         """Draw a differential Gm summer (multiple Gm stage connected to same load).
@@ -913,6 +931,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         flip_sd_list : Optional[List[bool]]
             list of whether to flip source/drain connections for each Gm cell.
             Defaults to False.
+        decap_list : Optional[List[bool]]
+            list of whether to draw tail decap for each Gm cell.
+            Defaults to False.
 
         Returns
         -------
@@ -926,6 +947,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             flip_sd_list = [False] * (len(gm_fg_list))
         elif len(flip_sd_list) != len(gm_fg_list):
             raise ValueError('flip_sd_list length mismatch')
+        if decap_list is None:
+            decap_list = [False] * (len(gm_fg_list))
+        elif len(decap_list) != len(gm_fg_list):
+            raise ValueError('decap_list length mismatch')
 
         if sgn_list is None:
             sgn_list = [1] * len(gm_fg_list)
@@ -947,13 +972,14 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         # draw each Gm stage and load.
         conn_dict = {'vddt': [], 'bias_load': [], 'outp': [], 'outn': []}
         port_dict = {}
-        for idx, (cur_fg_load, gm_off, gm_fg_dict, sgn, flip_sd) in \
-                enumerate(zip(fg_load_list, gm_offsets, gm_fg_list, sgn_list, flip_sd_list)):
+        for idx, (cur_fg_load, gm_off, gm_fg_dict, sgn, flip_sd, tail_decap) in \
+                enumerate(zip(fg_load_list, gm_offsets, gm_fg_list, sgn_list, flip_sd_list, decap_list)):
             cur_amp_params = gm_fg_dict.copy()
             cur_amp_params['load'] = cur_fg_load
             _, cur_ports = self.draw_diffamp(col_idx + gm_off, cur_amp_params, hm_width=hm_width,
                                              hm_cur_width=hm_cur_width, diff_space=diff_space,
-                                             gate_locs=gate_locs, sign=sgn, flip_sd=flip_sd)
+                                             gate_locs=gate_locs, sign=sgn, flip_sd=flip_sd,
+                                             tail_decap=tail_decap)
             # register port
             for name, warr_list in cur_ports.items():
                 if name in conn_dict:

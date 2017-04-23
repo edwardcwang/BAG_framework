@@ -1398,6 +1398,7 @@ class RXHalf(TemplateBase):
             gm_sep_list=intsum_gm_sep_list,
             sgn_list=intsum_params['sgn_list'],
             flip_sd_list=intsum_params.get('flip_sd_list', None),
+            decap_list=intsum_params.get('decap_list', None),
         )
         top_params['summer_params'] = dict(
             col_idx=summer_col_idx,
