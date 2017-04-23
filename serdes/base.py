@@ -739,7 +739,8 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                      gate_locs=None,  # type: Optional[Dict[str, float]]
                      sign=1,  # type: int
                      flip_sd=False,  # type: bool
-                     tail_decap=False  # type: bool
+                     tail_decap=False,  # type: bool
+                     load_decap=False,  # type: bool
                      ):
         # type: (...) -> Tuple[int, Dict[str, List[WireArray]]]
         """Draw a differential amplifier/dynamic latch.
@@ -789,7 +790,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             True to flip source/drain.  This is to help draw layout where certain configuration
             of number of fingers and source/drain directions may not be possible.
         tail_decap : bool
-            True to use tail dummy transistors as decaps.
+            True to use tail dummy transistors as tail decaps.
+        load_decap : bool
+            True to use load dummy transistors as load decaps.
         Returns
         -------
         fg_amp : int
@@ -828,6 +831,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         outp_warrs = port_dict['outp']
         outn_warrs = port_dict['outn']
         if fg_pmos > 0:
+            if load_decap:
+                # TODO: implement this feature
+                raise ValueError('do not support load decap with nonzero load yet.')
             # draw load transistors
             load_col_idx = col_idx + offset_load
             if out_type == 'd':
@@ -871,6 +877,12 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             # collect pmos outputs
             outp_warrs.append(loadp[out_type])
             outn_warrs.append(loadn[out_type])
+        elif load_decap:
+            # use all load dummies as decaps
+            load_decap = self.draw_mos_decap('pch', 0, col_idx, fg_amp_tot, 0, export_gate=True)
+            tr_id = self.make_track_id('pch', 0, 'g', gate_locs.get('bias_load', (hm_width - 1) / 2), width=hm_width)
+            warr = self.connect_to_tracks(load_decap['g'], tr_id)
+            port_dict['bias_load'] = [warr, ]
 
         # connect differential outputs
         out_ntr = self.get_num_tracks('pch', 0, 'ds')
@@ -901,6 +913,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                        gate_locs=None,  # type: Optional[Dict[str, float]]
                        flip_sd_list=None,  # type: Optional[List[bool]]
                        decap_list=None,  # type: Optional[List[bool]]
+                       load_decap_list=None,  # type: Optional[List[bool]]
                        ):
         # type: (...) -> Tuple[int, Dict[Tuple[str, int], List[WireArray]]]
         """Draw a differential Gm summer (multiple Gm stage connected to same load).
@@ -935,7 +948,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         decap_list : Optional[List[bool]]
             list of whether to draw tail decap for each Gm cell.
             Defaults to False.
-
+        load_decap_list : Optional[List[bool]]
+            list of whether to draw load decap for each Gm cell.
+            Defaults to False.
         Returns
         -------
         fg_summer : int
@@ -952,6 +967,10 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             decap_list = [False] * (len(gm_fg_list))
         elif len(decap_list) != len(gm_fg_list):
             raise ValueError('decap_list length mismatch')
+        if load_decap_list is None:
+            load_decap_list = [False] * (len(gm_fg_list))
+        elif len(load_decap_list) != len(gm_fg_list):
+            raise ValueError('load_decap_list length mismatch')
 
         if sgn_list is None:
             sgn_list = [1] * len(gm_fg_list)
@@ -971,19 +990,24 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         # print('summer col: %d' % col_idx)
         # print('summer gm offsets: %s' % repr(gm_offsets))
         # draw each Gm stage and load.
-        conn_dict = {'vddt': [], 'bias_load': [], 'outp': [], 'outn': []}
+        conn_dict = {'vddt': [], 'bias_load': [], 'outp': [], 'outn': [], 'bias_load_decap': []}
         port_dict = {}
-        for idx, (cur_fg_load, gm_off, gm_fg_dict, sgn, flip_sd, tail_decap) in \
-                enumerate(zip(fg_load_list, gm_offsets, gm_fg_list, sgn_list, flip_sd_list, decap_list)):
+        for idx, (cur_fg_load, gm_off, gm_fg_dict, sgn, flip_sd, tail_decap, load_decap) in \
+                enumerate(zip(fg_load_list, gm_offsets, gm_fg_list, sgn_list,
+                              flip_sd_list, decap_list, load_decap_list)):
             cur_amp_params = gm_fg_dict.copy()
             cur_amp_params['load'] = cur_fg_load
             _, cur_ports = self.draw_diffamp(col_idx + gm_off, cur_amp_params, hm_width=hm_width,
                                              hm_cur_width=hm_cur_width, diff_space=diff_space,
                                              gate_locs=gate_locs, sign=sgn, flip_sd=flip_sd,
-                                             tail_decap=tail_decap)
+                                             tail_decap=tail_decap, load_decap=load_decap)
+
             # register port
             for name, warr_list in cur_ports.items():
-                if name in conn_dict:
+                if name == 'bias_load' and cur_fg_load == 0 and load_decap:
+                    # separate bias_load and bias_load_decap
+                    conn_dict['bias_load_decap'].extend(warr_list)
+                elif name in conn_dict:
                     conn_dict[name].extend(warr_list)
                 else:
                     port_dict[(name, idx)] = warr_list

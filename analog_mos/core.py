@@ -768,6 +768,7 @@ class AnalogMosDecap(with_metaclass(abc.ABCMeta, TemplateBase)):
             w='transistor width, in meters/number of fins.',
             fg='number of fingers.',
             gate_ext_mode='connect gate using lower level metal to adjacent transistors.',
+            export_gate='True to export gate to higher level metal.',
         )
 
     @classmethod
@@ -786,6 +787,7 @@ class AnalogMosDecap(with_metaclass(abc.ABCMeta, TemplateBase)):
         """
         return dict(
             gate_ext_mode=0,
+            export_gate=False,
         )
 
     def get_layout_basename(self):
@@ -801,7 +803,8 @@ class AnalogMosDecap(with_metaclass(abc.ABCMeta, TemplateBase)):
         w_str = float_to_si_string(self.params['w'])
         gext = self.params['gate_ext_mode']
         basename = 'mdecap_l%s_w%s_fg%d_gext%d' % (lch_str, w_str, self.params['fg'], gext)
-
+        if self.params['export_gate']:
+            basename += '_gport'
         return basename
 
     def compute_unique_key(self):

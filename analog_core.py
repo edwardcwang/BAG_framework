@@ -769,7 +769,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 return True
         return False
 
-    def draw_mos_decap(self, mos_type, row_idx, col_idx, fg, gate_ext_mode,
+    def draw_mos_decap(self, mos_type, row_idx, col_idx, fg, gate_ext_mode, export_gate=False,
                        inner=False, **kwargs):
         """Draw decap connection."""
         if self._cap_cls is None:
@@ -778,6 +778,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # mark transistors as connected
         val = -1 if inner else 1
         if mos_type == 'pch':
+            val *= -1
             intv_set = self._p_intvs[row_idx]
             cap_intv_set = self._capp_intvs[row_idx]
             wires_dict = self._capp_wires
@@ -787,9 +788,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             wires_dict = self._capn_wires
 
         intv = col_idx, col_idx + fg
-        if intv_set.has_overlap(intv) or not cap_intv_set.add(intv, val=val):
-            msg = 'Cannot connect %s row %d [%d, %d); some are already connected.'
-            raise ValueError(msg % (mos_type, row_idx, intv[0], intv[1]))
+        if not export_gate:
+            # add to cap_intv_set, since we can route dummies over it
+            if intv_set.has_overlap(intv) or not cap_intv_set.add(intv, val=val):
+                msg = 'Cannot connect %s row %d [%d, %d); some are already connected.'
+                raise ValueError(msg % (mos_type, row_idx, intv[0], intv[1]))
+        else:
+            # add to normal intv set.
+            if cap_intv_set.has_overlap(intv) or not intv_set.add(intv, val=val):
+                msg = 'Cannot connect %s row %d [%d, %d); some are already connected.'
+                raise ValueError(msg % (mos_type, row_idx, intv[0], intv[1]))
 
         ridx = self._ridx_lookup[mos_type][row_idx]
         orient = self._orient_list[ridx]
@@ -802,12 +810,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             w=w,
             fg=fg,
             gate_ext_mode=gate_ext_mode,
+            export_gate=export_gate,
         )
         conn_params.update(kwargs)
 
         conn_master = self.new_template(params=conn_params, temp_cls=self._cap_cls)
         inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient)
         wires_dict[val].extend(inst.get_all_port_pins('supply'))
+        if export_gate:
+            return {'g': inst.get_all_port_pins('g')}
+        else:
+            return {}
 
     def draw_mos_conn(self, mos_type, row_idx, col_idx, fg, sdir, ddir, **kwargs):
         """Draw transistor connection.
