@@ -195,14 +195,14 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         gm_info = self.get_gm_info(fg_params, flip_sd=flip_sd)
         fg_gm_tot = gm_info['fg_tot']
         nduml_pmos = (fg_gm_tot - fg_pmos_tot) // 2
-        ndumr_load = fg_gm_tot - fg_pmos_tot - nduml_pmos
+        ndumr_pmos = fg_gm_tot - fg_pmos_tot - nduml_pmos
 
         results = dict(
             fg_tot=fg_gm_tot,
             fg_sep=self.min_fg_sep,
             fg_min=fg_min,
             nduml_pmos=nduml_pmos,
-            ndumr_load=ndumr_load,
+            ndumr_pmos=ndumr_pmos,
             out_type=gm_info['out_type'],
         )
 

@@ -87,6 +87,8 @@ class RXHalfTop(SerdesRXBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(RXHalfTop, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self.sch_intsum_params = None
+        self.sch_summer_params = None
 
     @classmethod
     def get_default_param_values(cls):
@@ -242,9 +244,10 @@ class RXHalfTop(SerdesRXBase):
 
         # draw blocks
         alat_col = alat_params.pop('col_idx')
+        alat_flip_sd = alat_params.pop('flip_sd', False)
         # print('rxtop alat cur_col: %d' % cur_col)
         _, alat_ports = self.draw_diffamp(alat_col, alat_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                          diff_space=diff_space, gate_locs=gate_locs)
+                                          diff_space=diff_space, gate_locs=gate_locs, flip_sd=alat_flip_sd)
         alat_info = self.layout_info.get_diffamp_info(alat_params)
 
         intsum_col = intsum_params.pop('col_idx')
@@ -264,6 +267,10 @@ class RXHalfTop(SerdesRXBase):
         summer_info = self.layout_info.get_summer_info(summer_params['fg_load'], summer_params['gm_fg_list'],
                                                        gm_sep_list=summer_params.get('gm_sep_list', None),
                                                        flip_sd_list=summer_params.get('flip_sd_list', None))
+
+        # set schematic parameters
+        self.sch_intsum_params = self._make_summer_sch_params(intsum_params, intsum_info)
+        self.sch_summer_params = self._make_summer_sch_params(summer_params, summer_info)
 
         col_intv = acoff_params['col_intv']
         nac_off = acoff_params['nac_off']
@@ -302,6 +309,33 @@ class RXHalfTop(SerdesRXBase):
         )
 
         return alat_ports, intsum_ports, summer_ports, acoff_ports, block_info
+
+    @staticmethod
+    def _make_summer_sch_params(params, info):
+        sgn_list = list(params['sgn_list'])
+        flip_sd_list = params.get('flip_sd_list', None)
+        if flip_sd_list is not None:
+            flip_sd_list = list(flip_sd_list)
+        decap_list = params.get('decap_list', None)
+        if decap_list is not None:
+            decap_list = list(decap_list)
+
+        amp_fg_list = []
+        amp_fg_tot_list = []
+        for gm_fg_dict, load_fg, amp_info in zip(params['gm_fg_list'], info['fg_load_list'], info['amp_info_list']):
+            amp_fg_dict = gm_fg_dict.copy()
+            amp_fg_dict['load'] = load_fg
+            amp_fg_list.append(amp_fg_dict)
+            amp_fg_tot_list.append(amp_info['fg_tot'])
+
+        return dict(
+            amp_fg_list=amp_fg_list,
+            amp_fg_tot_list=amp_fg_tot_list,
+            sgn_list=sgn_list,
+            decap_list=decap_list,
+            flip_sd_list=flip_sd_list,
+            fg_tot=info['fg_tot'],
+        )
 
     def connect_sup_io(self, block_info, alat_ports, intsum_ports, summer_ports, acoff_ports,
                        sig_widths, sig_spaces, clk_widths, clk_spaces, show_pins):
@@ -499,7 +533,7 @@ class RXHalfTop(SerdesRXBase):
         ltr_vm, rtr_vm = get_bias_tracks(self.layout_info, vm_layer, col_intv, sig_width_vm, sig_space_vm,
                                          clk_width_vm, sig_clk_space_vm)
         tr_id = TrackID(vm_layer, rtr_vm, width=clk_width_vm)
-        warr = self.connect_to_tracks(intsum_ports[('bias_tail', 0)], tr_id, track_lower=0)
+        warr = self.connect_to_tracks(intsum_ports[('bias_tail', 2)], tr_id, track_lower=0)
         self.add_pin('ibias_offset', warr, show=show_pins)
         p_tr = layout_info.get_center_tracks(vm_layer, 2, col_intv, width=sig_width_vm, space=sig_space_vm)
         n_tr = p_tr + sig_width_vm + sig_space_vm
@@ -687,23 +721,25 @@ class RXHalfBottom(SerdesRXBase):
                      'inn': (hm_width - 1) / 2}
         integ_col = integ_params.pop('col_idx')
         # if drawing current mirror, we must have ground on the outside of tail
-        integ_flip_sd = (integ_params.get('ref', 0) > 0)
+        integ_flip_sd = integ_params.pop('flip_sd', False)
         _, integ_ports = self.draw_diffamp(integ_col, integ_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
                                            diff_space=diff_space, gate_locs=gate_locs, flip_sd=integ_flip_sd)
-        integ_info = self.layout_info.get_diffamp_info(integ_params)
+        integ_info = self.layout_info.get_diffamp_info(integ_params, flip_sd=integ_flip_sd)
 
         alat_col = alat_params.pop('col_idx')
+        alat_flip_sd = alat_params.pop('flip_sd', False)
         _, alat_ports = self.draw_diffamp(alat_col, alat_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                          diff_space=diff_space, gate_locs=gate_locs)
-        alat_info = self.layout_info.get_diffamp_info(alat_params)
+                                          diff_space=diff_space, gate_locs=gate_locs, flip_sd=alat_flip_sd)
+        alat_info = self.layout_info.get_diffamp_info(alat_params, flip_sd=alat_flip_sd)
 
         dlat_info_list = []
         for idx, dlat_params in enumerate(dlat_params_list):
             dlat_params = dlat_params.copy()
             cur_col = dlat_params.pop('col_idx')
+            dlat_flip_sd = dlat_params.pop('flip_sd', False)
             _, dlat_ports = self.draw_diffamp(cur_col, dlat_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                              diff_space=diff_space, gate_locs=gate_locs)
-            dlat_info = self.layout_info.get_diffamp_info(dlat_params)
+                                              diff_space=diff_space, gate_locs=gate_locs, flip_sd=dlat_flip_sd)
+            dlat_info = self.layout_info.get_diffamp_info(dlat_params, flip_sd=dlat_flip_sd)
 
             dlat_info_list.append((cur_col, dlat_ports, dlat_info))
 
@@ -1017,6 +1053,7 @@ class RXHalf(TemplateBase):
         self._fg_tot = 0
         self._col_idx_dict = None
         self.in_xm_track = None
+        self.sch_params = None
 
     @classmethod
     def get_default_param_values(cls):
@@ -1356,6 +1393,7 @@ class RXHalf(TemplateBase):
         new_dlat_params_list[0] = dig_latch_params
         dlat_info = layout_info.get_diffamp_info(dig_latch_params)
         dig_latch_params['col_idx'] = cur_col - dlat_info['fg_tot']
+        dig_latch_params['min'] = dlat_info['fg_tot']
         col_idx_dict['dlat'][0] = (cur_col - dlat_info['fg_tot'], cur_col)
 
         # step 4: add AC coupling off transistors
@@ -1423,6 +1461,51 @@ class RXHalf(TemplateBase):
         for inst in (bot_inst, top_inst):
             for port_name in inst.port_names_iter():
                 self.reexport(inst.get_port(port_name), show=show_pins)
+
+        # record parameters for schematic
+        w_dict = self.params['w_dict'].copy()
+        mos_types = list(w_dict.keys())
+        sch_integ_params = dict(
+            fg_dict={key: new_integ_params[key] for key in mos_types if key in new_integ_params},
+            fg_tot=integ_fg_tot,
+            flip_sd=new_integ_params.get('flip_sd', False),
+            decap=new_integ_params.get('decap', False),
+        )
+        if 'ref' in new_integ_params:
+            sch_integ_params['fg_dict']['ref'] = new_integ_params['ref']
+        sch_alat_list = [
+            dict(fg_dict={key: alat1_params[key] for key in mos_types if key in alat1_params},
+                 fg_tot=alat_fg_min,
+                 flip_sd=alat1_params.get('flip_sd', False),
+                 decap=alat1_params.get('decap', False),
+                 ),
+            dict(fg_dict={key: alat2_params[key] for key in mos_types if key in alat2_params},
+                 fg_tot=alat_fg_min,
+                 flip_sd=alat2_params.get('flip_sd', False),
+                 decap=alat2_params.get('decap', False),
+                 ),
+        ]
+        sch_dlat_list = []
+        for dlat_params in new_dlat_params_list:
+            sch_dlat_list.append(dict(
+                fg_dict={key: dlat_params[key] for key in mos_types if key in dlat_params},
+                fg_tot=dlat_params['min'],
+                flip_sd=dlat_params.get('flip_sd', False),
+                decap=dlat_params.get('decap', False),
+            ))
+
+        self.sch_params = dict(
+            lch=self.params['lch'],
+            w_dict=w_dict,
+            th_dict=self.params['th_dict'].copy(),
+            nac_off=self.params['nac_off'],
+            integ_params=sch_integ_params,
+            alat_params_list=sch_alat_list,
+            intsum_params=top_master.sch_intsum_params.copy(),
+            summer_params=top_master.sch_summer_params.copy(),
+            dlat_params_list=sch_dlat_list,
+            fg_tot=fg_tot,
+        )
 
         return bot_inst, top_inst, col_idx_dict
 
@@ -1513,6 +1596,7 @@ class RXCore(TemplateBase):
         super(RXCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._fg_tot = 0
         self._in_xm_offset = None
+        self._sch_params = None
 
     @classmethod
     def get_default_param_values(cls):
@@ -1599,6 +1683,11 @@ class RXCore(TemplateBase):
         # type: () -> int
         return self._in_xm_offset
 
+    @property
+    def sch_params(self):
+        # type: () -> Dict[str, Any]
+        return self._sch_params
+
     def draw_layout(self):
         half_params = self.params.copy()
         half_params['datapath_parity'] = 0
@@ -1611,6 +1700,8 @@ class RXCore(TemplateBase):
         odd_inst.move_by(dy=odd_master.bound_box.height)
         even_inst = self.add_instance(even_master, 'X0')
         even_inst.move_by(dy=odd_inst.array_box.top - even_inst.array_box.bottom)
+
+        self._sch_params = odd_master.sch_params
 
         self.array_box = odd_inst.array_box.merge(even_inst.array_box)
         self.set_size_from_array_box(even_master.size[0])
