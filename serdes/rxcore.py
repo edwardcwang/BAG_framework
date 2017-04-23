@@ -144,6 +144,7 @@ class RXHalfTop(SerdesRXBase):
             intsum_params='Integrator summer parameters.',
             summer_params='DFE tap-1 summer parameters.',
             acoff_params='AC coupling off transistor parameters.',
+            buf_params='Integrator clock buffer parameters.',
             fg_tot='Total number of fingers.',
             min_fg_sep='Minimum separation between transistors.',
             gds_space='number of tracks reserved as space between gate and drain/source tracks.',
@@ -165,24 +166,24 @@ class RXHalfTop(SerdesRXBase):
         """
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, alat_params, intsum_params, summer_params, acoff_params,
+    def _draw_layout_helper(self, alat_params, intsum_params, summer_params, acoff_params, buf_params,
                             show_pins, diff_space, hm_width, hm_cur_width,
                             sig_widths, sig_spaces, clk_widths, clk_spaces,
                             sig_clk_spaces, datapath_parity, **kwargs):
         draw_params = kwargs.copy()
 
-        result = self.place(alat_params, intsum_params, summer_params, acoff_params, draw_params,
+        result = self.place(alat_params, intsum_params, summer_params, acoff_params, buf_params, draw_params,
                             diff_space, hm_width, hm_cur_width)
-        alat_ports, intsum_ports, summer_ports, acoff_ports, block_info = result
+        alat_ports, intsum_ports, summer_ports, acoff_ports, buf_ports, block_info = result
 
         ffe_inputs = self.connect_sup_io(block_info, alat_ports, intsum_ports, summer_ports, acoff_ports,
                                          sig_widths, sig_spaces, clk_widths, clk_spaces, show_pins)
 
-        self.connect_bias(block_info, alat_ports, intsum_ports, summer_ports, acoff_ports, ffe_inputs,
+        self.connect_bias(block_info, alat_ports, intsum_ports, summer_ports, acoff_ports, buf_ports, ffe_inputs,
                           sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces,
                           show_pins, datapath_parity)
 
-    def place(self, alat_params, intsum_params, summer_params, acoff_params, draw_params,
+    def place(self, alat_params, intsum_params, summer_params, acoff_params, buf_params, draw_params,
               diff_space, hm_width, hm_cur_width):
         gds_space = draw_params['gds_space']
         w_dict = draw_params['w_dict']
@@ -195,7 +196,7 @@ class RXHalfTop(SerdesRXBase):
 
         # draw AnalogBase rows
         # compute pmos/nmos gate/drain/source number of tracks
-        draw_params['pg_tracks'] = [hm_width * 3]
+        draw_params['pg_tracks'] = [hm_width]
         draw_params['pds_tracks'] = [2 * hm_cur_width + diff_space]
         ng_tracks = []
         nds_tracks = []
@@ -223,9 +224,7 @@ class RXHalfTop(SerdesRXBase):
             gate_locs = {'inp': inp_idx,
                          'inn': inn_idx}
 
-        gate_locs['bias_offp'] = (hm_width - 1) / 2
-        gate_locs['bias_offn'] = (hm_width - 1) / 2 + hm_width
-        gate_locs['bias_load'] = (hm_width - 1) / 2 + 2 * hm_width
+        gate_locs['bias_load'] = (hm_width - 1) / 2
 
         # compute nmos gate/drain/source number of tracks
         for row_name in ['tail', 'w_en', 'sw', 'in', 'casc']:
@@ -243,6 +242,11 @@ class RXHalfTop(SerdesRXBase):
         self.set_size_from_array_box(self.mos_conn_layer + 3)
 
         # draw blocks
+
+        # clock buffer
+        buf_ports = self._draw_clock_buffer(buf_params, hm_width, hm_cur_width)
+
+        # analog latch
         alat_col = alat_params.pop('col_idx')
         alat_flip_sd = alat_params.pop('flip_sd', False)
         # print('rxtop alat cur_col: %d' % cur_col)
@@ -250,6 +254,7 @@ class RXHalfTop(SerdesRXBase):
                                           diff_space=diff_space, gate_locs=gate_locs, flip_sd=alat_flip_sd)
         alat_info = self.layout_info.get_diffamp_info(alat_params)
 
+        # integrating summer
         intsum_col = intsum_params.pop('col_idx')
         # print('rxtop intsum cur_col: %d' % cur_col)
         _, intsum_ports = self.draw_gm_summer(intsum_col, hm_width=hm_width, hm_cur_width=hm_cur_width,
@@ -259,6 +264,7 @@ class RXHalfTop(SerdesRXBase):
                                                        gm_sep_list=intsum_params.get('gm_sep_list', None),
                                                        flip_sd_list=intsum_params.get('flip_sd_list', None))
 
+        # tap1 summer
         summer_col = summer_params.pop('col_idx')
         # print('rxtop summer cur_col: %d' % cur_col)
         _, summer_ports = self.draw_gm_summer(summer_col, hm_width=hm_width, hm_cur_width=hm_cur_width,
@@ -308,7 +314,56 @@ class RXHalfTop(SerdesRXBase):
             summer=(summer_col, summer_info),
         )
 
-        return alat_ports, intsum_ports, summer_ports, acoff_ports, block_info
+        return alat_ports, intsum_ports, summer_ports, acoff_ports, buf_ports, block_info
+
+    def _draw_clock_buffer(self, buf_params, hm_width, hm_cur_width):
+        layout_info = self.layout_info
+        col0 = buf_params['col_idx0']
+        col1 = buf_params['col_idx1']
+        fg0 = buf_params['fg0']
+        fg1 = buf_params['fg1']
+        nmos_ridx = self.get_nmos_row_index(buf_params['nmos_type'])
+
+        hm_layer = self.mos_conn_layer + 1
+        vm_layer = hm_layer + 1
+        vm_width = self.params['clk_widths'][0]
+        vm_space = self.params['clk_spaces'][0]
+
+        # find track IDs
+        out_tidx = self.get_num_tracks('pch', 0, 'ds') - (hm_cur_width + 1) / 2
+        inp_tidx = self.get_num_tracks('pch', 0, 'g') - (hm_width + 1) / 2
+        inn_tidx = self.get_num_tracks('nch', nmos_ridx, 'g') - (hm_width + 1) / 2
+        out_tid = TrackID(hm_layer, self.get_track_index('pch', 0, 'ds', out_tidx), width=hm_cur_width)
+        inp_tid = TrackID(hm_layer, self.get_track_index('pch', 0, 'g', inp_tidx), width=hm_width)
+        inn_tid = TrackID(hm_layer, self.get_track_index('nch', nmos_ridx, 'g', inn_tidx), width=hm_width)
+
+        # draw buffer 0
+        pports = self.draw_mos_conn('pch', 0, col0, fg0, 2, 0)
+        nports = self.draw_mos_conn('nch', nmos_ridx, col0, fg0, 0, 2)
+        mid_warr = self.connect_to_tracks([pports['d'], nports['d']], out_tid)
+        self.connect_to_substrate('ptap', nports['s'])
+        self.connect_to_substrate('ntap', pports['s'])
+        inp0_warr = self.connect_to_tracks(pports['g'], inp_tid)
+        inn0_warr = self.connect_to_tracks(nports['g'], inn_tid)
+
+        # draw buffer 1
+        pports = self.draw_mos_conn('pch', 0, col1, fg1, 2, 0)
+        nports = self.draw_mos_conn('nch', nmos_ridx, col1, fg1, 0, 2)
+        out_warr = self.connect_to_tracks([pports['d'], nports['d']], out_tid)
+        self.connect_to_substrate('ptap', nports['s'])
+        self.connect_to_substrate('ntap', pports['s'])
+        inp1_warr = self.connect_to_tracks(pports['g'], inp_tid)
+        inn1_warr = self.connect_to_tracks(nports['g'], inn_tid)
+
+        # connect buffers
+        in_vm = layout_info.get_center_tracks(vm_layer, 1, (col0, col0 + fg0), width=vm_width, space=vm_space)
+        in_warr = self.connect_to_tracks([inp0_warr, inn0_warr], TrackID(vm_layer, in_vm, width=vm_width))
+        mid_vm = layout_info.get_center_tracks(vm_layer, 1, (col0 + fg0, col1), width=vm_width, space=vm_space)
+        self.connect_to_tracks([mid_warr, inp1_warr, inn1_warr], TrackID(vm_layer, mid_vm, width=vm_width))
+        out_vm = layout_info.get_center_tracks(vm_layer, 1, (col1, col1 + fg1), width=vm_width, space=vm_space)
+        out_warr = self.connect_to_tracks(out_warr, TrackID(vm_layer, out_vm, width=vm_width))
+
+        return {'in': in_warr, 'out': out_warr}
 
     @staticmethod
     def _make_summer_sch_params(params, info):
@@ -429,7 +484,7 @@ class RXHalfTop(SerdesRXBase):
 
         return ffe_inputs
 
-    def connect_bias(self, block_info, alat_ports, intsum_ports, summer_ports, acoff_ports, ffe_inputs,
+    def connect_bias(self, block_info, alat_ports, intsum_ports, summer_ports, acoff_ports, buf_ports, ffe_inputs,
                      sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces,
                      show_pins, datapath_parity):
         layout_info = self.layout_info
@@ -471,10 +526,7 @@ class RXHalfTop(SerdesRXBase):
         left_tr_vm = right_tr_vm - clk_space_vm - clk_width_vm
         ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
         rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
-        if datapath_parity == 0:
-            nmos_tr_id, pmos_tr_id, sw_tr_id = ltr_id, ltr_id, rtr_id
-        else:
-            nmos_tr_id, pmos_tr_id, sw_tr_id = rtr_id, rtr_id, ltr_id
+        nmos_tr_id, pmos_tr_id, sw_tr_id = rtr_id, rtr_id, ltr_id
         # nmos_analog
         warr = self.connect_to_tracks(alat_ports['bias_tail'], nmos_tr_id)
         xtr_id = TrackID(xm_layer, clkn_nmos_ana_tr_xm, width=clk_width_xm)
@@ -485,11 +537,10 @@ class RXHalfTop(SerdesRXBase):
         xtr_id = TrackID(xm_layer, clkp_pmos_ana_tr_xm, width=clk_width_xm)
         warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
         self.add_pin(clkp + '_pmos_analog', warr, show=show_pins)
-        # nmos_switch
+        # nmos_switch, connect to clock buffer input
         warr = self.connect_to_tracks(alat_ports['sw'], sw_tr_id)
         xtr_id = TrackID(xm_layer, clkp_nmos_sw_tr_xm, width=clk_width_xm)
-        warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
-        # separate nmos switch of analog latch 1, since it has better n
+        warr = self.connect_to_tracks([warr, buf_ports['in']], xtr_id, min_len_mode=0)
         self.add_pin(clkp + '_nmos_switch_alat1', warr, show=show_pins)
 
         # connect intsum main tap biases
@@ -498,10 +549,10 @@ class RXHalfTop(SerdesRXBase):
         col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][0]['fg_tot']
         left_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=clk_width_vm, space=clk_space_vm)
         ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
-        # pmos intsum
+        # pmos intsum, connect to clock buffer output
         warr = self.connect_to_tracks(intsum_ports[('bias_load', -1)], ltr_id)
         xtr_id = TrackID(xm_layer, clkp_pmos_intsum_tr_xm, width=clk_width_xm)
-        warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
+        warr = self.connect_to_tracks([warr, buf_ports['out']], xtr_id, min_len_mode=0)
         self.add_pin(clkp + '_pmos_intsum', warr, show=show_pins)
         # nmos switch
         nmax = len(intsum_info['gm_offsets'])
@@ -720,6 +771,7 @@ class RXHalfBottom(SerdesRXBase):
         gate_locs = {'inp': (hm_width - 1) / 2 + hm_width + diff_space,
                      'inn': (hm_width - 1) / 2}
         integ_col = integ_params.pop('col_idx')
+        integ_pmos_vm_tid = integ_params.pop('integ_pmos_vm_tid')
         # if drawing current mirror, we must have ground on the outside of tail
         integ_flip_sd = integ_params.pop('flip_sd', False)
         _, integ_ports = self.draw_diffamp(integ_col, integ_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
@@ -744,7 +796,7 @@ class RXHalfBottom(SerdesRXBase):
             dlat_info_list.append((cur_col, dlat_ports, dlat_info))
 
         block_info = dict(
-            integ=(integ_col, integ_info),
+            integ=(integ_col, integ_info, integ_pmos_vm_tid),
             alat=(alat_col, alat_info),
             dlat=dlat_info_list,
         )
@@ -851,7 +903,7 @@ class RXHalfBottom(SerdesRXBase):
             clkp, clkn = 'clkn', 'clkp'
 
         # connect integ biases
-        integ_col, integ_info = block_info['integ']
+        integ_col, integ_info, integ_pmos_vm_tid = block_info['integ']
         col_intv = integ_col, integ_col + integ_info['fg_tot']
         ltr_vm, rtr_vm = get_bias_tracks(layout_info, vm_layer, col_intv, sig_width_vm, sig_space_vm,
                                          clk_width_vm, sig_clk_space_vm)
@@ -863,7 +915,8 @@ class RXHalfBottom(SerdesRXBase):
         warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
         self.add_pin('ibias_nmos_integ', warr, show=show_pins)
         # pmos_integ.  export on M5
-        warr = self.connect_to_tracks(integ_ports['bias_load'], ltr_id)
+        pmos_integ_tid = TrackID(vm_layer, integ_pmos_vm_tid, width=clk_width_vm)
+        warr = self.connect_to_tracks(integ_ports['bias_load'], pmos_integ_tid)
         self.add_pin(clkp + '_pmos_integ', warr, show=show_pins)
         # nmos_switch
         warr = self.connect_to_tracks(integ_ports['sw'], ltr_id)
@@ -1109,6 +1162,7 @@ class RXHalf(TemplateBase):
             intsum_params='Integrator summer parameters.',
             summer_params='DFE tap-1 summer parameters.',
             dlat_params_list='Digital latch parameters.',
+            buf_params='integrator clock buffer parameters.',
             min_fg_sep='Minimum separation between transistors.',
             nduml='number of dummy fingers on the left.',
             ndumr='number of dummy fingers on the right.',
@@ -1188,6 +1242,7 @@ class RXHalf(TemplateBase):
     def place(self, layout_info):
         # type: (SerdesRXBaseInfo) -> Tuple[Instance, Instance, Dict[str, Any]]
         alat_params_list = self.params['alat_params_list']
+        buf_params = self.params['buf_params']
         integ_params = self.params['integ_params']
         intsum_params = self.params['intsum_params']
         summer_params = self.params['summer_params']
@@ -1207,13 +1262,28 @@ class RXHalf(TemplateBase):
 
         # compute block locations
         col_idx_dict = {}
+        # step -1: place clock buffers
+        cur_col = nduml
+        new_buf_params = buf_params.copy()
+        new_buf_params['col_idx0'] = cur_col
+        fg_clk_route = layout_info.num_tracks_to_fingers(vm_layer_id, clk_width_vm + clk_space_vm, cur_col)
+        fg0 = max(fg_clk_route, buf_params['fg0'])
+        cur_col += fg0 + fg_clk_route
+        new_buf_params['col_idx1'] = cur_col
+        # find minimum number of integrator frontend fingers and integrator frontend pmos vm track index.
+        fg1 = max(fg_clk_route, buf_params['fg1'])
+        integ_pmos_vm_tid = layout_info.get_center_tracks(vm_layer_id, 1, (cur_col, cur_col + fg1),
+                                                          width=clk_width_vm, space=clk_space_vm)
+        integ_fg_min = cur_col + fg1 - nduml
         # step 0: place integrating frontend.
         cur_col = nduml
         integ_col_idx = cur_col
         # print('integ_col: %d' % cur_col)
         # step 0A: find minimum number of fingers
         new_integ_params = integ_params.copy()
-        integ_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, diff_clk_route_tracks, cur_col)
+        new_integ_params['integ_pmos_vm_tid'] = integ_pmos_vm_tid
+        integ_fg_min = max(layout_info.num_tracks_to_fingers(vm_layer_id, diff_clk_route_tracks, cur_col),
+                           integ_fg_min)
         new_integ_params['min'] = integ_fg_min
         integ_info = layout_info.get_diffamp_info(new_integ_params)
         new_integ_params['col_idx'] = integ_col_idx
@@ -1426,6 +1496,7 @@ class RXHalf(TemplateBase):
                       if key in self.params}
         top_params['fg_tot'] = fg_tot
         top_params['alat_params'] = alat2_params
+        top_params['buf_params'] = new_buf_params
         top_params['intsum_params'] = dict(
             col_idx=intsum_col_idx,
             fg_load=intsum_params['fg_load'],
@@ -1521,7 +1592,6 @@ class RXHalf(TemplateBase):
         clkpt = top_inst.get_all_port_pins(clk_prefix + '_pmos_intsum')
         warr = self.connect_to_tracks(clkpb, clkpt[0].track_id)
         warr = self.connect_wires([warr] + clkpt)
-        self.add_pin('clkpd', warr, show=show_pins)
 
         # connect integ to alat1
         self._connect_diff_io(bot_inst, col_idx_dict['integ_route'], layout_info, vm_layer,
@@ -1662,6 +1732,7 @@ class RXCore(TemplateBase):
             intsum_params='Integrator summer parameters.',
             summer_params='DFE tap-1 summer parameters.',
             dlat_params_list='Digital latch parameters.',
+            buf_params='Integrator clock buffer parameters.',
             nac_off='Number of off transistors for dlev AC coupling',
             min_fg_sep='Minimum separation between transistors.',
             nduml='number of dummy fingers on the left.',
@@ -1828,15 +1899,12 @@ class RXCore(TemplateBase):
                         ('nmos_summer', 1),
                         ('nmos_tap1', 1),
                         ]
-        # export delayed clocks
-        self.reexport(inst_list[0].get_port('clkpd'), net_name='clkpd', show=show_pins)
-        self.reexport(inst_list[1].get_port('clkpd'), net_name='clknd', show=show_pins)
 
         clk_ports = {'clk1': ['nmos_switch_alat1'], 'clk2': ['nmos_switch']}
         clk_wires = {}
         for inst in inst_list:
             for name in inst.port_names_iter():
-                if name.startswith('clk') and name != 'clkpd':
+                if name.startswith('clk'):
                     if name not in clk_wires:
                         clk_wires[name] = []
                     clk_wires[name].extend(inst.get_all_port_pins(name))

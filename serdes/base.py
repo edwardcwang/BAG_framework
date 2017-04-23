@@ -98,7 +98,8 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
             the Gm stage layout information dictionary.
         """
         fg_min = fg_params.get('min', 0)
-        fg_max = max((fg for key, fg in fg_params.items() if key != 'sep' and key != 'min' and key != 'ref'))
+        valid_keys = ['but', 'casc', 'in', 'sw', 'en', 'tail']
+        fg_max = max((fg_params.get(key, 0) for key in valid_keys))
         fg_ref = fg_params.get('ref', 0)
         if fg_ref > 0:
             fg_max = max(fg_max, fg_ref + fg_params['tail'])
