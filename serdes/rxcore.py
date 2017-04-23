@@ -1573,6 +1573,7 @@ class RXHalf(TemplateBase):
             intsum_params=top_master.sch_intsum_params.copy(),
             summer_params=top_master.sch_summer_params.copy(),
             dlat_params_list=sch_dlat_list,
+            buf_params={key: buf_params[key] for key in ['nmos_type', 'fg0', 'fg1']},
             fg_tot=fg_tot,
         )
 
