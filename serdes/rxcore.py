@@ -505,9 +505,8 @@ class RXHalfTop(SerdesRXBase):
         ffe_top_tr = ffe_inputs[0].track_id.base_index
         ffe_bot_tr = ffe_inputs[1].track_id.base_index
         clkp_nmos_sw_tr_xm = ffe_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
-        ibias_nmos_intsum_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
+        clkp_nmos_tap1_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
         clkp_nmos_summer_tr_xm = clkp_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
-        clkp_nmos_tap1_tr_xm = ibias_nmos_intsum_tr_xm
         clkn_nmos_ana_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
         clkn_nmos_sw_tr_xm = ffe_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
         clkp_pmos_intsum_tr_xm = clkn_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
@@ -572,9 +571,7 @@ class RXHalfTop(SerdesRXBase):
         warr = self.connect_wires(intsum_ports[('bias_tail', 0)] + intsum_ports[('bias_tail', 1)])
         ltr_id = TrackID(vm_layer, ltr_vm, width=clk_width_vm)
         rtr_id = TrackID(vm_layer, rtr_vm, width=clk_width_vm)
-        warr = self.connect_to_tracks(warr, ltr_id)
-        xtr_id = TrackID(xm_layer, ibias_nmos_intsum_tr_xm, width=clk_width_xm)
-        warr = self.connect_to_tracks(warr, xtr_id)
+        warr = self.connect_to_tracks(warr, ltr_id, track_lower=0)
         self.add_pin('ibias_nmos_intsum', warr, show=show_pins)
         # pmos intsum, M5 track 2, and clock buffer output
         pmos_intsum_list.append(self.connect_to_tracks(intsum_ports[('bias_load', -1)], rtr_id))
@@ -878,7 +875,6 @@ class RXHalfBottom(SerdesRXBase):
         dlat_top_tr = dlat_inputs[0].track_id.base_index
         dlat_bot_tr = dlat_inputs[1].track_id.base_index
         clkp_nmos_ana_tr_xm = dlat_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
-        ibias_nmos_integ_tr_xm = clkp_nmos_ana_tr_xm + clk_width_xm + clk_space_xm
         clkp_nmos_dig_tr_xm = clkp_nmos_ana_tr_xm
         clkn_nmos_sw_tr_xm = clkp_nmos_ana_tr_xm - clk_width_xm - clk_space_xm
         clkn_pmos_dig_tr_xm = dlat_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
@@ -911,19 +907,21 @@ class RXHalfBottom(SerdesRXBase):
         col_intv = integ_col, integ_col + integ_info['fg_tot']
         ltr_vm, rtr_vm = get_bias_tracks(layout_info, vm_layer, col_intv, sig_width_vm, sig_space_vm,
                                          clk_width_vm, sig_clk_space_vm)
-        ltr_id = TrackID(vm_layer, (ltr_vm + rtr_vm) / 2, width=clk_width_vm)
-        rtr_id = TrackID(vm_layer, rtr_vm, width=clk_width_vm)
-        # integ_nmos
-        warr = self.connect_to_tracks(integ_ports['bias_tail'], rtr_id)
-        xtr_id = TrackID(xm_layer, ibias_nmos_integ_tr_xm, width=clk_width_xm)
-        warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
+        mtr_vm = (ltr_vm + rtr_vm) / 2
+        mtr_id = TrackID(vm_layer, mtr_vm, width=clk_width_vm)
+        # integ_nmos, route to left of differential input wires
+        inr_idx = mtr_vm - (sig_clk_space_vm + (sig_width_vm + clk_width_vm) / 2)
+        inl_idx = inr_idx - (sig_width_vm + sig_space_vm)
+        nint_idx = inl_idx - (sig_clk_space_vm + (sig_width_vm + clk_width_vm) / 2)
+        warr = self.connect_to_tracks(integ_ports['bias_tail'], TrackID(vm_layer, nint_idx, width=clk_width_vm),
+                                      min_len_mode=1)
         self.add_pin('ibias_nmos_integ', warr, show=show_pins)
         # pmos_integ.  export on M5
         pmos_integ_tid = TrackID(vm_layer, integ_pmos_vm_tid, width=clk_width_vm)
         warr = self.connect_to_tracks(integ_ports['bias_load'], pmos_integ_tid)
         self.add_pin(clkp + '_pmos_integ', warr, show=show_pins)
         # nmos_switch
-        warr = self.connect_to_tracks(integ_ports['sw'], ltr_id)
+        warr = self.connect_to_tracks(integ_ports['sw'], mtr_id)
         clkn_nmos_sw_list.append(warr)
 
         # connect alat biases
@@ -1533,7 +1531,12 @@ class RXHalf(TemplateBase):
         show_pins = self.params['show_pins']
         for inst in (bot_inst, top_inst):
             for port_name in inst.port_names_iter():
-                if not (port_name.endswith('pmos_integ') or port_name.endswith('pmos_intsum')):
+                if port_name.endswith('nmos_integ'):
+                    # extend nmos_integ bias to edge
+                    warr = inst.get_all_port_pins(port_name)[0]
+                    warr = self.extend_wires(warr, upper=self.array_box.top)
+                    self.add_pin(port_name, warr, show=show_pins)
+                elif not (port_name.endswith('pmos_integ') or port_name.endswith('pmos_intsum')):
                     self.reexport(inst.get_port(port_name), show=show_pins)
 
         # record parameters for schematic

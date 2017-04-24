@@ -314,13 +314,8 @@ class HighPassFilter(TemplateBase):
         sup_wa = top_inst.get_all_port_pins(port_name)[0]
         hm_layer = sup_wa.layer_id
         vm_layer = hm_layer + 1
-        xm_layer = vm_layer + 1
         vm_tr = self.grid.coord_to_nearest_track(vm_layer, sup_wa.middle, half_track=True)
         sup_wa = self.connect_to_tracks(sup_wa, TrackID(vm_layer, vm_tr, width=sup_width))
-        num_xm = self.grid.get_num_tracks(self.size, xm_layer)
-        # TODO: remove hard-coded one track margin
-        sup_wa = self.connect_to_tracks(sup_wa, TrackID(xm_layer, num_xm - (sup_width + 3) / 2, width=sup_width),
-                                        min_len_mode=0)
         self.add_pin(port_name, sup_wa, show=show_pins)
 
         # export bias ports

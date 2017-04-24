@@ -203,6 +203,7 @@ class RXClkArray(TemplateBase):
             dictionary of default parameter values.
         """
         return dict(
+            sup_width=3,
             show_pins=True,
         )
 
@@ -221,7 +222,9 @@ class RXClkArray(TemplateBase):
         return dict(
             passive_params='High-pass filter passives parameters.',
             io_width='input/output track width.',
+            sup_width='supply track width.',
             clk_names='output clock names.',
+            sub_types='substrate types.',
             clk_locs='output clock locations.',
             parity='input/output clock parity.',
             show_pins='True to draw pin layouts.',
@@ -231,23 +234,26 @@ class RXClkArray(TemplateBase):
         # type: () -> None
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, passive_params, io_width, clk_names, clk_locs, parity, show_pins):
+    def _draw_layout_helper(self, passive_params, io_width, sup_width,
+                            clk_names, sub_types, clk_locs, parity, show_pins):
         hpf_params = passive_params.copy()
         hpf_params['show_pins'] = False
 
-        # add high pass filters
+        # get high pass filter size and io layer
         num_blocks = len(clk_names)
         hpf_master = self.new_template(params=hpf_params, temp_cls=HighPassFilter)
         hpfw, hpfh = self.grid.get_size_dimension(hpf_master.size, unit_mode=True)
-        inst = self.add_instance(hpf_master, 'XHPF', nx=num_blocks, spx=hpfw, unit_mode=True)
-        io_layer = inst.get_all_port_pins('in')[0].layer_id + 1
+        io_layer = hpf_master.get_port('in').get_pins()[0].layer_id + 1
 
-        # export supplies
+        # calculate supply track index
         port_name = 'VDD' if passive_params['sub_type'] == 'ntap' else 'VSS'
-        sup_warrs = inst.get_all_port_pins(port_name)
-        sup_warrs = self.connect_wires(sup_warrs)
-        self.add_pin(port_name, sup_warrs, show=show_pins)
+        sup_warr = hpf_master.get_port(port_name).get_pins()[0]
+        sup_layer = sup_warr.layer_id + 1
+        vss_tr = self.grid.coord_to_nearest_track(sup_warr.layer_id + 1, sup_warr.middle, half_track=True)
+        sup_space = self.grid.get_num_space_tracks(sup_layer, sup_width)
+        vdd_tr = vss_tr + sup_width + sup_space
 
+        # calculate output tracks
         num_tracks = self.grid.get_num_tracks(hpf_master.size, io_layer)
         ltr, mtr, rtr = self.grid.get_evenly_spaced_tracks(3, num_tracks, io_width, half_end_space=True)
         self._left_tr = ltr
@@ -256,25 +262,40 @@ class RXClkArray(TemplateBase):
         prefix = 'clkp' if parity == 1 else 'clkn'
 
         in_list = []
-        for idx, out_name, out_loc in zip(range(num_blocks), clk_names, clk_locs):
-            offset = num_tracks * idx
-            iid = mtr + offset
-            if out_loc == 0:
-                oid = iid
-            elif parity > 0:
-                oid = ltr + offset
-            else:
-                oid = rtr + offset
+        sup_dict = {'VDD': [], 'VSS': []}
+        for idx, out_name, sub_type, out_loc in zip(range(num_blocks), clk_names, sub_types, clk_locs):
+            if out_name:
+                hpf_params['sub_type'] = sub_type
+                hpf_master = self.new_template(params=hpf_params, temp_cls=HighPassFilter)
+                inst = self.add_instance(hpf_master, 'XHPF', loc=(hpfw * idx, 0), unit_mode=True)
 
-            inwarr = inst.get_port('in', col=idx).get_pins()[0]
-            outwarr = inst.get_port('out', col=idx).get_pins()[0]
-            inwarr = self.connect_to_tracks(inwarr, TrackID(io_layer, iid, width=io_width), min_len_mode=0)
-            outwarr = self.connect_to_tracks(outwarr, TrackID(io_layer, oid, width=io_width), min_len_mode=-1)
-            in_list.append(inwarr)
-            self.add_pin(prefix + '_' + out_name, outwarr, show=show_pins)
-            self.reexport(inst.get_port('bias', col=idx), net_name='bias_' + out_name, show=show_pins)
+                offset = num_tracks * idx
+                iid = mtr + offset
+                if out_loc == 0:
+                    oid = iid
+                elif parity > 0:
+                    oid = ltr + offset
+                else:
+                    oid = rtr + offset
 
+                inwarr = inst.get_all_port_pins('in')[0]
+                outwarr = inst.get_all_port_pins('out')[0]
+                inwarr = self.connect_to_tracks(inwarr, TrackID(io_layer, iid, width=io_width), min_len_mode=0)
+                outwarr = self.connect_to_tracks(outwarr, TrackID(io_layer, oid, width=io_width), min_len_mode=-1)
+                in_list.append(inwarr)
+                self.add_pin(prefix + '_' + out_name, outwarr, show=show_pins)
+                self.reexport(inst.get_port('bias'), net_name='bias_' + out_name, show=show_pins)
+                port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
+                sup_dict[port_name].extend(inst.get_all_port_pins(port_name))
+
+        # export inputs
         self.add_pin(prefix, in_list, label=prefix + ':', show=show_pins)
+        # export supplies
+        for name, tidx in (('VSS', vss_tr), ('VDD', vdd_tr)):
+            warr_list = sup_dict[name]
+            if warr_list:
+                tid = TrackID(sup_layer, tidx, width=sup_width)
+                self.add_pin(name, self.connect_to_tracks(warr_list, tid), show=show_pins)
 
         # calculate size
         top_layer = io_layer
@@ -324,6 +345,7 @@ class BiasBusIO(TemplateBase):
         """
         return dict(
             show_pins=True,
+            track_width=1,
         )
 
     @classmethod
@@ -345,6 +367,7 @@ class BiasBusIO(TemplateBase):
             bus_layer='bus wire layer.',
             show_pins='True to draw pin layout.',
             bus_margin='number of tracks to save as margins to adjacent blocks.',
+            track_width='width of each track',
         )
 
     def draw_layout(self):
@@ -362,9 +385,9 @@ class BiasBusIO(TemplateBase):
         else:
             return min(dim_lower, dim_upper)
 
-    def _draw_layout_helper(self, io_names, sup_name, reserve_tracks, bus_layer, bus_margin, show_pins):
+    def _draw_layout_helper(self, io_names, sup_name, reserve_tracks, bus_layer, bus_margin, show_pins, track_width):
         # compute bus length
-        num_wires = len(io_names) + 2
+        track_space = self.grid.get_num_space_tracks(bus_layer, width_ntr=track_width)
         io_names = {name: idx for idx, name in enumerate(io_names)}
         bus_lower = None
         bus_upper = None
@@ -388,20 +411,25 @@ class BiasBusIO(TemplateBase):
 
         bus_upper = self._get_bound(bus_upper, bus_layer, 1)
         # draw input buses
+        track_pitch = track_width + track_space
+        track0 = bus_margin + track_space + (track_width + 1) / 2
         wire_layers = (bus_layer - 1, bus_layer + 1)
         for lay in wire_layers:
             for name, idx, track, width in io_dict[lay]:
                 mid = self.grid.track_to_coord(lay, track, unit_mode=True)
-                w = self.add_wires(bus_layer, idx + 1 + bus_margin, 0, mid, unit_mode=True)
+                cur_tr_idx = track0 + idx * track_pitch
+                w = self.add_wires(bus_layer, cur_tr_idx, 0, mid, width=track_width, unit_mode=True)
                 w_in = self.connect_to_tracks(w, TrackID(lay, track, width=width), min_len_mode=0)
-                pin_w = WireArray(TrackID(bus_layer, idx + 1 + bus_margin), 0, self.grid.get_min_length(bus_layer, 1))
+                pin_w = WireArray(TrackID(bus_layer, cur_tr_idx, width=track_width), 0,
+                                  self.grid.get_min_length(bus_layer, 1))
                 self.add_pin(name, pin_w, show=show_pins)
                 self.add_pin(name + '_in', w_in, show=show_pins)
 
         # compute size
+        last_sup_track = track0 + (len(io_names) - 1) * track_pitch + (track_width + 1) / 2 + track_space
         bus_wl = self.grid.get_wire_bounds(bus_layer, bus_margin, unit_mode=True)[0]
-        bus_wu = self.grid.get_wire_bounds(bus_layer, bus_margin + num_wires, unit_mode=True)[1]
-        size_wu = self.grid.get_wire_bounds(bus_layer, 2 * bus_margin + num_wires, unit_mode=True)[1]
+        bus_wu = self.grid.get_wire_bounds(bus_layer, last_sup_track, unit_mode=True)[1]
+        size_wu = self.grid.get_wire_bounds(bus_layer, last_sup_track + bus_margin, unit_mode=True)[1]
         blkw, blkh = self.grid.get_block_size(bus_layer + 2, unit_mode=True)
         if self.grid.get_direction(bus_layer) == 'x':
             nxblk = -(-bus_upper // blkw)
@@ -418,6 +446,7 @@ class BiasBusIO(TemplateBase):
 
         # draw supply wires
         sup_warr_list = None
+        sup_pitch = last_sup_track - bus_margin
         for lay in wire_layers:
             tr_max = self.grid.find_next_track(lay, bus_upper, mode=1, unit_mode=True)
             tr_idx_list = list(range(1, tr_max + 1, 2))
@@ -427,14 +456,20 @@ class BiasBusIO(TemplateBase):
             for aidx in avail_list:
                 sup_warr_list.append(self.add_wires(lay, aidx, bus_wl, bus_wu, unit_mode=True))
             self.connect_to_tracks(sup_warr_list, TrackID(bus_layer, bus_margin, width=1,
-                                                          num=2, pitch=num_wires - 1),
+                                                          num=2, pitch=sup_pitch),
                                    track_lower=0)
 
         num_sup_tracks = self.grid.get_num_tracks(self.size, bus_layer + 2)
-        sup_w = self.grid.get_max_track_width(bus_layer + 2, 1, num_sup_tracks)
-        sup_tr = (num_sup_tracks - 1) / 2
-        sup_warr = self.connect_to_tracks(sup_warr_list, TrackID(bus_layer + 2, sup_tr, width=sup_w))
-        self.add_pin(sup_name, sup_warr, show=show_pins)
+        num_top_sup = 1
+        sup_w = self.grid.get_max_track_width(bus_layer + 2, num_top_sup, num_sup_tracks)
+        # TODO: find best way to do this in process independent way
+        while sup_w > 10:
+            num_top_sup += 1
+            sup_w = self.grid.get_max_track_width(bus_layer + 2, num_top_sup, num_sup_tracks)
+        sup_tr_list = self.grid.get_evenly_spaced_tracks(num_top_sup, num_sup_tracks, sup_w)
+        for sup_idx in sup_tr_list:
+            sup_warr = self.connect_to_tracks(sup_warr_list, TrackID(bus_layer + 2, sup_idx, width=sup_w))
+            self.add_pin(sup_name, sup_warr, show=show_pins)
 
 
 class BiasBusCorner(TemplateBase):

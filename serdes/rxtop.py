@@ -132,22 +132,25 @@ class RXFrontendCore(TemplateBase):
             w2 = core_inst.get_all_port_pins('in' + par)[0]
             self.connect_wires([w1, w2])
 
-        ctle_vdds = ctle_inst.get_all_port_pins('VDD')
-        core_vdds = core_inst.get_all_port_pins('VDD')[0]
-        if ctle_vdds[0].middle > ctle_vdds[1].middle:
-            ctle_vdds = (ctle_vdds[1], ctle_vdds[0])
+        sup_name = 'VSS'
+        ctle_sups = ctle_inst.get_all_port_pins(sup_name)
+        if ctle_sups[0].middle > ctle_sups[1].middle:
+            ctle_sups = (ctle_sups[1], ctle_sups[0])
 
+        core_sups = core_inst.get_all_port_pins(sup_name)
         tid_list = []
-        cvtid = core_vdds.track_id
-        for tid in cvtid:
-            tid_list.append(TrackID(cvtid.layer_id, tid, width=cvtid.width))
-        self.connect_to_tracks(ctle_vdds[0], tid_list[0], track_upper=core_vdds.upper)
-        self.connect_to_tracks(ctle_vdds[1], tid_list[1], track_upper=core_vdds.upper)
+        for warr in core_sups:
+            cvtid = warr.track_id
+            for tid in cvtid:
+                tid_list.append((tid, TrackID(cvtid.layer_id, tid, width=cvtid.width)))
+        tid_list = sorted(tid_list)
+        upper = core_sups[0].upper
+        self.connect_to_tracks(ctle_sups[0], tid_list[0][1], track_upper=upper)
+        self.connect_to_tracks(ctle_sups[1], tid_list[-1][1], track_upper=upper)
 
     def _connect_clks(self, clk_inst0, clk_inst1, core_inst, vdd_list, vss_list):
         rxclk_params = self.params['rxclk_params']
         clk_names = rxclk_params['clk_names']
-        sup_name = 'VDD' if rxclk_params['passive_params']['sub_type'] == 'ntap' else 'VSS'
         ltr = clk_inst0.master.left_track
         rtr = clk_inst0.master.right_track
         mtr = (ltr + rtr) / 2
@@ -159,49 +162,42 @@ class RXFrontendCore(TemplateBase):
         pwidth = 1
         clkp_warr, clkn_warr = None, None
         for name in clk_names:
-            nname = 'clkn_' + name
-            pname = 'clkp_' + name
-            nport = clk_inst0.get_all_port_pins(nname)[0]
-            pport = clk_inst1.get_all_port_pins(pname)[0]
-            cur_pid = pport.track_id.base_index
-            cur_nid = nport.track_id.base_index
-            mid = (cur_pid + cur_nid) / 2
-            if cur_pid != cur_nid:
-                sup_indices.append((mid, False))
+            if name:
+                nname = 'clkn_' + name
+                pname = 'clkp_' + name
+                nport = clk_inst0.get_all_port_pins(nname)[0]
+                pport = clk_inst1.get_all_port_pins(pname)[0]
+                cur_pid = pport.track_id.base_index
+                cur_nid = nport.track_id.base_index
+                mid = (cur_pid + cur_nid) / 2
+                if cur_pid != cur_nid:
+                    sup_indices.append((mid, False))
 
-            for cur_name, port in ((nname, nport), (pname, pport)):
-                if cur_name == 'clkp_nmos_tap1':
-                    cur_name = 'even_clkp_nmos_tap1'
-                if cur_name == 'clkn_nmos_tap1':
-                    cur_name = 'odd_clkn_nmos_tap1'
-                self.connect_to_tracks(core_inst.get_all_port_pins(cur_name), port.track_id,
-                                       track_lower=port.lower, track_upper=port.upper)
-            if name == 'nmos_intsum':
-                # draw clkp and clkn wires
-                player = nport.layer_id
-                pwidth = nport.track_id.width
-                clkp_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkp'),
-                                                   TrackID(player, rtr + mid, width=pwidth))
-                clkn_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkn'),
-                                                   TrackID(player, ltr + mid, width=pwidth))
-            elif cur_pid == cur_nid:
-                sup_indices.append((ltr + mid, True))
-                sup_indices.append((rtr + mid, True))
+                for cur_name, port in ((nname, nport), (pname, pport)):
+                    if cur_name == 'clkp_nmos_tap1':
+                        cur_name = 'even_clkp_nmos_tap1'
+                    if cur_name == 'clkn_nmos_tap1':
+                        cur_name = 'odd_clkn_nmos_tap1'
+                    self.connect_to_tracks(core_inst.get_all_port_pins(cur_name), port.track_id,
+                                           track_lower=port.lower, track_upper=port.upper)
+                if name == 'nmos_analog':
+                    # draw clkp and clkn wires
+                    player = nport.layer_id
+                    pwidth = nport.track_id.width
+                    clkp_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkp'),
+                                                       TrackID(player, rtr + mid, width=pwidth))
+                    clkn_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkn'),
+                                                       TrackID(player, ltr + mid, width=pwidth))
+                elif cur_pid == cur_nid:
+                    sup_indices.append((ltr + mid, True))
+                    sup_indices.append((rtr + mid, True))
 
         # connect supplies to M7
         vdd_list.extend(core_inst.get_all_port_pins('VDD'))
         vss_list.extend(core_inst.get_all_port_pins('VSS'))
-        if sup_name == 'VDD':
-            vdd_label = 'VDD:'
-            vss_label = 'VSS'
-            self.reexport(clk_inst0.get_port('VDD'), label=vdd_label)
-            self.reexport(clk_inst1.get_port('VDD'), label=vdd_label)
-
-        else:
-            vdd_label = 'VDD'
-            vss_label = 'VSS:'
-            self.reexport(clk_inst0.get_port('VSS'), label=vss_label)
-            self.reexport(clk_inst1.get_port('VSS'), label=vss_label)
+        for sup_name in ('VDD', 'VSS'):
+            self.reexport(clk_inst0.get_port(sup_name), label=sup_name + ':')
+            self.reexport(clk_inst1.get_port(sup_name), label=sup_name + ':')
 
         vdd_indices = sup_indices[0::2]
         vss_indices = sup_indices[1::2]
@@ -212,8 +208,8 @@ class RXFrontendCore(TemplateBase):
                 top_list.append(self.connect_to_tracks(warr_list, TrackID(player, idx, width=pwidth)))
 
         show_pins = self.params['show_pins']
-        self.add_pin('VDD', vdd_top_list, show=show_pins, label=vdd_label)
-        self.add_pin('VSS', vss_top_list, show=show_pins, label=vss_label)
+        self.add_pin('VDD', vdd_top_list, show=show_pins, label='VDD:')
+        self.add_pin('VSS', vss_top_list, show=show_pins, label='VSS:')
 
         self.add_pin('clkp', clkp_warr, show=show_pins, label='clkp:')
         self.add_pin('clkn', clkn_warr, show=show_pins, label='clkn:')
@@ -253,16 +249,20 @@ class RXFrontendCore(TemplateBase):
         ctlew, ctleh = self.grid.get_size_dimension(ctle_master.size, unit_mode=True)
 
         # compute X coordinate
-        bus_vss_names = ['bias_nmos_integ', 'bias_nmos_analog', 'bias_nmos_intsum',
-                         'bias_nmos_digital', 'bias_nmos_summer', 'bias_nmos_tap1',
-                         '{}_bias_dfe<1>', '{}_bias_dfe<2>', '{}_bias_dfe<3>']
-        bus_vdd_names = ['bias_pmos_analog', 'bias_pmos_digital', 'bias_pmos_summer',
-                         '{}_bias_ffe', '{}_bias_offp', '{}_bias_offn', '{}_bias_dlevp',
-                         '{}_bias_dlevn', ]
-        bus_en_names = ['{}_en_dfe<0>', '{}_en_dfe<1>', '{}_en_dfe<2>', '{}_en_dfe<3>']
-
-        num_track_tot = len(bus_vss_names) + len(bus_vdd_names) + len(bus_en_names) + (2 + bus_margin * 2) * 3
+        # TODO: less hard coding
         vbus_layer = AnalogBase.get_mos_conn_layer(self.grid.tech_info) + 2
+        ibias_width = 2
+        ibias_space = self.grid.get_num_space_tracks(vbus_layer - 1, width_ntr=ibias_width)
+        ibias_pitch = ibias_width + ibias_space
+        bus_ibias_names = ['{}_ibias_nmos_integ', '{}_ibias_nmos_intsum', '{}_ibias_dfe<1>', '{}_ibias_dfe<2>',
+                           '{}_ibias_dfe<3>', '{}_ibias_offset']
+        bus_vss_names = ['bias_nmos_analog', 'bias_nmos_digital', 'bias_nmos_summer', 'bias_nmos_tap1', ]
+        bus_vdd_names = ['bias_pmos_analog', 'bias_pmos_digital', 'bias_pmos_summer',
+                         '{}_bias_ffe', '{}_bias_dlevp', '{}_bias_dlevn', ]
+        bus_en_names = ['{}_en_dfe1', '{}_offp', '{}_offn']
+
+        num_track_tot = len(bus_ibias_names) * ibias_pitch + len(bus_vss_names) + \
+                        len(bus_vdd_names) + len(bus_en_names) + (2 + bus_margin * 2) * 4
         # TODO: handle cases where vbus_layer's pitch is not multiple of all lower vertical layer's pitch
         bias_width = self.grid.get_track_pitch(vbus_layer, unit_mode=True) * num_track_tot
 
@@ -275,7 +275,8 @@ class RXFrontendCore(TemplateBase):
         clk_inst1 = self.add_instance(clk_master1, 'XCLK1', loc=(x_clk, clkh + coreh), unit_mode=True)
         ctle_inst = self.add_instance(ctle_master, 'XCTLE', loc=(bias_width, 0), unit_mode=True)
 
-        bus_order = [(bus_vss_names, 'VSS'), (bus_vdd_names, 'VDD'), (bus_en_names, 'VDD')]
+        bus_order = [(bus_en_names, 'VDD', 1), (bus_vdd_names, 'VDD', 1),
+                     (bus_vss_names, 'VSS', 1), (bus_ibias_names, 'VSS', ibias_width)]
         vdd_list = []
         vss_list = []
         self._connect_bias_wires(clk_inst0, core_inst, [core_inst, clk_inst1], clkh, 'odd', bus_order,
@@ -328,10 +329,11 @@ class RXFrontendCore(TemplateBase):
                 reserve_tracks.append((port_name, warr.layer_id, warr.track_id.base_index - troff, warr.track_id.width))
 
         bus_layer = reserve_tracks[0][1] + 1
-        bias_prefix = '%s_bias_' % prefix
-        en_prefix = '%s_en_' % prefix
+        core_bus_names = {prefix + '_offp', prefix + '_offn', prefix + '_en_dfe1', prefix + '_bias_ffe',
+                          prefix + '_bias_dlevp', prefix + '_bias_dlevn'}
+        bias_prefix = '%s_ibias_' % prefix
         for port_name in core_inst.port_names_iter():
-            if port_name.startswith(bias_prefix) or port_name.startswith(en_prefix):
+            if port_name.startswith(bias_prefix) or port_name in core_bus_names:
                 warr = core_inst.get_all_port_pins(port_name)[0]
                 cur_layer = warr.layer_id
                 troff = bus_xo // self.grid.get_track_pitch(cur_layer, unit_mode=True)
@@ -340,7 +342,7 @@ class RXFrontendCore(TemplateBase):
         cur_yb = yb
         delta_y = 0
         warr_dict = {}
-        for bias_names, sup_name in bus_order:
+        for bias_names, sup_name, track_width in bus_order:
             io_names = [name.format(prefix) for name in bias_names]
             bus_params = dict(
                 io_names=io_names,
@@ -349,6 +351,7 @@ class RXFrontendCore(TemplateBase):
                 bus_layer=bus_layer,
                 bus_margin=1,
                 show_pins=False,
+                track_width=track_width,
             )
             bus_master = self.new_template(params=bus_params, temp_cls=BiasBusIO)
             bus_inst = self.add_instance(bus_master, loc=(bus_xo, cur_yb), unit_mode=True)
@@ -384,6 +387,6 @@ class RXFrontendCore(TemplateBase):
                 self.connect_wires([warr, warr_dict[port_name]])
 
         for port_name in core_inst.port_names_iter():
-            if port_name.startswith(bias_prefix) or port_name.startswith(en_prefix):
+            if port_name.startswith(bias_prefix) or port_name in core_bus_names:
                 warr = core_inst.get_all_port_pins(port_name)[0]
                 self.connect_wires([warr, warr_dict[port_name]])
