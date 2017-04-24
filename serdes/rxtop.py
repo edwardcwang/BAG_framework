@@ -106,10 +106,10 @@ class RXFrontendCore(TemplateBase):
         show_pins = self.params['show_pins']
         clk_inst0, clk_inst1, core_inst, ctle_inst, vdd_list, vss_list, x0 = self._place()
 
-        self.reexport(core_inst.get_port('outp_data<0>'), show=show_pins)
-        self.reexport(core_inst.get_port('outp_data<1>'), show=show_pins)
-        self.reexport(core_inst.get_port('outn_data<0>'), show=show_pins)
-        self.reexport(core_inst.get_port('outn_data<1>'), show=show_pins)
+        self.reexport(core_inst.get_port('even_outp_dlat<0>'), net_name='outp_data<0>', show=show_pins)
+        self.reexport(core_inst.get_port('odd_outp_dlat<0>'), net_name='outp_data<1>', show=show_pins)
+        self.reexport(core_inst.get_port('even_outn_dlat<0>'), net_name='outn_data<0>', show=show_pins)
+        self.reexport(core_inst.get_port('odd_outn_dlat<0>'), net_name='outn_data<1>', show=show_pins)
 
         self._connect_ctle(ctle_inst, core_inst, x0)
         self._connect_clks(clk_inst0, clk_inst1, core_inst, vdd_list, vss_list)
@@ -253,15 +253,14 @@ class RXFrontendCore(TemplateBase):
         vbus_layer = AnalogBase.get_mos_conn_layer(self.grid.tech_info) + 2
         ibias_width = 2
         ibias_space = self.grid.get_num_space_tracks(vbus_layer - 1, width_ntr=ibias_width)
-        ibias_pitch = ibias_width + ibias_space
-        bus_ibias_names = ['{}_ibias_nmos_integ', '{}_ibias_nmos_intsum', '{}_ibias_dfe<1>', '{}_ibias_dfe<2>',
+        bus_ibias_names = ['{}_ibias_nmos_intsum', '{}_ibias_dfe<1>', '{}_ibias_dfe<2>',
                            '{}_ibias_dfe<3>', '{}_ibias_offset']
         bus_vss_names = ['bias_nmos_analog', 'bias_nmos_digital', 'bias_nmos_summer', 'bias_nmos_tap1', ]
         bus_vdd_names = ['bias_pmos_analog', 'bias_pmos_digital', 'bias_pmos_summer',
                          '{}_bias_ffe', '{}_bias_dlevp', '{}_bias_dlevn', ]
         bus_en_names = ['{}_en_dfe1', '{}_offp', '{}_offn']
 
-        num_track_tot = len(bus_ibias_names) * ibias_pitch + len(bus_vss_names) + \
+        num_track_tot = len(bus_ibias_names) + len(bus_vss_names) + \
                         len(bus_vdd_names) + len(bus_en_names) + (2 + bus_margin * 2) * 4
         # TODO: handle cases where vbus_layer's pitch is not multiple of all lower vertical layer's pitch
         bias_width = self.grid.get_track_pitch(vbus_layer, unit_mode=True) * num_track_tot
@@ -280,10 +279,10 @@ class RXFrontendCore(TemplateBase):
         vdd_list = []
         vss_list = []
         self._connect_bias_wires(clk_inst0, core_inst, [core_inst, clk_inst1], clkh, 'odd', bus_order,
-                                 vdd_list, vss_list, bias_width)
+                                 vdd_list, vss_list, x_core)
         bus_order = bus_order[::-1]
         self._connect_bias_wires(clk_inst1, core_inst, [clk_inst1], clk_inst1.location_unit[1], 'even', bus_order,
-                                 vdd_list, vss_list, bias_width)
+                                 vdd_list, vss_list, x_core)
 
         # move ctle to center of rxcore
         mid = core_inst.location_unit[1] + coreh // 2
@@ -387,6 +386,7 @@ class RXFrontendCore(TemplateBase):
                 self.connect_wires([warr, warr_dict[port_name]])
 
         for port_name in core_inst.port_names_iter():
-            if port_name.startswith(bias_prefix) or port_name in core_bus_names:
+            if not port_name.endswith('nmos_integ') and \
+                    (port_name.startswith(bias_prefix) or port_name in core_bus_names):
                 warr = core_inst.get_all_port_pins(port_name)[0]
                 self.connect_wires([warr, warr_dict[port_name]])

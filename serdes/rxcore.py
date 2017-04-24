@@ -1832,12 +1832,18 @@ class RXCore(TemplateBase):
         # export inputs/outputs
         self.add_pin('inp', inp, show=show_pins)
         self.add_pin('inn', inn, show=show_pins)
-        for idx in (0, 1):
-            for pname, oname in (('summer', 'summer'), ('dlev', 'dlev'), ('dlat0', 'data')):
+        for idx, prefix in ((0, 'even'), (1, 'odd')):
+            for pname, oname in (('summer', 'summer'), ('dlev', 'dlev'), ('integ', 'intamp'), ('intsum', 'intsum')):
                 self.reexport(inst_list[idx].get_port('%s_outp' % pname),
                               net_name='outp_%s<%d>' % (oname, idx), show=show_pins)
                 self.reexport(inst_list[idx].get_port('%s_outn' % pname),
                               net_name='outn_%s<%d>' % (oname, idx), show=show_pins)
+            for pname, num in (('alat', 2), ('dlat', 3)):
+                for pidx in range(num):
+                    pport = inst_list[idx].get_port('%s%d_outp' % (pname, pidx))
+                    nport = inst_list[idx].get_port('%s%d_outn' % (pname, pidx))
+                    self.reexport(pport, net_name='%s_outp_%s<%d>' % (prefix, pname, pidx), show=show_pins)
+                    self.reexport(nport, net_name='%s_outn_%s<%d>' % (prefix, pname, pidx), show=show_pins)
 
         # connect alat0 outputs
         route_col_intv = col_idx_dict['alat']
