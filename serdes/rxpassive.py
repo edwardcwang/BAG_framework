@@ -178,6 +178,11 @@ class RXClkArray(TemplateBase):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(RXClkArray, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._left_tr = self._right_tr = None
+        self._track_pitch = None
+
+    @property
+    def track_pitch(self):
+        return self._track_pitch
 
     @property
     def left_track(self):
@@ -258,6 +263,7 @@ class RXClkArray(TemplateBase):
         ltr, mtr, rtr = self.grid.get_evenly_spaced_tracks(3, num_tracks, io_width, half_end_space=True)
         self._left_tr = ltr
         self._right_tr = rtr
+        self._track_pitch = num_tracks
 
         prefix = 'clkp' if parity == 1 else 'clkn'
 

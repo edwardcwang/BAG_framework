@@ -556,12 +556,10 @@ class RXHalfTop(SerdesRXBase):
         # pmos intsum, M5 track 1
         pmos_intsum_list = [self.connect_to_tracks(intsum_ports[('bias_load', -1)], ltr_id)]
 
-        # nmos switch
+        # nmos switch.  Connect to vertical track later.
         nmax = len(intsum_info['gm_offsets'])
         warr_list = intsum_ports[('sw', 0)] + intsum_ports[('sw', 1)]
-        warr = self.connect_wires(warr_list)
-        warr = self.connect_to_tracks(warr, rtr_id)
-        clkn_nmos_sw_list.append(warr)
+        intsum_sw_warr = self.connect_wires(warr_list)
 
         # nmos intsum
         intsum_start = intsum_col + intsum_info['gm_offsets'][1]
@@ -574,11 +572,14 @@ class RXHalfTop(SerdesRXBase):
         warr = self.connect_to_tracks(warr, ltr_id, track_lower=0)
         self.add_pin('ibias_nmos_intsum', warr, show=show_pins)
         # pmos intsum, M5 track 2, and clock buffer output
+        # also connect intsum nmos switch to this vertical track.
         pmos_intsum_list.append(self.connect_to_tracks(intsum_ports[('bias_load', -1)], rtr_id))
         pmos_intsum_list.append(buf_ports['out'])
         xtr_id = TrackID(xm_layer, clkp_pmos_intsum_tr_xm, width=clk_width_xm)
         warr = self.connect_to_tracks(pmos_intsum_list, xtr_id, min_len_mode=0)
         self.add_pin(clkp + '_pmos_intsum', warr, show=show_pins)
+        intsum_sw_warr = self.connect_to_tracks(intsum_sw_warr, rtr_id)
+        clkn_nmos_sw_list.append(intsum_sw_warr)
 
         # connect offset biases/sign control
         intsum_start = intsum_col + intsum_info['gm_offsets'][2]
