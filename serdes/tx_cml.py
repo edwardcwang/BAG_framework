@@ -271,6 +271,11 @@ class CMLCorePMOS(AnalogBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         AnalogBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        self._num_fingers = None
+
+    @property
+    def num_fingers(self):
+        return self._num_fingers
 
     @classmethod
     def get_params_info(cls):
@@ -368,31 +373,31 @@ class CMLCorePMOS(AnalogBase):
 
         input_space = max(input_space, hm_space_ref, hm_space)
 
-        pw_list = [w, w, w]
-        pth_list = [threshold, threshold, threshold]
-        pg_tracks = [input_width, input_space + hm_width + hm_space + hm_width_ref, input_width]
-        pds_tracks = [input_space + hm_width + hm_space,
+        pw_list = [w, w, w, w]
+        pth_list = [threshold, threshold, threshold, threshold]
+        pg_tracks = [input_width, input_space, hm_space + hm_width_ref, input_width]
+        pds_tracks = [input_space + hm_width + hm_space, hm_width,
                       hm_space + hm_width + input_space,
                       input_space + hm_width + hm_space]
 
         # draw transistor rows
+        self._num_fingers = fg_tot
         self.draw_base(lch, fg_tot, ntap_w, ntap_w, [],
                        [], pw_list, pth_list, gds_space=0,
                        ng_tracks=[], nds_tracks=[],
                        pg_tracks=pg_tracks, pds_tracks=pds_tracks,
-                       p_orientations=['MX', 'R0', 'R0'],
+                       p_orientations=['MX', 'R0', 'R0', 'R0'],
                        guard_ring_nf=guard_ring_nf,
                        pgr_w=ntap_w, ngr_w=ntap_w)
 
         # compute track ids
-        outp_tid = self.make_track_id('pch', 2, 'ds', (hm_width - 1) / 2 + input_space, width=hm_width)
+        outp_tid = self.make_track_id('pch', 3, 'ds', (hm_width - 1) / 2 + input_space, width=hm_width)
         outn_tid = self.make_track_id('pch', 0, 'ds', (hm_width - 1) / 2 + input_space, width=hm_width)
-        vdd_tid = self.make_track_id('pch', 1, 'ds', (hm_width - 1) / 2, width=hm_width)
-        tail_tid = self.make_track_id('pch', 1, 'g', input_space + (hm_width - 1) / 2, width=hm_width)
+        vdd_tid = self.make_track_id('pch', 2, 'ds', (hm_width - 1) / 2, width=hm_width)
+        tail_tid = self.make_track_id('pch', 1, 'ds', (hm_width - 1) / 2, width=hm_width)
         inp_tid = self.make_track_id('pch', 0, 'g', (input_width - 1) / 2, width=input_width)
-        inn_tid = self.make_track_id('pch', 2, 'g', (input_width - 1) / 2, width=input_width)
-        bias_tid = self.make_track_id('pch', 1, 'g', input_space + (hm_width - 1) / 2 + hm_space +
-                                      (hm_width + hm_width_ref) / 2, width=hm_width_ref)
+        inn_tid = self.make_track_id('pch', 3, 'g', (input_width - 1) / 2, width=input_width)
+        bias_tid = self.make_track_id('pch', 2, 'g', hm_space + (hm_width_ref - 1) / 2, width=hm_width_ref)
 
         # draw transistors and connect
         inp_list = []
@@ -411,34 +416,39 @@ class CMLCorePMOS(AnalogBase):
             x_coord = self.grid.track_to_coord(vm_layer, vm_idx, unit_mode=True)
             col_center = layout_info.coord_to_col(x_coord, unit_mode=True)
             col_idx = col_center - (fg // 2)
-            if col_first is None:
-                col_first = col_idx
             # draw transistors
-            mtop = self.draw_mos_conn('pch', 2, col_idx, fg, 0, 2)
-            mmid = self.draw_mos_conn('pch', 1, col_idx, fg, 1, 1, gate_ext_mode=3)
-            mbot = self.draw_mos_conn('pch', 0, col_idx, fg, 2, 0)
-            mref = self.draw_mos_conn('pch', 1, col_idx + fg, fg_ref, 1, 1, diode_conn=True, gate_ext_mode=3)
+            if idx == 0:
+                col_first = col_idx - fg_ref
+                mref = self.draw_mos_conn('pch', 2, col_idx - fg_ref, fg_ref, 2, 0,
+                                          diode_conn=True, gate_ext_mode=3, gate_pref_loc='s')
+                bias_list.append(mref['g'])
+
+            mtop = self.draw_mos_conn('pch', 3, col_idx, fg, 2, 0)
+            mmid = self.draw_mos_conn('pch', 2, col_idx, fg, 2, 0, gate_ext_mode=3, gate_pref_loc='s')
+            mbot = self.draw_mos_conn('pch', 0, col_idx, fg, 0, 2)
+            mref = self.draw_mos_conn('pch', 2, col_idx + fg, fg_ref, 2, 0, diode_conn=True,
+                                      gate_ext_mode=3, gate_pref_loc='s')
             col_last = col_idx + fg + fg_ref
             # connect
             inp_list.append(mbot['g'])
             inn_list.append(mtop['g'])
             bias_list.extend((mmid['g'], mref['g']))
-            tail_list.extend((mtop['s'], mbot['s'], mmid['s']))
+            tail_list.extend((mtop['d'], mbot['d'], mmid['d']))
 
-            outp_h = self.connect_to_tracks(mtop['d'], outp_tid)
+            outp_h = self.connect_to_tracks(mtop['s'], outp_tid)
             outp_list.append(outp_h)
             self.add_pin('outp', self.connect_to_tracks(outp_h, vtid), show=show_pins)
-            outn_h = self.connect_to_tracks(mbot['d'], outn_tid)
+            outn_h = self.connect_to_tracks(mbot['s'], outn_tid)
             outn_list.append(outn_h)
             self.add_pin('outn', self.connect_to_tracks(outn_h, vtid), show=show_pins)
 
-            vdd_h = self.connect_to_tracks(mmid['d'], vdd_tid)
+            vdd_h = self.connect_to_tracks(mmid['s'], vdd_tid)
             vdd_h_list.append(vdd_h)
             self.add_pin('VDDM', self.connect_to_tracks(vdd_h, vtid, min_len_mode=0), show=show_pins)
 
         # draw decaps
-        capl = self.draw_mos_decap('pch', 1, 0, col_first, 2, inner=True)
-        capr = self.draw_mos_decap('pch', 1, col_last, fg_tot - col_last, 1, inner=True)
+        capl = self.draw_mos_decap('pch', 2, 0, col_first, 2, inner=True, sdir=2, ddir=0)
+        capr = self.draw_mos_decap('pch', 2, col_last, fg_tot - col_last, 1, inner=True, sdir=2, ddir=0)
 
         self.connect_wires(vdd_h_list)
         self.connect_wires(outp_list)
@@ -474,12 +484,11 @@ class CMLDriverPMOS(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(CMLDriverPMOS, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
-        self._tot_width = None
-        self._output_tracks = None
+        self._num_fingers = None
 
     @property
-    def output_tracks(self):
-        return self._output_tracks
+    def num_fingers(self):
+        return self._num_fingers
 
     @classmethod
     def get_default_param_values(cls):
@@ -564,6 +573,7 @@ class CMLDriverPMOS(TemplateBase):
         )
 
         core_master = self.new_template(params=core_params, temp_cls=CMLCorePMOS)
+        self._num_fingers = core_master.num_fingers
 
         # place instances
         _, load_height = self.grid.get_size_dimension(load_master.size, unit_mode=True)

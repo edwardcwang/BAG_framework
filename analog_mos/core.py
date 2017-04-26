@@ -769,6 +769,8 @@ class AnalogMosDecap(with_metaclass(abc.ABCMeta, TemplateBase)):
             fg='number of fingers.',
             gate_ext_mode='connect gate using lower level metal to adjacent transistors.',
             export_gate='True to export gate to higher level metal.',
+            sdir='source connection direction.',
+            ddir='drain connection direction.',
         )
 
     @classmethod
@@ -788,6 +790,8 @@ class AnalogMosDecap(with_metaclass(abc.ABCMeta, TemplateBase)):
         return dict(
             gate_ext_mode=0,
             export_gate=False,
+            sdir=1,
+            ddir=1,
         )
 
     def get_layout_basename(self):
@@ -802,7 +806,8 @@ class AnalogMosDecap(with_metaclass(abc.ABCMeta, TemplateBase)):
         lch_str = float_to_si_string(self.params['lch'])
         w_str = float_to_si_string(self.params['w'])
         gext = self.params['gate_ext_mode']
-        basename = 'mdecap_l%s_w%s_fg%d_gext%d' % (lch_str, w_str, self.params['fg'], gext)
+        basename = 'mdecap_l%s_w%s_fg%d_gext%d_s%d_d%d' % (lch_str, w_str, self.params['fg'], gext,
+                                                           self.params['sdir'], self.params['ddir'])
         if self.params['export_gate']:
             basename += '_gport'
         return basename
