@@ -78,6 +78,9 @@ def _object_to_skill_file_helper(py_obj, file_obj):
     elif isinstance(py_obj, float):
         # prepend type flag
         file_obj.write('#float {:f}'.format(py_obj))
+    elif isinstance(py_obj, bool):
+        bool_val = 1 if py_obj else 0
+        file_obj.write('#bool {:d}'.format(bool_val))
     elif isinstance(py_obj, int):
         # prepend type flag
         file_obj.write('#int {:d}'.format(py_obj))

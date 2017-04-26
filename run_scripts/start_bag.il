@@ -29,7 +29,7 @@ procedure( parse_data_from_file( fname "t" )
 
 ; recursive helper for parse_data_from_file
 procedure( parse_data_from_file_helper( p )
-    let( (line item ans finish key)
+    let( (line item ans finish key tmp)
         gets( line p )
         ; remove newline
         line = substring(line 1 strlen(line) - 1)
@@ -69,6 +69,15 @@ procedure( parse_data_from_file_helper( p )
             (strncmp( line "#int" 4 ) == 0
                 atoi(cadr(parseString(line)))
             )
+ 	    ; parse a boolean
+	    (strncmp( line "#bool" 5 ) == 0
+	        tmp = atoi(cadr(parseString(line)))
+		if( tmp != 0 then
+		    1
+		else
+		    0
+		)
+	    )
             ; parse a string token or #end
             ('t
                 ; printf("returning str %s\n" line)

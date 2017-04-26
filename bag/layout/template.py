@@ -2375,8 +2375,12 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             for inst in self._layout.inst_iter():
                 for cidx in range(inst.nx):
                     for ridx in range(inst.ny):
-                        inst_used_tracks = inst.get_used_tracks(row=ridx, col=cidx)
-                        self._used_tracks.merge(inst_used_tracks, self.grid.layers)
+                        try:
+                            inst_used_tracks = inst.get_used_tracks(row=ridx, col=cidx)
+                            self._used_tracks.merge(inst_used_tracks, self.grid.layers)
+                        except ValueError:
+                            print('WARNING: detect tracks not on grid.  ignoring instance')
+
 
     def get_available_tracks(self,  # type: TemplateBase
                              layer_id,  # type: int

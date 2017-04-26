@@ -71,6 +71,8 @@ def _dict_to_pcell_params(table):
             param_list.append([key, "string", val])
         elif isinstance(val, int):
             param_list.append([key, "int", val])
+        elif isinstance(val, bool):
+            param_list.append([key, "bool", val])
         else:
             raise Exception('Unsupported parameter %s with type: %s' % (key, type(val)))
 
