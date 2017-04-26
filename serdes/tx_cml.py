@@ -242,7 +242,7 @@ class CMLLoadSingle(TemplateBase):
             self._output_tracks.append(top.track_id.base_index)
             warr = self.connect_to_tracks(sub_warrs, top.track_id, track_lower=top.upper)
             self.add_pin(port_name, warr, show=show_pins)
-            self.reexport(res_inst.get_port('bot<%d>' % idx), net_name='out<%d>' % idx, show=show_pins)
+            self.reexport(res_inst.get_port('bot<%d>' % idx), net_name='out', show=show_pins)
 
         # recompute array_box/size
         self.size = top_layer, nx_arr, ny_arr + ny_shift
@@ -353,7 +353,8 @@ class CMLCorePMOS(AnalogBase):
         hm_width = self.grid.get_min_track_width(hm_layer, **em_specs)
         hm_space = self.grid.get_num_space_tracks(hm_layer, hm_width)
         vm_layer = hm_layer + 1
-        vm_width = self.grid.get_min_track_width(vm_layer, bot_w=hm_width, **em_specs)
+        hm_width_layout = self.grid.get_track_width(hm_layer, hm_width)
+        vm_width = self.grid.get_min_track_width(vm_layer, bot_w=hm_width_layout, **em_specs)
 
         # find number of tracks needed for current reference from EM specs
         cur_ratio = fg / fg_ref
@@ -369,8 +370,10 @@ class CMLCorePMOS(AnalogBase):
 
         pw_list = [w, w, w]
         pth_list = [threshold, threshold, threshold]
-        pg_tracks = [input_width, input_space + hm_width_ref + hm_space, input_width]
-        pds_tracks = [input_space + hm_width, 2 * hm_width + hm_space + input_space, input_space + hm_width]
+        pg_tracks = [input_width, input_space + hm_width + hm_space + hm_width_ref, input_width]
+        pds_tracks = [input_space + hm_width + hm_space,
+                      hm_space + hm_width + input_space,
+                      input_space + hm_width + hm_space]
 
         # draw transistor rows
         self.draw_base(lch, fg_tot, ntap_w, ntap_w, [],
@@ -385,10 +388,11 @@ class CMLCorePMOS(AnalogBase):
         outp_tid = self.make_track_id('pch', 2, 'ds', (hm_width - 1) / 2 + input_space, width=hm_width)
         outn_tid = self.make_track_id('pch', 0, 'ds', (hm_width - 1) / 2 + input_space, width=hm_width)
         vdd_tid = self.make_track_id('pch', 1, 'ds', (hm_width - 1) / 2, width=hm_width)
-        tail_tid = self.make_track_id('pch', 1, 'ds', (hm_width - 1) / 2 + hm_width + hm_space, width=hm_width)
+        tail_tid = self.make_track_id('pch', 1, 'g', input_space + (hm_width - 1) / 2, width=hm_width)
         inp_tid = self.make_track_id('pch', 0, 'g', (input_width - 1) / 2, width=input_width)
         inn_tid = self.make_track_id('pch', 2, 'g', (input_width - 1) / 2, width=input_width)
-        bias_tid = self.make_track_id('pch', 1, 'g', input_space + (hm_width_ref - 1) / 2, width=hm_width_ref)
+        bias_tid = self.make_track_id('pch', 1, 'g', input_space + (hm_width - 1) / 2 + hm_space +
+                                      (hm_width + hm_width_ref) / 2, width=hm_width_ref)
 
         # draw transistors and connect
         inp_list = []
@@ -398,6 +402,8 @@ class CMLCorePMOS(AnalogBase):
         vdd_h_list = []
         outp_list = []
         outn_list = []
+        col_first = None
+        col_last = None
         for idx, vm_idx in enumerate(output_tracks):
             # TODO: add check that fg + fg_ref is less than or equal to output pitch?
             vtid = TrackID(vm_layer, vm_idx, width=vm_width)
@@ -405,11 +411,14 @@ class CMLCorePMOS(AnalogBase):
             x_coord = self.grid.track_to_coord(vm_layer, vm_idx, unit_mode=True)
             col_center = layout_info.coord_to_col(x_coord, unit_mode=True)
             col_idx = col_center - (fg // 2)
+            if col_first is None:
+                col_first = col_idx
             # draw transistors
             mtop = self.draw_mos_conn('pch', 2, col_idx, fg, 0, 2)
-            mmid = self.draw_mos_conn('pch', 1, col_idx, fg, 1, 1)
+            mmid = self.draw_mos_conn('pch', 1, col_idx, fg, 1, 1, gate_ext_mode=3)
             mbot = self.draw_mos_conn('pch', 0, col_idx, fg, 2, 0)
-            mref = self.draw_mos_conn('pch', 1, col_idx + fg, fg_ref, 1, 1, diode_conn=True)
+            mref = self.draw_mos_conn('pch', 1, col_idx + fg, fg_ref, 1, 1, diode_conn=True, gate_ext_mode=3)
+            col_last = col_idx + fg + fg_ref
             # connect
             inp_list.append(mbot['g'])
             inn_list.append(mtop['g'])
@@ -418,14 +427,18 @@ class CMLCorePMOS(AnalogBase):
 
             outp_h = self.connect_to_tracks(mtop['d'], outp_tid)
             outp_list.append(outp_h)
-            self.add_pin('outp<%d>' % idx, self.connect_to_tracks(outp_h, vtid), show=show_pins)
+            self.add_pin('outp', self.connect_to_tracks(outp_h, vtid), show=show_pins)
             outn_h = self.connect_to_tracks(mbot['d'], outn_tid)
             outn_list.append(outn_h)
-            self.add_pin('outn<%d>' % idx, self.connect_to_tracks(outn_h, vtid), show=show_pins)
+            self.add_pin('outn', self.connect_to_tracks(outn_h, vtid), show=show_pins)
 
             vdd_h = self.connect_to_tracks(mmid['d'], vdd_tid)
             vdd_h_list.append(vdd_h)
-            self.add_pin('VDD<%d>' % idx, self.connect_to_tracks(vdd_h, vtid, min_len_mode=0), show=show_pins)
+            self.add_pin('VDDM', self.connect_to_tracks(vdd_h, vtid, min_len_mode=0), show=show_pins)
+
+        # draw decaps
+        capl = self.draw_mos_decap('pch', 1, 0, col_first, 2, inner=True)
+        capr = self.draw_mos_decap('pch', 1, col_last, fg_tot - col_last, 1, inner=True)
 
         self.connect_wires(vdd_h_list)
         self.connect_wires(outp_list)
@@ -510,16 +523,16 @@ class CMLDriverPMOS(TemplateBase):
             input_space='input track space',
             ntap_w='PMOS substrate width, in meters/number of fins.',
             guard_ring_nf='Guard ring width in number of fingers.  0 for no guard ring.',
+            top_layer='top level layer',
             show_pins='True to draw pins.',
         )
 
     def draw_layout(self):
         # type: () -> None
-
         self._draw_layout_helper(**self.params)
 
     def _draw_layout_helper(self, res_params, lch, w, fg, fg_ref, threshold, input_width,
-                            input_space, ntap_w, guard_ring_nf, show_pins):
+                            input_space, ntap_w, guard_ring_nf, show_pins, top_layer):
 
         sub_params = dict(
             lch=lch,
@@ -560,4 +573,66 @@ class CMLDriverPMOS(TemplateBase):
         loadp = self.add_instance(load_master, 'XLOADP', (0, load_height + core_height), unit_mode=True)
 
         self.array_box = loadn.array_box.merge(loadp.array_box)
-        self.set_size_from_array_box(load_master.size[0])
+        w_pitch, h_pitch = self.grid.get_block_size(top_layer, unit_mode=True)
+        nx = -(-self.array_box.width_unit // w_pitch)
+        ny = -(-self.array_box.height_unit // h_pitch)
+        self.size = top_layer, nx, ny
+
+        for name in ['inp', 'inn', 'ibias', 'VDD']:
+            label = name + ':' if name == 'VDD' else name
+            self.reexport(core.get_port(name), label=label, show=show_pins)
+
+        # connect outputs
+        outp_list = self.connect_wires(loadp.get_all_port_pins('out') + core.get_all_port_pins('outp'))
+        outn_list = self.connect_wires(loadn.get_all_port_pins('out') + core.get_all_port_pins('outn'))
+        outp_list = outp_list[0].to_warr_list()
+        outn_list = outn_list[0].to_warr_list()
+        vddm = core.get_all_port_pins('VDDM')
+        vsst = loadp.get_all_port_pins('VSS')
+        vssb = loadn.get_all_port_pins('VSS')
+
+        em_specs = res_params['em_specs']
+
+        for warrs, name in [(outp_list, 'outp'), (outn_list, 'outn'),
+                            (vddm, 'VDD'), (vsst, 'VSS'), (vssb, 'VSS')]:
+            self._connect_to_top(name, warrs, em_specs, top_layer, show_pins)
+
+    def _connect_to_top(self, name, warrs, em_specs, top_layer, show_pins):
+        num_seg = len(warrs)
+        prev_layer = warrs[0].track_id.layer_id
+        prev_width_layout = self.grid.get_track_width(prev_layer, warrs[0].track_id.width)
+        for cur_layer in range(prev_layer + 1, top_layer):
+            cur_width = self.grid.get_min_track_width(cur_layer, **em_specs, bot_w=prev_width_layout)
+
+            # make sure we can draw via to next layer up
+            good = False
+            while not good:
+                try:
+                    self.grid.get_via_extensions(cur_layer, cur_width, 1)
+                    good = True
+                except ValueError:
+                    cur_width += 1
+
+            cur_warrs = []
+            for warr in warrs:
+                tr = self.grid.coord_to_nearest_track(cur_layer, warr.middle)
+                tid = TrackID(cur_layer, tr, width=cur_width)
+                cur_warrs.append(self.connect_to_tracks(warr, tid, min_len_mode=0))
+
+            if self.grid.get_direction(cur_layer) == 'x':
+                self.connect_wires(cur_warrs)
+
+            warrs = cur_warrs
+            prev_width_layout = self.grid.get_track_width(cur_layer, cur_width)
+
+        new_em_specs = em_specs.copy()
+        for key in ['idc', 'iac_rms', 'iac_peak']:
+            if key in new_em_specs:
+                new_em_specs[key] *= num_seg
+
+        top_width = self.grid.get_min_track_width(top_layer, **new_em_specs)
+        tr = self.grid.coord_to_nearest_track(top_layer, warrs[0].middle)
+        tid = TrackID(top_layer, tr, width=top_width)
+        warr = self.connect_to_tracks(warrs, tid)
+        label = name + ':' if name == 'VDD' or name == 'VSS' else name
+        self.add_pin(name, warr, label=label, show=show_pins)
