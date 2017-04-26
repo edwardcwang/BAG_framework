@@ -851,7 +851,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient)
         wires_dict[val].extend(inst.get_all_port_pins('supply'))
         if export_gate:
-            return {'g': inst.get_all_port_pins('g')}
+            return {'g': inst.get_all_port_pins('g')[0]}
         else:
             return {}
 
