@@ -325,6 +325,39 @@ class AnalogBaseInfo(object):
         """
         return self._mos_cls.get_template_width(fg_tot, guard_ring_nf=guard_ring_nf)
 
+    def coord_to_col(self, coord, unit_mode=False, mode=0):
+        """Convert the given X coordinate to transistor column index.
+        
+        Find the left source/drain index closest to the given coordinate.
+
+        Parameters
+        ----------
+        coord : Union[float, int]
+            the X coordinate.
+        unit_mode : bool
+            True to if coordinate is given in resolution units.
+        mode : int
+            rounding mode.
+        Returns
+        -------
+        col_idx : int
+            the left source/drain index closest to the given coordinate.
+        """
+        res = self.grid.resolution
+        if not unit_mode:
+            coord = int(round(coord / res))
+
+        diff = coord - self._sd_xc_unit
+        pitch = self._sd_pitch_unit
+        if mode == 0:
+            q = (diff + pitch // 2) // pitch
+        elif mode < 0:
+            q = diff // pitch
+        else:
+            q = -(-diff // pitch)
+
+        return q - self.pitch_offset[0]
+
     def col_to_coord(self, col_idx, unit_mode=False):
         """Convert the given transistor column index to X coordinate.
 
@@ -1384,13 +1417,13 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             # for NMOS, prioritize connection to bottom substrate.
             port_name = 'VSS'
             bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list, all_conn_list)
-            top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list, all_conn_list)
+            top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list[::-1], all_conn_list)
             top_dum_only = not export_both
         else:
             # for PMOS, prioritize connection to top substrate.
             port_name = 'VDD'
             top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list, all_conn_list)
-            bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list, all_conn_list)
+            bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list[::-1], all_conn_list)
             bot_dum_only = not export_both
 
         # make list of dummy gate connection parameters
@@ -1493,6 +1526,15 @@ class SubstrateContact(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(SubstrateContact, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self._num_fingers = None
+
+    @property
+    def port_name(self):
+        return 'VDD' if self.params['sub_type'] == 'ntap' else 'VSS'
+
+    @property
+    def num_fingers(self):
+        return self._num_fingers
 
     @classmethod
     def default_top_layer(cls, tech_info):
@@ -1605,6 +1647,7 @@ class SubstrateContact(TemplateBase):
             sub_xoff = (q - num_sd) // 2
 
         # create substrate
+        self._num_fingers = sub_fg_tot
         params = dict(
             lch=lch,
             w=w,
