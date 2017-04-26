@@ -821,11 +821,15 @@ class RoutingGrid(object):
         if bot_dir == 'x':
             vbox = BBox(0, 0, top_dim, bot_dim, res, unit_mode=True)
             vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir)
+            if vinfo is None:
+                raise ValueError('Cannot create via')
             bot_ext = (vinfo['bot_box'].width_unit - top_dim) // 2
             top_ext = (vinfo['top_box'].height_unit - bot_dim) // 2
         else:
             vbox = BBox(0, 0, bot_dim, top_dim, res, unit_mode=True)
             vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir)
+            if vinfo is None:
+                raise ValueError('Cannot create via')
             bot_ext = (vinfo['bot_box'].height_unit - top_dim) // 2
             top_ext = (vinfo['top_box'].width_unit - bot_dim) // 2
 
