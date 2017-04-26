@@ -219,6 +219,12 @@ class WireArray(object):
     def width(self):
         return self.track_id.width
 
+    def to_warr_list(self):
+        tid = self._track_id
+        layer = tid.layer_id
+        width = tid.width
+        return [WireArray(TrackID(layer, tr, width=width), self._lower, self._upper) for tr in tid]
+
     def get_bbox_array(self, grid):
         # type: ('RoutingGrid') -> BBoxArray
         """Returns the BBoxArray representing this WireArray.
