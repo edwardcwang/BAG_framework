@@ -177,7 +177,8 @@ class RXClkArray(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(RXClkArray, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
-        self._left_tr = self._right_tr = None
+        self._mid_tracks = None
+        self._output_layer = None
         self._track_pitch = None
 
     @property
@@ -185,12 +186,12 @@ class RXClkArray(TemplateBase):
         return self._track_pitch
 
     @property
-    def left_track(self):
-        return self._left_tr
+    def output_layer(self):
+        return self._output_layer
 
     @property
-    def right_track(self):
-        return self._right_tr
+    def mid_tracks(self):
+        return self._mid_tracks
 
     @classmethod
     def get_default_param_values(cls):
@@ -261,28 +262,29 @@ class RXClkArray(TemplateBase):
         # calculate output tracks
         num_tracks = self.grid.get_num_tracks(hpf_master.size, io_layer)
         ltr, mtr, rtr = self.grid.get_evenly_spaced_tracks(3, num_tracks, io_width, half_end_space=True)
-        self._left_tr = ltr
-        self._right_tr = rtr
-        self._track_pitch = num_tracks
 
         prefix = 'clkp' if parity == 1 else 'clkn'
 
         in_list = []
         sup_dict = {'VDD': [], 'VSS': []}
+        self._output_layer = io_layer
+        self._track_pitch = mtr - ltr
+        self._mid_tracks = []
         for idx, out_name, sub_type, out_loc in zip(range(num_blocks), clk_names, sub_types, clk_locs):
+            offset = num_tracks * idx
+            iid = mtr + offset
+            self._mid_tracks.append(iid)
             if out_name:
                 hpf_params['sub_type'] = sub_type
                 hpf_master = self.new_template(params=hpf_params, temp_cls=HighPassFilter)
                 inst = self.add_instance(hpf_master, 'XHPF', loc=(hpfw * idx, 0), unit_mode=True)
 
-                offset = num_tracks * idx
-                iid = mtr + offset
-                if out_loc == 0:
+                if out_loc[parity] == 0:
                     oid = iid
-                elif parity > 0:
-                    oid = ltr + offset
-                else:
+                elif out_loc[parity] > 0:
                     oid = rtr + offset
+                else:
+                    oid = ltr + offset
 
                 inwarr = inst.get_all_port_pins('in')[0]
                 outwarr = inst.get_all_port_pins('out')[0]
@@ -646,6 +648,7 @@ class CTLECore(ResArrayBase):
             num_cap_layer='number of layers to use for AC coupling cap.',
             cap_port_widths='capacitor port widths.',
             cap_port_offset='capacitor port index offset from common mode wire.',
+            cap_height='capacitor height.',
             num_r1='number of r1 segments.',
             num_r2='number of r2 segments.',
             num_dumc='number of dummy columns.',
@@ -672,6 +675,7 @@ class CTLECore(ResArrayBase):
         num_cap_layer = kwargs.pop('num_cap_layer')
         cap_port_widths = kwargs.pop('cap_port_widths')
         cap_port_offset = kwargs.pop('cap_port_offset')
+        cap_height = int(round(kwargs.pop('cap_height') / self.grid.resolution))
 
         if num_r1 % 2 != 0 or num_r2 % 2 != 0:
             raise ValueError('num_r1 and num_r2 must be even.')
@@ -701,6 +705,7 @@ class CTLECore(ResArrayBase):
         cap_yb = self.grid.get_wire_bounds(io_layer, cap_port_offset + cm_tr, width=io_width, unit_mode=True)[0]
         num_sp = self.grid.get_num_space_tracks(hm_layer, cap_port_widths[0])
         cap_yt = self.grid.get_wire_bounds(hm_layer, supt.track_id.base_index - num_sp - 1, unit_mode=True)[1]
+        cap_yt = min(cap_yt, cap_yb + cap_height)
         cap_xl = cap_edge_margin
         cap_xr = self.array_box.right_unit - cap_edge_margin
 
@@ -909,6 +914,7 @@ class CTLE(TemplateBase):
             num_cap_layer='number of layers to use for AC coupling cap.',
             cap_port_widths='capacitor port widths.',
             cap_port_offset='capacitor port index offset from common mode wire.',
+            cap_height='capacitor height.',
             num_r1='number of r1 segments.',
             num_r2='number of r2 segments.',
             num_dumc='number of dummy columns.',

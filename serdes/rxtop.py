@@ -151,19 +151,15 @@ class RXFrontendCore(TemplateBase):
     def _connect_clks(self, clk_inst0, clk_inst1, core_inst, vdd_list, vss_list):
         rxclk_params = self.params['rxclk_params']
         clk_names = rxclk_params['clk_names']
-        ltr = clk_inst0.master.left_track
-        rtr = clk_inst0.master.right_track
-        track_pitch = clk_inst0.master.track_pitch
-        mtr = (ltr + rtr) / 2
-        ltr -= mtr
-        rtr -= mtr
-
+        clk_master = clk_inst0.master
+        port_layer = clk_master.output_layer
+        track_pitch = clk_master.track_pitch
+        mid_tracks = [clk_inst0.translate_master_track(port_layer, mid) for mid in clk_master.mid_tracks]
         sup_indices = []
         player = -1
         pwidth = 1
         clkp_warr, clkn_warr = None, None
-        mid = 0
-        for idx, name in enumerate(clk_names):
+        for idx, (name, mid_tr) in enumerate(zip(clk_names, mid_tracks)):
             if name:
                 nname = 'clkn_' + name
                 pname = 'clkp_' + name
@@ -173,9 +169,8 @@ class RXFrontendCore(TemplateBase):
                 pwidth = nport.track_id.width
                 cur_pid = pport.track_id.base_index
                 cur_nid = nport.track_id.base_index
-                mid = (cur_pid + cur_nid) / 2
-                if cur_pid != cur_nid:
-                    sup_indices.append((mid, False))
+                if mid_tr != cur_pid and mid_tr != cur_nid:
+                    sup_indices.append((mid_tr, False))
 
                 for cur_name, port in ((nname, nport), (pname, pport)):
                     if cur_name == 'clkp_nmos_tap1':
@@ -184,16 +179,15 @@ class RXFrontendCore(TemplateBase):
                         cur_name = 'odd_clkn_nmos_tap1'
                     self.connect_to_tracks(core_inst.get_all_port_pins(cur_name), port.track_id,
                                            track_lower=port.lower, track_upper=port.upper)
-                if cur_pid == cur_nid:
-                    sup_indices.append((ltr + mid, True))
-                    sup_indices.append((rtr + mid, True))
+                if cur_pid == mid_tr and cur_nid == mid_tr:
+                    sup_indices.append((mid_tr - track_pitch, True))
+                    sup_indices.append((mid_tr + track_pitch, True))
             elif idx != 0:
                 # draw clkp and clkn wires
-                mid += track_pitch
                 clkp_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkp'),
-                                                   TrackID(player, rtr + mid, width=pwidth))
+                                                   TrackID(player, mid_tr + track_pitch, width=pwidth))
                 clkn_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkn'),
-                                                   TrackID(player, ltr + mid, width=pwidth))
+                                                   TrackID(player, mid_tr - track_pitch, width=pwidth))
 
         # connect supplies to M7
         vdd_list.extend(core_inst.get_all_port_pins('VDD'))
