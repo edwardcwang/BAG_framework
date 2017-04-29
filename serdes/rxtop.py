@@ -169,8 +169,6 @@ class RXFrontendCore(TemplateBase):
                 pwidth = nport.track_id.width
                 cur_pid = pport.track_id.base_index
                 cur_nid = nport.track_id.base_index
-                if mid_tr != cur_pid and mid_tr != cur_nid:
-                    sup_indices.append((mid_tr, False))
 
                 for cur_name, port in ((nname, nport), (pname, pport)):
                     if cur_name == 'clkp_nmos_tap1':
@@ -182,12 +180,22 @@ class RXFrontendCore(TemplateBase):
                 if cur_pid == mid_tr and cur_nid == mid_tr:
                     sup_indices.append((mid_tr - track_pitch, True))
                     sup_indices.append((mid_tr + track_pitch, True))
-            elif idx != 0:
-                # draw clkp and clkn wires
-                clkp_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkp'),
-                                                   TrackID(player, mid_tr + track_pitch, width=pwidth))
-                clkn_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkn'),
-                                                   TrackID(player, mid_tr - track_pitch, width=pwidth))
+
+                # TODO: generalize?  This is hack for 16nm to minimize clock feedthrough
+                # use middle wire for clkp/clkn/supply
+                if name == 'nmos_analog':
+                    clkp_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkp'),
+                                                       TrackID(player, mid_tr, width=pwidth))
+                elif name == 'pmos_analog':
+                    clkn_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkn'),
+                                                       TrackID(player, mid_tr, width=pwidth))
+                elif mid_tr != cur_pid and mid_tr != cur_nid:
+                    sup_indices.append((mid_tr, False))
+
+            elif idx == 1:
+                # TODO: generalize?  This is hack for 16nm
+                # use right track for supply
+                sup_indices.append((mid_tr - track_pitch, False))
 
         # connect supplies to M7
         vdd_list.extend(core_inst.get_all_port_pins('VDD'))
