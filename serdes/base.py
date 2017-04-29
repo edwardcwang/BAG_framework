@@ -209,6 +209,39 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
 
         return results
 
+    def get_sampler_info(self, fg_params):
+        # type: (Dict[str, int]) -> Dict[str, Any]
+        """Return sampler layout information dictionary.
+
+        Parameters
+        ----------
+        fg_params : Dict[str, int]
+            a dictionary containing number of fingers per transistor type.
+            Possible entries are:
+
+            sample :
+                number of fingers of sample transistor.
+            min :
+                minimum number of fingers for this circuit.
+
+        Returns
+        -------
+        info : Dict[str, Any]
+            the DiffAmp stage layout information dictionary.
+        """
+        fg_min = fg_params.get('min', 0)
+        fg_samp = fg_params['sample']
+        fg_pmos_tot = 2 * fg_samp + self.min_fg_sep
+        fg_tot = max(fg_min, fg_pmos_tot)
+
+        results = dict(
+            fg_tot=fg_tot,
+            fg_sep=self.min_fg_sep,
+            fg_min=fg_min,
+        )
+
+        return results
+
     def get_summer_info(self, fg_load, gm_fg_list, gm_sep_list=None, flip_sd_list=None):
         # type: (int, List[Dict[str, int]], Optional[List[int]], Optional[List[bool]]) -> Dict[str, Any]
         """Return GmSummer layout information dictionary.
@@ -404,6 +437,22 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         """Returns the index of the given nmos row type."""
         return self._nrow_idx.get(name, -1)
 
+    def _get_gm_input_track_index(self, gate_locs, track_width, diff_space):
+        in_ntr = self.get_num_tracks('nch', self._nrow_idx['in'], 'g')
+        inp_tr = in_ntr - (track_width + 1) / 2
+        inn_tr = inp_tr - track_width - diff_space
+        ptr_idx = self.get_track_index('nch', self._nrow_idx['in'], 'g', gate_locs.get('inp', inp_tr))
+        ntr_idx = self.get_track_index('nch', self._nrow_idx['in'], 'g', gate_locs.get('inn', inn_tr))
+        return ptr_idx, ntr_idx
+
+    def _get_diffamp_output_track_index(self, track_width, diff_space):
+        out_ntr = self.get_num_tracks('pch', 0, 'ds')
+        outn_tr = out_ntr - (track_width + 1) / 2
+        outp_tr = outn_tr - track_width - diff_space
+        ptr_idx = self.get_track_index('pch', 0, 'ds', outp_tr)
+        ntr_idx = self.get_track_index('pch', 0, 'ds', outn_tr)
+        return ptr_idx, ntr_idx
+
     def draw_gm(self,  # type: SerdesRXBase
                 col_idx,  # type: int
                 fg_params,  # type: Dict[str, int]
@@ -440,8 +489,6 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 number of fingers of enable transistor.
             tail :
                 number of fingers of tail bias transistor.
-            sep :
-                number of fingers used as separation between P and N side.
             min :
                 minimum number of fingers for this circuit.
         hm_width : int
@@ -702,11 +749,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         # draw differential input connection
         inp_warr = mos_dict['inp']['g']
         inn_warr = mos_dict['inn']['g']
-        in_ntr = self.get_num_tracks('nch', self._nrow_idx['in'], 'g')
-        ptr_idx = self.get_track_index('nch', self._nrow_idx['in'], 'g',
-                                       gate_locs.get('inp', in_ntr - (hm_width + 1) / 2))
-        ntr_idx = self.get_track_index('nch', self._nrow_idx['in'], 'g',
-                                       gate_locs.get('inn', in_ntr - (hm_width + 1) / 2 - hm_width - diff_space))
+        ptr_idx, ntr_idx = self._get_gm_input_track_index(gate_locs, hm_width, diff_space)
         p_tr, n_tr = self.connect_differential_tracks(inp_warr, inn_warr, self.mos_conn_layer + 1, ptr_idx, ntr_idx,
                                                       width=hm_width)
         port_dict['inp'] = [p_tr, ]
@@ -729,6 +772,104 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 port_dict[conn_name] = [sig_warr, ]
 
         return fg_gm_tot, port_dict
+
+    def draw_pmos_sampler(self,  # type: SerdesRXBase
+                          col_idx,  # type: int
+                          fg_params,  # type: Dict[str, int]
+                          hm_width=1,  # type: int
+                          hm_cur_width=-1,  # type: int
+                          diff_space=1,  # type: int
+                          gate_locs=None,  # type: Optional[Dict[str, float]]
+                          io_space=1,  # type: int
+                          to_gm_input=False,  # type: bool
+                          ):
+        # type: (...) -> Tuple[int, Dict[str, List[WireArray]]]
+        """Draw a differential amplifier/dynamic latch.
+
+        a separator is used to separate the positive half and the negative half of the latch.
+        For tail/switch/enable devices, the g/d/s of both halves are shorted together.
+
+        Parameters
+        ----------
+        col_idx : int
+            the left-most transistor index.  0 is the left-most transistor.
+        fg_params : Dict[str, int]
+            a dictionary containing number of fingers per transistor type.
+            Possible entries are:
+
+            sample :
+                number of sampler fingers of butterfly transistor.
+            min :
+                minimum number of fingers for this circuit.
+        hm_width : int
+            width of horizontal tracks.
+        hm_cur_width : int
+            width of horizontal current-carrying tracks.  If negative, defaults to hm_width.
+        diff_space : int
+            number of tracks to reserve as space between differential wires.
+        gate_locs : Optional[Dict[string, int]]
+            dictionary from gate names to relative track index.  If None uses default.
+            True to use load dummy transistors as load decaps.
+        io_space : int
+            space between input and output differential tracks.
+        to_gm_input : bool
+            True to connect output directly to gm input tracks.
+
+        Returns
+        -------
+        fg_samp : int
+            width of the sampler in number of fingers.
+        port_dict : Dict[str, List[WireArray]]
+            a dictionary from connection name to the horizontal track associated
+            with the connection.
+        """
+        gate_locs = gate_locs or {}
+
+        # get layout information
+        results = self._serdes_info.get_sampler_info(fg_params)
+        fg_samp = fg_params['sample']
+        fg_tot = results['fg_tot']  # type: int
+        fg_sep = results['fg_sep']
+
+        # get input/output tracks
+        inp_tr, inn_tr = self._get_diffamp_output_track_index(hm_cur_width, diff_space)
+        if to_gm_input:
+            out_width = hm_width
+            outp_tr, outn_tr = self._get_gm_input_track_index(gate_locs, hm_width, diff_space)
+        else:
+            out_width = hm_cur_width
+            outp_tr = inn_tr - io_space - hm_cur_width
+            outn_tr = outp_tr - diff_space - hm_cur_width
+
+        # draw load transistors
+        sdir, ddir = 2, 0
+        loadp = self.draw_mos_conn('pch', 0, col_idx, fg_samp, sdir, ddir)
+        loadn = self.draw_mos_conn('pch', 0, col_idx + fg_samp + fg_sep, fg_samp, sdir, ddir)
+
+        # connect wires
+        pgbot_tr = (hm_width - 1) / 2
+        tr_id = self.make_track_id('pch', 0, 'g', gate_locs.get('sample_clk', pgbot_tr), width=hm_width)
+        clk_warr = self.connect_to_tracks([loadp['g'], loadn['g']], tr_id)
+
+        hm_layer = self.mos_conn_layer + 1
+        inp_warr, inn_warr = self.connect_differential_tracks(loadp['s'], loadn['s'], hm_layer,
+                                                              inp_tr, inn_tr, width=hm_cur_width)
+        outp_warr, outn_warr = self.connect_differential_tracks(loadp['d'], loadn['d'], hm_layer,
+                                                                outp_tr, outn_tr, width=out_width)
+        # type checking
+        if clk_warr is None:
+            raise ValueError('no clock connection made.')
+        if inp_warr is None:
+            raise ValueError('no inp connection made.')
+        if inn_warr is None:
+            raise ValueError('no inn connection made.')
+        if outp_warr is None:
+            raise ValueError('no outp connection made.')
+        if outn_warr is None:
+            raise ValueError('no outn connection made.')
+
+        return fg_tot, {'sample_clk': [clk_warr], 'inp': [inp_warr], 'inn': [inn_warr],
+                        'outp': [outp_warr], 'outn': [outn_warr]}
 
     def draw_diffamp(self,  # type: SerdesRXBase
                      col_idx,  # type: int
@@ -885,10 +1026,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             port_dict['bias_load'] = [warr, ]
 
         # connect differential outputs
-        out_ntr = self.get_num_tracks('pch', 0, 'ds')
-        ptr_idx = self.get_track_index('pch', 0, 'ds', out_ntr - (hm_cur_width + 1) / 2 - hm_cur_width - diff_space)
-        ntr_idx = self.get_track_index('pch', 0, 'ds', out_ntr - (hm_cur_width + 1) / 2)
-
+        ptr_idx, ntr_idx = self._get_diffamp_output_track_index(hm_cur_width, diff_space)
         if sign < 0:
             # flip positive/negative wires.
             p_tr, n_tr = self.connect_differential_tracks(outn_warrs, outp_warrs, self.mos_conn_layer + 1,
