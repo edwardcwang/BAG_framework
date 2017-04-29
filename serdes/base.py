@@ -233,8 +233,11 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         fg_samp = fg_params['sample']
         fg_pmos_tot = 2 * fg_samp + self.min_fg_sep
         fg_tot = max(fg_min, fg_pmos_tot)
+        nduml = (fg_tot - fg_pmos_tot) // 2
 
         results = dict(
+            nduml=nduml,
+            ndumr=fg_tot - fg_pmos_tot - nduml,
             fg_tot=fg_tot,
             fg_sep=self.min_fg_sep,
             fg_min=fg_min,
@@ -827,6 +830,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
 
         # get layout information
         results = self._serdes_info.get_sampler_info(fg_params)
+        col_idx += results['nduml']
         fg_samp = fg_params['sample']
         fg_tot = results['fg_tot']  # type: int
         fg_sep = results['fg_sep']

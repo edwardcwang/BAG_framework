@@ -159,6 +159,7 @@ class RXHalfTop(SerdesRXBase):
             show_pins='True to create pin labels.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
             datapath_parity='Parity of the DDR datapath.  Either 0 or 1.',
+            integ_pmos_vm_tid='integrator latch clk track.',
         )
 
     def draw_layout(self):
@@ -169,25 +170,26 @@ class RXHalfTop(SerdesRXBase):
     def _draw_layout_helper(self, alat_params, intsum_params, summer_params, acoff_params, buf_params,
                             show_pins, diff_space, hm_width, hm_cur_width,
                             sig_widths, sig_spaces, clk_widths, clk_spaces,
-                            sig_clk_spaces, datapath_parity, **kwargs):
+                            sig_clk_spaces, datapath_parity, integ_pmos_vm_tid, **kwargs):
         draw_params = kwargs.copy()
 
         result = self.place(alat_params, intsum_params, summer_params, acoff_params, buf_params, draw_params,
-                            diff_space, hm_width, hm_cur_width)
-        alat_ports, intsum_ports, summer_ports, acoff_ports, buf_ports, block_info = result
+                            diff_space, hm_width, hm_cur_width, integ_pmos_vm_tid)
+        integ_ports, samp_ports, intsum_ports, summer_ports, acoff_ports, buf_ports, block_info = result
 
-        ffe_inputs = self.connect_sup_io(block_info, alat_ports, intsum_ports, summer_ports, acoff_ports,
+        ffe_inputs = self.connect_sup_io(block_info, integ_ports, samp_ports, intsum_ports, summer_ports, acoff_ports,
                                          sig_widths, sig_spaces, clk_widths, clk_spaces, show_pins)
 
-        self.connect_bias(block_info, alat_ports, intsum_ports, summer_ports, acoff_ports, buf_ports, ffe_inputs,
-                          sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces,
-                          show_pins, datapath_parity)
+        self.connect_bias(block_info, integ_ports, samp_ports, intsum_ports, summer_ports, acoff_ports, buf_ports,
+                          ffe_inputs, sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces,
+                          show_pins, datapath_parity, integ_pmos_vm_tid)
 
     def place(self, alat_params, intsum_params, summer_params, acoff_params, buf_params, draw_params,
-              diff_space, hm_width, hm_cur_width):
+              diff_space, hm_width, hm_cur_width, integ_pmos_vm_tid):
         gds_space = draw_params['gds_space']
         w_dict = draw_params['w_dict']
-        alat_params = alat_params.copy()
+        integ_params = alat_params['integ_params'].copy()
+        samp_params = alat_params['samp_params'].copy()
         intsum_params = intsum_params.copy()
         summer_params = summer_params.copy()
 
@@ -244,15 +246,23 @@ class RXHalfTop(SerdesRXBase):
         # draw blocks
 
         # clock buffer
-        buf_ports = self._draw_clock_buffer(buf_params, hm_width, hm_cur_width)
+        buf_ports = self._draw_clock_buffer(buf_params, hm_width, hm_cur_width, integ_pmos_vm_tid)
 
-        # analog latch
-        alat_col = alat_params.pop('col_idx')
-        alat_flip_sd = alat_params.pop('flip_sd', False)
+        # integrator
+        integ_col = integ_params.pop('col_idx')
+        integ_flip_sd = integ_params.pop('flip_sd', False)
         # print('rxtop alat cur_col: %d' % cur_col)
-        _, alat_ports = self.draw_diffamp(alat_col, alat_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                          diff_space=diff_space, gate_locs=gate_locs, flip_sd=alat_flip_sd)
-        alat_info = self.layout_info.get_diffamp_info(alat_params)
+        _, integ_ports = self.draw_diffamp(integ_col, integ_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
+                                           diff_space=diff_space, gate_locs=gate_locs, flip_sd=integ_flip_sd)
+        integ_info = self.layout_info.get_diffamp_info(integ_params)
+
+        # sampler
+        samp_col = samp_params.pop('col_idx')
+        io_space = samp_params.pop('io_space')
+        _, samp_ports = self.draw_pmos_sampler(samp_col, samp_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
+                                               diff_space=diff_space, gate_locs=gate_locs, io_space=io_space,
+                                               to_gm_input=True)
+        samp_info = self.layout_info.get_sampler_info(samp_params)
 
         # integrating summer
         intsum_col = intsum_params.pop('col_idx')
@@ -309,14 +319,15 @@ class RXHalfTop(SerdesRXBase):
         )
 
         block_info = dict(
-            alat=(alat_col, alat_info),
+            integ=(integ_col, integ_info),
+            samp=(samp_col, samp_info),
             intsum=(intsum_col, intsum_info),
             summer=(summer_col, summer_info),
         )
 
-        return alat_ports, intsum_ports, summer_ports, acoff_ports, buf_ports, block_info
+        return integ_ports, samp_ports, intsum_ports, summer_ports, acoff_ports, buf_ports, block_info
 
-    def _draw_clock_buffer(self, buf_params, hm_width, hm_cur_width):
+    def _draw_clock_buffer(self, buf_params, hm_width, hm_cur_width, integ_pmos_vm_tid):
         layout_info = self.layout_info
         col0 = buf_params['col_idx0']
         col1 = buf_params['col_idx1']
@@ -360,7 +371,12 @@ class RXHalfTop(SerdesRXBase):
         in_warr = self.connect_to_tracks([inp0_warr, inn0_warr], TrackID(vm_layer, in_vm, width=vm_width))
         mid_vm = layout_info.get_center_tracks(vm_layer, 1, (col0 + fg0, col1), width=vm_width, space=vm_space)
         self.connect_to_tracks([mid_warr, inp1_warr, inn1_warr], TrackID(vm_layer, mid_vm, width=vm_width))
-        out_vm = layout_info.get_center_tracks(vm_layer, 1, (col1, col1 + fg1), width=vm_width, space=vm_space)
+
+        if self.params['datapath_parity'] == 0:
+            out_vm = integ_pmos_vm_tid
+        else:
+            out_vm = integ_pmos_vm_tid + vm_width + vm_space
+
         out_warr = self.connect_to_tracks(out_warr, TrackID(vm_layer, out_vm, width=vm_width))
 
         return {'in': in_warr, 'out': out_warr}
@@ -396,23 +412,29 @@ class RXHalfTop(SerdesRXBase):
             fg_tot=info['fg_tot'],
         )
 
-    def connect_sup_io(self, block_info, alat_ports, intsum_ports, summer_ports, acoff_ports,
+    def connect_sup_io(self, block_info, integ_ports, samp_ports, intsum_ports, summer_ports, acoff_ports,
                        sig_widths, sig_spaces, clk_widths, clk_spaces, show_pins):
 
         intsum_col, intsum_info = block_info['intsum']
 
         # get vdd/cascode bias pins
         vdd_list, cascl_list = [], []
-        vdd_list.extend(alat_ports['vddt'])
+        vdd_list.extend(integ_ports['vddt'])
         vdd_list.extend(intsum_ports[('vddt', -1)])
         vdd_list.extend(summer_ports[('vddt', -1)])
-        if 'bias_casc' in alat_ports:
-            cascl_list.extend(alat_ports['bias_casc'])
+        if 'bias_casc' in integ_ports:
+            cascl_list.extend(integ_ports['bias_casc'])
 
-        # export alat inout pins
-        inout_list = ('inp', 'inn', 'outp', 'outn')
-        for name in inout_list:
-            self.add_pin('alat1_%s' % name, alat_ports[name], show=show_pins)
+        # connect integrator to sampler, and export io
+        self.connect_wires(integ_ports['outp'] + integ_ports['outn'] + samp_ports['inp'] + samp_ports['inn'])
+        self.add_pin('alat1_inp', integ_ports['inp'], show=show_pins)
+        self.add_pin('alat1_inn', integ_ports['inn'], show=show_pins)
+
+        # connect sampler to intsum
+        alat1_outp = self.connect_wires(samp_ports['outp'] + intsum_ports[('inp', 0)])
+        alat1_outn = self.connect_wires(samp_ports['outn'] + intsum_ports[('inn', 0)])
+        self.add_pin('alat1_outp', alat1_outp, show=show_pins)
+        self.add_pin('alat1_outn', alat1_outn, show=show_pins)
 
         # connect ffe input to middle xm layer tracks, so we have room for vdd/vss wires.
         xm_layer_id = self.layout_info.mconn_port_layer + 3
@@ -489,9 +511,9 @@ class RXHalfTop(SerdesRXBase):
 
         return ffe_inputs
 
-    def connect_bias(self, block_info, alat_ports, intsum_ports, summer_ports, acoff_ports, buf_ports, ffe_inputs,
-                     sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces,
-                     show_pins, datapath_parity):
+    def connect_bias(self, block_info, integ_ports, samp_ports, intsum_ports, summer_ports, acoff_ports, buf_ports,
+                     ffe_inputs, sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces,
+                     show_pins, datapath_parity, integ_pmos_vm_tid):
         layout_info = self.layout_info
         hm_layer = layout_info.mconn_port_layer + 1
         vm_layer = hm_layer + 1
@@ -508,22 +530,22 @@ class RXHalfTop(SerdesRXBase):
         clkp_nmos_sw_tr_xm = ffe_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
         clkp_nmos_tap1_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
         clkp_nmos_summer_tr_xm = clkp_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
-        clkn_nmos_ana_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
         clkn_nmos_sw_tr_xm = ffe_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
         clkp_pmos_intsum_tr_xm = clkn_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
         clkn_pmos_summer_tr_xm = clkp_pmos_intsum_tr_xm
-        clkp_pmos_ana_tr_xm = clkn_nmos_sw_tr_xm
 
         clkn_nmos_sw_tr_id = TrackID(xm_layer, clkn_nmos_sw_tr_xm, width=clk_width_xm)
         clkn_nmos_sw_list = []
 
         if datapath_parity == 0:
             clkp, clkn = 'clkp', 'clkn'
+            sampclk_vm_tid = integ_pmos_vm_tid + clk_width_vm + clk_space_vm
         else:
             clkp, clkn = 'clkn', 'clkp'
+            sampclk_vm_tid = integ_pmos_vm_tid
 
         # connect alat biases
-        alat_col, alat_info = block_info['alat']
+        alat_col, alat_info = block_info['integ']
         col_intv = alat_col, alat_col + alat_info['fg_tot']
         left_sig_vm = layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm, space=sig_space_vm)
         right_tr_vm = left_sig_vm - (sig_width_vm + clk_width_vm) / 2 - sig_clk_space_vm
@@ -532,19 +554,20 @@ class RXHalfTop(SerdesRXBase):
         rtr_id = TrackID(vm_layer, right_tr_vm, width=clk_width_vm)
         nmos_tr_id, pmos_tr_id, sw_tr_id = rtr_id, rtr_id, ltr_id
         # nmos_analog
-        warr = self.connect_to_tracks(alat_ports['bias_tail'], nmos_tr_id)
-        xtr_id = TrackID(xm_layer, clkn_nmos_ana_tr_xm, width=clk_width_xm)
-        warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
-        self.add_pin(clkn + '_nmos_analog', warr, show=show_pins)
-        # pmos_analog
-        warr = self.connect_to_tracks(alat_ports['bias_load'], pmos_tr_id)
-        xtr_id = TrackID(xm_layer, clkp_pmos_ana_tr_xm, width=clk_width_xm)
-        warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
-        self.add_pin(clkp + '_pmos_analog', warr, show=show_pins)
-        # nmos_switch, connect to clock buffer input
-        warr = self.connect_to_tracks(alat_ports['sw'], sw_tr_id)
+        # just export on metal 4, will be connect by RXHalf.
+        self.add_pin('nmos_alat1', integ_ports['bias_tail'], show=show_pins)
+        # clknd
+        pmos_tr_id = TrackID(vm_layer, sampclk_vm_tid, width=clk_width_vm)
+        warr = self.connect_to_tracks(integ_ports['bias_load'], pmos_tr_id)
+        self.add_pin(clkn + 'd', warr, show=show_pins)
+        # integ nmos_switch and sampler clock, connect to clock buffer input
+        integ_sw_warr = self.connect_to_tracks(integ_ports['sw'], sw_tr_id)
+        samp_warr = samp_ports['sample_clk'][0]
+        mtr_id = TrackID(vm_layer, self.grid.coord_to_nearest_track(vm_layer, samp_warr.middle, half_track=True),
+                         width=clk_width_vm)
+        samp_warr = self.connect_to_tracks(samp_warr, mtr_id)
         xtr_id = TrackID(xm_layer, clkp_nmos_sw_tr_xm, width=clk_width_xm)
-        warr = self.connect_to_tracks([warr, buf_ports['in']], xtr_id, min_len_mode=0)
+        warr = self.connect_to_tracks([integ_sw_warr, buf_ports['in'], samp_warr], xtr_id, min_len_mode=0)
         self.add_pin(clkp + '_nmos_switch_alat1', warr, show=show_pins)
 
         # connect intsum main tap biases
@@ -553,7 +576,6 @@ class RXHalfTop(SerdesRXBase):
         col_intv = intsum_start, intsum_start + intsum_info['amp_info_list'][0]['fg_tot']
         left_tr_vm = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=clk_width_vm, space=clk_space_vm)
         ltr_id = TrackID(vm_layer, left_tr_vm, width=clk_width_vm)
-        rtr_id = TrackID(vm_layer, left_tr_vm + clk_width_vm + clk_space_vm, width=clk_width_vm)
         # pmos intsum, M5 track 1
         pmos_intsum_list = [self.connect_to_tracks(intsum_ports[('bias_load', -1)], ltr_id)]
 
@@ -718,34 +740,101 @@ class RXHalfBottom(SerdesRXBase):
         super(RXHalfBottom, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self.in_xm_track = None
 
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : Dict[str, Any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            th_dict={},
+            gds_space=1,
+            diff_space=1,
+            min_fg_sep=0,
+            hm_width=1,
+            hm_cur_width=-1,
+            sig_widths=[1, 1],
+            sig_spaces=[1, 1],
+            clk_widths=[1, 1, 1],
+            clk_spaces=[1, 1, 1],
+            sig_clk_spaces=[1, 1],
+            show_pins=False,
+            guard_ring_nf=0,
+            data_parity=0,
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            ptap_w='NMOS substrate width, in meters/number of fins.',
+            ntap_w='PMOS substrate width, in meters/number of fins.',
+            w_dict='NMOS/PMOS width dictionary.',
+            th_dict='NMOS/PMOS threshold flavor dictionary.',
+            alat_params='Analog latch parameters',
+            dlat_params_list='Digital latch parameters.',
+            tap1_col_intv='DFE tap1 feedback gm transistor column interval.',
+            fg_tot='Total number of fingers.',
+            min_fg_sep='Minimum separation between transistors.',
+            gds_space='number of tracks reserved as space between gate and drain/source tracks.',
+            diff_space='number of tracks reserved as space between differential tracks.',
+            hm_width='width of horizontal track wires.',
+            hm_cur_width='width of horizontal current track wires. If negative, defaults to hm_width.',
+            sig_widths='signal wire widths on each layer above hm layer.',
+            sig_spaces='signal wire spacing on each layer above hm layer.',
+            clk_widths='clk wire widths on each layer above hm layer.',
+            clk_spaces='clk wire spacing on each layer above hm layer.',
+            sig_clk_spaces='spacing between signal and clk on each layer above hm layer.',
+            show_pins='True to create pin labels.',
+            guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
+            datapath_parity='Parity of the DDR datapath.  Either 0 or 1.',
+        )
+
     def draw_layout(self):
         """Draw the layout of a dynamic latch chain.
         """
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, integ_params, alat_params, dlat_params_list, tap1_col_intv,
+    def _draw_layout_helper(self, alat_params, dlat_params_list, tap1_col_intv,
                             show_pins, diff_space, hm_width, hm_cur_width,
                             sig_widths, sig_spaces, clk_widths, clk_spaces,
                             sig_clk_spaces, datapath_parity, **kwargs):
 
         draw_params = kwargs.copy()
 
-        result = self.place(integ_params, alat_params, dlat_params_list,
-                            draw_params, hm_width, hm_cur_width, diff_space)
-        integ_ports, alat_ports, block_info = result
+        result = self.place(alat_params, dlat_params_list, draw_params, hm_width, hm_cur_width, diff_space)
+        integ_ports, samp_ports, block_info = result
         dlat_info_list = block_info['dlat']
-        dlat_inputs = self.connect_sup_io(integ_ports, alat_ports, dlat_info_list, sig_widths, sig_spaces, show_pins)
+        dlat_inputs = self.connect_sup_io(integ_ports, samp_ports, dlat_info_list, sig_widths, sig_spaces, show_pins)
 
-        self.connect_bias(block_info, integ_ports, alat_ports, dlat_inputs, tap1_col_intv,
+        self.connect_bias(block_info, integ_ports, samp_ports, dlat_inputs, tap1_col_intv,
                           sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces,
                           show_pins, datapath_parity)
 
-    def place(self, integ_params, alat_params, dlat_params_list, draw_params,
-              hm_width, hm_cur_width, diff_space):
+    def place(self, alat_params, dlat_params_list, draw_params, hm_width, hm_cur_width, diff_space):
         gds_space = draw_params['gds_space']
         w_dict = draw_params['w_dict']
-        integ_params = integ_params.copy()
-        alat_params = alat_params.copy()
+        integ_params = alat_params['integ_params'].copy()
+        samp_params = alat_params['samp_params'].copy()
 
         if hm_cur_width < 0:
             hm_cur_width = hm_width  # type: int
@@ -773,6 +862,8 @@ class RXHalfBottom(SerdesRXBase):
         # draw blocks
         gate_locs = {'inp': (hm_width - 1) / 2 + hm_width + diff_space,
                      'inn': (hm_width - 1) / 2}
+
+        # integrator
         integ_col = integ_params.pop('col_idx')
         integ_pmos_vm_tid = integ_params.pop('integ_pmos_vm_tid')
         # if drawing current mirror, we must have ground on the outside of tail
@@ -781,11 +872,13 @@ class RXHalfBottom(SerdesRXBase):
                                            diff_space=diff_space, gate_locs=gate_locs, flip_sd=integ_flip_sd)
         integ_info = self.layout_info.get_diffamp_info(integ_params, flip_sd=integ_flip_sd)
 
-        alat_col = alat_params.pop('col_idx')
-        alat_flip_sd = alat_params.pop('flip_sd', False)
-        _, alat_ports = self.draw_diffamp(alat_col, alat_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                          diff_space=diff_space, gate_locs=gate_locs, flip_sd=alat_flip_sd)
-        alat_info = self.layout_info.get_diffamp_info(alat_params, flip_sd=alat_flip_sd)
+        # sampler
+        samp_col = samp_params.pop('col_idx')
+        io_space = samp_params.pop('io_space')
+        _, samp_ports = self.draw_pmos_sampler(samp_col, samp_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
+                                               diff_space=diff_space, gate_locs=gate_locs, io_space=io_space,
+                                               to_gm_input=False)
+        samp_info = self.layout_info.get_sampler_info(samp_params)
 
         dlat_info_list = []
         for idx, dlat_params in enumerate(dlat_params_list):
@@ -800,26 +893,29 @@ class RXHalfBottom(SerdesRXBase):
 
         block_info = dict(
             integ=(integ_col, integ_info, integ_pmos_vm_tid),
-            alat=(alat_col, alat_info),
+            samp=(samp_col, samp_info),
             dlat=dlat_info_list,
         )
 
-        return integ_ports, alat_ports, block_info
+        return integ_ports, samp_ports, block_info
 
-    def connect_sup_io(self, integ_ports, alat_ports, dlat_info_list, sig_widths, sig_spaces, show_pins):
+    def connect_sup_io(self, integ_ports, samp_ports, dlat_info_list, sig_widths, sig_spaces, show_pins):
 
         # get vdd/cascode bias pins from integ/alat
         vdd_list, casc_list = [], []
         vdd_list.extend(integ_ports['vddt'])
-        vdd_list.extend(alat_ports['vddt'])
-        if 'bias_casc' in alat_ports:
-            casc_list.extend(alat_ports['bias_casc'])
+        if 'bias_casc' in integ_ports:
+            casc_list.extend(integ_ports['bias_casc'])
 
-        # export inout pins
-        inout_list = ('inp', 'inn', 'outp', 'outn')
-        for name in inout_list:
-            self.add_pin('integ_%s' % name, integ_ports[name], show=show_pins)
-            self.add_pin('alat0_%s' % name, alat_ports[name], show=show_pins)
+        # connect integrator to sampler, and export io
+        integ_outp_warr = self.connect_wires(integ_ports['outp'] + samp_ports['inp'])
+        integ_outn_warr = self.connect_wires(integ_ports['outn'] + samp_ports['inn'])
+        self.add_pin('integ_inp', integ_ports['inp'], show=show_pins)
+        self.add_pin('integ_inn', integ_ports['inn'], show=show_pins)
+        self.add_pin('integ_outp', integ_outp_warr, show=show_pins)
+        self.add_pin('integ_outn', integ_outn_warr, show=show_pins)
+        self.add_pin('alat0_outp', samp_ports['outp'], show=show_pins)
+        self.add_pin('alat0_outn', samp_ports['outn'], show=show_pins)
 
         # connect digital latch input to middle xm layer tracks, so we have room for vdd/vss wires.
         xm_layer_id = self.layout_info.mconn_port_layer + 3
@@ -862,7 +958,7 @@ class RXHalfBottom(SerdesRXBase):
 
         return dlat_inputs
 
-    def connect_bias(self, block_info, integ_ports, alat_ports, dlat_inputs, tap1_col_intv,
+    def connect_bias(self, block_info, integ_ports, samp_ports, dlat_inputs, tap1_col_intv,
                      sig_widths, sig_spaces, clk_widths, clk_spaces, sig_clk_spaces,
                      show_pins, datapath_parity):
         layout_info = self.layout_info
@@ -901,13 +997,14 @@ class RXHalfBottom(SerdesRXBase):
         clkn_pmos_dig_tr_id = TrackID(xm_layer, clkn_pmos_dig_tr_xm, width=clk_width_xm)
         clkp_pmos_dig_list, clkn_pmos_dig_list = [], []
 
+        integ_col, integ_info, integ_pmos_vm_tid = block_info['integ']
         if datapath_parity == 0:
             clkp, clkn = 'clkp', 'clkn'
         else:
             clkp, clkn = 'clkn', 'clkp'
+            integ_pmos_vm_tid += clk_width_vm + clk_space_vm
 
         # connect integ biases
-        integ_col, integ_info, integ_pmos_vm_tid = block_info['integ']
         col_intv = integ_col, integ_col + integ_info['fg_tot']
         ltr_vm, rtr_vm = get_bias_tracks(layout_info, vm_layer, col_intv, sig_width_vm, sig_space_vm,
                                          clk_width_vm, sig_clk_space_vm)
@@ -923,33 +1020,20 @@ class RXHalfBottom(SerdesRXBase):
         # pmos_integ.  export on M5
         pmos_integ_tid = TrackID(vm_layer, integ_pmos_vm_tid, width=clk_width_vm)
         warr = self.connect_to_tracks(integ_ports['bias_load'], pmos_integ_tid)
-        self.add_pin(clkp + '_pmos_integ', warr, show=show_pins)
+        self.add_pin(clkp + 'd', warr, show=show_pins)
         # nmos_switch
         warr = self.connect_to_tracks(integ_ports['sw'], mtr_id)
         clkn_nmos_sw_list.append(warr)
 
-        # connect alat biases
-        alat_col, alat_info = block_info['alat']
-        col_intv = alat_col, alat_col + alat_info['fg_tot']
+        # connect sampler clock to nmos_switch of integrator
+        samp_col, samp_info = block_info['samp']
+        col_intv = samp_col, samp_col + samp_info['fg_tot']
         right_sig_vm = layout_info.get_center_tracks(vm_layer, 4, col_intv, width=sig_width_vm, space=sig_space_vm)
         right_sig_vm += 3 * (sig_width_vm + sig_space_vm)
         ltr_vm = right_sig_vm + sig_clk_space_vm + (sig_width_vm + clk_width_vm) / 2
         rtr_vm = ltr_vm + clk_space_vm + clk_width_vm
-        ltr_id = TrackID(vm_layer, ltr_vm, width=clk_width_vm)
         rtr_id = TrackID(vm_layer, rtr_vm, width=clk_width_vm)
-        # nmos_analog
-        warr = self.connect_to_tracks(alat_ports['bias_tail'], ltr_id)
-        xtr_id = TrackID(xm_layer, clkp_nmos_ana_tr_xm, width=clk_width_xm)
-        warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
-        self.add_pin(clkp + '_nmos_analog', warr, show=show_pins)
-
-        # pmos_analog
-        warr = self.connect_to_tracks(alat_ports['bias_load'], ltr_id)
-        xtr_id = TrackID(xm_layer, clkn_pmos_ana_tr_xm, width=clk_width_xm)
-        warr = self.connect_to_tracks(warr, xtr_id, min_len_mode=0)
-        self.add_pin(clkn + '_pmos_analog', warr, show=show_pins)
-        # nmos_switch
-        warr = self.connect_to_tracks(alat_ports['sw'], rtr_id)
+        warr = self.connect_to_tracks(samp_ports['sample_clk'], rtr_id)
         clkn_nmos_sw_list.append(warr)
 
         # connect dlat
@@ -1013,76 +1097,6 @@ class RXHalfBottom(SerdesRXBase):
         self.add_pin(clkp + '_pmos_digital', warr, show=show_pins)
         warr = self.connect_to_tracks(clkn_pmos_dig_list, clkn_pmos_dig_tr_id)
         self.add_pin(clkn + '_pmos_digital', warr, show=show_pins)
-
-    @classmethod
-    def get_default_param_values(cls):
-        # type: () -> Dict[str, Any]
-        """Returns a dictionary containing default parameter values.
-
-        Override this method to define default parameter values.  As good practice,
-        you should avoid defining default values for technology-dependent parameters
-        (such as channel length, transistor width, etc.), but only define default
-        values for technology-independent parameters (such as number of tracks).
-
-        Returns
-        -------
-        default_params : Dict[str, Any]
-            dictionary of default parameter values.
-        """
-        return dict(
-            th_dict={},
-            gds_space=1,
-            diff_space=1,
-            min_fg_sep=0,
-            hm_width=1,
-            hm_cur_width=-1,
-            sig_widths=[1, 1],
-            sig_spaces=[1, 1],
-            clk_widths=[1, 1, 1],
-            clk_spaces=[1, 1, 1],
-            sig_clk_spaces=[1, 1],
-            show_pins=False,
-            guard_ring_nf=0,
-            data_parity=0,
-        )
-
-    @classmethod
-    def get_params_info(cls):
-        # type: () -> Dict[str, str]
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : Dict[str, str]
-            dictionary from parameter name to description.
-        """
-        return dict(
-            lch='channel length, in meters.',
-            ptap_w='NMOS substrate width, in meters/number of fins.',
-            ntap_w='PMOS substrate width, in meters/number of fins.',
-            w_dict='NMOS/PMOS width dictionary.',
-            th_dict='NMOS/PMOS threshold flavor dictionary.',
-            integ_params='Integrating frontend parameters.',
-            alat_params='Analog latch parameters',
-            dlat_params_list='Digital latch parameters.',
-            tap1_col_intv='DFE tap1 feedback gm transistor column interval.',
-            fg_tot='Total number of fingers.',
-            min_fg_sep='Minimum separation between transistors.',
-            gds_space='number of tracks reserved as space between gate and drain/source tracks.',
-            diff_space='number of tracks reserved as space between differential tracks.',
-            hm_width='width of horizontal track wires.',
-            hm_cur_width='width of horizontal current track wires. If negative, defaults to hm_width.',
-            sig_widths='signal wire widths on each layer above hm layer.',
-            sig_spaces='signal wire spacing on each layer above hm layer.',
-            clk_widths='clk wire widths on each layer above hm layer.',
-            clk_spaces='clk wire spacing on each layer above hm layer.',
-            sig_clk_spaces='spacing between signal and clk on each layer above hm layer.',
-            show_pins='True to create pin labels.',
-            guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
-            datapath_parity='Parity of the DDR datapath.  Either 0 or 1.',
-        )
 
 
 class RXHalf(TemplateBase):
@@ -1163,7 +1177,6 @@ class RXHalf(TemplateBase):
             ntap_w='PMOS substrate width, in meters/number of fins.',
             w_dict='NMOS/PMOS width dictionary.',
             th_dict='NMOS/PMOS threshold flavor dictionary.',
-            integ_params='Integrating frontend parameters.',
             alat_params_list='Analog latch parameters',
             intsum_params='Integrator summer parameters.',
             summer_params='DFE tap-1 summer parameters.',
@@ -1249,7 +1262,6 @@ class RXHalf(TemplateBase):
         # type: (SerdesRXBaseInfo) -> Tuple[Instance, Instance, Dict[str, Any]]
         alat_params_list = self.params['alat_params_list']
         buf_params = self.params['buf_params']
-        integ_params = self.params['integ_params']
         intsum_params = self.params['intsum_params']
         summer_params = self.params['summer_params']
         dlat_params_list = self.params['dlat_params_list']
@@ -1281,53 +1293,60 @@ class RXHalf(TemplateBase):
         integ_pmos_vm_tid = layout_info.get_center_tracks(vm_layer_id, 1, (cur_col, cur_col + fg1),
                                                           width=clk_width_vm, space=clk_space_vm)
         integ_fg_min = cur_col + fg1 - nduml
-        # step 0: place integrating frontend.
+        # step 0: place analog latches 0
         cur_col = nduml
-        integ_col_idx = cur_col
+        alat0_col_idx = cur_col
         # print('integ_col: %d' % cur_col)
         # step 0A: find minimum number of fingers
-        new_integ_params = integ_params.copy()
-        new_integ_params['integ_pmos_vm_tid'] = integ_pmos_vm_tid
+        alat0_params = {'integ_params': alat_params_list[0]['integ_params'].copy(),
+                        'samp_params': alat_params_list[0]['samp_params'].copy()}
+        alat1_params = {'integ_params': alat_params_list[1]['integ_params'].copy(),
+                        'samp_params': alat_params_list[1]['samp_params'].copy()}
+        integ0_params = alat0_params['integ_params']
+        integ0_params['integ_pmos_vm_tid'] = integ_pmos_vm_tid
         integ_fg_min = max(layout_info.num_tracks_to_fingers(vm_layer_id, diff_clk_route_tracks, cur_col),
                            integ_fg_min)
-        new_integ_params['min'] = integ_fg_min
-        integ_info = layout_info.get_diffamp_info(new_integ_params)
-        new_integ_params['col_idx'] = integ_col_idx
-        integ_fg_tot = integ_info['fg_tot']
-        col_idx_dict['integ'] = (cur_col, cur_col + integ_fg_tot)
-        cur_col += integ_fg_tot
-        # step 0B: reserve routing tracks between integrator and analog latch
-        route_integ_alat_fg = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
-        col_idx_dict['integ_route'] = (cur_col, cur_col + route_integ_alat_fg)
-        # print('integ_route_col: %d' % cur_col)
-        cur_col += route_integ_alat_fg
+        integ0_params['min'] = integ_fg_min
+        integ_info = layout_info.get_diffamp_info(integ0_params)
+        integ0_params['col_idx'] = alat0_col_idx
+        integ0_fg_tot = integ_info['fg_tot']
+        col_idx_dict['alat0'] = (cur_col, cur_col + integ0_fg_tot)
+        cur_col += integ0_fg_tot
+        # TODO: HACK: add fingers to leave spacing between pmos bias wires
+        cur_col += 6
 
-        # step 1: place analog latches
-        alat_col_idx = cur_col
-        # print('alat_col: %d' % cur_col)
-        alat1_params = alat_params_list[0].copy()
-        alat2_params = alat_params_list[1].copy()
+        # step 1: place analog latches 1 and sampler of analog latch 0
+        alat1_col_idx = cur_col
+        samp0_params = alat0_params['samp_params']
+        samp0_info = layout_info.get_sampler_info(samp0_params)
         # step 1A: find minimum number of fingers
-        alat_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 4 * dtr_pitch, cur_col)
+        alat1_fg_min = layout_info.num_tracks_to_fingers(vm_layer_id, 4 * dtr_pitch, cur_col)
         # step 1B: make both analog latches have the same width
-        alat1_params['min'] = alat_fg_min
-        alat1_info = layout_info.get_diffamp_info(alat1_params)
-        alat2_params['min'] = alat_fg_min
-        alat2_info = layout_info.get_diffamp_info(alat2_params)
-        alat_fg_min = max(alat1_info['fg_tot'], alat2_info['fg_tot'])
-        alat1_params['min'] = alat_fg_min
-        alat2_params['min'] = alat_fg_min
-        alat1_params['col_idx'] = alat_col_idx
-        alat2_params['col_idx'] = alat_col_idx
-        col_idx_dict['alat'] = (cur_col, cur_col + alat_fg_min)
-        cur_col += alat_fg_min
-        # step 1C: reserve routing tracks between analog latch and intsum
+        integ1_params = alat1_params['integ_params']
+        integ1_params['min'] = alat1_fg_min
+        integ1_info = layout_info.get_diffamp_info(integ1_params)
+        alat1_fg_min = max(integ1_info['fg_tot'], samp0_info['fg_tot'])
+        integ1_params['min'] = alat1_fg_min
+        samp0_params['min'] = alat1_fg_min
+        samp0_params['col_idx'] = alat1_col_idx
+        integ1_params['col_idx'] = alat1_col_idx
+        col_idx_dict['alat1'] = (cur_col, cur_col + alat1_fg_min)
+        cur_col += alat1_fg_min
+        # step 1C: reserve sampler space between analog latch and integrator
         route_alat_intsum_fg = layout_info.num_tracks_to_fingers(vm_layer_id, 2 * dtr_pitch, cur_col)
-        col_idx_dict['alat_route'] = (cur_col, cur_col + route_alat_intsum_fg)
+        samp1_params = alat1_params['samp_params']
+        samp1_info = layout_info.get_sampler_info(samp1_params)
+        route_alat_intsum_fg = max(samp1_info['fg_tot'], route_alat_intsum_fg)
+        samp1_params['min'] = route_alat_intsum_fg
+        col_idx_dict['samp1'] = (cur_col, cur_col + route_alat_intsum_fg)
+        samp1_params['col_idx'] = cur_col
         # print('alat_route_col: %d' % cur_col)
         cur_col += route_alat_intsum_fg
 
         # step 2: place intsum and most digital latches
+        # TODO: HACK: add fingers to leave spacing between samp1 and intsum
+        cur_col += 6
+
         # assumption: we assume the load/offset fingers < total gm fingers,
         # so we can use gm_info to determine sizing.
         intsum_col_idx = cur_col
@@ -1488,8 +1507,7 @@ class RXHalf(TemplateBase):
         bot_params = {key: self.params[key] for key in RXHalfTop.get_params_info().keys()
                       if key in self.params}
         bot_params['fg_tot'] = fg_tot
-        bot_params['integ_params'] = new_integ_params
-        bot_params['alat_params'] = alat1_params
+        bot_params['alat_params'] = alat0_params
         bot_params['dlat_params_list'] = new_dlat_params_list
         bot_params['tap1_col_intv'] = tap1_col_intv
         bot_params['show_pins'] = False
@@ -1501,8 +1519,9 @@ class RXHalf(TemplateBase):
         top_params = {key: self.params[key] for key in RXHalfBottom.get_params_info().keys()
                       if key in self.params}
         top_params['fg_tot'] = fg_tot
-        top_params['alat_params'] = alat2_params
+        top_params['alat_params'] = alat1_params
         top_params['buf_params'] = new_buf_params
+        top_params['integ_pmos_vm_tid'] = integ_pmos_vm_tid
         top_params['intsum_params'] = dict(
             col_idx=intsum_col_idx,
             fg_load=intsum_params['fg_load'],
@@ -1533,39 +1552,39 @@ class RXHalf(TemplateBase):
         self.set_size_from_array_box(top_master.size[0])
 
         show_pins = self.params['show_pins']
+        clk_prefix = 'clkp' if self.params['datapath_parity'] == 0 else 'clkn'
         for inst in (bot_inst, top_inst):
             for port_name in inst.port_names_iter():
                 if port_name.endswith('nmos_integ'):
-                    # extend nmos_integ bias to edge
+                    # connect alat1 bias to nmos_integ, then extend to edge
                     warr = inst.get_all_port_pins(port_name)[0]
-                    warr = self.extend_wires(warr, upper=self.array_box.top)
+                    top_bias = top_inst.get_all_port_pins('nmos_alat1')
+                    warr = self.connect_to_tracks(top_bias, warr.track_id, track_lower=warr.lower,
+                                                  track_upper=self.array_box.top)
                     self.add_pin(port_name, warr, show=show_pins)
-                elif not (port_name.endswith('pmos_integ') or port_name.endswith('pmos_intsum')):
+                elif not (port_name == clk_prefix + 'd' or port_name.endswith('pmos_intsum')):
                     self.reexport(inst.get_port(port_name), show=show_pins)
 
         # record parameters for schematic
         w_dict = self.params['w_dict'].copy()
         mos_types = list(w_dict.keys())
-        sch_integ_params = dict(
-            fg_dict={key: new_integ_params[key] for key in mos_types if key in new_integ_params},
-            fg_tot=integ_fg_tot,
-            flip_sd=new_integ_params.get('flip_sd', False),
-            decap=new_integ_params.get('decap', False),
-        )
-        if 'ref' in new_integ_params:
-            sch_integ_params['fg_dict']['ref'] = new_integ_params['ref']
-        sch_alat_list = [
-            dict(fg_dict={key: alat1_params[key] for key in mos_types if key in alat1_params},
-                 fg_tot=alat_fg_min,
-                 flip_sd=alat1_params.get('flip_sd', False),
-                 decap=alat1_params.get('decap', False),
-                 ),
-            dict(fg_dict={key: alat2_params[key] for key in mos_types if key in alat2_params},
-                 fg_tot=alat_fg_min,
-                 flip_sd=alat2_params.get('flip_sd', False),
-                 decap=alat2_params.get('decap', False),
-                 ),
-        ]
+        sch_alat_list = []
+        for alat_params in [alat0_params, alat1_params]:
+            integ_params = alat_params['integ_params']
+            samp_params = alat_params['samp_params']
+            sch_integ_params = dict(
+                fg_dict={key: integ_params[key] for key in mos_types if key in integ_params},
+                fg_tot=integ_params['min'],
+                flip_sd=integ_params.get('flip_sd', False),
+            )
+            if 'ref' in integ_params:
+                sch_integ_params['fg_dict']['ref'] = integ_params['ref']
+            sch_samp_params = dict(
+                fg_dict={'sample': samp_params['sample']},
+                fg_tot=integ_params['min'],
+            )
+            sch_alat_list.append(dict(integ_params=sch_integ_params, samp_params=sch_samp_params))
+
         sch_dlat_list = []
         for dlat_params in new_dlat_params_list:
             sch_dlat_list.append(dict(
@@ -1580,7 +1599,6 @@ class RXHalf(TemplateBase):
             w_dict=w_dict,
             th_dict=self.params['th_dict'].copy(),
             nac_off=self.params['nac_off'],
-            integ_params=sch_integ_params,
             alat_params_list=sch_alat_list,
             intsum_params=top_master.sch_intsum_params.copy(),
             summer_params=top_master.sch_summer_params.copy(),
@@ -1592,7 +1610,6 @@ class RXHalf(TemplateBase):
         return bot_inst, top_inst, col_idx_dict
 
     def connect(self, layout_info, bot_inst, top_inst, col_idx_dict):
-        show_pins = self.params['show_pins']
         vm_space = self.params['sig_spaces'][0]
         hm_layer = layout_info.mconn_port_layer + 1
         vm_layer = hm_layer + 1
@@ -1601,18 +1618,11 @@ class RXHalf(TemplateBase):
 
         # connect clkp of integrators
         clk_prefix = 'clkp' if self.params['datapath_parity'] == 0 else 'clkn'
-        clkpb = bot_inst.get_all_port_pins(clk_prefix + '_pmos_integ')
+        clkpb = bot_inst.get_all_port_pins(clk_prefix + 'd')
         clkpt = top_inst.get_all_port_pins(clk_prefix + '_pmos_intsum')
         warr = self.connect_to_tracks(clkpb, clkpt[0].track_id)
-        warr = self.connect_wires([warr] + clkpt)
-
-        # connect integ to alat1
-        self._connect_diff_io(bot_inst, col_idx_dict['integ_route'], layout_info, vm_layer,
-                              vm_width, vm_space, 'integ_out{}', 'alat0_in{}')
-
-        # connect alat1 to intsum
-        self._connect_diff_io(top_inst, col_idx_dict['alat_route'], layout_info, vm_layer,
-                              vm_width, vm_space, 'alat1_out{}', 'intsum_in{}<0>')
+        self.connect_wires([warr] + clkpt)
+        self.add_pin(clk_prefix + 'd', clkpb, show=self.params['show_pins'])
 
         # connect intsum to summer
         self._connect_diff_io(top_inst, col_idx_dict['summer_route'], layout_info, vm_layer,
@@ -1740,7 +1750,6 @@ class RXCore(TemplateBase):
             ntap_w='PMOS substrate width, in meters/number of fins.',
             w_dict='NMOS/PMOS width dictionary.',
             th_dict='NMOS/PMOS threshold flavor dictionary.',
-            integ_params='Integrating frontend parameters.',
             alat_params_list='Analog latch parameters',
             intsum_params='Integrator summer parameters.',
             summer_params='DFE tap-1 summer parameters.',
@@ -1818,7 +1827,7 @@ class RXCore(TemplateBase):
         show_pins = self.params['show_pins']
 
         # connect inputs of even and odd paths
-        route_col_intv = col_idx_dict['integ']
+        route_col_intv = col_idx_dict['alat0']
         ptr_idx = layout_info.get_center_tracks(vm_layer_id, 2, route_col_intv, width=vm_width, space=vm_space)
         vm_sig_clk_space = self.params['sig_clk_spaces'][0]
         vm_clk_width = self.params['clk_widths'][0]
@@ -1850,7 +1859,7 @@ class RXCore(TemplateBase):
                     self.reexport(nport, net_name='%s_outn_%s<%d>' % (prefix, pname, pidx), show=show_pins)
 
         # connect alat0 outputs
-        route_col_intv = col_idx_dict['alat']
+        route_col_intv = col_idx_dict['alat1']
         ptr_idx = layout_info.get_center_tracks(vm_layer_id, 4, route_col_intv, width=vm_width, space=vm_space)
         tr_idx_list = [ptr_idx, ptr_idx + vm_pitch, ptr_idx + 2 * vm_pitch, ptr_idx + 3 * vm_pitch]
         warr_list_list = [[inst_list[0].get_port('alat0_outp').get_pins()[0],
@@ -1909,8 +1918,6 @@ class RXCore(TemplateBase):
     def connect_bias(self, inst_list):
         show_pins = self.params['show_pins']
         clk_top_list = [('clk1', 1),
-                        ('nmos_analog', 2),
-                        ('pmos_analog', 2),
                         ('clk2', 2),
                         ('pmos_digital', 2),
                         ('nmos_digital', 1),
@@ -1923,10 +1930,13 @@ class RXCore(TemplateBase):
         clk_wires = {}
         for inst in inst_list:
             for name in inst.port_names_iter():
-                if name.startswith('clk'):
+                if name.startswith('clk') and name != 'clkpd' and name != 'clknd':
                     if name not in clk_wires:
                         clk_wires[name] = []
                     clk_wires[name].extend(inst.get_all_port_pins(name))
+
+        for name in ['clkpd', 'clknd']:
+            self.connect_wires(inst_list[0].get_all_port_pins(name) + inst_list[1].get_all_port_pins(name))
 
         for base_name, _ in clk_top_list:
             if base_name.startswith('clk'):
