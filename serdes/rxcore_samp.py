@@ -527,9 +527,10 @@ class RXHalfTop(SerdesRXBase):
         # calculate bias track indices
         ffe_top_tr = ffe_inputs[0].track_id.base_index
         ffe_bot_tr = ffe_inputs[1].track_id.base_index
-        clkp_nmos_sw_tr_xm = ffe_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
-        clkp_nmos_tap1_tr_xm = clkp_nmos_sw_tr_xm - clk_width_xm - clk_space_xm
-        clkp_nmos_summer_tr_xm = clkp_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
+        top_bot_xm_track = ffe_bot_tr - (sig_width_xm + clk_width_xm) / 2 - sig_clk_space_xm
+        clkp_nmos_tap1_tr_xm = top_bot_xm_track - clk_width_xm - clk_space_xm
+        clkp_nmos_sw_tr_xm = clkp_nmos_tap1_tr_xm
+        clkp_nmos_summer_tr_xm = top_bot_xm_track + clk_width_xm + clk_space_xm
         clkn_nmos_sw_tr_xm = ffe_top_tr + (sig_width_xm + clk_width_xm) / 2 + sig_clk_space_xm
         clkp_pmos_intsum_tr_xm = clkn_nmos_sw_tr_xm + clk_width_xm + clk_space_xm
         clkn_pmos_summer_tr_xm = clkp_pmos_intsum_tr_xm

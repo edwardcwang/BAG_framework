@@ -35,7 +35,7 @@ from bag.layout.util import BBox
 
 from ..analog_core import AnalogBase
 from .rxpassive import RXClkArray, BiasBusIO, CTLE, DLevCap
-from .rxcore import RXCore
+from .rxcore_samp import RXCore
 
 
 class RXFrontendCore(TemplateBase):
@@ -156,7 +156,6 @@ class RXFrontendCore(TemplateBase):
         track_pitch = clk_master.track_pitch
         mid_tracks = [clk_inst0.translate_master_track(port_layer, mid) for mid in clk_master.mid_tracks]
         sup_indices = []
-        player = -1
         pwidth = 1
         clkp_warr, clkn_warr = None, None
         for idx, (name, mid_tr) in enumerate(zip(clk_names, mid_tracks)):
@@ -165,7 +164,6 @@ class RXFrontendCore(TemplateBase):
                 pname = 'clkp_' + name
                 nport = clk_inst0.get_all_port_pins(nname)[0]
                 pport = clk_inst1.get_all_port_pins(pname)[0]
-                player = nport.layer_id
                 pwidth = nport.track_id.width
                 cur_pid = pport.track_id.base_index
                 cur_nid = nport.track_id.base_index
@@ -181,21 +179,23 @@ class RXFrontendCore(TemplateBase):
                     sup_indices.append((mid_tr - track_pitch, True))
                     sup_indices.append((mid_tr + track_pitch, True))
 
-                # TODO: generalize?  This is hack for 16nm to minimize clock feedthrough
-                # use middle wire for clkp/clkn/supply
-                if name == 'nmos_analog':
-                    clkp_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkp'),
-                                                       TrackID(player, mid_tr, width=pwidth))
-                elif name == 'pmos_analog':
-                    clkn_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkn'),
-                                                       TrackID(player, mid_tr, width=pwidth))
-                elif mid_tr != cur_pid and mid_tr != cur_nid:
+                if mid_tr != cur_pid and mid_tr != cur_nid:
                     sup_indices.append((mid_tr, False))
 
+            # TODO: generalize?  This is hack for 16nm
             elif idx == 1:
-                # TODO: generalize?  This is hack for 16nm
                 # use right track for supply
                 sup_indices.append((mid_tr - track_pitch, False))
+            elif idx == 2:
+                sup_indices.append((mid_tr - track_pitch, False))
+                sup_indices.append((mid_tr, False))
+                sup_indices.append((mid_tr + track_pitch, False))
+
+        # TODO: hard-coded hack for 16nm to connect clock wires
+        clkp_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkp'),
+                                           TrackID(port_layer, mid_tracks[3] - track_pitch, width=pwidth))
+        clkn_warr = self.connect_to_tracks(core_inst.get_all_port_pins('clkn'),
+                                           TrackID(port_layer, mid_tracks[3] + track_pitch, width=pwidth))
 
         # connect supplies to M7
         vdd_list.extend(core_inst.get_all_port_pins('VDD'))
@@ -210,7 +210,7 @@ class RXFrontendCore(TemplateBase):
         for idx_list, warr_list, top_list in ((vdd_indices, vdd_list, vdd_top_list),
                                               (vss_indices, vss_list, vss_top_list)):
             for idx, _ in idx_list:
-                top_list.append(self.connect_to_tracks(warr_list, TrackID(player, idx, width=pwidth)))
+                top_list.append(self.connect_to_tracks(warr_list, TrackID(port_layer, idx, width=pwidth)))
 
         show_pins = self.params['show_pins']
         self.add_pin('VDD', vdd_top_list, show=show_pins, label='VDD:')
@@ -373,9 +373,9 @@ class RXFrontendCore(TemplateBase):
                 else:
                     exp_name = name
                     label = name + ':'
-
-                self.reexport(bus_inst.get_port(name), net_name=exp_name, label=label, show=show_pins)
-                warr_dict[name] = bus_inst.get_all_port_pins(name + '_in')[0]
+                if bus_inst.has_port(name):
+                    self.reexport(bus_inst.get_port(name), net_name=exp_name, label=label, show=show_pins)
+                    warr_dict[name] = bus_inst.get_all_port_pins(name + '_in')[0]
 
             if sup_name == 'VDD':
                 vdd_list.extend(bus_inst.get_all_port_pins('VDD'))
