@@ -406,7 +406,8 @@ class RXHalfTop(SerdesRXBase):
         vdd_list.extend(alat_ports['vddt'])
         vdd_list.extend(intsum_ports[('vddt', -1)])
         vdd_list.extend(summer_ports[('vddt', -1)])
-        cascl_list.extend(alat_ports['bias_casc'])
+        if 'bias_casc' in alat_ports:
+            cascl_list.extend(alat_ports['bias_casc'])
 
         # export alat inout pins
         inout_list = ('inp', 'inn', 'outp', 'outn')
@@ -476,7 +477,7 @@ class RXHalfTop(SerdesRXBase):
         hm_layer = layout_info.mconn_port_layer + 1
         vm_layer = hm_layer + 1
         summer_col, summer_info = block_info['summer']
-        casc_sum = summer_ports[('bias_casc', 0)]
+        casc_sum = summer_ports.get(('bias_casc', 0), [])
         summer_start = summer_col + summer_info['gm_offsets'][0]
         col_intv = summer_start, summer_start + summer_info['amp_info_list'][0]['fg_tot']
         clk_width_vm = clk_widths[0]
@@ -811,7 +812,8 @@ class RXHalfBottom(SerdesRXBase):
         vdd_list, casc_list = [], []
         vdd_list.extend(integ_ports['vddt'])
         vdd_list.extend(alat_ports['vddt'])
-        casc_list.extend(alat_ports['bias_casc'])
+        if 'bias_casc' in alat_ports:
+            casc_list.extend(alat_ports['bias_casc'])
 
         # export inout pins
         inout_list = ('inp', 'inn', 'outp', 'outn')
@@ -826,7 +828,8 @@ class RXHalfBottom(SerdesRXBase):
         dlat_inputs = None
         for idx, (cur_col, dlat_ports, dlat_info) in enumerate(dlat_info_list):
             vdd_list.extend(dlat_ports['vddt'])
-            casc_list.extend(dlat_ports['bias_casc'])
+            if 'bias_casc' in dlat_ports:
+                casc_list.extend(dlat_ports['bias_casc'])
 
             if (idx % 2 == 0) and idx > 0:
                 # connect inputs to xm layer
