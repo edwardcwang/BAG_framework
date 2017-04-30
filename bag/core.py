@@ -415,6 +415,8 @@ class BagProject(object):
     bag_config_path : str or None
         the bag configuration file path.  If None, will attempt to read from
         environment variable BAG_CONFIG_PATH.
+    port : Optional[int]
+        the BAG server process port number.  If not given, will read from port file.
 
     Attributes
     ----------
@@ -424,7 +426,7 @@ class BagProject(object):
         the BAG process technology class.
     """
 
-    def __init__(self, bag_config_path=None):
+    def __init__(self, bag_config_path=None, port=None):
         if bag_config_path is None:
             if 'BAG_CONFIG_PATH' not in os.environ:
                 raise Exception('BAG_CONFIG_PATH not defined.')
@@ -434,13 +436,12 @@ class BagProject(object):
         bag_tmp_dir = os.environ.get('BAG_TEMP_DIR', None)
 
         # get port files
-        socket_config = self.bag_config['socket']
-        if 'port_file' in socket_config:
-            port, msg = _get_port_number(socket_config['port_file'])
-            if msg:
-                print('*WARNING* %s' % msg)
-        else:
-            port = None
+        if port is None:
+            socket_config = self.bag_config['socket']
+            if 'port_file' in socket_config:
+                port, msg = _get_port_number(socket_config['port_file'])
+                if msg:
+                    print('*WARNING* %s' % msg)
 
         # create ZMQDealer object
         dealer_kwargs = {}
