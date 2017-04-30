@@ -157,7 +157,6 @@ class RXFrontendCore(TemplateBase):
         mid_tracks = [clk_inst0.translate_master_track(port_layer, mid) for mid in clk_master.mid_tracks]
         sup_indices = []
         pwidth = 1
-        clkp_warr, clkn_warr = None, None
         for idx, (name, mid_tr) in enumerate(zip(clk_names, mid_tracks)):
             if name:
                 nname = 'clkn_' + name
@@ -257,7 +256,6 @@ class RXFrontendCore(TemplateBase):
         # TODO: less hard coding
         vbus_layer = AnalogBase.get_mos_conn_layer(self.grid.tech_info) + 2
         ibias_width = 2
-        ibias_space = self.grid.get_num_space_tracks(vbus_layer - 1, width_ntr=ibias_width)
         bus_ibias_names = ['{}_ibias_nmos_intsum', '{}_ibias_dfe<1>', '{}_ibias_dfe<2>',
                            '{}_ibias_dfe<3>', '{}_ibias_offset']
         bus_vss_names = ['bias_nmos_analog', 'bias_nmos_digital', 'bias_nmos_summer', 'bias_nmos_tap1', ]
@@ -271,6 +269,10 @@ class RXFrontendCore(TemplateBase):
         bias_width = self.grid.get_track_pitch(vbus_layer, unit_mode=True) * num_track_tot
 
         maxw = max(clkw, corew)
+        if maxw == corew:
+            # add some room
+            blk_w = self.grid.get_block_size(core_master.size[0], unit_mode=True)[0]
+            maxw += -(-400 // blk_w) * blk_w
         x_clk = bias_width + ctlew + maxw - clkw
         x_core = bias_width + ctlew + maxw - corew
 
