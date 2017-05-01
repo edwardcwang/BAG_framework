@@ -74,28 +74,38 @@ def _subtract(intv_list1, intv_list2):
     result : list[(int, int)]
         the result of substracting the intervals in intv_list2 from intv_list1.
     """
+    if not intv_list1:
+        if intv_list2:
+            raise ValueError('cannot substract non-empty list from empty list')
+        return []
     idx1 = idx2 = 0
     result = []
     intv1 = intv_list1[idx1]
-    while idx1 < len(intv_list1) and idx2 < len(intv_list2):
-        intv2 = intv_list2[idx2]
-        if intv2[1] < intv1[0]:
-            # no overlap, retire intv2
-            idx2 += 1
-        elif intv1[1] < intv2[0]:
-            # no overlap, retire intv1
-            if intv1[1] - intv1[0] > 0:
-                result.append(intv1)
+    while idx1 < len(intv_list1):
+        if idx2 >= len(intv_list2):
+            result.append(intv1)
             idx1 += 1
             if idx1 < len(intv_list1):
                 intv1 = intv_list1[idx1]
         else:
-            # overlap, substract and update intv1
-            test = intv1[0], intv2[0]
-            if test[1] - test[0] > 0:
-                result.append(test)
-            intv1 = (intv2[1], intv1[1])
-            idx2 += 1
+            intv2 = intv_list2[idx2]
+            if intv2[1] < intv1[0]:
+                # no overlap, retire intv2
+                idx2 += 1
+            elif intv1[1] < intv2[0]:
+                # no overlap, retire intv1
+                if intv1[1] - intv1[0] > 0:
+                    result.append(intv1)
+                idx1 += 1
+                if idx1 < len(intv_list1):
+                    intv1 = intv_list1[idx1]
+            else:
+                # overlap, substract and update intv1
+                test = intv1[0], intv2[0]
+                if test[1] - test[0] > 0:
+                    result.append(test)
+                intv1 = (intv2[1], intv1[1])
+                idx2 += 1
     return result
 
 
@@ -1422,8 +1432,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         else:
             # for PMOS, prioritize connection to top substrate.
             port_name = 'VDD'
-            top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list, all_conn_list)
-            bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list[::-1], all_conn_list)
+            top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list[::-1], all_conn_list)
+            bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list, all_conn_list)
             bot_dum_only = not export_both
 
         # make list of dummy gate connection parameters
@@ -1433,24 +1443,25 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             if gintvs:
                 for distance in range(num_rows):
                     ridx = distance if sign > 0 else num_rows - 1 - distance
-                    gate_intv_set = gintvs[distance]
-                    for dummy_intv in dum_avail_intv_set_list[ridx]:
-                        key = ridx, dummy_intv[0], dummy_intv[1]
-                        overlaps = list(gate_intv_set.overlap_intervals(dummy_intv))
-                        val_list = [0 if ovl_intv in all_conn_set else sign for ovl_intv in overlaps]
-                        if key not in dummy_gate_conns:
-                            dummy_gate_conns[key] = IntervalSet(intv_list=overlaps, val_list=val_list)
-                        else:
-                            dummy_gate_set = dummy_gate_conns[key]  # type: IntervalSet
-                            for fg_intv, ovl_val in zip(overlaps, val_list):
-                                if not dummy_gate_set.has_overlap(fg_intv):
-                                    dummy_gate_set.add(fg_intv, val=ovl_val)
-                                else:
-                                    # check that we don't have conflicting gate connections.
-                                    for existing_intv, existing_val in dummy_gate_set.overlap_items(fg_intv):
-                                        if existing_intv != fg_intv or existing_val != ovl_val:
-                                            # this should never happen.
-                                            raise Exception('Critical Error: report to developers.')
+                    if distance < len(gintvs):
+                        gate_intv_set = gintvs[distance]
+                        for dummy_intv in dum_avail_intv_set_list[ridx]:
+                            key = ridx, dummy_intv[0], dummy_intv[1]
+                            overlaps = list(gate_intv_set.overlap_intervals(dummy_intv))
+                            val_list = [0 if ovl_intv in all_conn_set else sign for ovl_intv in overlaps]
+                            if key not in dummy_gate_conns:
+                                dummy_gate_conns[key] = IntervalSet(intv_list=overlaps, val_list=val_list)
+                            else:
+                                dummy_gate_set = dummy_gate_conns[key]  # type: IntervalSet
+                                for fg_intv, ovl_val in zip(overlaps, val_list):
+                                    if not dummy_gate_set.has_overlap(fg_intv):
+                                        dummy_gate_set.add(fg_intv, val=ovl_val)
+                                    else:
+                                        # check that we don't have conflicting gate connections.
+                                        for existing_intv, existing_val in dummy_gate_set.overlap_items(fg_intv):
+                                            if existing_intv != fg_intv or existing_val != ovl_val:
+                                                # this should never happen.
+                                                raise Exception('Critical Error: report to developers.')
 
         wire_groups = {-1: [], 0: [], 1: []}
         for key, dummy_gate_set in dummy_gate_conns.items():
