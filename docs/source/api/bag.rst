@@ -20,16 +20,16 @@ Subpackages
 Submodules
 ----------
 
-bag.core module
----------------
+bag\.core module
+----------------
 
 .. automodule:: bag.core
     :members:
     :undoc-members:
     :show-inheritance:
 
-bag.virtuoso module
--------------------
+bag\.virtuoso module
+--------------------
 
 .. automodule:: bag.virtuoso
     :members:

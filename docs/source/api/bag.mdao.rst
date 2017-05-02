@@ -1,19 +1,19 @@
-bag.mdao package
-================
+bag\.mdao package
+=================
 
 Submodules
 ----------
 
-bag.mdao.components module
---------------------------
+bag\.mdao\.components module
+----------------------------
 
 .. automodule:: bag.mdao.components
     :members:
     :undoc-members:
     :show-inheritance:
 
-bag.mdao.core module
---------------------
+bag\.mdao\.core module
+----------------------
 
 .. automodule:: bag.mdao.core
     :members:
