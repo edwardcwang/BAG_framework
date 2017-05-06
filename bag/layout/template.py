@@ -47,7 +47,7 @@ from .util import BBox, BBoxArray
 from ..io import fix_string, get_encoding, open_file
 from .routing import Port, TrackID, WireArray, RoutingGrid
 from .routing.fill import UsedTracks, get_power_fill_tracks, get_available_tracks
-from .objects import Instance, Rect, Via, Path, Blockage
+from .objects import Instance, Rect, Via, Path, Blockage, Boundary
 from future.utils import with_metaclass
 
 # try to import cybagoa module
@@ -1047,6 +1047,23 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self._layout.add_blockage(blockage)
         return blockage
 
+    def add_boundary(self, boundary):
+        # type: (Boundary) -> Boundary
+        """Add a new boundary.
+
+        Parameters
+        ----------
+        boundary : Boundary
+            the boundary to add.
+
+        Returns
+        -------
+        boundary : Boundary
+            the added boundary object.
+        """
+        self._layout.add_boundary(boundary)
+        return boundary
+
     def reexport(self, port, net_name='', label='', show=True,
                  fill_margin=0, fill_type='', unit_mode=False):
         # type: (Port, str, str, bool, Union[float, int], str, bool) -> None
@@ -1303,7 +1320,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                      fill_type='',  # type: str
                      unit_mode=False  # type: bool
                      ):
-        # type: (...) -> WireArray
+        # type: (...) -> List[WireArray]
         """Extend the given wires to the given coordinates.
 
         Parameters
@@ -2383,7 +2400,6 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                             self._used_tracks.merge(inst_used_tracks, self.grid.layers)
                         except ValueError:
                             print('WARNING: detect tracks not on grid.  ignoring instance')
-
 
     def get_available_tracks(self,  # type: TemplateBase
                              layer_id,  # type: int

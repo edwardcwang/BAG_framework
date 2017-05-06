@@ -1323,6 +1323,84 @@ class Blockage(Figure):
         return ans
 
 
+class Boundary(Figure):
+    """A boundary object.
+
+    Parameters
+    ----------
+    resolution : float
+        the layout grid resolution.
+    boundary_type : str
+        the boundary type.  Currently supports 'PR' and 'Snap'.
+    points : List[Tuple[Union[float, int], Union[float, int]]]
+        the points defining the blockage.
+    unit_mode : bool
+        True if the points are given in resolution units.
+    """
+    def __init__(self, resolution, boundary_type, points, unit_mode=False):
+        # type: (float, str, List[Tuple[Union[float, int], Union[float, int]]], bool) -> None
+        super(Boundary, self).__init__(resolution)
+        self._type = boundary_type
+        if not unit_mode:
+            self._points = np.array(points) / resolution
+            self._points = self._points.astype(int)
+        else:
+            self._points = np.array(points, dtype=int)
+
+    @property
+    def type(self):
+        # type: () -> str
+        """The blockage type."""
+        return self._type
+
+    @property
+    def points(self):
+        return [(self._points[idx][0] * self._res, self._points[idx][1] * self._res)
+                for idx in range(self._points.shape[0])]
+
+    @property
+    def points_unit(self):
+        return [(self._points[idx][0], self._points[idx][1])
+                for idx in range(self._points.shape[0])]
+
+    @property
+    def content(self):
+        # type: () -> Dict[str, Any]
+        """A dictionary representation of this blockage."""
+        content = dict(btype=self.type,
+                       points=self.points,
+                       )
+        return content
+
+    def move_by(self, dx=0.0, dy=0.0, unit_mode=False):
+        # type: (ldim, ldim, bool) -> None
+        if not unit_mode:
+            dx = int(round(dx / self._res))
+            dy = int(round(dy / self._res))
+        self._points += np.array([dx, dy])
+
+    def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False, copy=False):
+        # type: (Tuple[ldim, ldim], str, bool, bool) -> Figure
+        """Transform this figure."""
+        res = self.resolution
+        if unit_mode:
+            dx, dy = loc
+        else:
+            dx = int(round(loc[0] / res))
+            dy = int(round(loc[1] / res))
+        dvec = np.array([dx, dy])
+        mat = transform_table[orient]
+        new_points = np.dot(mat, self._points.T).T + dvec
+
+        if not copy:
+            ans = self
+        else:
+            ans = deepcopy(self)
+
+        ans._points = new_points
+        return ans
+
+
 class ViaInfo(dict):
     """A dictionary that represents a layout via.
     """
