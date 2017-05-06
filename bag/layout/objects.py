@@ -554,6 +554,22 @@ class Instance(Arrayable):
             dy = int(round(dy / self.resolution))
         self._loc_unit = self._loc_unit[0] + dx, self._loc_unit[1] + dy
 
+    def translate_master_box(self, box):
+        # type: (BBox) -> BBox
+        """Transform the bounding box in master template.
+
+        Parameters
+        ----------
+        box : BBox
+            the BBox in master template coordinate.
+
+        Returns
+        -------
+        new_box : BBox
+            the cooresponding BBox in instance coordinate.
+        """
+        return box.transform(self.location_unit, self.orientation, unit_mode=True)
+
     def translate_master_location(self, mloc, unit_mode=False):
         # type: (Tuple[Union[float, int], Union[float, int]], bool) -> Tuple[Union[float, int], Union[float, int]]
         """Returns the actual location of the given point in master template.
@@ -1331,7 +1347,7 @@ class Boundary(Figure):
     resolution : float
         the layout grid resolution.
     boundary_type : str
-        the boundary type.  Currently supports 'PR' and 'Snap'.
+        the boundary type.  Currently supports 'PR', 'snap', and 'area'.
     points : List[Tuple[Union[float, int], Union[float, int]]]
         the points defining the blockage.
     unit_mode : bool
