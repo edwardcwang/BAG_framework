@@ -292,7 +292,10 @@ class TemplateDB(object):
                 print('Instantiating layout')
             # create OALayouts
             start = time.time()
-            cds_lib_path = os.environ.get('CDS_LIB_PATH', './cds.lib')
+            if 'CDSLIBPATH' in os.environ:
+                cds_lib_path = os.path.join(os.environ['CDSLIBPATH'], 'cds.lib')
+            else:
+                cds_lib_path = './cds.lib'
             with cybagoa.PyOALayoutLibrary(cds_lib_path, self._lib_name, get_encoding()) as lib:
                 lib.add_layer('prBoundary', 235)
                 lib.add_purpose('drawing1', 241)
