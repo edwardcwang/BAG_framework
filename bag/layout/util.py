@@ -694,6 +694,26 @@ class BBoxArray(object):
         return BBox(self.left_unit, self.bottom_unit, self.right_unit, self.top_unit,
                     self._bbox.resolution, unit_mode=True)
 
+    def move_by(self, dx=0, dy=0, unit_mode=False):
+        # type: (Union[float, int], Union[float, int], bool) -> BBoxArray
+        """Returns a new BBox shifted by the given amount.
+
+        Parameters
+        ----------
+        dx : float
+            shift in X direction.
+        dy : float
+            shift in Y direction.
+        unit_mode : bool
+            True if shifts are given in resolution units
+
+        Returns
+        -------
+        box_arr : BBoxArray
+            the new BBoxArray.
+        """
+        return self.transform((dx, dy), unit_mode=unit_mode)
+
     def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False):
         # type: (Tuple[Union[float, int], Union[float, int]], str, bool) -> BBoxArray
         """Returns a new BBoxArray under the given transformation.
