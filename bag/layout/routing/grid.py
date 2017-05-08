@@ -954,7 +954,7 @@ class RoutingGrid(object):
             If mode == -2, return the nearest track with coordinate less
             than coord.
 
-            If mode == 1, return the nearest track with coordiante greater
+            If mode == 1, return the nearest track with coordinate greater
             than or equal to coord.
 
             If mode == 2, return the nearest track with coordinate greater

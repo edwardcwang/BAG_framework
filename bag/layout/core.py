@@ -78,7 +78,7 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_via_drc_info(cls, vname, vtype, mtype, mw, is_bot):
+    def get_via_drc_info(cls, vname, vtype, mtype, mw_unit, is_bot):
         """Return data structures used to identify VIA DRC rules.
 
         Parameters
@@ -89,24 +89,24 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
             the via type, square/hrect/vrect/etc.
         mtype : string
             name of the metal layer via is connecting.  Can be either top or bottom.
-        mw : float
-            width of the metal, in layout units.
+        mw_unit : int
+            width of the metal, in resolution units.
         is_bot : bool
             True if the given metal is the bottom metal.
 
         Returns
         -------
-        sp : Tuple[float, float]
-            horizontal/vertical space between adjacent vias.
-        sp3 : Tuple[float, float] or None
+        sp : Tuple[int, int]
+            horizontal/vertical space between adjacent vias, in resolution units.
+        sp3 : Tuple[int, int] or None
             horizontal/vertical space between adjacent vias if the via has 3 or more neighbors.
             None if no constraint.
-        dim : Tuple[float, float]
-            the via width/height in layout units.
-        enc : List[Tuple[float, float]]
+        dim : Tuple[int, int]
+            the via width/height in resolution units.
+        enc : List[Tuple[int, int]]
             a list of valid horizontal/vertical enclosure of the via on the given metal
-            layer, in layout units.
-        arr_enc : List[Tuple[float, float]] or None
+            layer, in resolution units.
+        arr_enc : List[Tuple[int, int]] or None
             a list of valid horizontal/vertical enclosure of the via on the given metal
             layer if this is a "via array", in layout units.
             None if no constraint.
@@ -115,7 +115,7 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
             columns, and returns True if those numbers describe a "via array".
             None if no constraint.
         """
-        return (0.0, 0.0), (0.0, 0.0), (0.0, 0.0), [(0.0, 0.0)], None, None
+        return (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
 
     @property
     def via_tech_name(self):
@@ -430,12 +430,6 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         """
         return None
 
-    def qfloor(self, a, b):
-        """Return floor(a / b), where a and b are rounded to grid resolution."""
-        a_unit = int(round(a / self.resolution))
-        b_unit = int(round(b / self.resolution))
-        return a_unit // b_unit
-
     def get_best_via_array(self, vname, bmtype, tmtype, bot_dir, w, h):
         """Maximize the number of vias in the given area.
 
@@ -458,17 +452,21 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         -------
         best_nxy : Tuple[int, int]
             optimal number of vias per row/column.
-        best_mdim_list : list[Tuple[float, float]]
-            a list of bottom/top layer width/height, in layout units.
-        vtype : string
+        best_mdim_list : list[Tuple[int, int]]
+            a list of bottom/top layer width/height, in resolution units.
+        vtype : str
             the via type to draw, square/hrect/vrect/etc.
-        vdim : Tuple[float, float]
-            the via width/height, in layout units.
-        via_space : Tuple[float, float]
-            the via horizontal/vertical spacing, in layout units.
-        via_arr_dim : Tuple[float, float]
-            the via array width/height, in layout units.
+        vdim : Tuple[int, int]
+            the via width/height, in resolution units.
+        via_space : Tuple[int, int]
+            the via horizontal/vertical spacing, in resolution units.
+        via_arr_dim : Tuple[int, int]
+            the via array width/height, in resolution units.
         """
+        res = self._resolution
+        w = int(round(w / res))
+        h = int(round(h / res))
+
         if bot_dir == 'x':
             top_dir = 'y'
             bw = h
@@ -500,8 +498,8 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
             if sp3 is not None:
                 spx_min = min(sp[0], sp3[0])
                 spy_min = min(sp[1], sp3[1])
-            nx_max = self.qfloor(w + spx_min, dim[0] + spx_min)
-            ny_max = self.qfloor(h + spy_min, dim[1] + spy_min)
+            nx_max = (w + spx_min) // (dim[0] + spx_min)
+            ny_max = (h + spy_min) // (dim[1] + spy_min)
 
             # print nx_max, ny_max, dim, w, h, spx_min, spy_min
 
@@ -683,21 +681,17 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         if via_result is None:
             # no solution found
             return None
-        (nx, ny), mdim_list, vtype, vdim, (spx, spy), (warr, harr) = via_result
 
-        if mdim_list is None:
-            raise Exception('No via solution found')
+        (nx, ny), mdim_list, vtype, vdim, (spx, spy), (warr_norm, harr_norm) = via_result
 
         res = self.resolution
-        xc_norm = int(round(bbox.xc / res))
-        yc_norm = int(round(bbox.yc / res))
-        warr_norm = int(round(warr / res))
-        harr_norm = int(round(harr / res))
+        xc_norm = bbox.xc_unit
+        yc_norm = bbox.yc_unit
 
-        wbot_norm = int(round(mdim_list[0][0] / res))
-        hbot_norm = int(round(mdim_list[0][1] / res))
-        wtop_norm = int(round(mdim_list[1][0] / res))
-        htop_norm = int(round(mdim_list[1][1] / res))
+        wbot_norm = mdim_list[0][0]
+        hbot_norm = mdim_list[0][1]
+        wtop_norm = mdim_list[1][0]
+        htop_norm = mdim_list[1][1]
 
         # OpenAccess Via can't handle even + odd enclosure, so we truncate.
         enc1_x = (wbot_norm - warr_norm) // 2 * res
@@ -716,12 +710,8 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         top_xl_norm = xc_norm - wtop_norm // 2
         top_yb_norm = yc_norm - htop_norm // 2
 
-        bot_box = BBox(bot_xl_norm * res, bot_yb_norm * res,
-                       (bot_xl_norm + wbot_norm) * res,
-                       (bot_yb_norm + hbot_norm) * res, self.resolution)
-        top_box = BBox(top_xl_norm * res, top_yb_norm * res,
-                       (top_xl_norm + wtop_norm) * res,
-                       (top_yb_norm + htop_norm) * res, self.resolution)
+        bot_box = BBox(bot_xl_norm, bot_yb_norm, bot_xl_norm + wbot_norm, bot_yb_norm + hbot_norm, res, unit_mode=True)
+        top_box = BBox(top_xl_norm, top_yb_norm, top_xl_norm + wtop_norm, top_yb_norm + htop_norm, res, unit_mode=True)
 
         idc, irms, ipeak = self.get_via_em_specs(vname, bot_layer, top_layer, via_type=vtype,
                                                  bm_dim=(bw, bot_len), tm_dim=(tw, top_len),
@@ -732,13 +722,13 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
                   'orient': 'R0',
                   'num_rows': ny,
                   'num_cols': nx,
-                  'sp_rows': spy,
-                  'sp_cols': spx,
+                  'sp_rows': spy * res,
+                  'sp_cols': spx * res,
                   # increase left/bottom enclusion if off-center.
                   'enc1': [enc1_x, enc1_x, enc1_y, enc1_y],
                   'enc2': [enc2_x, enc2_x, enc2_y, enc2_y],
-                  'cut_width': vdim[0],
-                  'cut_height': vdim[1],
+                  'cut_width': vdim[0] * res,
+                  'cut_height': vdim[1] * res,
                   }
 
         ntot = nx * ny
@@ -869,8 +859,8 @@ class DummyTechInfo(TechInfo):
         TechInfo.__init__(self, 0.001, 1e-6, '', tech_params)
 
     @classmethod
-    def get_via_drc_info(cls, vname, vtype, mtype, mw, is_bot):
-        return (0.0, 0.0), (0.0, 0.0), (0.0, 0.0), [(0.0, 0.0)], None, None
+    def get_via_drc_info(cls, vname, vtype, mtype, mw_unit, is_bot):
+        return (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
 
     def get_min_space(self, layer_type, width):
         return 0.0
