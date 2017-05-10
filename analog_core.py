@@ -29,14 +29,16 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 import abc
-from itertools import chain, repeat
-from typing import List, Union, Optional, TypeVar, Type, Dict, Any, Set, Tuple
+from itertools import chain
+from typing import List, Union, Optional, TypeVar, Dict, Any, Set, Tuple
 
+from bag.math import lcm
 from bag.util.interval import IntervalSet
 from bag.util.search import BinaryIterator
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.routing import TrackID, WireArray, RoutingGrid
-from bag.layout.objects import Instance
+from bag.layout.util import BBox
+from bag.layout.objects import Instance, Boundary
 from .analog_mos import AnalogMosBase, AnalogMosConn
 from future.utils import with_metaclass
 
@@ -261,14 +263,12 @@ class AnalogBaseInfo(object):
         the channel length of AnalogBase, in meters.
     guard_ring_nf : int
         guard ring width in number of fingers.  0 to disable.
-    pitch_offset : Tuple[int, int]
-        the lower-left corner in track pitches.
     min_fg_sep : int
         minimum number of separation fingers.
     """
 
-    def __init__(self, grid, lch, guard_ring_nf, pitch_offset=(0, 0), min_fg_sep=0):
-        # type: (RoutingGrid, float, int, Tuple[int, int], int) -> None
+    def __init__(self, grid, lch, guard_ring_nf, min_fg_sep=0):
+        # type: (RoutingGrid, float, int, int) -> None
         tech_params = grid.tech_info.tech_params
         mos_cls = tech_params['layout']['mos_template']
         dum_cls = tech_params['layout']['mos_dummy_template']
@@ -280,24 +280,20 @@ class AnalogBaseInfo(object):
 
         # initialize parameters
         res = grid.resolution
-        self.num_fg_per_sd = mos_cls.get_num_fingers_per_sd(lch)
-        sd_pitch = mos_cls.get_sd_pitch(lch)
-        self._sd_pitch_unit = int(round(sd_pitch / res))
-        left_sd_xc_unit = int(round(mos_cls.get_left_sd_xc(lch, guard_ring_nf) / res))
-        self._sd_xc_unit = left_sd_xc_unit + self._sd_pitch_unit * pitch_offset[0]
+        lch_unit = int(round(lch / grid.layout_unit / res))
+        self._lch_unit = lch_unit
+        self.num_fg_per_sd = mos_cls.get_num_fingers_per_sd(lch_unit)
+        self._sd_pitch_unit = mos_cls.get_sd_pitch(lch_unit)
+        self._sd_xc_unit = mos_cls.get_left_sd_xc(lch, guard_ring_nf)
         self.mconn_port_layer = mos_cls.port_layer_id()
         self.dum_port_layer = dum_cls.port_layer_id()
-        self.pitch_offset = pitch_offset
 
-        # register new grid layers
-        vm_width = mos_cls.get_port_width(lch)
-        vm_space = sd_pitch - vm_width
-        dum_width = dum_cls.get_port_width(lch)
-        dum_space = sd_pitch - dum_width
+        vm_space, vm_width = mos_cls.get_mos_conn_track_info(lch_unit)
+        dum_space, dum_width = dum_cls.get_dum_conn_track_info(lch_unit)
 
         self.grid = grid.copy()
-        self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y', override=True)
-        self.grid.add_new_layer(self.dum_port_layer, dum_space, dum_width, 'y', override=True)
+        self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y', override=True, unit_mode=True)
+        self.grid.add_new_layer(self.dum_port_layer, dum_space, dum_width, 'y', override=True, unit_mode=True)
         self.grid.update_block_pitch()
         self._mos_cls = mos_cls
 
@@ -333,7 +329,9 @@ class AnalogBaseInfo(object):
         mos_width : int
             the AnalogMosBase width in number of source/drain tracks.
         """
-        return self._mos_cls.get_template_width(fg_tot, guard_ring_nf=guard_ring_nf)
+        edge_width = self._mos_cls.get_left_sd_xc(self._lch_unit, guard_ring_nf)
+        tot_width = 2 * edge_width + fg_tot * self._sd_pitch_unit
+        return tot_width // self._sd_pitch_unit
 
     def coord_to_col(self, coord, unit_mode=False, mode=0):
         """Convert the given X coordinate to transistor column index.
@@ -366,7 +364,7 @@ class AnalogBaseInfo(object):
         else:
             q = -(-diff // pitch)
 
-        return q - self.pitch_offset[0]
+        return q
 
     def col_to_coord(self, col_idx, unit_mode=False):
         """Convert the given transistor column index to X coordinate.
@@ -383,7 +381,7 @@ class AnalogBaseInfo(object):
         xcoord : float
             X coordinate of the left source/drain center of the given transistor.
         """
-        coord = self._sd_xc_unit + (col_idx + self.pitch_offset[0]) * self._sd_pitch_unit
+        coord = self._sd_xc_unit + col_idx * self._sd_pitch_unit
         if unit_mode:
             return coord
         return coord * self.grid.resolution
@@ -393,12 +391,12 @@ class AnalogBaseInfo(object):
         """Returns the smallest column interval that covers the given vertical track."""
         lower, upper = self.grid.get_wire_bounds(layer_id, tr_idx, width=width, unit_mode=True)
 
-        lower_col_idx = (lower - self._sd_xc_unit) // self._sd_pitch_unit - self.pitch_offset[0]
-        upper_col_idx = -(-(upper - self._sd_xc_unit) // self._sd_pitch_unit) - self.pitch_offset[0]
+        lower_col_idx = (lower - self._sd_xc_unit) // self._sd_pitch_unit  # type: int
+        upper_col_idx = -(-(upper - self._sd_xc_unit) // self._sd_pitch_unit)  # type: int
         return lower_col_idx, upper_col_idx
 
     def get_center_tracks(self, layer_id, num_tracks, col_intv, width=1, space=0):
-        # type: (int, int, Tuple[int, int], int, Union[float, int]) -> int
+        # type: (int, int, Tuple[int, int], int, Union[float, int]) -> float
         """Return tracks that center on the given column interval.
 
         Parameters
@@ -416,7 +414,7 @@ class AnalogBaseInfo(object):
 
         Returns
         -------
-        track_id : int
+        track_id : float
             leftmost track ID of the center tracks.
         """
         x0_unit = self.col_to_coord(col_intv[0], unit_mode=True)
@@ -430,7 +428,8 @@ class AnalogBaseInfo(object):
             raise ValueError('There are only %d tracks in column interval [%d, %d)'
                              % (ntracks, col_intv[0], col_intv[1]))
 
-        return t_start + (ntracks - tot_tracks + width - 1) / 2
+        ans = t_start + (ntracks - tot_tracks + width - 1) / 2
+        return ans
 
     def num_tracks_to_fingers(self, layer_id, num_tracks, col_idx, even=True, fg_margin=0):
         """Returns the minimum number of fingers needed to span given number of tracks.
@@ -508,38 +507,44 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         super(AnalogBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
         tech_params = self.grid.tech_info.tech_params
-        self._mos_cls = tech_params['layout']['mos_template']  # type: Type[MosBase]
-        self._mconn_cls = tech_params['layout']['mos_conn_template']
+        self._mos_cls = tech_params['layout']['mos_template']
         self._sub_cls = tech_params['layout']['sub_template']
+        self._ext_cls = tech_params['layout']['mos_ext_template']
+        self._mconn_cls = tech_params['layout']['mos_conn_template']
         self._sep_cls = tech_params['layout']['mos_sep_template']
         self._dum_cls = tech_params['layout']['mos_dummy_template']
         self._cap_cls = tech_params['layout'].get('mos_decap_template', None)
 
         # initialize parameters
+        # layout information parameters
         self._lch = None
-        self._orient_list = None
         self._w_list = None
-        self._sd_yc_list = None
+        self._orient_list = None
         self._fg_tot = None
-        self._gds_space = None
+        self._sd_yc_list = None
+        self._ds_dummy_list = None
+        self._layout_info = None
+
+        # transistor usage/automatic dummy parameters
         self._n_intvs = None  # type: List[IntervalSet]
         self._p_intvs = None  # type: List[IntervalSet]
         self._capn_intvs = None
         self._capp_intvs = None
         self._capp_wires = {-1: [], 1: []}
         self._capn_wires = {-1: [], 1: []}
-        self._num_tracks = None
-        self._track_offsets = None
-        self._ds_tr_indices = None
+
+        # track calculation parameters
+        self._ridx_lookup = None
+        self._gtr_intv = None
+        self._dstr_intv = None
+
+        # substrate parameters
         self._ntap_list = None
         self._ptap_list = None
-        self._ridx_lookup = None
-        self._ds_dummy_list = None
         self._ptap_exports = None
         self._ntap_exports = None
-        self._layout_info = None
-        self._pitch_offset = 0, 0
-        self._hm_idx0 = 0
+        self._gr_vdd_warrs = None
+        self._gr_vss_warrs = None
 
     @classmethod
     def get_mos_conn_layer(cls, tech_info):
@@ -561,6 +566,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def sd_pitch(self):
         """Returns the transistor source/drain pitch."""
         return self._layout_info.sd_pitch
+
+    @property
+    def sd_pitch_unit(self):
+        """Returns the transistor source/drain pitch."""
+        return self._layout_info.sd_pitch_unit
 
     @property
     def mos_conn_layer(self):
@@ -613,12 +623,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         """
         row_idx = self._find_row_index(mos_type, row_idx)
         if tr_type == 'g':
-            ntr = self._ds_tr_indices[row_idx] - self._gds_space
+            tr_intv = self._gtr_intv[row_idx]
         else:
-            row_offset = self._ds_tr_indices[row_idx]
-            ntr = self._num_tracks[row_idx] - row_offset
+            tr_intv = self._dstr_intv[row_idx]
 
-        return ntr
+        return tr_intv[1] - tr_intv[0]
 
     def get_track_index(self, mos_type, row_idx, tr_type, tr_idx):
         """Convert relative track index to absolute track index.
@@ -639,22 +648,21 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         abs_tr_idx : float
             the absolute track index.
         """
-        ntr = self.get_num_tracks(mos_type, row_idx, tr_type)
         row_idx = self._find_row_index(mos_type, row_idx)
-
-        offset = self._track_offsets[row_idx]
         if tr_type == 'g':
-            row_offset = 0
+            tr_intv = self._gtr_intv[row_idx]
         else:
-            row_offset = self._ds_tr_indices[row_idx]
+            tr_intv = self._dstr_intv[row_idx]
 
-        if tr_idx < 0 or tr_idx >= ntr:
-            raise ValueError('track index = %d out of bounds: [0, %d)' % (tr_idx, ntr))
+        # error checking
+        ntr = tr_intv[1] - tr_intv[0]
+        if tr_idx >= ntr:
+            raise ValueError('track_index %d out of bounds: [0, %d)' % (tr_idx, ntr))
 
         if self._orient_list[row_idx] == 'R0':
-            return self._hm_idx0 + tr_idx + offset + row_offset
+            return tr_intv[0] + tr_idx
         else:
-            return self._hm_idx0 + offset + self._num_tracks[row_idx] - (row_offset + tr_idx) - 1
+            return tr_intv[1] - 1 - tr_idx
 
     def make_track_id(self, mos_type, row_idx, tr_type, tr_idx, width=1,
                       num=1, pitch=0.0):
@@ -709,7 +717,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             inner = True
 
         # get wire upper/lower Y coordinate and record used supply tracks
-        sub_port_id_list = [tid - self._pitch_offset[0] for warr in warr_list for tid in warr.track_id]
+        sub_port_id_list = [tid for warr in warr_list for tid in warr.track_id]
         if sub_type == 'ptap':
             if inner:
                 if len(self._ptap_list) != 2:
@@ -764,7 +772,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         ridx = self._ridx_lookup[mos_type][row_idx]
         orient = self._orient_list[ridx]
         w = self._w_list[ridx]
-        xc, yc = self._layout_info.sd_xc, self._sd_yc_list[ridx]
+        xc, yc = self._layout_info.sd_xc_unit, self._sd_yc_list[ridx]
         fg = stop - start
 
         # setup parameter list
@@ -785,7 +793,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             # reverse gate_intv_list to account for horizontal flip
             gate_intv_list = [(fg - eind, fg - sind) for sind, eind in gate_intv_list]
             # update orientation and source/drain center coordinate
-            xc += self._fg_tot * self.sd_pitch
+            xc += self._fg_tot * self.sd_pitch_unit
             if orient == 'R0':
                 orient = 'MY'
             else:
@@ -795,12 +803,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             if fg < self.min_fg_sep:
                 raise ValueError('Cannot draw separator with num fingers = %d < %d' % (fg, self.min_fg_sep))
             temp_cls = self._sep_cls
-            xc += start * self.sd_pitch
+            xc += start * self.sd_pitch_unit
 
         params['gate_intv_list'] = gate_intv_list
 
         conn_master = self.new_template(params=params, temp_cls=temp_cls)
-        conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient)
+        conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient, unit_mode=True)
 
         return conn_inst.get_port().get_pins(self.dum_conn_layer)
 
@@ -845,8 +853,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         ridx = self._ridx_lookup[mos_type][row_idx]
         orient = self._orient_list[ridx]
         w = self._w_list[ridx]
-        xc, yc = self._layout_info.sd_xc, self._sd_yc_list[ridx]
-        xc += col_idx * self.sd_pitch
+        xc, yc = self._layout_info.sd_xc_unit, self._sd_yc_list[ridx]
+        xc += col_idx * self.sd_pitch_unit
 
         conn_params = dict(
             lch=self._lch,
@@ -858,7 +866,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         conn_params.update(kwargs)
 
         conn_master = self.new_template(params=conn_params, temp_cls=self._cap_cls)
-        inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient)
+        inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient, unit_mode=True)
         wires_dict[val].extend(inst.get_all_port_pins('supply'))
         if export_gate:
             return {'g': inst.get_all_port_pins('g')[0]}
@@ -906,8 +914,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         orient = self._orient_list[ridx]
         is_ds_dummy = self._ds_dummy_list[ridx]
         w = self._w_list[ridx]
-        xc, yc = self._layout_info.sd_xc, self._sd_yc_list[ridx]
-        xc += col_idx * self.sd_pitch
+        xc, yc = self._layout_info.sd_xc_unit, self._sd_yc_list[ridx]
+        xc += col_idx * self.sd_pitch_unit
 
         if orient == 'MX':
             # flip source/drain directions
@@ -925,74 +933,301 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         conn_params.update(kwargs)
 
         conn_master = self.new_template(params=conn_params, temp_cls=self._mconn_cls)  # type: AnalogMosConn
-        conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient)
+        conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient, unit_mode=True)
 
         return {key: conn_inst.get_port(key).get_pins(self.mos_conn_layer)[0]
                 for key in conn_inst.port_names_iter()}
 
-    @staticmethod
-    def get_prop_lists(mos_type, sub_w, w_list, th_list, g_tracks, ds_tracks, orientations, both_subs,
-                       ds_dummy_list, gr_w):
-        """Helper method of draw_base"""
-        if mos_type == 'nch':
-            sub_type = 'ptap'
-            default_orient = 'R0'
-            del_idx = -1
-            sub_name = 'XPTAP'
-            mname = 'XMN%d'
-        else:
-            sub_type = 'ntap'
-            default_orient = 'MX'
-            del_idx = 0
-            sub_name = 'XNTAP'
-            mname = 'XMP%d'
-        num = len(w_list)
-        if num == 0:
-            # return nothing
-            return [], [], [], [], [], [], [], []
+    def _make_masters(self, mos_type, lch, fg_tot, bot_sub_w, bot_sub_end, top_sub_w, top_sub_end, w_list, th_list,
+                      g_tracks, ds_tracks, orientations, ds_dummy):
 
-        # set default values
-        g_tracks = g_tracks or [1] * num
-        ds_tracks = ds_tracks or [1] * num
-        orientations = orientations or [default_orient] * num
-        ds_dummy_list = ds_dummy_list or [False] * num
+        # error checking + set default values.
+        num_tran = len(w_list)
+        if num_tran != len(th_list):
+            raise ValueError('transistor type %s width/threshold list length mismatch.' % mos_type)
+        if not g_tracks:
+            g_tracks = [1] * num_tran
+        elif num_tran != len(g_tracks):
+            raise ValueError('transistor type %s width/g_tracks list length mismatch.' % mos_type)
+        if not ds_tracks:
+            ds_tracks = [1] * num_tran
+        elif num_tran != len(ds_tracks):
+            raise ValueError('transistor type %s width/ds_tracks list length mismatch.' % mos_type)
+        if not orientations:
+            default_orient = 'R0' if mos_type == 'nch' else 'MX'
+            orientations = [default_orient] * num_tran
+        elif num_tran != len(orientations):
+            raise ValueError('transistor type %s width/orientations list length mismatch.' % mos_type)
+        if not ds_dummy:
+            ds_dummy = [False] * num_tran
+        elif num_tran != len(ds_dummy):
+            raise ValueError('transistor type %s width/ds_dummy list length mismatch.' % mos_type)
 
-        # error checking
-        if len(g_tracks) != num:
-            raise ValueError('gate tracks list length != %d' % num)
-        if len(th_list) != num:
-            raise ValueError('threshold list length != %d' % num)
-        if len(ds_tracks) != num:
-            raise ValueError('drain/source tracks list length != %d' % num)
-        if len(orientations) != num:
-            raise ValueError('orientation list length != %d' % num)
-        if len(ds_dummy_list) != num:
-            raise ValueError('drain/source dummy list length != %d' % num)
+        if not w_list:
+            # do nothing
+            return [], [], [], []
 
-        # get property lists
-        mtype_list = list(chain([sub_type], repeat(mos_type, num), [sub_type]))
-        orient_list = list(chain(['R0'], orientations, ['MX']))
-        w_list = list(chain([sub_w], w_list, [sub_w]))
-        w_list[del_idx] = gr_w
-        th_list = list(chain([th_list[0]], th_list, [th_list[-1]]))
-        g_list = list(chain([0], g_tracks, [0]))
-        ds_list = list(chain([0], ds_tracks, [0]))
-        name_list = list(chain([sub_name + 'B'], ((mname % idx for idx in range(num))),
-                               [sub_name + 'T']))
-        ds_dummy_list = list(chain([False], ds_dummy_list, [False]))
+        sub_type = 'ptap' if mos_type == 'nch' else 'ntap'
+        master_list = []
+        track_spec_list = []
+        # make bottom substrate
+        if bot_sub_w > 0:
+            sub_params = dict(
+                lch=lch,
+                w=bot_sub_w,
+                sub_type=sub_type,
+                threshold=th_list[0],
+                fg=fg_tot,
+                is_end=bot_sub_end,
+            )
+            master_list.append(self.new_template(params=sub_params, temp_cls=self._sub_cls))
+            track_spec_list.append(('R0', -1, -1))
+        # make transistors
+        for w, th, gtr, dstr, orient, ds_dum in zip(w_list, th_list, g_tracks, ds_tracks, orientations, ds_dummy):
+            if gtr < 0 or dstr < 0:
+                raise ValueError('number of gate/drain/source tracks cannot be negative.')
+            params = dict(
+                lch=lch,
+                w=w,
+                mos_type=mos_type,
+                threshold=th,
+                fg=fg_tot,
+                is_ds_dummy=ds_dum,
+            )
+            master_list.append(self.new_template(params=params, temp_cls=self._mos_cls))
+            track_spec_list.append((orient, gtr, dstr))
+        # make top substrate
+        if top_sub_w > 0:
+            sub_params = dict(
+                lch=lch,
+                w=top_sub_w,
+                sub_type=sub_type,
+                threshold=th_list[-1],
+                fg=fg_tot,
+                is_end=top_sub_end,
+            )
+            master_list.append(self.new_template(params=sub_params, temp_cls=self._sub_cls))
+            track_spec_list.append(('MX', -1, -1))
 
-        if not both_subs:
-            # remove middle substrates
-            del mtype_list[del_idx]
-            del orient_list[del_idx]
-            del w_list[del_idx]
-            del th_list[del_idx]
-            del g_list[del_idx]
-            del ds_list[del_idx]
-            del name_list[del_idx]
-            del ds_dummy_list[del_idx]
+        ds_dummy = [False] + ds_dummy + [False]
+        w_list = [bot_sub_w] + w_list + [top_sub_w]
+        return track_spec_list, master_list, ds_dummy, w_list
 
-        return mtype_list, orient_list, w_list, th_list, g_list, ds_list, name_list, ds_dummy_list
+    def _place_helper(self, bot_ext_w, track_spec_list, master_list, gds_space, hm_layer, mos_pitch, tot_pitch):
+        # place bottom substrate at 0
+        y_cur = 0
+        tr_next = 0
+        y_list = []
+        ext_info_list = []
+        gtr_intv = []
+        dtr_intv = []
+        num_master = len(master_list)
+        for idx in range(num_master):
+            # step 1: place current master
+            y_list.append(y_cur)
+            cur_master = master_list[idx]
+            y_top_cur = y_cur + cur_master.prim_bound_box.height_unit
+            # step 2: find how many tracks current block uses
+            cur_orient, cur_ng, cur_nds = track_spec_list[idx]
+            if cur_ng < 0:
+                # substrate.  A substrate block only use tracks within its primitive bounding box.
+                tr_tmp = self.grid.find_next_track(hm_layer, y_top_cur, half_track=True, mode=1, unit_mode=True)
+                dtr_intv.append((tr_next, tr_tmp))
+                gtr_intv.append((tr_tmp, tr_tmp))
+            else:
+                # transistor.  find first unused track.
+                if cur_orient == 'R0':
+                    # drain/source tracks on top.  find bottom drain/source track (take gds_space into account).
+                    ds_track_yc = y_cur + cur_master.get_min_ds_track_yc()
+                    g_track_yc = y_cur + cur_master.get_max_g_track_yc()
+                    tr_ds0 = self.grid.coord_to_nearest_track(hm_layer, ds_track_yc, half_track=True,
+                                                              mode=1, unit_mode=True)
+                    tr_g0 = self.grid.coord_to_nearest_track(hm_layer, g_track_yc, half_track=True,
+                                                             mode=-1, unit_mode=True)
+                    tr_ds0 = max(tr_ds0, tr_g0 + 1 + gds_space)
+                    tr_tmp = tr_ds0 + cur_nds
+                    gtr_intv.append((tr_next, tr_g0 + 1))
+                    dtr_intv.append((tr_ds0, tr_tmp))
+                else:
+                    # gate tracks on top
+                    cur_height = cur_master.array_box.height_unit
+                    ds_track_yc = y_cur + cur_height - cur_master.get_min_ds_track_yc()
+                    g_track_yc = y_cur + cur_height - cur_master.get_max_g_track_yc()
+                    tr_dstop = self.grid.coord_to_nearest_track(hm_layer, ds_track_yc, half_track=True,
+                                                                mode=-1, unit_mode=True)
+                    tr_g0 = self.grid.coord_to_nearest_track(hm_layer, g_track_yc, half_track=True,
+                                                             mode=1, unit_mode=True)
+                    tr_dstop = min(tr_dstop, tr_g0 - 1 - gds_space)
+                    tr_tmp = tr_g0 + cur_ng
+                    dtr_intv.append((tr_next, tr_dstop + 1))
+                    gtr_intv.append((tr_g0, tr_tmp))
+
+            tr_next = tr_tmp
+
+            # step 2.5: find minimum Y coordinate of next block based on track information.
+            y_tr_last_top = self.grid.get_wire_bounds(hm_layer, tr_next - 1, unit_mode=True)[1]
+            y_next_min = -(-y_tr_last_top // mos_pitch) * mos_pitch
+
+            # step 3: compute extension to next master and location of next master
+            if idx + 1 < num_master:
+                # step 3A: figure out minimum extension width
+                next_master = master_list[idx + 1]
+                next_orient, next_ng, next_nds = track_spec_list[idx + 1]
+                bot_ext_info = cur_master.get_ext_top_info() if cur_orient == 'R0' else cur_master.get_ext_bot_info()
+                top_ext_info = next_master.get_ext_bot_info() if next_orient == 'R0' else next_master.get_ext_top_info()
+                min_ext_w = self._ext_cls.get_min_width(top_ext_info, bot_ext_info)
+                if idx == 0:
+                    # make sure first extension width is at least bot_ext_w
+                    min_ext_w = max(min_ext_w, bot_ext_w)
+                min_ext_w = max(min_ext_w, (y_next_min - y_top_cur) // mos_pitch)
+                # update y_next_min
+                y_next_min = max(y_next_min, y_top_cur + min_ext_w * mos_pitch)
+                # step 3B: figure out placement of next block
+                if idx + 1 == num_master - 1:
+                    # this is the last block.  Place it such that the overall height is multiples of tot_pitch.
+                    next_height = next_master.prim_bound_box.height_unit
+                    y_top_min = y_next_min + next_height
+                    y_top = -(-y_top_min // tot_pitch) * tot_pitch
+                    y_next = y_top - next_height
+                else:
+                    if next_ng < 0:
+                        # substrate block.  place as close to current block as possible.
+                        y_next = y_next_min
+                    else:
+                        if next_orient == 'R0':
+                            # Find minimum Y coordinate to have enough gate tracks.
+                            y_gtr_last_mid = self.grid.track_to_coord(hm_layer, tr_next + next_ng - 1, unit_mode=True)
+                            y_next = -(-(y_gtr_last_mid - next_master.get_max_g_track_yc()) // mos_pitch) * mos_pitch
+                            y_next = max(y_next, y_next_min)
+                        else:
+                            # find minimum Y coordinate to have enough drain/source tracks.
+                            y_dtr_last_mid = self.grid.track_to_coord(hm_layer, tr_next + next_nds - 1, unit_mode=True)
+                            y_coord = next_master.array_box.height_unit - next_master.get_min_ds_track_yc()
+                            y_next = -(-(y_dtr_last_mid - y_coord) // mos_pitch) * mos_pitch
+                            y_next = max(y_next, y_next_min)
+                # step 3C: record extension information
+                ext_w = (y_next - y_top_cur) // mos_pitch
+                if 'mos_type' in cur_master.params:
+                    ext_type = cur_master.params['mos_type']
+                elif cur_master.params['sub_type'] == 'ptap':
+                    ext_type = 'nch'
+                else:
+                    ext_type = 'pch'
+                ext_params = dict(
+                    lch=cur_master.params['lch'],
+                    w=ext_w,
+                    mos_type=ext_type,
+                    threshold=cur_master.params['threshold'],
+                    fg=cur_master.params['fg'],
+                    top_ext_info=top_ext_info,
+                    bot_ext_info=bot_ext_info,
+                )
+                ext_info_list.append((ext_w, ext_params))
+                # step 3D: update y_cur
+                y_cur = y_next
+
+        # return placement result.
+        return y_list, ext_info_list, tr_next, gtr_intv, dtr_intv
+
+    def _place(self, track_spec_list, master_list, gds_space):
+        """
+        Placement strategy: make overall block match mos_pitch and horizontal track pitch, try to
+        center everything between the top and bottom substrates.
+        """
+        # find total pitch of the analog base.
+        hm_layer = self._mos_cls.port_layer_id() + 1
+        mos_pitch = self._mos_cls.mos_pitch(unit_mode=True)
+        hm_pitch = self.grid.get_track_pitch(hm_layer, unit_mode=True)
+        tot_pitch = lcm([mos_pitch, hm_pitch])
+
+        # first try: place everything, but blocks as close to the bottom as possible.
+        y_list, ext_list, tot_ntr, gtr_intv, dtr_intv = self._place_helper(0, track_spec_list, master_list, gds_space,
+                                                                           hm_layer, mos_pitch, tot_pitch)
+        ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
+        print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
+        while ext_first < ext_last - 1:
+            # if the bottom extension width is smaller than the top extension width (and differ by more than 1),
+            # then we can potentially get a more centered placement by increasing the minimum bottom extenison width.
+            bot_ext_w = ext_first + 1
+            y_next, ext_next, tot_ntr_next, gnext, dnext = self._place_helper(bot_ext_w, track_spec_list, master_list,
+                                                                              gds_space, hm_layer, mos_pitch, tot_pitch)
+            ext_first_next, ext_last_next = ext_next[0][0], ext_next[-1][0]
+            print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first_next, ext_last_next, tot_ntr_next))
+            if tot_ntr_next > tot_ntr or abs(ext_last - ext_first) < abs(ext_last_next - ext_first_next):
+                # if either we increase the overall size of analog base, or we get a more
+                # unbalanced placement, then it's not worth it anymore.
+                print('abort')
+                break
+            else:
+                # update the optimal placement strategy.
+                y_list, ext_list, tot_ntr = y_next, ext_next, tot_ntr_next
+                ext_last, ext_first = ext_last_next, ext_first_next
+                gtr_intv, dtr_intv = gnext, dnext
+                print('pick')
+
+        # at this point we've found the optimal placement.  Place instances
+        self.array_box = BBox.get_invalid_bbox()
+        self._gtr_intv = gtr_intv
+        self._dstr_intv = dtr_intv
+        ext_list.append((0, None))
+        gr_vss_warrs = []
+        gr_vdd_warrs = []
+        for ybot, ext_info, master, track_spec in zip(y_list, ext_list, master_list, track_spec_list):
+            orient = track_spec[0]
+            edge_master = master.make_edge_template()
+            edgel = self.add_instance(edge_master, orient=orient)
+            cur_box = edgel.translate_master_box(edge_master.prim_bound_box)
+            yo = ybot - cur_box.bottom_unit
+            edgel.move_by(dy=yo, unit_mode=True)
+            xo = cur_box.right_unit
+            inst = self.add_instance(master, loc=(xo, yo), orient=orient, unit_mode=True)
+            sub_type = master.params.get('sub_type', '')
+            # save substrate instance
+            if sub_type == 'ptap':
+                self._ptap_list.append(inst)
+                self._ptap_exports.append(set())
+            elif sub_type == 'ntap':
+                self._ntap_list.append(inst)
+                self._ntap_exports.append(set())
+
+            sd_yc = inst.translate_master_location((0, master.get_sd_yc()), unit_mode=True)[1]
+            self._sd_yc_list.append(sd_yc)
+            xo = inst.array_box.right_unit
+            if orient == 'R0':
+                orient_r = 'MY'
+            else:
+                orient_r = 'R180'
+            edger = self.add_instance(edge_master, loc=(xo + edge_master.prim_bound_box.width_unit, yo),
+                                      orient=orient_r, unit_mode=True)
+            self.array_box = self.array_box.merge(edgel.array_box).merge(edger.array_box)
+            edge_inst_list = [edgel, edger]
+            if ext_info[0] > 0:
+                ext_master = self.new_template(params=ext_info[1], temp_cls=self._ext_cls)
+                ext_edge_master = ext_master.make_edge_template()
+                yo = inst.array_box.top_unit
+                edgel = self.add_instance(ext_edge_master, loc=(0, yo), unit_mode=True)
+                xo = ext_edge_master.prim_bound_box.width_unit
+                ext_inst = self.add_instance(ext_master, loc=(xo, yo), unit_mode=True)
+                xo += ext_inst.array_box.right_unit
+                edger = self.add_instance(ext_edge_master, loc=(xo, yo), orient='MY', unit_mode=True)
+                edge_inst_list.append(edgel)
+                edge_inst_list.append(edger)
+
+            # gather guard ring ports
+            for inst in edge_inst_list:
+                if inst.has_port('VDD'):
+                    gr_vdd_warrs.extend(inst.get_all_port_pins('VDD'))
+                elif inst.has_port('VSS'):
+                    gr_vss_warrs.extend(inst.get_all_port_pins('VSS'))
+
+        # connect body guard rings together
+        self._gr_vdd_warrs = self.connect_wires(gr_vdd_warrs)
+        self._gr_vss_warrs = self.connect_wires(gr_vss_warrs)
+
+        # set array box/size/draw PR boundary
+        self.set_size_from_array_box(hm_layer)
+        pr_boundary = Boundary(self.grid.resolution, 'PR', self.bound_box.get_points(unit_mode=True), unit_mode=True)
+        self.add_boundary(pr_boundary)
 
     def draw_base(self,  # type: AnalogBase
                   lch,  # type: float
@@ -1016,7 +1251,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                   pitch_offset=(0, 0),  # type: Tuple[int, int]
                   pgr_w=None,  # type: Optional[Union[float, int]]
                   ngr_w=None,  # type: Optional[Union[float, int]]
-                  min_fg_sep=0  # type: int
+                  min_fg_sep=0,  # type: int
+                  end_mode=0,
                   ):
         # type: (...) -> None
         """Draw the analog base.
@@ -1070,134 +1306,74 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             nwell guard ringsubstrate contact width.
         min_fg_sep : int
             minimum number of fingers between different transistors.
+        end_mode : int
+            substrate end mode flag
         """
         numn = len(nw_list)
         nump = len(pw_list)
+        # error checking
+        if numn == 0 and nump == 0:
+            raise ValueError('Cannot make empty AnalogBase.')
 
-        # make AnalogBaseInfo object.
-        self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, pitch_offset=pitch_offset,
-                                           min_fg_sep=min_fg_sep)
+        # make AnalogBaseInfo object.  Also update routing grid.
+        self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
         self.grid = self._layout_info.grid
 
         # initialize private attributes.
         self._lch = lch
+        self._w_list = []
         self._fg_tot = fg_tot
         self._sd_yc_list = []
-        self._num_tracks = []
-        self._track_offsets = []
-        self._ds_tr_indices = []
-        self._gds_space = gds_space
-        self._ntap_list = []
-        self._ptap_list = []
-        self._ptap_exports = []
-        self._ntap_exports = []
-        self._ridx_lookup = dict(nch=[], pch=[], ntap=[], ptap=[])
+        self._ds_dummy_list = []
+
         self._n_intvs = [IntervalSet() for _ in range(numn)]
         self._p_intvs = [IntervalSet() for _ in range(nump)]
         self._capn_intvs = [IntervalSet() for _ in range(numn)]
         self._capp_intvs = [IntervalSet() for _ in range(nump)]
-        self._pitch_offset = pitch_offset
+
+        self._ridx_lookup = dict(nch=[], pch=[], ntap=[], ptap=[])
+
+        self._ntap_list = []
+        self._ptap_list = []
+        self._ptap_exports = []
+        self._ntap_exports = []
 
         if pgr_w is None:
             pgr_w = ptap_w
         if ngr_w is None:
             ngr_w = ntap_w
 
-        # get property lists
-        results = self.get_prop_lists('nch', ntap_w, nw_list, nth_list, ng_tracks, nds_tracks,
-                                      n_orientations, guard_ring_nf > 0 or nump == 0,
-                                      n_ds_dummy, ngr_w)
-        ntype_list, norient_list, nw_list, nth_list, ng_list, nds_list, nname_list, n_ds_dummy_list = results
-        results = self.get_prop_lists('pch', ptap_w, pw_list, pth_list, pg_tracks, pds_tracks,
-                                      p_orientations, guard_ring_nf > 0 or numn == 0,
-                                      p_ds_dummy, pgr_w)
-        ptype_list, porient_list, pw_list, pth_list, pg_list, pds_list, pname_list, p_ds_dummy_list = results
+        lch_unit = int(round(lch / self.grid.layout_unit / self.grid.resolution))
+        if guard_ring_nf == 0:
+            pgr_w = ngr_w = 0
 
-        self._orient_list = norient_list + porient_list
-        self._w_list = nw_list + pw_list
-        self._ds_dummy_list = n_ds_dummy_list + p_ds_dummy_list
-        type_list = ntype_list + ptype_list
-        th_list = nth_list + pth_list
-        g_list = ng_list + pg_list
-        ds_list = nds_list + pds_list
-        name_list = nname_list + pname_list
+        # place transistor blocks
+        master_list = []
+        track_spec_list = []
+        bot_sub_end = (end_mode % 2) == 0
+        top_sub_end = (end_mode // 2) == 0
+        top_nsub_end = top_sub_end if not pw_list else False
+        bot_psub_end = bot_sub_end if not nw_list else False
+        # make NMOS substrate/transistor masters.
+        tr_list, m_list, n_ds_dummy, nw_list = self._make_masters('nch', lch_unit, fg_tot, ptap_w, bot_sub_end, ngr_w,
+                                                                  top_nsub_end, nw_list, nth_list, ng_tracks,
+                                                                  nds_tracks, n_orientations, n_ds_dummy)
+        master_list.extend(m_list)
+        track_spec_list.extend(tr_list)
+        self._ds_dummy_list.extend(n_ds_dummy)
+        self._w_list.extend(nw_list)
+        # make PMOS substrate/transistor masters.
+        tr_list, m_list, p_ds_dummy, pw_list = self._make_masters('pch', lch_unit, fg_tot, pgr_w, bot_psub_end, ntap_w,
+                                                                  top_sub_end, pw_list, pth_list, pg_tracks,
+                                                                  pds_tracks, p_orientations, p_ds_dummy)
+        master_list.extend(m_list)
+        track_spec_list.extend(tr_list)
+        self._ds_dummy_list.extend(p_ds_dummy)
+        self._w_list.extend(pw_list)
+        self._orient_list = [item[0] for item in track_spec_list]
 
-        # draw rows
-        hm_layer = self.mos_conn_layer + 1
-        tot_array_box = None
-        gr_vss_ports = []
-        gr_vdd_ports = []
-        xoff = self._layout_info.sd_pitch * pitch_offset[0]
-        yoff = self.grid.get_track_pitch(hm_layer) * pitch_offset[1]
-        for ridx, value in enumerate(zip(type_list, self._orient_list, self._w_list, th_list, g_list,
-                                         ds_list, name_list, self._ds_dummy_list)):
-            mtype, orient, w, thres, gntr, dntr, name, ds_dummy = value
-            self._ridx_lookup[mtype].append(ridx)
-            is_mos = (mtype == 'nch' or mtype == 'pch')
-            if is_mos:
-                # transistor
-                mparams = dict(mos_type=mtype, threshold=thres, lch=lch, w=w, fg=fg_tot,
-                               g_tracks=gntr, ds_tracks=dntr, gds_space=gds_space,
-                               guard_ring_nf=guard_ring_nf, is_ds_dummy=ds_dummy, )
-                mmaster = self.new_template(params=mparams, temp_cls=self._mos_cls)
-            else:
-                # substrate
-                end_mode = 1 if (ridx == 0 or ridx == (len(type_list) - 1)) else 0
-                # initally export everything.  In fill dummy we will modify substrate port locations and layers.
-                mparams = dict(sub_type=mtype, threshold=thres, lch=lch, w=w, fg=fg_tot,
-                               guard_ring_nf=guard_ring_nf, end_mode=end_mode, dummy_only=False)
-                mmaster = self.new_template(params=mparams, temp_cls=self._sub_cls)
-
-            # add and shift instance
-            minst = self.add_instance(mmaster, inst_name=name, orient=orient)
-            if tot_array_box is None:
-                minst.move_by(dx=xoff, dy=yoff)
-                tot_array_box = minst.array_box
-            else:
-                minst.move_by(dx=xoff, dy=tot_array_box.top - minst.array_box.bottom)
-                tot_array_box = tot_array_box.merge(minst.array_box)
-
-            # update track information
-            if self._track_offsets:
-                self._track_offsets.append(self._track_offsets[-1] + self._num_tracks[-1])
-            else:
-                self._track_offsets.append(0)
-            self._num_tracks.append(mmaster.get_num_tracks())
-            # update sd center location and ds track index information
-            if is_mos:
-                _, sd_yc = minst.translate_master_location(mmaster.get_left_sd_center())
-                self._sd_yc_list.append(sd_yc)
-                self._ds_tr_indices.append(mmaster.get_ds_track_index())
-            else:
-                self._sd_yc_list.append(None)
-                self._ds_tr_indices.append(0)
-
-            # append substrates to respective list
-            if mtype == 'ptap':
-                self._ptap_list.append(minst)
-                self._ptap_exports.append(set())
-            elif mtype == 'ntap':
-                self._ntap_list.append(minst)
-                self._ntap_exports.append(set())
-
-            # add body pins to respective list
-            if minst.has_port('b'):
-                if mtype == 'ptap' or mtype == 'nch':
-                    gr_vss_ports.append(minst.get_port('b'))
-                else:
-                    gr_vdd_ports.append(minst.get_port('b'))
-
-        # connect body guard rings together
-        for mos_type, gr_sup_ports in [('nch', gr_vss_ports),
-                                       ('pch', gr_vdd_ports)]:
-            warr_list = list(chain(*(port.get_pins(self.mos_conn_layer) for port in gr_sup_ports)))
-            self.connect_wires(warr_list)
-
-        self.array_box = tot_array_box
-        # find the first horizontal track index inside the array box
-        self._hm_idx0 = self.grid.coord_to_nearest_track(hm_layer, self.array_box.bottom, mode=2)
-        # set size from array box
-        self.set_size_from_array_box(hm_layer)
+        # place masters according to track specifications.  Try to center transistors
+        self._place(track_spec_list, master_list, gds_space)
 
     def _connect_substrate(self,  # type: AnalogBase
                            sub_type,  # type: str
@@ -1247,15 +1423,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         for row_idx, subinst in zip(row_idx_list, sub_list):
             # Create substrate TrackID
             sub_row_idx = self._find_row_index(sub_type, row_idx)
-            ntr = self._num_tracks[sub_row_idx]
-            offset = self._hm_idx0 + self._track_offsets[sub_row_idx]
+            dtr_intv = self._dstr_intv[sub_row_idx]
+            ntr = dtr_intv[1] - dtr_intv[0]
             sub_w = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
-            track_id = TrackID(hm_layer, offset + (ntr - 1) / 2, width=sub_w)
+            track_id = TrackID(hm_layer, dtr_intv[0] + (ntr - 1) / 2, width=sub_w)
 
             # get all wires to connect to supply.
             warr_iter_list = [subinst.get_port(port_name).get_pins(self.mos_conn_layer)]
-            if subinst.has_port('b'):
-                warr_iter_list.append(subinst.get_port('b').get_pins(self.mos_conn_layer))
+            if port_name == 'VDD':
+                warr_iter_list.append(self._gr_vdd_warrs)
+            else:
+                warr_iter_list.append(self._gr_vss_warrs)
 
             warr_list = list(chain(*warr_iter_list))
             track_warr = self.connect_to_tracks(warr_list, track_id, track_lower=lower, track_upper=upper,
@@ -1490,7 +1668,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         bot_dum_tracks = set()
         top_dum_tracks = set()
         for sub_idx, wire_bus_list in wire_groups.items():
-            sub_port_id_list = [tid - self._pitch_offset[0] for warr in wire_bus_list for tid in warr.track_id]
+            sub_port_id_list = [tid for warr in wire_bus_list for tid in warr.track_id]
             wire_yb = wire_yt = None
             if sub_idx >= 0:
                 wire_yb = sub_yb
