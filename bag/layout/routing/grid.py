@@ -86,6 +86,7 @@ class RoutingGrid(object):
         self._tech_info = tech_info
         self._resolution = tech_info.resolution
         self._layout_unit = tech_info.layout_unit
+        self._flip_parity = {}
         self.layers = []
         self.sp_tracks = {}
         self.w_tracks = {}
@@ -105,6 +106,15 @@ class RoutingGrid(object):
     def __contains__(self, layer):
         """Returns True if this RoutingGrid contains the given layer. """
         return layer in self.sp_tracks
+
+    def get_flip_parity(self):
+        """Returns a copy of the flip parity dictionary."""
+        return self._flip_parity.copy()
+
+    def set_flip_parity(self, fp):
+        """set the flip track parity dictionary."""
+        for lay in self.sp_tracks:
+            self._flip_parity[lay] = fp.get(lay, False)
 
     @property
     def tech_info(self):
@@ -507,9 +517,13 @@ class RoutingGrid(object):
             the track index.
         """
         layer_name = self.tech_info.get_layer_name(layer_id)
+        tr_parity = int(tr_idx) % 2
+        if self._flip_parity[layer_id]:
+            tr_parity = 1 - tr_parity
+
         if isinstance(layer_name, tuple):
             # round down half integer track
-            return layer_name[int(tr_idx) % 2]
+            return layer_name[tr_parity]
         else:
             return layer_name
 
@@ -1116,6 +1130,7 @@ class RoutingGrid(object):
         attrs['_tech_info'] = self._tech_info
         attrs['_resolution'] = self._resolution
         attrs['_layout_unit'] = self._layout_unit
+        attrs['_flip_parity'] = self._flip_parity.copy()
         attrs['layers'] = list(self.layers)
         attrs['sp_tracks'] = self.sp_tracks.copy()
         attrs['dir_tracks'] = self.dir_tracks.copy()
@@ -1173,3 +1188,4 @@ class RoutingGrid(object):
         self.max_num_tr_tracks[layer_id] = max_num_tr
         offset = (sp_unit + w_unit) // 2
         self.offset_tracks[layer_id] = offset
+        self._flip_parity[layer_id] = False
