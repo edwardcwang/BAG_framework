@@ -746,14 +746,15 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     def _get_inst_flip_parity(self, xc):
         """Compute flip_parity dictionary for instance."""
-        inst_flip_parity = self.grid.get_flip_parity()
         dum_layer = self.dum_conn_layer
         mconn_layer = self.mos_conn_layer
-        dum_tr_off = xc / self.grid.get_track_pitch(dum_layer, unit_mode=True)
-        mconn_tr_off = xc / self.grid.get_track_pitch(mconn_layer, unit_mode=True)
-        if int(dum_tr_off) % 2 == 1:
+        inst_dum_par = int(self.grid.coord_to_track(dum_layer, xc, unit_mode=True)) % 2
+        inst_mconn_par = int(self.grid.coord_to_track(mconn_layer, xc, unit_mode=True)) % 2
+
+        inst_flip_parity = self.grid.get_flip_parity()
+        if inst_dum_par == 1:
             inst_flip_parity[dum_layer] = not inst_flip_parity.get(dum_layer, False)
-        if int(mconn_tr_off) % 2 == 1:
+        if inst_mconn_par == 1:
             inst_flip_parity[mconn_layer] = not inst_flip_parity.get(mconn_layer, False)
 
         return inst_flip_parity
@@ -790,10 +791,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         fg = stop - start
 
         # get edge_mode parameter
+        connl, connr = False, False
         if start == 0:
-            edge_mode = 3 if stop == self._fg_tot else 1
+            connl = True
+            edge_mode = 1
+            if stop == self._fg_tot:
+                edge_mode = 3
+                connr = True
         elif stop == self._fg_tot:
             edge_mode = 2
+            connr = True
         else:
             edge_mode = 0
             # check number of fingers meet minimum finger spec
@@ -802,8 +809,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # convert gate intervals to dummy track numbers
         dum_layer = self.dum_conn_layer
-        dum_pitch = self.grid.get_track_pitch(dum_layer, unit_mode=True)
-        tr_offset = xc / dum_pitch
+        tr_offset = self.grid.coord_to_track(dum_layer, xc, unit_mode=True) + 0.5
         dum_tr_list = []
         layout_info = self._layout_info
         for (col0, col1) in gate_intv_list:
@@ -814,14 +820,19 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             if col1 > col0:
                 xl = layout_info.col_to_coord(col0, unit_mode=True)
                 xr = layout_info.col_to_coord(col1, unit_mode=True)
-                tr0 = self.grid.find_next_track(dum_layer, xl, mode=1, half_track=False, unit_mode=True)
-                tr1 = self.grid.find_next_track(dum_layer, xr, mode=-1, half_track=False, unit_mode=True)
+                tr0 = self.grid.coord_to_track(dum_layer, xl, unit_mode=True)
+                tr1 = self.grid.coord_to_track(dum_layer, xr, unit_mode=True)
+                if not connl:
+                    tr0 += 1
+                if not connr:
+                    tr1 -= 1
+
                 # check for each interval, we can at least draw one track
                 if tr1 < tr0:
                     raise ValueError('Cannot draw dummy connections in gate interval [%d, %d)' % (col0, col1))
 
-                for tr_id in range(tr0, tr1 + 1):
-                    dum_tr_list.append(tr_id - tr_offset)
+                for htr_id in range(int(2 * tr0 + 1), int(2 * tr1 + 1) + 1, 2):
+                    dum_tr_list.append((htr_id - 1) / 2 - tr_offset)
 
         # setup parameter list
         params = dict(
@@ -1732,10 +1743,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self._export_supplies(top_dum_tracks, top_tracks, top_sub_inst, top_dum_only)
 
     def _export_supplies(self, dum_tracks, port_tracks, sub_inst, dum_only):
-        dum_pitch = self.grid.get_track_pitch(self.dum_conn_layer, unit_mode=True)
-        dum_tr_offset = self._layout_info.sd_xc_unit / dum_pitch
-        mconn_pitch = self.grid.get_track_pitch(self.mos_conn_layer, unit_mode=True)
-        mconn_tr_offset = self._layout_info.sd_xc_unit / mconn_pitch
+        x0 = self._layout_info.sd_xc_unit
+        dum_tr_offset = self.grid.coord_to_track(self.dum_conn_layer, x0, unit_mode=True) + 0.5
+        mconn_tr_offset = self.grid.coord_to_track(self.mos_conn_layer, x0, unit_mode=True) + 0.5
         dum_tracks = [tr - dum_tr_offset for tr in dum_tracks]
         port_tracks = [tr - mconn_tr_offset for tr in port_tracks]
         sub_inst.new_master_with(dum_tracks=dum_tracks, port_tracks=port_tracks,
