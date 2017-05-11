@@ -517,7 +517,9 @@ class RoutingGrid(object):
             the track index.
         """
         layer_name = self.tech_info.get_layer_name(layer_id)
-        tr_parity = int(tr_idx) % 2
+        # multiply then divide by 2 makes sure negative tracks are colored correctly.
+        par_idx = int(round(tr_idx * 2)) // 2
+        tr_parity = par_idx % 2
         if self._flip_parity[layer_id]:
             tr_parity = 1 - tr_parity
 
