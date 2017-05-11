@@ -52,16 +52,13 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         the channel length of AnalogBase, in meters.
     guard_ring_nf : int
         guard ring width in number of fingers.  0 to disable.
-    pitch_offset : Tuple[int, int]
-        the lower-left corner in track pitches.
     min_fg_sep : int
         minimum number of separation fingers.
     """
 
-    def __init__(self, grid, lch, guard_ring_nf, pitch_offset=(0, 0), min_fg_sep=0):
+    def __init__(self, grid, lch, guard_ring_nf, min_fg_sep=0):
         # type: (RoutingGrid, float, int, Tuple[int, int], int) -> None
-        super(SerdesRXBaseInfo, self).__init__(grid, lch, guard_ring_nf,
-                                               pitch_offset=pitch_offset, min_fg_sep=min_fg_sep)
+        super(SerdesRXBaseInfo, self).__init__(grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
 
     def get_gm_info(self, fg_params, flip_sd=False):
         # type: (Dict[str, int]) -> Dict[str, Any]
@@ -1316,7 +1313,6 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             raise ValueError('tail/input/load transistors width must be positive.')
 
         self._serdes_info = SerdesRXBaseInfo(self.grid, lch, kwargs.get('guard_ring_nf', 0),
-                                             pitch_offset=kwargs.get('pitch_offset', (0, 0)),
                                              min_fg_sep=kwargs.get('min_fg_sep', 0))
 
         # figure out row indices for each nmos row type,
