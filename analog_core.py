@@ -759,7 +759,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return inst_flip_parity
 
-    def _draw_dummy_sep_conn(self, mos_type, row_idx, start, stop, gate_intv_list):
+    def _draw_dummy_sep_conn(self, mos_type, row_idx, start, stop, gate_intv_list, sub_val_list):
         """Draw dummy/separator connection.
 
         Parameters
@@ -776,7 +776,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             sorted list of gate intervals to connect gate to M2.
             for example, if gate_intv_list = [(2, 5)], then we will draw M2 connections
             between finger number 2 (inclusive) to finger number 5 (exclusive).
-
+        sub_val_list : List[int]
+            list of substrate code that should be connected to each gate interval.
         Returns
         -------
         wires : list[:class:`~bag.layout.routing.WireArray`]
@@ -811,8 +812,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         dum_layer = self.dum_conn_layer
         tr_offset = self.grid.coord_to_track(dum_layer, xc, unit_mode=True) + 0.5
         dum_tr_list = []
+        sub_values = []
         layout_info = self._layout_info
-        for (col0, col1) in gate_intv_list:
+        for (col0, col1), sub_val in zip(gate_intv_list, sub_val_list):
             # due to the way we keep track of decaps, gate intervals may be outside of dummy boundary
             # here we throw away those cases
             col0 = max(col0, start)
@@ -833,6 +835,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
                 for htr_id in range(int(2 * tr0 + 1), int(2 * tr1 + 1) + 1, 2):
                     dum_tr_list.append((htr_id - 1) / 2 - tr_offset)
+                    sub_values.append(sub_val)
 
         # setup parameter list
         params = dict(
@@ -846,7 +849,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         conn_master = self.new_template(params=params, temp_cls=self._dum_cls)
         conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient, unit_mode=True)
 
-        return conn_inst.get_port().get_pins(self.dum_conn_layer)
+        return conn_inst.get_port().get_pins(self.dum_conn_layer), sub_values
 
     def mos_conn_track_used(self, tidx, margin=0):
         col_start, col_stop = self.layout_info.track_to_col_intv(self.mos_conn_layer, tidx)
@@ -1704,10 +1707,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             ridx, start, stop = key
             if dummy_gate_set:
                 gate_intv_list = list(dummy_gate_set.intervals())
-                sub_val_iter = dummy_gate_set.values()
-                gate_buses = self._draw_dummy_sep_conn(mos_type, ridx, start, stop, gate_intv_list)
+                sub_val_list = list(dummy_gate_set.values())
+                gate_buses, sub_values = self._draw_dummy_sep_conn(mos_type, ridx, start, stop, gate_intv_list,
+                                                                   sub_val_list)
 
-                for gate_warr, sub_val in zip(gate_buses, sub_val_iter):
+                for gate_warr, sub_val in zip(gate_buses, sub_values):
                     wire_groups[sub_val].append(gate_warr)
             elif not self.floating_dummy:
                 raise Exception('Dummy (%d, %d) at row %d unconnected.' % (start, stop, ridx))
