@@ -1186,7 +1186,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # return placement result.
         return y_list, ext_info_list, tr_next, gtr_intv, dtr_intv
 
-    def _place(self, track_spec_list, master_list, gds_space):
+    def _place(self, track_spec_list, master_list, gds_space, guard_ring_nf):
         """
         Placement strategy: make overall block match mos_pitch and horizontal track pitch, try to
         center everything between the top and bottom substrates.
@@ -1231,7 +1231,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         gr_vdd_warrs = []
         for ybot, ext_info, master, track_spec in zip(y_list, ext_list, master_list, track_spec_list):
             orient = track_spec[0]
-            edge_master = master.make_edge_template()
+            edge_master = master.make_edge_template(guard_ring_nf=guard_ring_nf)
             edgel = self.add_instance(edge_master, orient=orient)
             cur_box = edgel.translate_master_box(edge_master.prim_bound_box)
             yo = ybot - cur_box.bottom_unit
@@ -1260,7 +1260,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             edge_inst_list = [edgel, edger]
             if ext_info[0] > 0:
                 ext_master = self.new_template(params=ext_info[1], temp_cls=self._ext_cls)
-                ext_edge_master = ext_master.make_edge_template()
+                ext_edge_master = ext_master.make_edge_template(guard_ring_nf=guard_ring_nf)
                 yo = inst.array_box.top_unit
                 edgel = self.add_instance(ext_edge_master, loc=(0, yo), unit_mode=True)
                 xo = ext_edge_master.prim_bound_box.width_unit
@@ -1434,7 +1434,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._orient_list = [item[0] for item in track_spec_list]
 
         # place masters according to track specifications.  Try to center transistors
-        self._place(track_spec_list, master_list, gds_space)
+        self._place(track_spec_list, master_list, gds_space, guard_ring_nf)
 
     def _connect_substrate(self,  # type: AnalogBase
                            sub_type,  # type: str
