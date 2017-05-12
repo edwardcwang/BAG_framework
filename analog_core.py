@@ -1079,6 +1079,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         gtr_intv = []
         dtr_intv = []
         num_master = len(master_list)
+        lch_unit = int(round(self._lch / self.grid.layout_unit / self.grid.resolution))
         for idx in range(num_master):
             # step 1: place current master
             y_list.append(y_cur)
@@ -1139,18 +1140,22 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 next_orient, next_ng, next_nds = track_spec_list[idx + 1]
                 bot_ext_info = cur_master.get_ext_top_info() if cur_orient == 'R0' else cur_master.get_ext_bot_info()
                 top_ext_info = next_master.get_ext_bot_info() if next_orient == 'R0' else next_master.get_ext_top_info()
-                need_extension, min_ext_w = self._ext_cls.get_min_width(top_ext_info, bot_ext_info)
+                ext_w_list = self._ext_cls.get_valid_widths(lch_unit, top_ext_info, bot_ext_info)
+                min_ext_w = ext_w_list[0]
                 if idx == 0:
                     # make sure first extension width is at least bot_ext_w
                     min_ext_w = max(min_ext_w, bot_ext_w)
-                    need_extension = (bot_ext_w > 0) or need_extension
                 # increase extension width if we need to place next block higher
                 test_ext_w = (y_next_min - y_top_cur) // mos_pitch
                 min_ext_w = max(min_ext_w, test_ext_w)
-                need_extension = (test_ext_w > 0) or need_extension
+                # make sure min_ext_w is a valid width
+                if min_ext_w not in ext_w_list and min_ext_w < ext_w_list[-1]:
+                    for tmp_ext_w in ext_w_list:
+                        if min_ext_w < tmp_ext_w:
+                            min_ext_w = tmp_ext_w
+                            break
                 # update y_next_min
-                if need_extension:
-                    y_next_min = max(y_next_min, y_top_cur + min_ext_w * mos_pitch)
+                y_next_min = max(y_next_min, y_top_cur + min_ext_w * mos_pitch)
                 # step 3B: figure out placement of next block
                 if idx + 1 == num_master - 1:
                     # this is the last block.  Place it such that the overall height is multiples of tot_pitch.
@@ -1158,9 +1163,26 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     y_top_min = y_next_min + next_height
                     y_top = -(-y_top_min // tot_pitch) * tot_pitch
                     y_next = y_top - next_height
+                    # make sure we both have valid extension width and last block is on tot_pitch.
+                    # Iterate until we get it
+                    ext_w = (y_next - y_top_cur) // mos_pitch
+                    while ext_w not in ext_w_list and ext_w < ext_w_list[-1]:
+                        # find next extension block
+                        for tmp_ext_w in ext_w_list:
+                            if ext_w < tmp_ext_w:
+                                ext_w = tmp_ext_w
+                                break
+                        # update y_next
+                        y_next = y_top_cur + ext_w * mos_pitch
+                        # place last block such that it is on tot_pitch
+                        y_top_min = y_next + next_height
+                        y_top = -(-y_top_min // tot_pitch) * tot_pitch
+                        y_next = y_top - next_height
+                        # recalculate ext_w
+                        ext_w = (y_next - y_top_cur) // mos_pitch
                 else:
                     if next_ng < 0:
-                        # substrate block.  place as close to current block as possible.
+                        # substrate block.  place as close to current block as possible
                         y_next = y_next_min
                     else:
                         if next_orient == 'R0':
@@ -1174,8 +1196,13 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                             y_coord = next_master.array_box.height_unit - next_master.get_min_ds_track_yc()
                             y_next = -(-(y_dtr_last_mid - y_coord) // mos_pitch) * mos_pitch
                             y_next = max(y_next, y_next_min)
-                # step 3C: record extension information
-                ext_w = (y_next - y_top_cur) // mos_pitch
+                    ext_w = (y_next - y_top_cur) // mos_pitch
+                    # make sure ext_w is a valid width
+                    if ext_w not in ext_w_list and ext_w < ext_w_list[-1]:
+                        for tmp_ext_w in ext_w_list:
+                            if ext_w < tmp_ext_w:
+                                ext_w = tmp_ext_w
+                                break
                 if 'mos_type' in cur_master.params:
                     bot_mtype = cur_master.params['mos_type']
                 else:
