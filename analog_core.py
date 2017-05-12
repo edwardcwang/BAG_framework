@@ -1132,13 +1132,18 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 next_orient, next_ng, next_nds = track_spec_list[idx + 1]
                 bot_ext_info = cur_master.get_ext_top_info() if cur_orient == 'R0' else cur_master.get_ext_bot_info()
                 top_ext_info = next_master.get_ext_bot_info() if next_orient == 'R0' else next_master.get_ext_top_info()
-                min_ext_w = self._ext_cls.get_min_width(top_ext_info, bot_ext_info)
+                need_extension, min_ext_w = self._ext_cls.get_min_width(top_ext_info, bot_ext_info)
                 if idx == 0:
                     # make sure first extension width is at least bot_ext_w
                     min_ext_w = max(min_ext_w, bot_ext_w)
-                min_ext_w = max(min_ext_w, (y_next_min - y_top_cur) // mos_pitch)
+                    need_extension = (bot_ext_w > 0) or need_extension
+                # increase extension width if we need to place next block higher
+                test_ext_w = (y_next_min - y_top_cur) // mos_pitch
+                min_ext_w = max(min_ext_w, test_ext_w)
+                need_extension = (test_ext_w > 0) or need_extension
                 # update y_next_min
-                y_next_min = max(y_next_min, y_top_cur + min_ext_w * mos_pitch)
+                if need_extension:
+                    y_next_min = max(y_next_min, y_top_cur + min_ext_w * mos_pitch)
                 # step 3B: figure out placement of next block
                 if idx + 1 == num_master - 1:
                     # this is the last block.  Place it such that the overall height is multiples of tot_pitch.
@@ -1165,16 +1170,20 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 # step 3C: record extension information
                 ext_w = (y_next - y_top_cur) // mos_pitch
                 if 'mos_type' in cur_master.params:
-                    ext_type = cur_master.params['mos_type']
-                elif cur_master.params['sub_type'] == 'ptap':
-                    ext_type = 'nch'
+                    bot_mtype = cur_master.params['mos_type']
                 else:
-                    ext_type = 'pch'
+                    bot_mtype = cur_master.params['sub_type']
+                if 'mos_type' in next_master.params:
+                    top_mtype = next_master.params['mos_type']
+                else:
+                    top_mtype = next_master.params['sub_type']
                 ext_params = dict(
                     lch=cur_master.params['lch'],
                     w=ext_w,
-                    mos_type=ext_type,
-                    threshold=cur_master.params['threshold'],
+                    bot_mtype=bot_mtype,
+                    top_mtype=top_mtype,
+                    bot_thres=cur_master.params['threshold'],
+                    top_thres=next_master.params['threshold'],
                     fg=cur_master.params['fg'],
                     top_ext_info=top_ext_info,
                     bot_ext_info=bot_ext_info,
