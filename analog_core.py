@@ -1097,12 +1097,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     # drain/source tracks on top.  find bottom drain/source track (take gds_space into account).
                     ds_track_yc = y_cur + cur_master.get_min_ds_track_yc()
                     g_track_yc = y_cur + cur_master.get_max_g_track_yc()
+                    min_top_tr_yc = y_cur + cur_master.get_min_top_track_yc()
                     tr_ds0 = self.grid.coord_to_nearest_track(hm_layer, ds_track_yc, half_track=True,
                                                               mode=1, unit_mode=True)
                     tr_g0 = self.grid.coord_to_nearest_track(hm_layer, g_track_yc, half_track=True,
                                                              mode=-1, unit_mode=True)
+                    tr_tmp_min = self.grid.coord_to_nearest_track(hm_layer, min_top_tr_yc, half_track=True,
+                                                                  mode=1, unit_mode=True)
                     tr_ds0 = max(tr_ds0, tr_g0 + 1 + gds_space)
-                    tr_tmp = tr_ds0 + cur_nds
+                    tr_tmp = max(tr_ds0 + cur_nds, tr_tmp_min)
+                    # check that tr_tmp is larger than min_top_tr_yc
                     gtr_intv.append((tr_next, tr_g0 + 1))
                     dtr_intv.append((tr_ds0, tr_tmp))
                 else:
@@ -1110,12 +1114,15 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     cur_height = cur_master.array_box.height_unit
                     ds_track_yc = y_cur + cur_height - cur_master.get_min_ds_track_yc()
                     g_track_yc = y_cur + cur_height - cur_master.get_max_g_track_yc()
+                    min_top_tr_yc = y_cur + cur_height - cur_master.get_max_bot_track_yc()
                     tr_dstop = self.grid.coord_to_nearest_track(hm_layer, ds_track_yc, half_track=True,
                                                                 mode=-1, unit_mode=True)
                     tr_g0 = self.grid.coord_to_nearest_track(hm_layer, g_track_yc, half_track=True,
                                                              mode=1, unit_mode=True)
+                    tr_tmp_min = self.grid.coord_to_nearest_track(hm_layer, min_top_tr_yc, half_track=True,
+                                                                  mode=1, unit_mode=True)
                     tr_dstop = min(tr_dstop, tr_g0 - 1 - gds_space)
-                    tr_tmp = tr_g0 + cur_ng
+                    tr_tmp = max(tr_g0 + cur_ng, tr_tmp_min)
                     dtr_intv.append((tr_next, tr_dstop + 1))
                     gtr_intv.append((tr_g0, tr_tmp))
 
