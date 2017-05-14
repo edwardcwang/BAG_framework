@@ -30,7 +30,7 @@ from builtins import *
 
 import abc
 from itertools import chain
-from typing import List, Union, Optional, TypeVar, Dict, Any, Set, Tuple
+from typing import List, Union, Optional, Dict, Any, Set, Tuple
 
 from bag.math import lcm
 from bag.util.interval import IntervalSet
@@ -39,11 +39,13 @@ from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.routing import TrackID, WireArray, RoutingGrid
 from bag.layout.util import BBox
 from bag.layout.objects import Instance, Boundary
-from .analog_mos import AnalogMosBase, AnalogMosConn
 from future.utils import with_metaclass
-from templates_tsmc7.finfet.edge import Edge
 
-MosBase = TypeVar('MosBase', bound=AnalogMosBase)
+from .analog_mos.core import MOSTech
+from .analog_mos.mos import AnalogMOSBase, AnalogMOSExt
+from .analog_mos.substrate import AnalogSubstrate
+from .analog_mos.edge import AnalogEdge
+from .analog_mos.conn import AnalogMOSConn, AnalogMOSDecap, AnalogMOSDummy
 
 
 def _flip_ud(orient):
@@ -271,8 +273,7 @@ class AnalogBaseInfo(object):
     def __init__(self, grid, lch, guard_ring_nf, min_fg_sep=0):
         # type: (RoutingGrid, float, int, int) -> None
         tech_params = grid.tech_info.tech_params
-        mos_cls = tech_params['layout']['mos_template']
-        dum_cls = tech_params['layout']['mos_dummy_template']
+        self._tech_cls = tech_params['layout']['mos_tech_class']  # type: MOSTech
 
         # get technology parameters
         self.min_fg_sep = max(min_fg_sep, tech_params['layout']['analog_base']['min_fg_sep'])
@@ -283,20 +284,19 @@ class AnalogBaseInfo(object):
         res = grid.resolution
         lch_unit = int(round(lch / grid.layout_unit / res))
         self._lch_unit = lch_unit
-        self.num_fg_per_sd = mos_cls.get_num_fingers_per_sd(lch_unit)
-        self._sd_pitch_unit = mos_cls.get_sd_pitch(lch_unit)
-        self._sd_xc_unit = mos_cls.get_left_sd_xc(lch_unit, guard_ring_nf)
-        self.mconn_port_layer = mos_cls.port_layer_id()
-        self.dum_port_layer = dum_cls.port_layer_id()
+        self.num_fg_per_sd = self._tech_cls.get_num_fingers_per_sd(lch_unit)
+        self._sd_pitch_unit = self._tech_cls.get_sd_pitch(lch_unit)
+        self._sd_xc_unit = self._tech_cls.get_left_sd_xc(lch_unit, guard_ring_nf)
+        self.mconn_port_layer = self._tech_cls.get_mos_conn_layer()
+        self.dum_port_layer = self._tech_cls.get_dum_conn_layer()
 
-        vm_space, vm_width = mos_cls.get_mos_conn_track_info(lch_unit)
-        dum_space, dum_width = dum_cls.get_dum_conn_track_info(lch_unit)
+        vm_space, vm_width = self._tech_cls.get_mos_conn_track_info(lch_unit)
+        dum_space, dum_width = self._tech_cls.get_dum_conn_track_info(lch_unit)
 
         self.grid = grid.copy()
         self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y', override=True, unit_mode=True)
         self.grid.add_new_layer(self.dum_port_layer, dum_space, dum_width, 'y', override=True, unit_mode=True)
         self.grid.update_block_pitch()
-        self._mos_cls = mos_cls
 
     @property
     def sd_pitch(self):
@@ -330,7 +330,7 @@ class AnalogBaseInfo(object):
         mos_width : int
             the AnalogMosBase width in number of source/drain tracks.
         """
-        edge_width = self._mos_cls.get_left_sd_xc(self._lch_unit, guard_ring_nf)
+        edge_width = self._tech_cls.get_left_sd_xc(self._lch_unit, guard_ring_nf)
         tot_width = 2 * edge_width + fg_tot * self._sd_pitch_unit
         return tot_width // self._sd_pitch_unit
 
@@ -508,12 +508,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         super(AnalogBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
         tech_params = self.grid.tech_info.tech_params
-        self._mos_cls = tech_params['layout']['mos_template']
-        self._sub_cls = tech_params['layout']['sub_template']
-        self._ext_cls = tech_params['layout']['mos_ext_template']
-        self._mconn_cls = tech_params['layout']['mos_conn_template']
-        self._dum_cls = tech_params['layout']['mos_dummy_template']
-        self._cap_cls = tech_params['layout'].get('mos_decap_template', None)
+        self._tech_cls = tech_params['layout']['mos_tech_class']
 
         # initialize parameters
         # layout information parameters
@@ -548,8 +543,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     @classmethod
     def get_mos_conn_layer(cls, tech_info):
-        mos_cls = tech_info.tech_params['layout']['mos_template']
-        return mos_cls.port_layer_id()
+        tech_cls = tech_info.tech_params['layout']['mos_tech_class']
+        return tech_cls.get_mos_conn_layer()
 
     @property
     def layout_info(self):
@@ -851,7 +846,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             gate_tracks=dum_tr_list,
             flip_parity=self._get_inst_flip_parity(xc),
         )
-        conn_master = self.new_template(params=params, temp_cls=self._dum_cls)
+        conn_master = self.new_template(params=params, temp_cls=AnalogMOSDummy)
         conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient, unit_mode=True)
 
         return conn_inst.get_port().get_pins(self.dum_conn_layer), sub_values
@@ -867,9 +862,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def draw_mos_decap(self, mos_type, row_idx, col_idx, fg, gate_ext_mode, export_gate=False,
                        inner=False, **kwargs):
         """Draw decap connection."""
-        if self._cap_cls is None:
-            raise ValueError('MOS decap primitive not found in this technology.')
-
         # mark transistors as connected
         val = -1 if inner else 1
         if mos_type == 'pch':
@@ -910,7 +902,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         )
         conn_params.update(kwargs)
 
-        conn_master = self.new_template(params=conn_params, temp_cls=self._cap_cls)
+        conn_master = self.new_template(params=conn_params, temp_cls=AnalogMOSDecap)
         inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient, unit_mode=True)
         wires_dict[val].extend(inst.get_all_port_pins('supply'))
         if export_gate:
@@ -979,7 +971,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         )
         conn_params.update(kwargs)
 
-        conn_master = self.new_template(params=conn_params, temp_cls=self._mconn_cls)  # type: AnalogMosConn
+        conn_master = self.new_template(params=conn_params, temp_cls=AnalogMOSConn)
         conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient, unit_mode=True)
 
         return {key: conn_inst.get_port(key).get_pins(self.mos_conn_layer)[0]
@@ -1032,7 +1024,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 end_mode=bot_sub_end,
                 flip_parity=sub_flip_parity,
             )
-            master_list.append(self.new_template(params=sub_params, temp_cls=self._sub_cls))
+            master_list.append(self.new_template(params=sub_params, temp_cls=AnalogSubstrate))
             track_spec_list.append(('R0', -1, -1))
             self._ridx_lookup[sub_type].append(row_offset)
             row_offset += 1
@@ -1050,7 +1042,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 fg=fg_tot,
                 is_ds_dummy=ds_dum,
             )
-            master_list.append(self.new_template(params=params, temp_cls=self._mos_cls))
+            master_list.append(self.new_template(params=params, temp_cls=AnalogMOSBase))
             track_spec_list.append((orient, gtr, dstr))
             self._ridx_lookup[mos_type].append(row_offset)
             row_offset += 1
@@ -1067,7 +1059,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 end_mode=top_sub_end,
                 flip_parity=sub_flip_parity,
             )
-            master_list.append(self.new_template(params=sub_params, temp_cls=self._sub_cls))
+            master_list.append(self.new_template(params=sub_params, temp_cls=AnalogSubstrate))
             track_spec_list.append(('MX', -1, -1))
             self._ridx_lookup[sub_type].append(row_offset)
             w_list_final.append(top_sub_w)
@@ -1145,7 +1137,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 next_orient, next_ng, next_nds = track_spec_list[idx + 1]
                 bot_ext_info = cur_master.get_ext_top_info() if cur_orient == 'R0' else cur_master.get_ext_bot_info()
                 top_ext_info = next_master.get_ext_bot_info() if next_orient == 'R0' else next_master.get_ext_top_info()
-                ext_w_list = self._ext_cls.get_valid_widths(lch_unit, top_ext_info, bot_ext_info)
+                ext_w_list = self._tech_cls.get_valid_extension_widths(lch_unit, top_ext_info, bot_ext_info)
                 min_ext_w = ext_w_list[0]
                 if idx == 0:
                     # make sure first extension width is at least bot_ext_w
@@ -1243,7 +1235,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         dum_layer = self.dum_conn_layer
         mconn_layer = self.mos_conn_layer
         hm_layer = mconn_layer + 1
-        mos_pitch = self._mos_cls.mos_pitch(unit_mode=True)
+        mos_pitch = self._tech_cls.get_mos_pitch(unit_mode=True)
         hm_pitch = self.grid.get_track_pitch(hm_layer, unit_mode=True)
         tot_pitch = lcm([mos_pitch, hm_pitch])
 
@@ -1293,7 +1285,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 layout_info=edge_layout_info,
                 flip_parity=flip_par_left,
             )
-            edgel_master = self.new_template(params=edgel_params, temp_cls=Edge)
+            edgel_master = self.new_template(params=edgel_params, temp_cls=AnalogEdge)
             edgel = self.add_instance(edgel_master, orient=orient)
             cur_box = edgel.translate_master_box(edgel_master.prim_bound_box)
             yo = ybot - cur_box.bottom_unit
@@ -1325,12 +1317,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 layout_info=edge_layout_info,
                 flip_parity=flip_par_right,
             )
-            edger_master = self.new_template(params=edger_params, temp_cls=Edge)
+            edger_master = self.new_template(params=edger_params, temp_cls=AnalogEdge)
             edger = self.add_instance(edger_master, loc=(edger_xo, yo), orient=orient_r, unit_mode=True)
             self.array_box = self.array_box.merge(edgel.array_box).merge(edger.array_box)
             edge_inst_list = [edgel, edger]
             if ext_info[0] > 0:
-                ext_master = self.new_template(params=ext_info[1], temp_cls=self._ext_cls)
+                ext_master = self.new_template(params=ext_info[1], temp_cls=AnalogMOSExt)
                 ext_edge_layout_info = ext_master.get_edge_layout_info()
                 ext_edgel_params = dict(
                     dum_layer=dum_layer,
@@ -1340,7 +1332,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     layout_info=ext_edge_layout_info,
                     flip_parity=flip_par_left,
                 )
-                ext_edgel_master = self.new_template(params=ext_edgel_params, temp_cls=Edge)
+                ext_edgel_master = self.new_template(params=ext_edgel_params, temp_cls=AnalogEdge)
                 yo = inst.array_box.top_unit
                 edgel = self.add_instance(ext_edgel_master, loc=(0, yo), unit_mode=True)
                 self.add_instance(ext_master, loc=(inst_xo, yo), unit_mode=True)
@@ -1352,7 +1344,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     layout_info=ext_edge_layout_info,
                     flip_parity=flip_par_right,
                 )
-                ext_edger_master = self.new_template(params=ext_edger_params, temp_cls=Edge)
+                ext_edger_master = self.new_template(params=ext_edger_params, temp_cls=AnalogEdge)
                 edger = self.add_instance(ext_edger_master, loc=(edger_xo, yo), orient='MY', unit_mode=True)
                 edge_inst_list.append(edgel)
                 edge_inst_list.append(edger)

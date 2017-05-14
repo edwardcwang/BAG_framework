@@ -29,16 +29,3 @@ from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
-
-from .core import AnalogMosBase
-from .core import AnalogSubstrate
-from .core import AnalogMosConn
-from .core import AnalogMosDummy
-from .core import AnalogMosSep
-from .core import AnalogMosDecap
-from .finfet import AnalogFinfetBase
-from .finfet import AnalogFinfetEdge
-from .finfet import AnalogFinfetExt
-from .finfet import AnalogFinfetGuardRingEdge
-from .finfet import AnalogFinfetGuardRingExt
-from .finfet import AnalogFinfetFoundation
