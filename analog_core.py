@@ -41,6 +41,7 @@ from bag.layout.util import BBox
 from bag.layout.objects import Instance, Boundary
 from .analog_mos import AnalogMosBase, AnalogMosConn
 from future.utils import with_metaclass
+from templates_tsmc7.finfet.edge import Edge
 
 MosBase = TypeVar('MosBase', bound=AnalogMosBase)
 
@@ -748,13 +749,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         """Compute flip_parity dictionary for instance."""
         dum_layer = self.dum_conn_layer
         mconn_layer = self.mos_conn_layer
-        inst_dum_par = int(self.grid.coord_to_track(dum_layer, xc, unit_mode=True)) % 2
-        inst_mconn_par = int(self.grid.coord_to_track(mconn_layer, xc, unit_mode=True)) % 2
+        dum_tr = self.grid.coord_to_track(dum_layer, xc, unit_mode=True)
+        mconn_tr = self.grid.coord_to_track(mconn_layer, xc, unit_mode=True)
+        dum_par = self.grid.get_track_parity(dum_layer, dum_tr)
+        mconn_par = self.grid.get_track_parity(mconn_layer, mconn_tr)
 
         inst_flip_parity = self.grid.get_flip_parity()
-        if inst_dum_par == 1:
+        inst_dum_par = self.grid.get_track_parity(dum_layer, -0.5)
+        inst_mconn_par = self.grid.get_track_parity(mconn_layer, -0.5)
+        if dum_par != inst_dum_par:
             inst_flip_parity[dum_layer] = not inst_flip_parity.get(dum_layer, False)
-        if inst_mconn_par == 1:
+        if mconn_par != inst_mconn_par:
             inst_flip_parity[mconn_layer] = not inst_flip_parity.get(mconn_layer, False)
 
         return inst_flip_parity
@@ -1274,13 +1279,23 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         gr_vdd_warrs = []
         for ybot, ext_info, master, track_spec in zip(y_list, ext_list, master_list, track_spec_list):
             orient = track_spec[0]
-            edge_master = master.make_edge_template(guard_ring_nf=guard_ring_nf)
-            edgel = self.add_instance(edge_master, orient=orient)
-            cur_box = edgel.translate_master_box(edge_master.prim_bound_box)
+            edge_layout_info = master.get_edge_layout_info()
+            flip_par_left = self._get_inst_flip_parity(0)
+            edgel_params = dict(
+                dum_layer=self.dum_conn_layer,
+                mconn_layer=self.mos_conn_layer,
+                guard_ring_nf=guard_ring_nf,
+                name_id=master.get_layout_basename(),
+                layout_info=edge_layout_info,
+                flip_parity=flip_par_left,
+            )
+            edgel_master = self.new_template(params=edgel_params, temp_cls=Edge)
+            edgel = self.add_instance(edgel_master, orient=orient)
+            cur_box = edgel.translate_master_box(edgel_master.prim_bound_box)
             yo = ybot - cur_box.bottom_unit
             edgel.move_by(dy=yo, unit_mode=True)
-            xo = cur_box.right_unit
-            inst = self.add_instance(master, loc=(xo, yo), orient=orient, unit_mode=True)
+            inst_xo = cur_box.right_unit
+            inst = self.add_instance(master, loc=(inst_xo, yo), orient=orient, unit_mode=True)
             sub_type = master.params.get('sub_type', '')
             # save substrate instance
             if sub_type == 'ptap':
@@ -1292,24 +1307,49 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
             sd_yc = inst.translate_master_location((0, master.get_sd_yc()), unit_mode=True)[1]
             self._sd_yc_list.append(sd_yc)
-            xo = inst.array_box.right_unit
             if orient == 'R0':
                 orient_r = 'MY'
             else:
                 orient_r = 'R180'
-            edger = self.add_instance(edge_master, loc=(xo + edge_master.prim_bound_box.width_unit, yo),
-                                      orient=orient_r, unit_mode=True)
+            edger_xo = inst.array_box.right_unit + edgel_master.prim_bound_box.width_unit
+            flip_par_right = self._get_inst_flip_parity(edger_xo)
+            edger_params = dict(
+                dum_layer=self.dum_conn_layer,
+                mconn_layer=self.mos_conn_layer,
+                guard_ring_nf=guard_ring_nf,
+                name_id=master.get_layout_basename(),
+                layout_info=edge_layout_info,
+                flip_parity=flip_par_right,
+            )
+            edger_master = self.new_template(params=edger_params, temp_cls=Edge)
+            edger = self.add_instance(edger_master, loc=(edger_xo, yo), orient=orient_r, unit_mode=True)
             self.array_box = self.array_box.merge(edgel.array_box).merge(edger.array_box)
             edge_inst_list = [edgel, edger]
             if ext_info[0] > 0:
                 ext_master = self.new_template(params=ext_info[1], temp_cls=self._ext_cls)
-                ext_edge_master = ext_master.make_edge_template(guard_ring_nf=guard_ring_nf)
+                ext_edge_layout_info = ext_master.get_edge_layout_info()
+                ext_edgel_params = dict(
+                    dum_layer=self.dum_conn_layer,
+                    mconn_layer=self.mos_conn_layer,
+                    guard_ring_nf=guard_ring_nf,
+                    name_id=ext_master.get_layout_basename(),
+                    layout_info=ext_edge_layout_info,
+                    flip_parity=flip_par_left,
+                )
+                ext_edgel_master = self.new_template(params=ext_edgel_params, temp_cls=Edge)
                 yo = inst.array_box.top_unit
-                edgel = self.add_instance(ext_edge_master, loc=(0, yo), unit_mode=True)
-                xo = ext_edge_master.prim_bound_box.width_unit
-                ext_inst = self.add_instance(ext_master, loc=(xo, yo), unit_mode=True)
-                xo += ext_inst.array_box.right_unit
-                edger = self.add_instance(ext_edge_master, loc=(xo, yo), orient='MY', unit_mode=True)
+                edgel = self.add_instance(ext_edgel_master, loc=(0, yo), unit_mode=True)
+                self.add_instance(ext_master, loc=(inst_xo, yo), unit_mode=True)
+                ext_edger_params = dict(
+                    dum_layer=self.dum_conn_layer,
+                    mconn_layer=self.mos_conn_layer,
+                    guard_ring_nf=guard_ring_nf,
+                    name_id=ext_master.get_layout_basename(),
+                    layout_info=ext_edge_layout_info,
+                    flip_parity=flip_par_right,
+                )
+                ext_edger_master = self.new_template(params=ext_edger_params, temp_cls=Edge)
+                edger = self.add_instance(ext_edger_master, loc=(edger_xo, yo), orient='MY', unit_mode=True)
                 edge_inst_list.append(edgel)
                 edge_inst_list.append(edger)
 
