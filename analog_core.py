@@ -1240,7 +1240,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         center everything between the top and bottom substrates.
         """
         # find total pitch of the analog base.
-        hm_layer = self._mos_cls.port_layer_id() + 1
+        dum_layer = self.dum_conn_layer
+        mconn_layer = self.mos_conn_layer
+        hm_layer = mconn_layer + 1
         mos_pitch = self._mos_cls.mos_pitch(unit_mode=True)
         hm_pitch = self.grid.get_track_pitch(hm_layer, unit_mode=True)
         tot_pitch = lcm([mos_pitch, hm_pitch])
@@ -1277,13 +1279,15 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         ext_list.append((0, None))
         gr_vss_warrs = []
         gr_vdd_warrs = []
+        gr_vss_dum_warrs = []
+        gr_vdd_dum_warrs = []
         for ybot, ext_info, master, track_spec in zip(y_list, ext_list, master_list, track_spec_list):
             orient = track_spec[0]
             edge_layout_info = master.get_edge_layout_info()
             flip_par_left = self._get_inst_flip_parity(0)
             edgel_params = dict(
-                dum_layer=self.dum_conn_layer,
-                mconn_layer=self.mos_conn_layer,
+                dum_layer=dum_layer,
+                mconn_layer=mconn_layer,
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
@@ -1314,8 +1318,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             edger_xo = inst.array_box.right_unit + edgel_master.prim_bound_box.width_unit
             flip_par_right = self._get_inst_flip_parity(edger_xo)
             edger_params = dict(
-                dum_layer=self.dum_conn_layer,
-                mconn_layer=self.mos_conn_layer,
+                dum_layer=dum_layer,
+                mconn_layer=mconn_layer,
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
@@ -1329,8 +1333,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 ext_master = self.new_template(params=ext_info[1], temp_cls=self._ext_cls)
                 ext_edge_layout_info = ext_master.get_edge_layout_info()
                 ext_edgel_params = dict(
-                    dum_layer=self.dum_conn_layer,
-                    mconn_layer=self.mos_conn_layer,
+                    dum_layer=dum_layer,
+                    mconn_layer=mconn_layer,
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
                     layout_info=ext_edge_layout_info,
@@ -1341,8 +1345,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 edgel = self.add_instance(ext_edgel_master, loc=(0, yo), unit_mode=True)
                 self.add_instance(ext_master, loc=(inst_xo, yo), unit_mode=True)
                 ext_edger_params = dict(
-                    dum_layer=self.dum_conn_layer,
-                    mconn_layer=self.mos_conn_layer,
+                    dum_layer=dum_layer,
+                    mconn_layer=mconn_layer,
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
                     layout_info=ext_edge_layout_info,
@@ -1356,13 +1360,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             # gather guard ring ports
             for inst in edge_inst_list:
                 if inst.has_port('VDD'):
-                    gr_vdd_warrs.extend(inst.get_all_port_pins('VDD'))
+                    gr_vdd_warrs.extend(inst.get_all_port_pins('VDD', layer=mconn_layer))
+                    gr_vdd_dum_warrs.extend(inst.get_all_port_pins('VDD', layer=dum_layer))
                 elif inst.has_port('VSS'):
-                    gr_vss_warrs.extend(inst.get_all_port_pins('VSS'))
+                    gr_vss_warrs.extend(inst.get_all_port_pins('VSS', layer=mconn_layer))
+                    gr_vss_dum_warrs.extend(inst.get_all_port_pins('VSS', layer=dum_layer))
 
         # connect body guard rings together
         self._gr_vdd_warrs = self.connect_wires(gr_vdd_warrs)
         self._gr_vss_warrs = self.connect_wires(gr_vss_warrs)
+        self.connect_wires(gr_vdd_dum_warrs)
+        self.connect_wires(gr_vss_dum_warrs)
 
         # set array box/size/draw PR boundary
         self.set_size_from_array_box(hm_layer)
@@ -1484,9 +1492,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._ntap_exports = []
 
         if pgr_w is None:
-            pgr_w = ptap_w
+            pgr_w = ntap_w
         if ngr_w is None:
-            ngr_w = ntap_w
+            ngr_w = ptap_w
 
         if guard_ring_nf == 0:
             pgr_w = ngr_w = 0
