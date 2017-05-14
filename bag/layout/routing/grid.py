@@ -506,6 +506,14 @@ class RoutingGrid(object):
             return w, sp
         return w * self._resolution, sp * self._resolution
 
+    def get_track_parity(self, layer_id, tr_idx):
+        """Returns the parity of the given track."""
+        # multiply then divide by 2 makes sure negative tracks are colored correctly.
+        tr_parity = (int(round(tr_idx * 2)) // 2) % 2
+        if self._flip_parity[layer_id]:
+            tr_parity = 1 - tr_parity
+        return tr_parity
+
     def get_layer_name(self, layer_id, tr_idx):
         """Returns the layer name of the given track.
 
@@ -517,14 +525,9 @@ class RoutingGrid(object):
             the track index.
         """
         layer_name = self.tech_info.get_layer_name(layer_id)
-        # multiply then divide by 2 makes sure negative tracks are colored correctly.
-        par_idx = int(round(tr_idx * 2)) // 2
-        tr_parity = par_idx % 2
-        if self._flip_parity[layer_id]:
-            tr_parity = 1 - tr_parity
-
         if isinstance(layer_name, tuple):
             # round down half integer track
+            tr_parity = self.get_track_parity(layer_id, tr_idx)
             return layer_name[tr_parity]
         else:
             return layer_name
