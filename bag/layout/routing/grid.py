@@ -594,7 +594,7 @@ class RoutingGrid(object):
         return bbox
 
     def get_min_track_width(self, layer_id, idc=0, iac_rms=0, iac_peak=0, l=-1,
-                            bot_w=-1, top_w=-1, **kwargs):
+                            bot_w=-1, top_w=-1, unit_mode=False, **kwargs):
         """Returns the minimum track width required for the given EM specs.
 
         Parameters
@@ -616,7 +616,8 @@ class RoutingGrid(object):
         top_w : float
             the top layer track width in layout units.  If given, will make sure
             that the via between the two tracks meet EM specs too.
-
+        unit_mode : bool
+            True if l/bot_w/top_w are given in resolution units.
         **kwargs :
             override default EM spec parameters.
 
@@ -625,6 +626,15 @@ class RoutingGrid(object):
         track_width : int
             the minimum track width in number of tracks.
         """
+        res = self._resolution
+        if not unit_mode:
+            if l > 0:
+                l = int(round(l / res))
+            if bot_w > 0:
+                bot_w = int(round(bot_w / res))
+            if top_w > 0:
+                top_w = int(round(top_w / res))
+
         # if double patterning layer, just use any name.
         layer_name = self.tech_info.get_layer_name(layer_id)
         if isinstance(layer_name, tuple):
@@ -644,32 +654,33 @@ class RoutingGrid(object):
 
         # use binary search to find the minimum track width
         bin_iter = BinaryIterator(1, None)
-        tr_w = self.w_tracks[layer_id] * self._resolution
-        tr_sp = self.sp_tracks[layer_id] * self._resolution
+        tr_w = self.w_tracks[layer_id]
+        tr_sp = self.sp_tracks[layer_id]
         tr_dir = self.dir_tracks[layer_id]
         bot_dir = 'x' if tr_dir == 'y' else 'y'
         while bin_iter.has_next():
             ntr = bin_iter.get_next()
             width = ntr * (tr_w + tr_sp) - tr_sp
-            idc_max, irms_max, ipeak_max = self.tech_info.get_metal_em_specs(layer_name, width, l=l, **kwargs)
+            idc_max, irms_max, ipeak_max = self.tech_info.get_metal_em_specs(layer_name, width * res,
+                                                                             l=l * res, **kwargs)
             if idc > idc_max or iac_rms > irms_max or iac_peak > ipeak_max:
                 # check metal satisfies EM spec
                 bin_iter.up()
                 continue
             if bot_w > 0:
                 if tr_dir == 'x':
-                    bbox = BBox(0.0, 0.0, bot_w, width, self._resolution)
+                    bbox = BBox(0.0, 0.0, bot_w, width, res, unit_mode=True)
                 else:
-                    bbox = BBox(0.0, 0.0, width, bot_w, self._resolution)
+                    bbox = BBox(0.0, 0.0, width, bot_w, res, unit_mode=True)
                 vinfo = self.tech_info.get_via_info(bbox, bot_layer_name, layer_name, bot_dir, **kwargs)
                 if idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or iac_peak > vinfo['iac_peak']:
                     bin_iter.up()
                     continue
             if top_w > 0:
                 if tr_dir == 'x':
-                    bbox = BBox(0.0, 0.0, top_w, width, self._resolution)
+                    bbox = BBox(0.0, 0.0, top_w, width, res, unit_mode=True)
                 else:
-                    bbox = BBox(0.0, 0.0, width, top_w, self._resolution)
+                    bbox = BBox(0.0, 0.0, width, top_w, res, unit_mode=True)
                 vinfo = self.tech_info.get_via_info(bbox, layer_name, top_layer_name, tr_dir, **kwargs)
                 if idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or iac_peak > vinfo['iac_peak']:
                     bin_iter.up()
