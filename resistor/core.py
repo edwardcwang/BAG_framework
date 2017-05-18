@@ -38,6 +38,7 @@ from typing import Dict, Set, Tuple, Union, Any, Optional
 from itertools import chain
 
 from bag.layout.routing import TrackID, WireArray, Port
+from bag.layout.objects import Boundary
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.core import TechInfo
 
@@ -357,6 +358,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self.array_box = inst_bl.array_box.merge(inst_tr.array_box)
         top_layer = self._hm_layer + len(min_tracks) - 1
         self.set_size_from_array_box(top_layer)
+        self.add_boundary(Boundary(res, 'PR', self.bound_box.get_points(unit_mode=True), unit_mode=True))
 
 
 class TerminationCore(ResArrayBase):
