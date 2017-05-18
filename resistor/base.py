@@ -216,6 +216,9 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
         fill_interval : List[Tuple[int, int]]
             a list of [start, end) intervals that needs to be filled.
         """
+        if tot_space <= 0:
+            return 0, []
+
         # dynamic programming
         soln_vec = [(0, [])] * n_min + [(i, [(0, i)]) for i in range(n_min, n_max + 1)]
         for i in range(n_max + 1, tot_space + 1):
@@ -311,7 +314,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
         wblk, hblk = grid.get_block_size(cur_layer, unit_mode=True)
         rwblk, rhblk = cls.get_block_pitch()
         wblk = lcm([wblk, rwblk])
-        hblk = lcm([wblk, rhblk])
+        hblk = lcm([hblk, rhblk])
         min_w = -(-min_w // wblk) * wblk
         min_h = -(-min_h // hblk) * hblk
 
