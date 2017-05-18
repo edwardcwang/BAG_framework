@@ -234,12 +234,11 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             opt_combo = [(start, start + opt_n)]
             # try using two blocks
             sp_sep = sp if (i - sp) % 2 == 0 else sp + 1
-            n2 = (i - sp_sep)
-            if n2 > opt_n:
+            n2 = min((i - sp_sep) // 2, n_max)
+            if n2 >= n_min and n2 * 2 > opt_n:
                 # using two blocks is better than using one block, update maximum
-                opt_n = n2
-                fill_len = n2 // 2
-                opt_combo = [(0, fill_len), (i - fill_len, i)]
+                opt_n = n2 * 2
+                opt_combo = [(0, n2), (i - n2, i)]
             # try using three blocks
             for n_end in range(n_min, n_max + 1):
                 remainder = i - 2 * (n_end + sp)

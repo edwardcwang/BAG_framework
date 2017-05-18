@@ -296,7 +296,6 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._num_tracks = tuple(res_info['num_tracks'])
         self._num_corner_tracks = tuple(res_info['num_corner_tracks'])
         self._w_tracks = tuple(res_info['track_widths'])
-        top_layer = self._hm_layer + len(min_tracks) - 1
 
         # make template masters
         core_params = dict(
@@ -308,7 +307,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             min_tracks=min_tracks,
             em_specs=em_specs,
             ext_dir=ext_dir,
-            flip_parity=self.grid.get_flip_parity_at(self._core_offset, top_layer, unit_mode=True),
+            flip_parity=self.grid.get_flip_parity_at(self._core_offset, self._hm_layer, unit_mode=True),
         )
         core_master = self.new_template(params=core_params, temp_cls=AnalogResCore)
         lr_params = core_master.get_boundary_params('lr')
@@ -323,7 +322,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             for col in range(nx):
                 cur_name = 'XCORE%d' % (col + nx * row)
                 cur_loc = (w_edge + col * w_core, h_edge + row * h_core)
-                core_params['flip_parity'] = self.grid.get_flip_parity_at(cur_loc, top_layer, unit_mode=True)
+                core_params['flip_parity'] = self.grid.get_flip_parity_at(cur_loc, self._hm_layer, unit_mode=True)
                 cur_master = self.new_template(params=core_params, temp_cls=AnalogResCore)
                 self.add_instance(cur_master, inst_name=cur_name, loc=cur_loc, unit_mode=True)
                 if row == 0 and col == 0:
@@ -356,6 +355,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # set array box and size
         self.array_box = inst_bl.array_box.merge(inst_tr.array_box)
+        top_layer = self._hm_layer + len(min_tracks) - 1
         self.set_size_from_array_box(top_layer)
 
 
