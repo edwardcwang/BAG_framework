@@ -490,9 +490,9 @@ class TerminationCore(ResArrayBase):
         x_pitch = self.num_tracks[2]
         x_base = self.get_h_track_index(0, (x_pitch - 1) / 2.0)
         x_tid = TrackID(xm_layer, x_base, width=xm_width, num=ny, pitch=x_pitch)
-        xc_warr = self.connect_to_tracks(vc_warr, x_tid)
-        xl_warr = self.connect_to_tracks(vl_warr, x_tid)
-        xr_warr = self.connect_to_tracks(vr_warr, x_tid)
+        xc_warr = self.connect_to_tracks(vc_warr, x_tid, min_len_mode=0)
+        xl_warr = self.connect_to_tracks(vl_warr, x_tid, min_len_mode=0)
+        xr_warr = self.connect_to_tracks(vr_warr, x_tid, min_len_mode=0)
 
         # connect to y layer
         bot_w = self.grid.get_track_width(xm_layer, xm_width)

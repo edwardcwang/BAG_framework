@@ -88,28 +88,6 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_implant_layers(cls, res_type, sub_type, threshold):
-        # type: (str, str, str) -> List[Tuple[str, str]]
-        """Returns the implant layers corresponding to the given resistor type.
-        
-        Parameters
-        ----------
-        res_type : str
-            the resistor type.
-        sub_type : str
-            the resistor substrate type.
-        threshold : str
-            the substrate threshold flavor.
-
-        Returns
-        -------
-        layers : List[Tuple[str, str]]
-            list of layer/purpose tuples.
-        """
-        return []
-
-    @classmethod
-    @abc.abstractmethod
     def get_min_res_core_size(cls, l, w):
         # type: (int, int) -> Tuple[int, int, Tuple[int, int, int]]
         """Calculate the minimum size of a resistor core based on DRC rules.
@@ -166,6 +144,19 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             width of top/bottom edge, in resolution units.
         """
         return 1, 1
+
+    @classmethod
+    @abc.abstractmethod
+    def update_layout_info(cls, layout_info):
+        # type: (Dict[str, Any]) -> None
+        """Given the layout information dictionary, compute and add extra entries if needed.
+        
+        Parameters
+        ----------
+        layout_info : Dict[str, Any]
+            dictionary containing block dimensions.  Add new entries to this dictionary
+            if they are needed by draw_res_core() or draw_res_boundary().
+        """
 
     @classmethod
     @abc.abstractmethod
@@ -506,7 +497,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             num_tracks.append(dim // pitch)
             num_corner_tracks.append(dim_corner // pitch)
 
-        return dict(
+        res_info = dict(
             l=l,
             w=w,
             res_type=res_type,
@@ -521,6 +512,9 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             num_tracks=num_tracks,
             num_corner_tracks=num_corner_tracks,
         )
+
+        cls.update_layout_info(res_info)
+        return res_info
 
 
 class AnalogResCore(TemplateBase):
