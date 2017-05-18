@@ -134,19 +134,20 @@ class RoutingGrid(object):
         inst_track = -0.5
         bot_layer = self.layers[0]
         for lay in range(bot_layer, top_layer + 1):
-            tdir = self.dir_tracks[lay]
+            if lay in self.layers:
+                tdir = self.dir_tracks[lay]
 
-            # step 1: find the track in top level that corresponds to the track at instance origin
-            coord = xo if tdir == 'y' else yo
-            actual_track = self.coord_to_track(lay, coord, unit_mode=True)
-            # step 2: find the parity of this track in instance level versus top level
-            actual_parity = self.get_track_parity(lay, actual_track)
-            inst_parity = self.get_track_parity(lay, inst_track)
-            # step 3: if the parity is different, we need to flip the parity.
-            if inst_parity != actual_parity:
-                flip_par[lay] = not self._flip_parity[lay]
-            else:
-                flip_par[lay] = self._flip_parity[lay]
+                # step 1: find the track in top level that corresponds to the track at instance origin
+                coord = xo if tdir == 'y' else yo
+                actual_track = self.coord_to_track(lay, coord, unit_mode=True)
+                # step 2: find the parity of this track in instance level versus top level
+                actual_parity = self.get_track_parity(lay, actual_track)
+                inst_parity = self.get_track_parity(lay, inst_track)
+                # step 3: if the parity is different, we need to flip the parity.
+                if inst_parity != actual_parity:
+                    flip_par[lay] = not self._flip_parity[lay]
+                else:
+                    flip_par[lay] = self._flip_parity[lay]
 
         return flip_par
 
