@@ -29,7 +29,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Union, Tuple, List, Optional
+from typing import Union, Tuple, List, Optional, Dict
 
 import numpy as np
 
@@ -110,6 +110,45 @@ class RoutingGrid(object):
     def get_flip_parity(self):
         """Returns a copy of the flip parity dictionary."""
         return self._flip_parity.copy()
+
+    def get_flip_parity_at(self, loc, top_layer, unit_mode=False):
+        # type: (Tuple[Union[int, float], Union[int, float]], int, bool) -> Dict[int, bool]
+        """Compute the flip parity dictionary for an instance placed at the given location.
+        
+        Parameters
+        ----------
+        loc : Tuple[Union[int, float], Union[int, float]]
+            the origin of the instance.
+        top_layer : int
+            top layer ID, inclusive.
+        unit_mode : bool
+            True if loc is given in resolution units.
+        """
+        if unit_mode:
+            xo, yo = loc
+        else:
+            res = self._resolution
+            xo, yo = int(round(loc[0] / res)), int(round(loc[1] / res))
+
+        flip_par = {}
+        inst_track = -0.5
+        bot_layer = self.layers[0]
+        for lay in range(bot_layer, top_layer + 1):
+            tdir = self.dir_tracks[lay]
+
+            # step 1: find the track in top level that corresponds to the track at instance origin
+            coord = xo if tdir == 'y' else yo
+            actual_track = self.coord_to_track(lay, coord, unit_mode=True)
+            # step 2: find the parity of this track in instance level versus top level
+            actual_parity = self.get_track_parity(lay, actual_track)
+            inst_parity = self.get_track_parity(lay, inst_track)
+            # step 3: if the parity is different, we need to flip the parity.
+            if inst_parity != actual_parity:
+                flip_par[lay] = not self._flip_parity[lay]
+            else:
+                flip_par[lay] = self._flip_parity[lay]
+
+        return flip_par
 
     def set_flip_parity(self, fp):
         """set the flip track parity dictionary."""
