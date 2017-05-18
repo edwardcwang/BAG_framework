@@ -740,25 +740,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         self.connect_wires(warr_list, lower=wire_yb, upper=wire_yt)
 
-    def _get_inst_flip_parity(self, xc):
-        """Compute flip_parity dictionary for instance."""
-        dum_layer = self.dum_conn_layer
-        mconn_layer = self.mos_conn_layer
-        dum_tr = self.grid.coord_to_track(dum_layer, xc, unit_mode=True)
-        mconn_tr = self.grid.coord_to_track(mconn_layer, xc, unit_mode=True)
-        dum_par = self.grid.get_track_parity(dum_layer, dum_tr)
-        mconn_par = self.grid.get_track_parity(mconn_layer, mconn_tr)
-
-        inst_flip_parity = self.grid.get_flip_parity()
-        inst_dum_par = self.grid.get_track_parity(dum_layer, -0.5)
-        inst_mconn_par = self.grid.get_track_parity(mconn_layer, -0.5)
-        if dum_par != inst_dum_par:
-            inst_flip_parity[dum_layer] = not inst_flip_parity.get(dum_layer, False)
-        if mconn_par != inst_mconn_par:
-            inst_flip_parity[mconn_layer] = not inst_flip_parity.get(mconn_layer, False)
-
-        return inst_flip_parity
-
     def _draw_dummy_sep_conn(self, mos_type, row_idx, start, stop, gate_intv_list, sub_val_list):
         """Draw dummy/separator connection.
 
@@ -838,16 +819,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     sub_values.append(sub_val)
 
         # setup parameter list
+        loc = xc, yc
         params = dict(
             lch=self._lch,
             w=w,
             fg=fg,
             edge_mode=edge_mode,
             gate_tracks=dum_tr_list,
-            flip_parity=self._get_inst_flip_parity(xc),
+            flip_parity=self.grid.get_flip_parity_at(loc, self.mos_conn_layer, unit_mode=True),
         )
         conn_master = self.new_template(params=params, temp_cls=AnalogMOSDummy)
-        conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient, unit_mode=True)
+        conn_inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
 
         return conn_inst.get_port().get_pins(self.dum_conn_layer), sub_values
 
@@ -892,18 +874,19 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         xc, yc = self._layout_info.sd_xc_unit, self._sd_yc_list[ridx]
         xc += col_idx * self.sd_pitch_unit
 
+        loc = xc, yc
         conn_params = dict(
             lch=self._lch,
             w=w,
             fg=fg,
             gate_ext_mode=gate_ext_mode,
             export_gate=export_gate,
-            flip_parity=self._get_inst_flip_parity(xc),
+            flip_parity=self.grid.get_flip_parity_at(loc, self.mos_conn_layer, unit_mode=True),
         )
         conn_params.update(kwargs)
 
         conn_master = self.new_template(params=conn_params, temp_cls=AnalogMOSDecap)
-        inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient, unit_mode=True)
+        inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
         wires_dict[val].extend(inst.get_all_port_pins('supply'))
         if export_gate:
             return {'g': inst.get_all_port_pins('g')[0]}
@@ -960,6 +943,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             sdir = 2 - sdir
             ddir = 2 - ddir
 
+        loc = xc, yc
         conn_params = dict(
             lch=self._lch,
             w=w,
@@ -967,12 +951,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             sdir=sdir,
             ddir=ddir,
             is_ds_dummy=is_ds_dummy,
-            flip_parity=self._get_inst_flip_parity(xc),
+            flip_parity=self.grid.get_flip_parity_at(loc, self.mos_conn_layer, unit_mode=True),
         )
         conn_params.update(kwargs)
 
         conn_master = self.new_template(params=conn_params, temp_cls=AnalogMOSConn)
-        conn_inst = self.add_instance(conn_master, loc=(xc, yc), orient=orient, unit_mode=True)
+        conn_inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
 
         return {key: conn_inst.get_port(key).get_pins(self.mos_conn_layer)[0]
                 for key in conn_inst.port_names_iter()}
@@ -1007,7 +991,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             return [], [], [], []
 
         sub_xc = self._layout_info.sd_xc_unit
-        sub_flip_parity = self._get_inst_flip_parity(sub_xc)
+        sub_flip_parity = self.grid.get_flip_parity_at((sub_xc, 0), self.mos_conn_layer, unit_mode=True)
 
         sub_type = 'ptap' if mos_type == 'nch' else 'ntap'
         master_list = []
@@ -1276,10 +1260,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         for ybot, ext_info, master, track_spec in zip(y_list, ext_list, master_list, track_spec_list):
             orient = track_spec[0]
             edge_layout_info = master.get_edge_layout_info()
-            flip_par_left = self._get_inst_flip_parity(0)
+            flip_par_left = self.grid.get_flip_parity_at((0, 0), self.mos_conn_layer, unit_mode=True)
             edgel_params = dict(
-                dum_layer=dum_layer,
-                mconn_layer=mconn_layer,
+                mos_conn_layer=self.mos_conn_layer,
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
@@ -1308,25 +1291,24 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             else:
                 orient_r = 'R180'
             edger_xo = inst.array_box.right_unit + edgel_master.prim_bound_box.width_unit
-            flip_par_right = self._get_inst_flip_parity(edger_xo)
+            edger_loc = edger_xo, yo
+            flip_par_right = self.grid.get_flip_parity_at(edger_loc, self.mos_conn_layer, unit_mode=True)
             edger_params = dict(
-                dum_layer=dum_layer,
-                mconn_layer=mconn_layer,
+                mos_conn_layer=self.mos_conn_layer,
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
                 flip_parity=flip_par_right,
             )
             edger_master = self.new_template(params=edger_params, temp_cls=AnalogEdge)
-            edger = self.add_instance(edger_master, loc=(edger_xo, yo), orient=orient_r, unit_mode=True)
+            edger = self.add_instance(edger_master, loc=edger_loc, orient=orient_r, unit_mode=True)
             self.array_box = self.array_box.merge(edgel.array_box).merge(edger.array_box)
             edge_inst_list = [edgel, edger]
             if ext_info[0] > 0:
                 ext_master = self.new_template(params=ext_info[1], temp_cls=AnalogMOSExt)
                 ext_edge_layout_info = ext_master.get_edge_layout_info()
                 ext_edgel_params = dict(
-                    dum_layer=dum_layer,
-                    mconn_layer=mconn_layer,
+                    mos_conn_layer=self.mos_conn_layer,
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
                     layout_info=ext_edge_layout_info,
@@ -1337,8 +1319,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 edgel = self.add_instance(ext_edgel_master, loc=(0, yo), unit_mode=True)
                 self.add_instance(ext_master, loc=(inst_xo, yo), unit_mode=True)
                 ext_edger_params = dict(
-                    dum_layer=dum_layer,
-                    mconn_layer=mconn_layer,
+                    mos_conn_layer=self.mos_conn_layer,
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
                     layout_info=ext_edge_layout_info,
@@ -1450,7 +1431,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         end_mode : int
             substrate end mode flag
         flip_parity : Optional[Dict[int, bool]]
-            list of whether to flip parity on each layer.
+            The flip parity dictioanry.
         """
         numn = len(nw_list)
         nump = len(pw_list)

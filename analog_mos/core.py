@@ -35,7 +35,7 @@ from future.utils import with_metaclass
 import abc
 
 
-class MOSTech(with_metaclass(abc.ABCMeta)):
+class MOSTech(with_metaclass(abc.ABCMeta, object)):
     """An abstract static class for drawing transistor related layout.
     
     This class defines various static methods use to draw layouts used by AnalogBase.

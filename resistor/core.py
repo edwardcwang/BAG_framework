@@ -37,12 +37,11 @@ import abc
 from typing import Dict, Set, Tuple, Union, Any, Optional
 from itertools import chain
 
-from bag.layout.util import BBox
-from bag.layout.routing import TrackID, WireArray
+from bag.layout.routing import TrackID, WireArray, Port
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.core import TechInfo
 
-from .base import AnalogResCore
+from .base import ResTech, AnalogResCore, AnalogResBoundary
 from ..analog_core import SubstrateContact
 
 
@@ -73,28 +72,24 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(ResArrayBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         tech_params = self.grid.tech_info.tech_params
-        self._core_cls = tech_params['layout']['res_core_template']
-        self._edgelr_cls = tech_params['layout']['res_edgelr_template']
-        self._edgetb_cls = tech_params['layout']['res_edgetb_template']
-        self._corner_cls = tech_params['layout']['res_corner_template']
-        self._use_parity = self._core_cls.use_parity()
-        self._bot_port = None
-        self._top_port = None
-        self._core_offset = None
-        self._core_pitch = None
-        self._num_tracks = None
-        self._num_corner_tracks = None
-        self._w_tracks = None
-        self._hm_layer = self._core_cls.port_layer_id()
+        self._tech_cls = tech_params['layout']['res_tech_class']  # type: ResTech
+        self._bot_port = None  # type: Port
+        self._top_port = None  # type: Port
+        self._core_offset = None  # type: Tuple[int, int]
+        self._core_pitch = None  # type: Tuple[int, int]
+        self._num_tracks = None  # type: Tuple[int, ...]
+        self._num_corner_tracks = None  # type: Tuple[int, ...]
+        self._w_tracks = None  # type: Tuple[int, ...]
+        self._hm_layer = self._tech_cls.get_bot_layer()
 
     @classmethod
     def get_port_layer_id(cls, tech_info):
         # type: (TechInfo) -> int
-        return tech_info.tech_params['layout']['res_core_template'].port_layer_id()
+        return tech_info.tech_params['layout']['res_tech_class'].get_bot_layer()
 
     @property
     def num_tracks(self):
-        # type: () -> Tuple[int, int, int, int]
+        # type: () -> Tuple[int, ...]
         """Returns the number of tracks per resistor block on each routing layer."""
         return self._num_tracks
 
@@ -106,7 +101,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     @property
     def w_tracks(self):
-        # type: () -> Tuple[int, int, int, int]
+        # type: () -> Tuple[int, ...]
         """Returns the track width on each routing layer, in number of tracks."""
         return self._w_tracks
 
@@ -126,9 +121,9 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def res_unit_size(self):
         # type: () -> Tuple[int, int, int]
         """Returns the size of a unit resistor block."""
-        top_layer = self.bot_layer_id + 3
-        blk_w, blk_h = self.grid.get_block_size(top_layer)
-        return top_layer, int(round(self._core_pitch[0] / blk_w)), int(round(self._core_pitch[1] / blk_h))
+        top_layer = self.bot_layer_id + len(self._num_tracks) - 1
+        blk_w, blk_h = self.grid.get_block_size(top_layer, unit_mode=True)
+        return top_layer, self._core_pitch[0] // blk_w, self._core_pitch[1] // blk_h
 
     def get_res_ports(self, row_idx, col_idx):
         # type: (int, int) -> Tuple[WireArray, WireArray]
@@ -148,15 +143,16 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         top_warr : WireArray
             the top port as WireArray.
         """
+        res = self.grid.resolution
         dx = self._core_offset[0] + self._core_pitch[0] * col_idx
         dy = self._core_offset[1] + self._core_pitch[1] * row_idx
-        loc = dx, dy
+        loc = dx * res, dy * res
         bot_port = self._bot_port.transform(self.grid, loc=loc)
         top_port = self._top_port.transform(self.grid, loc=loc)
         return bot_port.get_pins()[0], top_port.get_pins()[0]
 
     def get_track_offsets(self, row_idx, col_idx):
-        # type: (int, int) -> Tuple[int, int, int, int]
+        # type: (int, int) -> Tuple[float, ...]
         """Compute track offsets on each routing layer for the given resistor block.
 
         Parameters
@@ -168,22 +164,22 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         Returns
         -------
-        offsets : Tuple[int, int, int, int]
+        offsets : Tuple[float, ...]
             track index offset on each routing layer.
         """
-        res = self.grid.resolution
-        dy_unit = int(round((self._core_offset[1] + self._core_pitch[1] * row_idx) / res))
-        dx_unit = int(round((self._core_offset[0] + self._core_pitch[0] * col_idx) / res))
-        hm_layer = self.bot_layer_id
-        hm_pitch = self.grid.get_track_pitch(hm_layer, unit_mode=True)
-        vm_pitch = self.grid.get_track_pitch(hm_layer + 1, unit_mode=True)
-        xm_pitch = self.grid.get_track_pitch(hm_layer + 2, unit_mode=True)
-        ym_pitch = self.grid.get_track_pitch(hm_layer + 3, unit_mode=True)
+        dx = self._core_offset[0] + self._core_pitch[0] * col_idx
+        dy = self._core_offset[1] + self._core_pitch[1] * row_idx
+        bot_layer = self.bot_layer_id
+        offsets = []
+        for lay in range(bot_layer, bot_layer + len(self._num_tracks)):
+            dim = dx if self.grid.get_direction(lay) == 'y' else dy
+            pitch = self.grid.get_track_pitch(lay, unit_mode=True)
+            offsets.append(dim / pitch)
 
-        return dy_unit // hm_pitch, dx_unit // vm_pitch, dy_unit // xm_pitch, dx_unit // ym_pitch
+        return tuple(offsets)
 
     def get_h_track_index(self, row_idx, tr_idx):
-        # type: (int, Union[float, int]) -> Union[float, int]
+        # type: (int, Union[float, int]) -> float
         """Compute absolute track index from relative track index.
 
         Parameters
@@ -195,13 +191,15 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         Returns
         -------
-        abs_idx : Union[int, float]
+        abs_idx : float
             the absolute track index in this template.
         """
         delta = self._core_offset[1] + self._core_pitch[1] * row_idx
-        delta_unit = int(round(delta / self.grid.resolution))
-        xm_pitch_unit = self.grid.get_track_pitch(self.bot_layer_id + 2, unit_mode=True)
-        return (delta_unit // xm_pitch_unit) + tr_idx
+        targ_layer = self.bot_layer_id + len(self._num_tracks) - 1
+        if self.grid.get_direction(targ_layer) == 'y':
+            targ_layer -= 1
+
+        return delta / self.grid.get_track_pitch(targ_layer, unit_mode=True) + tr_idx
 
     def move_array(self, nx_blk=0, ny_blk=0):
         """Move the whole array by the given number of block pitches.
@@ -217,11 +215,12 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         ny_blk : int
             number of vertical block pitches.
         """
-        blk_w, blk_h = self.grid.get_block_size(self.bot_layer_id + 3)
-        dx = nx_blk * blk_w
-        dy = ny_blk * blk_h
-        self.move_all_by(dx=dx, dy=dy)
-        self._core_offset = self._core_offset[0] + dx, self._core_offset[1] + dy
+        res = self.grid.resolution
+        blk_w, blk_h = self.grid.get_block_size(self.bot_layer_id + 3, unit_mode=True)
+        dx = nx_blk * blk_w  # type: int
+        dy = ny_blk * blk_h  # type: int
+        self.move_all_by(dx=dx * res, dy=dy * res)
+        self._core_offset = (self._core_offset[0] + dx, self._core_offset[1] + dy)
 
     def draw_array(self,  # type: ResArrayBase
                    l,  # type: float
@@ -230,11 +229,12 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                    threshold,  # type: str
                    nx=1,  # type: int
                    ny=1,  # type: int
-                   min_tracks=(1, 1, 1, 1),  # type: Tuple[int, int, int, int]
+                   min_tracks=(1, 1, 1, 1),  # type: Tuple[int, ...]
                    res_type='reference',  # type: str
                    em_specs=None,  # type: Optional[Dict[str, Any]]
                    grid_type='standard',  # type: str
-                   edge_space=False,  # type: bool
+                   ext_dir='',  # type: str
+                   flip_parity=None,  # type: Optional[Dict[int, bool]]
                    ):
         # type: (...) -> None
         """Draws the resistor array.
@@ -256,7 +256,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             number of resistors in a row.
         ny : int
             number of resistors in a column.
-        min_tracks : Tuple[int, int, int, int]
+        min_tracks : Tuple[int, ...]
             minimum number of tracks per layer in the resistor unit cell.
         res_type : str
             the resistor type.
@@ -264,12 +264,14 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             resistor EM specifications dictionary.
         grid_type : str
             the lower resistor routing grid name.
-        edge_space : bool
-            True to reserve space on left/right edge to transistor blocks.
+        ext_dir : str
+            resistor core extension direction.
+        flip_parity : Optional[Dict[int, bool]]
+            The flip parity dictioanry.
         """
-        # add resistor array layers to RoutingGrid
-        parent_grid = self.grid
-        self.grid = parent_grid.copy()
+        # modify resistor layer routing grid.
+        self.grid = self.grid.copy()
+
         grid_layers = self.grid.tech_info.tech_params['layout']['analog_res'][grid_type]
         for lay_id, tr_w, tr_sp, tr_dir, necessary in grid_layers:
             if necessary or lay_id not in self.grid:
@@ -277,113 +279,84 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         self.grid.update_block_pitch()
 
-        layout_params = dict(
+        if flip_parity is not None:
+            self.grid.set_flip_parity(flip_parity)
+
+        # find location of the lower-left resistor core
+        res = self.grid.resolution
+        lay_unit = self.grid.layout_unit
+        l_unit = int(round(l / lay_unit / res))
+        w_unit = int(round(w / lay_unit / res))
+        res_info = self._tech_cls.get_res_info(self.grid, l_unit, w_unit, res_type, sub_type, threshold,
+                                               min_tracks, em_specs, ext_dir)
+        w_edge, h_edge = res_info['w_edge'], res_info['h_edge']
+        w_core, h_core = res_info['w_core'], res_info['h_core']
+        self._core_offset = w_edge, h_edge
+        self._core_pitch = w_core, h_core
+        self._num_tracks = tuple(res_info['num_tracks'])
+        self._num_corner_tracks = tuple(res_info['num_corner_tracks'])
+        self._w_tracks = tuple(res_info['track_widths'])
+        top_layer = self._hm_layer + len(min_tracks) - 1
+
+        # make template masters
+        core_params = dict(
             l=l,
             w=w,
-            min_tracks=min_tracks,
+            res_type=res_type,
             sub_type=sub_type,
             threshold=threshold,
-            res_type=res_type,
-            parity=0,
-            em_specs=em_specs or {},
-            edge_space=edge_space,
+            min_tracks=min_tracks,
+            em_specs=em_specs,
+            ext_dir=ext_dir,
+            flip_parity=self.grid.get_flip_parity_at(self._core_offset, top_layer, unit_mode=True),
         )
-        # create BL corner
-        master = self.new_template(params=layout_params, temp_cls=self._corner_cls)
-        bl_corner = self.add_instance(master)
-        w_edge_lr = master.array_box.width
-        h_edge_tb = master.array_box.height
+        core_master = self.new_template(params=core_params, temp_cls=AnalogResCore)
+        lr_params = core_master.get_boundary_params('lr')
+        lr_master = self.new_template(params=lr_params, temp_cls=AnalogResBoundary)
+        tb_params = core_master.get_boundary_params('tb')
+        tb_master = self.new_template(params=tb_params, temp_cls=AnalogResBoundary)
+        corner_params = core_master.get_boundary_params('corner')
+        corner_master = self.new_template(params=corner_params, temp_cls=AnalogResBoundary)
 
-        # create bottom edge
-        master = self._add_blk(self._edgetb_cls, layout_params, (w_edge_lr, 0.0),
-                               'R0', nx, 1, 1)
-        w_core = master.array_box.width
+        # place core
+        for row in range(ny):
+            for col in range(nx):
+                cur_name = 'XCORE%d' % (col + nx * row)
+                cur_loc = (w_edge + col * w_core, h_edge + row * h_core)
+                core_params['flip_parity'] = self.grid.get_flip_parity_at(cur_loc, top_layer, unit_mode=True)
+                cur_master = self.new_template(params=core_params, temp_cls=AnalogResCore)
+                self.add_instance(cur_master, inst_name=cur_name, loc=cur_loc, unit_mode=True)
+                if row == 0 and col == 0:
+                    self._bot_port = cur_master.get_port('bot')
+                    self._top_port = cur_master.get_port('top')
 
-        # create BR corner
-        layout_params['parity'] = (nx + 1) % 2
-        master = self.new_template(params=layout_params, temp_cls=self._corner_cls)
-        inst = self.add_instance(master, orient='MY')
-        inst.move_by(dx=w_edge_lr + nx * w_core - inst.array_box.left)
-
-        # create left edge
-        master = self._add_blk(self._edgelr_cls, layout_params, (0.0, h_edge_tb),
-                               'R0', 1, ny, 1)
-        h_core = master.array_box.height
-
-        # create TL corner
-        layout_params['parity'] = (ny + 1) % 2
-        master = self.new_template(params=layout_params, temp_cls=self._corner_cls)
-        inst = self.add_instance(master, orient='MX')
-        inst.move_by(dy=h_edge_tb + ny * h_core - inst.array_box.bottom)
-
-        # create core
-        self._core_offset = (w_edge_lr, h_edge_tb)
-        self._core_pitch = (w_core, h_core)
-        self._add_blk(self._core_cls, layout_params, self._core_offset,
-                      'R0', nx, ny, 0)
-
-        # create top edge
-        loc = (w_edge_lr, 2 * h_edge_tb + ny * h_core)
-        self._add_blk(self._edgetb_cls, layout_params, loc, 'MX', nx, 1, ny % 2)
-
-        # create right edge
-        loc = (2 * w_edge_lr + nx * w_core, h_edge_tb)
-        self._add_blk(self._edgelr_cls, layout_params, loc, 'MY', 1, ny, nx % 2)
-
-        # create TR corner
-        self.array_box = BBox(0.0, 0.0, 2 * w_edge_lr + nx * w_core, 2 * h_edge_tb + ny * h_core,
-                              self.grid.resolution)
-        layout_params['parity'] = (nx + ny) % 2
-        master = self.new_template(params=layout_params, temp_cls=self._corner_cls)
-        tr_corner = self.add_instance(master, loc=(self.array_box.right, self.array_box.top),
-                                      orient='R180')
+        # place boundaries
+        # bottom-left corner
+        inst_bl = self.add_instance(corner_master, inst_name='XBL')
+        # bottom edge
+        self.add_instance(tb_master, inst_name='XB', loc=(w_edge, 0), nx=nx, spx=w_core, unit_mode=True)
+        # bottom-right corner
+        loc = (2 * w_edge + nx * w_core, 0)
+        self.add_instance(corner_master, inst_name='XBR', loc=loc, orient='MY', unit_mode=True)
+        # left edge
+        loc = (0, h_edge)
+        self.add_instance(lr_master, inst_name='XL', loc=loc, ny=ny, spy=h_core, unit_mode=True)
+        # right edge
+        loc = (2 * w_edge + nx * w_core, h_edge)
+        self.add_instance(lr_master, inst_name='XR', loc=loc, orient='MY', ny=ny, spy=h_core, unit_mode=True)
+        # top-left corner
+        loc = (0, 2 * h_edge + ny * h_core)
+        self.add_instance(corner_master, inst_name='XTL', loc=loc, orient='MX', unit_mode=True)
+        # top edge
+        loc = (w_edge, 2 * h_edge + ny * h_core)
+        self.add_instance(tb_master, inst_name='XT', loc=loc, orient='MX', nx=nx, spx=w_core, unit_mode=True)
+        # top-right corner
+        loc = (2 * w_edge + nx * w_core, 2 * h_edge + ny * h_core)
+        inst_tr = self.add_instance(corner_master, inst_name='XTR', loc=loc, orient='R180', unit_mode=True)
 
         # set array box and size
-        self.array_box = bl_corner.array_box.merge(tr_corner.array_box)
-        self.set_size_from_array_box(self._hm_layer + 3, grid=parent_grid)
-
-    def _add_blk(self, temp_cls, params, loc, orient, nx, ny, par0):
-        params['parity'] = par0
-        master0 = self.new_template(params=params, temp_cls=temp_cls)
-        if isinstance(master0, AnalogResCore):
-            self._bot_port = master0.get_port('bot')
-            self._top_port = master0.get_port('top')
-            self._num_tracks = master0.get_num_tracks()
-            self._num_corner_tracks = master0.get_num_corner_tracks()
-            self._w_tracks = master0.get_track_widths()
-
-        spx = master0.array_box.width
-        spy = master0.array_box.height
-        if not self._use_parity:
-            self.add_instance(master0, loc=loc, nx=nx, ny=ny, spx=spx, spy=spy,
-                              orient=orient)
-        else:
-            # add current parity
-            nx0 = (nx + 1) // 2
-            ny0 = (ny + 1) // 2
-            self.add_instance(master0, loc=loc, nx=nx0, ny=ny0, spx=spx * 2, spy=spy * 2,
-                              orient=orient)
-            nx0 = nx // 2
-            ny0 = ny // 2
-            if nx0 > 0 and ny0 > 0:
-                self.add_instance(master0, loc=(loc[0] + spx, loc[1] + spy),
-                                  nx=nx0, ny=ny0, spx=spx * 2, spy=spy * 2, orient=orient)
-
-            # add opposite parity
-            params['parity'] = 1 - par0
-            master1 = self.new_template(params=params, temp_cls=temp_cls)
-            nx1 = nx // 2
-            ny1 = (ny + 1) // 2
-            if nx1 > 0 and ny1 > 0:
-                self.add_instance(master1, loc=(loc[0] + spx, loc[1]),
-                                  nx=nx1, ny=ny1, spx=spx * 2, spy=spy * 2, orient=orient)
-            nx1 = (nx + 1) // 2
-            ny1 = ny // 2
-            if nx1 > 0 and ny1 > 0:
-                self.add_instance(master1, loc=(loc[0], loc[1] + spy),
-                                  nx=nx1, ny=ny1, spx=spx * 2, spy=spy * 2, orient=orient)
-
-        return master0
+        self.array_box = inst_bl.array_box.merge(inst_tr.array_box)
+        self.set_size_from_array_box(top_layer)
 
 
 class TerminationCore(ResArrayBase):
@@ -428,6 +401,8 @@ class TerminationCore(ResArrayBase):
             ny=1,
             res_type='reference',
             em_specs={},
+            ext_dir='',
+            flip_parity=None,
         )
 
     @classmethod
@@ -451,6 +426,8 @@ class TerminationCore(ResArrayBase):
             ny='number of resistors in a column.',
             res_type='the resistor type.',
             em_specs='EM specifications for the termination network.',
+            ext_dir='resistor core extension direction.',
+            flip_parity='flip parity dictionary.',
         )
 
     def draw_layout(self):
@@ -458,17 +435,21 @@ class TerminationCore(ResArrayBase):
 
         # draw array
         nx = self.params['nx']
-        if nx % 2 != 0 or nx <= 0:
-            raise ValueError('number of resistors in a row must be even and positive.')
         ny = self.params['ny']
         em_specs = self.params.pop('em_specs')
+
+        if nx % 2 != 0 or nx <= 0:
+            raise ValueError('number of resistors in a row must be even and positive.')
+
         div_em_specs = em_specs.copy()
         for key in ('idc', 'iac_rms', 'iac_peak'):
             if key in div_em_specs:
                 div_em_specs[key] = div_em_specs[key] / ny
             else:
                 div_em_specs[key] = 0.0
-        self.draw_array(em_specs=div_em_specs, grid_type='low_res', **self.params)
+
+        min_tracks = (1, 1, 1, 1)
+        self.draw_array(min_tracks=min_tracks, em_specs=div_em_specs, grid_type='low_res', **self.params)
 
         vm_layer = self.bot_layer_id + 1
         xm_layer = vm_layer + 1

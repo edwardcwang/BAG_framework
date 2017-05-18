@@ -139,8 +139,7 @@ class AnalogEdge(TemplateBase):
             dictionary from parameter name to description.
         """
         return dict(
-            dum_layer='dummy connection layer ID.',
-            mconn_layer='mosfet connection layer ID.',
+            mos_conn_layer='transistor connection layer.',
             guard_ring_nf='number of guard ring fingers.',
             name_id='cell name ID.',
             layout_info='the layout information dictionary.',
@@ -152,14 +151,14 @@ class AnalogEdge(TemplateBase):
 
     def compute_unique_key(self):
         base_name = self.get_layout_basename()
-        return self.to_immutable_id((base_name, self.params['layout_info'], self.params['flip_parity']))
+        return self.to_immutable_id((base_name, self.params['mos_conn_layer'],
+                                     self.params['layout_info'], self.params['flip_parity']))
 
     def draw_layout(self):
-        dum_layer = self.params['dum_layer']
-        mconn_layer = self.params['mconn_layer']
         guard_ring_nf = self.params['guard_ring_nf']
         layout_info = self.params['layout_info']
         flip_parity = self.params['flip_parity']
+        mos_conn_layer = self.params['mos_conn_layer']
         basename = self.get_layout_basename()
 
         self.grid = self.grid.copy()
@@ -181,16 +180,17 @@ class AnalogEdge(TemplateBase):
             # draw guard ring and guard ring separator
             x0 = self.array_box.right_unit
             sub_info = self._tech_cls.get_gr_sub_info(guard_ring_nf, layout_info)
+            loc = x0, 0
             sub_params = dict(
                 dummy_only=False,
                 port_tracks=[],
                 dum_tracks=[],
-                flip_parity=self._get_inst_flip_parity(x0, dum_layer, mconn_layer),
+                flip_parity=self.grid.get_flip_parity_at(loc, mos_conn_layer, unit_mode=True),
                 layout_name='%s_sub' % basename,
                 layout_info=sub_info,
             )
             master = self.new_template(params=sub_params, temp_cls=AnalogSubstrateCore)
-            inst = self.add_instance(master, 'XSUB', loc=(x0, 0), unit_mode=True)
+            inst = self.add_instance(master, 'XSUB', loc=loc, unit_mode=True)
 
             for port_name in inst.port_names_iter():
                 self.reexport(inst.get_port(port_name), show=False)
@@ -205,20 +205,3 @@ class AnalogEdge(TemplateBase):
             inst = self.add_instance(master, 'XSEP', loc=(x0, 0), unit_mode=True)
             self.array_box = self.array_box.merge(inst.array_box)
             self.prim_bound_box = self.prim_bound_box.merge(inst.translate_master_box(master.prim_bound_box))
-
-    def _get_inst_flip_parity(self, xc, dum_layer, mconn_layer):
-        """Compute flip_parity dictionary for instance."""
-        dum_tr = self.grid.coord_to_track(dum_layer, xc, unit_mode=True)
-        mconn_tr = self.grid.coord_to_track(mconn_layer, xc, unit_mode=True)
-        dum_par = self.grid.get_track_parity(dum_layer, dum_tr)
-        mconn_par = self.grid.get_track_parity(mconn_layer, mconn_tr)
-
-        inst_flip_parity = self.grid.get_flip_parity()
-        inst_dum_par = self.grid.get_track_parity(dum_layer, -0.5)
-        inst_mconn_par = self.grid.get_track_parity(mconn_layer, -0.5)
-        if dum_par != inst_dum_par:
-            inst_flip_parity[dum_layer] = not inst_flip_parity.get(dum_layer, False)
-        if mconn_par != inst_mconn_par:
-            inst_flip_parity[mconn_layer] = not inst_flip_parity.get(mconn_layer, False)
-
-        return inst_flip_parity
