@@ -89,7 +89,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_substrate_info(cls, lch_unit, w, sub_type, threshold, fg, end_mode):
+    def get_substrate_info(cls, lch_unit, w, sub_type, threshold, fg, end_mode, is_passive):
         return {}
 
     @classmethod

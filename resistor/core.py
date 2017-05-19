@@ -611,6 +611,7 @@ class Termination(TemplateBase):
             well_width=res_master.get_well_width(),
             show_pins=False,
             well_end_mode=2,
+            is_passive=True,
         )
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
         ny_shift = sub_master.size[2]

@@ -1881,6 +1881,7 @@ class SubstrateContact(TemplateBase):
             well_end_mode=0,
             show_pins=False,
             flip_parity=None,
+            is_passive=False,
         )
 
     @classmethod
@@ -1906,6 +1907,7 @@ class SubstrateContact(TemplateBase):
             show_pins='True to show pin labels.',
             well_end_mode='integer flag that controls whether to extend well layer to top/bottom.',
             flip_parity='The track parity dictionary.',
+            is_passive='True if this substrate is used as substrate contact for passive devices.',
         )
 
     def draw_layout(self):
@@ -1913,7 +1915,7 @@ class SubstrateContact(TemplateBase):
         self._draw_layout_helper(**self.params)
 
     def _draw_layout_helper(self, lch, w, sub_type, threshold, top_layer, blk_width, well_width, show_pins,
-                            well_end_mode, flip_parity):
+                            well_end_mode, flip_parity, is_passive):
         # type: (float, Union[float, int], str, str, int, int, bool) -> None
         res = self.grid.resolution
         well_width = int(round(well_width / res))
@@ -1969,6 +1971,7 @@ class SubstrateContact(TemplateBase):
             threshold=threshold,
             fg=sub_fg_tot,
             end_mode=3,
+            is_passive=is_passive,
         )
         sub_master = self.new_template(params=params, temp_cls=AnalogSubstrate)
         edge_layout_info = sub_master.get_edge_layout_info()

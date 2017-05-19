@@ -139,6 +139,7 @@ class AnalogSubstrate(TemplateBase):
             dum_tracks=[],
             dummy_only=False,
             flip_parity=None,
+            is_passive=False,
         )
 
     @classmethod
@@ -163,6 +164,7 @@ class AnalogSubstrate(TemplateBase):
             port_tracks='Substrate port must contain these track indices.',
             dum_tracks='Dummy port must contain these track indices.',
             flip_parity='the flip track parity dictionary.',
+            is_passive='True if this substrate is used as substrate contact for passive devices.',
         )
 
     def get_layout_basename(self):
@@ -190,11 +192,11 @@ class AnalogSubstrate(TemplateBase):
         self._draw_layout_helper(**self.params)
 
     def _draw_layout_helper(self, lch, w, sub_type, threshold, fg, end_mode,
-                            dummy_only, port_tracks, dum_tracks, flip_parity):
+                            dummy_only, port_tracks, dum_tracks, flip_parity, is_passive):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg, end_mode)
+        info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg, end_mode, is_passive)
         self._layout_info = info['layout_info']
         self._sd_yc = info['sd_yc']
         self._ext_top_info = info['ext_top_info']
