@@ -223,12 +223,12 @@ class CMLLoadSingle(TemplateBase):
         sub_params['blk_width'] = nx_arr
         sub_params['show_pins'] = False
 
-        _, blk_h = self.grid.get_block_size(top_layer)
+        _, h_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
         ny_shift = sub_master.size[2]
         res_inst = self.add_instance(res_master, inst_name='XRES')
-        top_yo = (ny_arr + ny_shift) * blk_h
-        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0.0, top_yo), orient='MX')
+        top_yo = (ny_arr + ny_shift) * h_pitch
+        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0, top_yo), orient='MX', unit_mode=True)
 
         port_name = sub_master.port_name
         sub_warrs = top_inst.get_all_port_pins(port_name)
@@ -583,10 +583,8 @@ class CMLDriverPMOS(TemplateBase):
         loadp = self.add_instance(load_master, 'XLOADP', (0, load_height + core_height), unit_mode=True)
 
         self.array_box = loadn.array_box.merge(loadp.array_box)
-        w_pitch, h_pitch = self.grid.get_block_size(top_layer, unit_mode=True)
-        nx = -(-self.array_box.width_unit // w_pitch)
-        ny = -(-self.array_box.height_unit // h_pitch)
-        self.size = top_layer, nx, ny
+        self.size = self.grid.get_size_tuple(top_layer, self.array_box.width_unit, self.array_box.height_unit,
+                                             round_up=True, unit_mode=True)
 
         for name in ['inp', 'inn', 'ibias', 'VDD']:
             label = name + ':' if name == 'VDD' else name

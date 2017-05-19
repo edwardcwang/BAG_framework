@@ -82,6 +82,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._num_corner_tracks = None  # type: Tuple[int, ...]
         self._w_tracks = None  # type: Tuple[int, ...]
         self._hm_layer = self._tech_cls.get_bot_layer()
+        self._well_width = None
 
     @classmethod
     def get_port_layer_id(cls, tech_info):
@@ -123,8 +124,14 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # type: () -> Tuple[int, int, int]
         """Returns the size of a unit resistor block."""
         top_layer = self.bot_layer_id + len(self._num_tracks) - 1
-        blk_w, blk_h = self.grid.get_block_size(top_layer, unit_mode=True)
-        return top_layer, self._core_pitch[0] // blk_w, self._core_pitch[1] // blk_h
+        return self.grid.get_size_tuple(top_layer, self._core_pitch[0], self._core_pitch[1], unit_mode=True)
+
+    def get_well_width(self, unit_mode=False):
+        # type: (bool) -> Union[float, int]
+        """Returns the NW/PW width in this block."""
+        if unit_mode:
+            return self._well_width
+        return self._well_width * self.grid.resolution
 
     def get_res_ports(self, row_idx, col_idx):
         # type: (int, int) -> Tuple[WireArray, WireArray]
@@ -202,27 +209,6 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return delta / self.grid.get_track_pitch(targ_layer, unit_mode=True) + tr_idx
 
-    def move_array(self, nx_blk=0, ny_blk=0):
-        """Move the whole array by the given number of block pitches.
-
-        The block pitch is calculated on the top resistor routing layer.
-
-        Note: this method does not update size or array_box.  They must be updated manually.
-
-        Parameters
-        ----------
-        nx_blk : int
-            number of horizontal block pitches.
-        ny_blk : int
-            number of vertical block pitches.
-        """
-        res = self.grid.resolution
-        blk_w, blk_h = self.grid.get_block_size(self.bot_layer_id + 3, unit_mode=True)
-        dx = nx_blk * blk_w  # type: int
-        dy = ny_blk * blk_h  # type: int
-        self.move_all_by(dx=dx * res, dy=dy * res)
-        self._core_offset = (self._core_offset[0] + dx, self._core_offset[1] + dy)
-
     def draw_array(self,  # type: ResArrayBase
                    l,  # type: float
                    w,  # type: float
@@ -236,6 +222,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                    grid_type='standard',  # type: str
                    ext_dir='',  # type: str
                    flip_parity=None,  # type: Optional[Dict[int, bool]]
+                   well_end_mode=0,  # type: int
                    ):
         # type: (...) -> None
         """Draws the resistor array.
@@ -269,6 +256,8 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             resistor core extension direction.
         flip_parity : Optional[Dict[int, bool]]
             The flip parity dictioanry.
+        well_end_mode : int
+            integer flag that controls whether to extend well layer to top/bottom.
         """
         # modify resistor layer routing grid.
         self.grid = self.grid.copy()
@@ -313,10 +302,14 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         core_master = self.new_template(params=core_params, temp_cls=AnalogResCore)
         lr_params = core_master.get_boundary_params('lr')
         lr_master = self.new_template(params=lr_params, temp_cls=AnalogResBoundary)
-        tb_params = core_master.get_boundary_params('tb')
-        tb_master = self.new_template(params=tb_params, temp_cls=AnalogResBoundary)
-        corner_params = core_master.get_boundary_params('corner')
-        corner_master = self.new_template(params=corner_params, temp_cls=AnalogResBoundary)
+        top_params = core_master.get_boundary_params('tb', end_mode=well_end_mode // 2 != 0)
+        top_master = self.new_template(params=top_params, temp_cls=AnalogResBoundary)
+        bot_params = core_master.get_boundary_params('tb', end_mode=well_end_mode % 2 != 0)
+        bot_master = self.new_template(params=bot_params, temp_cls=AnalogResBoundary)
+        tcorner_params = core_master.get_boundary_params('corner', end_mode=well_end_mode // 2 != 0)
+        tcorner_master = self.new_template(params=tcorner_params, temp_cls=AnalogResBoundary)
+        bcorner_params = core_master.get_boundary_params('corner', end_mode=well_end_mode % 2 != 0)
+        bcorner_master = self.new_template(params=bcorner_params, temp_cls=AnalogResBoundary)
 
         # place core
         for row in range(ny):
@@ -332,27 +325,30 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # place boundaries
         # bottom-left corner
-        inst_bl = self.add_instance(corner_master, inst_name='XBL')
+        inst_bl = self.add_instance(bcorner_master, inst_name='XBL')
         # bottom edge
-        self.add_instance(tb_master, inst_name='XB', loc=(w_edge, 0), nx=nx, spx=w_core, unit_mode=True)
+        self.add_instance(bot_master, inst_name='XB', loc=(w_edge, 0), nx=nx, spx=w_core, unit_mode=True)
         # bottom-right corner
         loc = (2 * w_edge + nx * w_core, 0)
-        self.add_instance(corner_master, inst_name='XBR', loc=loc, orient='MY', unit_mode=True)
+        self.add_instance(bcorner_master, inst_name='XBR', loc=loc, orient='MY', unit_mode=True)
         # left edge
         loc = (0, h_edge)
+        well_xl = lr_master.get_well_left(unit_mode=True)
         self.add_instance(lr_master, inst_name='XL', loc=loc, ny=ny, spy=h_core, unit_mode=True)
         # right edge
         loc = (2 * w_edge + nx * w_core, h_edge)
+        well_xr = loc[0] - well_xl
+        self._well_width = well_xr - well_xl
         self.add_instance(lr_master, inst_name='XR', loc=loc, orient='MY', ny=ny, spy=h_core, unit_mode=True)
         # top-left corner
         loc = (0, 2 * h_edge + ny * h_core)
-        self.add_instance(corner_master, inst_name='XTL', loc=loc, orient='MX', unit_mode=True)
+        self.add_instance(tcorner_master, inst_name='XTL', loc=loc, orient='MX', unit_mode=True)
         # top edge
         loc = (w_edge, 2 * h_edge + ny * h_core)
-        self.add_instance(tb_master, inst_name='XT', loc=loc, orient='MX', nx=nx, spx=w_core, unit_mode=True)
+        self.add_instance(top_master, inst_name='XT', loc=loc, orient='MX', nx=nx, spx=w_core, unit_mode=True)
         # top-right corner
         loc = (2 * w_edge + nx * w_core, 2 * h_edge + ny * h_core)
-        inst_tr = self.add_instance(corner_master, inst_name='XTR', loc=loc, orient='R180', unit_mode=True)
+        inst_tr = self.add_instance(tcorner_master, inst_name='XTR', loc=loc, orient='R180', unit_mode=True)
 
         # set array box and size
         self.array_box = inst_bl.array_box.merge(inst_tr.array_box)
@@ -405,6 +401,7 @@ class TerminationCore(ResArrayBase):
             em_specs={},
             ext_dir='',
             flip_parity=None,
+            well_end_mode=0,
         )
 
     @classmethod
@@ -430,6 +427,7 @@ class TerminationCore(ResArrayBase):
             em_specs='EM specifications for the termination network.',
             ext_dir='resistor core extension direction.',
             flip_parity='flip parity dictionary.',
+            well_end_mode='integer flag that controls whether to extend well layer to top/bottom.',
         )
 
     def draw_layout(self):
@@ -551,6 +549,8 @@ class Termination(TemplateBase):
         return dict(
             nx=2,
             ny=1,
+            ext_dir='',
+            flip_parity=None,
             res_type='reference',
             em_specs={},
         )
@@ -578,6 +578,8 @@ class Termination(TemplateBase):
             ny='number of resistors in a column.',
             res_type='the resistor type.',
             em_specs='EM specifications for the termination network.',
+            ext_dir='resistor core extension direction.',
+            flip_parity='flip parity dictionary.',
         )
 
     def draw_layout(self):
@@ -587,11 +589,18 @@ class Termination(TemplateBase):
         sub_lch = res_params.pop('sub_lch')
         sub_w = res_params.pop('sub_w')
         sub_type = self.params['sub_type']
+        flip_parity = self.params.pop('flip_parity')
 
+        self.grid = self.grid.copy()
+        if flip_parity is not None:
+            self.grid.set_flip_parity(flip_parity)
+
+        res_params['well_end_mode'] = 3
         res_master = self.new_template(params=res_params, temp_cls=TerminationCore)
 
         # draw contact and move array up
         top_layer, nx_arr, ny_arr = res_master.size
+        _, h_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
         sub_params = dict(
             lch=sub_lch,
             w=sub_w,
@@ -599,15 +608,16 @@ class Termination(TemplateBase):
             threshold=self.params['threshold'],
             top_layer=top_layer,
             blk_width=nx_arr,
+            well_width=res_master.get_well_width(),
             show_pins=False,
+            well_end_mode=2,
         )
-        _, blk_h = self.grid.get_block_size(top_layer)
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
         ny_shift = sub_master.size[2]
         bot_inst = self.add_instance(sub_master, inst_name='XBSUB')
-        res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0.0, ny_shift * blk_h))
-        top_yo = (ny_arr + 2 * ny_shift) * blk_h
-        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0.0, top_yo), orient='MX')
+        res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0, ny_shift * h_pitch), unit_mode=True)
+        top_yo = (ny_arr + 2 * ny_shift) * h_pitch
+        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0, top_yo), orient='MX', unit_mode=True)
 
         # export supplies and recompute array_box/size
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
@@ -615,6 +625,8 @@ class Termination(TemplateBase):
         self.reexport(top_inst.get_port(port_name))
         self.size = top_layer, nx_arr, ny_arr + 2 * ny_shift
         self.array_box = bot_inst.array_box.merge(top_inst.array_box)
+        pr_boundary = Boundary(self.grid.resolution, 'PR', self.bound_box.get_points(unit_mode=True), unit_mode=True)
+        self.add_boundary(pr_boundary)
 
         for port_name in res_inst.port_names_iter():
             self.reexport(res_inst.get_port(port_name))
@@ -1051,6 +1063,7 @@ class ResLadder(TemplateBase):
 
         # draw contact and move array up
         top_layer, nx_arr, ny_arr = res_master.size
+        _, h_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
         sub_params = dict(
             lch=sub_lch,
             w=sub_w,
@@ -1060,13 +1073,12 @@ class ResLadder(TemplateBase):
             blk_width=nx_arr,
             show_pins=False,
         )
-        _, blk_h = self.grid.get_block_size(top_layer)
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
         ny_shift = sub_master.size[2]
         bot_inst = self.add_instance(sub_master, inst_name='XBSUB')
-        res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0.0, ny_shift * blk_h))
-        top_yo = (ny_arr + 2 * ny_shift) * blk_h
-        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0.0, top_yo), orient='MX')
+        res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0, ny_shift * h_pitch), unit_mode=True)
+        top_yo = (ny_arr + 2 * ny_shift) * h_pitch
+        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0, top_yo), orient='MX', unit_mode=True)
 
         # recompute array_box/size
         self.size = top_layer, nx_arr, ny_arr + 2 * ny_shift

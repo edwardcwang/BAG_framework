@@ -113,8 +113,9 @@ class MOMCap(TemplateBase):
         cap_width = int(round(cap_width / res))
         cap_height = int(round(cap_height / res))
 
-        blk_w, blk_h = self.grid.get_block_size(cap_top_layer, unit_mode=True)
-        nx_blk = -(-cap_width // blk_w)
+        blk_w, _ = self.grid.get_block_size(cap_top_layer, unit_mode=True)
+        w_pitch, _ = self.grid.get_size_pitch(cap_top_layer, unit_mode=True)
+        tot_width = -(-cap_width // blk_w) * blk_w
 
         sub_params = dict(
             lch=sub_lch,
@@ -122,7 +123,7 @@ class MOMCap(TemplateBase):
             sub_type=sub_type,
             threshold=threshold,
             top_layer=cap_top_layer,
-            blk_width=nx_blk,
+            blk_width=tot_width // w_pitch,
             show_pins=False,
         )
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
@@ -131,9 +132,8 @@ class MOMCap(TemplateBase):
         self.reexport(inst.get_port(port_name), show=show_pins)
 
         subw, subh = self.grid.get_size_dimension(sub_master.size, unit_mode=True)
-        ny_blk = -(-(subh + cap_height) // blk_h)
-        self.size = cap_top_layer, nx_blk, ny_blk
-        self.array_box = BBox(0, 0, nx_blk * blk_w, ny_blk * blk_h, res, unit_mode=True)
+        self.size = self.grid.get_size_tuple(cap_top_layer, tot_width, subh + cap_height, round_up=True, unit_mode=True)
+        self.array_box = self.bound_box
 
         cap_xl = self.array_box.xc_unit - cap_width // 2
         cap_box = BBox(cap_xl, subh, cap_xl + cap_width, subh + cap_height, res, unit_mode=True)
@@ -214,11 +214,9 @@ class MOMCapUnit(TemplateBase):
         cap_width = int(round(cap_width / res))
         cap_height = int(round(cap_height / res))
 
-        blk_w, blk_h = self.grid.get_block_size(cap_top_layer, unit_mode=True)
-        nx_blk = -(-cap_width // blk_w)
-        ny_blk = -(-cap_height // blk_h)
-        self.size = cap_top_layer, nx_blk, ny_blk
-        self.array_box = BBox(0, 0, nx_blk * blk_w, ny_blk * blk_h, res, unit_mode=True)
+        self.size = self.grid.get_size_tuple(cap_top_layer, cap_width, cap_height, round_up=True, unit_mode=True)
+        self.array_box = self.bound_box
+
         cap_ports = self.add_mom_cap(self.array_box, cap_bot_layer, cap_top_layer - cap_bot_layer + 1,
                                      port_width, array=True)
         cp, cn = cap_ports[cap_top_layer]

@@ -221,11 +221,8 @@ class ResLadderDAC(TemplateBase):
         # set size
         yo = max(mux_yo + rmux_h, res_yo + res_h)
         top_layer = sup_table['VDD'][0].layer_id + 1
-        blk_w, blk_h = self.grid.get_block_size(top_layer, unit_mode=True)
-        xo = -(-xo // blk_w) * blk_w
-        yo = -(-yo // blk_h) * blk_h
-        self.array_box = BBox(0, 0, xo, yo, res, unit_mode=True)
-        self.set_size_from_array_box(top_layer)
+        self.size = self.grid.get_size_tuple(top_layer, xo, yo, round_up=True, unit_mode=True)
+        self.array_box = self.bound_box
 
         # do power fill
         sup_width = 2

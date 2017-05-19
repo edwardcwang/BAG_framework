@@ -73,6 +73,7 @@ class AnalogOuterEdge(TemplateBase):
 
     def draw_layout(self):
         self._tech_cls.draw_mos(self, self.params['layout_info'])
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
 
 class AnalogGuardRingSep(TemplateBase):
@@ -112,6 +113,7 @@ class AnalogGuardRingSep(TemplateBase):
 
     def draw_layout(self):
         self._tech_cls.draw_mos(self, self.params['layout_info'])
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
 
 class AnalogEdge(TemplateBase):
@@ -126,6 +128,10 @@ class AnalogEdge(TemplateBase):
         super(AnalogEdge, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_bound_box = None
+
+    @classmethod
+    def get_default_param_values(cls):
+        return dict(flip_parity=None)
 
     @classmethod
     def get_params_info(cls):
@@ -162,7 +168,8 @@ class AnalogEdge(TemplateBase):
         basename = self.get_layout_basename()
 
         self.grid = self.grid.copy()
-        self.grid.set_flip_parity(flip_parity)
+        if flip_parity is not None:
+            self.grid.set_flip_parity(flip_parity)
 
         out_info = self._tech_cls.get_outer_edge_info(guard_ring_nf, layout_info)
         # add outer edge
@@ -175,6 +182,7 @@ class AnalogEdge(TemplateBase):
 
         self.array_box = master.array_box
         self.prim_bound_box = master.prim_bound_box
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
         if guard_ring_nf > 0:
             # draw guard ring and guard ring separator

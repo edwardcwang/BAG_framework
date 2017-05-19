@@ -175,7 +175,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def draw_res_boundary(cls, template, boundary_type, layout_info):
+    def draw_res_boundary(cls, template, boundary_type, layout_info, end_mode):
         # type: (TemplateBase, str, Dict[str, Any]) -> None
         """Draw the resistor left/right edge in the given template.
 
@@ -187,6 +187,8 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             the resistor boundary type.  One of 'lr', 'tb', or 'corner'.
         layout_info : Dict[str, Any]
             the resistor layout information dictionary.
+        end_mode : bool
+            True to extend well layers to bottom.
         """
         pass
 
@@ -618,13 +620,14 @@ class AnalogResCore(TemplateBase):
         """
         return self._track_widths
 
-    def get_boundary_params(self, boundary_type):
-        # type: (str) -> Dict[str, Any]
+    def get_boundary_params(self, boundary_type, end_mode=False):
+        # type: (str, bool) -> Dict[str, Any]
         """Returns boundary parameters dictioanry."""
         return dict(
             boundary_type=boundary_type,
             layout_id=self.get_name_id(),
             layout_info=self._layout_info,
+            end_mode=end_mode,
         )
 
     def get_name_id(self):
@@ -676,6 +679,7 @@ class AnalogResCore(TemplateBase):
         self._num_tracks = self._layout_info['num_tracks']
         self._track_widths = self._layout_info['track_widths']
         self._tech_cls.draw_res_core(self, self._layout_info)
+        self.prim_top_layer = self._tech_cls.get_bot_layer()
 
 
 class AnalogResBoundary(TemplateBase):
@@ -700,6 +704,7 @@ class AnalogResBoundary(TemplateBase):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(AnalogResBoundary, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['res_tech_class']  # type: ResTech
+        self._well_xl = self.params['layout_info']['well_xl']
 
     @classmethod
     def get_params_info(cls):
@@ -717,7 +722,13 @@ class AnalogResBoundary(TemplateBase):
             boundary_type='resistor boundary type.',
             layout_id='the layout ID',
             layout_info='the layout information dictionary.',
+            end_mode='integer flag indicating whether to extend well layers to bottom.',
         )
+
+    def get_well_left(self, unit_mode=False):
+        if unit_mode:
+            return self._well_xl
+        return self._well_xl * self.grid.resolution
 
     def get_layout_basename(self):
         # type: () -> str
@@ -735,11 +746,16 @@ class AnalogResBoundary(TemplateBase):
             prefix = 'resedgetb'
         else:
             prefix = 'rescorner'
-        return '%s_%s' % (prefix, self.params['layout_id'])
+        base = '%s_%s' % (prefix, self.params['layout_id'])
+        if self.params['end_mode']:
+            base += '_end'
+        return base
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
         return self.to_immutable_id((basename, self.params['layout_info']))
 
     def draw_layout(self):
-        self._tech_cls.draw_res_boundary(self, self.params['boundary_type'], self.params['layout_info'])
+        self._tech_cls.draw_res_boundary(self, self.params['boundary_type'], self.params['layout_info'],
+                                         self.params['end_mode'])
+        self.prim_top_layer = self._tech_cls.get_bot_layer()

@@ -149,12 +149,8 @@ class DLevCap(TemplateBase):
             yt = capr_ports[top_layer - 1][1][0].get_bbox_array(self.grid).top_unit
             xr = capr_ports[top_layer][1][0].get_bbox_array(self.grid).right_unit
 
-        w_blk, h_blk = self.grid.get_block_size(top_layer, unit_mode=True)
-        nx = -(-(xr + space) // w_blk)
-        ny = -(-yt // h_blk)
-        self.size = top_layer, nx, ny
-        self.array_box = BBox(0, 0, nx * w_blk, ny * h_blk, res, unit_mode=True)
-
+        self.size = self.grid.get_size_tuple(top_layer, xr + space, yt, round_up=True, unit_mode=True)
+        self.array_box = self.bound_box
 
 class RXClkArray(TemplateBase):
     """An template for AC coupling clock arrays
@@ -307,11 +303,8 @@ class RXClkArray(TemplateBase):
 
         # calculate size
         top_layer = io_layer
-        blkw, blkh = self.grid.get_block_size(top_layer, unit_mode=True)
-        nx = -(-hpfw * num_blocks // blkw)
-        ny = -(-hpfh // blkh)
-        self.size = top_layer, nx, ny
-        self.array_box = BBox(0, 0, nx * blkw, ny*blkh, self.grid.resolution, unit_mode=True)
+        self.size = self.grid.get_size_tuple(io_layer, hpfw * num_blocks, hpfh, round_up=True, unit_mode=True)
+        self.array_box = self.bound_box
 
 
 class BiasBusIO(TemplateBase):
@@ -438,15 +431,12 @@ class BiasBusIO(TemplateBase):
         bus_wl = self.grid.get_wire_bounds(bus_layer, bus_margin, unit_mode=True)[0]
         bus_wu = self.grid.get_wire_bounds(bus_layer, last_sup_track, unit_mode=True)[1]
         size_wu = self.grid.get_wire_bounds(bus_layer, last_sup_track + bus_margin, unit_mode=True)[1]
-        blkw, blkh = self.grid.get_block_size(bus_layer + 2, unit_mode=True)
         if self.grid.get_direction(bus_layer) == 'x':
-            nxblk = -(-bus_upper // blkw)
-            nyblk = -(-size_wu // blkh)
+            cur_width, cur_height = bus_upper, size_wu
         else:
-            nxblk = -(-size_wu // blkw)
-            nyblk = -(-bus_upper // blkh)
-        self.size = bus_layer + 2, nxblk, nyblk
-        self.array_box = BBox(0, 0, nxblk * blkw, nyblk * blkh, self.grid.resolution, unit_mode=True)
+            cur_width, cur_height = size_wu, bus_upper
+        self.size = self.grid.get_size_tuple(bus_layer + 2, cur_width, cur_height, round_up=True, unit_mode=True)
+        self.array_box = self.bound_box
 
         # reserve tracks
         for lay, track, width in reserve_list:
@@ -551,13 +541,10 @@ class BiasBusCorner(TemplateBase):
 
         # compute size
         top_layer = max(hm_layer, vm_layer) + 1
-        blkw, blkh = self.grid.get_block_size(top_layer, unit_mode=True)
         width = self.grid.get_track_pitch(vm_layer, unit_mode=True) * (num_wires + 2 * bus_margin)
         height = self.grid.get_track_pitch(hm_layer, unit_mode=True) * (num_wires + 2 * bus_margin)
-        nxblk = -(-width // blkw)
-        nyblk = -(-height // blkh)
-        self.size = top_layer, nxblk, nyblk
-        self.array_box = BBox(0, 0, nxblk * blkw, nyblk * blkh, self.grid.resolution, unit_mode=True)
+        self.size = self.grid.get_size_tuple(top_layer, width, height, round_up=True, unit_mode=True)
+        self.array_box = self.bound_box
         xr = self.array_box.right_unit
         yt = self.array_box.top_unit
 
@@ -944,6 +931,7 @@ class CTLE(TemplateBase):
         # draw contact and move array up
         sub_type = self.params['sub_type']
         top_layer, nx_arr, ny_arr = core_master.size
+        w_pitch, h_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
         sub_params = dict(
             lch=sub_lch,
             w=sub_w,
@@ -953,13 +941,12 @@ class CTLE(TemplateBase):
             blk_width=nx_arr,
             show_pins=False,
         )
-        _, blk_h = self.grid.get_block_size(top_layer)
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
         bot_inst = self.add_instance(sub_master, inst_name='XBSUB')
         ny_shift = sub_master.size[2]
-        core_inst = self.add_instance(core_master, loc=(0, ny_shift * blk_h), inst_name='XRES')
-        top_yo = (ny_arr + 2 * ny_shift) * blk_h
-        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0.0, top_yo), orient='MX')
+        core_inst = self.add_instance(core_master, loc=(0, ny_shift * h_pitch), inst_name='XRES', unit_mode=True)
+        top_yo = (ny_arr + 2 * ny_shift) * h_pitch
+        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0, top_yo), orient='MX', unit_mode=True)
 
         # connect supplies
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'

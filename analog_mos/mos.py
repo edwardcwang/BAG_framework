@@ -150,6 +150,7 @@ class AnalogMOSBase(TemplateBase):
 
         # draw transistor
         self._tech_cls.draw_mos(self, self._layout_info)
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
 
 class AnalogMOSExt(TemplateBase):
@@ -219,3 +220,4 @@ class AnalogMOSExt(TemplateBase):
                                                top_ext_info, bot_ext_info)
         self._layout_info = ext_info
         self._tech_cls.draw_mos(self, ext_info)
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()

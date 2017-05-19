@@ -31,6 +31,7 @@ from builtins import *
 from typing import Dict, Any, Set
 
 from bag import float_to_si_string
+from bag.layout.util import BBox
 from bag.layout.template import TemplateBase, TemplateDB
 
 from .core import MOSTech
@@ -87,12 +88,14 @@ class AnalogSubstrateCore(TemplateBase):
 
         # modify routing track parity
         self.grid = self.grid.copy()
-        self.grid.set_flip_parity(flip_parity)
+        if flip_parity is not None:
+            self.grid.set_flip_parity(flip_parity)
 
         # draw substrate
         self._tech_cls.draw_mos(self, layout_info)
         # draw substrate connections
         self._tech_cls.draw_substrate_connection(self, layout_info, port_tracks, dum_tracks, dummy_only)
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
 
 class AnalogSubstrate(TemplateBase):
@@ -111,6 +114,10 @@ class AnalogSubstrate(TemplateBase):
         self._ext_top_info = None
         self._ext_bot_info = None
         self._sd_yc = None
+        self._well_box = None
+
+    def get_well_box(self):
+        return self._well_box
 
     def get_ext_top_info(self):
         return self._ext_top_info
@@ -131,6 +138,7 @@ class AnalogSubstrate(TemplateBase):
             port_tracks=[],
             dum_tracks=[],
             dummy_only=False,
+            flip_parity=None,
         )
 
     @classmethod
@@ -191,6 +199,8 @@ class AnalogSubstrate(TemplateBase):
         self._sd_yc = info['sd_yc']
         self._ext_top_info = info['ext_top_info']
         self._ext_bot_info = info['ext_bot_info']
+        well_xl, well_yb, well_xr, well_yt = info['well_bounds']
+        self._well_box = BBox(well_xl, well_yb, well_xr, well_yt, res, unit_mode=True)
 
         core_params = dict(
             dummy_only=dummy_only,
@@ -208,3 +218,5 @@ class AnalogSubstrate(TemplateBase):
 
         for port_name in inst.port_names_iter():
             self.reexport(inst.get_port(port_name), show=False)
+
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()

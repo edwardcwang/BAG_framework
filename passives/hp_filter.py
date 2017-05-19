@@ -298,7 +298,7 @@ class HighPassFilter(TemplateBase):
             blk_width=nx_arr,
             show_pins=False,
         )
-        _, blk_h = self.grid.get_block_size(top_layer)
+        _, blk_h = self.grid.get_size_pitch(top_layer)
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
         ny_shift = sub_master.size[2]
         res_inst = self.add_instance(res_master, inst_name='XRES')

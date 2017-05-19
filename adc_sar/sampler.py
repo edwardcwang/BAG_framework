@@ -194,7 +194,7 @@ class NPassGateWClk(AnalogBase):
         ckout_tid = (p_tid + n_tid) / 2
         self.add_pin(self.get_pin_name('outp'), outp, show=show_pins)
         self.add_pin(self.get_pin_name('outn'), outn, show=show_pins)
-        in_upper = self.size[2] * self.grid.get_block_pitch(self.size[0])
+        _, in_upper = self.grid.get_size_dimension(self.size)
         inp, inn = self.connect_differential_tracks(inp_list, inn_list, io_layer, p_tid, n_tid,
                                                     width=io_width, track_upper=in_upper, fill_type='VSS')
         self.add_pin(self.get_pin_name('inp'), inp, show=show_pins)

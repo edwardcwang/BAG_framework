@@ -138,6 +138,7 @@ class AnalogMOSConn(TemplateBase):
         mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, 'nch', 'standard', fg)
         self._tech_cls.draw_mos_connection(self, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
                                            min_ds_cap, is_ds_dummy, is_diff, diode_conn)
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
 
 class AnalogMOSDummy(TemplateBase):
@@ -216,6 +217,7 @@ class AnalogMOSDummy(TemplateBase):
         lch_unit = int(round(lch / self.grid.layout_unit / res))
         mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, 'nch', 'standard', fg)
         self._tech_cls.draw_dum_connection(self, mos_info, edge_mode, gate_tracks)
+        self.prim_top_layer = self._tech_cls.get_dum_conn_layer()
 
 
 class AnalogMOSDecap(TemplateBase):
@@ -315,3 +317,4 @@ class AnalogMOSDecap(TemplateBase):
         lch_unit = int(round(lch / self.grid.layout_unit / res))
         mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, 'nch', 'standard', fg)
         self._tech_cls.draw_decap_connection(self, mos_info, sdir, ddir, gate_ext_mode, export_gate)
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
