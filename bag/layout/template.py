@@ -673,6 +673,15 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self.children = self._layout.get_masters_set()
         self._finalized = True
 
+    def update_flip_parity(self):
+        """Update all instances in this template to have the correct track parity.
+        """
+        for inst in self._layout.inst_iter():
+            loc = inst.location_unit
+            if 'flip_parity' in inst.master.params:
+                fp_dict = self.grid.get_flip_parity_at(loc, inst.master.top_layer, unit_mode=True)
+                inst.new_master_with(flip_parity=fp_dict)
+
     def write_summary_file(self, fname, lib_name, cell_name):
         """Create a summary file for this template layout."""
         # get all pin information
@@ -758,11 +767,11 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
     def _get_qualified_name(self):
         # type: () -> str
         """Returns the qualified name of this class."""
-        module = self.__class__.__module__
-        if module is None or module == str.__class__.__module__:
+        my_module = self.__class__.__module__
+        if my_module is None or my_module == str.__class__.__module__:
             return self.__class__.__name__
         else:
-            return module + '.' + self.__class__.__name__
+            return my_module + '.' + self.__class__.__name__
 
     def compute_unique_key(self):
         # type: () -> Any
