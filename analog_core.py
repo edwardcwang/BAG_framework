@@ -1995,7 +1995,7 @@ class SubstrateContact(TemplateBase):
         instl = self.add_instance(edge_master, inst_name='XLE', loc=loc, unit_mode=True)
         loc = instl.array_box.right_unit, y0
         insts = self.add_instance(sub_master, inst_name='XSUB', loc=loc, unit_mode=True)
-        loc = insts.array_box.right_unit + instl.array_box.width_unit, y0
+        loc = insts.array_box.right_unit + edge_master.array_box.right_unit, y0
         instr = self.add_instance(edge_master, inst_name='XRE', loc=loc, orient='MY', unit_mode=True)
 
         self.array_box = instl.array_box.merge(instr.array_box)
