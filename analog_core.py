@@ -2022,3 +2022,5 @@ class SubstrateContact(TemplateBase):
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
         sub_wires = self.connect_to_tracks(insts.get_port(port_name).get_pins(hm_layer - 1), track_id)
         self.add_pin(port_name, sub_wires, show=show_pins)
+
+        self.update_flip_parity()
