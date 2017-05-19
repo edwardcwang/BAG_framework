@@ -406,6 +406,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self._ports = {}
         self._port_params = {}
         self._array_box = None  # type: BBox
+        self.prim_top_layer = None
         self._finalized = False
         self._used_tracks = UsedTracks(self._grid.resolution)
         self._added_inst_tracks = False
@@ -490,6 +491,16 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             raise RuntimeError('Template already finalized.')
 
     @property
+    def top_layer(self):
+        # type: () -> int
+        """Returns the top layer used in this template."""
+        if self.size is None:
+            if self.prim_top_layer is None:
+                raise Exception('Both size and prim_top_layer are unset.')
+            return self.prim_top_layer
+        return self.size[0]
+
+    @property
     def size(self):
         # type: () -> Tuple[int, int, int]
         """The size of this template, in (layer, num_x_block,  num_y_block) format."""
@@ -502,9 +513,9 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         mysize = self.size
         if mysize is None:
             return None
-        wblk_unit, hblk_unit = self.grid.get_block_size(mysize[0], unit_mode=True)
-        return BBox(0, 0, wblk_unit * mysize[1], hblk_unit * mysize[2], self.grid.resolution,
-                    unit_mode=True)
+
+        wblk, hblk = self.grid.get_size_dimension(mysize, unit_mode=True)
+        return BBox(0, 0, wblk, hblk, self.grid.resolution, unit_mode=True)
 
     @size.setter
     def size(self, new_size):
@@ -551,24 +562,13 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         if grid is None:
             grid = self.grid
 
-        w_pitch, h_pitch = grid.get_block_size(top_layer_id, unit_mode=True)
-
         dx = self.array_box.left_unit
         dy = self.array_box.bottom_unit
         if dx < 0 or dy < 0:
             raise ValueError('lower-left corner of array box must be in first quadrant.')
 
-        w_blk = 2 * dx + self.array_box.width_unit
-        h_blk = 2 * dy + self.array_box.height_unit
-
-        wq, wr = divmod(w_blk, w_pitch)
-        hq, hr = divmod(h_blk, h_pitch)
-        if wr != 0:
-            raise ValueError('block width = %d not in block pitch (%d)' % (w_blk, w_pitch))
-        if hr != 0:
-            raise ValueError('block height = %d not in block pitch (%d)' % (h_blk, h_pitch))
-
-        self.size = top_layer_id, wq, hq
+        self.size = grid.get_size_tuple(top_layer_id, 2 * dx + self.array_box.width_unit,
+                                        2 * dy + self.array_box.height_unit, unit_mode=True)
 
     @classmethod
     def to_immutable_id(cls, val):
@@ -890,6 +890,21 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """
         self._layout.move_all_by(dx=dx, dy=dy)
 
+    def add_well_geometry(self, sub_type, well_box):
+        # type: (str, BBox) -> None
+        """Add well layers with the given bounding box.
+        
+        Parameters
+        ----------
+        sub_type : str
+            the substrate type.  Either 'ntap' or 'ptap'
+        well_box : BBox
+            the bounding box of the well.
+        """
+        layers = self.grid.tech_info.tech_params['layout']['well_layers'][sub_type]
+        for lay in layers:
+            self.add_rect(lay, well_box)
+
     def add_instance(self, master, inst_name=None, loc=(0, 0),
                      orient="R0", nx=1, ny=1, spx=0, spy=0, unit_mode=False):
         # type: (TempBase, Optional[str], Tuple[float, float], str, int, int, float, float) -> Instance
@@ -922,9 +937,15 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         inst : Instance
             the added instance.
         """
+        res = self.grid.resolution
+        if not unit_mode:
+            loc = int(round(loc[0] / res)), int(round(loc[1] / res))
+            spx = int(round(spx / res))
+            spy = int(round(spy / res))
+
         inst = Instance(self._lib_name, master, loc=loc, orient=orient,
                         res=self.grid.resolution, name=inst_name,
-                        nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=unit_mode)
+                        nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=True)
 
         self._layout.add_instance(inst)
         return inst

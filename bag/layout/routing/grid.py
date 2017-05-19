@@ -424,27 +424,70 @@ class RoutingGrid(object):
         idx_list = ((hidx_arr - 1) / 2.0).tolist()  # type: List[float]
         return idx_list
 
-    def get_block_pitch(self, layer_id, unit_mode=False):
-        # type: (int, bool) -> Union[float, int]
-        """Returns the routing block pitch on the given layer.
-
-        A block pitch always contain an integer number of tracks for all layer
-        on or below this block with the same track direction.
-
+    def get_size_tuple(self, layer_id, width, height, round_up=False, unit_mode=False):
+        """Compute the size tuple corresponding to the given width and height from block pitch.
+        
         Parameters
         ----------
         layer_id : int
-            the routing layer ID.
+            the layer ID.
+        width : Union[float, int]
+            width of the block, in layout units.
+        height : Union[float, int]
+            height of the block, in layout units.
+        round_up : bool
+            True to round up instead of raising an error if the given width and height are not on pitch.
         unit_mode : bool
-            True to return block pitch in resolution units.
-
+            True if the given layout 
+            
         Returns
         -------
-        block_pitch : Union[float, int]
-            the block pitch in layout units.
+        size : Tuple[int, int, int]
+            the size tuple.  the first element is the top layer ID, second element is the width in
+            number of vertical tracks, and third element is the height in number of horizontal tracks.
         """
-        pitch_unit = self.block_pitch[layer_id]
-        return pitch_unit if unit_mode else pitch_unit * self.resolution
+        if not unit_mode:
+            res = self._resolution
+            width = int(round(width / res))
+            height = int(round(height / res))
+
+        wblk, hblk = self.get_block_size(layer_id, unit_mode=True)
+        if width % wblk != 0:
+            if round_up:
+                width = -(-width // wblk) * wblk
+            else:
+                raise ValueError('width = %d not on block pitch (%d)' % (width, wblk))
+        if height % hblk != 0:
+            if round_up:
+                height = -(-height // hblk) * hblk
+            else:
+                raise ValueError('height = %d not on block pitch (%d)' % (height, hblk))
+
+        w_pitch, h_pitch = self.get_size_pitch(layer_id, unit_mode=True)
+        return layer_id, width // w_pitch, height // h_pitch
+
+    def get_size_pitch(self, layer_id, unit_mode=False):
+        """Returns the horizontal/vertical pitch that defines template size.
+        
+        Parameters
+        ----------
+        layer_id : int
+            the size layer.
+        unit_mode : bool
+            True to return pitches in resolution units.
+            
+        Returns
+        -------
+        w_pitch : Union[float, int]
+            the width pitch.
+        h_pitch : Union[float, int]
+            the height pitch.
+        """
+        h_pitch = self.get_track_pitch(layer_id, unit_mode=unit_mode)
+        w_pitch = self.get_track_pitch(layer_id - 1, unit_mode=unit_mode)
+        if self.dir_tracks[layer_id] == 'y':
+            h_pitch, w_pitch = w_pitch, h_pitch
+        return w_pitch, h_pitch
 
     def get_block_size(self, layer_id, unit_mode=False):
         # type: (int, bool) -> Tuple[Union[float, int], Union[float, int]]
@@ -492,8 +535,8 @@ class RoutingGrid(object):
         height : Union[float, int]
             the height in layout units.
         """
-        blk_w, blk_h = self.get_block_size(size[0], unit_mode=True)
-        w_unit, h_unit = size[1] * blk_w, size[2] * blk_h
+        w_pitch, h_pitch = self.get_size_pitch(size[0], unit_mode=True)
+        w_unit, h_unit = size[1] * w_pitch, size[2] * h_pitch
 
         if unit_mode:
             return w_unit, h_unit
@@ -516,12 +559,8 @@ class RoutingGrid(object):
         new_size : Tuple[int, int, int]
             the new size tuple.
         """
-        oblk_w, oblk_h = self.get_block_size(size[0], unit_mode=True)
-        nblk_w, nblk_h = self.get_block_size(new_top_layer, unit_mode=True)
-
-        w = oblk_w * size[1]  # type: int
-        h = oblk_h * size[2]  # type: int
-        return new_top_layer, -(-w // nblk_w), -(-h // nblk_h)
+        wblk, hblk = self.get_size_dimension(size, unit_mode=True)
+        return self.get_size_tuple(new_top_layer, wblk, hblk, unit_mode=True)
 
     def get_track_info(self, layer_id, unit_mode=False):
         # type: (int, bool) -> Tuple[Union[float, int], Union[float, int]]
