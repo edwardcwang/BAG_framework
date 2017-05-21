@@ -57,7 +57,7 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
     """
 
     def __init__(self, grid, lch, guard_ring_nf, min_fg_sep=0):
-        # type: (RoutingGrid, float, int, Tuple[int, int], int) -> None
+        # type: (RoutingGrid, float, int, int) -> None
         super(SerdesRXBaseInfo, self).__init__(grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
 
     def get_gm_info(self, fg_params, flip_sd=False):

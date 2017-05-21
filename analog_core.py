@@ -38,7 +38,7 @@ from bag.util.search import BinaryIterator
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.routing import TrackID, WireArray, RoutingGrid
 from bag.layout.util import BBox
-from bag.layout.objects import Instance, Boundary
+from bag.layout.objects import Instance
 from future.utils import with_metaclass
 
 from .analog_mos.core import MOSTech
@@ -1347,8 +1347,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # set array box/size/draw PR boundary
         self.set_size_from_array_box(hm_layer)
-        pr_boundary = Boundary(self.grid.resolution, 'PR', self.bound_box.get_points(unit_mode=True), unit_mode=True)
-        self.add_boundary(pr_boundary)
+        self.add_cell_boundary(self.bound_box)
 
     def draw_base(self,  # type: AnalogBase
                   lch,  # type: float
@@ -1986,9 +1985,8 @@ class SubstrateContact(TemplateBase):
         # find substrate height and set size
         hsub = sub_master.prim_bound_box.height_unit
         self.size = parent_grid.get_size_tuple(top_layer, wtot, hsub, round_up=True, unit_mode=True)
-        # add PR boundary
-        pr_boundary = Boundary(res, 'PR', self.bound_box.get_points(unit_mode=True), unit_mode=True)
-        self.add_boundary(pr_boundary)
+        # add cell boundary
+        self.add_cell_boundary(self.bound_box)
         # find substrate Y offset to center it in the middle.
         sub_ny = hsub // hsub_pitch
         tot_ny = self.bound_box.height_unit // hsub_pitch
