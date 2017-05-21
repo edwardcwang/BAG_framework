@@ -78,6 +78,22 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def add_cell_boundary(cls, template, box):
+        """Adds a cell boundary object to the given template.
+        
+        This is usually the PR boundary.
+        
+        Parameters
+        ----------
+        template : TemplateBase
+            the template to draw the cell boundary in.
+        box : BBox
+            the cell boundary bounding box.
+        """
+        pass
+
+    @classmethod
+    @abc.abstractmethod
     def get_via_drc_info(cls, vname, vtype, mtype, mw_unit, is_bot):
         """Return data structures used to identify VIA DRC rules.
 

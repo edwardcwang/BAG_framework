@@ -1077,6 +1077,19 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self._layout.add_blockage(blockage)
         return blockage
 
+    def add_cell_boundary(self, box):
+        # type: (BBox) -> None
+        """Adds a cell boundary object to the this template.
+
+        This is usually the PR boundary.
+
+        Parameters
+        ----------
+        box : BBox
+            the cell boundary bounding box.
+        """
+        self._grid.tech_info.add_cell_boundary(self, box)
+
     def add_boundary(self, boundary):
         # type: (Boundary) -> Boundary
         """Add a new boundary.
