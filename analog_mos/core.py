@@ -330,6 +330,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
     @classmethod
     @abc.abstractmethod
     def get_gr_sep_info(cls, layout_info):
+        # type: (Dict[str, Any]) -> Dict[str, Any]
         """Returns the guard ring separator layout information dictionary.
 
         Parameters
