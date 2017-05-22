@@ -74,6 +74,21 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_dum_conn_pitch(cls):
+        # type: () -> int
+        """Returns the minimum track pitch of dummy connections in number of tracks.
+
+        Some technology can only draw dummy connections on every other track.  In that case,
+        this method should return 2.
+
+        Returns
+        -------
+        dum_conn_pitch : pitch between adjacent dummy connection.
+        """
+        return 1
+
+    @classmethod
+    @abc.abstractmethod
     def get_dum_conn_layer(cls):
         # type: () -> int
         """Returns the dummy connection layer ID.  Must be vertical.

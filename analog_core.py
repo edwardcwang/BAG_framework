@@ -519,6 +519,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._sd_yc_list = None
         self._ds_dummy_list = None
         self._layout_info = None
+        self._dum_conn_pitch = self._tech_cls.get_dum_conn_pitch()
+        if self._dum_conn_pitch != 1 and self._dum_conn_pitch != 2:
+            raise ValueError('Current only support dum_conn_pitch = 1 or 2, but it is %d' % self._dum_conn_pitch)
 
         # transistor usage/automatic dummy parameters
         self._n_intvs = None  # type: List[IntervalSet]
@@ -814,7 +817,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 if tr1 < tr0:
                     raise ValueError('Cannot draw dummy connections in gate interval [%d, %d)' % (col0, col1))
 
-                for htr_id in range(int(2 * tr0 + 1), int(2 * tr1 + 1) + 1, 2):
+                htr_id_list = list(range(int(2 * tr0 + 1), int(2 * tr1 + 1) + 1, 2))
+                if self._dum_conn_pitch == 2:
+                    if len(htr_id_list) > 1:
+                        if len(htr_id_list) % 2 == 1:
+                            htr_id_list = htr_id_list[1::2]
+                        elif connl:
+                            htr_id_list = htr_id_list[0::2]
+                        else:
+                            htr_id_list = htr_id_list[1::2]
+
+                for htr_id in htr_id_list:
                     dum_tr_list.append((htr_id - 1) / 2 - tr_offset)
                     sub_values.append(sub_val)
 
