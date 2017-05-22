@@ -1280,7 +1280,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                           nx=1,  # type: int
                           ny=1,  # type: int
                           spx=0.0,  # type: float
-                          spy=0.0  # type: float
+                          spy=0.0,  # type: float
+                          unit_mode=False,  # type: bool
                           ):
         # type: (...) -> None
         """Adds a via by specifying all parameters.
@@ -1317,7 +1318,25 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             column pitch.
         spy : float
             row pitch.
+        unit_mode : bool
+            True if all given dimensions are in resolution units.
         """
+        if unit_mode:
+            res = self.grid.resolution
+            loc = (loc[0] * res, loc[1] * res)
+            sp_rows *= res
+            sp_cols *= res
+            if enc1 is not None:
+                enc1 = [v * res for v in enc1]
+            if enc2 is not None:
+                enc2 = [v * res for v in enc2]
+            if cut_width is not None:
+                cut_width *= res
+            if cut_height is not None:
+                cut_height *= res
+            spx *= res
+            spy *= res
+
         self._layout.add_via_primitive(via_type, loc, num_rows=num_rows, num_cols=num_cols,
                                        sp_rows=sp_rows, sp_cols=sp_cols,
                                        enc1=enc1, enc2=enc2, orient=orient,
