@@ -307,7 +307,7 @@ class IntervalSet(object):
         intvs = []
         while idx1 < len1 and idx2 < len2:
             intv1 = self._start_list[idx1], self._end_list[idx1]
-            intv2 = other._start_list[idx1], other._end_list[idx2]
+            intv2 = other._start_list[idx2], other._end_list[idx2]
             test = max(intv1[0], intv2[0]), min(intv1[1], intv2[1])
             if test[1] > test[0]:
                 intvs.append(test)
