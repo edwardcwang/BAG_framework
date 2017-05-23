@@ -536,7 +536,7 @@ class Instance(Arrayable):
                             spx=self._spx_unit, spy=self._spy_unit, unit_mode=True)
         return box_arr.get_overall_bbox().transform(self.location_unit, self.orientation, unit_mode=True)
 
-    def move_by(self, dx=0.0, dy=0.0, unit_mode=False):
+    def move_by(self, dx=0, dy=0, unit_mode=False):
         # type: (Union[float, int], Union[float, int], bool) -> None
         """Move this instance by the given amount.
 
