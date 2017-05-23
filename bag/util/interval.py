@@ -31,7 +31,7 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 import bisect
-from typing import List, Optional, Tuple, Any, Generator
+from typing import List, Optional, Tuple, Any, Iterable
 
 
 class IntervalSet(object):
@@ -121,7 +121,7 @@ class IntervalSet(object):
             self._val_list[idx] = value
 
     def __iter__(self):
-        # type: () -> Generator[Tuple[int, int]]
+        # type: () -> Iterable[Tuple[int, int]]
         """Iterates over intervals in this IntervalSet in increasing order.
 
         Yields
@@ -285,6 +285,42 @@ class IntervalSet(object):
             return True
         return False
 
+    def get_intersection(self, other):
+        # type: (IntervalSet) -> IntervalSet
+        """Returns the intersection of two IntervalSets.
+
+        the new IntervalSet will have all values set to None.
+
+        Parameters
+        ----------
+        other : IntervalSet
+            the other IntervalSet.
+
+        Returns
+        -------
+        intersection : IntervalSet
+            a new IntervalSet containing all intervals present in both sets.
+        """
+        idx1 = idx2 = 0
+        len1 = len(self._start_list)
+        len2 = len(other._start_list)
+        intvs = []
+        while idx1 < len1 and idx2 < len2:
+            intv1 = self._start_list[idx1], self._end_list[idx1]
+            intv2 = other._start_list[idx1], other._end_list[idx2]
+            test = max(intv1[0], intv2[0]), min(intv1[1], intv2[1])
+            if test[1] > test[0]:
+                intvs.append(test)
+            if intv1[1] < intv2[1]:
+                idx1 += 1
+            elif intv2[1] < intv1[1]:
+                idx2 += 1
+            else:
+                idx1 += 1
+                idx2 += 1
+
+        return IntervalSet(intv_list=intvs)
+
     def get_complement(self, total_intv):
         # type: (Tuple[int, int]) -> IntervalSet
         """Returns a new IntervalSet that's the complement of this one.
@@ -418,7 +454,7 @@ class IntervalSet(object):
         return insert_intv
 
     def items(self):
-        # type: () -> Generator[Tuple[Tuple[int, int], Any]]
+        # type: () -> Iterable[Tuple[Tuple[int, int], Any]]
         """Iterates over intervals and values in this IntervalSet
 
         The intervals are returned in increasing order.
@@ -433,7 +469,7 @@ class IntervalSet(object):
         return zip(self.__iter__(), self._val_list)
 
     def intervals(self):
-        # type: () -> Generator[Tuple[int, int]]
+        # type: () -> Iterable[Tuple[int, int]]
         """Iterates over intervals in this IntervalSet
 
         The intervals are returned in increasing order.
@@ -446,7 +482,7 @@ class IntervalSet(object):
         return self.__iter__()
 
     def values(self):
-        # type: () -> Generator[Any]
+        # type: () -> Iterable[Any]
         """Iterates over values in this IntervalSet
 
         The values correspond to intervals in increasing order.
@@ -459,7 +495,7 @@ class IntervalSet(object):
         return self._val_list.__iter__()
 
     def overlap_items(self, intv):
-        # type: (Tuple[int, int]) -> Generator[Tuple[Tuple[int, int], Any]]
+        # type: (Tuple[int, int]) -> Iterable[Tuple[Tuple[int, int], Any]]
         """Iterates over intervals and values overlapping the given interval.
 
         Parameters
@@ -482,7 +518,7 @@ class IntervalSet(object):
             yield (self._start_list[idx], self._end_list[idx]), self._val_list[idx]
 
     def overlap_intervals(self, intv):
-        # type: () -> Generator[Tuple[int, int]]
+        # type: () -> Iterable[Tuple[int, int]]
         """Iterates over intervals overlapping the given interval.
 
         Parameters

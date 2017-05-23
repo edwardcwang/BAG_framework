@@ -1410,23 +1410,31 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         else:
             pass
 
+        res = self.grid.resolution
+        if not unit_mode:
+            lower = int(round(lower / res))
+            upper = int(round(upper / res))
+            fill_margin = int(round(fill_margin / res))
+
         new_warr_list = []
         for warr in warr_list:
+            wlower = int(round(warr.lower / res))
+            wupper = int(round(warr.upper / res))
             if lower is None:
-                cur_lower = warr.lower
+                cur_lower = wlower
             else:
-                cur_lower = min(lower, warr.lower)
+                cur_lower = min(lower, wlower)
             if upper is None:
-                cur_upper = warr.upper
+                cur_upper = wupper
             else:
-                cur_upper = max(upper, warr.upper)
+                cur_upper = max(upper, wupper)
 
-            new_warr = WireArray(warr.track_id, cur_lower, cur_upper)
+            new_warr = WireArray(warr.track_id, cur_lower * res, cur_upper * res)
             for layer_name, bbox_arr in new_warr.wire_arr_iter(self.grid):
                 self.add_rect(layer_name, bbox_arr)
 
             self._used_tracks.add_wire_arrays(new_warr, fill_margin=fill_margin, fill_type=fill_type,
-                                              unit_mode=unit_mode)
+                                              unit_mode=True)
             new_warr_list.append(new_warr)
 
         return new_warr_list
