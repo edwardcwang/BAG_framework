@@ -1082,8 +1082,15 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             # step 2: find how many tracks current block uses
             cur_orient, cur_ng, cur_nds = track_spec_list[idx]
             if cur_ng < 0:
-                # substrate.  A substrate block only use tracks within its primitive bounding box.
-                tr_tmp = self.grid.find_next_track(hm_layer, y_top_cur, half_track=True, mode=1, unit_mode=True)
+                # substrate.  A substrate block only use tracks within its array bounding box.
+                if cur_orient == 'R0':
+                    yarr_bot = y_cur + cur_master.array_box.bottom_unit
+                    yarr_top = y_cur + cur_master.array_box.top_unit
+                else:
+                    yarr_bot = y_cur
+                    yarr_top = y_cur + cur_master.array_box.height_unit
+                tr_next = self.grid.find_next_track(hm_layer, yarr_bot, half_track=True, mode=1, unit_mode=True)
+                tr_tmp = self.grid.find_next_track(hm_layer, yarr_top, half_track=True, mode=1, unit_mode=True)
                 dtr_intv.append((tr_next, tr_tmp))
                 gtr_intv.append((tr_tmp, tr_tmp))
             else:

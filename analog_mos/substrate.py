@@ -196,7 +196,7 @@ class AnalogSubstrate(TemplateBase):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg, end_mode, is_passive)
+        info = self._tech_cls.get_substrate_info(self.grid, lch_unit, w, sub_type, threshold, fg, end_mode, is_passive)
         self._layout_info = info['layout_info']
         self._sd_yc = info['sd_yc']
         self._ext_top_info = info['ext_top_info']

@@ -272,12 +272,14 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_substrate_info(cls, lch_unit, w, sub_type, threshold, fg, end_mode, is_passive):
-        # type: (int, int, str, str, int, int, bool) -> Dict[str, Any]
+    def get_substrate_info(cls, grid, lch_unit, w, sub_type, threshold, fg, end_mode, is_passive):
+        # type: (RoutingGrid, int, int, str, str, int, int, bool) -> Dict[str, Any]
         """Returns the substrate layout information dictionary.
         
         Parameters
         ----------
+        grid : RoutingGrid
+            the RoutingGrid object.
         lch_unit : int
             the channel length in resolution units.
         w : int
