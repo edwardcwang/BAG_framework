@@ -48,213 +48,6 @@ from .analog_mos.edge import AnalogEdge
 from .analog_mos.conn import AnalogMOSConn, AnalogMOSDecap, AnalogMOSDummy
 
 
-def _flip_ud(orient):
-    """Returns the new orientation after flipping the given orientation in up-down direction."""
-    if orient == 'R0':
-        return 'MX'
-    elif orient == 'MX':
-        return 'R0'
-    elif orient == 'MY':
-        return 'R180'
-    elif orient == 'R180':
-        return 'MY'
-    else:
-        raise ValueError('Unknown orientation: %s' % orient)
-
-
-def _subtract(intv_list1, intv_list2):
-    """Substrate intv_list2 from intv_list1.
-
-    intv_list2 must be a subset of intv_list1.  Used by dummy connection calculation.
-
-    Parameters
-    ----------
-    intv_list1 : list[(int, int)] or None
-        first list of intervals.
-    intv_list2 : list[(int, int)] or None
-        second list of intervals.
-
-    Returns
-    -------
-    result : list[(int, int)]
-        the result of substracting the intervals in intv_list2 from intv_list1.
-    """
-    if not intv_list1:
-        if intv_list2:
-            raise ValueError('cannot substract non-empty list from empty list')
-        return []
-    idx1 = idx2 = 0
-    result = []
-    intv1 = intv_list1[idx1]
-    while idx1 < len(intv_list1):
-        if idx2 >= len(intv_list2):
-            result.append(intv1)
-            idx1 += 1
-            if idx1 < len(intv_list1):
-                intv1 = intv_list1[idx1]
-        else:
-            intv2 = intv_list2[idx2]
-            if intv2[1] < intv1[0]:
-                # no overlap, retire intv2
-                idx2 += 1
-            elif intv1[1] < intv2[0]:
-                # no overlap, retire intv1
-                if intv1[1] - intv1[0] > 0:
-                    result.append(intv1)
-                idx1 += 1
-                if idx1 < len(intv_list1):
-                    intv1 = intv_list1[idx1]
-            else:
-                # overlap, substract and update intv1
-                test = intv1[0], intv2[0]
-                if test[1] - test[0] > 0:
-                    result.append(test)
-                intv1 = (intv2[1], intv1[1])
-                idx2 += 1
-    return result
-
-
-def _intersection(intv_list1, intv_list2):
-    """Returns the intersection of two lists of intervals.
-
-    If one of the lists is None, the other list is returned.
-
-    Parameters
-    ----------
-    intv_list1 : list[(int, int)] or None
-        first list of intervals.
-    intv_list2 : list[(int, int)] or None
-        second list of intervals.
-
-    Returns
-    -------
-    result : list[(int, int)]
-        the intersection of the two lists of intervals.
-    """
-    if intv_list1 is None:
-        return list(intv_list2)
-    if intv_list2 is None:
-        return list(intv_list1)
-
-    idx1 = idx2 = 0
-    result = []
-    while idx1 < len(intv_list1) and idx2 < len(intv_list2):
-        intv1 = intv_list1[idx1]
-        intv2 = intv_list2[idx2]
-        test = (max(intv1[0], intv2[0]), min(intv1[1], intv2[1]))
-        if test[1] - test[0] > 0:
-            result.append(test)
-        if intv1[1] < intv2[1]:
-            idx1 += 1
-        elif intv2[1] < intv1[1]:
-            idx2 += 1
-        else:
-            idx1 += 1
-            idx2 += 1
-
-    return result
-
-
-def _get_dummy_connections(intv_set_list):
-    """For each row of transistors, figure out all possible substrate connection locations.
-
-    Parameters
-    ----------
-    intv_set_list : list[bag.util.interval.IntervalSet]
-        a list of dummy finger intervals.  index 0 is the row closest to substrate.
-
-    Returns
-    -------
-    conn_list : list[list[(int, int)]]
-        a list of list of intervals.  conn_list[x] contains the finger intervals where
-        you can connect exactly x+1 dummies vertically to substrate.
-    """
-    # populate conn_list
-    # conn_list[x] contains intervals where you can connect x+1 or more dummies vertically.
-    conn_list = []
-    prev_intv_list = None
-    for intv_set in intv_set_list:
-        cur_intv_list = list(intv_set.intervals())
-        conn = _intersection(cur_intv_list, prev_intv_list)
-        conn_list.append(conn)
-        prev_intv_list = conn
-
-    # subtract adjacent conn_list elements
-    # make it so conn_list[x] contains intervals where you can connect exactly x+1 dummies vertically
-    for idx in range(len(conn_list) - 1):
-        cur_conn, next_conn = conn_list[idx], conn_list[idx + 1]
-        conn_list[idx] = _subtract(cur_conn, next_conn)
-
-    return conn_list
-
-
-def _select_dummy_connections(conn_list, unconnected, all_conn_list):
-    """Helper method for selecting dummy connections locations.
-
-    First, look at the connections that connect the most rows of dummy.  Try to use
-    as many of these connections as possible while making sure they at least connect one
-    unconnected dummy.  When done, repeat on connections that connect fewer rows.
-
-    Parameters
-    ----------
-    conn_list : list[list[(int, int)]]
-        a list of list of intervals.  conn_list[x] contains the finger intervals where
-        you can connect exactly x+1 dummies vertically to substrate.
-    unconnected : list[bag.util.interval.IntervalSet]
-        a list of unconnected dummy finger intervals.  index 0 is the row closest to substrate.
-    all_conn_list : list[(int, int)]
-        a list of dummy finger intervals where you can connect from bottom substrate to top substrate.
-
-    Returns
-    -------
-    select_list : list[list[(int, int)]]
-        a list of list of intervals.  select_list[x] contains the finger intervals to
-        draw dummy connections for x+1 rows from substrate.
-    gate_intv_set_list : list[bag.util.interval.IntervalSet]
-        a list of IntervalSets.  gate_intv_set_list[x] contains the finger intervals to
-        draw dummy gate connections.
-    """
-    if all_conn_list:
-        select_list = [all_conn_list]
-        gate_intv_set_list = [IntervalSet(intv_list=all_conn_list)]
-    else:
-        select_list = []
-        gate_intv_set_list = []
-    for idx in range(len(conn_list) - 1, -1, -1):
-        conn_intvs = conn_list[idx]
-        cur_select_list = []
-        # select connections
-        for intv in conn_intvs:
-            select = False
-            for j in range(idx + 1):
-                dummy_intv_set = unconnected[j]
-                if dummy_intv_set.has_overlap(intv):
-                    select = True
-                    break
-            if select:
-                cur_select_list.append(intv)
-        # remove all dummies connected with selected connections
-        for intv in cur_select_list:
-            for j in range(idx + 1):
-                unconnected[j].remove_all_overlaps(intv)
-
-        # include in select_list
-        select_list.insert(0, cur_select_list)
-        # construct gate interval list.
-        if not gate_intv_set_list:
-            # all_conn_list must be empty.  Don't need to consider it.
-            gate_intv_set_list.append(IntervalSet(intv_list=cur_select_list))
-        else:
-            gate_intv_set = gate_intv_set_list[0].copy()
-            for intv in cur_select_list:
-                if not gate_intv_set.add(intv):
-                    # this should never happen.
-                    raise Exception('Critical Error: report to developers.')
-            gate_intv_set_list.insert(0, gate_intv_set)
-
-    return select_list, gate_intv_set_list
-
-
 class AnalogBaseInfo(object):
     """A class that calculates informations to assist in AnalogBase layout calculations.
 
@@ -743,7 +536,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         self.connect_wires(warr_list, lower=wire_yb, upper=wire_yt)
 
-    def _draw_dummy_sep_conn(self, mos_type, row_idx, start, stop, gate_intv_list, sub_val_list):
+    def _draw_dummy_sep_conn(self, mos_type, row_idx, start, stop, dum_htr_list):
         """Draw dummy/separator connection.
 
         Parameters
@@ -756,16 +549,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             starting column index, inclusive.  0 is the left-most transistor.
         stop : int
             stopping column index, exclusive.
-        gate_intv_list : list[(int, int)]
-            sorted list of gate intervals to connect gate to M2.
-            for example, if gate_intv_list = [(2, 5)], then we will draw M2 connections
-            between finger number 2 (inclusive) to finger number 5 (exclusive).
-        sub_val_list : List[int]
-            list of substrate code that should be connected to each gate interval.
+        dum_htr_list : List[int]
+            list of dummy half-track indices to export.
+
         Returns
         -------
-        wires : list[:class:`~bag.layout.routing.WireArray`]
-            the dummy/separator gate bus wires.
+        use_htr : List[int]
+            Used dummy half tracks.
+        yb : int
+            dummy port bottom Y coordinate, in resolution units.
+        yt : int
+            dummy port top Y coordinate, in resolution units.
         """
         # get orientation, width, and source/drain center
         ridx = self._ridx_lookup[mos_type][row_idx]
@@ -775,61 +569,32 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         xc += start * self.sd_pitch_unit
         fg = stop - start
 
-        # get edge_mode parameter
-        connl, connr = False, False
-        if start == 0:
-            connl = True
-            edge_mode = 1
-            if stop == self._fg_tot:
-                edge_mode = 3
-                connr = True
-        elif stop == self._fg_tot:
-            edge_mode = 2
-            connr = True
-        else:
-            edge_mode = 0
-            # check number of fingers meet minimum finger spec
-            if fg < self.min_fg_sep:
-                raise ValueError('Cannot draw separator with num fingers = %d < %d' % (fg, self.min_fg_sep))
-
-        # convert gate intervals to dummy track numbers
-        dum_layer = self.dum_conn_layer
-        tr_offset = self.grid.coord_to_track(dum_layer, xc, unit_mode=True) + 0.5
-        dum_tr_list = []
-        sub_values = []
         layout_info = self._layout_info
-        for (col0, col1), sub_val in zip(gate_intv_list, sub_val_list):
-            # due to the way we keep track of decaps, gate intervals may be outside of dummy boundary
-            # here we throw away those cases
-            col0 = max(col0, start)
-            col1 = min(col1, stop)
-            if col1 > col0:
-                xl = layout_info.col_to_coord(col0, unit_mode=True)
-                xr = layout_info.col_to_coord(col1, unit_mode=True)
-                tr0 = self.grid.coord_to_track(dum_layer, xl, unit_mode=True)
-                tr1 = self.grid.coord_to_track(dum_layer, xr, unit_mode=True)
-                if not connl:
-                    tr0 += 1
-                if not connr:
-                    tr1 -= 1
+        dum_layer = self.dum_conn_layer
+        xl = layout_info.col_to_coord(start, unit_mode=True)
+        xr = layout_info.col_to_coord(stop, unit_mode=True)
+        htr0 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xl, unit_mode=True))
+        htr1 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xr, unit_mode=True))
 
-                # check for each interval, we can at least draw one track
-                if tr1 < tr0:
-                    raise ValueError('Cannot draw dummy connections in gate interval [%d, %d)' % (col0, col1))
+        edge_mode = 0
+        if start > 0:
+            htr0 += 1
+        else:
+            edge_mode += 1
+        if stop == self._fg_tot:
+            htr1 += 1
+            edge_mode += 2
 
-                htr_id_list = list(range(int(2 * tr0 + 1), int(2 * tr1 + 1) + 1, 2))
-                if self._dum_conn_pitch == 2:
-                    if len(htr_id_list) > 1:
-                        if len(htr_id_list) % 2 == 1:
-                            htr_id_list = htr_id_list[1::2]
-                        elif connl:
-                            htr_id_list = htr_id_list[0::2]
-                        else:
-                            htr_id_list = htr_id_list[1::2]
-
-                for htr_id in htr_id_list:
-                    dum_tr_list.append((htr_id - 1) / 2 - tr_offset)
-                    sub_values.append(sub_val)
+        # get track indices to export
+        used_htr = []
+        dum_tr_list = []
+        tr_offset = self.grid.coord_to_track(dum_layer, xc, unit_mode=True) + 0.5
+        for v in dum_htr_list:
+            if v >= htr1:
+                break
+            elif v >= htr0:
+                used_htr.append(v)
+                dum_tr_list.append((v - 1) / 2 - tr_offset)
 
         # setup parameter list
         loc = xc, yc
@@ -844,7 +609,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         conn_master = self.new_template(params=params, temp_cls=AnalogMOSDummy)
         conn_inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
 
-        return conn_inst.get_port().get_pins(self.dum_conn_layer), sub_values
+        warr = conn_inst.get_port().get_pins(dum_layer)[0]
+        res = self.grid.resolution
+        yb = int(round(warr.lower / res))
+        yt = int(round(warr.upper / res))
+        return used_htr, yb, yt
 
     def mos_conn_track_used(self, tidx, margin=0):
         col_start, col_stop = self.layout_info.track_to_col_intv(self.mos_conn_layer, tidx)
@@ -1709,125 +1478,289 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                            export_both  # type: bool
                            ):
         # type: (...) -> None
+        """Helper function for figuring out how to connect all dummies to supplies.
+
+        Parameters
+        ----------
+        mos_type: str
+            the transistor type.  Either 'pch' or 'nch'.
+        intv_set_list : List[IntervalSet]
+            list of used transistor finger intervals on each transistor row.  Index 0 is bottom row.
+        cap_intv_set_list : List[IntervalSet]
+            list of used decap transistor finger intervals on each transistor row.  Index 0 is bottom row.
+        cap_wires_dict : Dict[int, List[WireArray]]
+            dictionary from substrate ID to decap wires that need to connect to that substrate.
+            bottom substrate has ID of 1, and top substrate has ID of -1.
+        bot_sub_inst : Optional[Instance]
+            the bottom substrate instance.
+        top_sub_inst : Optional[Instance]
+            the top substrate instance.
+        bot_tracks : List[int]
+            list of port track indices that needs to be exported on bottom substrate.
+        top_tracks : List[int]
+            list of port track indices that needs to be exported on top substrate.
+        export_both : bool
+            True if both bottom and top substrate should draw port on mos_conn_layer.
+        """
         num_rows = len(intv_set_list)
         bot_conn = top_conn = []
 
+        # step 1: find dummy connection intervals to bottom/top substrates
         num_sub = 0
         if bot_sub_inst is not None:
             num_sub += 1
-            bot_conn = _get_dummy_connections(intv_set_list)
+            bot_conn = self._get_dummy_connections(intv_set_list)
         if top_sub_inst is not None:
             num_sub += 1
-            top_conn = _get_dummy_connections(list(reversed(intv_set_list)))
+            top_conn = self._get_dummy_connections(intv_set_list[::-1])
 
-        # make list of unconnected interval sets.
-        unconn_intv_set_list = []
-        dum_avail_intv_set_list = []
+        # steo 2: make list of dummy transistor intervals and unused dummy track intervals
+        unconnected_intv_list = []
+        dum_tran_intv_list = []
         # subtract cap interval sets.
         for intv_set, cap_intv_set in zip(intv_set_list, cap_intv_set_list):
-            unconn_intv_set_list.append(intv_set.copy())
+            unconnected_intv_list.append(intv_set.copy())
             temp_intv = intv_set.copy()
             for intv in cap_intv_set:
                 temp_intv.subtract(intv)
-            dum_avail_intv_set_list.append(temp_intv)
+            dum_tran_intv_list.append(temp_intv)
 
+        # step 3: determine if there are tracks that can connect both substrates and all dummies
         if num_sub == 2:
             # we have both top and bottom substrate, so we can connect all dummies together
-            all_conn_list = bot_conn[-1]
+            all_conn_set = bot_conn[-1]
             del bot_conn[-1]
             del top_conn[-1]
 
-            # remove dummies connected by connections in all_conn_list
-            for all_conn_intv in all_conn_list:
-                for intv_set in unconn_intv_set_list:  # type: IntervalSet
+            # remove all intervals connected by all_conn_list.
+            for all_conn_intv in all_conn_set:
+                for intv_set in unconnected_intv_list:
                     intv_set.remove_all_overlaps(all_conn_intv)
         else:
-            all_conn_list = []
+            all_conn_set = None
 
+        # step 4: select dummy tracks
         bot_dum_only = top_dum_only = False
         if mos_type == 'nch':
             # for NMOS, prioritize connection to bottom substrate.
             port_name = 'VSS'
-            bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list, all_conn_list)
-            top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list[::-1], all_conn_list)
+            bot_dhtr = self._select_dummy_connections(bot_conn, unconnected_intv_list, all_conn_set)
+            top_dhtr = self._select_dummy_connections(top_conn, unconnected_intv_list[::-1], all_conn_set)
             top_dum_only = not export_both
         else:
             # for PMOS, prioritize connection to top substrate.
             port_name = 'VDD'
-            top_select, top_gintv = _select_dummy_connections(top_conn, unconn_intv_set_list[::-1], all_conn_list)
-            bot_select, bot_gintv = _select_dummy_connections(bot_conn, unconn_intv_set_list, all_conn_list)
+            top_dhtr = self._select_dummy_connections(top_conn, unconnected_intv_list[::-1], all_conn_set)
+            bot_dhtr = self._select_dummy_connections(bot_conn, unconnected_intv_list, all_conn_set)
             bot_dum_only = not export_both
 
-        # make list of dummy gate connection parameters
-        dummy_gate_conns = {}
-        all_conn_set = IntervalSet(intv_list=all_conn_list)
-        for gintvs, sign in [(bot_gintv, 1), (top_gintv, -1)]:
-            if gintvs:
-                for distance in range(num_rows):
-                    ridx = distance if sign > 0 else num_rows - 1 - distance
-                    if distance < len(gintvs):
-                        gate_intv_set = gintvs[distance]
-                        for dummy_intv in dum_avail_intv_set_list[ridx]:
-                            key = ridx, dummy_intv[0], dummy_intv[1]
-                            overlaps = list(gate_intv_set.overlap_intervals(dummy_intv))
-                            val_list = [0 if ovl_intv in all_conn_set else sign for ovl_intv in overlaps]
-                            if key not in dummy_gate_conns:
-                                dummy_gate_conns[key] = IntervalSet(intv_list=overlaps, val_list=val_list)
-                            else:
-                                dummy_gate_set = dummy_gate_conns[key]  # type: IntervalSet
-                                for fg_intv, ovl_val in zip(overlaps, val_list):
-                                    if not dummy_gate_set.has_overlap(fg_intv):
-                                        dummy_gate_set.add(fg_intv, val=ovl_val)
-                                    else:
-                                        # check that we don't have conflicting gate connections.
-                                        for existing_intv, existing_val in dummy_gate_set.overlap_items(fg_intv):
-                                            if existing_intv != fg_intv or existing_val != ovl_val:
-                                                # this should never happen.
-                                                raise Exception('Critical Error: report to developers.')
-
-        wire_groups = {-1: [], 0: [], 1: []}
-        for key, dummy_gate_set in dummy_gate_conns.items():
-            ridx, start, stop = key
-            if dummy_gate_set:
-                gate_intv_list = list(dummy_gate_set.intervals())
-                sub_val_list = list(dummy_gate_set.values())
-                gate_buses, sub_values = self._draw_dummy_sep_conn(mos_type, ridx, start, stop, gate_intv_list,
-                                                                   sub_val_list)
-
-                for gate_warr, sub_val in zip(gate_buses, sub_values):
-                    wire_groups[sub_val].append(gate_warr)
-            elif not self.floating_dummy:
-                raise Exception('Dummy (%d, %d) at row %d unconnected.' % (start, stop, ridx))
-
-        for sign in (-1, 1):
-            wire_groups[sign].extend(cap_wires_dict[sign])
-
-        grid = self.grid
-        sub_yb = sub_yt = None
+        # step 5: create dictionary from dummy half-track index to Y coordinates
+        res = self.grid.resolution
+        dum_y_table = {}
         if bot_sub_inst is not None:
-            sub_yb = bot_sub_inst.get_port(port_name).get_bounding_box(grid, self.dum_conn_layer).bottom
-        if top_sub_inst is not None:
-            sub_yt = top_sub_inst.get_port(port_name).get_bounding_box(grid, self.dum_conn_layer).top
+            sub_yb = bot_sub_inst.get_port(port_name).get_bounding_box(self.grid, self.dum_conn_layer).bottom_unit
+            for htr in bot_dhtr[0]:
+                dum_y_table[htr] = [sub_yb, sub_yb]
+            for warr in cap_wires_dict[1]:
+                lower, upper = int(round(warr.lower / res)), int(round(warr.upper / res))
+                for tid in warr.track_id:
+                    htr = int(2 * tid + 1)
+                    if htr in dum_y_table:
+                        dum_y = dum_y_table[htr]
+                        dum_y[0] = min(dum_y[0], lower)
+                        dum_y[1] = max(dum_y[1], upper)
+                    else:
+                        dum_y_table[htr] = [sub_yb, upper]
 
-        # connect dummy ports to substrates and record dummy port track numbers.
-        bot_dum_tracks = set()
-        top_dum_tracks = set()
-        for sub_idx, wire_bus_list in wire_groups.items():
-            sub_port_id_list = [tid for warr in wire_bus_list for tid in warr.track_id]
-            wire_yb = wire_yt = None
-            if sub_idx >= 0:
-                wire_yb = sub_yb
-                bot_dum_tracks.update(sub_port_id_list)
-            if sub_idx <= 0:
-                wire_yt = sub_yt
-                top_dum_tracks.update(sub_port_id_list)
-            self.connect_wires(wire_bus_list, lower=wire_yb, upper=wire_yt)
+        if top_sub_inst is not None:
+            sub_yt = top_sub_inst.get_port(port_name).get_bounding_box(self.grid, self.dum_conn_layer).top_unit
+            for htr in top_dhtr[0]:
+                if htr in dum_y_table:
+                    dum_y_table[htr][1] = sub_yt
+                else:
+                    dum_y_table[htr] = [sub_yt, sub_yt]
+            for warr in cap_wires_dict[-1]:
+                lower, upper = int(round(warr.lower / res)), int(round(warr.upper / res))
+                for tid in warr.track_id:
+                    htr = int(2 * tid + 1)
+                    if htr in dum_y_table:
+                        dum_y = dum_y_table[htr]
+                        dum_y[0] = min(dum_y[0], lower)
+                        dum_y[1] = max(dum_y[1], upper)
+                    else:
+                        dum_y_table[htr] = [lower, sub_yt]
+
+        # step 6: draw dummy connections
+        for ridx, dum_tran_intv in enumerate(dum_tran_intv_list):
+            bot_dist = ridx
+            top_dist = num_rows - 1 - ridx
+            dum_htr = []
+            if bot_dist < len(bot_dhtr):
+                dum_htr.extend(bot_dhtr[bot_dist])
+            if top_dist < len(top_dhtr):
+                dum_htr.extend(top_dhtr[top_dist])
+            dum_htr.sort()
+
+            for start, stop in dum_tran_intv:
+                used_tracks, yb, yt = self._draw_dummy_sep_conn(mos_type, ridx, start, stop, dum_htr)
+                for htr in used_tracks:
+                    dum_y = dum_y_table[htr]
+                    dum_y[0] = min(dum_y[0], yb)
+                    dum_y[1] = max(dum_y[1], yt)
+
+        # step 7: draw dummy tracks to substrates
+        dum_layer = self.dum_conn_layer
+        for htr, dum_y in dum_y_table.items():
+            self.add_wires(dum_layer, (htr - 1) / 2, dum_y[0], dum_y[1], unit_mode=True)
 
         # update substrate master to only export necessary wires
         if bot_sub_inst is not None:
+            bot_dum_tracks = [(htr - 1) / 2 for htr in bot_dhtr[0]]
             self._export_supplies(bot_dum_tracks, bot_tracks, bot_sub_inst, bot_dum_only)
         if top_sub_inst is not None:
+            top_dum_tracks = [(htr - 1) / 2 for htr in top_dhtr[0]]
             self._export_supplies(top_dum_tracks, top_tracks, top_sub_inst, top_dum_only)
+
+    def _select_dummy_connections(self,  # type: AnalogBase
+                                  conn_list,  # type: List[IntervalSet]
+                                  unconnected,  # type: List[IntervalSet]
+                                  all_conn_intv_set,  # type: Optional[IntervalSet]
+                                  ):
+        # type: (...) -> List[List[int]]
+        """Helper method for selecting dummy tracks to connect dummies.
+
+        First, look at the tracks that connect the most rows of dummy.  Try to use
+        as many of these tracks as possible while making sure they at least connect one
+        unconnected dummy.  When done, repeat on dummy tracks that connect fewer rows.
+
+        Parameters
+        ----------
+        conn_list : List[IntervalSet]
+            list of dummy finger intervals.  conn_list[x] contains dummy finger intervals that
+            connects exactly x+1 rows.
+        unconnected : List[IntervalSet]
+            list of unconnected dummy finger intervals on each row.
+        all_conn_intv_set : Optional[IntervalSet]
+            dummy finger intervals that connect all rows.
+
+        Returns
+        -------
+        dum_tracks_list : List[List[int]]
+            dum_tracks_list[x] contains dummy half-track indices to draw on row X.
+        """
+        # step 1: find dummy tracks that connect all rows and both substrates
+        if all_conn_intv_set is not None:
+            dum_tracks = []
+            for intv in all_conn_intv_set:
+                dum_tracks.extend(self._fg_intv_to_dum_tracks(intv))
+            dum_tracks_list = [dum_tracks]
+        else:
+            dum_tracks_list = [[]]
+
+        # step 2: find dummy tracks that connects fewer rows
+        for idx in range(len(conn_list) - 1, -1, -1):
+            conn_intvs = conn_list[idx]
+            cur_select_list = []
+            # select finger intervals
+            for intv in conn_intvs:
+                select = False
+                for j in range(idx + 1):
+                    dummy_intv_set = unconnected[j]
+                    if dummy_intv_set.has_overlap(intv):
+                        select = True
+                        break
+                if select:
+                    cur_select_list.append(intv)
+            # remove connected dummy intervals, and convert finger intervals to tracks
+            dum_tracks = []
+            for intv in cur_select_list:
+                for j in range(idx + 1):
+                    unconnected[j].remove_all_overlaps(intv)
+                dum_tracks.extend(self._fg_intv_to_dum_tracks(intv))
+
+            # merge with previously selected tracks
+            dum_tracks.extend(dum_tracks_list[-1])
+            dum_tracks.sort()
+            dum_tracks_list.append(dum_tracks)
+
+        # flip dum_tracks_list order
+        dum_tracks_list.reverse()
+        return dum_tracks_list
+
+    def _fg_intv_to_dum_tracks(self, intv):
+        # type: (Tuple[int, int]) -> List[int]
+        """Given a dummy finger interval, convert to dummy half-tracks.
+
+        Parameters
+        ----------
+        intv : Tuple[int, int]
+            the dummy finger interval.
+
+        Returns
+        -------
+        dum_tracks : List[int]
+            list of dummy half-track indices.
+        """
+        layout_info = self._layout_info
+        dum_layer = self.dum_conn_layer
+
+        col0, col1 = intv
+        xl = layout_info.col_to_coord(col0, unit_mode=True)
+        xr = layout_info.col_to_coord(col1, unit_mode=True)
+        htr0 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xl, unit_mode=True))
+        htr1 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xr, unit_mode=True))
+
+        start, stop = htr0 + 2, htr1
+        left_adj, right_adj = True, True
+        if col0 == 0:
+            start = htr0
+            left_adj = False
+        if col1 == self._fg_tot:
+            stop = htr1 + 2
+            right_adj = False
+
+        htr_pitch = self._dum_conn_pitch * 2
+
+        # see if we can leave some space between signal and dummy track
+        if left_adj and stop - start >= htr_pitch + 2:
+            start += 2
+        if right_adj and stop - start >= htr_pitch + 2:
+            stop -= 2
+
+        return list(range(start, stop, htr_pitch))
+
+    @classmethod
+    def _get_dummy_connections(cls, intv_set_list):
+        # type: (List[IntervalSet]) -> List[IntervalSet]
+        """Find all dummy tracks that connects one or more rows of dummies.
+
+        Parameters
+        ----------
+        intv_set_list : List[IntervalSet]
+            list of used transistor finger intervals on each transistor row.  Index 0 is bottom row.
+
+        Returns
+        -------
+        conn_list : List[IntervalSet]
+            list of dummy finger intervals.  conn_list[x] contains dummy finger intervals that
+            connects exactly x+1 rows of dummies.
+        """
+        # populate conn_list, such that conn_list[x] contains intervals where you can connect
+        # at least x+1 rows of dummies.
+        conn_list = []
+        for intv_set in intv_set_list:
+            if not conn_list:
+                conn_list.append(intv_set.copy())
+            else:
+                conn_list.append(intv_set.get_intersection(conn_list[-1]))
+
+        # subtract adjacent Intervalsets in conn_list
+        for idx in range(len(conn_list) - 1):
+            cur_intvs, next_intvs = conn_list[idx], conn_list[idx + 1]
+            for intv in next_intvs:
+                cur_intvs.subtract(intv)
+
+        return conn_list
 
     def _export_supplies(self, dum_tracks, port_tracks, sub_inst, dum_only):
         x0 = self._layout_info.sd_xc_unit
