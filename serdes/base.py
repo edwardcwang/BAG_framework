@@ -190,7 +190,7 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         fg_min = max(fg_min, fg_pmos_tot)
         gm_fg_params = fg_params.copy()
         gm_fg_params['min'] = fg_min
-        gm_info = self.get_gm_info(fg_params, flip_sd=flip_sd)
+        gm_info = self.get_gm_info(gm_fg_params, flip_sd=flip_sd)
         fg_gm_tot = gm_info['fg_tot']
         nduml_pmos = (fg_gm_tot - fg_pmos_tot) // 2
         ndumr_pmos = fg_gm_tot - fg_pmos_tot - nduml_pmos
@@ -966,7 +966,7 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
         # draw Gm.
         gm_params = fg_params.copy()
         gm_params['min'] = max(gm_params.get('min', fg_min), fg_min)
-        fg_amp_tot, port_dict = self.draw_gm(col_idx, fg_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
+        fg_amp_tot, port_dict = self.draw_gm(col_idx, gm_params, hm_width=hm_width, hm_cur_width=hm_cur_width,
                                              diff_space=diff_space, gate_locs=gate_locs, flip_sd=flip_sd,
                                              tail_decap=tail_decap)
 
