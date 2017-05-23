@@ -348,6 +348,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return self._layout_info
 
     @property
+    def num_fg_per_sd(self):
+        return self._layout_info.num_fg_per_sd
+
+    @property
     def min_fg_sep(self):
         """Returns the minimum number of separator fingers.
         """
@@ -1710,6 +1714,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         htr0 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xl, unit_mode=True))
         htr1 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xr, unit_mode=True))
 
+        htr_pitch = self._dum_conn_pitch * 2
         start, stop = htr0 + 2, htr1
         left_adj, right_adj = True, True
         if col0 == 0:
@@ -1719,12 +1724,13 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             stop = htr1 + 2
             right_adj = False
 
-        htr_pitch = self._dum_conn_pitch * 2
-
         # see if we can leave some space between signal and dummy track
-        if left_adj and stop - start >= htr_pitch + 2:
+        if left_adj and stop - start > 2:
             start += 2
-        if right_adj and stop - start >= htr_pitch + 2:
+            if not right_adj:
+                num_pitch = (stop - 2 - start) // htr_pitch
+                start = max(start, stop - 2 - num_pitch * htr_pitch)
+        if right_adj and stop - start > 2:
             stop -= 2
 
         return list(range(start, stop, htr_pitch))
