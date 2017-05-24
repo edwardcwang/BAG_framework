@@ -76,6 +76,7 @@ class AnalogBaseInfo(object):
         # initialize parameters
         res = grid.resolution
         lch_unit = int(round(lch / grid.layout_unit / res))
+        self.min_fg_decap = self._tech_cls.get_min_fg_decap(lch_unit)
         self._lch_unit = lch_unit
         self.num_fg_per_sd = self._tech_cls.get_num_fingers_per_sd(lch_unit)
         self._sd_pitch_unit = self._tech_cls.get_sd_pitch(lch_unit)
@@ -356,6 +357,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         """Returns the minimum number of separator fingers.
         """
         return self._layout_info.min_fg_sep
+
+    @property
+    def min_fg_decap(self):
+        """Returns the minimum number of decap fingers.
+        """
+        return self._layout_info.min_fg_decap
 
     @property
     def sd_pitch(self):

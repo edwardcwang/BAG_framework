@@ -115,6 +115,24 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_min_fg_decap(cls, lch_unit):
+        # type: (int) -> int
+        """Returns the minimum number of fingers for decap connections.
+        
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+        
+        Returns
+        -------
+        num_fg : int
+            minimum number of decap fingers.
+        """
+        return 2
+
+    @classmethod
+    @abc.abstractmethod
     def get_tech_constant(cls, name):
         # type: (str) -> Any
         """Returns the value of the given technology constant.

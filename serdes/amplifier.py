@@ -91,6 +91,8 @@ class DiffAmp(SerdesRXBase):
             hm_cur_width=-1,
             show_pins=True,
             guard_ring_nf=0,
+            tail_decap=False,
+            flip_sd=False,
         )
 
     @classmethod
@@ -120,6 +122,8 @@ class DiffAmp(SerdesRXBase):
             hm_cur_width='width of horizontal current track wires. If negative, defaults to hm_width.',
             show_pins='True to create pin labels.',
             guard_ring_nf='Width of the guard ring, in number of fingers.  0 to disable guard ring.',
+            tail_decap='True to draw tail decap transistors.',
+            flip_sd='True to flip source drain.',
         )
 
     def draw_layout(self):
@@ -142,13 +146,15 @@ class DiffAmp(SerdesRXBase):
                             hm_width,  # type: int
                             hm_cur_width,  # type: int
                             show_pins,  # type: bool
-                            guard_ring_nf  # type: int
+                            guard_ring_nf,  # type: int
+                            tail_decap,  # type: bool
+                            flip_sd,  # type: bool
                             ):
         # type: (...) -> None
 
         serdes_info = SerdesRXBaseInfo(self.grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
-        # calculate total number of fingers.
-        fg_tot = max(fg_dict.values()) * 2 + serdes_info.min_fg_sep + nduml + ndumr
+        diffamp_info = serdes_info.get_diffamp_info(fg_dict, flip_sd=flip_sd)
+        fg_tot = diffamp_info['fg_tot'] + nduml + ndumr
         self._num_fg = fg_tot
 
         if hm_cur_width < 0:
@@ -188,7 +194,8 @@ class DiffAmp(SerdesRXBase):
         gate_locs = {'inp': (hm_width - 1) / 2 + hm_width + diff_space,
                      'inn': (hm_width - 1) / 2}
         _, amp_ports = self.draw_diffamp(nduml, fg_dict, hm_width=hm_width, hm_cur_width=hm_cur_width,
-                                         diff_space=diff_space, gate_locs=gate_locs)
+                                         diff_space=diff_space, gate_locs=gate_locs, tail_decap=tail_decap,
+                                         flip_sd=flip_sd)
 
         vdd_warrs = None
         hide_pins = {'midp', 'midn', 'tail', 'foot'}

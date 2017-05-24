@@ -687,31 +687,30 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
                 lgate_ext_mode = rgate_ext_mode = 0
                 if tail_decap and name == 'tail':
                     fgr = col_offsets[name]
-
+                    min_fg_decap = self.min_fg_decap
                     # determine whether to draw left decap, and left tail transistor gate extension mode
                     fgl = fgr - fg_ref if fg_ref > 0 else fgr
                     if fgl < 0:
                         raise ValueError('Do not have room for reference current mirror.')
-                    if fgl > 0:
+                    if fgl >= min_fg_decap:
                         self.draw_mos_decap('nch', ridx, col_idx, fgl, 2)
-                        lgate_ext_mode = 3
+                        lgate_ext_mode += 1
                     elif fg_ref > 0:
-                        lgate_ext_mode = 3
-                    else:
-                        lgate_ext_mode = 2
+                        lgate_ext_mode += 1
 
                     # draw reference if needed
                     if fg_ref > 0:
                         mos_dict['ref'] = self.draw_mos_conn('nch', ridx, col_idx + fgl, fg_ref, 0, 0, diode_conn=True,
                                                              gate_ext_mode=3 if fgl > 0 else 2)
 
-                    self.draw_mos_decap('nch', ridx, col_start + fg, fg_sep, 3)
+                    if fg_sep >= min_fg_decap:
+                        self.draw_mos_decap('nch', ridx, col_start + fg, fg_sep, 3)
+                        lgate_ext_mode += 2
+                        rgate_ext_mode += 1
 
-                    if fgr > 0:
+                    if fgr >= min_fg_decap:
                         self.draw_mos_decap('nch', ridx, col_start + 2 * fg + fg_sep, fgr, 1)
-                        rgate_ext_mode = 3
-                    else:
-                        rgate_ext_mode = 1
+                        rgate_ext_mode += 2
 
                 mos_dict['%sp' % name] = self.draw_mos_conn('nch', ridx, col_start, fg, sdir, ddir,
                                                             is_diff=is_diff, gate_ext_mode=lgate_ext_mode)
