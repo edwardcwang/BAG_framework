@@ -1084,6 +1084,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # at this point we've found the optimal placement.  Place instances
         self.array_box = BBox.get_invalid_bbox()
+        top_bound_box = BBox.get_invalid_bbox()
         self._gtr_intv = gtr_intv
         self._dstr_intv = dtr_intv
         ext_list.append((0, None))
@@ -1135,6 +1136,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             edger_master = self.new_template(params=edger_params, temp_cls=AnalogEdge)
             edger = self.add_instance(edger_master, loc=edger_loc, orient=orient_r, unit_mode=True)
             self.array_box = self.array_box.merge(edgel.array_box).merge(edger.array_box)
+            top_bound_box = top_bound_box.merge(edgel.bound_box).merge(edger.bound_box)
             edge_inst_list = [edgel, edger]
             if ext_info[0] > 0:
                 ext_master = self.new_template(params=ext_info[1], temp_cls=AnalogMOSExt)
@@ -1178,7 +1180,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self.connect_wires(gr_vss_dum_warrs)
 
         # set array box/size/draw PR boundary
-        self.set_size_from_array_box(top_layer)
+        self.set_size_from_bound_box(top_layer, top_bound_box)
         self.add_cell_boundary(self.bound_box)
 
     def draw_base(self,  # type: AnalogBase
