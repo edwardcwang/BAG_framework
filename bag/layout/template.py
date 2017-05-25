@@ -393,7 +393,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         # initialize template attributes
-        self._grid = kwargs.get('grid', temp_db.grid)
+        self._grid = kwargs.get('grid', temp_db.grid).copy()
         self._layout = BagLayout(self.grid,
                                  use_cybagoa=kwargs.get('use_cybagoa', False),
                                  pin_purpose=kwargs.get('pin_purpose', 'pin'),
@@ -423,6 +423,14 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                     self.params[key] = default_params[key]
             else:
                 self.params[key] = params[key]
+
+        # always add flip_parity parameter
+        if 'flip_parity' not in self.params:
+            self.params['flip_parity'] = None
+        # update RoutingGrid
+        fp_dict = self.params['flip_parity']
+        if fp_dict is not None:
+            self._grid.set_flip_parity(fp_dict)
 
         # get unique cell name
         self._cell_name = self._get_unique_cell_name(used_names)
@@ -653,6 +661,9 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         flatten : bool
             True to compute flattened layout.
         """
+        # update track parities of all instances
+        self._update_flip_parity()
+
         # update used tracks
         self._merge_inst_used_tracks()
 
@@ -673,14 +684,13 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self.children = self._layout.get_masters_set()
         self._finalized = True
 
-    def update_flip_parity(self):
+    def _update_flip_parity(self):
         """Update all instances in this template to have the correct track parity.
         """
         for inst in self._layout.inst_iter():
             loc = inst.location_unit
-            if 'flip_parity' in inst.master.params:
-                fp_dict = self.grid.get_flip_parity_at(loc, inst.master.top_layer, unit_mode=True)
-                inst.new_master_with(flip_parity=fp_dict)
+            fp_dict = self.grid.get_flip_parity_at(loc, inst.master.top_layer, unit_mode=True)
+            inst.new_master_with(flip_parity=fp_dict)
 
     def write_summary_file(self, fname, lib_name, cell_name):
         """Create a summary file for this template layout."""
