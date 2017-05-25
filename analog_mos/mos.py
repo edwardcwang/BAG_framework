@@ -133,7 +133,7 @@ class AnalogMOSBase(TemplateBase):
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, lch, w, mos_type, threshold, fg):
+    def _draw_layout_helper(self, lch, w, mos_type, threshold, fg, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
@@ -212,7 +212,7 @@ class AnalogMOSExt(TemplateBase):
         self._draw_layout_helper(**self.params)
 
     def _draw_layout_helper(self, lch, w, bot_mtype, top_mtype, bot_thres, top_thres, fg, top_ext_info,
-                            bot_ext_info):
+                            bot_ext_info, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 

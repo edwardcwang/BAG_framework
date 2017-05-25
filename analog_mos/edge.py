@@ -166,7 +166,7 @@ class AnalogEdge(TemplateBase):
         layout_info = self.params['layout_info']
         basename = self.get_layout_basename()
 
-        out_info = self._tech_cls.get_outer_edge_info(guard_ring_nf, layout_info, top_layer, is_end)
+        out_info = self._tech_cls.get_outer_edge_info(self.grid, guard_ring_nf, layout_info, top_layer, is_end)
         # add outer edge
         out_params = dict(
             layout_name='%s_outer' % basename,

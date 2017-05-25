@@ -185,7 +185,7 @@ class AnalogSubstrate(TemplateBase):
         self._draw_layout_helper(**self.params)
 
     def _draw_layout_helper(self, lch, w, sub_type, threshold, fg, end_mode, dummy_only,
-                            port_tracks, dum_tracks, flip_parity, is_passive, top_layer):
+                            port_tracks, dum_tracks, is_passive, top_layer, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 

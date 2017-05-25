@@ -1175,12 +1175,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                   guard_ring_nf=0,  # type: int
                   n_ds_dummy=None,  # type: Optional[List[bool]]
                   p_ds_dummy=None,  # type: Optional[List[bool]]
-                  pitch_offset=(0, 0),  # type: Tuple[int, int]
                   pgr_w=None,  # type: Optional[Union[float, int]]
                   ngr_w=None,  # type: Optional[Union[float, int]]
                   min_fg_sep=0,  # type: int
                   end_mode=15,  # type: int
                   top_layer=None,  # type: Optional[int]
+                  **kwargs
                   ):
         # type: (...) -> None
         """Draw the analog base.
@@ -1225,9 +1225,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             is_ds_dummy flag for each nmos row.  Defaults to all False.
         p_ds_dummy : Optional[List[bool]]
             is_ds_dummy flag for each pmos row.  Defaults to all False.
-        pitch_offset : Tuple[int, int]
-            shift the templates right/up by this many track pitches.  This parameter is
-            used to center the transistors in the grid.
         pgr_w : Optional[Union[float, int]]
             pwell guard ring substrate contact width.
         ngr_w : Optional[Union[float, int]]
@@ -1244,6 +1241,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             The top metal layer decides the quantization of the overall bounding box and the array box.  As
             the result, the margin between edge of the overall bounding box and the edge of array box is
             determined by the block pitch.
+        **kwargs:
+            Other optional arguments.
         """
         numn = len(nw_list)
         nump = len(pw_list)
