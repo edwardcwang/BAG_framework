@@ -131,10 +131,6 @@ class AnalogEdge(TemplateBase):
         self.prim_bound_box = None
 
     @classmethod
-    def get_default_param_values(cls):
-        return dict(flip_parity=None)
-
-    @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.
 
@@ -146,24 +142,31 @@ class AnalogEdge(TemplateBase):
             dictionary from parameter name to description.
         """
         return dict(
+            top_layer='The top layer used to calculate width quantization.',
+            is_end='True if this edge is at the end.',
             guard_ring_nf='number of guard ring fingers.',
             name_id='cell name ID.',
             layout_info='the layout information dictionary.',
         )
 
     def get_layout_basename(self):
-        return 'edge_%s_gr%d' % (self.params['name_id'], self.params['guard_ring_nf'])
+        base = 'edge_%s_gr%d_lay%d' % (self.params['name_id'], self.params['guard_ring_nf'], self.params['top_layer'])
+        if self.params['is_end']:
+            base += '_end'
+        return base
 
     def compute_unique_key(self):
         base_name = self.get_layout_basename()
         return self.to_immutable_id((base_name, self.params['layout_info'], self.params['flip_parity']))
 
     def draw_layout(self):
+        top_layer = self.params['top_layer']
+        is_end = self.params['is_end']
         guard_ring_nf = self.params['guard_ring_nf']
         layout_info = self.params['layout_info']
         basename = self.get_layout_basename()
 
-        out_info = self._tech_cls.get_outer_edge_info(guard_ring_nf, layout_info)
+        out_info = self._tech_cls.get_outer_edge_info(guard_ring_nf, layout_info, top_layer, is_end)
         # add outer edge
         out_params = dict(
             layout_name='%s_outer' % basename,

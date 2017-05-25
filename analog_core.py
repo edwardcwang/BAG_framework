@@ -1004,7 +1004,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # return placement result.
         return y_list, ext_info_list, tr_next, gtr_intv, dtr_intv
 
-    def _place(self, track_spec_list, master_list, gds_space, guard_ring_nf):
+    def _place(self, track_spec_list, master_list, gds_space, guard_ring_nf, top_layer, left_end, right_end):
         """
         Placement strategy: make overall block match mos_pitch and horizontal track pitch, try to
         center everything between the top and bottom substrates.
@@ -1055,6 +1055,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             orient = track_spec[0]
             edge_layout_info = master.get_edge_layout_info()
             edgel_params = dict(
+                top_layer=top_layer,
+                is_end=left_end,
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
@@ -1084,6 +1086,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             edger_xo = inst.array_box.right_unit + edgel_master.prim_bound_box.width_unit
             edger_loc = edger_xo, yo
             edger_params = dict(
+                top_layer=top_layer,
+                is_end=right_end,
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
@@ -1096,6 +1100,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 ext_master = self.new_template(params=ext_info[1], temp_cls=AnalogMOSExt)
                 ext_edge_layout_info = ext_master.get_edge_layout_info()
                 ext_edgel_params = dict(
+                    top_layer=top_layer,
+                    is_end=left_end,
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
                     layout_info=ext_edge_layout_info,
@@ -1105,6 +1111,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 edgel = self.add_instance(ext_edgel_master, loc=(0, yo), unit_mode=True)
                 self.add_instance(ext_master, loc=(inst_xo, yo), unit_mode=True)
                 ext_edger_params = dict(
+                    top_layer=top_layer,
+                    is_end=right_end,
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
                     layout_info=ext_edge_layout_info,
@@ -1264,6 +1272,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         track_spec_list = []
         bot_sub_end = end_mode % 2
         top_sub_end = (end_mode & 2) >> 1
+        left_end = (end_mode & 4) >> 2
+        right_end = (end_mode & 8) >> 3
         top_nsub_end = top_sub_end if not pw_list else 0
         bot_psub_end = bot_sub_end if not nw_list else 0
         if top_layer is None:
@@ -1289,7 +1299,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._orient_list = [item[0] for item in track_spec_list]
 
         # place masters according to track specifications.  Try to center transistors
-        self._place(track_spec_list, master_list, gds_space, guard_ring_nf)
+        self._place(track_spec_list, master_list, gds_space, guard_ring_nf, top_layer, left_end, right_end)
 
     def _connect_substrate(self,  # type: AnalogBase
                            sub_type,  # type: str
@@ -1930,6 +1940,8 @@ class SubstrateContact(TemplateBase):
         sub_master = self.new_template(params=params, temp_cls=AnalogSubstrate)
         edge_layout_info = sub_master.get_edge_layout_info()
         edge_params = dict(
+            top_layer=hm_layer,
+            is_end=True,
             guard_ring_nf=0,
             name_id=sub_master.get_layout_basename(),
             layout_info=edge_layout_info,

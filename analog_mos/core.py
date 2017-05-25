@@ -325,8 +325,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_outer_edge_info(cls, guard_ring_nf, layout_info):
-        # type: (int, Dict[str, Any]) -> Dict[str, Any]
+    def get_outer_edge_info(cls, guard_ring_nf, layout_info, top_layer, is_end):
+        # type: (int, Dict[str, Any], int, bool) -> Dict[str, Any]
         """Returns the outer edge layout information dictionary.
         
         Parameters
@@ -335,6 +335,10 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             guard ring width in number of fingers.  0 if there is no guard ring.
         layout_info : Dict[str, Any]
             layout information dictionary of the center block.
+        top_layer : int
+            the top routing layer ID.  Used to determine width quantization.
+        is_end : bool
+            True if there are no blocks abutting the left edge.
             
         Returns
         -------
