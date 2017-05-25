@@ -752,7 +752,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 for key in conn_inst.port_names_iter()}
 
     def _make_masters(self, mos_type, lch, fg_tot, bot_sub_w, bot_sub_end, top_sub_w, top_sub_end, w_list, th_list,
-                      g_tracks, ds_tracks, orientations, ds_dummy, row_offset):
+                      g_tracks, ds_tracks, orientations, ds_dummy, row_offset, top_layer):
 
         # error checking + set default values.
         num_tran = len(w_list)
@@ -793,6 +793,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 threshold=th_list[0],
                 fg=fg_tot,
                 end_mode=bot_sub_end,
+                top_layer=top_layer,
             )
             master_list.append(self.new_template(params=sub_params, temp_cls=AnalogSubstrate))
             track_spec_list.append(('R0', -1, -1))
@@ -827,6 +828,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 threshold=th_list[-1],
                 fg=fg_tot,
                 end_mode=top_sub_end,
+                top_layer=top_layer,
             )
             master_list.append(self.new_template(params=sub_params, temp_cls=AnalogSubstrate))
             track_spec_list.append(('MX', -1, -1))
@@ -1053,7 +1055,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             orient = track_spec[0]
             edge_layout_info = master.get_edge_layout_info()
             edgel_params = dict(
-                mos_conn_layer=self.mos_conn_layer,
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
@@ -1083,7 +1084,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             edger_xo = inst.array_box.right_unit + edgel_master.prim_bound_box.width_unit
             edger_loc = edger_xo, yo
             edger_params = dict(
-                mos_conn_layer=self.mos_conn_layer,
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
@@ -1096,7 +1096,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 ext_master = self.new_template(params=ext_info[1], temp_cls=AnalogMOSExt)
                 ext_edge_layout_info = ext_master.get_edge_layout_info()
                 ext_edgel_params = dict(
-                    mos_conn_layer=self.mos_conn_layer,
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
                     layout_info=ext_edge_layout_info,
@@ -1106,7 +1105,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 edgel = self.add_instance(ext_edgel_master, loc=(0, yo), unit_mode=True)
                 self.add_instance(ext_master, loc=(inst_xo, yo), unit_mode=True)
                 ext_edger_params = dict(
-                    mos_conn_layer=self.mos_conn_layer,
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
                     layout_info=ext_edge_layout_info,
@@ -1265,13 +1263,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         master_list = []
         track_spec_list = []
         bot_sub_end = end_mode % 2
-        top_sub_end = end_mode // 2
+        top_sub_end = (end_mode & 2) >> 1
         top_nsub_end = top_sub_end if not pw_list else 0
         bot_psub_end = bot_sub_end if not nw_list else 0
+        if top_layer is None:
+            top_layer = self.mos_conn_layer + 1
         # make NMOS substrate/transistor masters.
         tr_list, m_list, n_ds_dummy, nw_list = self._make_masters('nch', self._lch, fg_tot, ptap_w, bot_sub_end, ngr_w,
                                                                   top_nsub_end, nw_list, nth_list, ng_tracks,
-                                                                  nds_tracks, n_orientations, n_ds_dummy, 0)
+                                                                  nds_tracks, n_orientations, n_ds_dummy,
+                                                                  0, top_layer)
         master_list.extend(m_list)
         track_spec_list.extend(tr_list)
         self._ds_dummy_list.extend(n_ds_dummy)
@@ -1279,7 +1280,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # make PMOS substrate/transistor masters.
         tr_list, m_list, p_ds_dummy, pw_list = self._make_masters('pch', self._lch, fg_tot, pgr_w, bot_psub_end, ntap_w,
                                                                   top_sub_end, pw_list, pth_list, pg_tracks,
-                                                                  pds_tracks, p_orientations, p_ds_dummy, len(m_list))
+                                                                  pds_tracks, p_orientations, p_ds_dummy,
+                                                                  len(m_list), top_layer)
         master_list.extend(m_list)
         track_spec_list.extend(tr_list)
         self._ds_dummy_list.extend(p_ds_dummy)
@@ -1923,11 +1925,11 @@ class SubstrateContact(TemplateBase):
             fg=sub_fg_tot,
             end_mode=3,
             is_passive=is_passive,
+            top_layer=hm_layer,
         )
         sub_master = self.new_template(params=params, temp_cls=AnalogSubstrate)
         edge_layout_info = sub_master.get_edge_layout_info()
         edge_params = dict(
-            mos_conn_layer=hm_layer - 1,
             guard_ring_nf=0,
             name_id=sub_master.get_layout_basename(),
             layout_info=edge_layout_info,

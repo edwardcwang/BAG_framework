@@ -127,6 +127,7 @@ class AnalogEdge(TemplateBase):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(AnalogEdge, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
         self.prim_bound_box = None
 
     @classmethod
@@ -145,7 +146,6 @@ class AnalogEdge(TemplateBase):
             dictionary from parameter name to description.
         """
         return dict(
-            mos_conn_layer='transistor connection layer.',
             guard_ring_nf='number of guard ring fingers.',
             name_id='cell name ID.',
             layout_info='the layout information dictionary.',
@@ -156,8 +156,7 @@ class AnalogEdge(TemplateBase):
 
     def compute_unique_key(self):
         base_name = self.get_layout_basename()
-        return self.to_immutable_id((base_name, self.params['mos_conn_layer'],
-                                     self.params['layout_info'], self.params['flip_parity']))
+        return self.to_immutable_id((base_name, self.params['layout_info'], self.params['flip_parity']))
 
     def draw_layout(self):
         guard_ring_nf = self.params['guard_ring_nf']
@@ -175,7 +174,6 @@ class AnalogEdge(TemplateBase):
 
         self.array_box = master.array_box
         self.prim_bound_box = master.prim_bound_box
-        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
         if guard_ring_nf > 0:
             # draw guard ring and guard ring separator

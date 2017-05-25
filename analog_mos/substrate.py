@@ -156,17 +156,19 @@ class AnalogSubstrate(TemplateBase):
             port_tracks='Substrate port must contain these track indices.',
             dum_tracks='Dummy port must contain these track indices.',
             is_passive='True if this substrate is used as substrate contact for passive devices.',
+            top_layer='The top routing layer.  Used to determine vertical pitch.',
         )
 
     def get_layout_basename(self):
-        fmt = '%s_l%s_w%s_%s_fg%d_end%d'
+        fmt = '%s_l%s_w%s_%s_fg%d_end%d_lay%d'
         sub_type = self.params['sub_type']
         lstr = float_to_si_string(self.params['lch'])
         wstr = float_to_si_string(self.params['w'])
         th = self.params['threshold']
         fg = self.params['fg']
         end_mode = self.params['end_mode']
-        basename = fmt % (sub_type, lstr, wstr, th, fg, end_mode)
+        top_layer = self.params['top_layer']
+        basename = fmt % (sub_type, lstr, wstr, th, fg, end_mode, top_layer)
         if self.params['dummy_only']:
             basename += '_dum'
 
@@ -182,12 +184,13 @@ class AnalogSubstrate(TemplateBase):
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, lch, w, sub_type, threshold, fg, end_mode,
-                            dummy_only, port_tracks, dum_tracks, flip_parity, is_passive):
+    def _draw_layout_helper(self, lch, w, sub_type, threshold, fg, end_mode, dummy_only,
+                            port_tracks, dum_tracks, flip_parity, is_passive, top_layer):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        info = self._tech_cls.get_substrate_info(self.grid, lch_unit, w, sub_type, threshold, fg, end_mode, is_passive)
+        info = self._tech_cls.get_substrate_info(self.grid, lch_unit, w, sub_type, threshold, fg,
+                                                 end_mode, is_passive, top_layer)
         self._layout_info = info['layout_info']
         self._sd_yc = info['sd_yc']
         self._ext_top_info = info['ext_top_info']

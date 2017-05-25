@@ -290,7 +290,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_substrate_info(cls, grid, lch_unit, w, sub_type, threshold, fg, end_mode, is_passive):
+    def get_substrate_info(cls, grid, lch_unit, w, sub_type, threshold, fg, end_mode, is_passive, top_layer):
         # type: (RoutingGrid, int, int, str, str, int, int, bool) -> Dict[str, Any]
         """Returns the substrate layout information dictionary.
         
@@ -314,7 +314,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             are no bloks abutting the substrate top.
         is_passive : bool
             True if this is the substrate connection for passive devices.
-            
+        top_layer : int
+            the top level routing layer.  Used to determine vertical pitch.
         Returns
         -------
         sub_info : Dict[str, Any]
