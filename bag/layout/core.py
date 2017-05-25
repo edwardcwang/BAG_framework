@@ -878,6 +878,7 @@ class DummyTechInfo(TechInfo):
     def add_cell_boundary(cls, template, box):
         pass
 
+    @classmethod
     def get_via_drc_info(cls, vname, vtype, mtype, mw_unit, is_bot):
         return (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
 
