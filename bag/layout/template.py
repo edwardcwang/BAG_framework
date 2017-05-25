@@ -407,6 +407,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self._port_params = {}
         self._array_box = None  # type: BBox
         self.prim_top_layer = None
+        self.prim_bound_box = None
         self._finalized = False
         self._used_tracks = UsedTracks(self._grid.resolution)
         self._added_inst_tracks = False
@@ -520,7 +521,9 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """Returns the BBox with the size of this template.  None if size not set yet."""
         mysize = self.size
         if mysize is None:
-            return None
+            if self.prim_bound_box is None:
+                raise ValueError('Both size and prim_bound_box are unset.')
+            return self.prim_bound_box
 
         wblk, hblk = self.grid.get_size_dimension(mysize, unit_mode=True)
         return BBox(0, 0, wblk, hblk, self.grid.resolution, unit_mode=True)
