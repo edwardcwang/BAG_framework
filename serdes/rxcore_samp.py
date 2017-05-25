@@ -186,6 +186,9 @@ class RXHalfTop(SerdesRXBase):
 
     def place(self, alat_params, intsum_params, summer_params, acoff_params, buf_params, draw_params,
               diff_space, hm_width, hm_cur_width, integ_pmos_vm_tid):
+
+        end_mode = 13  # top of RXHalfTop abuts with RXHalfBottom
+
         gds_space = draw_params['gds_space']
         w_dict = draw_params['w_dict']
         integ_params = alat_params['integ_params'].copy()
@@ -239,7 +242,7 @@ class RXHalfTop(SerdesRXBase):
         draw_params['ng_tracks'] = ng_tracks
         draw_params['nds_tracks'] = nds_tracks
 
-        self.draw_rows(**draw_params)
+        self.draw_rows(end_mode=end_mode, **draw_params)
         # set size based on 2 layer up.
         self.set_size_from_array_box(self.mos_conn_layer + 3)
 
@@ -832,6 +835,9 @@ class RXHalfBottom(SerdesRXBase):
                           show_pins, datapath_parity)
 
     def place(self, alat_params, dlat_params_list, draw_params, hm_width, hm_cur_width, diff_space):
+
+        end_mode = 12  # both top and bottom abuts adjacent blocks.
+
         gds_space = draw_params['gds_space']
         w_dict = draw_params['w_dict']
         integ_params = alat_params['integ_params'].copy()
@@ -856,7 +862,7 @@ class RXHalfBottom(SerdesRXBase):
         draw_params['ng_tracks'] = ng_tracks
         draw_params['nds_tracks'] = nds_tracks
 
-        self.draw_rows(**draw_params)
+        self.draw_rows(end_mode=end_mode, **draw_params)
         # set size based on 2 layer up.
         self.set_size_from_array_box(self.mos_conn_layer + 3)
 
