@@ -552,6 +552,29 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """A unique key representing this template."""
         return self._key
 
+    def set_size_from_bound_box(self, top_layer_id, bbox, grid=None):
+        # type: (int, BBox, Optional[RoutingGrid]) -> None
+        """Compute the size from overall bounding box.
+
+        Parameters
+        ----------
+        top_layer_id : int
+            the top level routing layer ID that array box is calculated with.
+        bbox : BBox
+            the overall bounding box
+        grid : Optional[RoutingGrid]
+            the RoutingGrid object to use to get the block pitch.
+            If a template adds new layers that have larger pitch than parent layers,
+            the block pitch may change.
+        """
+        if grid is None:
+            grid = self.grid
+
+        if bbox.left_unit != 0 or bbox.bottom_unit != 0:
+            raise ValueError('lower-left corner of overall bounding box must be (0, 0).')
+
+        self.size = grid.get_size_tuple(top_layer_id, bbox.width_unit, bbox.height_unit, unit_mode=True)
+
     def set_size_from_array_box(self, top_layer_id, grid=None):
         # type: (int, Optional[RoutingGrid]) -> None
         """Automatically compute the size from array_box.

@@ -525,6 +525,14 @@ class Instance(Arrayable):
                             )
 
     @property
+    def bound_box(self):
+        # type: () -> BBox
+        """Returns the overall bounding box of this instance."""
+        box_arr = BBoxArray(self._master.bound_box, nx=self.nx, ny=self.ny,
+                            spx=self._spx_unit, spy=self._spy_unit, unit_mode=True)
+        return box_arr.get_overall_bbox().transform(self.location_unit, self.orientation, unit_mode=True)
+
+    @property
     def array_box(self):
         # type: () -> BBox
         """Returns the array box of this instance."""
