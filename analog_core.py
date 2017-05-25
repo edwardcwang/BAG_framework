@@ -105,6 +105,11 @@ class AnalogBaseInfo(object):
         self._sd_xc_unit = self._tech_cls.get_left_sd_xc(self.grid, lch_unit, guard_ring_nf, top_layer, left_end)
 
     @property
+    def vertical_pitch_unit(self):
+        blk_pitch = self.grid.get_block_size(self.top_layer, unit_mode=True)[1]
+        return lcm([blk_pitch, self._tech_cls.get_mos_pitch(unit_mode=True)])
+
+    @property
     def sd_pitch(self):
         return self._sd_pitch_unit * self.grid.resolution
 
@@ -142,6 +147,27 @@ class AnalogBaseInfo(object):
                                                     self.top_layer, right_end)
         tot_width = left_width + right_width + fg_tot * self._sd_pitch_unit
         return tot_width // self._sd_pitch_unit
+
+    def round_up_fg_tot(self, fg_min):
+        # type: (int) -> int
+        """Round up number of fingers so the resulting AnalogBase has the correct width quantization.
+
+        Parameters
+        ----------
+        fg_min : int
+            minimum number of fingers per row.
+
+        Returns
+        -------
+        fg_tot : int
+            number of fingers in a row.  This number is guaranteed to be greater than fg_min, and an
+            AnalogBase drawn with this many fingers will have the correct width quantization with
+            respect to the specified top level routing layer.
+        """
+        blk_w = self.grid.get_block_size(self.top_layer, unit_mode=True)[0]
+        arr_box_w = fg_min * self._sd_pitch_unit
+        tot_w = -(-arr_box_w // blk_w) * blk_w
+        return tot_w // self._sd_pitch_unit
 
     def coord_to_col(self, coord, unit_mode=False, mode=0):
         """Convert the given X coordinate to transistor column index.
@@ -1029,8 +1055,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         mconn_layer = self.mos_conn_layer
         hm_layer = mconn_layer + 1
         mos_pitch = self._tech_cls.get_mos_pitch(unit_mode=True)
-        hm_pitch = self.grid.get_track_pitch(hm_layer, unit_mode=True)
-        tot_pitch = lcm([mos_pitch, hm_pitch])
+        tot_pitch = self._layout_info.vertical_pitch_unit
 
         # first try: place everything, but blocks as close to the bottom as possible.
         y_list, ext_list, tot_ntr, gtr_intv, dtr_intv = self._place_helper(0, track_spec_list, master_list, gds_space,
@@ -1153,7 +1178,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self.connect_wires(gr_vss_dum_warrs)
 
         # set array box/size/draw PR boundary
-        self.set_size_from_array_box(hm_layer)
+        self.set_size_from_array_box(top_layer)
         self.add_cell_boundary(self.bound_box)
 
     def draw_base(self,  # type: AnalogBase

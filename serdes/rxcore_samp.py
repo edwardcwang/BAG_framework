@@ -187,6 +187,8 @@ class RXHalfTop(SerdesRXBase):
     def place(self, alat_params, intsum_params, summer_params, acoff_params, buf_params, draw_params,
               diff_space, hm_width, hm_cur_width, integ_pmos_vm_tid):
 
+        mconn_layer = self.get_mos_conn_layer(self.grid.tech_info)
+        top_layer = mconn_layer + 3
         end_mode = 13  # top of RXHalfTop abuts with RXHalfBottom
 
         gds_space = draw_params['gds_space']
@@ -242,9 +244,7 @@ class RXHalfTop(SerdesRXBase):
         draw_params['ng_tracks'] = ng_tracks
         draw_params['nds_tracks'] = nds_tracks
 
-        self.draw_rows(end_mode=end_mode, **draw_params)
-        # set size based on 2 layer up.
-        self.set_size_from_array_box(self.mos_conn_layer + 3)
+        self.draw_rows(top_layer=top_layer, end_mode=end_mode, **draw_params)
 
         # draw blocks
 
@@ -836,6 +836,8 @@ class RXHalfBottom(SerdesRXBase):
 
     def place(self, alat_params, dlat_params_list, draw_params, hm_width, hm_cur_width, diff_space):
 
+        mconn_layer = self.get_mos_conn_layer(self.grid.tech_info)
+        top_layer = mconn_layer + 3
         end_mode = 12  # both top and bottom abuts adjacent blocks.
 
         gds_space = draw_params['gds_space']
@@ -862,9 +864,7 @@ class RXHalfBottom(SerdesRXBase):
         draw_params['ng_tracks'] = ng_tracks
         draw_params['nds_tracks'] = nds_tracks
 
-        self.draw_rows(end_mode=end_mode, **draw_params)
-        # set size based on 2 layer up.
-        self.set_size_from_array_box(self.mos_conn_layer + 3)
+        self.draw_rows(top_layer=top_layer, end_mode=end_mode, **draw_params)
 
         # draw blocks
         gate_locs = {'inp': (hm_width - 1) / 2 + hm_width + diff_space,
@@ -1216,10 +1216,15 @@ class RXHalf(TemplateBase):
         return self._col_idx_dict
 
     def draw_layout(self):
+        end_mode = 15  # top/bottom end_mode does not matter for SerdesRXBaseInfo
+
         lch = self.params['lch']
         guard_ring_nf = self.params['guard_ring_nf']
         min_fg_sep = self.params['min_fg_sep']
-        layout_info = SerdesRXBaseInfo(self.grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
+        mos_conn_layer = SerdesRXBase.get_mos_conn_layer(self.grid.tech_info)
+        top_layer = mos_conn_layer + 3
+        layout_info = SerdesRXBaseInfo(self.grid, lch, guard_ring_nf, top_layer=top_layer,
+                                       end_mode=end_mode, min_fg_sep=min_fg_sep)
 
         bot_inst, top_inst, col_idx_dict = self.place(layout_info)
         self.connect(layout_info, bot_inst, top_inst, col_idx_dict)
@@ -1501,13 +1506,8 @@ class RXHalf(TemplateBase):
         col_idx_dict['acoff'] = (cur_col, cur_col + num_fg)
         cur_col += num_fg
 
-        fg_tot = cur_col + ndumr
         # add dummies until we have multiples of block pitch
-        blk_w = self.grid.get_block_size(layout_info.mconn_port_layer + 3, unit_mode=True)[0]
-        sd_pitch_unit = layout_info.sd_pitch_unit
-        cur_width = layout_info.get_total_width(fg_tot) * sd_pitch_unit
-        final_w = -(-cur_width // blk_w) * blk_w
-        fg_tot = final_w // sd_pitch_unit
+        fg_tot = layout_info.round_up_fg_tot(cur_col + ndumr)
         self._fg_tot = fg_tot
 
         # make RXHalfBottom
@@ -1556,7 +1556,7 @@ class RXHalf(TemplateBase):
         top_inst = self.add_instance(top_master, orient='MX')
         top_inst.move_by(dy=bot_inst.array_box.top - top_inst.array_box.bottom)
         self.array_box = bot_inst.array_box.merge(top_inst.array_box)
-        self.set_size_from_array_box(top_master.size[0])
+        self.set_size_from_bound_box(top_master.size[0], bot_inst.bound_box.merge(top_inst.bound_box))
 
         show_pins = self.params['show_pins']
         clk_prefix = 'clkp' if self.params['datapath_parity'] == 0 else 'clkn'
