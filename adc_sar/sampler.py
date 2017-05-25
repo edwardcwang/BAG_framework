@@ -208,8 +208,12 @@ class NPassGateWClk(AnalogBase):
                             pgr_w, ngr_w):
         """Draw the layout of a transistor for characterization.
         """
+        end_mode = 15
+
         # get AnalogBaseInfo
-        layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf)
+        mconn_layer = AnalogBase.get_mos_conn_layer(self.grid.tech_info)
+        top_layer = mconn_layer + 3
+        layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, top_layer=top_layer, end_mode=end_mode)
 
         lower_track_width = 1
         clk_width = 2
@@ -254,7 +258,7 @@ class NPassGateWClk(AnalogBase):
 
         fg_tot += (ndumr - nsep)
 
-        cur_width = layout_info.get_total_width(fg_tot, guard_ring_nf=guard_ring_nf)
+        cur_width = layout_info.get_total_width(fg_tot)
 
         if cur_width > tot_width:
             raise ValueError('Need at least %s sd pitches, but constrained to have %d sd pitches'
@@ -272,6 +276,8 @@ class NPassGateWClk(AnalogBase):
                        n_ds_dummy=[True, False],
                        pitch_offset=(xshift, 0),
                        pgr_w=pgr_w, ngr_w=ngr_w,
+                       top_layer=top_layer,
+                       end_mode=end_mode,
                        )
         blk_right, blk_top = self.grid.get_size_dimension(self.size)
         io_layer = self.mos_conn_layer + 2

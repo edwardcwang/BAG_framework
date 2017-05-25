@@ -332,8 +332,12 @@ class CMLCorePMOS(AnalogBase):
                             input_width, input_space, ntap_w, guard_ring_nf, tot_width, show_pins):
         """Draw the layout of a transistor for characterization.
         """
+        end_mode = 15
+
         # get AnalogBaseInfo
-        layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf)
+        mconn_layer = AnalogBase.get_mos_conn_layer(self.grid.tech_info)
+        top_layer = mconn_layer + 2
+        layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, top_layer=top_layer, end_mode=end_mode)
 
         # compute total number of fingers to achieve target width.
         res = self.grid.resolution
@@ -345,10 +349,10 @@ class CMLCorePMOS(AnalogBase):
         num_pitch = tot_width_unit // sd_pitch
 
         fg_tot = num_pitch
-        cur_width = layout_info.get_total_width(fg_tot, guard_ring_nf=guard_ring_nf)
+        cur_width = layout_info.get_total_width(fg_tot)
         while cur_width > num_pitch:
             fg_tot -= 1
-            cur_width = layout_info.get_total_width(fg_tot, guard_ring_nf=guard_ring_nf)
+            cur_width = layout_info.get_total_width(fg_tot)
 
         if cur_width != num_pitch:
             raise ValueError('Cannot achieve a total width of %.4g' % tot_width)
@@ -388,7 +392,8 @@ class CMLCorePMOS(AnalogBase):
                        pg_tracks=pg_tracks, pds_tracks=pds_tracks,
                        p_orientations=['MX', 'R0', 'R0', 'R0'],
                        guard_ring_nf=guard_ring_nf,
-                       pgr_w=ntap_w, ngr_w=ntap_w)
+                       pgr_w=ntap_w, ngr_w=ntap_w,
+                       top_layer=top_layer, end_mode=end_mode)
 
         # compute track ids
         outp_tid = self.make_track_id('pch', 3, 'ds', (hm_width - 1) / 2 + input_space, width=hm_width)

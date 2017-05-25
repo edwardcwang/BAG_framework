@@ -171,8 +171,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_edge_info(cls, lch_unit, guard_ring_nf):
-        # type: (int, int) -> Dict[str, Any]
+    def get_edge_info(cls, grid, lch_unit, guard_ring_nf, top_layer, is_end):
+        # type: (RoutingGrid, int, int, int, bool) -> Dict[str, Any]
         """Returns a dictionary containing transistor edge layout information.
         
         The returned dictionary must have an entry 'edge_width', which is the width
@@ -180,10 +180,16 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         
         Parameters
         ----------
+        grid : RoutingGrid
+            the RoutingGrid object.
         lch_unit : int
             the channel length, in resolution units.
         guard_ring_nf : int
             guard ring width in number of fingers.
+        top_layer : int
+            the top routing layer ID.  Used to determine width quantization.
+        is_end : bool
+            True if there are no blocks abutting the left edge.
         
         Returns
         -------
@@ -325,12 +331,14 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_outer_edge_info(cls, guard_ring_nf, layout_info, top_layer, is_end):
-        # type: (int, Dict[str, Any], int, bool) -> Dict[str, Any]
+    def get_outer_edge_info(cls, grid, guard_ring_nf, layout_info, top_layer, is_end):
+        # type: (RoutingGrid, int, Dict[str, Any], int, bool) -> Dict[str, Any]
         """Returns the outer edge layout information dictionary.
         
         Parameters
         ----------
+        grid : RoutingGrid
+            the RoutingGrid object.
         guard_ring_nf : int
             guard ring width in number of fingers.  0 if there is no guard ring.
         layout_info : Dict[str, Any]
@@ -585,20 +593,26 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return mos_constants['sd_pitch']
 
     @classmethod
-    def get_left_sd_xc(cls, lch_unit, guard_ring_nf):
-        # type: (int, int) -> int
+    def get_left_sd_xc(cls, grid, lch_unit, guard_ring_nf, top_layer, is_end):
+        # type: (RoutingGrid, int, int, int, bool) -> int
         """Returns the X coordinate of the center of the left-most source/drain junction in a transistor row.
 
         Parameters
         ----------
+        grid: RoutingGrid
+            the RoutingGrid object.
         lch_unit : int
             channel length in resolution units
         guard_ring_nf : int
             guard ring width in number of fingers.
+        top_layer : int
+            the top routing layer ID.  Used to determine width quantization.
+        is_end : bool
+            True if there are no blocks abutting the left edge.
 
         Returns
         -------
         sd_xc : X coordinate of the center of the left-most source/drain junction.
         """
-        edge_info = cls.get_edge_info(lch_unit, guard_ring_nf)
+        edge_info = cls.get_edge_info(grid, lch_unit, guard_ring_nf, top_layer, is_end)
         return edge_info['edge_width']

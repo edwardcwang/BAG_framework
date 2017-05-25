@@ -52,13 +52,21 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
         the channel length of AnalogBase, in meters.
     guard_ring_nf : int
         guard ring width in number of fingers.  0 to disable.
+    top_layer : Optional[int]
+        the top level routing layer ID.
+    end_mode : int
+        right/left/top/bottom end mode flag.  This is a 4-bit integer.  If bit 0 (LSB) is 1, then
+        we assume there are no blocks abutting the bottom.  If bit 1 is 1, we assume there are no
+        blocks abutting the top.  bit 2 and bit 3 (MSB) corresponds to left and right, respectively.
+        The default value is 15, which means we assume this AnalogBase is surrounded by empty spaces.
     min_fg_sep : int
         minimum number of separation fingers.
     """
 
-    def __init__(self, grid, lch, guard_ring_nf, min_fg_sep=0):
-        # type: (RoutingGrid, float, int, int) -> None
-        super(SerdesRXBaseInfo, self).__init__(grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
+    def __init__(self, grid, lch, guard_ring_nf, top_layer=None, end_mode=15, min_fg_sep=0):
+        # type: (RoutingGrid, float, int, Optional[int], int, int) -> None
+        super(SerdesRXBaseInfo, self).__init__(grid, lch, guard_ring_nf,
+                                               top_layer=top_layer, end_mode=end_mode, min_fg_sep=min_fg_sep)
 
     def get_gm_info(self, fg_params, flip_sd=False):
         # type: (Dict[str, int]) -> Dict[str, Any]
