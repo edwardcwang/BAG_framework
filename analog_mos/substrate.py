@@ -65,7 +65,6 @@ class AnalogSubstrateCore(TemplateBase):
             dummy_only='True if only dummy connections will be made to this substrate.',
             port_tracks='Substrate port must contain these track indices.',
             dum_tracks='Dummy port must contain these track indices.',
-            flip_parity='the flip track parity dictionary.',
             layout_name='name of the layout cell.',
             layout_info='the layout information dictionary.',
         )
@@ -83,13 +82,7 @@ class AnalogSubstrateCore(TemplateBase):
         dummy_only = self.params['dummy_only']
         port_tracks = self.params['port_tracks']
         dum_tracks = self.params['dum_tracks']
-        flip_parity = self.params['flip_parity']
         layout_info = self.params['layout_info']
-
-        # modify routing track parity
-        self.grid = self.grid.copy()
-        if flip_parity is not None:
-            self.grid.set_flip_parity(flip_parity)
 
         # draw substrate
         self._tech_cls.draw_mos(self, layout_info)
@@ -138,7 +131,6 @@ class AnalogSubstrate(TemplateBase):
             port_tracks=[],
             dum_tracks=[],
             dummy_only=False,
-            flip_parity=None,
             is_passive=False,
         )
 
@@ -163,7 +155,6 @@ class AnalogSubstrate(TemplateBase):
             dummy_only='True if only dummy connections will be made to this substrate.',
             port_tracks='Substrate port must contain these track indices.',
             dum_tracks='Dummy port must contain these track indices.',
-            flip_parity='the flip track parity dictionary.',
             is_passive='True if this substrate is used as substrate contact for passive devices.',
         )
 
@@ -208,7 +199,6 @@ class AnalogSubstrate(TemplateBase):
             dummy_only=dummy_only,
             port_tracks=port_tracks,
             dum_tracks=dum_tracks,
-            flip_parity=flip_parity,
             layout_name=self.get_layout_basename() + '_core',
             layout_info=self._layout_info,
         )

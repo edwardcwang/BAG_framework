@@ -85,7 +85,6 @@ class AnalogMOSConn(TemplateBase):
             is_diff='True to draw a differential pair connection instead (shared source).',
             diode_conn='True to short drain/gate',
             gate_ext_mode='connect gate using lower level metal to adjacent transistors.',
-            flip_parity='the flip track parity dictionary.',
         )
 
     def get_layout_basename(self):
@@ -130,9 +129,6 @@ class AnalogMOSConn(TemplateBase):
 
     def _draw_layout_helper(self, lch, w, fg, sdir, ddir, min_ds_cap, gate_pref_loc,
                             is_ds_dummy, is_diff, diode_conn, gate_ext_mode, flip_parity):
-        self.grid = self.grid.copy()
-        self.grid.set_flip_parity(flip_parity)
-
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
         mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, 'nch', 'standard', fg)
@@ -180,7 +176,6 @@ class AnalogMOSDummy(TemplateBase):
             fg='number of fingers.',
             edge_mode='Whether to connect to source/drain on left/right edges.',
             gate_tracks='list of track numbers to draw dummy gate connections.',
-            flip_parity='the flip track parity dictionary.',
         )
 
     def get_layout_basename(self):
@@ -210,9 +205,6 @@ class AnalogMOSDummy(TemplateBase):
         self._draw_layout_helper(**self.params)
 
     def _draw_layout_helper(self, lch, w, fg, edge_mode, gate_tracks, flip_parity):
-        self.grid = self.grid.copy()
-        self.grid.set_flip_parity(flip_parity)
-
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
         mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, 'nch', 'standard', fg)
@@ -261,7 +253,6 @@ class AnalogMOSDecap(TemplateBase):
             ddir='drain connection direction.',
             gate_ext_mode='connect gate using lower level metal to adjacent transistors.',
             export_gate='True to export gate to higher level metal.',
-            flip_parity='the flip track parity dictionary.',
         )
 
     @classmethod
@@ -310,9 +301,6 @@ class AnalogMOSDecap(TemplateBase):
         self._draw_layout_helper(**self.params)
 
     def _draw_layout_helper(self, lch, w, fg, sdir, ddir, gate_ext_mode, export_gate, flip_parity):
-        self.grid = self.grid.copy()
-        self.grid.set_flip_parity(flip_parity)
-
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
         mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, 'nch', 'standard', fg)

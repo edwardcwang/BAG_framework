@@ -220,7 +220,6 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                    em_specs=None,  # type: Optional[Dict[str, Any]]
                    grid_type='standard',  # type: str
                    ext_dir='',  # type: str
-                   flip_parity=None,  # type: Optional[Dict[int, bool]]
                    well_end_mode=0,  # type: int
                    ):
         # type: (...) -> None
@@ -253,23 +252,16 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             the lower resistor routing grid name.
         ext_dir : str
             resistor core extension direction.
-        flip_parity : Optional[Dict[int, bool]]
-            The flip parity dictioanry.
         well_end_mode : int
             integer flag that controls whether to extend well layer to top/bottom.
         """
         # modify resistor layer routing grid.
-        self.grid = self.grid.copy()
-
         grid_layers = self.grid.tech_info.tech_params['layout']['analog_res'][grid_type]
         for lay_id, tr_w, tr_sp, tr_dir, necessary in grid_layers:
             if necessary or lay_id not in self.grid:
                 self.grid.add_new_layer(lay_id, tr_sp, tr_w, tr_dir, override=True)
 
         self.grid.update_block_pitch()
-
-        if flip_parity is not None:
-            self.grid.set_flip_parity(flip_parity)
 
         # find location of the lower-left resistor core
         res = self.grid.resolution
@@ -296,7 +288,6 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             min_tracks=min_tracks,
             em_specs=em_specs,
             ext_dir=ext_dir,
-            flip_parity=self.grid.get_flip_parity_at(self._core_offset, self._hm_layer, unit_mode=True),
         )
         core_master = self.new_template(params=core_params, temp_cls=AnalogResCore)
         lr_params = core_master.get_boundary_params('lr')
@@ -315,7 +306,6 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             for col in range(nx):
                 cur_name = 'XCORE%d' % (col + nx * row)
                 cur_loc = (w_edge + col * w_core, h_edge + row * h_core)
-                core_params['flip_parity'] = self.grid.get_flip_parity_at(cur_loc, self._hm_layer, unit_mode=True)
                 cur_master = self.new_template(params=core_params, temp_cls=AnalogResCore)
                 self.add_instance(cur_master, inst_name=cur_name, loc=cur_loc, unit_mode=True)
                 if row == 0 and col == 0:
@@ -399,7 +389,6 @@ class TerminationCore(ResArrayBase):
             res_type='reference',
             em_specs={},
             ext_dir='',
-            flip_parity=None,
             well_end_mode=0,
         )
 
@@ -425,7 +414,6 @@ class TerminationCore(ResArrayBase):
             res_type='the resistor type.',
             em_specs='EM specifications for the termination network.',
             ext_dir='resistor core extension direction.',
-            flip_parity='flip parity dictionary.',
             well_end_mode='integer flag that controls whether to extend well layer to top/bottom.',
         )
 
@@ -549,7 +537,6 @@ class Termination(TemplateBase):
             nx=2,
             ny=1,
             ext_dir='',
-            flip_parity=None,
             res_type='reference',
             em_specs={},
         )
@@ -578,7 +565,6 @@ class Termination(TemplateBase):
             res_type='the resistor type.',
             em_specs='EM specifications for the termination network.',
             ext_dir='resistor core extension direction.',
-            flip_parity='flip parity dictionary.',
         )
 
     def draw_layout(self):
@@ -588,11 +574,6 @@ class Termination(TemplateBase):
         sub_lch = res_params.pop('sub_lch')
         sub_w = res_params.pop('sub_w')
         sub_type = self.params['sub_type']
-        flip_parity = self.params.pop('flip_parity')
-
-        self.grid = self.grid.copy()
-        if flip_parity is not None:
-            self.grid.set_flip_parity(flip_parity)
 
         res_params['well_end_mode'] = 3
         res_master = self.new_template(params=res_params, temp_cls=TerminationCore)

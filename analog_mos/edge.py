@@ -149,7 +149,6 @@ class AnalogEdge(TemplateBase):
             guard_ring_nf='number of guard ring fingers.',
             name_id='cell name ID.',
             layout_info='the layout information dictionary.',
-            flip_parity='The flip parity dictionary.',
         )
 
     def get_layout_basename(self):
@@ -163,13 +162,7 @@ class AnalogEdge(TemplateBase):
     def draw_layout(self):
         guard_ring_nf = self.params['guard_ring_nf']
         layout_info = self.params['layout_info']
-        flip_parity = self.params['flip_parity']
-        mos_conn_layer = self.params['mos_conn_layer']
         basename = self.get_layout_basename()
-
-        self.grid = self.grid.copy()
-        if flip_parity is not None:
-            self.grid.set_flip_parity(flip_parity)
 
         out_info = self._tech_cls.get_outer_edge_info(guard_ring_nf, layout_info)
         # add outer edge
@@ -193,7 +186,6 @@ class AnalogEdge(TemplateBase):
                 dummy_only=False,
                 port_tracks=[],
                 dum_tracks=[],
-                flip_parity=self.grid.get_flip_parity_at(loc, mos_conn_layer, unit_mode=True),
                 layout_name='%s_sub' % basename,
                 layout_info=sub_info,
             )

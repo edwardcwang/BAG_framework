@@ -591,7 +591,6 @@ class AnalogResCore(TemplateBase):
             min_tracks='Minimum number of tracks on each layer per block.',
             em_specs='resistor EM spec specifications.',
             ext_dir='resistor core extension direction.',
-            flip_parity='the flip track parity dictionary.',
         )
 
     def get_num_tracks(self):
@@ -666,9 +665,6 @@ class AnalogResCore(TemplateBase):
         self._draw_layout_helper(**self.params)
 
     def _draw_layout_helper(self, l, w, res_type, sub_type, threshold, min_tracks, em_specs, ext_dir, flip_parity):
-        self.grid = self.grid.copy()
-        self.grid.set_flip_parity(flip_parity)
-
         res = self.grid.resolution
         lay_unit = self.grid.layout_unit
         l_unit = int(round(l / lay_unit / res))

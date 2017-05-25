@@ -87,7 +87,6 @@ class AnalogBaseInfo(object):
         vm_space, vm_width = self._tech_cls.get_mos_conn_track_info(lch_unit)
         dum_space, dum_width = self._tech_cls.get_dum_conn_track_info(lch_unit)
 
-        self.grid = grid.copy()
         self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y', override=True, unit_mode=True)
         self.grid.add_new_layer(self.dum_port_layer, dum_space, dum_width, 'y', override=True, unit_mode=True)
         self.grid.update_block_pitch()
@@ -615,7 +614,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             fg=fg,
             edge_mode=edge_mode,
             gate_tracks=dum_tr_list,
-            flip_parity=self.grid.get_flip_parity_at(loc, self.mos_conn_layer, unit_mode=True),
         )
         conn_master = self.new_template(params=params, temp_cls=AnalogMOSDummy)
         conn_inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
@@ -674,7 +672,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             fg=fg,
             gate_ext_mode=gate_ext_mode,
             export_gate=export_gate,
-            flip_parity=self.grid.get_flip_parity_at(loc, self.mos_conn_layer, unit_mode=True),
         )
         conn_params.update(kwargs)
 
@@ -744,7 +741,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             sdir=sdir,
             ddir=ddir,
             is_ds_dummy=is_ds_dummy,
-            flip_parity=self.grid.get_flip_parity_at(loc, self.mos_conn_layer, unit_mode=True),
         )
         conn_params.update(kwargs)
 
@@ -783,9 +779,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             # do nothing
             return [], [], [], []
 
-        sub_xc = self._layout_info.sd_xc_unit
-        sub_flip_parity = self.grid.get_flip_parity_at((sub_xc, 0), self.mos_conn_layer, unit_mode=True)
-
         sub_type = 'ptap' if mos_type == 'nch' else 'ntap'
         master_list = []
         track_spec_list = []
@@ -799,7 +792,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 threshold=th_list[0],
                 fg=fg_tot,
                 end_mode=bot_sub_end,
-                flip_parity=sub_flip_parity,
             )
             master_list.append(self.new_template(params=sub_params, temp_cls=AnalogSubstrate))
             track_spec_list.append(('R0', -1, -1))
@@ -834,7 +826,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 threshold=th_list[-1],
                 fg=fg_tot,
                 end_mode=top_sub_end,
-                flip_parity=sub_flip_parity,
             )
             master_list.append(self.new_template(params=sub_params, temp_cls=AnalogSubstrate))
             track_spec_list.append(('MX', -1, -1))
@@ -1060,13 +1051,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         for ybot, ext_info, master, track_spec in zip(y_list, ext_list, master_list, track_spec_list):
             orient = track_spec[0]
             edge_layout_info = master.get_edge_layout_info()
-            flip_par_left = self.grid.get_flip_parity_at((0, 0), self.mos_conn_layer, unit_mode=True)
             edgel_params = dict(
                 mos_conn_layer=self.mos_conn_layer,
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
-                flip_parity=flip_par_left,
             )
             edgel_master = self.new_template(params=edgel_params, temp_cls=AnalogEdge)
             edgel = self.add_instance(edgel_master, orient=orient)
@@ -1092,13 +1081,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 orient_r = 'R180'
             edger_xo = inst.array_box.right_unit + edgel_master.prim_bound_box.width_unit
             edger_loc = edger_xo, yo
-            flip_par_right = self.grid.get_flip_parity_at(edger_loc, self.mos_conn_layer, unit_mode=True)
             edger_params = dict(
                 mos_conn_layer=self.mos_conn_layer,
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
-                flip_parity=flip_par_right,
             )
             edger_master = self.new_template(params=edger_params, temp_cls=AnalogEdge)
             edger = self.add_instance(edger_master, loc=edger_loc, orient=orient_r, unit_mode=True)
@@ -1112,7 +1099,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
                     layout_info=ext_edge_layout_info,
-                    flip_parity=flip_par_left,
                 )
                 ext_edgel_master = self.new_template(params=ext_edgel_params, temp_cls=AnalogEdge)
                 yo = inst.array_box.top_unit
@@ -1123,7 +1109,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
                     layout_info=ext_edge_layout_info,
-                    flip_parity=flip_par_right,
                 )
                 ext_edger_master = self.new_template(params=ext_edger_params, temp_cls=AnalogEdge)
                 edger = self.add_instance(ext_edger_master, loc=(edger_xo, yo), orient='MY', unit_mode=True)
@@ -1172,8 +1157,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                   pgr_w=None,  # type: Optional[Union[float, int]]
                   ngr_w=None,  # type: Optional[Union[float, int]]
                   min_fg_sep=0,  # type: int
-                  end_mode=3,  # type: int
-                  flip_parity=None,  # type: Optional[Dict[int, bool]]
+                  end_mode=15,  # type: int
+                  top_layer=None,  # type: Optional[int]
                   ):
         # type: (...) -> None
         """Draw the analog base.
@@ -1224,13 +1209,19 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         pgr_w : Optional[Union[float, int]]
             pwell guard ring substrate contact width.
         ngr_w : Optional[Union[float, int]]
-            nwell guard ringsubstrate contact width.
+            nwell guard ring substrate contact width.
         min_fg_sep : int
             minimum number of fingers between different transistors.
         end_mode : int
-            substrate end mode flag
-        flip_parity : Optional[Dict[int, bool]]
-            The flip parity dictioanry.
+            right/left/top/bottom end mode flag.  This is a 4-bit integer.  If bit 0 (LSB) is 1, then
+            we assume there are no blocks abutting the bottom.  If bit 1 is 1, we assume there are no
+            blocks abutting the top.  bit 2 and bit 3 (MSB) corresponds to left and right, respectively.
+            The default value is 15, which means we assume this AnalogBase is surrounded by empty spaces.
+        top_layer : Optional[int]
+            The top metal layer this block will use.  Defaults to the horizontal layer above mos connection layer.
+            The top metal layer decides the quantization of the overall bounding box and the array box.  As
+            the result, the margin between edge of the overall bounding box and the edge of array box is
+            determined by the block pitch.
         """
         numn = len(nw_list)
         nump = len(pw_list)
@@ -1241,8 +1232,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # make AnalogBaseInfo object.  Also update routing grid.
         self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, min_fg_sep=min_fg_sep)
         self.grid = self._layout_info.grid
-        if flip_parity is not None:
-            self.grid.set_flip_parity(flip_parity)
 
         # initialize private attributes.
         self._lch = lch
@@ -1845,7 +1834,6 @@ class SubstrateContact(TemplateBase):
         return dict(
             well_end_mode=0,
             show_pins=False,
-            flip_parity=None,
             is_passive=False,
         )
 
@@ -1871,7 +1859,6 @@ class SubstrateContact(TemplateBase):
             well_width='Width of the well in layout units.  We assume the well is centered horizontally in the block.',
             show_pins='True to show pin labels.',
             well_end_mode='integer flag that controls whether to extend well layer to top/bottom.',
-            flip_parity='The track parity dictionary.',
             is_passive='True if this substrate is used as substrate contact for passive devices.',
         )
 
@@ -1880,7 +1867,7 @@ class SubstrateContact(TemplateBase):
         self._draw_layout_helper(**self.params)
 
     def _draw_layout_helper(self, lch, w, sub_type, threshold, top_layer, blk_width, well_width, show_pins,
-                            well_end_mode, flip_parity, is_passive):
+                            well_end_mode, is_passive):
         # type: (float, Union[float, int], str, str, int, int, bool) -> None
         res = self.grid.resolution
         well_width = int(round(well_width / res))
@@ -1892,8 +1879,6 @@ class SubstrateContact(TemplateBase):
         self._layout_info = AnalogBaseInfo(self.grid, lch, 0)
         sd_pitch = self._layout_info.sd_pitch_unit
         self.grid = self._layout_info.grid
-        if flip_parity is not None:
-            self.grid.set_flip_parity(flip_parity)
 
         hm_layer = self._layout_info.mconn_port_layer + 1
 
@@ -1989,5 +1974,3 @@ class SubstrateContact(TemplateBase):
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
         sub_wires = self.connect_to_tracks(insts.get_port(port_name).get_pins(hm_layer - 1), track_id)
         self.add_pin(port_name, sub_wires, show=show_pins)
-
-        self.update_flip_parity()
