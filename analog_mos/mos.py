@@ -221,3 +221,119 @@ class AnalogMOSExt(TemplateBase):
         self._layout_info = ext_info
         self._tech_cls.draw_mos(self, ext_info)
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
+
+
+class DigitalMOSBase(TemplateBase):
+    """An abstract template for analog mosfet.
+
+    Must have parameters mos_type, lch, w, threshold, fg.
+    Instantiates a transistor with minimum G/D/S connections.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(DigitalMOSBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
+        self._layout_info = None
+        self._ext_top_info = None
+        self._ext_bot_info = None
+        self.prim_bound_box = None
+
+        self._top_gtr_yc = None
+        self._bot_dstr_yc = None
+        self._max_bot_tr_yc = None
+        self._min_top_tr_yc = None
+        self._sd_yc = None
+
+    def get_max_g_track_yc(self):
+        return self._top_gtr_yc
+
+    def get_min_ds_track_yc(self):
+        return self._bot_dstr_yc
+
+    def get_max_bot_track_yc(self):
+        return self._max_bot_tr_yc
+
+    def get_min_top_track_yc(self):
+        return self._min_top_tr_yc
+
+    def get_ext_top_info(self):
+        return self._ext_top_info
+
+    def get_ext_bot_info(self):
+        return self._ext_bot_info
+
+    def get_sd_yc(self):
+        return self._sd_yc
+
+    def get_edge_layout_info(self):
+        return self._layout_info
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            w='transistor width, in meters/number of fins.',
+            mos_type="transistor type, either 'pch' or 'nch'.",
+            threshold='transistor threshold flavor.',
+            blk_type="digital block type.",
+        )
+
+    def get_layout_basename(self):
+        fmt = '%s_l%s_w%s_%s_%s'
+        mos_type = self.params['mos_type']
+        lstr = float_to_si_string(self.params['lch'])
+        wstr = float_to_si_string(self.params['w'])
+        th = self.params['threshold']
+        blk_type = self.params['blk_type']
+        return fmt % (mos_type, lstr, wstr, th, blk_type)
+
+    def compute_unique_key(self):
+        return self.get_layout_basename()
+
+    def draw_layout(self):
+        self._draw_layout_helper(**self.params)
+
+    def _draw_layout_helper(self, lch, w, mos_type, threshold, blk_type, **kwargs):
+        res = self.grid.resolution
+        lch_unit = int(round(lch / self.grid.layout_unit / res))
+
+        mos_info = self._tech_cls.get_dig_mos_info(self.grid, lch_unit, w, mos_type, threshold, blk_type)
+        self._layout_info = mos_info['layout_info']
+        # set parameters
+        self._ext_top_info = mos_info['ext_top_info']
+        self._ext_bot_info = mos_info['ext_bot_info']
+        self._sd_yc = mos_info['sd_yc']
+        self._top_gtr_yc = mos_info['top_gtr_yc']
+        self._bot_dstr_yc = mos_info['bot_dstr_yc']
+        self._max_bot_tr_yc = mos_info['max_bot_tr_yc']
+        self._min_top_tr_yc = mos_info['min_top_tr_yc']
+
+        # draw transistor
+        self._tech_cls.draw_mos(self, self._layout_info)
+        # draw connection
+        self._tech_cls.draw_dig_mos_connection(self, mos_info, blk_type)

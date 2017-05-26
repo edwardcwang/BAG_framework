@@ -115,6 +115,19 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_dig_conn_layer(cls):
+        # type: () -> int
+        """Returns the digital connection layer ID.  Must be vertical.
+
+        Returns
+        -------
+        dig_layer : int
+            the transistor connection layer ID.
+        """
+        return 1
+
+    @classmethod
+    @abc.abstractmethod
     def get_min_fg_decap(cls, lch_unit):
         # type: (int) -> int
         """Returns the minimum number of fingers for decap connections.
@@ -230,6 +243,50 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         fg : int
             number of fingers in this transistor row.
             
+        Returns
+        -------
+        mos_info : Dict[str, Any]
+            the transistor information dictionary.
+        """
+        return {}
+
+    @classmethod
+    @abc.abstractmethod
+    def get_dig_mos_info(cls, grid, lch_unit, w, mos_type, threshold, blk_type):
+        # type: (RoutingGrid, int, int, str, str, str) -> Dict[str, Any]
+        """Returns the transistor information dictionary for custom digital blocks.
+
+        The returned dictionary must have the following entries:
+
+        layout_info: the layout information dictionary.
+        ext_top_info: a tuple of values used to compute extension layout above the transistor.
+        ext_bot_info : a tuple of values used to compute extension layout below the transistor.
+        sd_yc : the Y coordinate of the center of source/drain junction.
+        top_gtr_yc : maximum Y coordinate of the center of top gate track.
+        bot_dstr_yc : minimum Y coordinate of the center of bottom drain/source track.
+        max_bot_tr_yc : maximum Y coordinate of the center of bottom block tracks.
+        min_top_tr_yc : minimum Y coordinate of the center of top block tracks.
+        blk_height : the block height in mos pitches.
+
+        The 4 track Y coordinates (top_gtr_yc, bot_dstr_yc, max_bot_tr_yc, min_top_tr_yc)
+        should be independent of the transistor width.  In this way, you can use different
+        width transistors in the same row.
+
+        Parameters
+        ----------
+        grid : RoutingGrid
+            the RoutingGrid object.
+        lch_unit : int
+            the channel length in resolution units.
+        w : int
+            the transistor width in number of fins/resolution units.
+        mos_type : str
+            the transistor type.  Either 'pch' or 'nch'.
+        threshold : str
+            the transistor threshold flavor.
+        blk_type : str
+            the digital block type.
+
         Returns
         -------
         mos_info : Dict[str, Any]
@@ -357,6 +414,32 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_dig_edge_info(cls, grid, layout_info, adj_blk, top_layer, is_end):
+        # type: (RoutingGrid, Dict[str, Any], str, int, bool) -> Dict[str, Any]
+        """Returns the outer edge layout information dictionary.
+
+        Parameters
+        ----------
+        grid : RoutingGrid
+            the RoutingGrid object.
+        layout_info : Dict[str, Any]
+            layout information dictionary of the center block.
+        adj_blk : str
+            adjacent block type.
+        top_layer : int
+            the top routing layer ID.  Used to determine width quantization.
+        is_end : bool
+            True if there are no blocks abutting the left edge.
+
+        Returns
+        -------
+        outer_edge_info : Dict[str, Any]
+            the outer edge layout information dictionary.
+        """
+        return {}
+
+    @classmethod
+    @abc.abstractmethod
     def get_gr_sub_info(cls, guard_ring_nf, layout_info):
         # type: (int, Dict[str, Any]) -> Dict[str, Any]
         """Returns the guard ring substrate layout information dictionary.
@@ -462,6 +545,23 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             True if this is a differential pair connection.
         diode_conn : bool
             True to short gate and drain together.
+        """
+        pass
+
+    @classmethod
+    @abc.abstractmethod
+    def draw_dig_mos_connection(cls, template, mos_info, blk_type):
+        # type: (TemplateBase, Dict[str, Any], str) -> None
+        """Draw digital transistor connection in the given template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        mos_info : Dict[str, Any]
+            the transistor layout information dictionary.
+        blk_type : str
+            the digital block type.
         """
         pass
 
@@ -616,3 +716,23 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         """
         edge_info = cls.get_edge_info(grid, lch_unit, guard_ring_nf, top_layer, is_end)
         return edge_info['edge_width']
+
+    @classmethod
+    def get_dig_row_height(cls, grid, ng_tracks, nds_tracks):
+        # type: (RoutingGrid, Dict[int, int], Dict[int, int]) -> int
+        """Calculate the height of a PMOS/NMOS row in digital block.
+
+        Parameters
+        ----------
+        grid: RoutingGrid
+            the RoutingGrid object.
+        ng_tracks : Dict[int, int]
+            a dictionary from layer ID to number of gate tracks on that layer.
+        nds_tracks : Dict[int, int]
+            a dictionary from layer ID to number of drain/source tracks on that layer.
+
+        Returns
+        -------
+        row_height : int
+            the row height in resolution units.
+        """

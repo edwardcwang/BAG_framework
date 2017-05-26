@@ -150,7 +150,7 @@ class AnalogEdge(TemplateBase):
         )
 
     def get_layout_basename(self):
-        base = 'edge_%s_gr%d_lay%d' % (self.params['name_id'], self.params['guard_ring_nf'], self.params['top_layer'])
+        base = 'aedge_%s_gr%d_lay%d' % (self.params['name_id'], self.params['guard_ring_nf'], self.params['top_layer'])
         if self.params['is_end']:
             base += '_end'
         return base
@@ -206,3 +206,59 @@ class AnalogEdge(TemplateBase):
             inst = self.add_instance(master, 'XSEP', loc=(x0, 0), unit_mode=True)
             self.array_box = self.array_box.merge(inst.array_box)
             self.prim_bound_box = self.prim_bound_box.merge(inst.translate_master_box(master.prim_bound_box))
+
+
+class DigitalOuterEdge(TemplateBase):
+    """The abstract base class for finfet layout classes.
+
+    This class provides the draw_foundation() method, which draws the poly array
+    and implantation layers.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(DigitalOuterEdge, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            top_layer='The top layer used to calculate width quantization.',
+            is_end='True if this edge is at the end.',
+            adj_blk='Adjacent digital block type.',
+            name_id='cell name ID.',
+            layout_info='the layout information dictionary.',
+        )
+
+    def get_layout_basename(self):
+        name_id = self.params['name_id']
+        adj_blk = self.params['adj_blk']
+        top_layer = self.params['top_layer']
+        is_end = self.params['is_end']
+        base = 'dedge_%s_%s_lay%d' % (name_id, adj_blk, top_layer)
+        if is_end:
+            base += '_end'
+        return base
+
+    def compute_unique_key(self):
+        base_name = self.get_layout_basename()
+        return self.to_immutable_id((base_name, self.params['layout_info'], self.params['flip_parity']))
+
+    def draw_layout(self):
+        top_layer = self.params['top_layer']
+        is_end = self.params['is_end']
+        layout_info = self.params['layout_info']
+        adj_blk = self.params['adj_blk']
+
+        edge_info = self._tech_cls.get_dig_edge_info(self.grid, layout_info, adj_blk, top_layer, is_end)
+        self._tech_cls.draw_mos(self, edge_info)
