@@ -253,50 +253,6 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_dig_mos_info(cls, grid, lch_unit, w, mos_type, threshold, blk_type):
-        # type: (RoutingGrid, int, int, str, str, str) -> Dict[str, Any]
-        """Returns the transistor information dictionary for custom digital blocks.
-
-        The returned dictionary must have the following entries:
-
-        layout_info: the layout information dictionary.
-        ext_top_info: a tuple of values used to compute extension layout above the transistor.
-        ext_bot_info : a tuple of values used to compute extension layout below the transistor.
-        sd_yc : the Y coordinate of the center of source/drain junction.
-        top_gtr_yc : maximum Y coordinate of the center of top gate track.
-        bot_dstr_yc : minimum Y coordinate of the center of bottom drain/source track.
-        max_bot_tr_yc : maximum Y coordinate of the center of bottom block tracks.
-        min_top_tr_yc : minimum Y coordinate of the center of top block tracks.
-        blk_height : the block height in mos pitches.
-
-        The 4 track Y coordinates (top_gtr_yc, bot_dstr_yc, max_bot_tr_yc, min_top_tr_yc)
-        should be independent of the transistor width.  In this way, you can use different
-        width transistors in the same row.
-
-        Parameters
-        ----------
-        grid : RoutingGrid
-            the RoutingGrid object.
-        lch_unit : int
-            the channel length in resolution units.
-        w : int
-            the transistor width in number of fins/resolution units.
-        mos_type : str
-            the transistor type.  Either 'pch' or 'nch'.
-        threshold : str
-            the transistor threshold flavor.
-        blk_type : str
-            the digital block type.
-
-        Returns
-        -------
-        mos_info : Dict[str, Any]
-            the transistor information dictionary.
-        """
-        return {}
-
-    @classmethod
-    @abc.abstractmethod
     def get_valid_extension_widths(cls, lch_unit, top_ext_info, bot_ext_info):
         # type: (int, Tuple[Any, ...], Tuple[Any, ...]) -> List[int]
         """Returns a list of valid extension widths in mos_pitch units.
@@ -406,32 +362,6 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         is_end : bool
             True if there are no blocks abutting the left edge.
             
-        Returns
-        -------
-        outer_edge_info : Dict[str, Any]
-            the outer edge layout information dictionary.
-        """
-        return {}
-
-    @classmethod
-    @abc.abstractmethod
-    def get_dig_edge_info(cls, grid, layout_info, adj_blk, top_layer, is_end):
-        # type: (RoutingGrid, Dict[str, Any], str, int, bool) -> Dict[str, Any]
-        """Returns the outer edge layout information dictionary.
-
-        Parameters
-        ----------
-        grid : RoutingGrid
-            the RoutingGrid object.
-        layout_info : Dict[str, Any]
-            layout information dictionary of the center block.
-        adj_blk : str
-            adjacent block type.
-        top_layer : int
-            the top routing layer ID.  Used to determine width quantization.
-        is_end : bool
-            True if there are no blocks abutting the left edge.
-
         Returns
         -------
         outer_edge_info : Dict[str, Any]
@@ -551,23 +481,6 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def draw_dig_mos_connection(cls, template, mos_info, blk_type):
-        # type: (TemplateBase, Dict[str, Any], str) -> None
-        """Draw digital transistor connection in the given template.
-
-        Parameters
-        ----------
-        template : TemplateBase
-            the TemplateBase object to draw layout in.
-        mos_info : Dict[str, Any]
-            the transistor layout information dictionary.
-        blk_type : str
-            the digital block type.
-        """
-        pass
-
-    @classmethod
-    @abc.abstractmethod
     def draw_dum_connection(cls, template, mos_info, edge_mode, gate_tracks):
         # type: (TemplateBase, Dict[str, Any], int, List[int]) -> None
         """Draw dummy connection layout in the given template.
@@ -609,6 +522,94 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             connect gate to the right adjacent block on lower metal layers.
         export_gate : bool
             True to draw gate connections up to transistor connection layer.
+        """
+        pass
+
+    @classmethod
+    @abc.abstractmethod
+    def get_laygo_info(cls, grid, lch_unit, w, mos_type, threshold, blk_type):
+        # type: (RoutingGrid, int, int, str, str, str) -> Dict[str, Any]
+        """Returns the transistor information dictionary for laygo blocks.
+
+        The returned dictionary must have the following entries:
+
+        layout_info: the layout information dictionary.
+        ext_top_info: a tuple of values used to compute extension layout above the transistor.
+        ext_bot_info : a tuple of values used to compute extension layout below the transistor.
+        sd_yc : the Y coordinate of the center of source/drain junction.
+        top_gtr_yc : maximum Y coordinate of the center of top gate track.
+        bot_dstr_yc : minimum Y coordinate of the center of bottom drain/source track.
+        max_bot_tr_yc : maximum Y coordinate of the center of bottom block tracks.
+        min_top_tr_yc : minimum Y coordinate of the center of top block tracks.
+        blk_height : the block height in mos pitches.
+
+        The 4 track Y coordinates (top_gtr_yc, bot_dstr_yc, max_bot_tr_yc, min_top_tr_yc)
+        should be independent of the transistor width.  In this way, you can use different
+        width transistors in the same row.
+
+        Parameters
+        ----------
+        grid : RoutingGrid
+            the RoutingGrid object.
+        lch_unit : int
+            the channel length in resolution units.
+        w : int
+            the transistor width in number of fins/resolution units.
+        mos_type : str
+            the transistor/substrate type.  One of 'pch', 'nch', 'ptap', or 'ntap'.
+        threshold : str
+            the transistor threshold flavor.
+        blk_type : str
+            the digital block type.
+
+        Returns
+        -------
+        mos_info : Dict[str, Any]
+            the transistor information dictionary.
+        """
+        return {}
+
+    @classmethod
+    @abc.abstractmethod
+    def get_laygo_end_info(cls, grid, lch_unit, mos_type, threshold, top_layer, is_end):
+        # type: (RoutingGrid, int, str, str, int, bool) -> Dict[str, Any]
+        """Returns the digital end block layout information dictionary.
+
+        Parameters
+        ----------
+        grid : RoutingGrid
+            the RoutingGrid object.
+        lch_unit : int
+            the channel length in resolution units.
+        mos_type : str
+            the adjacent row transistor type.  Either 'pch' or 'nch'.
+        threshold : str
+            the threshold type.
+        top_layer : int
+            the top level routing layer.  Used to determine vertical pitch.
+        is_end : bool
+            True if no blocks are abutting the bottom.
+        Returns
+        -------
+        sub_info : Dict[str, Any]
+            the substrate information dictionary.
+        """
+        return {}
+
+    @classmethod
+    @abc.abstractmethod
+    def draw_laygo_connection(cls, template, mos_info, blk_type):
+        # type: (TemplateBase, Dict[str, Any], str) -> None
+        """Draw digital transistor connection in the given template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        mos_info : Dict[str, Any]
+            the transistor layout information dictionary.
+        blk_type : str
+            the digital block type.
         """
         pass
 
@@ -719,7 +720,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return edge_info['edge_width']
 
     @classmethod
-    def get_dig_row_info(cls, grid, lch_unit, w, mos_type, min_g_tracks, min_ds_tracks):
+    def get_laygo_row_info(cls, grid, lch_unit, w, mos_type, min_g_tracks, min_ds_tracks):
         # type: (RoutingGrid, int, int, str, Dict[int, int], Dict[int, int]) -> Dict[str, Any]
         """Calculate the height of a PMOS/NMOS row in digital block.
 
@@ -732,9 +733,10 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         w : int
             the transistor width in number of fins or resolution units.
         mos_type : str
-            the transistor type.  Either 'pch' or 'nch'.
+            the transistor/substrate type.  One of 'pch', 'nch', 'ptap', or 'ntap'.
         min_g_tracks : Dict[int, int]
             a dictionary from layer ID to minimum number of gate tracks on that layer.
+            For substrates, this should be an empty dictionary.
         min_ds_tracks : Dict[int, int]
             a dictionary from layer ID to minimum number of drain/source tracks on that layer.
 
@@ -743,15 +745,13 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         dig_row_info : Dict[str, Any]
             a dictionary containing information about this digital row.
         """
-        mos_info = cls.get_dig_mos_info(grid, lch_unit, w, mos_type, 'standard', 'fg2d')
+        mos_info = cls.get_laygo_info(grid, lch_unit, w, mos_type, 'standard', 'fg2d')
 
-        top_gtr_yc = mos_info['top_gtr_yc']
         bot_dstr_yc = mos_info['bot_dstr_yc']
-        max_bot_tr_yc = mos_info['max_bot_tr_yc']
         min_top_tr_yc = mos_info['min_top_tr_yc']
         blk_height = mos_info['blk_height']
-        g_ext_info = mos_info['ext_bot_info']
-        d_ext_info = mos_info['ext_top_info']
+        ext_bot_info = mos_info['ext_bot_info']
+        ext_top_info = mos_info['ext_top_info']
 
         hm_layer = cls.get_dig_conn_layer() + 1
 
@@ -759,19 +759,25 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         min_height = 0
         mos_pitch = cls.get_mos_pitch(unit_mode=True)
         blk_pitch = mos_pitch
-        for lay, gtr in min_g_tracks.items():
-            dstr = min_ds_tracks[lay]
+        for lay, dstr in min_ds_tracks.items():
+            gtr = min_g_tracks.get(lay, 0)
             track_pitch = grid.get_track_pitch(lay, unit_mode=True)
             blk_pitch = lcm([blk_pitch, track_pitch])
             min_height = max(min_height, track_pitch * (gtr + dstr))
 
         # step 2: find Y coordinate of mos block
-        gtr_idx = min_g_tracks[hm_layer] - 1
-        gtr_yc = grid.track_to_coord(hm_layer, gtr_idx, unit_mode=True)
-        btr_yc = grid.track_to_coord(hm_layer, -1, unit_mode=True)
-        y0 = max(gtr_yc - top_gtr_yc, btr_yc - max_bot_tr_yc)
-        ext_bot_h = -(-y0 // mos_pitch)
-        y0 = ext_bot_h * mos_pitch
+        if hm_layer in min_g_tracks:
+            top_gtr_yc = mos_info['top_gtr_yc']
+            max_bot_tr_yc = mos_info['max_bot_tr_yc']
+            gtr_idx = min_g_tracks[hm_layer] - 1
+            gtr_yc = grid.track_to_coord(hm_layer, gtr_idx, unit_mode=True)
+            btr_yc = grid.track_to_coord(hm_layer, -1, unit_mode=True)
+            y0 = max(gtr_yc - top_gtr_yc, btr_yc - max_bot_tr_yc)
+            ext_bot_h = -(-y0 // mos_pitch)
+            y0 = ext_bot_h * mos_pitch
+        else:
+            y0 = 0
+            ext_bot_h = 0
 
         # find block top boudnary
         dtr_idx = grid.coord_to_nearest_track(hm_layer, y0 + bot_dstr_yc, half_track=True,
@@ -786,8 +792,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return dict(
             height=y1,
             yblk=y0,
-            g_ext_info=g_ext_info,
-            d_ext_info=d_ext_info,
-            g_extt_h=ext_bot_h,
-            d_ext_h=ext_top_h,
+            ext_bot_info=ext_bot_info,
+            ext_top_info=ext_top_info,
+            ext_bot_h=ext_bot_h,
+            ext_top_h=ext_top_h,
         )

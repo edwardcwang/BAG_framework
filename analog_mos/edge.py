@@ -260,5 +260,5 @@ class DigitalOuterEdge(TemplateBase):
         layout_info = self.params['layout_info']
         adj_blk = self.params['adj_blk']
 
-        edge_info = self._tech_cls.get_dig_edge_info(self.grid, layout_info, adj_blk, top_layer, is_end)
+        edge_info = self._tech_cls.get_laygo_edge_info(self.grid, layout_info, adj_blk, top_layer, is_end)
         self._tech_cls.draw_mos(self, edge_info)
