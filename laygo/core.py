@@ -239,7 +239,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if self._laygo_size is None:
             ncol = 0
             for intv in self._used_list:
-                ncol = max(ncol, intv.get_end())
+                if intv:
+                    ncol = max(ncol, intv.get_end())
             self.set_laygo_size(ncol)
 
         # fill empty spaces
