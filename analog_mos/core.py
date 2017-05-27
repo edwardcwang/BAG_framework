@@ -34,6 +34,7 @@ from future.utils import with_metaclass
 
 from typing import Dict, Any, Union, Tuple, List
 
+from bag.math import lcm
 from bag.layout.routing import RoutingGrid
 from bag.layout.template import TemplateBase
 
@@ -718,21 +719,75 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return edge_info['edge_width']
 
     @classmethod
-    def get_dig_row_height(cls, grid, ng_tracks, nds_tracks):
-        # type: (RoutingGrid, Dict[int, int], Dict[int, int]) -> int
+    def get_dig_row_info(cls, grid, lch_unit, w, mos_type, min_g_tracks, min_ds_tracks):
+        # type: (RoutingGrid, int, int, str, Dict[int, int], Dict[int, int]) -> Dict[str, Any]
         """Calculate the height of a PMOS/NMOS row in digital block.
 
         Parameters
         ----------
         grid: RoutingGrid
             the RoutingGrid object.
-        ng_tracks : Dict[int, int]
-            a dictionary from layer ID to number of gate tracks on that layer.
-        nds_tracks : Dict[int, int]
-            a dictionary from layer ID to number of drain/source tracks on that layer.
+        lch_unit : int
+            the channel length in resolution units.
+        w : int
+            the transistor width in number of fins or resolution units.
+        mos_type : str
+            the transistor type.  Either 'pch' or 'nch'.
+        min_g_tracks : Dict[int, int]
+            a dictionary from layer ID to minimum number of gate tracks on that layer.
+        min_ds_tracks : Dict[int, int]
+            a dictionary from layer ID to minimum number of drain/source tracks on that layer.
 
         Returns
         -------
-        row_height : int
-            the row height in resolution units.
+        dig_row_info : Dict[str, Any]
+            a dictionary containing information about this digital row.
         """
+        mos_info = cls.get_dig_mos_info(grid, lch_unit, w, mos_type, 'standard', 'fg2d')
+
+        top_gtr_yc = mos_info['top_gtr_yc']
+        bot_dstr_yc = mos_info['bot_dstr_yc']
+        max_bot_tr_yc = mos_info['max_bot_tr_yc']
+        min_top_tr_yc = mos_info['min_top_tr_yc']
+        blk_height = mos_info['blk_height']
+        g_ext_info = mos_info['ext_bot_info']
+        d_ext_info = mos_info['ext_top_info']
+
+        hm_layer = cls.get_dig_conn_layer() + 1
+
+        # step 1: get minimum height and blk_pitch
+        min_height = 0
+        mos_pitch = cls.get_mos_pitch(unit_mode=True)
+        blk_pitch = mos_pitch
+        for lay, gtr in min_g_tracks.items():
+            dstr = min_ds_tracks[lay]
+            track_pitch = grid.get_track_pitch(lay, unit_mode=True)
+            blk_pitch = lcm([blk_pitch, track_pitch])
+            min_height = max(min_height, track_pitch * (gtr + dstr))
+
+        # step 2: find Y coordinate of mos block
+        gtr_idx = min_g_tracks[hm_layer] - 1
+        gtr_yc = grid.track_to_coord(hm_layer, gtr_idx, unit_mode=True)
+        btr_yc = grid.track_to_coord(hm_layer, -1, unit_mode=True)
+        y0 = max(gtr_yc - top_gtr_yc, btr_yc - max_bot_tr_yc)
+        ext_bot_h = -(-y0 // mos_pitch)
+        y0 = ext_bot_h * mos_pitch
+
+        # find block top boudnary
+        dtr_idx = grid.coord_to_nearest_track(hm_layer, y0 + bot_dstr_yc, half_track=True,
+                                              mode=1, unit_mode=True)
+        dtr_idx += min_ds_tracks[hm_layer]
+        ttr_idx = grid.coord_to_nearest_track(hm_layer, y0 + min_top_tr_yc, half_track=True,
+                                              mode=1, unit_mode=True)
+        y1 = max(min_height, grid.track_to_coord(hm_layer, max(dtr_idx, ttr_idx) - 0.5, unit_mode=True))
+        y1 = -(-y1 // blk_pitch) * blk_pitch
+        ext_top_h = (y1 - y0 - blk_height) // mos_pitch
+
+        return dict(
+            height=y1,
+            yblk=y0,
+            g_ext_info=g_ext_info,
+            d_ext_info=d_ext_info,
+            g_extt_h=ext_bot_h,
+            d_ext_h=ext_top_h,
+        )
