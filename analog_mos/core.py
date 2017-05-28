@@ -579,9 +579,13 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         # type: (RoutingGrid, int, str, str, int, bool) -> Dict[str, Any]
         """Returns the digital end block layout information dictionary.
 
-        Must have the following entries:
+        The returned dictionary must have the following entries:
 
-        height : the height of the end block.
+        height : the height of the end row.
+        yblk : Y coordinate of the end block.
+        blk_height : the height of the end block excluding top extension.
+        mos_type : the end row transistor type.  One of 'nch', 'pch', 'ptap', or 'ntap'.  Used to determine
+                   implant layers.
         ext_top_info : extension information Tuple for adjacent block.
         ext_top_h : minimum top extension height.
 
@@ -803,6 +807,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return dict(
             height=y1,
             yblk=y0,
+            blk_height=blk_height,
             ext_bot_info=ext_bot_info,
             ext_top_info=ext_top_info,
             ext_bot_h=ext_bot_h,

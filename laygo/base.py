@@ -139,10 +139,15 @@ class LaygoEndRow(TemplateBase):
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         self._end_info = None
+        self._mos_type = None
 
     @property
     def row_info(self):
         return self._end_info
+
+    @property
+    def mos_type(self):
+        return self._mos_type
 
     @classmethod
     def get_params_info(cls):
@@ -190,5 +195,6 @@ class LaygoEndRow(TemplateBase):
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
         self._end_info = self._tech_cls.get_laygo_end_info(self.grid, lch_unit, mos_type, threshold, top_layer, is_end)
+        self._mos_type = self._end_info['mos_type']
         # draw transistor
         self._tech_cls.draw_mos(self, self._end_info['layout_info'])

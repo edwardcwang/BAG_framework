@@ -38,6 +38,7 @@ from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.objects import Instance
 
 from ..analog_mos.core import MOSTech
+from ..analog_mos.mos import AnalogMOSExt
 from .base import LaygoPrimitive, LaygoEndRow
 
 
@@ -71,7 +72,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._row_orientations = None
         self._row_thresholds = None
         self._row_infos = None
-        self._ext_heights = None
+        self._ext_params = None
         self._left_margin = 0
         self._right_margin = 0
         self._col_width = 0
@@ -130,7 +131,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 is_end=bot_end,
             )
             self._bot_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
-            self._row_types.append('end')
+            self._row_types.append(self._bot_end_master.mos_type)
             self._row_orientations.append('R0')
             self._row_infos.append(self._bot_end_master.row_info)
             self._row_thresholds.append(row_thresholds[0])
@@ -165,15 +166,17 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 is_end=top_end,
             )
             self._top_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
-            self._row_types.append('end')
+            self._row_types.append(self._top_end_master.mos_type)
             self._row_orientations.append('MX')
             self._row_infos.append(self._top_end_master.row_info)
             self._row_thresholds.append(row_thresholds[-1])
 
         # calculate extension widths
         tot_rows = len(self._row_types)
-        self._ext_heights = []
+        self._ext_params = []
         for idx in range(tot_rows - 1):
+            bot_mtype, top_mtype = self._row_types[idx], self._row_types[idx + 1]
+            bot_thres, top_thres = self._row_thresholds[idx], self._row_thresholds[idx + 1]
             info_bot, info_top = self._row_infos[idx], self._row_infos[idx + 1]
             ori_bot, ori_top = self._row_orientations[idx], self._row_orientations[idx + 1]
 
@@ -197,7 +200,20 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             if ext_h < valid_widths[-1] and ext_h not in valid_widths:
                 raise ValueError('Cannot draw extension with height = %d' % ext_h)
 
-            self._ext_heights.append(ext_h)
+            ext_params = dict(
+                lch=lch,
+                w=ext_h,
+                bot_mtype=bot_mtype,
+                top_mtype=top_mtype,
+                bot_thres=bot_thres,
+                top_thres=top_thres,
+                fg=2,
+                top_ext_info=ext_top,
+                bot_ext_info=ext_bot,
+                is_laygo=True,
+            )
+
+            self._ext_params.append((ext_h, ext_params))
 
     def _get_row_index(self, yo):
         return yo + 1 if self._draw_boundaries else yo
@@ -288,15 +304,24 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # fill empty spaces
         pass
 
+        nx = self._laygo_size[0]
+        spx = self._col_width
         # draw extensions
-        pass
+        yprev = 0
+        for idx, (bot_info, (ext_h, ext_params)) in enumerate(zip(self._row_infos, self._ext_params)):
+            if ext_h > 0:
+                ycur = yprev + bot_info['yblk'] + bot_info['blk_height']
+                ext_master = self.new_template(params=ext_params, temp_cls=AnalogMOSExt)
+                self.add_instance(ext_master, inst_name='XEXT%d' % idx, loc=(self._left_margin, ycur),
+                                  nx=nx, spx=spx, unit_mode=True)
+            yprev += bot_info['height']
 
         # draw boundaries
         if self._draw_boundaries:
             # draw top and bottom end row
             self.add_instance(self._bot_end_master, inst_name='XRBOT', loc=(self._left_margin, 0),
-                              nx=self._laygo_size[0], spx=self._col_width, unit_mode=True)
+                              nx=nx, spx=spx, unit_mode=True)
             self.add_instance(self._top_end_master, inst_name='XRBOT',
                               loc=(self._left_margin, self.bound_box.height_unit),
-                              orient='MX', nx=self._laygo_size[0], spx=self._col_width, unit_mode=True)
+                              orient='MX', nx=nx, spx=spx, unit_mode=True)
         super(LaygoBase, self).finalize(flatten=flatten)

@@ -165,7 +165,14 @@ class AnalogMOSExt(TemplateBase):
         super(AnalogMOSExt, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self._layout_info = None
-        self.prim_bound_box = None
+        if self.params['is_laygo']:
+            self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
+        else:
+            self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
+
+    @classmethod
+    def get_default_param_values(cls):
+        return dict(is_laygo=False)
 
     @classmethod
     def get_params_info(cls):
@@ -188,6 +195,7 @@ class AnalogMOSExt(TemplateBase):
             fg='number of fingers.',
             top_ext_info='top extension info.',
             bot_ext_info='bottom extension info.',
+            is_laygo='True if this extension is used in LaygoBase.',
         )
 
     def get_edge_layout_info(self):
@@ -202,7 +210,10 @@ class AnalogMOSExt(TemplateBase):
         lstr = float_to_si_string(self.params['lch'])
         wstr = float_to_si_string(self.params['w'])
         fg = self.params['fg']
-        return fmt % (bot_mtype, top_mtype, lstr, wstr, bot_thres, top_thres, fg)
+        ans = fmt % (bot_mtype, top_mtype, lstr, wstr, bot_thres, top_thres, fg)
+        if self.params['is_laygo']:
+            ans = 'laygo_' + ans
+        return ans
 
     def compute_unique_key(self):
         key = self.get_layout_basename(), self.params['top_ext_info'], self.params['bot_ext_info']
@@ -220,4 +231,3 @@ class AnalogMOSExt(TemplateBase):
                                                top_ext_info, bot_ext_info)
         self._layout_info = ext_info
         self._tech_cls.draw_mos(self, ext_info)
-        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
