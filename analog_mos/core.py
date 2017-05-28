@@ -310,8 +310,9 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_substrate_info(cls, grid, lch_unit, w, sub_type, threshold, fg, end_mode, is_passive, top_layer):
-        # type: (RoutingGrid, int, int, str, str, int, int, bool) -> Dict[str, Any]
+    def get_substrate_info(cls, grid, lch_unit, w, sub_type, threshold, fg, end_mode, is_passive, top_layer,
+                           **kwargs):
+        # type: (RoutingGrid, int, int, str, str, int, int, bool, int, **kwargs) -> Dict[str, Any]
         """Returns the substrate layout information dictionary.
         
         Parameters
@@ -336,6 +337,9 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             True if this is the substrate connection for passive devices.
         top_layer : int
             the top level routing layer.  Used to determine vertical pitch.
+        **kwargs :
+            additional arguments.
+
         Returns
         -------
         sub_info : Dict[str, Any]
@@ -575,6 +579,12 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         # type: (RoutingGrid, int, str, str, int, bool) -> Dict[str, Any]
         """Returns the digital end block layout information dictionary.
 
+        Must have the following entries:
+
+        height : the height of the end block.
+        ext_top_info : extension information Tuple for adjacent block.
+        ext_top_h : minimum top extension height.
+
         Parameters
         ----------
         grid : RoutingGrid
@@ -589,10 +599,11 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             the top level routing layer.  Used to determine vertical pitch.
         is_end : bool
             True if no blocks are abutting the bottom.
+
         Returns
         -------
-        sub_info : Dict[str, Any]
-            the substrate information dictionary.
+        end_info : Dict[str, Any]
+            the laygo end row information dictionary.
         """
         return {}
 

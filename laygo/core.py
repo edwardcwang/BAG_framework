@@ -28,16 +28,17 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 import abc
-from typing import Optional, Dict, Any, Set, Tuple
+from typing import Optional, Dict, Any, Set, Tuple, List
 from future.utils import with_metaclass
 
 from bag.util.interval import IntervalSet
 
+from bag.layout.util import BBox
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.objects import Instance
 
 from ..analog_mos.core import MOSTech
-from .base import LaygoPrimBase
+from .base import LaygoPrimitive, LaygoEndRow
 
 
 class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
@@ -68,14 +69,23 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._laygo_size = None
         self._row_types = None
         self._row_orientations = None
+        self._row_thresholds = None
         self._row_infos = None
         self._ext_heights = None
-        self._sd_xc = 0
-        self._y_offset = 0
+        self._left_margin = 0
+        self._right_margin = 0
         self._col_width = 0
-        self._used_list = None
+        self._used_list = None  # type: List[IntervalSet]
+        self._top_layer = None
+        self._bot_end_master = None
+        self._top_end_master = None
+        self._end_mode = None
 
-    def set_row_types(self, row_types, row_orientations, draw_boundaries, end_mode):
+    @property
+    def laygo_size(self):
+        return self._laygo_size
+
+    def set_row_types(self, row_types, row_orientations, row_thresholds, draw_boundaries, end_mode, top_layer=None):
         lch = self._config['lch']
         w_sub = self._config['w_sub']
         w_nominal = self._config['w_nominal']
@@ -87,35 +97,45 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         guard_ring_nf = self._config['guard_ring_nf']
 
         lch_unit = int(round(lch / self.grid.layout_unit / self.grid.resolution))
-        top_layer = self._config['tr_layers'][-1]
+        self._top_layer = self._config['tr_layers'][-1] if top_layer is None else top_layer
 
         # get layout information for all rows
         self._draw_boundaries = draw_boundaries
+        self._end_mode = end_mode
         self._num_rows = len(row_types)
         self._used_list = [IntervalSet() for _ in range(self._num_rows)]
         self._row_types = []
         self._row_infos = []
         self._row_orientations = []
+        self._row_thresholds = []
         self._col_width = self._tech_cls.get_sd_pitch(lch_unit) * 2
 
-        # add bottom boundary
         bot_end = (end_mode & 1) != 0
         top_end = (end_mode & 2) != 0
         left_end = (end_mode & 4) != 0
-        if draw_boundaries:
-            if row_types[0] == 'nch' or row_types[0] == 'ptap':
-                row_type = 'nend'
-                row_info = self._tech_cls.get_laygo_end_info(self.grid, lch_unit, 'nch', 'standard', top_layer, bot_end)
-            else:
-                row_type = 'pend'
-                row_info = self._tech_cls.get_laygo_end_info(self.grid, lch_unit, 'pch', 'standard', top_layer, bot_end)
-            self._row_types.append(row_type)
-            self._row_orientations.append('R0')
-            self._row_infos.append(row_info)
-            self._sd_xc = self._tech_cls.get_left_sd_xc(self.grid, lch_unit, guard_ring_nf, top_layer, left_end)
-            self._y_offset = row_info['height']
+        right_end = (end_mode & 8) != 0
 
-        for (row_type, row_orient) in zip(row_types, row_orientations):
+        self._left_margin = self._tech_cls.get_left_sd_xc(self.grid, lch_unit, guard_ring_nf,
+                                                          self._top_layer, left_end)
+        self._right_margin = self._tech_cls.get_left_sd_xc(self.grid, lch_unit, guard_ring_nf,
+                                                           self._top_layer, right_end)
+
+        # make bottom boundary master
+        if draw_boundaries:
+            params = dict(
+                lch=lch,
+                mos_type=row_types[0],
+                threshold=row_thresholds[0],
+                top_layer=self._top_layer,
+                is_end=bot_end,
+            )
+            self._bot_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
+            self._row_types.append('end')
+            self._row_orientations.append('R0')
+            self._row_infos.append(self._bot_end_master.row_info)
+            self._row_thresholds.append(row_thresholds[0])
+
+        for (row_type, row_orient, row_thres) in zip(row_types, row_orientations, row_thresholds):
             if row_type == 'nch':
                 row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_nominal, 'nch',
                                                              min_ng_tracks, min_nds_tracks)
@@ -133,23 +153,27 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self._row_types.append(row_type)
             self._row_orientations.append(row_orient)
             self._row_infos.append(row_info)
+            self._row_thresholds.append(row_thres)
 
-        # add top boundary
+        # make bottom/top boundary master
         if draw_boundaries:
-            if row_types[-1] == 'nch' or row_types[-1] == 'ptap':
-                row_type = 'nend'
-                row_info = self._tech_cls.get_laygo_end_info(self.grid, lch_unit, 'nch', 'standard', top_layer, top_end)
-            else:
-                row_type = 'pend'
-                row_info = self._tech_cls.get_laygo_end_info(self.grid, lch_unit, 'pch', 'standard', top_layer, top_end)
-            self._row_types.append(row_type)
+            params = dict(
+                lch=lch,
+                mos_type=row_types[-1],
+                threshold=row_thresholds[-1],
+                top_layer=self._top_layer,
+                is_end=top_end,
+            )
+            self._top_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
+            self._row_types.append('end')
             self._row_orientations.append('MX')
-            self._row_infos.append(row_info)
+            self._row_infos.append(self._top_end_master.row_info)
+            self._row_thresholds.append(row_thresholds[-1])
 
         # calculate extension widths
-        num_rows = len(self._row_types)
+        tot_rows = len(self._row_types)
         self._ext_heights = []
-        for idx in range(num_rows - 1):
+        for idx in range(tot_rows - 1):
             info_bot, info_top = self._row_infos[idx], self._row_infos[idx + 1]
             ori_bot, ori_top = self._row_orientations[idx], self._row_orientations[idx + 1]
 
@@ -179,7 +203,14 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return yo + 1 if self._draw_boundaries else yo
 
     def set_laygo_size(self, num_col):
-        self._laygo_size = self._num_rows, num_col
+        self._laygo_size = num_col, self._num_rows
+        width = self._col_width * num_col
+        if self._draw_boundaries:
+            width += self._left_margin + self._right_margin
+        height = sum((info['height'] for info in self._row_infos))
+        bound_box = BBox(0, 0, width, height, self.grid.resolution, unit_mode=True)
+        self.set_size_from_bound_box(self._top_layer, bound_box)
+        self.add_cell_boundary(bound_box)
 
     def add_laygo_instance(self, master, inst_name=None, loc=(0, 0), orient='R0', nx=1, spx=0):
         # type: (LaygoBase, Optional[str], Tuple[int, int], str, int, int) -> Instance
@@ -187,12 +218,26 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # error checking
         if loc[1] >= self._num_rows:
             raise ValueError('row_index = %d >= %d' % (loc[1], self._num_rows))
+        if nx < 1:
+            raise ValueError('Must have nx >= 1.')
+
+        # mark region as used
+        inst_ncol, inst_nrow = master.laygo_size
+        if loc[1] + inst_nrow - 1 >= self._num_rows:
+            raise ValueError('Not enough rows to add given instance.')
+        for inst_num in range(nx):
+            inst_intv = loc[0] + spx * inst_num, loc[0] + spx * inst_num + inst_ncol
+            for row in range(loc[1], loc[1] + inst_nrow):
+                if not self._used_list[row].add(inst_intv):
+                    raise ValueError('Cannot add overlapping instance.')
 
         # convert location to resolution units
-        x0 = self._sd_xc + loc[0] * self._col_width
-        y0 = self._y_offset
-        for idx in range(loc[1] + 1):
+        x0 = self._left_margin + loc[0] * self._col_width
+        ridx = self._get_row_index(loc[1])
+        y0 = 0
+        for idx in range(ridx):
             y0 += self._row_infos[idx]['height']
+        y0 += self._row_infos[ridx]['yblk']
 
         # convert horizontal pitch to resolution units
         spx *= self._col_width
@@ -200,23 +245,20 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=orient,
                                  nx=nx, spx=spx, unit_mode=True)
 
-    def add_laygo_primitive(self, blk_type, w=None, threshold=None, loc=(0, 0), nx=1, spx=0):
-        # type: (str, Optional[int], Optional[str], Tuple[int, int], int, int) -> Instance
+    def add_laygo_primitive(self, blk_type, w=None, loc=(0, 0), nx=1, spx=0):
+        # type: (str, Optional[int], Tuple[int, int], int, int) -> Instance
 
         # get mos type
         ridx = self._get_row_index(loc[1])
         mos_type = self._row_types[ridx]
         orient = self._row_orientations[ridx]
+        threshold = self._row_thresholds[ridx]
         if mos_type == 'nch' or mos_type == 'pch':
             if w is None:
                 w = self._config['w_nominal']
-            if threshold is None:
-                threshold = self._config['thres_nominal']
         else:
             if w is None:
                 w = self._config['w_sub']
-            if threshold is None:
-                threshold = self._config['thres_sub']
 
         # make master
         params = dict(
@@ -226,7 +268,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             threshold=threshold,
             blk_type=blk_type,
         )
-        master = self.new_template(params=params, temp_cls=LaygoPrimBase)
+        master = self.new_template(params=params, temp_cls=LaygoPrimitive)
 
         inst_name = 'XR%dC%d' % (loc[1], loc[0])
         return self.add_laygo_instance(master, inst_name=inst_name, loc=loc, orient=orient,
@@ -251,6 +293,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # draw boundaries
         if self._draw_boundaries:
-            pass
-
+            # draw top and bottom end row
+            self.add_instance(self._bot_end_master, inst_name='XRBOT', loc=(self._left_margin, 0),
+                              nx=self._laygo_size[0], spx=self._col_width, unit_mode=True)
+            self.add_instance(self._top_end_master, inst_name='XRBOT',
+                              loc=(self._left_margin, self.bound_box.height_unit),
+                              orient='MX', nx=self._laygo_size[0], spx=self._col_width, unit_mode=True)
         super(LaygoBase, self).finalize(flatten=flatten)
