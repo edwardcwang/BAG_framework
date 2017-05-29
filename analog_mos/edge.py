@@ -69,12 +69,12 @@ class AnalogEndRow(TemplateBase):
         )
 
     def get_layout_basename(self):
-        fmt = '%s_end_l%s_%s_fg%d_lay%d'
+        fmt = '%s_end_l%s_%s_lay%d'
         sub_type = self.params['sub_type']
         lstr = float_to_si_string(self.params['lch'])
         th = self.params['threshold']
         top_layer = self.params['top_layer']
-        basename = fmt % (sub_type, lstr, th, self._fg, top_layer)
+        basename = fmt % (sub_type, lstr, th, top_layer)
         if self.params['is_end']:
             basename += '_end'
 

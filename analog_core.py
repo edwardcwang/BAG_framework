@@ -44,7 +44,7 @@ from future.utils import with_metaclass
 from .analog_mos.core import MOSTech
 from .analog_mos.mos import AnalogMOSBase, AnalogMOSExt
 from .analog_mos.substrate import AnalogSubstrate
-from .analog_mos.edge import AnalogEdge
+from .analog_mos.edge import AnalogEdge, AnalogEndRow
 from .analog_mos.conn import AnalogMOSConn, AnalogMOSDecap, AnalogMOSDummy
 
 
@@ -1061,7 +1061,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # return placement result.
         return y_list, ext_info_list, tr_next, gtr_intv, dtr_intv
 
-    def _place(self, fg_tot, track_spec_list, master_list, gds_space, guard_ring_nf, top_layer, left_end, right_end):
+    def _place(self, fg_tot, track_spec_list, master_list, gds_space, guard_ring_nf, top_layer,
+               left_end, right_end, bot_end, top_end):
         """
         Placement strategy: make overall block match mos_pitch and horizontal track pitch, try to
         center everything between the top and bottom substrates.
@@ -1111,7 +1112,36 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         gr_vdd_warrs = []
         gr_vss_dum_warrs = []
         gr_vdd_dum_warrs = []
-        for ybot, ext_info, master, track_spec in zip(y_list, ext_list, master_list, track_spec_list):
+        # make end rows
+        bot_end_params = dict(
+            lch=self._lch,
+            sub_type=master_list[0].params['sub_type'],
+            threshold=master_list[0].params['threshold'],
+            is_end=bot_end,
+            top_layer=top_layer,
+        )
+        bot_end_master = self.new_template(params=bot_end_params, temp_cls=AnalogEndRow)
+        top_end_params = dict(
+            lch=self._lch,
+            sub_type=master_list[-1].params['sub_type'],
+            threshold=master_list[-1].params['threshold'],
+            is_end=top_end,
+            top_layer=top_layer,
+        )
+        top_end_master = self.new_template(params=top_end_params, temp_cls=AnalogEndRow)
+        # add end rows to list
+        dy = bot_end_master.array_box.height_unit
+        new_y_list = [0]
+        new_y_list.extend((yo + dy for yo in y_list))
+        new_y_list.append(new_y_list[-1] + master_list[-1].array_box.height_unit)
+        ext_list.insert(0, (0, None))
+        ext_list.append((0, None))
+        master_list.insert(0, bot_end_master)
+        master_list.append(top_end_master)
+        track_spec_list.insert(0, ('R0', 0, 0))
+        track_spec_list.append(('MX', 0, 0))
+        # draw
+        for ybot, ext_info, master, track_spec in zip(new_y_list, ext_list, master_list, track_spec_list):
             orient = track_spec[0]
             edge_layout_info = master.get_edge_layout_info()
             edgel_params = dict(
@@ -1128,17 +1158,20 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             edgel.move_by(dy=yo, unit_mode=True)
             inst_xo = cur_box.right_unit
             inst = self.add_instance(master, loc=(inst_xo, yo), orient=orient, nx=nx, spx=spx, unit_mode=True)
-            sub_type = master.params.get('sub_type', '')
-            # save substrate instance
-            if sub_type == 'ptap':
-                self._ptap_list.append(inst)
-                self._ptap_exports.append(set())
-            elif sub_type == 'ntap':
-                self._ntap_list.append(inst)
-                self._ntap_exports.append(set())
+            if isinstance(master, AnalogSubstrate):
+                sub_type = master.params['sub_type']
+                # save substrate instance
+                if sub_type == 'ptap':
+                    self._ptap_list.append(inst)
+                    self._ptap_exports.append(set())
+                elif sub_type == 'ntap':
+                    self._ntap_list.append(inst)
+                    self._ntap_exports.append(set())
 
-            sd_yc = inst.translate_master_location((0, master.get_sd_yc()), unit_mode=True)[1]
-            self._sd_yc_list.append(sd_yc)
+            if not isinstance(master, AnalogEndRow):
+                sd_yc = inst.translate_master_location((0, master.get_sd_yc()), unit_mode=True)[1]
+                self._sd_yc_list.append(sd_yc)
+
             if orient == 'R0':
                 orient_r = 'MY'
             else:
@@ -1357,7 +1390,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._orient_list = [item[0] for item in track_spec_list]
 
         # place masters according to track specifications.  Try to center transistors
-        self._place(fg_tot, track_spec_list, master_list, gds_space, guard_ring_nf, top_layer, left_end, right_end)
+        self._place(fg_tot, track_spec_list, master_list, gds_space, guard_ring_nf, top_layer,
+                    left_end != 0, right_end != 0, bot_sub_end != 0, top_sub_end != 0)
 
     def _connect_substrate(self,  # type: AnalogBase
                            sub_type,  # type: str
