@@ -329,8 +329,7 @@ def get_available_tracks(grid,  # type: RoutingGrid
     for hidx, intv_set in track_set.items():
         for (wstart, wstop), (wwidth, (fmargin, fill_type)) in intv_set.items():
             cbeg, cend = grid.get_wire_bounds(layer_id, (hidx - 1) / 2, width=wwidth, unit_mode=True)
-            min_space = tech_info.get_min_space(layer_type, (cend - cbeg) * res)
-            min_space = int(round(min_space / res))
+            min_space = tech_info.get_min_space(layer_type, cend - cbeg, unit_mode=True)
             fmargin = max(margin, fmargin, min_space)
 
             sub_intv = (wstart - fmargin, wstop + fmargin)

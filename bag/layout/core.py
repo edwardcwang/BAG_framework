@@ -149,20 +149,42 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         return self._layout_unit
 
     @abc.abstractmethod
-    def get_min_space(self, layer_type, width):
+    def get_min_space(self, layer_type, width, unit_mode=False):
         """Returns the minimum spacing needed around a wire on the given layer with the given width.
 
         Parameters
         ----------
         layer_type : str
             the wiring layer type.
-        width : float
+        width : Union[float, int]
             the width of the wire, in layout units.
+        unit_mode : bool
+            True if dimension are given/returned in resolution units.
 
         Returns
         -------
-        sp : float
+        sp : Union[float, int]
             the minimum spacing needed.
+        """
+        return 0.0
+
+    @abc.abstractmethod
+    def get_min_line_end_space(self, layer_type, width, unit_mode=False):
+        """Returns the minimum line-end spacing of a wire with given width.
+
+        Parameters
+        ----------
+        layer_type : str
+            the wiring layer type.
+        width : Union[float, int]
+            the width of the wire, in layout units.
+        unit_mode : bool
+            True if dimension are given/returned in resolution units.
+
+        Returns
+        -------
+        sp : Union[float, int]
+            the minimum line-end space.
         """
         return 0.0
 
@@ -882,8 +904,11 @@ class DummyTechInfo(TechInfo):
     def get_via_drc_info(cls, vname, vtype, mtype, mw_unit, is_bot):
         return (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
 
-    def get_min_space(self, layer_type, width):
-        return 0.0
+    def get_min_space(self, layer_type, width, unit_mode=False):
+        return 0
+
+    def get_min_line_end_space(self, layer_type, width, unit_mode=False):
+        return 0
 
     def get_min_length(self, layer_type, width):
         return 0.0

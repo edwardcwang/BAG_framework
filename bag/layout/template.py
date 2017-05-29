@@ -1627,8 +1627,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             if isinstance(lay_name, tuple) or isinstance(lay_name, list):
                 lay_name = lay_name[0]
             lay_type = tech_info.get_layer_type(lay_name)
-            cur_margin = max(cap_margins[cur_layer], tech_info.get_min_space(lay_type, (tlu - tll) * res))
-            cur_margin = int(round(cur_margin / res))
+            cur_margin = int(round(cap_margins[cur_layer] / res))
+            cur_margin = max(cur_margin, tech_info.get_min_space(lay_type, tlu - tll, unit_mode=True))
 
             port_tracks[cur_layer] = (tr_lower, tr_upper)
             cap_bounds[cur_layer] = (tlu + cur_margin, tul - cur_margin)

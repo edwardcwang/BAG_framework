@@ -329,9 +329,8 @@ class RoutingGrid(object):
             layer_name = layer_name[0]
         layer_type = self.tech_info.get_layer_type(layer_name)
 
-        width = self.get_track_width(layer_id, width_ntr)
-        sp_min = self.tech_info.get_min_space(layer_type, width)
-        sp_min_unit = int(round(sp_min / self._resolution))
+        width = self.get_track_width(layer_id, width_ntr, unit_mode=True)
+        sp_min_unit = self.tech_info.get_min_space(layer_type, width, unit_mode=True)
         w_unit = self.w_tracks[layer_id]
         sp_unit = self.sp_tracks[layer_id]
         half_pitch = (w_unit + sp_unit) // 2
@@ -342,6 +341,64 @@ class RoutingGrid(object):
             return num_half_pitch / 2.0
         else:
             return (num_half_pitch + 1) // 2
+
+    def get_line_end_space(self, layer_id, width_ntr, unit_mode=False):
+        """Returns the minimum line end spacing for the given wire.
+
+        Parameters
+        ----------
+        layer_id : int
+            wire layer ID.
+        width_ntr : int
+            wire width, in number of tracks.
+        unit_mode : bool
+            True to return line-end space in resolution units.
+
+        Returns
+        -------
+        space : Union[float, int]
+            the line-end spacing.
+        """
+        layer_name = self.tech_info.get_layer_name(layer_id)
+        if isinstance(layer_name, tuple):
+            layer_name = layer_name[0]
+        layer_type = self.tech_info.get_layer_type(layer_name)
+        width = self.get_track_width(layer_id, width_ntr, unit_mode=True)
+        ans = self.tech_info.get_min_line_end_space(layer_type, width, unit_mode=True)
+        if not unit_mode:
+            return ans * self._resolution
+        return ans
+
+    def get_line_end_space_tracks(self, wire_layer, space_layer, width_ntr):
+        """Returns the minimum line end spacing in number of space tracks.
+
+        Parameters
+        ----------
+        wire_layer : int
+            line-end wire layer ID.
+        space_layer : int
+            the layer used to measure line-end space.  Must be adjacent to wire_layer.
+        width_ntr : int
+            wire width, in number of tracks.
+
+        Returns
+        -------
+        space_ntr : int
+            number of tracks needed to reserve as space.
+        """
+        if space_layer == wire_layer - 1:
+            _, conn_ext = self.get_via_extensions(space_layer, 1, width_ntr, unit_mode=True)
+        elif space_layer == wire_layer + 1:
+            conn_ext, _ = self.get_via_extensions(wire_layer, width_ntr, 1, unit_mode=True)
+        else:
+            raise ValueError('space_layer must be adjacent to wire_layer')
+
+        wire_sp = self.get_line_end_space(wire_layer, width_ntr, unit_mode=True)
+        margin = 2 * conn_ext + wire_sp
+        w, sp = self.get_track_info(space_layer, unit_mode=True)
+        pitch = w + sp
+        space_ntr = max(-(-(margin - sp) // pitch), 0)
+        return space_ntr
 
     def get_max_track_width(self, layer_id, num_tracks, tot_space, half_end_space=False):
         # type: (int, int, int) -> int
