@@ -343,7 +343,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         super(AnalogBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
         tech_params = self.grid.tech_info.tech_params
-        self._tech_cls = tech_params['layout']['mos_tech_class']
+        self._tech_cls = tech_params['layout']['mos_tech_class']  # type: MOSTech
 
         # initialize parameters
         # layout information parameters
@@ -975,7 +975,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     # make sure first extension width is at least bot_ext_w
                     min_ext_w = max(min_ext_w, bot_ext_w)
                 # increase extension width if we need to place next block higher
-                test_ext_w = (y_next_min - y_top_cur) // mos_pitch
+                test_ext_w = (y_next_min - y_top_cur) // mos_pitch  # type: int
                 min_ext_w = max(min_ext_w, test_ext_w)
                 # make sure min_ext_w is a valid width
                 if min_ext_w not in ext_w_list and min_ext_w < ext_w_list[-1]:
@@ -1157,7 +1157,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self.array_box = self.array_box.merge(edgel.array_box).merge(edger.array_box)
             top_bound_box = top_bound_box.merge(edgel.bound_box).merge(edger.bound_box)
             edge_inst_list = [edgel, edger]
-            if ext_info[0] > 0:
+            if ext_info[1] is not None and (ext_info[0] > 0 or self._tech_cls.draw_zero_extension()):
                 ext_master = self.new_template(params=ext_info[1], temp_cls=AnalogMOSExt)
                 ext_edge_layout_info = ext_master.get_edge_layout_info()
                 ext_edgel_params = dict(

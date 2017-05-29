@@ -87,6 +87,19 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def draw_zero_extension(cls):
+        # type: () -> bool
+        """Returns True if we should draw 0 width extension.
+
+        Returns
+        -------
+        draw_ext : bool
+            True to draw 0 width extension.
+        """
+        return False
+
+    @classmethod
+    @abc.abstractmethod
     def get_dum_conn_pitch(cls):
         # type: () -> int
         """Returns the minimum track pitch of dummy connections in number of tracks.
