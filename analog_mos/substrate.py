@@ -160,6 +160,8 @@ class AnalogSubstrate(TemplateBase):
         th = self.params['threshold']
         end_mode = self.params['end_mode']
         top_layer = self.params['top_layer']
+        if top_layer is None:
+            top_layer = 0
         basename = fmt % (sub_type, lstr, wstr, th, end_mode, top_layer)
         if self.params['dummy_only']:
             basename += '_dum'
@@ -183,7 +185,10 @@ class AnalogSubstrate(TemplateBase):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
+        if top_layer is not None:
+            blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
+        else:
+            blk_pitch = 1
         fg = self._tech_cls.get_analog_unit_fg()
         info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg,
                                                  end_mode, blk_pitch=blk_pitch, is_passive=is_passive)
