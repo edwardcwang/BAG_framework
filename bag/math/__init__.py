@@ -56,6 +56,8 @@ def float_to_si_string(num, precision=3):
     ans : str
         the string representation of the given number using SI suffix.
     """
+    if abs(num) < 1e-21:
+        return '0'
     exp = np.log10(abs(num))
 
     pre_idx = len(si_mag) - 1
