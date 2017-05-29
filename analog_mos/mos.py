@@ -64,28 +64,21 @@ class AnalogMOSBase(TemplateBase):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(AnalogMOSBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
+
         self._layout_info = None
         self._ext_top_info = None
         self._ext_bot_info = None
-        self.prim_bound_box = None
 
-        self._top_gtr_yc = None
-        self._bot_dstr_yc = None
-        self._max_bot_tr_yc = None
-        self._min_top_tr_yc = None
+        self._g_conn_y = None
+        self._d_conn_y = None
         self._sd_yc = None
 
-    def get_max_g_track_yc(self):
-        return self._top_gtr_yc
+    def get_g_conn_y(self):
+        return self._g_conn_y
 
-    def get_min_ds_track_yc(self):
-        return self._bot_dstr_yc
-
-    def get_max_bot_track_yc(self):
-        return self._max_bot_tr_yc
-
-    def get_min_top_track_yc(self):
-        return self._min_top_tr_yc
+    def get_d_conn_y(self):
+        return self._d_conn_y
 
     def get_ext_top_info(self):
         return self._ext_top_info
@@ -115,17 +108,15 @@ class AnalogMOSBase(TemplateBase):
             w='transistor width, in meters/number of fins.',
             mos_type="transistor type, either 'pch' or 'nch'.",
             threshold='transistor threshold flavor.',
-            fg='number of fingers.',
         )
 
     def get_layout_basename(self):
-        fmt = '%s_l%s_w%s_%s_fg%d'
+        fmt = '%s_l%s_w%s_%s'
         mos_type = self.params['mos_type']
         lstr = float_to_si_string(self.params['lch'])
         wstr = float_to_si_string(self.params['w'])
         th = self.params['threshold']
-        fg = self.params['fg']
-        return fmt % (mos_type, lstr, wstr, th, fg)
+        return fmt % (mos_type, lstr, wstr, th)
 
     def compute_unique_key(self):
         return self.get_layout_basename()
@@ -133,24 +124,22 @@ class AnalogMOSBase(TemplateBase):
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, lch, w, mos_type, threshold, fg, **kwargs):
+    def _draw_layout_helper(self, lch, w, mos_type, threshold, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, mos_type, threshold, fg)
+        fg = self._tech_cls.get_analog_unit_fg()
+        mos_info = self._tech_cls.get_mos_info(lch_unit, w, mos_type, threshold, fg)
         self._layout_info = mos_info['layout_info']
         # set parameters
         self._ext_top_info = mos_info['ext_top_info']
         self._ext_bot_info = mos_info['ext_bot_info']
         self._sd_yc = mos_info['sd_yc']
-        self._top_gtr_yc = mos_info['top_gtr_yc']
-        self._bot_dstr_yc = mos_info['bot_dstr_yc']
-        self._max_bot_tr_yc = mos_info['max_bot_tr_yc']
-        self._min_top_tr_yc = mos_info['min_top_tr_yc']
+        self._g_conn_y = mos_info['g_conn_y']
+        self._d_conn_y = mos_info['d_conn_y']
 
         # draw transistor
         self._tech_cls.draw_mos(self, self._layout_info)
-        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
 
 class AnalogMOSExt(TemplateBase):
@@ -167,8 +156,10 @@ class AnalogMOSExt(TemplateBase):
         self._layout_info = None
         if self.params['is_laygo']:
             self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
+            self._fg = self._tech_cls.get_analog_unit_fg()
         else:
             self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
+            self._fg = self._tech_cls.get_analog_unit_fg()
 
     @classmethod
     def get_default_param_values(cls):
@@ -192,7 +183,6 @@ class AnalogMOSExt(TemplateBase):
             top_mtype="top transistor/substrate type.",
             bot_thres='bottom transistor/substrate threshold flavor.',
             top_thres='top transistor/substrate threshold flavor.',
-            fg='number of fingers.',
             top_ext_info='top extension info.',
             bot_ext_info='bottom extension info.',
             is_laygo='True if this extension is used in LaygoBase.',
@@ -202,15 +192,14 @@ class AnalogMOSExt(TemplateBase):
         return self._layout_info
 
     def get_layout_basename(self):
-        fmt = 'ext_b%s_t%s_l%s_w%s_b%s_t%s_fg%d'
+        fmt = 'ext_b%s_t%s_l%s_w%s_b%s_t%s'
         bot_mtype = self.params['bot_mtype']
         top_mtype = self.params['top_mtype']
         bot_thres = self.params['bot_thres']
         top_thres = self.params['top_thres']
         lstr = float_to_si_string(self.params['lch'])
         wstr = float_to_si_string(self.params['w'])
-        fg = self.params['fg']
-        ans = fmt % (bot_mtype, top_mtype, lstr, wstr, bot_thres, top_thres, fg)
+        ans = fmt % (bot_mtype, top_mtype, lstr, wstr, bot_thres, top_thres)
         if self.params['is_laygo']:
             ans = 'laygo_' + ans
         return ans
@@ -222,12 +211,12 @@ class AnalogMOSExt(TemplateBase):
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, lch, w, bot_mtype, top_mtype, bot_thres, top_thres, fg, top_ext_info,
+    def _draw_layout_helper(self, lch, w, bot_mtype, top_mtype, bot_thres, top_thres, top_ext_info,
                             bot_ext_info, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        ext_info = self._tech_cls.get_ext_info(lch_unit, w, bot_mtype, top_mtype, bot_thres, top_thres, fg,
+        ext_info = self._tech_cls.get_ext_info(lch_unit, w, bot_mtype, top_mtype, bot_thres, top_thres, self._fg,
                                                top_ext_info, bot_ext_info)
         self._layout_info = ext_info
         self._tech_cls.draw_mos(self, ext_info)

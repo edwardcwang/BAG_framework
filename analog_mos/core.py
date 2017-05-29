@@ -75,6 +75,18 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_analog_unit_fg(cls):
+        # type: () -> int
+        """Returns the number of fingers in an AnalogBase row unit.
+
+        Returns
+        -------
+        num_fg : int
+            number of fingers in an AnalogBase row unit.
+        """
+
+    @classmethod
+    @abc.abstractmethod
     def get_dum_conn_pitch(cls):
         # type: () -> int
         """Returns the minimum track pitch of dummy connections in number of tracks.
@@ -214,8 +226,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_mos_info(cls, grid, lch_unit, w, mos_type, threshold, fg):
-        # type: (RoutingGrid, int, int, str, str, int) -> Dict[str, Any]
+    def get_mos_info(cls, lch_unit, w, mos_type, threshold, fg):
+        # type: (int, int, str, str, int) -> Dict[str, Any]
         """Returns the transistor information dictionary.
         
         The returned dictionary must have the following entries:
@@ -224,15 +236,13 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         ext_top_info: a tuple of values used to compute extension layout above the transistor.
         ext_bot_info : a tuple of values used to compute extension layout below the transistor.
         sd_yc : the Y coordinate of the center of source/drain junction.
-        top_gtr_yc : maximum Y coordinate of the center of top gate track.
-        bot_dstr_yc : minimum Y coordinate of the center of bottom drain/source track.
-        max_bot_tr_yc : maximum Y coordinate of the center of bottom block tracks.
-        min_top_tr_yc : minimum Y coordinate of the center of top block tracks.
-        
+        g_conn_y : a Tuple of bottom/top Y coordinates of gate wire on mos_conn_layer.  Used to determine
+                   gate tracks location.
+        d_conn_y : a Tuple of bottom/top Y coordinates of drain/source wire on mos_conn_layer.  Used to
+                   determine drain/source tracks location.
+
         Parameters
         ----------
-        grid : RoutingGrid
-            the RoutingGrid object.
         lch_unit : int
             the channel length in resolution units.
         w : int
@@ -243,7 +253,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             the transistor threshold flavor.
         fg : int
             number of fingers in this transistor row.
-            
+
         Returns
         -------
         mos_info : Dict[str, Any]
@@ -310,15 +320,12 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_substrate_info(cls, grid, lch_unit, w, sub_type, threshold, fg, end_mode, is_passive, top_layer,
-                           **kwargs):
-        # type: (RoutingGrid, int, int, str, str, int, int, bool, int, **kwargs) -> Dict[str, Any]
+    def get_substrate_info(cls, lch_unit, w, sub_type, threshold, fg, end_mode, blk_pitch=1, **kwargs):
+        # type: (int, int, str, str, int, int, int, **kwargs) -> Dict[str, Any]
         """Returns the substrate layout information dictionary.
         
         Parameters
         ----------
-        grid : RoutingGrid
-            the RoutingGrid object.
         lch_unit : int
             the channel length in resolution units.
         w : int
@@ -330,13 +337,42 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         fg : int
             total number of fingers.
         end_mode : int
-            the substrate end_mode flag.  This is a two bit integer, the LSB is 1 if
-            there are no blocks abutting the substrate bottom, and the MSB is 1 if there
-            are no bloks abutting the substrate top.
-        is_passive : bool
-            True if this is the substrate connection for passive devices.
-        top_layer : int
-            the top level routing layer.  Used to determine vertical pitch.
+            the end mode flag.  This is a 2-bit integer.  The LSB is 1 if there are no blocks abutting
+            the bottom.  The MSB is 1 if there are no blocks abutting the top.
+        blk_pitch : int
+            substrate height quantization pitch.  Defaults to 1 (no quantization).
+        **kwargs :
+            additional arguments.
+
+        Returns
+        -------
+        sub_info : Dict[str, Any]
+            the substrate information dictionary.
+        """
+        return {}
+
+    @classmethod
+    def get_analog_end_info(cls, lch_unit, sub_type, threshold, fg, is_end, blk_pitch):
+        # type: (int, str, str, int, bool, int) -> Dict[str, Any]
+        """Returns the AnalogBase end row layout information dictionary.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+        w : int
+            the transistor width in number of fins/resolution units.
+        sub_type : str
+            the substrate type.  Either 'ptap' or 'ntap'.
+        threshold : str
+            the substrate threshold type.
+        fg : int
+            total number of fingers.
+        end_mode : int
+            the end mode flag.  This is a 2-bit integer.  The LSB is 1 if there are no blocks abutting
+            the bottom.  The MSB is 1 if there are no blocks abutting the top.
+        blk_pitch : int
+            substrate height quantization pitch.  Defaults to 1 (no quantization).
         **kwargs :
             additional arguments.
 
@@ -762,13 +798,14 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         """
         mos_info = cls.get_laygo_info(grid, lch_unit, w, mos_type, 'standard', 'fg2d')
 
-        bot_dstr_yc = mos_info['bot_dstr_yc']
-        min_top_tr_yc = mos_info['min_top_tr_yc']
         blk_height = mos_info['blk_height']
         ext_bot_info = mos_info['ext_bot_info']
         ext_top_info = mos_info['ext_top_info']
+        d_conn_yb, d_conn_yt = mos_info['d_conn_y']
+        conn_spy = mos_info['conn_spy']
 
-        hm_layer = cls.get_dig_conn_layer() + 1
+        conn_layer = cls.get_dig_conn_layer()
+        hm_layer = conn_layer + 1
 
         # step 1: get minimum height and blk_pitch
         min_height = 0
@@ -780,27 +817,53 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             blk_pitch = lcm([blk_pitch, track_pitch])
             min_height = max(min_height, track_pitch * (gtr + dstr))
 
-        # step 2: find Y coordinate of mos block
+        # step 2: based on line-end spacing, find the number of horizontal tracks
+        # needed between routing tracks of adjacent blocks.
+        hm_width, hm_space = grid.get_track_info(hm_layer, unit_mode=True)
+        hm_pitch = hm_width + hm_space
+        conn_ext, _ = grid.get_via_extensions(conn_layer, 1, 1, unit_mode=True)
+        margin = 2 * conn_ext + conn_spy
+        hm_sep = max(-(-(margin - hm_space) // hm_pitch), 0)
+
+        # step 3: find Y coordinate of mos block
         if hm_layer in min_g_tracks:
-            top_gtr_yc = mos_info['top_gtr_yc']
-            max_bot_tr_yc = mos_info['max_bot_tr_yc']
-            gtr_idx = min_g_tracks[hm_layer] - 1
-            gtr_yc = grid.track_to_coord(hm_layer, gtr_idx, unit_mode=True)
-            btr_yc = grid.track_to_coord(hm_layer, -1, unit_mode=True)
-            y0 = max(gtr_yc - top_gtr_yc, btr_yc - max_bot_tr_yc)
+            g_conn_yb, g_conn_yt = mos_info['g_conn_y']
+            # step A: find bottom horizontal track index
+            gtr_idx0 = hm_sep // 2
+            # step B: find minimum Y coordinate such that the vertical track bottom line-end
+            # does not extend below via extension of bottom horizontal track.
+            vm_yb = grid.track_to_coord(hm_layer, gtr_idx0, unit_mode=True) - hm_width // 2 - conn_ext
+            ymin0 = vm_yb - g_conn_yb
+            # step C: find top horizontal track index
+            gtr_idx1 = gtr_idx0 + min_g_tracks[hm_layer] - 1
+            # step D: find minimum Y coordinate such that vertical track top line-end
+            # is higher than the via extension of top horizontal track.
+            vm_yt = grid.track_to_coord(hm_layer, gtr_idx1, unit_mode=True) + hm_width // 2 + conn_ext
+            ymin1 = vm_yt - g_conn_yt
+            # step E: find Y coordinate, round to pitch
+            y0 = max(ymin0, ymin1)
             ext_bot_h = -(-y0 // mos_pitch)
             y0 = ext_bot_h * mos_pitch
         else:
+            # this is substrate, we just set Y coordinate to 0.
             y0 = 0
             ext_bot_h = 0
 
-        # find block top boudnary
-        dtr_idx = grid.coord_to_nearest_track(hm_layer, y0 + bot_dstr_yc, half_track=True,
-                                              mode=1, unit_mode=True)
-        dtr_idx += min_ds_tracks[hm_layer]
-        ttr_idx = grid.coord_to_nearest_track(hm_layer, y0 + min_top_tr_yc, half_track=True,
-                                              mode=1, unit_mode=True)
-        y1 = max(min_height, grid.track_to_coord(hm_layer, max(dtr_idx, ttr_idx) - 0.5, unit_mode=True))
+        # step 4: find block top boundary Y coordinate
+        # step A: find bottom drain track index so via extension line-end is above d_conn_yb
+        dtr_y0 = y0 + d_conn_yb + conn_ext + hm_width // 2
+        dtr_idx0 = grid.coord_to_nearest_track(hm_layer, dtr_y0, half_track=True, mode=1, unit_mode=True)
+        # step B1: find top drain track index based on min_ds_tracks
+        dtr_idx1 = dtr_idx0 + min_ds_tracks[hm_layer] - 1
+        # step B2: find top drain track index based on d_conn_yt
+        dtr_y1 = y0 + d_conn_yt - conn_ext - hm_width // 2
+        dtr_idx2 = grid.coord_to_nearest_track(hm_layer, dtr_y1, half_track=True, mode=1, unit_mode=True)
+        dtr_idx1 = max(dtr_idx1, dtr_idx2)
+        # step C: find block top boundary Y coordinate based on hm_sep
+        y1 = grid.track_to_coord(hm_layer, dtr_idx1, unit_mode=True)
+        y1 += hm_pitch // 2 * (hm_sep + 1)
+
+        y1 = max(min_height, y1)
         y1 = -(-y1 // blk_pitch) * blk_pitch
         ext_top_h = (y1 - y0 - blk_height) // mos_pitch
 

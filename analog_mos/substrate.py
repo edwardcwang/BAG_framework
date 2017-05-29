@@ -31,7 +31,6 @@ from builtins import *
 from typing import Dict, Any, Set
 
 from bag import float_to_si_string
-from bag.layout.util import BBox
 from bag.layout.template import TemplateBase, TemplateDB
 
 from .core import MOSTech
@@ -48,7 +47,7 @@ class AnalogSubstrateCore(TemplateBase):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(AnalogSubstrateCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
-        self.prim_bound_box = None
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
     @classmethod
     def get_params_info(cls):
@@ -88,7 +87,6 @@ class AnalogSubstrateCore(TemplateBase):
         self._tech_cls.draw_mos(self, layout_info)
         # draw substrate connections
         self._tech_cls.draw_substrate_connection(self, layout_info, port_tracks, dum_tracks, dummy_only)
-        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
 
 class AnalogSubstrate(TemplateBase):
@@ -102,15 +100,11 @@ class AnalogSubstrate(TemplateBase):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(AnalogSubstrate, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
         self._layout_info = None
-        self.prim_bound_box = None
         self._ext_top_info = None
         self._ext_bot_info = None
         self._sd_yc = None
-        self._well_box = None
-
-    def get_well_box(self):
-        return self._well_box
 
     def get_ext_top_info(self):
         return self._ext_top_info
@@ -150,7 +144,6 @@ class AnalogSubstrate(TemplateBase):
             w='transistor width, in meters/number of fins.',
             sub_type="substrate type, either 'ptap' or 'ntap'.",
             threshold='transistor threshold flavor.',
-            fg='number of fingers.',
             end_mode='An integer indicating whether top/bottom of this template is at the ends.',
             dummy_only='True if only dummy connections will be made to this substrate.',
             port_tracks='Substrate port must contain these track indices.',
@@ -160,17 +153,18 @@ class AnalogSubstrate(TemplateBase):
         )
 
     def get_layout_basename(self):
-        fmt = '%s_l%s_w%s_%s_fg%d_end%d_lay%d'
+        fmt = '%s_l%s_w%s_%s_end%d_lay%d'
         sub_type = self.params['sub_type']
         lstr = float_to_si_string(self.params['lch'])
         wstr = float_to_si_string(self.params['w'])
         th = self.params['threshold']
-        fg = self.params['fg']
         end_mode = self.params['end_mode']
         top_layer = self.params['top_layer']
-        basename = fmt % (sub_type, lstr, wstr, th, fg, end_mode, top_layer)
+        basename = fmt % (sub_type, lstr, wstr, th, end_mode, top_layer)
         if self.params['dummy_only']:
             basename += '_dum'
+        if self.params['is_passive']:
+            basename += '_passive'
 
         return basename
 
@@ -184,19 +178,19 @@ class AnalogSubstrate(TemplateBase):
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, lch, w, sub_type, threshold, fg, end_mode, dummy_only,
+    def _draw_layout_helper(self, lch, w, sub_type, threshold, end_mode, dummy_only,
                             port_tracks, dum_tracks, is_passive, top_layer, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        info = self._tech_cls.get_substrate_info(self.grid, lch_unit, w, sub_type, threshold, fg,
-                                                 end_mode, is_passive, top_layer)
+        blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
+        fg = self._tech_cls.get_analog_unit_fg()
+        info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg,
+                                                 end_mode, blk_pitch=blk_pitch, is_passive=is_passive)
         self._layout_info = info['layout_info']
         self._sd_yc = info['sd_yc']
         self._ext_top_info = info['ext_top_info']
         self._ext_bot_info = info['ext_bot_info']
-        well_xl, well_yb, well_xr, well_yt = info['well_bounds']
-        self._well_box = BBox(well_xl, well_yb, well_xr, well_yt, res, unit_mode=True)
 
         core_params = dict(
             dummy_only=dummy_only,
@@ -213,5 +207,3 @@ class AnalogSubstrate(TemplateBase):
 
         for port_name in inst.port_names_iter():
             self.reexport(inst.get_port(port_name), show=False)
-
-        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
