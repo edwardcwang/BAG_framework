@@ -35,6 +35,7 @@ from bag.layout.template import TemplateBase, TemplateDB
 
 from .core import MOSTech
 from .substrate import AnalogSubstrateCore
+from .conn import AnalogSubstrateConn
 
 
 class AnalogEndRow(TemplateBase):
@@ -250,9 +251,15 @@ class AnalogEdge(TemplateBase):
             )
             master = self.new_template(params=sub_params, temp_cls=AnalogSubstrateCore)
             inst = self.add_instance(master, 'XSUB', loc=loc, unit_mode=True)
-
-            for port_name in inst.port_names_iter():
-                self.reexport(inst.get_port(port_name), show=False)
+            conn_params = dict(
+                layout_name='%s_subconn' % basename,
+                layout_info=sub_info,
+            )
+            conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
+            if conn_master.has_connection:
+                conn_inst = self.add_instance(conn_master, loc=loc, unit_mode=True)
+                for port_name in conn_inst.port_names_iter():
+                    self.reexport(conn_inst.get_port(port_name), show=False)
 
             x0 = inst.array_box.right_unit
             sep_info = self._tech_cls.get_gr_sep_info(layout_info)

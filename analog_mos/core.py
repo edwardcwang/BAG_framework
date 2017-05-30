@@ -473,7 +473,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
     @classmethod
     @abc.abstractmethod
     def draw_substrate_connection(cls, template, layout_info, port_tracks, dum_tracks, dummy_only):
-        # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool) -> None
+        # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool) -> bool
         """Draw substrate connection layout in the given template.
         
         Parameters
@@ -488,6 +488,11 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             list of dummy port track indices that must be drawn on dummy connection layer.
         dummy_only : bool
             True to only draw connections up to dummy connection layer.
+
+        Returns
+        -------
+        has_connection : bool
+            True if connection is drawn.
         """
         pass
 

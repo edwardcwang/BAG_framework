@@ -45,7 +45,7 @@ from .analog_mos.core import MOSTech
 from .analog_mos.mos import AnalogMOSBase, AnalogMOSExt
 from .analog_mos.substrate import AnalogSubstrate
 from .analog_mos.edge import AnalogEdge, AnalogEndRow
-from .analog_mos.conn import AnalogMOSConn, AnalogMOSDecap, AnalogMOSDummy
+from .analog_mos.conn import AnalogMOSConn, AnalogMOSDecap, AnalogMOSDummy, AnalogSubstrateConn
 
 
 class AnalogBaseInfo(object):
@@ -1157,15 +1157,24 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             yo = ybot - cur_box.bottom_unit
             edgel.move_by(dy=yo, unit_mode=True)
             inst_xo = cur_box.right_unit
-            inst = self.add_instance(master, loc=(inst_xo, yo), orient=orient, nx=nx, spx=spx, unit_mode=True)
+            inst_loc = (inst_xo, yo)
+            inst = self.add_instance(master, loc=inst_loc, orient=orient, nx=nx, spx=spx, unit_mode=True)
             if isinstance(master, AnalogSubstrate):
+                conn_layout_info = edge_layout_info.copy()
+                conn_layout_info['fg'] = fg_tot
+                conn_params = dict(
+                    layout_info=conn_layout_info,
+                    layout_name=master.get_layout_basename() + '_subconn',
+                )
+                conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
+                conn_inst = self.add_instance(conn_master, loc=inst_loc, orient=orient, unit_mode=True)
                 sub_type = master.params['sub_type']
                 # save substrate instance
                 if sub_type == 'ptap':
-                    self._ptap_list.append(inst)
+                    self._ptap_list.append(conn_inst)
                     self._ptap_exports.append(set())
                 elif sub_type == 'ntap':
-                    self._ntap_list.append(inst)
+                    self._ntap_list.append(conn_inst)
                     self._ntap_exports.append(set())
 
             if not isinstance(master, AnalogEndRow):
