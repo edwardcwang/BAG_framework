@@ -427,7 +427,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
         # always add flip_parity parameter
         if 'flip_parity' not in self.params:
-            self.params['flip_parity'] = None
+            self.params['flip_parity'] = params.get('flip_parity', None)
         # update RoutingGrid
         fp_dict = self.params['flip_parity']
         if fp_dict is not None:
