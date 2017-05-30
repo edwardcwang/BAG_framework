@@ -171,7 +171,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                                                     self._row_thresholds)):
             if idx == 0:
                 end_mode = 1 if row_orient == 'R0' else 2
-            elif idx == len(row_types) - 1:
+            elif idx == len(self._row_types) - 1:
                 end_mode = 2 if row_orient == 'R0' else 1
             else:
                 end_mode = 0
@@ -195,9 +195,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self._used_list.append(IntervalSet())
 
         # calculate extension widths
-        tot_rows = len(self._row_types)
         self._ext_params = []
-        for idx in range(tot_rows - 1):
+        for idx in range(len(self._row_types) - 1):
             bot_mtype, top_mtype = self._row_types[idx], self._row_types[idx + 1]
             bot_thres, top_thres = self._row_thresholds[idx], self._row_thresholds[idx + 1]
             info_bot, info_top = self._row_infos[idx], self._row_infos[idx + 1]
@@ -331,7 +330,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 w = self._config['w_sub']
 
         # make master
-
         params = dict(
             lch=self._config['lch'],
             w=w,
@@ -362,9 +360,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         y0 = 0 if self._bot_end_master is None else self._bot_end_master.bound_box.height_unit
         for idx in range(row_idx):
             y0 += self._row_infos[idx]['height']
-        y0 += self._row_infos[row_idx]['yblk']
+        if orient == 'R0':
+            y0 += self._row_infos[row_idx]['yblk']
         if orient == 'MX':
-            y0 += master.array_box.height_unit
+            y0 += self._row_infos[row_idx]['height'] - self._row_infos[row_idx]['yblk']
 
         # convert horizontal pitch to resolution units
         spx *= self._col_width
