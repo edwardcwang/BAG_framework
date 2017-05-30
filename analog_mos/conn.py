@@ -243,10 +243,6 @@ class AnalogMOSDecap(TemplateBase):
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
     @classmethod
-    def get_default_param_values(cls):
-        return dict(options=None)
-
-    @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.
 
@@ -287,6 +283,7 @@ class AnalogMOSDecap(TemplateBase):
             export_gate=False,
             sdir=1,
             ddir=1,
+            options=None,
         )
 
     def get_layout_basename(self):
