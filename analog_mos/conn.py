@@ -112,8 +112,6 @@ class AnalogMOSConn(TemplateBase):
 
         if self.params['min_ds_cap']:
             basename += '_minds'
-        if self.params['is_ds_dummy']:
-            basename += '_dsdummy'
         if self.params['diode_conn']:
             basename += '_diode'
         gext = self.params['gate_ext_mode']
@@ -134,7 +132,7 @@ class AnalogMOSConn(TemplateBase):
             options = {}
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
-        mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, 'nch', 'standard', fg)
+        mos_info = self._tech_cls.get_mos_info(lch_unit, w, 'nch', 'standard', fg)
         self._tech_cls.draw_mos_connection(self, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
                                            min_ds_cap, is_diff, diode_conn, options)
 
@@ -215,7 +213,7 @@ class AnalogMOSDummy(TemplateBase):
     def _draw_layout_helper(self, lch, w, fg, edge_mode, gate_tracks, options, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
-        mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, 'nch', 'standard', fg)
+        mos_info = self._tech_cls.get_mos_info(lch_unit, w, 'nch', 'standard', fg)
         if options is None:
             options = {}
         self._tech_cls.draw_dum_connection(self, mos_info, edge_mode, gate_tracks, options)
@@ -318,7 +316,7 @@ class AnalogMOSDecap(TemplateBase):
     def _draw_layout_helper(self, lch, w, fg, sdir, ddir, gate_ext_mode, export_gate, options, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
-        mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, 'nch', 'standard', fg)
+        mos_info = self._tech_cls.get_mos_info(lch_unit, w, 'nch', 'standard', fg)
         if options is None:
             options = {}
         self._tech_cls.draw_decap_connection(self, mos_info, sdir, ddir, gate_ext_mode, export_gate, options)

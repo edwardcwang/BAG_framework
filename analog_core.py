@@ -876,7 +876,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         mos_kwargs = [{}] + mos_kwargs + [{}]
         return track_spec_list, master_list, mos_kwargs, w_list_final
 
-    def _place_helper(self, bot_ext_w, track_spec_list, master_list, gds_space, hm_layer, mos_pitch, tot_pitch):
+    def _place_helper(self, bot_ext_w, track_spec_list, master_list, gds_space, hm_layer, mos_pitch, tot_pitch, dy):
 
         # based on line-end spacing, find the number of horizontal tracks
         # needed between routing tracks of adjacent blocks.
@@ -886,8 +886,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         conn_delta = via_ext + hm_w // 2
         fg = self._tech_cls.get_analog_unit_fg()
 
-        # place bottom substrate at 0
-        y_cur = 0
+        # place bottom substrate at dy
+        y_cur = dy
         tr_next = 0
         y_list = []
         ext_info_list = []
@@ -937,12 +937,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     dtr_intv.append((tr_ds_bot, tr_ds_top + 1))
                 else:
                     # gate tracks on top
-                    cur_height = cur_master.array_box.height_unit
                     g_conn_yb, g_conn_yt = cur_master.get_g_conn_y()
                     d_conn_yb, d_conn_yt = cur_master.get_d_conn_y()
-                    g_conn_yt = y_cur + cur_height - g_conn_yt
-                    g_conn_yb = y_cur + cur_height - g_conn_yb
-                    d_conn_yb = y_cur + cur_height - d_conn_yb
+                    g_conn_yt = y_top_cur - g_conn_yt
+                    g_conn_yb = y_top_cur - g_conn_yb
+                    d_conn_yb = y_top_cur - d_conn_yb
                     tr_ds_top = self.grid.coord_to_nearest_track(hm_layer, d_conn_yb - conn_delta, half_track=True,
                                                                  mode=-1, unit_mode=True)
                     tr_g_bot = self.grid.coord_to_nearest_track(hm_layer, g_conn_yt + conn_delta, half_track=True,
@@ -1074,44 +1073,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         mos_pitch = self._tech_cls.get_mos_pitch(unit_mode=True)
         tot_pitch = self._layout_info.vertical_pitch_unit
 
-        # first try: place everything, but blocks as close to the bottom as possible.
-        y_list, ext_list, tot_ntr, gtr_intv, dtr_intv = self._place_helper(0, track_spec_list, master_list, gds_space,
-                                                                           hm_layer, mos_pitch, tot_pitch)
-        ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
-        print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
-        while ext_first < ext_last - 1:
-            # if the bottom extension width is smaller than the top extension width (and differ by more than 1),
-            # then we can potentially get a more centered placement by increasing the minimum bottom extenison width.
-            bot_ext_w = ext_first + 1
-            y_next, ext_next, tot_ntr_next, gnext, dnext = self._place_helper(bot_ext_w, track_spec_list, master_list,
-                                                                              gds_space, hm_layer, mos_pitch, tot_pitch)
-            ext_first_next, ext_last_next = ext_next[0][0], ext_next[-1][0]
-            print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first_next, ext_last_next, tot_ntr_next))
-            if tot_ntr_next > tot_ntr or abs(ext_last - ext_first) < abs(ext_last_next - ext_first_next):
-                # if either we increase the overall size of analog base, or we get a more
-                # unbalanced placement, then it's not worth it anymore.
-                print('abort')
-                break
-            else:
-                # update the optimal placement strategy.
-                y_list, ext_list, tot_ntr = y_next, ext_next, tot_ntr_next
-                ext_last, ext_first = ext_last_next, ext_first_next
-                gtr_intv, dtr_intv = gnext, dnext
-                print('pick')
-
-        # at this point we've found the optimal placement.  Place instances
-        fg_unit = self._tech_cls.get_analog_unit_fg()
-        nx = fg_tot // fg_unit
-        spx = fg_unit * self.sd_pitch_unit
-        self.array_box = BBox.get_invalid_bbox()
-        top_bound_box = BBox.get_invalid_bbox()
-        self._gtr_intv = gtr_intv
-        self._dstr_intv = dtr_intv
-        ext_list.append((0, None))
-        gr_vss_warrs = []
-        gr_vdd_warrs = []
-        gr_vss_dum_warrs = []
-        gr_vdd_dum_warrs = []
         # make end rows
         bot_end_params = dict(
             lch=self._lch,
@@ -1129,11 +1090,53 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             top_layer=top_layer,
         )
         top_end_master = self.new_template(params=top_end_params, temp_cls=AnalogEndRow)
-        # add end rows to list
+        # compute Y coordinate shift from adding end row
         dy = bot_end_master.array_box.height_unit
-        new_y_list = [0]
-        new_y_list.extend((yo + dy for yo in y_list))
-        new_y_list.append(new_y_list[-1] + master_list[-1].array_box.height_unit)
+
+        # first try: place everything, but blocks as close to the bottom as possible.
+        y_list, ext_list, tot_ntr, gtr_intv, dtr_intv = self._place_helper(0, track_spec_list, master_list, gds_space,
+                                                                           hm_layer, mos_pitch, tot_pitch, dy)
+        ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
+        print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
+        while ext_first < ext_last - 1:
+            # if the bottom extension width is smaller than the top extension width (and differ by more than 1),
+            # then we can potentially get a more centered placement by increasing the minimum bottom extenison width.
+            bot_ext_w = ext_first + 1
+            y_next, ext_next, tot_ntr_next, gnext, dnext = self._place_helper(bot_ext_w, track_spec_list, master_list,
+                                                                              gds_space, hm_layer, mos_pitch,
+                                                                              tot_pitch, dy)
+            ext_first_next, ext_last_next = ext_next[0][0], ext_next[-1][0]
+            print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first_next, ext_last_next, tot_ntr_next))
+            if tot_ntr_next > tot_ntr or abs(ext_last - ext_first) < abs(ext_last_next - ext_first_next):
+                # if either we increase the overall size of analog base, or we get a more
+                # unbalanced placement, then it's not worth it anymore.
+                print('abort')
+                break
+            else:
+                # update the optimal placement strategy.
+                y_list, ext_list, tot_ntr = y_next, ext_next, tot_ntr_next
+                ext_last, ext_first = ext_last_next, ext_first_next
+                gtr_intv, dtr_intv = gnext, dnext
+                print('pick')
+
+        # at this point we've found the optimal placement.  Place instances
+        import pdb
+        pdb.set_trace()
+        fg_unit = self._tech_cls.get_analog_unit_fg()
+        nx = fg_tot // fg_unit
+        spx = fg_unit * self.sd_pitch_unit
+        self.array_box = BBox.get_invalid_bbox()
+        top_bound_box = BBox.get_invalid_bbox()
+        self._gtr_intv = gtr_intv
+        self._dstr_intv = dtr_intv
+        ext_list.append((0, None))
+        gr_vss_warrs = []
+        gr_vdd_warrs = []
+        gr_vss_dum_warrs = []
+        gr_vdd_dum_warrs = []
+        # add end rows to list
+        y_list.insert(0, 0)
+        y_list.append(y_list[-1] + master_list[-1].array_box.height_unit)
         ext_list.insert(0, (0, None))
         ext_list.append((0, None))
         master_list.insert(0, bot_end_master)
@@ -1141,7 +1144,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         track_spec_list.insert(0, ('R0', 0, 0))
         track_spec_list.append(('MX', 0, 0))
         # draw
-        for ybot, ext_info, master, track_spec in zip(new_y_list, ext_list, master_list, track_spec_list):
+        for ybot, ext_info, master, track_spec in zip(y_list, ext_list, master_list, track_spec_list):
             orient = track_spec[0]
             edge_layout_info = master.get_edge_layout_info()
             edgel_params = dict(

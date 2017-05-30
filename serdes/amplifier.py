@@ -85,7 +85,7 @@ class DiffAmp(SerdesRXBase):
             nduml=4,
             ndumr=4,
             min_fg_sep=0,
-            gds_space=1,
+            gds_space=0,
             diff_space=1,
             hm_width=1,
             hm_cur_width=-1,
@@ -149,6 +149,7 @@ class DiffAmp(SerdesRXBase):
                             guard_ring_nf,  # type: int
                             tail_decap,  # type: bool
                             flip_sd,  # type: bool
+                            **kwargs
                             ):
         # type: (...) -> None
 
