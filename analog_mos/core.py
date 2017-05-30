@@ -373,21 +373,16 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         ----------
         lch_unit : int
             the channel length in resolution units.
-        w : int
-            the transistor width in number of fins/resolution units.
         sub_type : str
             the substrate type.  Either 'ptap' or 'ntap'.
         threshold : str
             the substrate threshold type.
         fg : int
             total number of fingers.
-        end_mode : int
-            the end mode flag.  This is a 2-bit integer.  The LSB is 1 if there are no blocks abutting
-            the bottom.  The MSB is 1 if there are no blocks abutting the top.
+        is_end : bool
+            True if there are no block abutting the bottom.
         blk_pitch : int
             substrate height quantization pitch.  Defaults to 1 (no quantization).
-        **kwargs :
-            additional arguments.
 
         Returns
         -------
@@ -499,8 +494,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
     @classmethod
     @abc.abstractmethod
     def draw_mos_connection(cls, template, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
-                            min_ds_cap, is_ds_dummy, is_diff, diode_conn):
-        # type: (TemplateBase, Dict[str, Any], int, int, str, int, bool, bool, bool, bool) -> None
+                            min_ds_cap, is_diff, diode_conn, options):
+        # type: (TemplateBase, Dict[str, Any], int, int, str, int, bool, bool, bool, Dict[str, Any]) -> None
         """Draw transistor connection layout in the given template.
 
         Parameters
@@ -522,20 +517,19 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             connect gate to the right adjacent block on lower metal layers.
         min_ds_cap : bool
             True to minimize drain-to-source parasitic capacitance.
-        is_ds_dummy : bool
-            True if this connection is drawn on a dummy row used only for drain/source capacitance
-            neutralization.
         is_diff : bool
             True if this is a differential pair connection.
         diode_conn : bool
             True to short gate and drain together.
+        options : Dict[str, Any]
+            a dictionary of transistor row options.
         """
         pass
 
     @classmethod
     @abc.abstractmethod
-    def draw_dum_connection(cls, template, mos_info, edge_mode, gate_tracks):
-        # type: (TemplateBase, Dict[str, Any], int, List[int]) -> None
+    def draw_dum_connection(cls, template, mos_info, edge_mode, gate_tracks, options):
+        # type: (TemplateBase, Dict[str, Any], int, List[int], Dict[str, Any]) -> None
         """Draw dummy connection layout in the given template.
 
         Parameters
@@ -550,13 +544,15 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             on the right side of the dummy.
         gate_tracks : List[int]
             list of dummy connection track indices.
+        options : Dict[str, Any]
+            a dictionary of transistor row options.
         """
         pass
 
     @classmethod
     @abc.abstractmethod
-    def draw_decap_connection(cls, template, mos_info, sdir, ddir, gate_ext_mode, export_gate):
-        # type: (TemplateBase, Dict[str, Any], int, int, int, bool) -> None
+    def draw_decap_connection(cls, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
+        # type: (TemplateBase, Dict[str, Any], int, int, int, bool, Dict[str, Any]) -> None
         """Draw decoupling cap connection layout in the given template.
 
         Parameters
@@ -575,6 +571,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             connect gate to the right adjacent block on lower metal layers.
         export_gate : bool
             True to draw gate connections up to transistor connection layer.
+        options : Dict[str, Any]
+            a dictionary of transistor row options.
         """
         pass
 

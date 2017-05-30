@@ -84,7 +84,7 @@ class AnalogEndRow(TemplateBase):
         return self.get_layout_basename()
 
     def draw_layout(self):
-        lch_unit = int(round(self.params['lch'] / self.grid.resolution))
+        lch_unit = int(round(self.params['lch'] / self.grid.layout_unit / self.grid.resolution))
         sub_type = self.params['sub_type']
         threshold = self.params['threshold']
         is_end = self.params['is_end']

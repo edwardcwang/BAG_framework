@@ -61,9 +61,6 @@ class AnalogSubstrateCore(TemplateBase):
             dictionary from parameter name to description.
         """
         return dict(
-            dummy_only='True if only dummy connections will be made to this substrate.',
-            port_tracks='Substrate port must contain these track indices.',
-            dum_tracks='Dummy port must contain these track indices.',
             layout_name='name of the layout cell.',
             layout_info='the layout information dictionary.',
         )
@@ -72,21 +69,13 @@ class AnalogSubstrateCore(TemplateBase):
         return self.params['layout_name']
 
     def compute_unique_key(self):
-        port_tracks = tuple(int(2 * v) for v in self.params['port_tracks'])
-        dum_tracks = tuple(int(2 * v) for v in self.params['dum_tracks'])
-        return self.to_immutable_id((self.params['layout_name'], self.params['layout_info'], port_tracks, dum_tracks,
-                                     self.params['flip_parity']))
+        return self.to_immutable_id((self.params['layout_name'], self.params['layout_info']))
 
     def draw_layout(self):
-        dummy_only = self.params['dummy_only']
-        port_tracks = self.params['port_tracks']
-        dum_tracks = self.params['dum_tracks']
         layout_info = self.params['layout_info']
 
         # draw substrate
         self._tech_cls.draw_mos(self, layout_info)
-        # draw substrate connections
-        self._tech_cls.draw_substrate_connection(self, layout_info, port_tracks, dum_tracks, dummy_only)
 
 
 class AnalogSubstrate(TemplateBase):
@@ -122,9 +111,6 @@ class AnalogSubstrate(TemplateBase):
     def get_default_param_values(cls):
         return dict(
             end_mode=1,
-            port_tracks=[],
-            dum_tracks=[],
-            dummy_only=False,
             is_passive=False,
         )
 
@@ -145,9 +131,6 @@ class AnalogSubstrate(TemplateBase):
             sub_type="substrate type, either 'ptap' or 'ntap'.",
             threshold='transistor threshold flavor.',
             end_mode='An integer indicating whether top/bottom of this template is at the ends.',
-            dummy_only='True if only dummy connections will be made to this substrate.',
-            port_tracks='Substrate port must contain these track indices.',
-            dum_tracks='Dummy port must contain these track indices.',
             is_passive='True if this substrate is used as substrate contact for passive devices.',
             top_layer='The top routing layer.  Used to determine vertical pitch.',
         )
@@ -163,8 +146,6 @@ class AnalogSubstrate(TemplateBase):
         if top_layer is None:
             top_layer = 0
         basename = fmt % (sub_type, lstr, wstr, th, end_mode, top_layer)
-        if self.params['dummy_only']:
-            basename += '_dum'
         if self.params['is_passive']:
             basename += '_passive'
 
@@ -172,16 +153,12 @@ class AnalogSubstrate(TemplateBase):
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
-        # unique key is indexed by half track id.
-        port_tracks = tuple(int(2 * v) for v in self.params['port_tracks'])
-        dum_tracks = tuple(int(2 * v) for v in self.params['dum_tracks'])
-        return self.to_immutable_id((basename, port_tracks, dum_tracks, self.params['flip_parity']))
+        return basename
 
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, lch, w, sub_type, threshold, end_mode, dummy_only,
-                            port_tracks, dum_tracks, is_passive, top_layer, **kwargs):
+    def _draw_layout_helper(self, lch, w, sub_type, threshold, end_mode, is_passive, top_layer, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
@@ -198,9 +175,6 @@ class AnalogSubstrate(TemplateBase):
         self._ext_bot_info = info['ext_bot_info']
 
         core_params = dict(
-            dummy_only=dummy_only,
-            port_tracks=port_tracks,
-            dum_tracks=dum_tracks,
             layout_name=self.get_layout_basename() + '_core',
             layout_info=self._layout_info,
         )

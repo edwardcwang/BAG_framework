@@ -56,10 +56,10 @@ class AnalogMOSConn(TemplateBase):
         return dict(
             min_ds_cap=False,
             gate_pref_loc='d',
-            is_ds_dummy=False,
             is_diff=False,
             diode_conn=False,
             gate_ext_mode=0,
+            options=None,
         )
 
     @classmethod
@@ -81,10 +81,10 @@ class AnalogMOSConn(TemplateBase):
             ddir='drain connection direction.  0 for down, 1 for middle, 2 for up.',
             min_ds_cap='True to minimize parasitic Cds.',
             gate_pref_loc="Preferred gate vertical track location.  Either 's' or 'd'.",
-            is_ds_dummy='True if this is only a drain/source dummy metal connection.',
             is_diff='True to draw a differential pair connection instead (shared source).',
             diode_conn='True to short drain/gate',
             gate_ext_mode='connect gate using lower level metal to adjacent transistors.',
+            options='Dictionary of transistor row options.',
         )
 
     def get_layout_basename(self):
@@ -122,18 +122,20 @@ class AnalogMOSConn(TemplateBase):
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
-        return self.to_immutable_id((basename, self.params['flip_parity']))
+        return self.to_immutable_id((basename, self.params['flip_parity'], self.params['options']))
 
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
 
     def _draw_layout_helper(self, lch, w, fg, sdir, ddir, min_ds_cap, gate_pref_loc,
-                            is_ds_dummy, is_diff, diode_conn, gate_ext_mode, **kwargs):
+                            is_diff, diode_conn, gate_ext_mode, options, **kwargs):
+        if options is None:
+            options = {}
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
         mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, 'nch', 'standard', fg)
         self._tech_cls.draw_mos_connection(self, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
-                                           min_ds_cap, is_ds_dummy, is_diff, diode_conn)
+                                           min_ds_cap, is_diff, diode_conn, options)
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
 
@@ -160,6 +162,10 @@ class AnalogMOSDummy(TemplateBase):
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
 
     @classmethod
+    def get_default_param_values(cls):
+        return dict(options=None)
+
+    @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.
 
@@ -176,6 +182,7 @@ class AnalogMOSDummy(TemplateBase):
             fg='number of fingers.',
             edge_mode='Whether to connect to source/drain on left/right edges.',
             gate_tracks='list of track numbers to draw dummy gate connections.',
+            options='Dictionary of transistor row options.',
         )
 
     def get_layout_basename(self):
@@ -204,11 +211,13 @@ class AnalogMOSDummy(TemplateBase):
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, lch, w, fg, edge_mode, gate_tracks, **kwargs):
+    def _draw_layout_helper(self, lch, w, fg, edge_mode, gate_tracks, options, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
         mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, 'nch', 'standard', fg)
-        self._tech_cls.draw_dum_connection(self, mos_info, edge_mode, gate_tracks)
+        if options is None:
+            options = {}
+        self._tech_cls.draw_dum_connection(self, mos_info, edge_mode, gate_tracks, options)
         self.prim_top_layer = self._tech_cls.get_dum_conn_layer()
 
 
@@ -235,6 +244,10 @@ class AnalogMOSDecap(TemplateBase):
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
 
     @classmethod
+    def get_default_param_values(cls):
+        return dict(options=None)
+
+    @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.
 
@@ -253,6 +266,7 @@ class AnalogMOSDecap(TemplateBase):
             ddir='drain connection direction.',
             gate_ext_mode='connect gate using lower level metal to adjacent transistors.',
             export_gate='True to export gate to higher level metal.',
+            options='Dictionary of transistor row options.',
         )
 
     @classmethod
@@ -300,9 +314,92 @@ class AnalogMOSDecap(TemplateBase):
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, lch, w, fg, sdir, ddir, gate_ext_mode, export_gate, **kwargs):
+    def _draw_layout_helper(self, lch, w, fg, sdir, ddir, gate_ext_mode, export_gate, options, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
         mos_info = self._tech_cls.get_mos_info(self.grid, lch_unit, w, 'nch', 'standard', fg)
-        self._tech_cls.draw_decap_connection(self, mos_info, sdir, ddir, gate_ext_mode, export_gate)
+        if options is None:
+            options = {}
+        self._tech_cls.draw_decap_connection(self, mos_info, sdir, ddir, gate_ext_mode, export_gate, options)
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
+
+
+class AnalogSubstrateConn(TemplateBase):
+    """The abstract base class for finfet layout classes.
+
+    This class provides the draw_foundation() method, which draws the poly array
+    and implantation layers.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(AnalogSubstrateConn, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+
+    @classmethod
+    def get_default_param_values(cls):
+        return dict(
+            dummy_only=False,
+            port_tracks=[],
+            dum_tracks=[],
+            is_passive=False,
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            w='transistor width, in meters/number of fins.',
+            fg='number of fingers.',
+            dummy_only='True if only dummy connections will be made to this substrate.',
+            port_tracks='Substrate port must contain these track indices.',
+            dum_tracks='Dummy port must contain these track indices.',
+            is_passive='True if this substrate is used as substrate contact for passive devices.',
+        )
+
+    def get_layout_basename(self):
+        """Returns the base name for this template.
+
+        Returns
+        -------
+        base_name : str
+            the base name of this template.
+        """
+        fmt = 'subconn_l%s_w%s_fg%d'
+        lch_str = float_to_si_string(self.params['lch'])
+        w_str = float_to_si_string(self.params['w'])
+        fg = self.params['fg']
+        basename = fmt % (lch_str, w_str, fg)
+
+        if self.params['dummy_only']:
+            basename += '_dummy'
+        if self.params['is_passive']:
+            basename += '_passive'
+        return basename
+
+    def compute_unique_key(self):
+        basename = self.get_layout_basename()
+        port_tracks = tuple(int(2 * v) for v in self.params['port_tracks'])
+        dum_tracks = tuple(int(2 * v) for v in self.params['dum_tracks'])
+        return self.to_immutable_id((basename, port_tracks, dum_tracks, self.params['flip_parity']))
+
+    def draw_layout(self):
+        self._draw_layout_helper(**self.params)
+
+    def _draw_layout_helper(self, lch, w, fg, dummy_only, port_tracks, dum_tracks, is_passive, **kwargs):
+        res = self.grid.resolution
+        lch_unit = int(round(lch / self.grid.layout_unit / res))
+
+        info = self._tech_cls.get_substrate_info(lch_unit, w, 'ptap', 'standard', fg,
+                                                 0, blk_pitch=1, is_passive=is_passive)
+        layout_info = info['layout_info']
+        self._tech_cls.draw_substrate_connection(self, layout_info, port_tracks, dum_tracks, dummy_only)
