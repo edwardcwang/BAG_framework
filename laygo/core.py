@@ -39,6 +39,7 @@ from bag.layout.objects import Instance
 
 from ..analog_mos.core import MOSTech
 from ..analog_mos.mos import AnalogMOSExt
+from ..analog_mos.edge import AnalogEdge
 from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow
 
 
@@ -83,12 +84,15 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._end_mode = None
         self._add_bot_sub = False
         self._add_top_sub = False
+        self._guard_ring_nf = 0
+        self._has_boundaries = False
 
     @property
     def laygo_size(self):
         return self._laygo_size
 
-    def set_row_types(self, row_types, row_orientations, row_thresholds, draw_boundaries, end_mode, top_layer=None):
+    def set_row_types(self, row_types, row_orientations, row_thresholds, draw_boundaries, end_mode,
+                      top_layer=None, guard_ring_nf=0):
         lch = self._config['lch']
         w_sub = self._config['w_sub']
         w_nominal = self._config['w_nominal']
@@ -104,7 +108,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         ng_tracks = max(ng_tracks, 1)
         pg_tracks = max(pg_tracks, 1)
 
-        guard_ring_nf = self._config['guard_ring_nf']
+        self._guard_ring_nf = guard_ring_nf
 
         lch_unit = int(round(lch / self.grid.layout_unit / self.grid.resolution))
         self._top_layer = self._config['tr_layers'][-1] if top_layer is None else top_layer
@@ -124,9 +128,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         left_end = (end_mode & 4) != 0
         right_end = (end_mode & 8) != 0
 
-        self._left_margin = self._tech_cls.get_left_sd_xc(self.grid, lch_unit, guard_ring_nf,
+        self._left_margin = self._tech_cls.get_left_sd_xc(self.grid, lch_unit, self._guard_ring_nf,
                                                           self._top_layer, left_end)
-        self._right_margin = self._tech_cls.get_left_sd_xc(self.grid, lch_unit, guard_ring_nf,
+        self._right_margin = self._tech_cls.get_left_sd_xc(self.grid, lch_unit, self._guard_ring_nf,
                                                            self._top_layer, right_end)
 
         if draw_boundaries:
@@ -378,6 +382,64 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         loc = (loc[0], self._get_row_index(loc[1]))
         return self._add_laygo_primitive_real(blk_type, w=w, loc=loc, nx=nx, spx=spx)
 
+    def draw_boundary_cells(self):
+        if self._draw_boundaries and not self._has_boundaries:
+            if self._laygo_size is None:
+                raise ValueError('laygo_size must be set before drawing boundaries.')
+
+            nx = self._laygo_size[0]
+            spx = self._col_width
+
+            # draw top and bottom end row
+            self.add_instance(self._bot_end_master, inst_name='XRBOT', loc=(self._left_margin, 0),
+                              nx=nx, spx=spx, unit_mode=True)
+            yt = self.bound_box.height_unit
+            self.add_instance(self._top_end_master, inst_name='XRBOT',
+                              loc=(self._left_margin, yt),
+                              orient='MX', nx=nx, spx=spx, unit_mode=True)
+            # draw corners
+            left_end = (self._end_mode & 4) != 0
+            right_end = (self._end_mode & 8) != 0
+            edge_inst_list = []
+            xr = self._left_margin + self._col_width * nx + self._right_margin
+            for orient, y, master in (('R0', 0, self._bot_end_master), ('MX', yt, self._top_end_master)):
+                for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
+                    edge_params = dict(
+                        top_layer=self._top_layer,
+                        is_end=is_end,
+                        guard_ring_nf=self._guard_ring_nf,
+                        name_id=master.get_layout_basename(),
+                        layout_info=master.get_edge_layout_info(),
+                    )
+                    edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
+                    if flip_lr:
+                        orient = 'MY' if orient == 'R0' else 'R180'
+                    edge_inst_list.append(self.add_instance(edge_master, orient=orient, loc=(x, y), unit_mode=True))
+
+            gr_vss_warrs = []
+            gr_vdd_warrs = []
+            gr_vss_dum_warrs = []
+            gr_vdd_dum_warrs = []
+            mconn_layer, dum_layer = self._tech_cls.get_mos_conn_layer(), self._tech_cls.get_dum_conn_layer()
+            for inst in edge_inst_list:
+                if inst.has_port('VDD'):
+                    gr_vdd_warrs.extend(inst.get_all_port_pins('VDD', layer=mconn_layer))
+                    gr_vdd_dum_warrs.extend(inst.get_all_port_pins('VDD', layer=dum_layer))
+                elif inst.has_port('VSS'):
+                    gr_vss_warrs.extend(inst.get_all_port_pins('VSS', layer=mconn_layer))
+                    gr_vss_dum_warrs.extend(inst.get_all_port_pins('VSS', layer=dum_layer))
+
+            # connect body guard rings together
+            gr_vdd_warrs = self.connect_wires(gr_vdd_warrs)
+            gr_vss_warrs = self.connect_wires(gr_vss_warrs)
+            self.connect_wires(gr_vdd_dum_warrs)
+            self.connect_wires(gr_vss_dum_warrs)
+
+            self._has_boundaries = True
+            return gr_vdd_warrs, gr_vss_warrs
+
+        return None, None
+
     def finalize(self, flatten=False):
         """set laygo_size, fill empty spaces, draw extensions, then draw boundaries before finalizing layout."""
 
@@ -405,12 +467,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             yprev += bot_info['height']
 
         # draw boundaries
-        if self._draw_boundaries:
-            # draw top and bottom end row
-            self.add_instance(self._bot_end_master, inst_name='XRBOT', loc=(self._left_margin, 0),
-                              nx=nx, spx=spx, unit_mode=True)
-            self.add_instance(self._top_end_master, inst_name='XRBOT',
-                              loc=(self._left_margin, self.bound_box.height_unit),
-                              orient='MX', nx=nx, spx=spx, unit_mode=True)
+        self.draw_boundary_cells()
 
         super(LaygoBase, self).finalize(flatten=flatten)

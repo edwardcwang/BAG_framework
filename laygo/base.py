@@ -221,8 +221,7 @@ class LaygoEndRow(TemplateBase):
         self._fg = self._tech_cls.get_laygo_unit_fg()
         self._end_info = None
 
-    @property
-    def row_info(self):
+    def get_edge_layout_info(self):
         return self._end_info
 
     @classmethod
