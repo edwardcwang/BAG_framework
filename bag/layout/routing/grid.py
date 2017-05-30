@@ -111,14 +111,16 @@ class RoutingGrid(object):
         """Returns a copy of the flip parity dictionary."""
         return self._flip_parity.copy()
 
-    def get_flip_parity_at(self, loc, top_layer, unit_mode=False):
-        # type: (Tuple[Union[int, float], Union[int, float]], int, bool) -> Dict[int, bool]
+    def get_flip_parity_at(self, loc, orient, top_layer, unit_mode=False):
+        # type: (Tuple[Union[int, float], Union[int, float]], str, int, bool) -> Dict[int, bool]
         """Compute the flip parity dictionary for an instance placed at the given location.
         
         Parameters
         ----------
         loc : Tuple[Union[int, float], Union[int, float]]
             the origin of the instance.
+        orient : str
+            the instance orientation.
         top_layer : int
             top layer ID, inclusive.
         unit_mode : bool
@@ -130,31 +132,41 @@ class RoutingGrid(object):
             res = self._resolution
             xo, yo = int(round(loc[0] / res)), int(round(loc[1] / res))
 
+        if orient == 'R0':
+            xscale, yscale = 1, 1
+        elif orient == 'MX':
+            xscale, yscale = -1, 1
+        elif orient == 'MY':
+            xscale, yscale = 1, -1
+        elif orient == 'R180':
+            xscale, yscale = -1, -1
+        else:
+            raise ValueError('Unknown orientation: %s' % orient)
+
         flip_par = {}
-        inst_track = -0.5
         bot_layer = self.layers[0]
         for lay in range(bot_layer, top_layer + 1):
             if lay in self.layers:
                 tdir = self.dir_tracks[lay]
 
                 # step 1: find the track in top level that corresponds to the track at instance origin
-                coord = xo if tdir == 'y' else yo
-                actual_track = self.coord_to_track(lay, coord, unit_mode=True)
-                # step 2: find the parity of this track in instance level versus top level
-                actual_parity = self.get_track_parity(lay, actual_track)
-                inst_parity = self.get_track_parity(lay, inst_track)
-                # step 3: if the parity is different, we need to flip the parity.
-                if inst_parity != actual_parity:
-                    flip_par[lay] = not self._flip_parity[lay]
+                if tdir == 'y':
+                    coord, scale = xo, yscale
                 else:
-                    flip_par[lay] = self._flip_parity[lay]
+                    coord, scale = yo, xscale
+                offset_htr = int(round(self.coord_to_track(lay, coord, unit_mode=True) * 2 + 1))
+
+                cur_scale, cur_offset = self._flip_parity.get(lay, (1, 0))
+                new_scale = cur_scale * scale
+                new_offset = cur_scale * offset_htr + cur_offset
+                flip_par[lay] = (new_scale, new_offset)
 
         return flip_par
 
     def set_flip_parity(self, fp):
         """set the flip track parity dictionary."""
         for lay in self.sp_tracks:
-            self._flip_parity[lay] = fp.get(lay, False)
+            self._flip_parity[lay] = fp.get(lay, (1, 0))
 
     @property
     def tech_info(self):
@@ -645,10 +657,12 @@ class RoutingGrid(object):
     def get_track_parity(self, layer_id, tr_idx):
         """Returns the parity of the given track."""
         # multiply then divide by 2 makes sure negative tracks are colored correctly.
-        tr_parity = (int(round(tr_idx * 2)) // 2) % 2
-        if self._flip_parity[layer_id]:
-            tr_parity = 1 - tr_parity
-        return tr_parity
+        htr = int(round(tr_idx * 2 + 1))
+        scale, offset = self._flip_parity[layer_id]
+        par_htr = scale * htr + offset
+        if par_htr % 4 < 2:
+            return 0
+        return 1
 
     def get_layer_name(self, layer_id, tr_idx):
         """Returns the layer name of the given track.
@@ -1340,4 +1354,4 @@ class RoutingGrid(object):
         self.max_num_tr_tracks[layer_id] = max_num_tr
         offset = (sp_unit + w_unit) // 2
         self.offset_tracks[layer_id] = offset
-        self._flip_parity[layer_id] = False
+        self._flip_parity[layer_id] = (1, 0)

@@ -715,7 +715,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """
         for inst in self._layout.inst_iter():
             loc = inst.location_unit
-            fp_dict = self.grid.get_flip_parity_at(loc, inst.master.top_layer, unit_mode=True)
+            fp_dict = self.grid.get_flip_parity_at(loc, inst.orientation, inst.master.top_layer, unit_mode=True)
             inst.new_master_with(flip_parity=fp_dict)
 
     def write_summary_file(self, fname, lib_name, cell_name):
