@@ -1120,8 +1120,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 print('pick')
 
         # at this point we've found the optimal placement.  Place instances
-        import pdb
-        pdb.set_trace()
         fg_unit = self._tech_cls.get_analog_unit_fg()
         nx = fg_tot // fg_unit
         spx = fg_unit * self.sd_pitch_unit
