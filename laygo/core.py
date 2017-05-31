@@ -227,16 +227,16 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 end_mode = 0
 
             if row_type == 'nch':
-                row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_n, 'nch',
+                row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_n, 'nch', row_thres,
                                                              ng_tracks, nds_tracks, min_n_tracks, end_mode)
             elif row_type == 'pch':
-                row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_p, 'pch',
+                row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_p, 'pch', row_thres,
                                                              pg_tracks, pds_tracks, min_p_tracks, end_mode)
             elif row_type == 'ptap':
-                row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_sub, 'ptap',
+                row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_sub, 'ptap', row_thres,
                                                              0, sub_tracks, min_sub_tracks, end_mode)
             elif row_type == 'ntap':
-                row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_sub, 'ntap',
+                row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_sub, 'ntap', row_thres,
                                                              0, sub_tracks, min_sub_tracks, end_mode)
             else:
                 raise ValueError('Unknown row type: %s' % row_type)

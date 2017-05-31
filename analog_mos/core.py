@@ -866,8 +866,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return edge_info['edge_width']
 
     @classmethod
-    def get_laygo_row_info(cls, grid, lch_unit, w, mos_type, g_tracks, ds_tracks, min_tracks, end_mode):
-        # type: (RoutingGrid, int, int, str, int, int, Dict[int, int], int) -> Dict[str, Any]
+    def get_laygo_row_info(cls, grid, lch_unit, w, mos_type, thres, g_tracks, ds_tracks, min_tracks, end_mode):
+        # type: (RoutingGrid, int, int, str, str, int, int, Dict[int, int], int) -> Dict[str, Any]
         """Calculate the height of a PMOS/NMOS row in digital block.
 
         Parameters
@@ -880,6 +880,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             the transistor width in number of fins or resolution units.
         mos_type : str
             the transistor/substrate type.  One of 'pch', 'nch', 'ptap', or 'ntap'.
+        thres : str
+            the transistor threshold flavor.
         g_tracks : int
             minimum number of gate tracks on bottom horizontal routing layer.
             For transistors, g_tracks >= 1.  For substrates, g_tracks = 0.
@@ -897,9 +899,9 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             a dictionary containing information about this digital row.
         """
         if mos_type == 'nch' or mos_type == 'pch':
-            mos_info = cls.get_laygo_mos_info(lch_unit, w, mos_type, 'standard', 'fg2d')
+            mos_info = cls.get_laygo_mos_info(lch_unit, w, mos_type, thres, 'fg2d')
         else:
-            mos_info = cls.get_laygo_sub_info(lch_unit, w, mos_type, 'standard', end_mode)
+            mos_info = cls.get_laygo_sub_info(lch_unit, w, mos_type, thres, end_mode)
 
         blk_height = mos_info['blk_height']
         ext_bot_info = mos_info['ext_bot_info']
