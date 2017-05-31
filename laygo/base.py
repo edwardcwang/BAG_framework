@@ -63,6 +63,15 @@ class LaygoPrimitive(TemplateBase):
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
 
+    def get_end_flags(self):
+        blk_type = self.params['blk_type']
+        if blk_type.startswith('fg1l'):
+            return True, False
+        elif blk_type.startswith('fg1r'):
+            return False, True
+        else:
+            return True, True
+
     @property
     def laygo_size(self):
         return 1, 1
@@ -141,6 +150,9 @@ class LaygoSubstrate(TemplateBase):
         super(LaygoSubstrate, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
+
+    def get_end_flags(self):
+        return True, True
 
     @property
     def laygo_size(self):

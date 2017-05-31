@@ -43,6 +43,46 @@ from ..analog_mos.edge import AnalogEdge
 from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow
 
 
+class LaygoIntvSet(object):
+    def __init__(self):
+        super(LaygoIntvSet, self).__init__()
+        self._intv = IntervalSet()
+        self._end_flags = {}
+
+    def add(self, intv, endl, endr):
+        ans = self._intv.add(intv)
+        if ans:
+            start, stop = intv
+            if start in self._end_flags:
+                del self._end_flags[start]
+            else:
+                self._end_flags[start] = endl
+            if stop in self._end_flags:
+                del self._end_flags[stop]
+            else:
+                self._end_flags[stop] = endr
+            return True
+        else:
+            return False
+
+    def get_complement(self, total_intv):
+        compl_intv = self._intv.get_complement(total_intv)
+        intv_list = []
+        end_list = []
+        for intv in compl_intv:
+            intv_list.append(intv)
+            end_list.append((self._end_flags.get(intv[0], False), self._end_flags.get(intv[1], False)))
+        return intv_list, end_list
+
+    def get_end_flags(self, num_col):
+        return self._end_flags[0], self._end_flags[num_col]
+
+    def get_end(self):
+        if not self._intv:
+            return 0
+        return self._intv.get_end()
+
+
 class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
@@ -77,7 +117,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._left_margin = 0
         self._right_margin = 0
         self._col_width = 0
-        self._used_list = None  # type: List[IntervalSet]
+        self._used_list = None  # type: List[LaygoIntvSet]
         self._top_layer = None
         self._bot_end_master = None
         self._top_end_master = None
@@ -86,6 +126,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._add_top_sub = False
         self._guard_ring_nf = 0
         self._has_boundaries = False
+        self._ext_edges = None
 
     @property
     def laygo_size(self):
@@ -196,7 +237,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 raise ValueError('Unknown row type: %s' % row_type)
 
             self._row_infos.append(row_info)
-            self._used_list.append(IntervalSet())
+            self._used_list.append(LaygoIntvSet())
 
         # calculate extension widths
         self._ext_params = []
@@ -240,12 +281,20 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
             self._ext_params.append((ext_h, ext_params))
 
+    def get_end_flags(self, row_idx):
+        return self._used_list[row_idx].get_end_flags(self._laygo_size[0])
+
     def _get_row_index(self, yo):
         return yo + 1 if self._add_bot_sub else yo
 
-    def set_laygo_size(self, num_col):
+    def set_laygo_size(self, num_col=None):
         bot_inst = top_inst = None
         if self._laygo_size is None:
+            if num_col is None:
+                num_col = 0
+                for intv in self._used_list:
+                    num_col = max(num_col, intv.get_end())
+
             self._laygo_size = num_col, self._num_rows
             width = self._col_width * num_col
             height = sum((info['height'] for info in self._row_infos))
@@ -261,6 +310,32 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 bot_inst = self._add_laygo_primitive_real('sub', loc=(0, 0), nx=num_col, spx=1)
             if self._add_top_sub:
                 top_inst = self._add_laygo_primitive_real('sub', loc=(0, len(self._row_types) - 1), nx=num_col, spx=1)
+
+            # draw extensions and record edge parameters
+            left_end = (self._end_mode & 4) != 0
+            right_end = (self._end_mode & 8) != 0
+            xr = self._left_margin + self._col_width * num_col + self._right_margin
+            self._ext_edges = []
+            yprev = 0 if self._bot_end_master is None else self._bot_end_master.bound_box.height_unit
+            for idx, (bot_info, (ext_h, ext_params)) in enumerate(zip(self._row_infos, self._ext_params)):
+                if ext_h > 0 or self._tech_cls.draw_zero_extension():
+                    ycur = yprev + bot_info['yblk'] + bot_info['blk_height']
+                    ext_master = self.new_template(params=ext_params, temp_cls=AnalogMOSExt)
+                    self.add_instance(ext_master, inst_name='XEXT%d' % idx, loc=(self._left_margin, ycur),
+                                      nx=num_col, spx=self._col_width, unit_mode=True)
+                    if self._draw_boundaries:
+                        for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
+                            edge_params = dict(
+                                top_layer=self._top_layer,
+                                is_end=is_end,
+                                guard_ring_nf=self._guard_ring_nf,
+                                name_id=ext_master.get_layout_basename(),
+                                layout_info=ext_master.get_edge_layout_info(),
+                                is_laygo=True,
+                            )
+                            edge_orient = 'MY' if flip_lr else 'R0'
+                            self._ext_edges.append((x, ycur, edge_orient, edge_params))
+                yprev += bot_info['height']
 
         return bot_inst, top_inst
 
@@ -297,9 +372,11 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         for row in range(row_start, row_end):
             intv = self._used_list[row]
+            inst_row_idx = abs(row - row_idx)
+            inst_endl, inst_endr = master.get_end_flags(inst_row_idx)
             for inst_num in range(nx):
                 inst_intv = col_start + spx * inst_num, col_end + spx * inst_num
-                if not intv.add(inst_intv):
+                if not intv.add(inst_intv, inst_endl, inst_endr):
                     raise ValueError('Cannot add instance on row %d, '
                                      'column [%d, %d).' % (row, inst_intv[0], inst_intv[1]))
 
@@ -354,9 +431,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             master = self.new_template(params=params, temp_cls=LaygoPrimitive)
 
         intv = self._used_list[row_idx]
+        inst_endl, inst_endr = master.get_end_flags()
         for inst_num in range(nx):
             inst_intv = col_idx + spx * inst_num, col_idx + 1 + spx * inst_num
-            if not intv.add(inst_intv):
+            if not intv.add(inst_intv, inst_endl, inst_endr):
                 raise ValueError('Cannot add primitive on row %d, '
                                  'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
 
@@ -381,6 +459,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         loc = (loc[0], self._get_row_index(loc[1]))
         return self._add_laygo_primitive_real(blk_type, w=w, loc=loc, nx=nx, spx=spx)
+
+    def fill_space(self):
+        pass
 
     def draw_boundary_cells(self):
         if self._draw_boundaries and not self._has_boundaries:
@@ -410,63 +491,32 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                         guard_ring_nf=self._guard_ring_nf,
                         name_id=master.get_layout_basename(),
                         layout_info=master.get_edge_layout_info(),
+                        is_laygo=True,
                     )
                     edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
                     if flip_lr:
                         orient = 'MY' if orient == 'R0' else 'R180'
                     edge_inst_list.append(self.add_instance(edge_master, orient=orient, loc=(x, y), unit_mode=True))
 
+            # draw extension edges
+            for x, y, orient, edge_params in self._ext_edges:
+                edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
+                edge_inst_list.append(self.add_instance(edge_master, orient=orient, loc=(x, y), unit_mode=True))
+
             gr_vss_warrs = []
             gr_vdd_warrs = []
-            gr_vss_dum_warrs = []
-            gr_vdd_dum_warrs = []
-            mconn_layer, dum_layer = self._tech_cls.get_mos_conn_layer(), self._tech_cls.get_dum_conn_layer()
+            conn_layer = self._tech_cls.get_dig_conn_layer()
             for inst in edge_inst_list:
                 if inst.has_port('VDD'):
-                    gr_vdd_warrs.extend(inst.get_all_port_pins('VDD', layer=mconn_layer))
-                    gr_vdd_dum_warrs.extend(inst.get_all_port_pins('VDD', layer=dum_layer))
+                    gr_vdd_warrs.extend(inst.get_all_port_pins('VDD', layer=conn_layer))
                 elif inst.has_port('VSS'):
-                    gr_vss_warrs.extend(inst.get_all_port_pins('VSS', layer=mconn_layer))
-                    gr_vss_dum_warrs.extend(inst.get_all_port_pins('VSS', layer=dum_layer))
+                    gr_vss_warrs.extend(inst.get_all_port_pins('VSS', layer=conn_layer))
 
             # connect body guard rings together
             gr_vdd_warrs = self.connect_wires(gr_vdd_warrs)
             gr_vss_warrs = self.connect_wires(gr_vss_warrs)
-            self.connect_wires(gr_vdd_dum_warrs)
-            self.connect_wires(gr_vss_dum_warrs)
 
             self._has_boundaries = True
             return gr_vdd_warrs, gr_vss_warrs
 
-        return None, None
-
-    def finalize(self, flatten=False):
-        """set laygo_size, fill empty spaces, draw extensions, then draw boundaries before finalizing layout."""
-
-        # set laygo_size
-        if self._laygo_size is None:
-            ncol = 0
-            for intv in self._used_list:
-                if intv:
-                    ncol = max(ncol, intv.get_end())
-            self.set_laygo_size(ncol)
-
-        # fill empty spaces
-        pass
-
-        nx = self._laygo_size[0]
-        spx = self._col_width
-        # draw extensions
-        yprev = 0 if self._bot_end_master is None else self._bot_end_master.bound_box.height_unit
-        for idx, (bot_info, (ext_h, ext_params)) in enumerate(zip(self._row_infos, self._ext_params)):
-            if ext_h > 0 or self._tech_cls.draw_zero_extension():
-                ycur = yprev + bot_info['yblk'] + bot_info['blk_height']
-                ext_master = self.new_template(params=ext_params, temp_cls=AnalogMOSExt)
-                self.add_instance(ext_master, inst_name='XEXT%d' % idx, loc=(self._left_margin, ycur),
-                                  nx=nx, spx=spx, unit_mode=True)
-            yprev += bot_info['height']
-
-        # draw boundaries
-        self.draw_boundary_cells()
-
-        super(LaygoBase, self).finalize(flatten=flatten)
+        return [], []
