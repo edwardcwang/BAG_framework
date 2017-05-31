@@ -113,6 +113,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._row_orientations = None
         self._row_thresholds = None
         self._row_infos = None
+        self._row_y = None
         self._ext_params = None
         self._left_margin = 0
         self._right_margin = 0
@@ -162,6 +163,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._row_infos = []
         self._row_orientations = list(row_orientations)
         self._row_thresholds = list(row_thresholds)
+        self._row_y = []
         self._col_width = self._tech_cls.get_sd_pitch(lch_unit) * 2
 
         bot_end = (end_mode & 1) != 0
@@ -212,6 +214,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # get row types
         self._used_list = []
+        y0 = 0 if self._bot_end_master is None else self._bot_end_master.bound_box.height_unit
+        yrow = y0
         for idx, (row_type, row_orient, row_thres) in enumerate(zip(self._row_types, self._row_orientations,
                                                                     self._row_thresholds)):
             if idx == 0:
@@ -238,9 +242,12 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
             self._row_infos.append(row_info)
             self._used_list.append(LaygoIntvSet())
+            self._row_y.append(yrow)
+            yrow += row_info['height']
 
         # calculate extension widths
         self._ext_params = []
+        yext = y0
         for idx in range(len(self._row_types) - 1):
             bot_mtype, top_mtype = self._row_types[idx], self._row_types[idx + 1]
             bot_thres, top_thres = self._row_thresholds[idx], self._row_thresholds[idx + 1]
@@ -248,12 +255,15 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             ori_bot, ori_top = self._row_orientations[idx], self._row_orientations[idx + 1]
 
             ext_h = 0
+            ycur = yext
             if ori_bot == 'R0':
                 ext_bot = info_bot['ext_top_info']
                 ext_h += info_bot['ext_top_h']
+                ycur += info_bot['yblk'] + info_bot['blk_height']
             else:
                 ext_bot = info_bot['ext_bot_info']
                 ext_h += info_bot['ext_bot_h']
+                ycur += info_bot['height'] - info_bot['yblk']
 
             if ori_top == 'R0':
                 ext_top = info_top['ext_bot_info']
@@ -278,8 +288,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 bot_ext_info=ext_bot,
                 is_laygo=True,
             )
-
-            self._ext_params.append((ext_h, ext_params))
+            self._ext_params.append((ycur, ext_h, ext_params))
+            yext += info_bot['height']
 
     def get_end_flags(self, row_idx):
         return self._used_list[row_idx].get_end_flags(self._laygo_size[0])
@@ -316,12 +326,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             right_end = (self._end_mode & 8) != 0
             xr = self._left_margin + self._col_width * num_col + self._right_margin
             self._ext_edges = []
-            yprev = 0 if self._bot_end_master is None else self._bot_end_master.bound_box.height_unit
-            for idx, (bot_info, (ext_h, ext_params)) in enumerate(zip(self._row_infos, self._ext_params)):
+            for idx, (bot_info, (yext, ext_h, ext_params)) in enumerate(zip(self._row_infos, self._ext_params)):
                 if ext_h > 0 or self._tech_cls.draw_zero_extension():
-                    ycur = yprev + bot_info['yblk'] + bot_info['blk_height']
                     ext_master = self.new_template(params=ext_params, temp_cls=AnalogMOSExt)
-                    self.add_instance(ext_master, inst_name='XEXT%d' % idx, loc=(self._left_margin, ycur),
+                    self.add_instance(ext_master, inst_name='XEXT%d' % idx, loc=(self._left_margin, yext),
                                       nx=num_col, spx=self._col_width, unit_mode=True)
                     if self._draw_boundaries:
                         for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
@@ -334,8 +342,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                 is_laygo=True,
                             )
                             edge_orient = 'MY' if flip_lr else 'R0'
-                            self._ext_edges.append((x, ycur, edge_orient, edge_params))
-                yprev += bot_info['height']
+                            self._ext_edges.append((x, yext, edge_orient, edge_params))
 
         return bot_inst, top_inst
 
@@ -382,10 +389,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # convert location to resolution units
         x0 = self._left_margin + col_idx * self._col_width
-        y0 = 0 if self._bot_end_master is None else self._bot_end_master.bound_box.height_unit
-        for idx in range(row_idx):
-            y0 += self._row_infos[idx]['height']
-        y0 += self._row_infos[row_idx]['yblk']
+        y0 = self._row_y[row_idx]
 
         # convert horizontal pitch to resolution units
         spx *= self._col_width
@@ -439,9 +443,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                  'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
 
         x0 = self._left_margin + col_idx * self._col_width
-        y0 = 0 if self._bot_end_master is None else self._bot_end_master.bound_box.height_unit
-        for idx in range(row_idx):
-            y0 += self._row_infos[idx]['height']
+        y0 = self._row_y[row_idx]
         if orient == 'R0':
             y0 += self._row_infos[row_idx]['yblk']
         if orient == 'MX':
@@ -502,6 +504,11 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             for x, y, orient, edge_params in self._ext_edges:
                 edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
                 edge_inst_list.append(self.add_instance(edge_master, orient=orient, loc=(x, y), unit_mode=True))
+
+            # draw row edges
+            for ridx, (mos_type, orient, threshold) in enumerate(zip(self._row_types, self._row_orientations,
+                                                                     self._row_thresholds)):
+                pass
 
             gr_vss_warrs = []
             gr_vdd_warrs = []
