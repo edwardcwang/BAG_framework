@@ -137,7 +137,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                       top_layer=None, guard_ring_nf=0):
         lch = self._config['lch']
         w_sub = self._config['w_sub']
-        w_nominal = self._config['w_nominal']
+        w_n = self._config['w_n']
+        w_p = self._config['w_p']
         ng_tracks = self._config['ng_tracks']
         nds_tracks = self._config['nds_tracks']
         pg_tracks = self._config['pg_tracks']
@@ -226,10 +227,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 end_mode = 0
 
             if row_type == 'nch':
-                row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_nominal, 'nch',
+                row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_n, 'nch',
                                                              ng_tracks, nds_tracks, min_n_tracks, end_mode)
             elif row_type == 'pch':
-                row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_nominal, 'pch',
+                row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_p, 'pch',
                                                              pg_tracks, pds_tracks, min_p_tracks, end_mode)
             elif row_type == 'ptap':
                 row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_sub, 'ptap',
@@ -397,8 +398,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=orient,
                                  nx=nx, spx=spx, unit_mode=True)
 
-    def _add_laygo_primitive_real(self, blk_type, w=None, loc=(0, 0), nx=1, spx=0):
-        # type: (str, Optional[int], Tuple[int, int], int, int) -> Instance
+    def _add_laygo_primitive_real(self, blk_type, loc=(0, 0), nx=1, spx=0):
+        # type: (str, Tuple[int, int], int, int) -> Instance
 
         col_idx, row_idx = loc
         if row_idx < 0 or row_idx >= len(self._row_types):
@@ -407,12 +408,12 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         mos_type = self._row_types[row_idx]
         orient = self._row_orientations[row_idx]
         threshold = self._row_thresholds[row_idx]
-        if mos_type == 'nch' or mos_type == 'pch':
-            if w is None:
-                w = self._config['w_nominal']
+        if mos_type == 'nch':
+            w = self._config['w_n']
+        elif mos_type == 'pch':
+            w = self._config['w_p']
         else:
-            if w is None:
-                w = self._config['w_sub']
+            w = self._config['w_sub']
 
         # make master
         params = dict(
@@ -446,7 +447,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         y0 = self._row_y[row_idx]
         if orient == 'R0':
             y0 += self._row_infos[row_idx]['yblk']
-        if orient == 'MX':
+        else:
             y0 += self._row_infos[row_idx]['height'] - self._row_infos[row_idx]['yblk']
 
         # convert horizontal pitch to resolution units
@@ -456,11 +457,11 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=orient,
                                  nx=nx, spx=spx, unit_mode=True)
 
-    def add_laygo_primitive(self, blk_type, w=None, loc=(0, 0), nx=1, spx=0):
-        # type: (str, Optional[int], Tuple[int, int], int, int) -> Instance
+    def add_laygo_primitive(self, blk_type, loc=(0, 0), nx=1, spx=0):
+        # type: (str, Tuple[int, int], int, int) -> Instance
 
         loc = (loc[0], self._get_row_index(loc[1]))
-        return self._add_laygo_primitive_real(blk_type, w=w, loc=loc, nx=nx, spx=spx)
+        return self._add_laygo_primitive_real(blk_type, loc=loc, nx=nx, spx=spx)
 
     def fill_space(self):
         pass
@@ -497,8 +498,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     )
                     edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
                     if flip_lr:
-                        orient = 'MY' if orient == 'R0' else 'R180'
-                    edge_inst_list.append(self.add_instance(edge_master, orient=orient, loc=(x, y), unit_mode=True))
+                        eorient = 'MY' if orient == 'R0' else 'R180'
+                    else:
+                        eorient = orient
+                    edge_inst_list.append(self.add_instance(edge_master, orient=eorient, loc=(x, y), unit_mode=True))
 
             # draw extension edges
             for x, y, orient, edge_params in self._ext_edges:
@@ -506,9 +509,28 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 edge_inst_list.append(self.add_instance(edge_master, orient=orient, loc=(x, y), unit_mode=True))
 
             # draw row edges
-            for ridx, (mos_type, orient, threshold) in enumerate(zip(self._row_types, self._row_orientations,
-                                                                     self._row_thresholds)):
-                pass
+            for ridx, (orient, yr, rinfo) in enumerate(zip(self._row_orientations, self._row_y, self._row_infos)):
+                endl, endr = self.get_end_flags(ridx)
+                if orient == 'R0':
+                    y = yr + rinfo['yblk']
+                else:
+                    y = yr + rinfo['height'] - rinfo['yblk']
+                for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
+                    edge_info = self._tech_cls.get_laygo_edge_info(rinfo['blk_info'], end_flag)
+                    edge_params = dict(
+                        top_layer=self._top_layer,
+                        is_end=is_end,
+                        guard_ring_nf=self._guard_ring_nf,
+                        name_id=edge_info['name_id'],
+                        layout_info=edge_info,
+                        is_laygo=True,
+                    )
+                    edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
+                    if flip_lr:
+                        eorient = 'MY' if orient == 'R0' else 'R180'
+                    else:
+                        eorient = orient
+                    edge_inst_list.append(self.add_instance(edge_master, orient=eorient, loc=(x, y), unit_mode=True))
 
             gr_vss_warrs = []
             gr_vdd_warrs = []

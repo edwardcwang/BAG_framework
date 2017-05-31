@@ -64,14 +64,13 @@ class LaygoPrimitive(TemplateBase):
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
 
     def get_end_flags(self):
-        w = self.params['w']
         blk_type = self.params['blk_type']
         if blk_type.startswith('fg1l'):
-            return w, 0
+            return True, False
         elif blk_type.startswith('fg1r'):
-            return 0, w
+            return False, True
         else:
-            return w, w
+            return True, True
 
     @property
     def laygo_size(self):
@@ -153,7 +152,7 @@ class LaygoSubstrate(TemplateBase):
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
 
     def get_end_flags(self):
-        return self.params['w'], self.params['w']
+        return True, True
 
     @property
     def laygo_size(self):

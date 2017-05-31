@@ -724,6 +724,26 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_laygo_edge_info(cls, blk_info, endr):
+        # type: (Dict[str, Any], bool) -> Dict[str, Any]
+        """Returns a new layout information dictionary for drawing LaygoBase edge blocks.
+
+        Parameters
+        ----------
+        blk_info : Dict[str, Any]
+            the layout information dictionary.
+        endr : bool
+            True if the edge block abuts OD on the right.
+
+        Returns
+        -------
+        edge_info : Dict[str, Any]
+            the edge layout information dictionary.
+        """
+        pass
+
+    @classmethod
+    @abc.abstractmethod
     def draw_laygo_connection(cls, template, mos_info, blk_type):
         # type: (TemplateBase, Dict[str, Any], str) -> None
         """Draw digital transistor connection in the given template.
@@ -956,4 +976,5 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             ext_top_info=ext_top_info,
             ext_bot_h=ext_bot_h,
             ext_top_h=ext_top_h,
+            blk_info=mos_info,
         )
