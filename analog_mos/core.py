@@ -744,8 +744,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def draw_laygo_connection(cls, template, mos_info, blk_type):
-        # type: (TemplateBase, Dict[str, Any], str) -> None
+    def draw_laygo_connection(cls, template, mos_info, blk_type, options):
+        # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> None
         """Draw digital transistor connection in the given template.
 
         Parameters
@@ -756,6 +756,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             the transistor layout information dictionary.
         blk_type : str
             the digital block type.
+        options : Dict[str, Any]
+            any extra connection options.
         """
         pass
 

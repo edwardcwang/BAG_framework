@@ -398,8 +398,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=orient,
                                  nx=nx, spx=spx, unit_mode=True)
 
-    def _add_laygo_primitive_real(self, blk_type, loc=(0, 0), nx=1, spx=0):
-        # type: (str, Tuple[int, int], int, int) -> Instance
+    def _add_laygo_primitive_real(self, blk_type, loc=(0, 0), nx=1, spx=0, **kwargs):
+        # type: (str, Tuple[int, int], int, int, **kwargs) -> Instance
 
         col_idx, row_idx = loc
         if row_idx < 0 or row_idx >= len(self._row_types):
@@ -421,6 +421,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             w=w,
             mos_type=mos_type,
             threshold=threshold,
+            options=kwargs,
         )
         if blk_type == 'sub':
             if row_idx == 0:
@@ -457,11 +458,11 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=orient,
                                  nx=nx, spx=spx, unit_mode=True)
 
-    def add_laygo_primitive(self, blk_type, loc=(0, 0), nx=1, spx=0):
-        # type: (str, Tuple[int, int], int, int) -> Instance
+    def add_laygo_primitive(self, blk_type, loc=(0, 0), nx=1, spx=0, **kwargs):
+        # type: (str, Tuple[int, int], int, int, **kwargs) -> Instance
 
         loc = (loc[0], self._get_row_index(loc[1]))
-        return self._add_laygo_primitive_real(blk_type, loc=loc, nx=nx, spx=spx)
+        return self._add_laygo_primitive_real(blk_type, loc=loc, nx=nx, spx=spx, **kwargs)
 
     def fill_space(self):
         pass

@@ -77,6 +77,10 @@ class LaygoPrimitive(TemplateBase):
         return 1, 1
 
     @classmethod
+    def get_default_param_values(cls):
+        return dict(options=None)
+
+    @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.
 
@@ -93,6 +97,7 @@ class LaygoPrimitive(TemplateBase):
             mos_type="transistor type, one of 'pch', 'nch', 'ntap', or 'ptap'.",
             threshold='transistor threshold flavor.',
             blk_type="digital block type.",
+            options="digital block options.",
         )
 
     def get_layout_basename(self):
@@ -105,7 +110,8 @@ class LaygoPrimitive(TemplateBase):
         return fmt % (mos_type, lstr, wstr, th, blk_type)
 
     def compute_unique_key(self):
-        return self.get_layout_basename()
+        basename = self.get_layout_basename()
+        return self.to_immutable_id((basename, self.params['options']))
 
     def draw_layout(self):
         lch = self.params['lch']
@@ -113,6 +119,7 @@ class LaygoPrimitive(TemplateBase):
         mos_type = self.params['mos_type']
         threshold = self.params['threshold']
         blk_type = self.params['blk_type']
+        options = self.params['options']
 
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
@@ -121,7 +128,9 @@ class LaygoPrimitive(TemplateBase):
         # draw transistor
         self._tech_cls.draw_mos(self, mos_info['layout_info'])
         # draw connection
-        self._tech_cls.draw_laygo_connection(self, mos_info, blk_type)
+        if options is None:
+            options = {}
+        self._tech_cls.draw_laygo_connection(self, mos_info, blk_type, options)
 
 
 class LaygoSubstrate(TemplateBase):
@@ -159,6 +168,10 @@ class LaygoSubstrate(TemplateBase):
         return 1, 1
 
     @classmethod
+    def get_default_param_values(cls):
+        return dict(options=None)
+
+    @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.
 
@@ -174,7 +187,8 @@ class LaygoSubstrate(TemplateBase):
             w='transistor width, in meters/number of fins.',
             mos_type="transistor type, one of 'pch', 'nch', 'ntap', or 'ptap'.",
             threshold='transistor threshold flavor.',
-            end_mode='substrat end mode flag.'
+            end_mode='substrat end mode flag.',
+            options="additional substrate options.",
         )
 
     def get_layout_basename(self):
@@ -187,7 +201,8 @@ class LaygoSubstrate(TemplateBase):
         return fmt % (mos_type, lstr, wstr, th, end_mode)
 
     def compute_unique_key(self):
-        return self.get_layout_basename()
+        basename = self.get_layout_basename()
+        return self.to_immutable_id((basename, self.params['options']))
 
     def draw_layout(self):
         lch = self.params['lch']
@@ -195,6 +210,7 @@ class LaygoSubstrate(TemplateBase):
         mos_type = self.params['mos_type']
         threshold = self.params['threshold']
         end_mode = self.params['end_mode']
+        options = self.params['options']
 
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
@@ -203,7 +219,9 @@ class LaygoSubstrate(TemplateBase):
         # draw transistor
         self._tech_cls.draw_mos(self, mos_info['layout_info'])
         # draw connection
-        self._tech_cls.draw_laygo_connection(self, mos_info, 'sub')
+        if options is None:
+            options = {}
+        self._tech_cls.draw_laygo_connection(self, mos_info, 'sub', options)
 
 
 class LaygoEndRow(TemplateBase):
