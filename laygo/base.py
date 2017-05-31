@@ -202,6 +202,8 @@ class LaygoSubstrate(TemplateBase):
         mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w, mos_type, threshold, end_mode)
         # draw transistor
         self._tech_cls.draw_mos(self, mos_info['layout_info'])
+        # draw connection
+        self._tech_cls.draw_laygo_connection(self, mos_info, 'sub')
 
 
 class LaygoEndRow(TemplateBase):
