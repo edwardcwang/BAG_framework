@@ -98,7 +98,11 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # update routing grid
         self._config = params['config']
-        tdir = 'y'
+        lch_unit = int(round(self._config['lch'] / self.grid.layout_unit / self.grid.resolution))
+        vm_layer = self._tech_cls.get_dig_conn_layer()
+        vm_space, vm_width = self._tech_cls.get_laygo_conn_track_info(lch_unit)
+        self.grid.add_new_layer(vm_layer, vm_space, vm_width, 'y', override=True, unit_mode=True)
+        tdir = 'x'
         for lay, w, sp in zip(self._config['tr_layers'], self._config['tr_widths'], self._config['tr_spaces']):
             self.grid.add_new_layer(lay, sp, w, tdir, override=True, unit_mode=True)
             tdir = 'x' if tdir == 'y' else 'y'

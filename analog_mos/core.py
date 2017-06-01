@@ -809,6 +809,29 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return sd_pitch * num_sd_per_track - mos_conn_w, mos_conn_w
 
     @classmethod
+    def get_laygo_conn_track_info(cls, lch_unit):
+        # type: (int) -> Tuple[int, int]
+        """Returns dummy connection layer space and width.
+
+        Parameters
+        ----------
+        lch_unit : int
+            channel length in resolution units.
+
+        Returns
+        -------
+        dum_sp : int
+            space between dummy tracks in resolution units.
+        dum_w : int
+            width of dummy tracks in resolution units.
+        """
+        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        sd_pitch = mos_constants['sd_pitch']
+        laygo_conn_w = mos_constants['laygo_conn_w']
+        laygo_num_sd_per_track = mos_constants['laygo_num_sd_per_track']
+        return sd_pitch * laygo_num_sd_per_track - laygo_conn_w, laygo_conn_w
+
+    @classmethod
     def get_num_fingers_per_sd(cls, lch_unit):
         # type: (int) -> int
         """Returns the number of transistor source/drain junction per vertical track.
