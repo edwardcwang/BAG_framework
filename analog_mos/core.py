@@ -891,8 +891,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return edge_info['edge_width']
 
     @classmethod
-    def get_laygo_row_info(cls, grid, lch_unit, w, mos_type, thres, g_tracks, ds_tracks, min_tracks, end_mode):
-        # type: (RoutingGrid, int, int, str, str, int, int, Dict[int, int], int) -> Dict[str, Any]
+    def get_laygo_row_info(cls, grid, lch_unit, w, mos_type, thres, num_g, num_gb, num_ds, min_tracks, end_mode):
+        # type: (RoutingGrid, int, int, str, str, int, int, int, Dict[int, int], int) -> Dict[str, Any]
         """Calculate the height of a PMOS/NMOS row in digital block.
 
         Parameters
@@ -907,10 +907,13 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             the transistor/substrate type.  One of 'pch', 'nch', 'ptap', or 'ntap'.
         thres : str
             the transistor threshold flavor.
-        g_tracks : int
+        num_g : int
             minimum number of gate tracks on bottom horizontal routing layer.
             For transistors, g_tracks >= 1.  For substrates, g_tracks = 0.
-        ds_tracks : int
+        num_gb : int
+            minimum number of drain/source tracks on bottom horizontal routing layer, where the
+            drain/source is in the same pitch as gate.
+        num_ds : int
             minimum number of drain/source tracks on bottom horizontal routing layer.
         min_tracks : Dict[int, int]
             a dictionary from layer ID to minimum number of tracks on that layer.
@@ -931,7 +934,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         blk_height = mos_info['blk_height']
         ext_bot_info = mos_info['ext_bot_info']
         ext_top_info = mos_info['ext_top_info']
-        d_conn_yb, d_conn_yt = mos_info['d_conn_y']
+        gb_conn_yb, gb_conn_yt = mos_info['gb_conn_y']
+        ds_conn_yb, ds_conn_yt = mos_info['ds_conn_y']
 
         conn_layer = cls.get_dig_conn_layer()
         hm_layer = conn_layer + 1
@@ -941,7 +945,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         hm_width, hm_space = grid.get_track_info(hm_layer, unit_mode=True)
         hm_pitch = hm_width + hm_space
         blk_pitch = lcm([mos_pitch, hm_pitch])
-        min_height = hm_pitch * (g_tracks + ds_tracks)
+        min_height = hm_pitch * (num_g + num_gb)
         for lay, ntr in min_tracks.items():
             track_pitch = grid.get_track_pitch(lay, unit_mode=True)
             blk_pitch = lcm([blk_pitch, track_pitch])
@@ -954,16 +958,16 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         conn_delta = hm_width // 2 + via_ext
 
         # step 3: find Y coordinate of mos block
-        if g_tracks > 0:
+        gtr_idx0 = hm_sep / 2
+        if num_g > 0:
             g_conn_yb, g_conn_yt = mos_info['g_conn_y']
             # step A: find bottom horizontal track index
-            gtr_idx0 = hm_sep / 2
             # step B: find minimum Y coordinate such that the vertical track bottom line-end
             # does not extend below via extension of bottom horizontal track.
             vm_yb = grid.track_to_coord(hm_layer, gtr_idx0, unit_mode=True) - conn_delta
             ymin0 = vm_yb - g_conn_yb
             # step C: find top gate track index
-            gtr_idx1 = gtr_idx0 + g_tracks - 1
+            gtr_idx1 = gtr_idx0 + num_g - 1
             # step D: find minimum Y coordinate such that vertical track top line-end
             # is higher than the via extension of top horizontal track.
             vm_yt = grid.track_to_coord(hm_layer, gtr_idx1, unit_mode=True) + conn_delta
@@ -978,17 +982,28 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             ext_bot_h = 0
 
         # step 4: find block top boundary Y coordinate
-        # step A: find bottom drain track index so via extension line-end is above d_conn_yb
-        dtr_y0 = y0 + d_conn_yb + conn_delta
-        dtr_idx0 = grid.coord_to_nearest_track(hm_layer, dtr_y0, half_track=True, mode=1, unit_mode=True)
-        # step B1: find top drain track index
-        dtr_idx1 = dtr_idx0 + ds_tracks - 1
-        # step B2: find top drain track index based on d_conn_yt
-        dtr_y1 = y0 + d_conn_yt - conn_delta
-        dtr_idx2 = grid.coord_to_nearest_track(hm_layer, dtr_y1, half_track=True, mode=1, unit_mode=True)
-        dtr_idx1 = max(dtr_idx1, dtr_idx2)
+        # step A: find bottom gb track index so via extension line-end is above d_conn_yb
+        gbtr_y0 = y0 + gb_conn_yb + conn_delta
+        gbtr_idx0 = grid.coord_to_nearest_track(hm_layer, gbtr_y0, half_track=True, mode=1, unit_mode=True)
+        # step B1: find top gb track index
+        gbtr_idx1 = gbtr_idx0 + num_gb - 1
+        # step B2: find top gb track index based on gb_conn_yt
+        gbtr_y1 = y0 + gb_conn_yt - conn_delta
+        gbtr_idx2 = grid.coord_to_nearest_track(hm_layer, gbtr_y1, half_track=True, mode=1, unit_mode=True)
+        gbtr_idx1 = max(gbtr_idx1, gbtr_idx2)
+
+        # step C: find bottom ds track index
+        dstr_y0 = y0 + ds_conn_yb + conn_delta
+        dstr_idx0 = grid.coord_to_nearest_track(hm_layer, dstr_y0, half_track=True, mode=1, unit_mode=True)
+        # step B1: find top ds track index
+        dstr_idx1 = dstr_idx0 + num_ds - 1
+        # step B2: find top ds track index based on gb_conn_yt
+        dstr_y1 = y0 + ds_conn_yt - conn_delta
+        dstr_idx2 = grid.coord_to_nearest_track(hm_layer, dstr_y1, half_track=True, mode=1, unit_mode=True)
+        dstr_idx1 = max(dstr_idx1, dstr_idx2)
+
         # step C: find block top boundary Y coordinate based on hm_sep
-        y1 = grid.track_to_coord(hm_layer, dtr_idx1, unit_mode=True)
+        y1 = grid.track_to_coord(hm_layer, max(gbtr_idx1, dstr_idx1), unit_mode=True)
         y1 += hm_pitch // 2 * (hm_sep + 1)
 
         y1 = max(min_height, y1)
@@ -1004,4 +1019,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             ext_bot_h=ext_bot_h,
             ext_top_h=ext_top_h,
             blk_info=mos_info,
+            gtr_idx0=gtr_idx0,
+            gbtr_idx0=gbtr_idx0,
+            dstr_idx0=dstr_idx0,
         )

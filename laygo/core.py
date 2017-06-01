@@ -138,22 +138,14 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return self._laygo_size
 
     def set_row_types(self, row_types, row_orientations, row_thresholds, draw_boundaries, end_mode,
-                      top_layer=None, guard_ring_nf=0):
+                      num_g_tracks, num_gb_tracks, num_ds_tracks, top_layer=None, guard_ring_nf=0):
         lch = self._config['lch']
         w_sub = self._config['w_sub']
         w_n = self._config['w_n']
         w_p = self._config['w_p']
-        ng_tracks = self._config['ng_tracks']
-        nds_tracks = self._config['nds_tracks']
-        pg_tracks = self._config['pg_tracks']
-        pds_tracks = self._config['pds_tracks']
-        sub_tracks = self._config['sub_tracks']
         min_sub_tracks = self._config['min_sub_tracks']
         min_n_tracks = self._config['min_n_tracks']
         min_p_tracks = self._config['min_p_tracks']
-
-        ng_tracks = max(ng_tracks, 1)
-        pg_tracks = max(pg_tracks, 1)
 
         self._guard_ring_nf = guard_ring_nf
 
@@ -168,6 +160,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._row_infos = []
         self._row_orientations = list(row_orientations)
         self._row_thresholds = list(row_thresholds)
+        num_g_tracks = list(num_g_tracks)
+        num_gb_tracks = list(num_gb_tracks)
+        num_ds_tracks = list(num_ds_tracks)
         self._row_y = []
         self._col_width = self._tech_cls.get_sd_pitch(lch_unit) * 2
 
@@ -192,6 +187,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     self._row_types.insert(0, sub_type)
                     self._row_orientations.insert(0, 'R0')
                     self._row_thresholds.insert(0, self._row_thresholds[0])
+                    num_g_tracks.insert(0, 0)
+                    num_gb_tracks.insert(0, 0)
+                    num_ds_tracks.insert(0, 1)
                 mos_type = self._row_types[-1]
                 if mos_type != 'ptap' and mos_type != 'ntap':
                     self._add_top_sub = True
@@ -199,6 +197,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     self._row_types.append(sub_type)
                     self._row_orientations.append('MX')
                     self._row_thresholds.append(self._row_thresholds[-1])
+                    num_g_tracks.append(0)
+                    num_gb_tracks.append(0)
+                    num_ds_tracks.append(1)
             # create boundary masters
             params = dict(
                 lch=lch,
@@ -221,8 +222,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._used_list = []
         y0 = 0 if self._bot_end_master is None else self._bot_end_master.bound_box.height_unit
         yrow = y0
-        for idx, (row_type, row_orient, row_thres) in enumerate(zip(self._row_types, self._row_orientations,
-                                                                    self._row_thresholds)):
+        for idx, (row_type, row_orient, row_thres, ng, ngb, nds) in \
+                enumerate(zip(self._row_types, self._row_orientations, self._row_thresholds,
+                              num_g_tracks, num_gb_tracks, num_ds_tracks)):
             if idx == 0:
                 end_mode = 1 if row_orient == 'R0' else 2
             elif idx == len(self._row_types) - 1:
@@ -232,16 +234,16 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
             if row_type == 'nch':
                 row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_n, 'nch', row_thres,
-                                                             ng_tracks, nds_tracks, min_n_tracks, end_mode)
+                                                             ng, ngb, nds, min_n_tracks, end_mode)
             elif row_type == 'pch':
                 row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_p, 'pch', row_thres,
-                                                             pg_tracks, pds_tracks, min_p_tracks, end_mode)
+                                                             ng, ngb, nds, min_p_tracks, end_mode)
             elif row_type == 'ptap':
                 row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_sub, 'ptap', row_thres,
-                                                             0, sub_tracks, min_sub_tracks, end_mode)
+                                                             0, 0, nds, min_sub_tracks, end_mode)
             elif row_type == 'ntap':
                 row_info = self._tech_cls.get_laygo_row_info(self.grid, lch_unit, w_sub, 'ntap', row_thres,
-                                                             0, sub_tracks, min_sub_tracks, end_mode)
+                                                             0, 0, nds, min_sub_tracks, end_mode)
             else:
                 raise ValueError('Unknown row type: %s' % row_type)
 
