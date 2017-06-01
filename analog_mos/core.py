@@ -977,21 +977,25 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             ext_bot_h = -(-y0 // mos_pitch)
             y0 = ext_bot_h * mos_pitch
         else:
-            # this is substrate, we just set Y coordinate to 0.
+            # we don't need gate tracks, so just set Y coordinate to 0.
             y0 = 0
             ext_bot_h = 0
 
-        # step 4: find block top boundary Y coordinate
-        # step A: find bottom gb track index so via extension line-end is above d_conn_yb
-        gbtr_y0 = y0 + gb_conn_yb + conn_delta
-        gbtr_idx0 = grid.coord_to_nearest_track(hm_layer, gbtr_y0, half_track=True, mode=1, unit_mode=True)
-        # step B1: find top gb track index
-        gbtr_idx1 = gbtr_idx0 + num_gb - 1
-        # step B2: find top gb track index based on gb_conn_yt
-        gbtr_y1 = y0 + gb_conn_yt - conn_delta
-        gbtr_idx2 = grid.coord_to_nearest_track(hm_layer, gbtr_y1, half_track=True, mode=1, unit_mode=True)
-        gbtr_idx1 = max(gbtr_idx1, gbtr_idx2)
+        if num_gb > 0:
+            # step 4: find block top boundary Y coordinate
+            # step A: find bottom gb track index so via extension line-end is above d_conn_yb
+            gbtr_y0 = y0 + gb_conn_yb + conn_delta
+            gbtr_idx0 = grid.coord_to_nearest_track(hm_layer, gbtr_y0, half_track=True, mode=1, unit_mode=True)
+            # step B1: find top gb track index
+            gbtr_idx1 = gbtr_idx0 + num_gb - 1
+            # step B2: find top gb track index based on gb_conn_yt
+            gbtr_y1 = y0 + gb_conn_yt - conn_delta
+            gbtr_idx2 = grid.coord_to_nearest_track(hm_layer, gbtr_y1, half_track=True, mode=1, unit_mode=True)
+            gbtr_idx1 = max(gbtr_idx1, gbtr_idx2)
+        else:
+            gbtr_idx0 = gbtr_idx1 = gtr_idx0
 
+        num_ds = max(num_ds, 1)
         # step C: find bottom ds track index
         dstr_y0 = y0 + ds_conn_yb + conn_delta
         dstr_idx0 = grid.coord_to_nearest_track(hm_layer, dstr_y0, half_track=True, mode=1, unit_mode=True)

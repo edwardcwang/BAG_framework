@@ -261,23 +261,28 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             info_bot, info_top = self._row_infos[idx], self._row_infos[idx + 1]
             ori_bot, ori_top = self._row_orientations[idx], self._row_orientations[idx + 1]
 
-            ext_h = 0
             ycur = yext
             if ori_bot == 'R0':
                 ext_bot = info_bot['ext_top_info']
-                ext_h += info_bot['ext_top_h']
+                ext_bot_h = info_bot['ext_top_h']
                 ycur += info_bot['yblk'] + info_bot['blk_height']
             else:
                 ext_bot = info_bot['ext_bot_info']
-                ext_h += info_bot['ext_bot_h']
+                ext_bot_h = info_bot['ext_bot_h']
                 ycur += info_bot['height'] - info_bot['yblk']
 
             if ori_top == 'R0':
                 ext_top = info_top['ext_bot_info']
-                ext_h += info_top['ext_bot_h']
+                ext_top_h = info_top['ext_bot_h']
             else:
                 ext_top = info_top['ext_top_info']
-                ext_h += info_top['ext_top_h']
+                ext_top_h = info_top['ext_top_h']
+
+            ext_h = ext_bot_h + ext_top_h
+            print('ng: %d, ngb: %d, nds: %d' % (num_g_tracks[idx], num_gb_tracks[idx], num_ds_tracks[idx]))
+            print('ext_bot_h: %d, ext_top_h: %d' % (ext_bot_h, ext_top_h))
+            print('ext_bot_info: {}'.format(ext_bot))
+            print('ext_top_info: {}'.format(ext_top))
 
             # check that we can draw the extension
             valid_widths = self._tech_cls.get_valid_extension_widths(lch_unit, ext_top, ext_bot)
