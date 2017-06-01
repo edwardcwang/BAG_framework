@@ -36,6 +36,7 @@ from bag.util.interval import IntervalSet
 from bag.layout.util import BBox
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.objects import Instance
+from bag.layout.routing import TrackID
 
 from ..analog_mos.core import MOSTech
 from ..analog_mos.mos import AnalogMOSExt
@@ -136,6 +137,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     @property
     def laygo_size(self):
         return self._laygo_size
+
+    @property
+    def conn_layer(self):
+        return self._tech_cls.get_dig_conn_layer()
 
     def set_row_types(self, row_types, row_orientations, row_thresholds, draw_boundaries, end_mode,
                       num_g_tracks, num_gb_tracks, num_ds_tracks, top_layer=None, guard_ring_nf=0):
@@ -247,6 +252,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             else:
                 raise ValueError('Unknown row type: %s' % row_type)
 
+            row_info['yrow'] = yrow
             self._row_infos.append(row_info)
             self._used_list.append(LaygoIntvSet())
             self._row_y.append(yrow)
@@ -302,6 +308,37 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             )
             self._ext_params.append((ycur, ext_h, ext_params))
             yext += info_bot['height']
+
+    def get_track_index(self, row_idx, tr_type, tr_idx):
+        row_idx = self._get_row_index(row_idx)
+        row_info = self._row_infos[row_idx]
+        orient = self._row_orientations[row_idx]
+        if tr_type == 'g':
+            ntr, idx0 = row_info['num_g'], row_info['gtr_idx0']
+        elif tr_type == 'gb':
+            ntr, idx0 = row_info['num_gb'], row_info['gbtr_idx0']
+        elif tr_type == 'ds':
+            ntr, idx0 = row_info['num_ds'], row_info['dstr_idx0']
+        else:
+            raise ValueError('Unknown track type: %s' % tr_type)
+
+        if tr_idx >= ntr:
+            raise ValueError('tr_idx = %d >= %d' % (tr_idx, ntr))
+
+        yrow = row_info['yrow']
+        hm_layer = self._tech_cls.get_dig_conn_layer() + 1
+        tr_off = self.grid.coord_to_track(hm_layer, yrow, unit_mode=True) + 0.5
+        ntr_row = row_info['height'] // self.grid.get_track_pitch(hm_layer, unit_mode=True)
+
+        if orient == 'R0':
+            return tr_off + idx0 + tr_idx
+        else:
+            return tr_off + ntr_row - 1 - idx0 - tr_idx
+
+    def make_track_id(self, row_idx, tr_type, tr_idx, width=1, num=1, pitch=0.0):
+        tid = self.get_track_index(row_idx, tr_type, tr_idx)
+        hm_layer = self._tech_cls.get_dig_conn_layer() + 1
+        return TrackID(hm_layer, tid, width=width, num=num, pitch=pitch)
 
     def get_end_flags(self, row_idx):
         return self._used_list[row_idx].get_end_flags(self._laygo_size[0])

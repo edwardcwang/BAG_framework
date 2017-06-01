@@ -992,6 +992,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             gbtr_y1 = y0 + gb_conn_yt - conn_delta
             gbtr_idx2 = grid.coord_to_nearest_track(hm_layer, gbtr_y1, half_track=True, mode=1, unit_mode=True)
             gbtr_idx1 = max(gbtr_idx1, gbtr_idx2)
+            num_gb = gbtr_idx1 - gbtr_idx0 + 1
         else:
             gbtr_idx0 = gbtr_idx1 = gtr_idx0
 
@@ -1005,6 +1006,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         dstr_y1 = y0 + ds_conn_yt - conn_delta
         dstr_idx2 = grid.coord_to_nearest_track(hm_layer, dstr_y1, half_track=True, mode=1, unit_mode=True)
         dstr_idx1 = max(dstr_idx1, dstr_idx2)
+        num_ds = dstr_idx1 - dstr_idx0 + 1
 
         # step C: find block top boundary Y coordinate based on hm_sep
         y1 = grid.track_to_coord(hm_layer, max(gbtr_idx1, dstr_idx1), unit_mode=True)
@@ -1026,4 +1028,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             gtr_idx0=gtr_idx0,
             gbtr_idx0=gbtr_idx0,
             dstr_idx0=dstr_idx0,
+            num_g=num_g,
+            num_gb=num_gb,
+            num_ds=num_ds,
         )
