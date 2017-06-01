@@ -957,7 +957,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         if g_tracks > 0:
             g_conn_yb, g_conn_yt = mos_info['g_conn_y']
             # step A: find bottom horizontal track index
-            gtr_idx0 = hm_sep // 2
+            gtr_idx0 = hm_sep / 2
             # step B: find minimum Y coordinate such that the vertical track bottom line-end
             # does not extend below via extension of bottom horizontal track.
             vm_yb = grid.track_to_coord(hm_layer, gtr_idx0, unit_mode=True) - conn_delta
