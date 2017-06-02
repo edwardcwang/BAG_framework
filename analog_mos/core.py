@@ -988,6 +988,9 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             y0 = max(ymin0, ymin1)
             ext_bot_h = -(-y0 // mos_pitch)
             y0 = ext_bot_h * mos_pitch
+            gtr_idx1 = grid.coord_to_nearest_track(hm_layer, y0 + g_conn_yt - conn_delta, half_track=True, mode=-1,
+                                                   unit_mode=True)
+            gtr_idx0 = gtr_idx1 - num_g + 1
         else:
             # we don't need gate tracks, so just set Y coordinate to 0.
             y0 = 0
