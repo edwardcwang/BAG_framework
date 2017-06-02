@@ -142,6 +142,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def conn_layer(self):
         return self._tech_cls.get_dig_conn_layer()
 
+    @property
+    def fg2d_s_short(self):
+        return self._tech_cls.get_laygo_fg2d_s_short()
+
     def set_row_types(self, row_types, row_orientations, row_thresholds, draw_boundaries, end_mode,
                       num_g_tracks, num_gb_tracks, num_ds_tracks, top_layer=None, guard_ring_nf=0):
         lch = self._config['lch']

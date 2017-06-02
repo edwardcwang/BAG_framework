@@ -598,6 +598,19 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_laygo_fg2d_s_short(cls):
+        # type: () -> bool
+        """Returns True if the two source wires of fg2d is shorted together in the primitive.
+
+        Returns
+        -------
+        s_short : bool
+            True if the two source wires of fg2d is shorted together
+        """
+        return False
+
+    @classmethod
+    @abc.abstractmethod
     def get_laygo_unit_fg(cls):
         # type: () -> int
         """Returns the number of fingers in a LaygoBase unit cell.
@@ -953,12 +966,11 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
         # step 2: based on line-end spacing, find the number of horizontal tracks
         # needed between routing tracks of adjacent blocks.
-        hm_sep = grid.get_line_end_space_tracks(conn_layer, hm_layer, 1)
         via_ext = grid.get_via_extensions(conn_layer, 1, 1, unit_mode=True)[0]
         conn_delta = hm_width // 2 + via_ext
 
         # step 3: find Y coordinate of mos block
-        gtr_idx0 = hm_sep / 2
+        gtr_idx0 = 0
         if num_g > 0:
             g_conn_yb, g_conn_yt = mos_info['g_conn_y']
             # step A: find bottom horizontal track index
@@ -992,7 +1004,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             gbtr_y1 = y0 + gb_conn_yt - conn_delta
             gbtr_idx2 = grid.coord_to_nearest_track(hm_layer, gbtr_y1, half_track=True, mode=1, unit_mode=True)
             gbtr_idx1 = max(gbtr_idx1, gbtr_idx2)
-            num_gb = gbtr_idx1 - gbtr_idx0 + 1
+            num_gb = int(gbtr_idx1 - gbtr_idx0 + 1)
         else:
             gbtr_idx0 = gbtr_idx1 = gtr_idx0
 
@@ -1006,11 +1018,11 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         dstr_y1 = y0 + ds_conn_yt - conn_delta
         dstr_idx2 = grid.coord_to_nearest_track(hm_layer, dstr_y1, half_track=True, mode=1, unit_mode=True)
         dstr_idx1 = max(dstr_idx1, dstr_idx2)
-        num_ds = dstr_idx1 - dstr_idx0 + 1
+        num_ds = int(dstr_idx1 - dstr_idx0 + 1)
 
-        # step C: find block top boundary Y coordinate based on hm_sep
+        # step C: find block top boundary Y coordinate
         y1 = grid.track_to_coord(hm_layer, max(gbtr_idx1, dstr_idx1), unit_mode=True)
-        y1 += hm_pitch // 2 * (hm_sep + 1)
+        y1 += hm_pitch // 2
 
         y1 = max(min_height, y1)
         y1 = -(-y1 // blk_pitch) * blk_pitch
