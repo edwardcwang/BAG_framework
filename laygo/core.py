@@ -206,12 +206,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             raise ValueError('Must draw at least 2 rows.')
 
         lch = self._config['lch']
-        w_sub = self._config['w_sub']
-        w_n = self._config['w_n']
-        w_p = self._config['w_p']
-        min_sub_tracks = self._config['min_sub_tracks']
-        min_n_tracks = self._config['min_n_tracks']
-        min_p_tracks = self._config['min_p_tracks']
 
         self._guard_ring_nf = guard_ring_nf
 
@@ -229,6 +223,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._row_types = row_types
         self._row_orientations = row_orientations
         self._row_thresholds = row_thresholds
+        self._used_list = [LaygoIntvSet() for _ in range(self._num_rows)]
         self._col_width = self._tech_cls.get_sd_pitch(lch_unit) * self._tech_cls.get_laygo_unit_fg()
 
         if draw_boundaries:
@@ -264,16 +259,31 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 top_layer=self._top_layer,
             )
             self._top_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
-            ybot = y0 = self._bot_end_master.bound_box.height_unit
+            ybot = self._bot_end_master.bound_box.height_unit
         else:
             self._left_margin = self._right_margin = 0
-            ybot = y0 = 0
+            ybot = 0
 
         # compute location and information of each row
-        self._used_list = []
-        self._ext_params = []
-        self._row_infos = []
-        self._row_y = []
+        result = self._place_rows(ybot, lch, tot_height_pitch,
+                                  row_types, row_orientations, row_thresholds,
+                                  num_g_tracks, num_gb_tracks, num_ds_tracks)
+        self._row_infos, self._ext_params, self._row_y = result
+
+    def _place_rows(self, ybot, lch, tot_height_pitch,
+                    row_types, row_orientations, row_thresholds,
+                    num_g_tracks, num_gb_tracks, num_ds_tracks):
+        lch_unit = int(round(lch / self.grid.layout_unit / self.grid.resolution))
+        w_sub = self._config['w_sub']
+        w_n = self._config['w_n']
+        w_p = self._config['w_p']
+        min_sub_tracks = self._config['min_sub_tracks']
+        min_n_tracks = self._config['min_n_tracks']
+        min_p_tracks = self._config['min_p_tracks']
+
+        ext_params_list = []
+        row_infos = []
+        row_y = []
         conn_layer = self._tech_cls.get_dig_conn_layer()
         hm_layer = conn_layer + 1
         via_ext = self.grid.get_via_extensions(conn_layer, 1, 1, unit_mode=True)[0]
@@ -282,6 +292,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         conn_delta = hm_width // 2 + via_ext
         prev_ext_info = None
         prev_ext_h = 0
+        y0 = ybot
         for idx, (row_type, row_orient, row_thres, ng, ngb, nds) in \
                 enumerate(zip(row_types, row_orientations, row_thresholds,
                               num_g_tracks, num_gb_tracks, num_ds_tracks)):
@@ -444,14 +455,15 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     bot_ext_info=ext_bot_info,
                     is_laygo=True,
                 )
-            self._row_y.append((y0, ycur, ycur + blk_height, ytop))
-            self._used_list.append(LaygoIntvSet())
-            self._row_infos.append(mos_info)
-            self._ext_params.append(ext_params)
+            row_y.append((y0, ycur, ycur + blk_height, ytop))
+            row_infos.append(mos_info)
+            ext_params_list.append(ext_params)
 
             y0 = ytop
             prev_ext_info = ext_top_info
             prev_ext_h = cur_top_ext_h
+
+        return row_infos, ext_params_list, row_y
 
     def get_track_index(self, row_idx, tr_type, tr_idx):
         row_info = self._row_infos[row_idx]
