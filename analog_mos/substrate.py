@@ -130,7 +130,6 @@ class AnalogSubstrate(TemplateBase):
             w='transistor width, in meters/number of fins.',
             sub_type="substrate type, either 'ptap' or 'ntap'.",
             threshold='transistor threshold flavor.',
-            end_mode='An integer indicating whether top/bottom of this template is at the ends.',
             is_passive='True if this substrate is used as substrate contact for passive devices.',
             top_layer='The top routing layer.  Used to determine vertical pitch.',
         )
@@ -158,7 +157,7 @@ class AnalogSubstrate(TemplateBase):
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, lch, w, sub_type, threshold, end_mode, is_passive, top_layer, **kwargs):
+    def _draw_layout_helper(self, lch, w, sub_type, threshold, is_passive, top_layer, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
@@ -168,7 +167,7 @@ class AnalogSubstrate(TemplateBase):
             blk_pitch = 1
         fg = self._tech_cls.get_analog_unit_fg()
         info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg,
-                                                 end_mode, blk_pitch=blk_pitch, is_passive=is_passive)
+                                                 blk_pitch=blk_pitch, is_passive=is_passive)
         self._layout_info = info['layout_info']
         self._sd_yc = info['sd_yc']
         self._ext_top_info = info['ext_top_info']

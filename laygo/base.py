@@ -187,18 +187,16 @@ class LaygoSubstrate(TemplateBase):
             w='transistor width, in meters/number of fins.',
             mos_type="transistor type, one of 'pch', 'nch', 'ntap', or 'ptap'.",
             threshold='transistor threshold flavor.',
-            end_mode='substrat end mode flag.',
             options="additional substrate options.",
         )
 
     def get_layout_basename(self):
-        fmt = 'laygo_%s_l%s_w%s_%s_end%d'
+        fmt = 'laygo_%s_l%s_w%s_%s'
         mos_type = self.params['mos_type']
         lstr = float_to_si_string(self.params['lch'])
         wstr = float_to_si_string(self.params['w'])
         th = self.params['threshold']
-        end_mode = self.params['end_mode']
-        return fmt % (mos_type, lstr, wstr, th, end_mode)
+        return fmt % (mos_type, lstr, wstr, th)
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
@@ -209,13 +207,12 @@ class LaygoSubstrate(TemplateBase):
         w = self.params['w']
         mos_type = self.params['mos_type']
         threshold = self.params['threshold']
-        end_mode = self.params['end_mode']
         options = self.params['options']
 
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w, mos_type, threshold, end_mode)
+        mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w, mos_type, threshold)
         # draw transistor
         self._tech_cls.draw_mos(self, mos_info['layout_info'])
         # draw connection

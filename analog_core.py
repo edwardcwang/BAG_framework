@@ -832,7 +832,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 w=bot_sub_w,
                 sub_type=sub_type,
                 threshold=th_list[0],
-                end_mode=bot_sub_end,
                 top_layer=None,
             )
             master_list.append(self.new_template(params=sub_params, temp_cls=AnalogSubstrate))
@@ -865,7 +864,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 w=top_sub_w,
                 sub_type=sub_type,
                 threshold=th_list[-1],
-                end_mode=top_sub_end,
                 top_layer=None,
             )
             master_list.append(self.new_template(params=sub_params, temp_cls=AnalogSubstrate))
@@ -2037,7 +2035,6 @@ class SubstrateContact(TemplateBase):
             sub_type=sub_type,
             threshold=threshold,
             fg=sub_fg_tot,
-            end_mode=sub_end_mode & 3,
             is_passive=is_passive,
             top_layer=hm_layer,
         )

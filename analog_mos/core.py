@@ -333,7 +333,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_substrate_info(cls, lch_unit, w, sub_type, threshold, fg, end_mode, blk_pitch=1, **kwargs):
+    def get_substrate_info(cls, lch_unit, w, sub_type, threshold, fg, blk_pitch=1, **kwargs):
         # type: (int, int, str, str, int, int, int, **kwargs) -> Dict[str, Any]
         """Returns the substrate layout information dictionary.
         
@@ -349,9 +349,6 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             the substrate threshold type.
         fg : int
             total number of fingers.
-        end_mode : int
-            the end mode flag.  This is a 2-bit integer.  The LSB is 1 if there are no blocks abutting
-            the bottom.  The MSB is 1 if there are no blocks abutting the top.
         blk_pitch : int
             substrate height quantization pitch.  Defaults to 1 (no quantization).
         **kwargs :
@@ -585,19 +582,6 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_laygo_end_with_substrate(cls):
-        # type: () -> bool
-        """Returns True if LaygoBase must draw substrates as its end rows.
-
-        Returns
-        -------
-        draw_substrate : bool
-            True if LaygoBase must draw substrates at the ends.
-        """
-        return False
-
-    @classmethod
-    @abc.abstractmethod
     def get_laygo_fg2d_s_short(cls):
         # type: () -> bool
         """Returns True if the two source wires of fg2d is shorted together in the primitive.
@@ -624,8 +608,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_laygo_sub_info(cls, lch_unit, w, mos_type, threshold, end_mode):
-        # type: (int, int, str, str, int) -> Dict[str, Any]
+    def get_laygo_sub_info(cls, lch_unit, w, mos_type, threshold):
+        # type: (int, int, str, str) -> Dict[str, Any]
         """Returns the transistor information dictionary for laygo blocks.
 
         The returned dictionary must have the following entries:
@@ -654,9 +638,6 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             the transistor/substrate type.  One of 'pch', 'nch', 'ptap', or 'ntap'.
         threshold : str
             the transistor threshold flavor.
-        end_mode : int
-            the end mode flag.  This is a 2-bit integer.  The LSB is 1 if there are no blocks abutting
-            the bottom.  The MSB is 1 if there are no blocks abutting the top.
 
         Returns
         -------
@@ -942,7 +923,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         if mos_type == 'nch' or mos_type == 'pch':
             mos_info = cls.get_laygo_mos_info(lch_unit, w, mos_type, thres, 'fg2d')
         else:
-            mos_info = cls.get_laygo_sub_info(lch_unit, w, mos_type, thres, end_mode)
+            mos_info = cls.get_laygo_sub_info(lch_unit, w, mos_type, thres)
 
         blk_height = mos_info['blk_height']
         ext_bot_info = mos_info['ext_bot_info']
