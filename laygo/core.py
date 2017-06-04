@@ -264,15 +264,16 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self._left_margin = self._right_margin = 0
             ybot = 0
 
+        row_specs = self._get_row_specs(row_types, row_orientations, row_thresholds,
+                                        num_g_tracks, num_gb_tracks, num_ds_tracks)
+
         # compute location and information of each row
-        result = self._place_rows(ybot, lch, tot_height_pitch,
-                                  row_types, row_orientations, row_thresholds,
-                                  num_g_tracks, num_gb_tracks, num_ds_tracks)
+        result = self._place_rows(ybot, lch, tot_height_pitch, row_specs, row_types, row_thresholds)
         self._row_infos, self._ext_params, self._row_y = result
 
-    def _place_rows(self, ybot, lch, tot_height_pitch,
-                    row_types, row_orientations, row_thresholds,
-                    num_g_tracks, num_gb_tracks, num_ds_tracks):
+    def _get_row_specs(self, row_types, row_orientations, row_thresholds,
+                       num_g_tracks, num_gb_tracks, num_ds_tracks):
+        lch = self._config['lch']
         lch_unit = int(round(lch / self.grid.layout_unit / self.grid.resolution))
         w_sub = self._config['w_sub']
         w_n = self._config['w_n']
@@ -280,6 +281,40 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         min_sub_tracks = self._config['min_sub_tracks']
         min_n_tracks = self._config['min_n_tracks']
         min_p_tracks = self._config['min_p_tracks']
+        mos_pitch = self._tech_cls.get_mos_pitch(unit_mode=True)
+
+        row_specs = []
+        for row_type, row_orient, row_thres, ng, ngb, nds in \
+                zip(row_types, row_orientations, row_thresholds, num_g_tracks, num_gb_tracks, num_ds_tracks):
+
+            # get information dictionary
+            if row_type == 'nch':
+                mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, w_n, row_type, row_thres, 'fg2d')
+                min_tracks = min_n_tracks
+            elif row_type == 'pch':
+                mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, w_p, row_type, row_thres, 'fg2d')
+                min_tracks = min_p_tracks
+            elif row_type == 'ptap':
+                mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w_sub, row_type, row_thres)
+                min_tracks = min_sub_tracks
+            elif row_type == 'ntap':
+                mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w_sub, row_type, row_thres)
+                min_tracks = min_sub_tracks
+            else:
+                raise ValueError('Unknown row type: %s' % row_type)
+
+            row_pitch = min_row_height = mos_pitch
+            for layer, num_tr in min_tracks:
+                tr_pitch = self.grid.get_track_pitch(layer, unit_mode=True)
+                min_row_height = max(min_row_height, num_tr * tr_pitch)
+                row_pitch = lcm([row_pitch, tr_pitch])
+
+            row_specs.append((row_type, row_orient, mos_info, min_row_height, row_pitch, (ng, ngb, nds)))
+
+        return row_specs
+
+    def _place_rows(self, ybot, lch, tot_height_pitch, row_specs, row_types, row_thresholds):
+        lch_unit = int(round(lch / self.grid.layout_unit / self.grid.resolution))
 
         ext_params_list = []
         row_infos = []
@@ -293,30 +328,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         prev_ext_info = None
         prev_ext_h = 0
         y0 = ybot
-        for idx, (row_type, row_orient, row_thres, ng, ngb, nds) in \
-                enumerate(zip(row_types, row_orientations, row_thresholds,
-                              num_g_tracks, num_gb_tracks, num_ds_tracks)):
+        for idx, (row_type, row_orient, mos_info, min_row_height, row_pitch, (ng, ngb, nds)) in enumerate(row_specs):
 
             # get information dictionary
             is_sub = (row_type == 'ptap' or row_type == 'ntap')
-            if row_type == 'nch':
-                mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, w_n, row_type, row_thres, 'fg2d')
-                sub_type = 'ptap'
-                min_tracks = min_n_tracks
-            elif row_type == 'pch':
-                mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, w_p, row_type, row_thres, 'fg2d')
-                sub_type = 'ntap'
-                min_tracks = min_p_tracks
-            elif row_type == 'ptap':
-                mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w_sub, row_type, row_thres)
-                sub_type = 'ptap'
-                min_tracks = min_sub_tracks
-            elif row_type == 'ntap':
-                mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w_sub, row_type, row_thres)
-                sub_type = 'ntap'
-                min_tracks = min_sub_tracks
-            else:
-                raise ValueError('Unknown row type: %s' % row_type)
 
             # get extension information
             if row_orient == 'R0':
@@ -379,12 +394,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 ycur = y0 + cur_bot_ext_h * mos_pitch
 
             # at this point, ycur and cur_ext_h are determined
-            row_pitch = min_row_height = mos_pitch
-            for layer, num_tr in min_tracks:
-                tr_pitch = self.grid.get_track_pitch(layer, unit_mode=True)
-                min_row_height = max(min_row_height, num_tr * tr_pitch)
-                row_pitch = lcm([row_pitch, tr_pitch])
-
             if idx == self._num_rows - 1 and is_sub:
                 # we need to quantize row height, total height, and substrate just abut to top edge.
                 ytop = ycur + blk_height
@@ -450,7 +459,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     bot_mtype=row_types[idx - 1],
                     top_mtype=row_type,
                     bot_thres=row_thresholds[idx - 1],
-                    top_thres=row_thres,
+                    top_thres=row_thresholds[idx],
                     top_ext_info=prev_ext_info,
                     bot_ext_info=ext_bot_info,
                     is_laygo=True,
