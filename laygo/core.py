@@ -121,6 +121,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._row_orientations = None
         self._row_thresholds = None
         self._row_infos = None
+        self._row_kwargs = None
         self._row_y = None
         self._ext_params = None
         self._left_margin = 0
@@ -226,6 +227,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._row_types = row_types
         self._row_orientations = row_orientations
         self._row_thresholds = row_thresholds
+        self._row_kwargs = row_kwargs
         self._used_list = [LaygoIntvSet() for _ in range(self._num_rows)]
         self._col_width = self._tech_cls.get_sd_pitch(lch_unit) * self._tech_cls.get_laygo_unit_fg()
 
@@ -267,7 +269,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self._left_margin = self._right_margin = 0
             ybot = 0
 
-        row_specs = self._get_row_specs(row_types, row_orientations, row_thresholds,
+        row_specs = self._get_row_specs(row_types, row_orientations, row_thresholds, row_kwargs,
                                         num_g_tracks, num_gb_tracks, num_ds_tracks)
 
         # compute location and information of each row
@@ -560,12 +562,14 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             w = self._config['w_sub']
 
         # make master
+        options = self._row_kwargs[row_idx].copy()
+        options.update(kwargs)
         params = dict(
             lch=self._config['lch'],
             w=w,
             mos_type=mos_type,
             threshold=threshold,
-            options=kwargs,
+            options=options,
         )
         if blk_type == 'sub':
             if row_idx == 0:

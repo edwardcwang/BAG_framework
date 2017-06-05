@@ -124,7 +124,7 @@ class LaygoPrimitive(TemplateBase):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, w, mos_type, threshold, blk_type)
+        mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, w, mos_type, threshold, blk_type, **options)
         # draw transistor
         self._tech_cls.draw_mos(self, mos_info['layout_info'])
         # draw connection
@@ -212,7 +212,7 @@ class LaygoSubstrate(TemplateBase):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w, mos_type, threshold)
+        mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w, mos_type, threshold, **options)
         # draw transistor
         self._tech_cls.draw_mos(self, mos_info['layout_info'])
         # draw connection
