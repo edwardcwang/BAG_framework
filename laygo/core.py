@@ -195,7 +195,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return g_intv, s_intv, d_intv
 
     def set_row_types(self, row_types, row_orientations, row_thresholds, draw_boundaries, end_mode,
-                      num_g_tracks, num_gb_tracks, num_ds_tracks, top_layer=None, guard_ring_nf=0):
+                      num_g_tracks, num_gb_tracks, num_ds_tracks, top_layer=None, guard_ring_nf=0,
+                      row_kwargs=None):
 
         # error checking
         if (row_types[0] == 'ptap' or row_types[0] == 'ntap') and row_orientations[0] != 'R0':
@@ -204,6 +205,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             raise ValueError('top substrate orientation must be MX')
         if len(row_types) < 2:
             raise ValueError('Must draw at least 2 rows.')
+        if row_kwargs is None:
+            row_kwargs = [{}] * len(row_types)
 
         lch = self._config['lch']
 
@@ -271,7 +274,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         result = self._place_rows(ybot, lch, tot_height_pitch, row_specs, row_types, row_thresholds)
         self._row_infos, self._ext_params, self._row_y = result
 
-    def _get_row_specs(self, row_types, row_orientations, row_thresholds,
+    def _get_row_specs(self, row_types, row_orientations, row_thresholds, row_kwargs,
                        num_g_tracks, num_gb_tracks, num_ds_tracks):
         lch = self._config['lch']
         lch_unit = int(round(lch / self.grid.layout_unit / self.grid.resolution))
@@ -284,21 +287,22 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         mos_pitch = self._tech_cls.get_mos_pitch(unit_mode=True)
 
         row_specs = []
-        for row_type, row_orient, row_thres, ng, ngb, nds in \
-                zip(row_types, row_orientations, row_thresholds, num_g_tracks, num_gb_tracks, num_ds_tracks):
+        for row_type, row_orient, row_thres, kwargs, ng, ngb, nds in \
+                zip(row_types, row_orientations, row_thresholds, row_kwargs,
+                    num_g_tracks, num_gb_tracks, num_ds_tracks):
 
             # get information dictionary
             if row_type == 'nch':
-                mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, w_n, row_type, row_thres, 'fg2d')
+                mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, w_n, row_type, row_thres, 'general', **kwargs)
                 min_tracks = min_n_tracks
             elif row_type == 'pch':
-                mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, w_p, row_type, row_thres, 'fg2d')
+                mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, w_p, row_type, row_thres, 'general', **kwargs)
                 min_tracks = min_p_tracks
             elif row_type == 'ptap':
-                mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w_sub, row_type, row_thres)
+                mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w_sub, row_type, row_thres, **kwargs)
                 min_tracks = min_sub_tracks
             elif row_type == 'ntap':
-                mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w_sub, row_type, row_thres)
+                mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w_sub, row_type, row_thres, **kwargs)
                 min_tracks = min_sub_tracks
             else:
                 raise ValueError('Unknown row type: %s' % row_type)
