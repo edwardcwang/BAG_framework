@@ -555,8 +555,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """A unique key representing this template."""
         return self._key
 
-    def set_size_from_bound_box(self, top_layer_id, bbox, grid=None):
-        # type: (int, BBox, Optional[RoutingGrid]) -> None
+    def set_size_from_bound_box(self, top_layer_id, bbox, grid=None, round_up=False):
+        # type: (int, BBox, Optional[RoutingGrid], bool) -> None
         """Compute the size from overall bounding box.
 
         Parameters
@@ -569,6 +569,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             the RoutingGrid object to use to get the block pitch.
             If a template adds new layers that have larger pitch than parent layers,
             the block pitch may change.
+        round_up: bool
+            True to round up bounding box if not quantized properly
         """
         if grid is None:
             grid = self.grid
@@ -576,7 +578,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         if bbox.left_unit != 0 or bbox.bottom_unit != 0:
             raise ValueError('lower-left corner of overall bounding box must be (0, 0).')
 
-        self.size = grid.get_size_tuple(top_layer_id, bbox.width_unit, bbox.height_unit, unit_mode=True)
+        self.size = grid.get_size_tuple(top_layer_id, bbox.width_unit, bbox.height_unit,
+                                        round_up=round_up, unit_mode=True)
 
     def set_size_from_array_box(self, top_layer_id, grid=None):
         # type: (int, Optional[RoutingGrid]) -> None
@@ -715,7 +718,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """
         for inst in self._layout.inst_iter():
             loc = inst.location_unit
-            fp_dict = self.grid.get_flip_parity_at(loc, inst.orientation, inst.master.top_layer, unit_mode=True)
+            fp_dict = inst.master.grid.get_flip_parity_at(loc, inst.orientation, inst.master.top_layer, unit_mode=True)
             inst.new_master_with(flip_parity=fp_dict)
 
     def write_summary_file(self, fname, lib_name, cell_name):
