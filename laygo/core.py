@@ -544,15 +544,15 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                 edge_orient = 'MY' if flip_lr else 'R0'
                                 self._ext_edges.append((x, yext, edge_orient, edge_params))
 
-    def add_laygo_primitive(self, blk_type, loc=(0, 0), nx=1, spx=0, **kwargs):
-        # type: (str, Tuple[int, int], int, int, **kwargs) -> Instance
+    def add_laygo_primitive(self, blk_type, loc=(0, 0), flip=False, nx=1, spx=0, **kwargs):
+        # type: (str, Tuple[int, int], bool, int, int, **kwargs) -> Instance
 
         col_idx, row_idx = loc
         if row_idx < 0 or row_idx >= len(self._row_types):
             raise ValueError('Cannot add primitive at row %d' % row_idx)
 
         mos_type = self._row_types[row_idx]
-        orient = self._row_orientations[row_idx]
+        row_orient = self._row_orientations[row_idx]
         threshold = self._row_thresholds[row_idx]
         if mos_type == 'nch':
             w = self._config['w_n']
@@ -572,13 +572,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             options=options,
         )
         if blk_type == 'sub':
-            if row_idx == 0:
-                end_mode = 1 if orient == 'R0' else 2
-            elif row_idx == len(self._row_types) - 1:
-                end_mode = 2 if orient == 'R0' else 1
-            else:
-                end_mode = 0
-            params['end_mode'] = end_mode
             master = self.new_template(params=params, temp_cls=LaygoSubstrate)
         else:
             params['blk_type'] = blk_type
@@ -586,18 +579,26 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         intv = self._used_list[row_idx]
         inst_endl, inst_endr = master.get_end_flags()
+        if flip:
+            inst_endl, inst_endr = inst_endr, inst_endl
         for inst_num in range(nx):
-            inst_intv = col_idx + spx * inst_num, col_idx + 1 + spx * inst_num
+            intv_offset = col_idx + spx * inst_num
+            inst_intv = intv_offset, intv_offset + 1
             if not intv.add(inst_intv, inst_endl, inst_endr):
                 raise ValueError('Cannot add primitive on row %d, '
                                  'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
 
         x0 = self._left_margin + col_idx * self._col_width
+        if flip:
+            x0 += self._col_width
+
         _, ycur, ytop, _ = self._row_y[row_idx]
-        if orient == 'R0':
+        if row_orient == 'R0':
             y0 = self._row_y[row_idx][1]
+            orient = 'MY' if flip else 'R0'
         else:
             y0 = self._row_y[row_idx][2]
+            orient = 'R180' if flip else 'MX'
 
         # convert horizontal pitch to resolution units
         spx *= self._col_width
