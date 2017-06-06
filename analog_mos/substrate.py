@@ -110,7 +110,6 @@ class AnalogSubstrate(TemplateBase):
     @classmethod
     def get_default_param_values(cls):
         return dict(
-            end_mode=1,
             is_passive=False,
         )
 
@@ -135,16 +134,15 @@ class AnalogSubstrate(TemplateBase):
         )
 
     def get_layout_basename(self):
-        fmt = '%s_l%s_w%s_%s_end%d_lay%d'
+        fmt = '%s_l%s_w%s_%s_lay%d'
         sub_type = self.params['sub_type']
         lstr = float_to_si_string(self.params['lch'])
         wstr = float_to_si_string(self.params['w'])
         th = self.params['threshold']
-        end_mode = self.params['end_mode']
         top_layer = self.params['top_layer']
         if top_layer is None:
             top_layer = 0
-        basename = fmt % (sub_type, lstr, wstr, th, end_mode, top_layer)
+        basename = fmt % (sub_type, lstr, wstr, th, top_layer)
         if self.params['is_passive']:
             basename += '_passive'
 
