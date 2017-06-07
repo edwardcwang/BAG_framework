@@ -222,14 +222,14 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
 
     @classmethod
     @abc.abstractmethod
-    def get_laygo_space_info(cls, layout_info, num_blk):
+    def get_laygo_space_info(cls, row_info, num_blk):
         # type: (Dict[str, Any], int) -> Dict[str, Any]
         """Returns a new layout information dictionary for drawing LaygoBase space blocks.
 
         Parameters
         ----------
-        layout_info : Dict[str, Any]
-            the layout information dictionary.
+        row_info : Dict[str, Any]
+            the Laygo row information dictionary.
         num_blk : int
             number of space blocks.
 

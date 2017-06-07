@@ -350,25 +350,25 @@ class LaygoSpace(TemplateBase):
             dictionary from parameter name to description.
         """
         return dict(
-            layout_info='the layout information dictionary.',
-            layout_name='the layout name.',
+            row_info='the Laygo row information dictionary.',
+            name_id='the layout name ID.',
             num_blk='number of space blocks.'
         )
 
     def get_layout_basename(self):
         fmt = '%s_space%d'
-        layout_name = self.params['layout_name']
+        name_id = self.params['name_id']
         num_blk = self.params['num_blk']
-        return fmt % (layout_name, num_blk)
+        return fmt % (name_id, num_blk)
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
-        return self.to_immutable_id((basename, self.params['layout_info']))
+        return self.to_immutable_id((basename, self.params['row_info']))
 
     def draw_layout(self):
-        layout_info = self.params['layout_info']
+        row_info = self.params['row_info']
         num_blk = self.params['num_blk']
 
-        space_info = self._tech_cls.get_laygo_space_info(layout_info, num_blk)
+        space_info = self._tech_cls.get_laygo_space_info(row_info, num_blk)
         # draw transistor
         self._tech_cls.draw_mos(self, space_info)
