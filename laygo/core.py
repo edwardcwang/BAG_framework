@@ -79,7 +79,18 @@ class LaygoIntvSet(object):
         return intv_list, end_list
 
     def get_end_flags(self, num_col):
-        return self._end_flags[0], self._end_flags[num_col]
+        if 0 not in self._end_flags:
+            print('Warning: no element at location 0')
+            start_flag = False
+        else:
+            start_flag = self._end_flags[0]
+
+        if num_col not in self._end_flags:
+            print('Warning: no element at location %d' % num_col)
+            end_flag = False
+        else:
+            end_flag = self._end_flags[num_col]
+        return start_flag, end_flag
 
     def get_end(self):
         if not self._intv:
@@ -661,6 +672,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 else:
                     y = ytop
                 for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
+                    print(endl, endr)
                     edge_info = self._tech_cls.get_laygo_edge_info(rinfo, end_flag)
                     edge_params = dict(
                         top_layer=self._top_layer,
