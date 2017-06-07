@@ -44,7 +44,7 @@ from bag.layout.routing import TrackID
 from ..analog_mos.mos import AnalogMOSExt
 from ..analog_mos.edge import AnalogEdge
 from .tech import LaygoTech
-from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow
+from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow, LaygoSpace
 
 
 class LaygoIntvSet(object):
@@ -618,7 +618,30 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                  nx=nx, spx=spx, unit_mode=True)
 
     def fill_space(self):
-        pass
+        if self._laygo_size is None:
+            raise ValueError('laygo_size must be set before filling spaces.')
+
+        total_intv = (0, self._laygo_size[0])
+        for row_idx, (intv, row_orient, row_info, row_y) in \
+                enumerate(zip(self._used_list, self._row_orientations, self._row_infos, self._row_y)):
+            for (start, end), (flag_l, flag_r) in zip(*intv.get_complement(total_intv)):
+                od_flag = 0
+                if flag_l:
+                    od_flag |= 1
+                if flag_r:
+                    od_flag |= 2
+                num_blk = end - start
+                params = dict(
+                    row_info=row_info,
+                    name_id=row_info['row_name_id'],
+                    num_blk=num_blk,
+                    adj_od_flag=od_flag,
+                )
+                inst_name = 'XR%dC%d' % (row_idx, start)
+                master = self.new_template(params=params, temp_cls=LaygoSpace)
+                x0 = self._left_margin + start * self._col_width
+                y0 = row_y[1] if row_orient == 'R0' else row_y[2]
+                self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=row_orient, unit_mode=True)
 
     def draw_boundary_cells(self):
         if self._draw_boundaries and not self._has_boundaries:

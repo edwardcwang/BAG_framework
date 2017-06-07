@@ -352,14 +352,16 @@ class LaygoSpace(TemplateBase):
         return dict(
             row_info='the Laygo row information dictionary.',
             name_id='the layout name ID.',
-            num_blk='number of space blocks.'
+            num_blk='number of space blocks.',
+            adj_od_flag='adjacent OD flag.',
         )
 
     def get_layout_basename(self):
-        fmt = '%s_space%d'
+        fmt = '%s_space%d_od%d'
         name_id = self.params['name_id']
         num_blk = self.params['num_blk']
-        return fmt % (name_id, num_blk)
+        od_flag = self.params['adj_od_flag']
+        return fmt % (name_id, num_blk, od_flag)
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
@@ -368,7 +370,8 @@ class LaygoSpace(TemplateBase):
     def draw_layout(self):
         row_info = self.params['row_info']
         num_blk = self.params['num_blk']
+        adj_od_flag = self.params['adj_od_flag']
 
-        space_info = self._tech_cls.get_laygo_space_info(row_info, num_blk)
+        space_info = self._tech_cls.get_laygo_space_info(row_info, num_blk, adj_od_flag)
         # draw transistor
         self._tech_cls.draw_mos(self, space_info)

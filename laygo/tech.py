@@ -209,8 +209,8 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
 
     @classmethod
     @abc.abstractmethod
-    def get_laygo_space_info(cls, row_info, num_blk):
-        # type: (Dict[str, Any], int) -> Dict[str, Any]
+    def get_laygo_space_info(cls, row_info, num_blk, adj_od_flag):
+        # type: (Dict[str, Any], int, int) -> Dict[str, Any]
         """Returns a new layout information dictionary for drawing LaygoBase space blocks.
 
         Parameters
@@ -219,6 +219,9 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             the Laygo row information dictionary.
         num_blk : int
             number of space blocks.
+        adj_od_flag : int
+            a 2-bit integer flag indicating whether right/left adjacent block has OD.
+            the LSB is 1 if the left block has OD, the MSB is 1 if the right block has OD.
 
         Returns
         -------
