@@ -80,13 +80,11 @@ class LaygoIntvSet(object):
 
     def get_end_flags(self, num_col):
         if 0 not in self._end_flags:
-            print('Warning: no element at location 0')
             start_flag = False
         else:
             start_flag = self._end_flags[0]
 
         if num_col not in self._end_flags:
-            print('Warning: no element at location %d' % num_col)
             end_flag = False
         else:
             end_flag = self._end_flags[num_col]
