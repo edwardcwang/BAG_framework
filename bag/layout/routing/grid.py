@@ -158,7 +158,7 @@ class RoutingGrid(object):
 
                 cur_scale, cur_offset = self._flip_parity.get(lay, (1, 0))
                 new_scale = cur_scale * scale
-                new_offset = cur_scale * offset_htr + cur_offset
+                new_offset = (cur_scale * offset_htr + cur_offset) % 4
                 flip_par[lay] = (new_scale, new_offset)
 
         return flip_par
