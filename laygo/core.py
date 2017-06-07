@@ -370,7 +370,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     # gate tracks on bottom
                     num_tr1 = 0 if is_sub else ng
                     num_tr2 = num_tr1
-                    conn_yb1, conn_yt1 = mos_info['g_conn_y']
+                    conn_yb1, conn_yt1 = mos_info.get('g_conn_y', (0, 0))
                     conn_yb2, conn_yt2 = conn_yb1, conn_yt1
                 else:
                     # drain/source tracks on bottom
@@ -672,7 +672,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 else:
                     y = ytop
                 for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
-                    print(endl, endr)
                     edge_info = self._tech_cls.get_laygo_edge_info(rinfo, end_flag)
                     edge_params = dict(
                         top_layer=self._top_layer,
