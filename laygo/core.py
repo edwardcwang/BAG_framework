@@ -41,9 +41,9 @@ from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.objects import Instance
 from bag.layout.routing import TrackID
 
-from ..analog_mos.core import MOSTech
 from ..analog_mos.mos import AnalogMOSExt
 from ..analog_mos.edge import AnalogEdge
+from .tech import LaygoTech
 from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow
 
 
@@ -103,8 +103,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(LaygoBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
 
-        tech_params = self.grid.tech_info.tech_params
-        self._tech_cls = tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
 
         # error checking
         for key in ('config',):
