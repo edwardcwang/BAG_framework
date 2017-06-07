@@ -49,19 +49,6 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
 
     @classmethod
     @abc.abstractmethod
-    def get_dig_conn_layer(cls):
-        # type: () -> int
-        """Returns the digital connection layer ID.  Must be vertical.
-
-        Returns
-        -------
-        dig_layer : int
-            the transistor connection layer ID.
-        """
-        return 1
-
-    @classmethod
-    @abc.abstractmethod
     def get_laygo_fg2d_s_short(cls):
         # type: () -> bool
         """Returns True if the two source wires of fg2d is shorted together in the primitive.

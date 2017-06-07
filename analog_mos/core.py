@@ -140,6 +140,19 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_dig_conn_layer(cls):
+        # type: () -> int
+        """Returns the digital connection layer ID.  Must be vertical.
+
+        Returns
+        -------
+        dig_layer : int
+            the transistor connection layer ID.
+        """
+        return 1
+
+    @classmethod
+    @abc.abstractmethod
     def get_min_fg_decap(cls, lch_unit):
         # type: (int) -> int
         """Returns the minimum number of fingers for decap connections.
