@@ -255,8 +255,8 @@ class TemplateDB(object):
                 raise ValueError("Template list and name list length mismatch.")
 
         # error checking
-        for name in name_list:
-            if name in self._used_cell_names:
+        for template, name in zip(template_list, name_list):
+            if name != template.cell_name and name in self._used_cell_names:
                 raise ValueError('top cell name = %s is already used.' % name)
 
         if debug:
