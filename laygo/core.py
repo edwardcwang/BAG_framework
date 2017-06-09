@@ -165,6 +165,62 @@ class LaygoBaseInfo(object):
     def __getitem__(self, item):
         return self._config[item]
 
+    def col_to_coord(self, col_idx, ds_type, unit_mode=False):
+        offset = self.left_margin + col_idx * self._col_width
+        if ds_type == 's':
+            ans = offset
+        elif ds_type == 'd':
+            ans = offset + self._col_width // 2
+        else:
+            raise ValueError('Unrecognized ds type: %s' % ds_type)
+
+        if unit_mode:
+            return ans
+        return ans * self.grid.resolution
+
+    def coord_to_nearest_col(self, coord, ds_type=None, mode=0, unit_mode=False):
+        if not unit_mode:
+            coord = int(round(coord / self.grid.resolution))
+
+        col_width = self._col_width
+        if ds_type is None or ds_type == 's':
+            offset = self.left_margin
+        else:
+            offset = self.left_margin + col_width
+        if ds_type is None:
+            k = col_width // 2
+        else:
+            k = col_width
+
+        coord -= offset
+        if mode == 0:
+            n = int(round(coord / k))
+        elif mode > 0:
+            if coord % k == 0 and mode == 2:
+                coord += 1
+            n = -(-coord // k)
+        else:
+            if coord % k == 0 and mode == -2:
+                coord -= 1
+            n = coord // k
+
+        return self.coord_to_col(n * k + offset, unit_mode=True)
+
+    def coord_to_col(self, coord, unit_mode=False):
+        if not unit_mode:
+            coord = int(round(coord / self.grid.resolution))
+
+        k = self._col_width // 2
+        offset = self.left_margin
+        if (coord - offset) % k != 0:
+            raise ValueError('Coordinate %d is not on pitch.' % coord)
+        col_idx_half = (coord - offset) // k
+
+        if col_idx_half % 2 == 0:
+            return col_idx_half // 2, 's'
+        else:
+            return (col_idx_half - 1) // 2, 'd'
+
 
 class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
@@ -190,6 +246,11 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._top_end_master = None
         self._has_boundaries = False
         self._ext_edges = None
+
+    @property
+    def laygo_info(self):
+        # type: () -> LaygoBaseInfo
+        return self._laygo_info
 
     @property
     def laygo_size(self):
