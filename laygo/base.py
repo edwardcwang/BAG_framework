@@ -354,14 +354,16 @@ class LaygoSpace(TemplateBase):
             name_id='the layout name ID.',
             num_blk='number of space blocks.',
             adj_od_flag='adjacent OD flag.',
+            sep_mode='horizontal wires separation flag.',
         )
 
     def get_layout_basename(self):
-        fmt = '%s_space%d_od%d'
+        fmt = '%s_space%d_od%d_sep%d'
         name_id = self.params['name_id']
         num_blk = self.params['num_blk']
         od_flag = self.params['adj_od_flag']
-        return fmt % (name_id, num_blk, od_flag)
+        sep_mode = self.params['sep_mode']
+        return fmt % (name_id, num_blk, od_flag, sep_mode)
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
@@ -371,7 +373,9 @@ class LaygoSpace(TemplateBase):
         row_info = self.params['row_info']
         num_blk = self.params['num_blk']
         adj_od_flag = self.params['adj_od_flag']
+        sep_mode = self.params['sep_mode']
 
         space_info = self._tech_cls.get_laygo_space_info(row_info, num_blk, adj_od_flag)
         # draw transistor
-        self._tech_cls.draw_mos(self, space_info)
+        self._tech_cls.draw_mos(self, space_info['layout_info'])
+        self._tech_cls.draw_laygo_space_connection(self, space_info, sep_mode)

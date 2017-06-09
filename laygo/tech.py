@@ -245,7 +245,24 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
         blk_type : str
             the digital block type.
         options : Dict[str, Any]
-            any extra connection options.
+            any additional connection options.
+        """
+        pass
+
+    @classmethod
+    @abc.abstractmethod
+    def draw_laygo_space_connection(cls, template, space_info, sep_mode):
+        # type: (TemplateBase, Dict[str, Any], int) -> None
+        """Draw digital transistor connection in the given template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        space_info : Dict[str, Any]
+            the layout information dictionary.
+        sep_mode : int
+            the g/gb/ds separation mode flag.
         """
         pass
 

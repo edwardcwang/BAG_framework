@@ -732,30 +732,51 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if self._laygo_size is None:
             raise ValueError('laygo_size must be set before filling spaces.')
 
-        col_width = self._laygo_info.col_width
-        left_margin = self._laygo_info.left_margin
-
         total_intv = (0, self._laygo_size[0])
-        for row_idx, (intv, row_orient, row_info, row_y) in \
-                enumerate(zip(self._used_list, self._row_orientations, self._row_infos, self._row_y)):
+        for row_idx, intv in enumerate(self._used_list):
             for (start, end), (flag_l, flag_r) in zip(*intv.get_complement(total_intv)):
                 od_flag = 0
                 if flag_l:
                     od_flag |= 1
                 if flag_r:
                     od_flag |= 2
-                num_blk = end - start
-                params = dict(
-                    row_info=row_info,
-                    name_id=row_info['row_name_id'],
-                    num_blk=num_blk,
-                    adj_od_flag=od_flag,
-                )
-                inst_name = 'XR%dC%d' % (row_idx, start)
-                master = self.new_template(params=params, temp_cls=LaygoSpace)
-                x0 = left_margin + start * col_width
-                y0 = row_y[1] if row_orient == 'R0' else row_y[2]
-                self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=row_orient, unit_mode=True)
+                self.add_laygo_space(od_flag, num_blk=end - start, loc=(start, row_idx))
+
+    def add_laygo_space(self, adj_od_flag, num_blk=1, loc=(0, 0), **kwargs):
+        col_idx, row_idx = loc
+        row_info = self._row_infos[row_idx]
+        row_y = self._row_y[row_idx]
+        row_orient = self._row_orientations[row_idx]
+        intv = self._used_list[row_idx]
+
+        # update used interval
+        inst_intv = (col_idx, col_idx + num_blk)
+        if not intv.add(inst_intv, False, False):
+            raise ValueError('Cannot add space on row %d, column [%d, %d)' % (row_idx, inst_intv[0], inst_intv[1]))
+
+        # make sep_mode flag
+        sep_mode = 0
+        if kwargs.get('sep_g', False):
+            sep_mode |= 1
+        if kwargs.get('sep_gb', False):
+            sep_mode |= 2
+        if kwargs.get('sep_ds', False):
+            sep_mode |= 4
+
+        params = dict(
+            row_info=row_info,
+            name_id=row_info['row_name_id'],
+            num_blk=num_blk,
+            adj_od_flag=adj_od_flag,
+            sep_mode=sep_mode,
+        )
+        params.update(kwargs)
+        inst_name = 'XR%dC%d' % (row_idx, col_idx)
+        master = self.new_template(params=params, temp_cls=LaygoSpace)
+
+        x0 = self._laygo_info.left_margin + col_idx * self._laygo_info.col_width
+        y0 = row_y[1] if row_orient == 'R0' else row_y[2]
+        self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=row_orient, unit_mode=True)
 
     def draw_boundary_cells(self):
         draw_boundaries = self._laygo_info.draw_boundaries
