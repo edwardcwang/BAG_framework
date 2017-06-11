@@ -48,10 +48,11 @@ from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow, LaygoSpace
 
 
 class LaygoIntvSet(object):
-    def __init__(self):
+    def __init__(self, default_end_info):
         super(LaygoIntvSet, self).__init__()
         self._intv = IntervalSet()
         self._end_flags = {}
+        self._default_end_info = default_end_info
 
     def add(self, intv, endl, endr):
         ans = self._intv.add(intv)
@@ -78,17 +79,17 @@ class LaygoIntvSet(object):
             end_list.append((self._end_flags.get(intv[0], False), self._end_flags.get(intv[1], False)))
         return intv_list, end_list
 
-    def get_end_flags(self, num_col):
+    def get_end_info(self, num_col):
         if 0 not in self._end_flags:
-            start_flag = False
+            start_info = self._default_end_info
         else:
-            start_flag = self._end_flags[0]
+            start_info = self._end_flags[0]
 
         if num_col not in self._end_flags:
-            end_flag = False
+            end_flag = self._default_end_info
         else:
             end_flag = self._end_flags[num_col]
-        return start_flag, end_flag
+        return start_info, end_flag
 
     def get_end(self):
         if not self._intv:
@@ -346,7 +347,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._row_orientations = row_orientations
         self._row_thresholds = row_thresholds
         self._row_kwargs = row_kwargs
-        self._used_list = [LaygoIntvSet() for _ in range(self._num_rows)]
+        default_end_info = self._tech_cls.get_default_end_info()
+        self._used_list = [LaygoIntvSet(default_end_info) for _ in range(self._num_rows)]
 
         if draw_boundaries:
             bot_end = (end_mode & 1) != 0
@@ -606,8 +608,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         hm_layer = self._tech_cls.get_dig_conn_layer() + 1
         return TrackID(hm_layer, tid, width=width, num=num, pitch=pitch)
 
-    def get_end_flags(self, row_idx):
-        return self._used_list[row_idx].get_end_flags(self._laygo_size[0])
+    def get_end_info(self, row_idx):
+        return self._used_list[row_idx].get_end_info(self._laygo_size[0])
 
     def set_laygo_size(self, num_col=None):
         if self._laygo_size is None:
@@ -699,7 +701,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             master = self.new_template(params=params, temp_cls=LaygoPrimitive)
 
         intv = self._used_list[row_idx]
-        inst_endl, inst_endr = master.get_end_flags()
+        inst_endl, inst_endr = master.get_end_info()
         if flip:
             inst_endl, inst_endr = inst_endr, inst_endl
         for inst_num in range(nx):
@@ -734,15 +736,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         total_intv = (0, self._laygo_size[0])
         for row_idx, intv in enumerate(self._used_list):
-            for (start, end), (flag_l, flag_r) in zip(*intv.get_complement(total_intv)):
-                od_flag = 0
-                if flag_l:
-                    od_flag |= 1
-                if flag_r:
-                    od_flag |= 2
-                self.add_laygo_space(od_flag, num_blk=end - start, loc=(start, row_idx))
+            for (start, end), end_info in zip(*intv.get_complement(total_intv)):
+                self.add_laygo_space(end_info, num_blk=end - start, loc=(start, row_idx))
 
-    def add_laygo_space(self, adj_od_flag, num_blk=1, loc=(0, 0), **kwargs):
+    def add_laygo_space(self, adj_end_info, num_blk=1, loc=(0, 0), **kwargs):
         col_idx, row_idx = loc
         row_info = self._row_infos[row_idx]
         row_y = self._row_y[row_idx]
@@ -754,21 +751,11 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if not intv.add(inst_intv, False, False):
             raise ValueError('Cannot add space on row %d, column [%d, %d)' % (row_idx, inst_intv[0], inst_intv[1]))
 
-        # make sep_mode flag
-        sep_mode = 0
-        if kwargs.get('sep_g', False):
-            sep_mode |= 1
-        if kwargs.get('sep_gb', False):
-            sep_mode |= 2
-        if kwargs.get('sep_ds', False):
-            sep_mode |= 4
-
         params = dict(
             row_info=row_info,
             name_id=row_info['row_name_id'],
             num_blk=num_blk,
-            adj_od_flag=adj_od_flag,
-            sep_mode=sep_mode,
+            adj_end_info=adj_end_info,
         )
         params.update(kwargs)
         inst_name = 'XR%dC%d' % (row_idx, col_idx)
@@ -830,7 +817,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
             # draw row edges
             for ridx, (orient, ytuple, rinfo) in enumerate(zip(self._row_orientations, self._row_y, self._row_infos)):
-                endl, endr = self.get_end_flags(ridx)
+                endl, endr = self.get_end_info(ridx)
                 _, ycur, ytop, _ = ytuple
                 if orient == 'R0':
                     y = ycur

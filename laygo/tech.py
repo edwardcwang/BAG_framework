@@ -49,6 +49,13 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
 
     @classmethod
     @abc.abstractmethod
+    def get_default_end_info(cls):
+        # type: () -> Any
+        """Returns the default end_info object."""
+        return 0
+
+    @classmethod
+    @abc.abstractmethod
     def get_laygo_fg2d_s_short(cls):
         # type: () -> bool
         """Returns True if the two source wires of fg2d is shorted together in the primitive.
@@ -189,16 +196,16 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
 
     @classmethod
     @abc.abstractmethod
-    def get_laygo_edge_info(cls, blk_info, endr):
-        # type: (Dict[str, Any], bool) -> Dict[str, Any]
+    def get_laygo_edge_info(cls, blk_info, end_info):
+        # type: (Dict[str, Any], Any) -> Dict[str, Any]
         """Returns a new layout information dictionary for drawing LaygoBase edge blocks.
 
         Parameters
         ----------
         blk_info : Dict[str, Any]
             the layout information dictionary.
-        endr : bool
-            True if the edge block abuts OD on the right.
+        end_info : Any
+            the end information of the block adjacent to this edge.
 
         Returns
         -------
@@ -209,8 +216,8 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
 
     @classmethod
     @abc.abstractmethod
-    def get_laygo_space_info(cls, row_info, num_blk, adj_od_flag):
-        # type: (Dict[str, Any], int, int) -> Dict[str, Any]
+    def get_laygo_space_info(cls, row_info, num_blk, adj_end_info):
+        # type: (Dict[str, Any], int, Any) -> Dict[str, Any]
         """Returns a new layout information dictionary for drawing LaygoBase space blocks.
 
         Parameters
@@ -219,9 +226,8 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             the Laygo row information dictionary.
         num_blk : int
             number of space blocks.
-        adj_od_flag : int
-            a 2-bit integer flag indicating whether right/left adjacent block has OD.
-            the LSB is 1 if the left block has OD, the MSB is 1 if the right block has OD.
+        adj_end_info : int
+            end information ofthe blocks adjacent to this space.
 
         Returns
         -------
@@ -233,7 +239,7 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
     @classmethod
     @abc.abstractmethod
     def draw_laygo_connection(cls, template, mos_info, blk_type, options):
-        # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> None
+        # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> Tuple[Any, Any]
         """Draw digital transistor connection in the given template.
 
         Parameters
@@ -246,13 +252,18 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             the digital block type.
         options : Dict[str, Any]
             any additional connection options.
+
+        Returns
+        -------
+        end_info : Tuple[Any, Any]
+            a tuple of the end information on left and right.
         """
         pass
 
     @classmethod
     @abc.abstractmethod
-    def draw_laygo_space_connection(cls, template, space_info, sep_mode):
-        # type: (TemplateBase, Dict[str, Any], int) -> None
+    def draw_laygo_space_connection(cls, template, space_info, adj_end_info):
+        # type: (TemplateBase, Dict[str, Any], Tuple[Any, Any]) -> None
         """Draw digital transistor connection in the given template.
 
         Parameters
@@ -261,8 +272,8 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             the TemplateBase object to draw layout in.
         space_info : Dict[str, Any]
             the layout information dictionary.
-        sep_mode : int
-            the g/gb/ds separation mode flag.
+        adj_end_info : Tuple[Any, Any]
+            tuple of left and right end information object.
         """
         pass
 

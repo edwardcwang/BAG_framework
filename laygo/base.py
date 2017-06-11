@@ -62,15 +62,10 @@ class LaygoPrimitive(TemplateBase):
         super(LaygoPrimitive, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
+        self._end_info = None
 
-    def get_end_flags(self):
-        blk_type = self.params['blk_type']
-        if blk_type.startswith('fg1l'):
-            return True, False
-        elif blk_type.startswith('fg1r'):
-            return False, True
-        else:
-            return True, True
+    def get_end_info(self):
+        return self._end_info
 
     @property
     def laygo_size(self):
@@ -130,7 +125,7 @@ class LaygoPrimitive(TemplateBase):
         # draw connection
         if options is None:
             options = {}
-        self._tech_cls.draw_laygo_connection(self, mos_info, blk_type, options)
+        self._end_info = self._tech_cls.draw_laygo_connection(self, mos_info, blk_type, options)
 
 
 class LaygoSubstrate(TemplateBase):
@@ -159,10 +154,10 @@ class LaygoSubstrate(TemplateBase):
         super(LaygoSubstrate, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
+        self._end_info = None
 
-    @classmethod
-    def get_end_flags(cls):
-        return True, True
+    def get_end_info(self):
+        return self._end_info
 
     @property
     def laygo_size(self):
@@ -219,7 +214,7 @@ class LaygoSubstrate(TemplateBase):
         # draw connection
         if options is None:
             options = {}
-        self._tech_cls.draw_laygo_connection(self, mos_info, 'sub', options)
+        self._end_info = self._tech_cls.draw_laygo_connection(self, mos_info, 'sub', options)
 
 
 class LaygoEndRow(TemplateBase):
@@ -329,10 +324,11 @@ class LaygoSpace(TemplateBase):
         self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         self._num_blk = self.params['num_blk']
+        end_info_single = self._tech_cls.get_default_end_info()
+        self._end_info = end_info_single, end_info_single
 
-    @classmethod
-    def get_end_flags(cls):
-        return False, False
+    def get_end_info(self):
+        return self._end_info
 
     @property
     def laygo_size(self):
@@ -353,29 +349,25 @@ class LaygoSpace(TemplateBase):
             row_info='the Laygo row information dictionary.',
             name_id='the layout name ID.',
             num_blk='number of space blocks.',
-            adj_od_flag='adjacent OD flag.',
-            sep_mode='horizontal wires separation flag.',
+            adj_end_info='tuple of left and right end information object.',
         )
 
     def get_layout_basename(self):
-        fmt = '%s_space%d_od%d_sep%d'
+        fmt = '%s_space%d'
         name_id = self.params['name_id']
         num_blk = self.params['num_blk']
-        od_flag = self.params['adj_od_flag']
-        sep_mode = self.params['sep_mode']
-        return fmt % (name_id, num_blk, od_flag, sep_mode)
+        return fmt % (name_id, num_blk)
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
-        return self.to_immutable_id((basename, self.params['row_info']))
+        return self.to_immutable_id((basename, self.params['row_info'], self.params['adj_end_info']))
 
     def draw_layout(self):
         row_info = self.params['row_info']
         num_blk = self.params['num_blk']
-        adj_od_flag = self.params['adj_od_flag']
-        sep_mode = self.params['sep_mode']
+        adj_end_info = self.params['adj_end_info']
 
-        space_info = self._tech_cls.get_laygo_space_info(row_info, num_blk, adj_od_flag)
+        space_info = self._tech_cls.get_laygo_space_info(row_info, num_blk, adj_end_info)
         # draw transistor
         self._tech_cls.draw_mos(self, space_info['layout_info'])
-        self._tech_cls.draw_laygo_space_connection(self, space_info, sep_mode)
+        self._tech_cls.draw_laygo_space_connection(self, space_info, adj_end_info)
