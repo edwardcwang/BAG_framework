@@ -430,6 +430,70 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return row_specs
 
+    def _place_with_num_tracks(self, row_info, row_orient, y0, hm_layer, conn_delta, mos_pitch, ng, ngb, nds):
+        blk_height = row_info['blk_height']
+        if row_orient == 'R0':
+            # gate tracks on bottom
+            num_tr1 = ng
+            num_tr2 = num_tr1
+            conn_yb1, conn_yt1 = row_info.get('g_conn_y', (0, 0))
+            conn_yb2, conn_yt2 = conn_yb1, conn_yt1
+        else:
+            # drain/source tracks on bottom
+            num_tr1, num_tr2 = ngb, nds
+            conn_yb1, conn_yt1 = row_info['gb_conn_y']
+            conn_yb2, conn_yt2 = row_info['ds_conn_y']
+            conn_yb1, conn_yt1 = blk_height - conn_yt1, blk_height - conn_yb1
+            conn_yb2, conn_yt2 = blk_height - conn_yt2, blk_height - conn_yb2
+
+        # step B: find max Y coordinate from constraints
+        ycur = y0
+        tr0 = self.grid.find_next_track(hm_layer, y0 + conn_delta, half_track=True, mode=1, unit_mode=True)
+        tr_ybot = self.grid.track_to_coord(hm_layer, tr0, unit_mode=True)
+        for ntr, cyb, cyt in ((num_tr1, conn_yb1, conn_yt1),
+                              (num_tr2, conn_yb2, conn_yt2)):
+            if ntr > 0:
+                tr_ytop = self.grid.track_to_coord(hm_layer, tr0 + ntr - 1, unit_mode=True)
+                # make sure bottom line-end is above the bottom horizontal track
+                ycur = max(ycur, tr_ybot - cyb - conn_delta)
+                # make sure top line_end is above top horizontal track
+                ycur = max(ycur, tr_ytop - cyt + conn_delta)
+
+        # step C: round Y coordinate to mos_pitch
+        ycur = -(-ycur // mos_pitch) * mos_pitch
+        return ycur
+
+    def _place_mirror_or_sub(self, row_type, row_thres, lch_unit, mos_pitch, ydelta, ext_info):
+        # find substrate parameters
+        sub_type = 'ntap' if row_type == 'pch' or row_type == 'ntap' else 'ptap'
+        w_sub = self._laygo_info['w_sub']
+        sub_info = self._tech_cls.get_laygo_sub_info(lch_unit, w_sub, sub_type, row_thres)
+        sub_ext_info = sub_info['ext_top_info']
+
+        # repeat until we satisfy both substrate and mirror row constraint
+        ext_w = -(-ydelta // mos_pitch)
+        ext_w_valid = False
+        while not ext_w_valid:
+            ext_w_valid = True
+            # check we satisfy substrate constraint
+            valid_widths = self._tech_cls.get_valid_extension_widths(lch_unit, sub_ext_info, ext_info)
+            if ext_w < valid_widths[-1] and ext_w not in valid_widths:
+                # did not pass substrate constraint, update extension width
+                ext_w_valid = False
+                ext_w = bisect.bisect_left(valid_widths, ext_w)
+                continue
+
+            # check we satisfy mirror extension constraint
+            valid_widths = self._tech_cls.get_valid_extension_widths(lch_unit, ext_info, ext_info)
+            ext_w_test = ext_w * 2
+            if ext_w_test < valid_widths[-1] and ext_w_test not in valid_widths:
+                # did not pass extension constraint, update extension width.
+                ext_w_valid = False
+                ext_w_test = bisect.bisect_left(valid_widths, ext_w_test)
+                ext_w = -(-(ext_w_test // 2))
+
+        return ext_w
+
     def _place_rows(self, ybot, tot_height_pitch, row_specs, row_types, row_thresholds):
         lch_unit = self._laygo_info.lch_unit
         ext_params_list = []
@@ -465,47 +529,23 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 cur_bot_ext_h = 0
             else:
                 # step A: find bottom connection Y coordinate and number of tracks
-                if row_orient == 'R0':
-                    # gate tracks on bottom
-                    num_tr1 = 0 if is_sub else ng
-                    num_tr2 = num_tr1
-                    conn_yb1, conn_yt1 = mos_info.get('g_conn_y', (0, 0))
-                    conn_yb2, conn_yt2 = conn_yb1, conn_yt1
-                else:
-                    # drain/source tracks on bottom
-                    num_tr1, num_tr2 = ngb, nds
-                    conn_yb1, conn_yt1 = mos_info['gb_conn_y']
-                    conn_yb2, conn_yt2 = mos_info['ds_conn_y']
-                    conn_yb1, conn_yt1 = blk_height - conn_yt1, blk_height - conn_yb1
-                    conn_yb2, conn_yt2 = blk_height - conn_yt2, blk_height - conn_yb2
-
-                # step B: find max Y coordinate from constraints
-                ycur = y0
-                tr0 = self.grid.find_next_track(hm_layer, y0 + conn_delta, half_track=True, mode=1, unit_mode=True)
-                tr_ybot = self.grid.track_to_coord(hm_layer, tr0, unit_mode=True)
-                for ntr, cyb, cyt in ((num_tr1, conn_yb1, conn_yt1),
-                                      (num_tr2, conn_yb2, conn_yt2)):
-                    if ntr > 0:
-                        tr_ytop = self.grid.track_to_coord(hm_layer, tr0 + ntr - 1, unit_mode=True)
-                        # make sure bottom line-end is above the bottom horizontal track
-                        ycur = max(ycur, tr_ybot - cyb - conn_delta)
-                        # make sure top line_end is above top horizontal track
-                        ycur = max(ycur, tr_ytop - cyt + conn_delta)
-
-                # step C: round Y coordinate to mos_pitch
-                ycur = -(-ycur // mos_pitch) * mos_pitch
+                ng_cur = 0 if is_sub else ng
+                ycur = self._place_with_num_tracks(mos_info, row_orient, y0, hm_layer, conn_delta, mos_pitch,
+                                                   ng_cur, ngb, nds)
                 cur_bot_ext_h = (ycur - y0) // mos_pitch
                 # step D: make sure extension constraints is met
                 if idx != 0:
                     valid_widths = self._tech_cls.get_valid_extension_widths(lch_unit, ext_bot_info, prev_ext_info)
                     ext_h = prev_ext_h + cur_bot_ext_h
-                    if ext_h not in valid_widths and ext_h < valid_widths[-1]:
+                    if ext_h < valid_widths[-1] and ext_h not in valid_widths:
                         # make sure extension height is valid
                         ext_h = valid_widths[bisect.bisect_left(valid_widths, ext_h)]
                         cur_bot_ext_h = ext_h - prev_ext_h
                 else:
                     # nmos/pmos at bottom row.  Need to check we can draw mirror image row.
-                    raise ValueError('Not implemented yet.')
+                    row_thres = self._row_thresholds[idx]
+                    cur_bot_ext_h = self._place_mirror_or_sub(row_type, row_thres, lch_unit, mos_pitch,
+                                                              ycur - ybot, ext_bot_info)
 
                 ycur = y0 + cur_bot_ext_h * mos_pitch
 
@@ -550,8 +590,22 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     ytop = -(-ytop // row_pitch) * row_pitch
                     cur_top_ext_h = (ytop - ycur - blk_height) // mos_pitch
                 else:
-                    # nmos/pmos at top row.  Compute top extension from mirror image, then move block up.
-                    raise ValueError('Not implemented yet.')
+                    # nmos/pmos at top row.
+                    # step 1: compute distance of row from top edge
+                    test_orient = 'R0' if row_orient == 'MX' else 'MX'
+                    test_y0 = 0  # use 0 because we know the top edge is LCM of horizontal track pitches.
+                    ydelta = self._place_with_num_tracks(mos_info, test_orient, test_y0, hm_layer, conn_delta,
+                                                         mos_pitch, ng, ngb, nds)
+                    # step 2: make sure ydelta can satisfy extension constraints.
+                    row_thres = self._row_thresholds[idx]
+                    cur_top_ext_h = self._place_mirror_or_sub(row_type, row_thres, lch_unit, mos_pitch,
+                                                              ydelta, ext_bot_info)
+                    ydelta = cur_top_ext_h * mos_pitch
+                    # step 3: compute row height given ycur and ydelta, round to row_pitch
+                    ytop = max(ycur + blk_height + ydelta, y0 + min_row_height)
+                    ytop = -(-ytop // row_pitch) * row_pitch
+                    # step 4: update ycur
+                    ycur = ytop - ydelta - blk_height
 
             # recompute gate and drain/source track indices
             g_intv, ds_intv, gb_intv = self._get_track_intervals(hm_layer, row_orient, mos_info,
