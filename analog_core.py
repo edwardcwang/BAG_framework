@@ -908,8 +908,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 else:
                     yarr_bot = y_cur
                     yarr_top = y_cur + cur_master.array_box.height_unit
-                tr_next = self.grid.find_next_track(hm_layer, yarr_bot, half_track=True, mode=1, unit_mode=True)
-                tr_tmp = self.grid.find_next_track(hm_layer, yarr_top, half_track=True, mode=1, unit_mode=True)
+                tr_next = self.grid.find_next_track(hm_layer, yarr_bot, half_track=True, mode=2, unit_mode=True)
+                tr_tmp = self.grid.find_next_track(hm_layer, yarr_top, half_track=True, mode=-2, unit_mode=True)
+                tr_tmp += 1
                 cur_ntr = int(tr_tmp - tr_next)
                 dtr_intv.append((tr_next, tr_next + cur_ntr))
                 gtr_intv.append((tr_tmp, tr_tmp))
