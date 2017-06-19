@@ -155,13 +155,19 @@ class LaygoBaseInfo(object):
 
     @property
     def left_margin(self):
-        return self._tech_cls.get_left_sd_xc(self.grid, self._lch_unit, self.guard_ring_nf,
-                                             self.top_layer, self.end_mode & 4 != 0)
+        if self.draw_boundaries:
+            return self._tech_cls.get_left_sd_xc(self.grid, self._lch_unit, self.guard_ring_nf,
+                                                 self.top_layer, self.end_mode & 4 != 0)
+        else:
+            return 0
 
     @property
     def right_margin(self):
-        return self._tech_cls.get_left_sd_xc(self.grid, self._lch_unit, self.guard_ring_nf,
-                                             self.top_layer, self.end_mode & 8 != 0)
+        if self.draw_boundaries:
+            return self._tech_cls.get_left_sd_xc(self.grid, self._lch_unit, self.guard_ring_nf,
+                                                 self.top_layer, self.end_mode & 8 != 0)
+        else:
+            return 0
 
     def __getitem__(self, item):
         return self._config[item]
@@ -480,7 +486,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             if ext_w < valid_widths[-1] and ext_w not in valid_widths:
                 # did not pass substrate constraint, update extension width
                 ext_w_valid = False
-                ext_w = bisect.bisect_left(valid_widths, ext_w)
+                ext_w = valid_widths[bisect.bisect_left(valid_widths, ext_w)]
                 continue
 
             # check we satisfy mirror extension constraint
@@ -489,7 +495,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             if ext_w_test < valid_widths[-1] and ext_w_test not in valid_widths:
                 # did not pass extension constraint, update extension width.
                 ext_w_valid = False
-                ext_w_test = bisect.bisect_left(valid_widths, ext_w_test)
+                ext_w_test = valid_widths[bisect.bisect_left(valid_widths, ext_w_test)]
                 ext_w = -(-(ext_w_test // 2))
 
         return ext_w
@@ -604,6 +610,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     # step 3: compute row height given ycur and ydelta, round to row_pitch
                     ytop = max(ycur + blk_height + ydelta, y0 + min_row_height)
                     ytop = -(-ytop // row_pitch) * row_pitch
+                    # step 4: round to total height pitch
+                    tot_height = -(-(ytop - ybot) // tot_height_pitch) * tot_height_pitch
+                    ytop = ybot + tot_height
                     # step 4: update ycur
                     ycur = ytop - ydelta - blk_height
 
@@ -612,8 +621,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                                                  ycur, y0, ytop, conn_delta)
 
             if ng > g_intv[1] - g_intv[0] or nds > ds_intv[1] - ds_intv[0] or ngb > gb_intv[1] - gb_intv[0]:
-                import pdb
-                pdb.set_trace()
                 g_intv, ds_intv, gb_intv = self._get_track_intervals(hm_layer, row_orient, mos_info,
                                                                      ycur, y0, ytop, conn_delta)
             # record information
