@@ -470,7 +470,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         else:
             tr_intv = self._dstr_intv[row_idx]
 
-        return tr_intv[1] - tr_intv[0]
+        return int(tr_intv[1] - tr_intv[0])
 
     def get_track_index(self, mos_type, row_idx, tr_type, tr_idx):
         """Convert relative track index to absolute track index.
@@ -498,7 +498,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             tr_intv = self._dstr_intv[row_idx]
 
         # error checking
-        ntr = tr_intv[1] - tr_intv[0]
+        ntr = int(tr_intv[1] - tr_intv[0])
         if tr_idx >= ntr:
             raise ValueError('track_index %d out of bounds: [0, %d)' % (tr_idx, ntr))
 
@@ -910,7 +910,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     yarr_top = y_cur + cur_master.array_box.height_unit
                 tr_next = self.grid.find_next_track(hm_layer, yarr_bot, half_track=True, mode=1, unit_mode=True)
                 tr_tmp = self.grid.find_next_track(hm_layer, yarr_top, half_track=True, mode=1, unit_mode=True)
-                dtr_intv.append((tr_next, tr_tmp))
+                cur_ntr = int(tr_tmp - tr_next)
+                dtr_intv.append((tr_next, tr_next + cur_ntr))
                 gtr_intv.append((tr_tmp, tr_tmp))
             else:
                 # transistor.  find first unused track.
@@ -1451,7 +1452,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             # Create substrate TrackID
             sub_row_idx = self._find_row_index(sub_type, row_idx)
             dtr_intv = self._dstr_intv[sub_row_idx]
-            ntr = dtr_intv[1] - dtr_intv[0]
+            ntr = int(dtr_intv[1] - dtr_intv[0])
             sub_w = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
             track_id = TrackID(hm_layer, dtr_intv[0] + (ntr - 1) / 2, width=sub_w)
 
