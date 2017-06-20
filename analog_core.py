@@ -911,7 +911,13 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 tr_next = self.grid.find_next_track(hm_layer, yarr_bot, half_track=True, mode=2, unit_mode=True)
                 tr_tmp = self.grid.find_next_track(hm_layer, yarr_top, half_track=True, mode=-2, unit_mode=True)
                 tr_tmp += 1
-                cur_ntr = int(tr_tmp - tr_next)
+                cur_ntr_test = int(2 * (tr_tmp - tr_next))
+                if cur_ntr_test % 2 == 1:
+                    # if not symmetric, R0 substrate supply track is rounded to bottom, MX substrate supply
+                    # track is rounded to top.
+                    if cur_orient == 'MX':
+                        tr_next += 0.5
+                cur_ntr = cur_ntr_test // 2
                 dtr_intv.append((tr_next, tr_next + cur_ntr))
                 gtr_intv.append((tr_tmp, tr_tmp))
             else:

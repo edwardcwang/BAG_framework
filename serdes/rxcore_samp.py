@@ -496,22 +496,6 @@ class RXHalfTop(SerdesRXBase):
         for warr in ntap_wire_arrs:
             self.add_pin(vdd_name, warr, show=show_pins)
 
-        # connect summer cascode
-        # step 1: get vm track
-        layout_info = self.layout_info
-        hm_layer = layout_info.mconn_port_layer + 1
-        vm_layer = hm_layer + 1
-        summer_col, summer_info = block_info['summer']
-        casc_sum = summer_ports.get(('bias_casc', 0), [])
-        summer_start = summer_col + summer_info['gm_offsets'][0]
-        col_intv = summer_start, summer_start + summer_info['amp_info_list'][0]['fg_tot']
-        clk_width_vm = clk_widths[0]
-        clk_space_vm = clk_spaces[0]
-        casc_tr = self.layout_info.get_center_tracks(vm_layer, 2, col_intv, width=clk_width_vm, space=clk_space_vm)
-        # step 2: connect summer cascode to vdd
-        casc_tr_id = TrackID(vm_layer, casc_tr, width=clk_width_vm)
-        self.connect_to_tracks(ntap_wire_arrs + casc_sum, casc_tr_id)
-
         return ffe_inputs
 
     def connect_bias(self, block_info, integ_ports, samp_ports, intsum_ports, summer_ports, acoff_ports, buf_ports,
@@ -1242,9 +1226,13 @@ class RXHalf(TemplateBase):
         upper = self.grid.get_wire_bounds(hm_layer, top_vdd.track_id.base_index, top_vdd.track_id.width,
                                           unit_mode=True)[1]
         xm_layer = hm_layer + 2
-        xtr_bot = self.grid.find_next_track(xm_layer, lower, half_track=False, mode=1, unit_mode=True)
-        xtr_top = self.grid.find_next_track(xm_layer, upper, half_track=False, mode=-1, unit_mode=True)
-        xnum_tr = xtr_top - xtr_bot + 1
+        xtr_bot = self.grid.find_next_track(xm_layer, lower, half_track=True, mode=1, unit_mode=True)
+        xtr_top = self.grid.find_next_track(xm_layer, upper, half_track=True, mode=-1, unit_mode=True)
+        test = int(2 * (xtr_top - xtr_bot))
+        if test % 2 == 1:
+            # TODO: fix this error.
+            raise ValueError('Oops, supply is not symmetric.')
+        xnum_tr = test // 2 + 1
         xmid_tr = (xtr_top + xtr_bot) / 2
         bot_vdd_box = bot_vdd.get_bbox_array(self.grid).base
         xm_lower = bot_vdd_box.left_unit
@@ -1256,14 +1244,14 @@ class RXHalf(TemplateBase):
         top_vss = top_inst.get_all_port_pins('VSS')[0]
         upper = self.grid.get_wire_bounds(hm_layer, bot_vss.track_id.base_index, bot_vss.track_id.width,
                                           unit_mode=True)[1]
-        xtr_top = self.grid.find_next_track(xm_layer, upper, half_track=False, mode=-1, unit_mode=True)
+        xtr_top = self.grid.find_next_track(xm_layer, upper, half_track=True, mode=-1, unit_mode=True)
         xmid_tr = xtr_top - (xnum_tr - 1) / 2
         warr = self.add_wires(xm_layer, xmid_tr, lower=xm_lower, upper=xm_upper, width=xnum_tr, unit_mode=True)
         self.add_pin('VSSX', warr, show=show_pins)
         # draw xm top VSS wire
         lower = self.grid.get_wire_bounds(hm_layer, top_vss.track_id.base_index, top_vss.track_id.width,
                                           unit_mode=True)[0]
-        xtr_bot = self.grid.find_next_track(xm_layer, lower, half_track=False, mode=1, unit_mode=True)
+        xtr_bot = self.grid.find_next_track(xm_layer, lower, half_track=True, mode=1, unit_mode=True)
         xtr_top = self.grid.get_num_tracks(self.size, xm_layer) - 1
         xnum_tr = xtr_top - xtr_bot + 1
         xmid_tr = (xtr_top + xtr_bot) / 2
