@@ -1679,6 +1679,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # step 5: create dictionary from dummy half-track index to Y coordinates
         res = self.grid.resolution
         dum_y_table = {}
+        bot_dum_tracks = []
         if bot_sub_inst is not None:
             sub_yb = bot_sub_inst.get_port(port_name).get_bounding_box(self.grid, self.dum_conn_layer).bottom_unit
             for htr in bot_dhtr[0]:
@@ -1693,7 +1694,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                         dum_y[1] = max(dum_y[1], upper)
                     else:
                         dum_y_table[htr] = [sub_yb, upper]
+                    if tid not in bot_dum_tracks:
+                        bot_dum_tracks.append(tid)
 
+        top_dum_tracks = []
         if top_sub_inst is not None:
             sub_yt = top_sub_inst.get_port(port_name).get_bounding_box(self.grid, self.dum_conn_layer).top_unit
             for htr in top_dhtr[0]:
@@ -1711,6 +1715,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                         dum_y[1] = max(dum_y[1], upper)
                     else:
                         dum_y_table[htr] = [lower, sub_yt]
+                    if tid not in top_dum_tracks:
+                        top_dum_tracks.append(tid)
 
         # step 6: draw dummy connections
         for ridx, dum_tran_intv in enumerate(dum_tran_intv_list):
@@ -1737,10 +1743,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # update substrate master to only export necessary wires
         if bot_sub_inst is not None:
-            bot_dum_tracks = [(htr - 1) / 2 for htr in bot_dhtr[0]]
+            bot_dum_tracks.extend((htr - 1) / 2 for htr in bot_dhtr[0])
+            bot_dum_tracks.sort()
             self._export_supplies(bot_dum_tracks, bot_tracks, bot_sub_inst, bot_dum_only)
         if top_sub_inst is not None:
-            top_dum_tracks = [(htr - 1) / 2 for htr in top_dhtr[0]]
+            top_dum_tracks.extend((htr - 1) / 2 for htr in top_dhtr[0])
+            top_dum_tracks.sort()
             self._export_supplies(top_dum_tracks, top_tracks, top_sub_inst, top_dum_only)
 
     def _select_dummy_connections(self,  # type: AnalogBase
