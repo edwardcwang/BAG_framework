@@ -266,6 +266,7 @@ class AnalogEdge(TemplateBase):
                 layout_name='%s_subconn' % basename,
                 layout_info=sub_info,
                 is_laygo=is_laygo,
+                is_guardring=True,
             )
             conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
             if conn_master.has_connection:

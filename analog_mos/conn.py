@@ -339,6 +339,8 @@ class AnalogSubstrateConn(TemplateBase):
             dummy_only=False,
             port_tracks=[],
             dum_tracks=[],
+            is_laygo=False,
+            is_guardring=False,
         )
 
     @classmethod
@@ -359,6 +361,7 @@ class AnalogSubstrateConn(TemplateBase):
             port_tracks='Substrate port must contain these track indices.',
             dum_tracks='Dummy port must contain these track indices.',
             is_laygo='True if this is laygo substrate connection.',
+            is_guardring='True if this is guardring substrate connection.',
         )
 
     def get_layout_basename(self):
@@ -371,7 +374,9 @@ class AnalogSubstrateConn(TemplateBase):
         flip_parity = self.params['flip_parity']
         layout_info = self.params['layout_info']
         is_laygo = self.params['is_laygo']
-        return self.to_immutable_id((basename, port_tracks, dum_tracks, layout_info, flip_parity, is_laygo))
+        is_guardring = self.params['is_guardring']
+        return self.to_immutable_id((basename, port_tracks, dum_tracks, layout_info, flip_parity,
+                                     is_laygo, is_guardring))
 
     def draw_layout(self):
         layout_info = self.params['layout_info']
@@ -379,5 +384,7 @@ class AnalogSubstrateConn(TemplateBase):
         port_tracks = self.params['port_tracks']
         dum_tracks = self.params['dum_tracks']
         is_laygo = self.params['is_laygo']
+        is_guardring = self.params['is_guardring']
         self.has_connection = self._tech_cls.draw_substrate_connection(self, layout_info, port_tracks,
-                                                                       dum_tracks, dummy_only, is_laygo)
+                                                                       dum_tracks, dummy_only, is_laygo,
+                                                                       is_guardring)
