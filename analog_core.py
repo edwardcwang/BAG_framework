@@ -31,6 +31,7 @@ from builtins import *
 import abc
 from itertools import chain
 from typing import List, Union, Optional, Dict, Any, Set, Tuple
+import bisect
 
 from bag.math import lcm
 from bag.util.interval import IntervalSet
@@ -983,11 +984,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 test_ext_w = (y_next_min - y_top_cur) // mos_pitch  # type: int
                 min_ext_w = max(min_ext_w, test_ext_w)
                 # make sure min_ext_w is a valid width
-                if min_ext_w not in ext_w_list and min_ext_w < ext_w_list[-1]:
-                    for tmp_ext_w in ext_w_list:
-                        if min_ext_w < tmp_ext_w:
-                            min_ext_w = tmp_ext_w
-                            break
+                if min_ext_w < ext_w_list[-1] and min_ext_w not in ext_w_list:
+                    min_ext_w = ext_w_list[bisect.bisect_left(ext_w_list, min_ext_w)]
                 # update y_next_min
                 y_next_min = max(y_next_min, y_top_cur + min_ext_w * mos_pitch)
                 # step 3B: figure out placement of next block
@@ -1000,12 +998,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     # make sure we both have valid extension width and last block is on tot_pitch.
                     # Iterate until we get it
                     ext_w = (y_next - y_top_cur) // mos_pitch
-                    while ext_w not in ext_w_list and ext_w < ext_w_list[-1]:
+                    while ext_w < ext_w_list[-1] and ext_w not in ext_w_list:
                         # find next extension block
-                        for tmp_ext_w in ext_w_list:
-                            if ext_w < tmp_ext_w:
-                                ext_w = tmp_ext_w
-                                break
+                        ext_w = ext_w_list[bisect.bisect_left(ext_w_list, ext_w)]
                         # update y_next
                         y_next = y_top_cur + ext_w * mos_pitch
                         # place last block such that it is on tot_pitch
@@ -1035,11 +1030,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                             y_next = max(y_next, y_next_min)
                     ext_w = (y_next - y_top_cur) // mos_pitch
                     # make sure ext_w is a valid width
-                    if ext_w not in ext_w_list and ext_w < ext_w_list[-1]:
-                        for tmp_ext_w in ext_w_list:
-                            if ext_w < tmp_ext_w:
-                                ext_w = tmp_ext_w
-                                break
+                    if ext_w < ext_w_list[-1] and ext_w not in ext_w_list:
+                        ext_w = ext_w_list[bisect.bisect_left(ext_w_list, ext_w)]
+                        # update y_next
+                        y_next = y_top_cur + ext_w * mos_pitch
+
                 if 'mos_type' in cur_master.params:
                     bot_mtype = cur_master.params['mos_type']
                 else:

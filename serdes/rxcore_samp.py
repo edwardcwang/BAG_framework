@@ -203,7 +203,7 @@ class RXHalfTop(SerdesRXBase):
 
         # draw AnalogBase rows
         # compute pmos/nmos gate/drain/source number of tracks
-        draw_params['pg_tracks'] = [hm_width]
+        draw_params['pg_tracks'] = [2 * hm_width]
         draw_params['pds_tracks'] = [2 * hm_cur_width + diff_space]
         ng_tracks = []
         nds_tracks = []
