@@ -76,7 +76,8 @@ class LaygoIntvSet(object):
         end_list = []
         for intv in compl_intv:
             intv_list.append(intv)
-            end_list.append((self._end_flags.get(intv[0], False), self._end_flags.get(intv[1], False)))
+            end_list.append((self._end_flags.get(intv[0], self._default_end_info),
+                             self._end_flags.get(intv[1], self._default_end_info)))
         return intv_list, end_list
 
     def get_end_info(self, num_col):
