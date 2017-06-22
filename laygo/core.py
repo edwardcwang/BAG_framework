@@ -756,7 +756,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             threshold=threshold,
             options=options,
         )
-        if blk_type == 'sub':
+        if mos_type == 'ntap' or mos_type == 'ptap':
             master = self.new_template(params=params, temp_cls=LaygoSubstrate)
         else:
             params['blk_type'] = blk_type
