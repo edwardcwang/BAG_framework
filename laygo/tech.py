@@ -35,11 +35,13 @@ from future.utils import with_metaclass
 from typing import Dict, Any, Tuple, List
 
 from bag.layout.template import TemplateBase
+from bag.layout.routing import WireArray
 
 import abc
 
 from ..analog_mos.core import MOSTech
 from ..analog_mos.mos import AnalogMOSExt
+from ..analog_mos.edge import AnalogEdge
 
 
 class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
@@ -321,6 +323,12 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             a list of parameters and Y coordinates of each extension row.
         laygo_info : LaygoBaseInfo
             the LaygoBaseInfo object.
+
+        Returns
+        -------
+        ext_edges : List[Tuple[int, int, str, Dict[str, Any]]]
+            a list of X/Y coordinate, orientation, and parameters for extension edge blocks.
+            empty list if draw_boundaries is False.
         """
         end_mode = laygo_info.end_mode
         left_margin = laygo_info.left_margin
@@ -354,3 +362,97 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
                             edge_orient = 'MY' if flip_lr else 'R0'
                             ext_edges.append((x, yext, edge_orient, edge_params))
         return ext_edges
+
+    @classmethod
+    def draw_boundaries(cls,  # type: LaygoTech
+                        template,  # type: TemplateBase
+                        laygo_info,  # type: 'LaygoBaseInfo'
+                        num_col,  # type: int
+                        yt,  # type: int
+                        bot_end_master,  # type: 'LaygoEndRow'
+                        top_end_master,  # type: 'LaygoEndRow'
+                        edge_infos,  # type: List[Tuple[int, int, str, Dict[str, Any]]]
+                        ):
+        # type: (...) -> Tuple[List[WireArray], List[WireArray]]
+        """Draw boundaries for LaygoBase/DigitalBase.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the LaygoBase/DigitalBase object to draw layout in.
+        laygo_info : LaygoBaseInfo
+            the LaygoBaseInfo object.
+        num_col : int
+            number of primitive columns in the template.
+        yt : int
+            the top Y coordinate of the template.  Used to determine top end row placement.
+        bot_end_master: LaygoEndRow
+            the bottom LaygoEndRow master.
+        top_end_master : LaygoEndRow
+            the top LaygoEndRow master.
+        edge_infos:  List[Tuple[int, int, str, Dict[str, Any]]]
+            a list of X/Y coordinate, orientation, and parameters for all edge blocks.
+
+        Returns
+        -------
+        vdd_warrs : List[WireArray]
+            any VDD wires in the edge block due to guard ring.
+        vss_warrs : List[WireArray]
+            any VSS wires in the edge block due to guard ring.
+        """
+        end_mode = laygo_info.end_mode
+        top_layer = laygo_info.top_layer
+        guard_ring_nf = laygo_info.guard_ring_nf
+        col_width = laygo_info.col_width
+        left_margin = laygo_info.left_margin
+        right_margin = laygo_info.right_margin
+
+        nx = num_col
+        spx = col_width
+
+        # draw top and bottom end row
+        template.add_instance(bot_end_master, inst_name='XRBOT', loc=(left_margin, 0),
+                              nx=nx, spx=spx, unit_mode=True)
+        template.add_instance(top_end_master, inst_name='XRBOT', loc=(left_margin, yt),
+                              orient='MX', nx=nx, spx=spx, unit_mode=True)
+        # draw corners
+        left_end = (end_mode & 4) != 0
+        right_end = (end_mode & 8) != 0
+        edge_inst_list = []
+        xr = left_margin + col_width * nx + right_margin
+        for orient, y, master in (('R0', 0, bot_end_master), ('MX', yt, top_end_master)):
+            for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
+                edge_params = dict(
+                    top_layer=top_layer,
+                    is_end=is_end,
+                    guard_ring_nf=guard_ring_nf,
+                    name_id=master.get_layout_basename(),
+                    layout_info=master.get_edge_layout_info(),
+                    is_laygo=True,
+                )
+                edge_master = template.new_template(params=edge_params, temp_cls=AnalogEdge)
+                if flip_lr:
+                    eorient = 'MY' if orient == 'R0' else 'R180'
+                else:
+                    eorient = orient
+                edge_inst_list.append(template.add_instance(edge_master, orient=eorient, loc=(x, y), unit_mode=True))
+
+        # draw edge blocks
+        for x, y, orient, edge_params in edge_infos:
+            edge_master = template.new_template(params=edge_params, temp_cls=AnalogEdge)
+            edge_inst_list.append(template.add_instance(edge_master, orient=orient, loc=(x, y), unit_mode=True))
+
+        gr_vss_warrs = []
+        gr_vdd_warrs = []
+        conn_layer = cls.get_dig_conn_layer()
+        for inst in edge_inst_list:
+            if inst.has_port('VDD'):
+                gr_vdd_warrs.extend(inst.get_all_port_pins('VDD', layer=conn_layer))
+            elif inst.has_port('VSS'):
+                gr_vss_warrs.extend(inst.get_all_port_pins('VSS', layer=conn_layer))
+
+        # connect body guard rings together
+        gr_vdd_warrs = template.connect_wires(gr_vdd_warrs)
+        gr_vss_warrs = template.connect_wires(gr_vss_warrs)
+
+        return gr_vdd_warrs, gr_vss_warrs
