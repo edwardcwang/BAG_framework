@@ -32,13 +32,14 @@ from __future__ import (absolute_import, division,
 from builtins import *
 from future.utils import with_metaclass
 
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List
 
 from bag.layout.template import TemplateBase
 
 import abc
 
 from ..analog_mos.core import MOSTech
+from ..analog_mos.mos import AnalogMOSExt
 
 
 class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
@@ -299,3 +300,57 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
         laygo_conn_w = mos_constants['laygo_conn_w']
         laygo_num_sd_per_track = mos_constants['laygo_num_sd_per_track']
         return sd_pitch * laygo_num_sd_per_track - laygo_conn_w, laygo_conn_w
+
+    @classmethod
+    def draw_extensions(cls,  # type: LaygoTech
+                        template,  # type: TemplateBase
+                        num_col,  # type: int
+                        ext_infos,  # type: List[Tuple[Dict[str, Any], int]]
+                        laygo_info,  # type: 'LaygoBaseInfo'
+                        ):
+        # type: (...) -> List[Tuple[int, int, str, Dict[str, Any]]]
+        """Draw extension rows in the given LaygoBase/DigitalBase template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the LaygoBase/DigitalBase object to draw layout in.
+        num_col : int
+            number of primitive columns in the template.
+        ext_infos : List[Tuple[Dict[str, Any], int]]
+            a list of parameters and Y coordinates of each extension row.
+        laygo_info : LaygoBaseInfo
+            the LaygoBaseInfo object.
+        """
+        end_mode = laygo_info.end_mode
+        left_margin = laygo_info.left_margin
+        col_width = laygo_info.col_width
+        right_margin = laygo_info.right_margin
+        draw_boundaries = laygo_info.draw_boundaries
+        top_layer = laygo_info.top_layer
+        guard_ring_nf = laygo_info.guard_ring_nf
+
+        left_end = (end_mode & 4) != 0
+        right_end = (end_mode & 8) != 0
+        xr = left_margin + col_width * num_col + right_margin
+        ext_edges = []
+        for idx, (ext_params, yext) in enumerate(ext_infos):
+            if ext_params is not None:
+                ext_h = ext_params['w']
+                if ext_h > 0 or cls.draw_zero_extension():
+                    ext_master = template.new_template(params=ext_params, temp_cls=AnalogMOSExt)
+                    template.add_instance(ext_master, inst_name='XEXT%d' % idx, loc=(left_margin, yext),
+                                          nx=num_col, spx=col_width, unit_mode=True)
+                    if draw_boundaries:
+                        for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
+                            edge_params = dict(
+                                top_layer=top_layer,
+                                is_end=is_end,
+                                guard_ring_nf=guard_ring_nf,
+                                name_id=ext_master.get_layout_basename(),
+                                layout_info=ext_master.get_edge_layout_info(),
+                                is_laygo=True,
+                            )
+                            edge_orient = 'MY' if flip_lr else 'R0'
+                            ext_edges.append((x, yext, edge_orient, edge_params))
+        return ext_edges

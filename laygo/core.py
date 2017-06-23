@@ -41,7 +41,6 @@ from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.objects import Instance
 from bag.layout.routing import TrackID
 
-from ..analog_mos.mos import AnalogMOSExt
 from ..analog_mos.edge import AnalogEdge
 from .tech import LaygoTech
 from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow, LaygoSpace
@@ -693,8 +692,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self.add_cell_boundary(bound_box)
 
             # draw extensions
-            self._ext_edges = self._draw_extensions(num_col, self._ext_params, self._laygo_info,
-                                                    self._tech_cls.draw_zero_extension())
+            self._ext_edges = self._tech_cls.draw_extensions(self, num_col, self._ext_params, self._laygo_info)
 
     def add_laygo_primitive(self, blk_type, loc=(0, 0), flip=False, nx=1, spx=0, **kwargs):
         # type: (str, Tuple[int, int], bool, int, int, **kwargs) -> Instance
@@ -792,40 +790,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         x0 = self._laygo_info.left_margin + col_idx * self._laygo_info.col_width
         y0 = row_y[1] if row_orient == 'R0' else row_y[2]
         self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=row_orient, unit_mode=True)
-
-    def _draw_extensions(self, num_col, ext_params, laygo_info, draw_zero_extension):
-        end_mode = laygo_info.end_mode
-        left_margin = laygo_info.left_margin
-        col_width = laygo_info.col_width
-        right_margin = laygo_info.right_margin
-        draw_boundaries = laygo_info.draw_boundaries
-        top_layer = laygo_info.top_layer
-        guard_ring_nf = laygo_info.guard_ring_nf
-
-        left_end = (end_mode & 4) != 0
-        right_end = (end_mode & 8) != 0
-        xr = left_margin + col_width * num_col + right_margin
-        ext_edges = []
-        for idx, (ext_params, yext) in enumerate(ext_params):
-            if ext_params is not None:
-                ext_h = ext_params['w']
-                if ext_h > 0 or draw_zero_extension:
-                    ext_master = self.new_template(params=ext_params, temp_cls=AnalogMOSExt)
-                    self.add_instance(ext_master, inst_name='XEXT%d' % idx, loc=(left_margin, yext),
-                                      nx=num_col, spx=col_width, unit_mode=True)
-                    if draw_boundaries:
-                        for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
-                            edge_params = dict(
-                                top_layer=top_layer,
-                                is_end=is_end,
-                                guard_ring_nf=guard_ring_nf,
-                                name_id=ext_master.get_layout_basename(),
-                                layout_info=ext_master.get_edge_layout_info(),
-                                is_laygo=True,
-                            )
-                            edge_orient = 'MY' if flip_lr else 'R0'
-                            ext_edges.append((x, yext, edge_orient, edge_params))
-        return ext_edges
 
     def draw_boundary_cells(self):
         draw_boundaries = self._laygo_info.draw_boundaries
