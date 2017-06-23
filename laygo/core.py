@@ -694,8 +694,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self._laygo_size = num_col, self._num_rows
 
             top_layer = self._laygo_info.top_layer
-            end_mode = self._laygo_info.end_mode
-            guard_ring_nf = self._laygo_info.guard_ring_nf
             draw_boundaries = self._laygo_info.draw_boundaries
             col_width = self._laygo_info.col_width
             left_margin = self._laygo_info.left_margin
@@ -707,37 +705,11 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 width += left_margin + right_margin
                 height += self._top_end_master.bound_box.height_unit
             bound_box = BBox(0, 0, width, height, self.grid.resolution, unit_mode=True)
-            xr = bound_box.right_unit
             self.set_size_from_bound_box(top_layer, bound_box)
             self.add_cell_boundary(bound_box)
 
             # draw extensions
             self._edge_infos = self._tech_cls.draw_extensions(self, num_col, self._ext_params, self._laygo_info)
-            # compute row edge information
-            left_end = (end_mode & 4) != 0
-            right_end = (end_mode & 8) != 0
-            for ridx, (orient, ytuple, rinfo) in enumerate(zip(self._row_orientations, self._row_y, self._row_infos)):
-                endl, endr = self.get_end_info(ridx)
-                _, ycur, ytop, _ = ytuple
-                if orient == 'R0':
-                    y = ycur
-                else:
-                    y = ytop
-                for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
-                    edge_info = self._tech_cls.get_laygo_edge_info(rinfo, end_flag)
-                    edge_params = dict(
-                        top_layer=top_layer,
-                        is_end=is_end,
-                        guard_ring_nf=guard_ring_nf,
-                        name_id=edge_info['name_id'],
-                        layout_info=edge_info,
-                        is_laygo=True,
-                    )
-                    if flip_lr:
-                        eorient = 'MY' if orient == 'R0' else 'R180'
-                    else:
-                        eorient = orient
-                    self._edge_infos.append((x, y, eorient, edge_params))
 
     def add_laygo_primitive(self, blk_type, loc=(0, 0), flip=False, nx=1, spx=0, **kwargs):
         # type: (str, Tuple[int, int], bool, int, int, **kwargs) -> Instance
@@ -842,6 +814,37 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if draw_boundaries and not self._has_boundaries:
             if self._laygo_size is None:
                 raise ValueError('laygo_size must be set before drawing boundaries.')
+
+            # compute row edge information
+            top_layer = self._laygo_info.top_layer
+            end_mode = self._laygo_info.end_mode
+            guard_ring_nf = self._laygo_info.guard_ring_nf
+            xr = self.bound_box.right_unit
+
+            left_end = (end_mode & 4) != 0
+            right_end = (end_mode & 8) != 0
+            for ridx, (orient, ytuple, rinfo) in enumerate(zip(self._row_orientations, self._row_y, self._row_infos)):
+                endl, endr = self.get_end_info(ridx)
+                _, ycur, ytop, _ = ytuple
+                if orient == 'R0':
+                    y = ycur
+                else:
+                    y = ytop
+                for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
+                    edge_info = self._tech_cls.get_laygo_edge_info(rinfo, end_flag)
+                    edge_params = dict(
+                        top_layer=top_layer,
+                        is_end=is_end,
+                        guard_ring_nf=guard_ring_nf,
+                        name_id=edge_info['name_id'],
+                        layout_info=edge_info,
+                        is_laygo=True,
+                    )
+                    if flip_lr:
+                        eorient = 'MY' if orient == 'R0' else 'R180'
+                    else:
+                        eorient = orient
+                    self._edge_infos.append((x, y, eorient, edge_params))
 
             yt = self.bound_box.top_unit
             vdd_warrs, vss_warrs = self._tech_cls.draw_boundaries(self, self._laygo_info, self._laygo_size[0],
