@@ -1354,4 +1354,5 @@ class RoutingGrid(object):
         self.max_num_tr_tracks[layer_id] = max_num_tr
         offset = (sp_unit + w_unit) // 2
         self.offset_tracks[layer_id] = offset
-        self._flip_parity[layer_id] = (1, 0)
+        if layer_id not in self._flip_parity:
+            self._flip_parity[layer_id] = (1, 0)
