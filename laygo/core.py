@@ -630,6 +630,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             mos_info['gb_intv'] = gb_intv
             if prev_ext_info is None:
                 ext_params = None
+                ext_y = 0
             else:
                 ext_params = dict(
                     lch=self._laygo_info.lch,
@@ -642,9 +643,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     bot_ext_info=ext_bot_info,
                     is_laygo=True,
                 )
+                ext_y = row_y[-1][2]
             row_y.append((y0, ycur, ycur + blk_height, ytop))
             row_infos.append(mos_info)
-            ext_params_list.append(ext_params)
+            ext_params_list.append((ext_params, ext_y))
 
             y0 = ytop
             prev_ext_info = ext_top_info
@@ -698,7 +700,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self.add_cell_boundary(bound_box)
 
             # draw extensions
-            self._draw_extensions()
+            self._ext_edges = self._draw_extensions(num_col, self._ext_params, self._laygo_info,
+                                                    self._tech_cls.draw_zero_extension())
 
     def add_laygo_primitive(self, blk_type, loc=(0, 0), flip=False, nx=1, spx=0, **kwargs):
         # type: (str, Tuple[int, int], bool, int, int, **kwargs) -> Instance
@@ -802,25 +805,23 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         y0 = row_y[1] if row_orient == 'R0' else row_y[2]
         self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=row_orient, unit_mode=True)
 
-    def _draw_extensions(self):
-        end_mode = self._laygo_info.end_mode
-        left_margin = self._laygo_info.left_margin
-        col_width = self._laygo_info.col_width
-        right_margin = self._laygo_info.right_margin
-        draw_boundaries = self._laygo_info.draw_boundaries
-        top_layer = self._laygo_info.top_layer
-        guard_ring_nf = self._laygo_info.guard_ring_nf
-        num_col = self._laygo_size[0]
+    def _draw_extensions(self, num_col, ext_params, laygo_info, draw_zero_extension):
+        end_mode = laygo_info.end_mode
+        left_margin = laygo_info.left_margin
+        col_width = laygo_info.col_width
+        right_margin = laygo_info.right_margin
+        draw_boundaries = laygo_info.draw_boundaries
+        top_layer = laygo_info.top_layer
+        guard_ring_nf = laygo_info.guard_ring_nf
 
         left_end = (end_mode & 4) != 0
         right_end = (end_mode & 8) != 0
         xr = left_margin + col_width * num_col + right_margin
-        self._ext_edges = []
-        for idx, (bot_info, ext_params) in enumerate(zip(self._row_infos, self._ext_params)):
+        ext_edges = []
+        for idx, (ext_params, yext) in enumerate(ext_params):
             if ext_params is not None:
                 ext_h = ext_params['w']
-                if ext_h > 0 or self._tech_cls.draw_zero_extension():
-                    yext = self._row_y[idx - 1][2]
+                if ext_h > 0 or draw_zero_extension:
                     ext_master = self.new_template(params=ext_params, temp_cls=AnalogMOSExt)
                     self.add_instance(ext_master, inst_name='XEXT%d' % idx, loc=(left_margin, yext),
                                       nx=num_col, spx=col_width, unit_mode=True)
@@ -835,7 +836,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                 is_laygo=True,
                             )
                             edge_orient = 'MY' if flip_lr else 'R0'
-                            self._ext_edges.append((x, yext, edge_orient, edge_params))
+                            ext_edges.append((x, yext, edge_orient, edge_params))
+        return ext_edges
 
     def draw_boundary_cells(self):
         draw_boundaries = self._laygo_info.draw_boundaries
