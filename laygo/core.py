@@ -254,6 +254,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._top_end_master = None
         self._has_boundaries = False
         self._edge_infos = None
+        self._bot_sub_extw = 0
+        self._top_sub_extw = 0
 
     @property
     def laygo_info(self):
@@ -465,8 +467,22 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # find substrate parameters
         sub_type = 'ntap' if row_type == 'pch' or row_type == 'ntap' else 'ptap'
         w_sub = self._laygo_info['w_sub']
+        min_sub_tracks = self._laygo_info['min_sub_tracks']
         sub_info = self._tech_cls.get_laygo_sub_info(lch_unit, w_sub, sub_type, row_thres)
         sub_ext_info = sub_info['ext_top_info']
+
+        # quantize substrate height to top layer pitch.
+        sub_height = sub_info['blk_height']
+        min_sub_height = mos_pitch
+        sub_pitch = lcm([mos_pitch, self.grid.get_track_pitch(self._laygo_info.top_layer, unit_mode=True)])
+        for layer, num_tr in min_sub_tracks:
+            tr_pitch = self.grid.get_track_pitch(layer, unit_mode=True)
+            min_sub_height = max(min_sub_height, num_tr * tr_pitch)
+            sub_pitch = lcm([sub_pitch, tr_pitch])
+
+        real_sub_height = max(sub_height, min_sub_height)
+        real_sub_height = -(-real_sub_height // sub_pitch) * sub_pitch
+        sub_extw = (real_sub_height - sub_height) // mos_pitch
 
         # repeat until we satisfy both substrate and mirror row constraint
         ext_w = -(-ydelta // mos_pitch)
@@ -475,10 +491,12 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             ext_w_valid = True
             # check we satisfy substrate constraint
             valid_widths = self._tech_cls.get_valid_extension_widths(lch_unit, sub_ext_info, ext_info)
-            if ext_w < valid_widths[-1] and ext_w not in valid_widths:
+            ext_w_test = ext_w + sub_extw
+            if ext_w_test < valid_widths[-1] and ext_w_test not in valid_widths:
                 # did not pass substrate constraint, update extension width
                 ext_w_valid = False
-                ext_w = valid_widths[bisect.bisect_left(valid_widths, ext_w)]
+                ext_w_test = valid_widths[bisect.bisect_left(valid_widths, ext_w_test)]
+                ext_w = ext_w_test - sub_extw
                 continue
 
             # check we satisfy mirror extension constraint
@@ -490,7 +508,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 ext_w_test = valid_widths[bisect.bisect_left(valid_widths, ext_w_test)]
                 ext_w = -(-(ext_w_test // 2))
 
-        return ext_w
+        return ext_w, sub_extw
 
     def _place_rows(self, ybot, tot_height_pitch, row_specs, row_types, row_thresholds):
         lch_unit = self._laygo_info.lch_unit
@@ -542,8 +560,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 else:
                     # nmos/pmos at bottom row.  Need to check we can draw mirror image row.
                     row_thres = self._row_thresholds[idx]
-                    cur_bot_ext_h = self._place_mirror_or_sub(row_type, row_thres, lch_unit, mos_pitch,
-                                                              ycur - ybot, ext_bot_info)
+                    cur_bot_ext_h, self._bot_sub_extw = self._place_mirror_or_sub(row_type, row_thres, lch_unit,
+                                                                                  mos_pitch, ycur - ybot, ext_bot_info)
 
                 ycur = y0 + cur_bot_ext_h * mos_pitch
 
@@ -596,8 +614,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                                          mos_pitch, ng, ngb, nds)
                     # step 2: make sure ydelta can satisfy extension constraints.
                     row_thres = self._row_thresholds[idx]
-                    cur_top_ext_h = self._place_mirror_or_sub(row_type, row_thres, lch_unit, mos_pitch,
-                                                              ydelta, ext_bot_info)
+                    cur_top_ext_h, self._top_sub_extw = self._place_mirror_or_sub(row_type, row_thres, lch_unit,
+                                                                                  mos_pitch, ydelta, ext_bot_info)
                     ydelta = cur_top_ext_h * mos_pitch
                     # step 3: compute row height given ycur and ydelta, round to row_pitch
                     ytop = max(ycur + blk_height + ydelta, y0 + min_row_height)
