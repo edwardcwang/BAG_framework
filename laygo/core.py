@@ -401,6 +401,22 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         result = self._place_rows(ybot, tot_height_pitch, row_specs, row_types, row_thresholds)
         self._row_infos, self._ext_params, self._row_y = result
 
+    def get_digital_row_info(self):
+        if not self.finalized:
+            raise ValueError('Can only compute digital row info if this block is finalized.')
+        if self._laygo_info.draw_boundaries is True:
+            raise ValueError('LaygoBase with boundaries cannot be used in digital row.')
+
+        return dict(
+            row_height=self.bound_box.top_unit,
+            row_types=self._row_types,
+            row_thresholds=self._row_thresholds,
+            bot_extw=self._row_y[0][1] - self._row_y[0][0],
+            top_extw=self._row_y[-1][3] - self._row_y[-1][2],
+            bot_sub_extw=self._bot_sub_extw,
+            top_sub_extw=self._top_sub_extw,
+        )
+
     def _get_row_specs(self, row_types, row_widths, row_orientations, row_thresholds, row_min_tracks, row_kwargs,
                        num_g_tracks, num_gb_tracks, num_ds_tracks):
         lch = self._laygo_info.lch
