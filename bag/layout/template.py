@@ -475,6 +475,12 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """Returns the RoutingGrid object"""
         return self._grid
 
+    @property
+    def finalized(self):
+        # type: () -> bool
+        """Returns True if this Template is finalized."""
+        return self._finalized
+
     @grid.setter
     def grid(self, new_grid):
         # type: (RoutingGrid) -> None
