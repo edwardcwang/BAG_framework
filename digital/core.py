@@ -56,6 +56,8 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._top_sub_master = None
         self._ybot = None
         self._ytop = None
+        self._ext_params = None
+        self._edge_infos = None
 
     @property
     def digital_size(self):
@@ -75,11 +77,15 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         default_end_info = [self._laygo_info.tech_cls.get_default_end_info()] * num_laygo_rows
         self._used_list = [LaygoIntvSet(default_end_info) for _ in range(num_rows)]
 
+        lch = self._laygo_info.lch
+        mos_pitch = self._laygo_info.mos_pitch
         tot_height = self._row_height * num_rows
+
+        bot_extw = row_info['bot_extw']
+        bot_sub_extw = row_info['bot_sub_extw']
+
         if draw_boundaries:
-            lch = self._laygo_info.lch
             top_layer = self._laygo_info.top_layer
-            mos_pitch = self._laygo_info.mos_pitch
             w_sub = self._laygo_info['w_sub']
             bot_end = (end_mode & 1) != 0
             top_end = (end_mode & 2) != 0
@@ -104,8 +110,6 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 options={},
             )
             self._bot_sub_master = self.new_template(params=params, temp_cls=LaygoSubstrate)
-            bot_extw = row_info['bot_extw']
-            bot_sub_extw = row_info['bot_sub_extw']
 
             if num_rows % 2 == 0:
                 # because of mirroring, top and bottom masters are the same, except for is_end parameter.
@@ -118,7 +122,6 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 )
                 self._top_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
                 self._top_sub_master = self._bot_sub_master
-                top_extw = bot_extw
                 top_sub_extw = bot_sub_extw
             else:
                 mtype = row_info['row_types'][-1]
@@ -140,20 +143,46 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     options={},
                 )
                 self._top_sub_master = self.new_template(params=params, temp_cls=LaygoSubstrate)
-                top_extw = row_info['top_extw']
                 top_sub_extw = row_info['top_sub_extw']
 
             y0 = self._bot_end_master.bound_box.height_unit
-            y1 = y0 + self._bot_sub_master.bound_box.height_unit
-            y2 = y1 + bot_sub_extw * mos_pitch
-            self._ybot = (y0, y1, y2)
-            y0 = y2 + tot_height - top_extw * mos_pitch
-            y1 = y0 + (top_extw + top_sub_extw) * mos_pitch + self._top_sub_master.bound_box.height_unit
-            y2 = y1 + self._top_end_master.bound_box.height_unit
-            self._ytop = (y0, y1, y2)
+            y1 = y0 + self._bot_sub_master.bound_box.height_unit + bot_sub_extw * mos_pitch
+            self._ybot = (y0, y1)
+            y0 = y1 + tot_height + top_sub_extw * mos_pitch + self._top_sub_master.bound_box.height_unit
+            y1 = y0 + self._top_end_master.bound_box.height_unit
+            self._ytop = (y0, y1)
         else:
-            self._ybot = (0, 0, 0)
-            self._ytop = (tot_height, tot_height, tot_height)
+            self._ybot = (0, 0)
+            self._ytop = (tot_height, tot_height)
+
+        # find extension parameters
+        self._ext_params = []
+        ycur = self._ybot[1] + self._row_height
+        for row_idx in range(num_rows - 1):
+            if row_idx % 2 == 0:
+                w = row_info['top_extw']
+                mtype = row_info['row_types'][-1]
+                thres = row_info['row_thresholds'][-1]
+                ext_info = row_info['top_ext_info']
+            else:
+                w = bot_extw
+                mtype = row_info['row_types'][0]
+                thres = row_info['row_thresholds'][0]
+                ext_info = row_info['bot_ext_info']
+
+            cur_params = dict(
+                lch=lch,
+                w=w * 2,
+                bot_mtype=mtype,
+                top_mtype=mtype,
+                bot_thres=thres,
+                top_thres=thres,
+                top_ext_info=ext_info,
+                bot_ext_info=ext_info,
+                is_laygo=True,
+            )
+            self._ext_params.append((cur_params, ycur - w * mos_pitch))
+            ycur += self._row_height
 
     def set_digital_size(self, num_col=None):
         if self._dig_size is None:
@@ -169,15 +198,19 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             col_width = self._laygo_info.col_width
             left_margin = self._laygo_info.left_margin
             right_margin = self._laygo_info.right_margin
+            tech_cls = self._laygo_info.tech_cls
 
             width = col_width * num_col
-            height = self._ytop[2]
+            height = self._ytop[1]
             if draw_boundaries:
                 width += left_margin + right_margin
 
             bound_box = BBox(0, 0, width, height, self.grid.resolution, unit_mode=True)
             self.set_size_from_bound_box(top_layer, bound_box)
             self.add_cell_boundary(bound_box)
+
+            # draw extensions
+            self._edge_infos = tech_cls.draw_extensions(self, num_col, self._ext_params, self._laygo_info)
 
     def add_digital_block(self, master, loc=(0, 0), flip=False, nx=1, spx=0):
         col_idx, row_idx = loc
@@ -203,7 +236,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if flip:
             x0 += master.digital_size[0]
 
-        y0 = row_idx * self._row_height + self._ybot[2]
+        y0 = row_idx * self._row_height + self._ybot[1]
         if row_idx % 2 == 0:
             orient = 'MY' if flip else 'R0'
         else:

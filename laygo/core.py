@@ -407,15 +407,18 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if self._laygo_info.draw_boundaries is True:
             raise ValueError('LaygoBase with boundaries cannot be used in digital row.')
 
+        mos_pitch = self._laygo_info.mos_pitch
         return dict(
             config=self.params['config'],
             row_height=self.bound_box.top_unit,
             row_types=self._row_types,
             row_thresholds=self._row_thresholds,
-            bot_extw=self._row_y[0][1] - self._row_y[0][0],
-            top_extw=self._row_y[-1][3] - self._row_y[-1][2],
+            bot_extw=(self._row_y[0][1] - self._row_y[0][0]) // mos_pitch,
+            top_extw=(self._row_y[-1][3] - self._row_y[-1][2]) // mos_pitch,
             bot_sub_extw=self._bot_sub_extw,
             top_sub_extw=self._top_sub_extw,
+            bot_ext_info=self._row_infos[0]['ext_bot_info'],
+            top_ext_info=self._row_infos[-1]['ext_top_info'],
         )
 
     def _get_row_specs(self, row_types, row_widths, row_orientations, row_thresholds, row_min_tracks, row_kwargs,
