@@ -408,6 +408,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             raise ValueError('LaygoBase with boundaries cannot be used in digital row.')
 
         return dict(
+            config=self.params['config'],
             row_height=self.bound_box.top_unit,
             row_types=self._row_types,
             row_thresholds=self._row_thresholds,
@@ -697,8 +698,20 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         hm_layer = self._tech_cls.get_dig_conn_layer() + 1
         return TrackID(hm_layer, tid, width=width, num=num, pitch=pitch)
 
-    def get_end_info(self, row_idx):
-        return self._used_list[row_idx].get_end_info(self._laygo_size[0])
+    def get_end_info(self):
+        endl_list, endr_list = [], []
+        num_col = self._laygo_size[0]
+        for intv in self._used_list:
+            endl, endr = intv.get_end_info(num_col)
+            endl_list.append(endl)
+            endr_list.append(endr)
+
+        return endl_list, endr_list
+
+    def _get_end_info_row(self, row_idx):
+        num_col = self._laygo_size[0]
+        endl, endr = self._used_list[row_idx].get_end_info(num_col)
+        return endl, endr
 
     def set_laygo_size(self, num_col=None):
         if self._laygo_size is None:
@@ -731,7 +744,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # type: (str, Tuple[int, int], bool, int, int, **kwargs) -> Instance
 
         col_idx, row_idx = loc
-        if row_idx < 0 or row_idx >= len(self._row_types):
+        if row_idx < 0 or row_idx >= self._num_rows:
             raise ValueError('Cannot add primitive at row %d' % row_idx)
 
         lch = self._laygo_info.lch
@@ -840,7 +853,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             left_end = (end_mode & 4) != 0
             right_end = (end_mode & 8) != 0
             for ridx, (orient, ytuple, rinfo) in enumerate(zip(self._row_orientations, self._row_y, self._row_infos)):
-                endl, endr = self.get_end_info(ridx)
+                endl, endr = self._get_end_info_row(ridx)
                 _, ycur, ytop, _ = ytuple
                 if orient == 'R0':
                     y = ycur

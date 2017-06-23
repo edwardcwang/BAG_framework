@@ -42,13 +42,13 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(DigitalBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
-        self._laygo_info = LaygoBaseInfo(self.grid, self.params['config'])
-        self.grid = self._laygo_info.grid
+        self._laygo_info = None
 
         # initialize attributes
         self._num_rows = 0
         self._dig_size = None
         self._row_info = None
+        self._row_height = 0
         self._used_list = None  # type: List[LaygoIntvSet]
         self._bot_end_master = None
         self._top_end_master = None
@@ -57,14 +57,25 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._ybot = None
         self._ytop = None
 
-    def initialize(self, row_info, num_rows, draw_boundaries, end_mode, guard_ring_nf=0):
-        self._row_info = row_info
+    @property
+    def digital_size(self):
+        return self._dig_size
 
+    def initialize(self, row_info, num_rows, draw_boundaries, end_mode, guard_ring_nf=0):
+        self._laygo_info = LaygoBaseInfo(self.grid, row_info['config'])
+        self.grid = self._laygo_info.grid
+        self._row_info = row_info
+        self._num_rows = num_rows
+        self._row_height = row_info['row_height']
+
+        num_laygo_rows = len(row_info['row_types'])
         self._laygo_info.guard_ring_nf = guard_ring_nf
         self._laygo_info.draw_boundaries = draw_boundaries
         self._laygo_info.end_mode = end_mode
+        default_end_info = [self._laygo_info.tech_cls.get_default_end_info()] * num_laygo_rows
+        self._used_list = [LaygoIntvSet(default_end_info) for _ in range(num_rows)]
 
-        tot_height = row_info['row_height'] * num_rows
+        tot_height = self._row_height * num_rows
         if draw_boundaries:
             lch = self._laygo_info.lch
             top_layer = self._laygo_info.top_layer
@@ -168,5 +179,43 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self.set_size_from_bound_box(top_layer, bound_box)
             self.add_cell_boundary(bound_box)
 
-    def add_block(self):
+    def add_digital_block(self, master, loc=(0, 0), flip=False, nx=1, spx=0):
+        col_idx, row_idx = loc
+        if row_idx < 0 or row_idx >= self._num_rows:
+            raise ValueError('Cannot add block at row %d' % row_idx)
+
+        col_width = self._laygo_info.col_width
+        left_margin = self._laygo_info.left_margin
+
+        intv = self._used_list[row_idx]
+        inst_endl, inst_endr = master.get_end_info()
+        if flip:
+            inst_endl, inst_endr = inst_endr, inst_endl
+
+        for inst_num in range(nx):
+            intv_offset = col_idx + spx * inst_num
+            inst_intv = intv_offset, intv_offset + 1
+            if not intv.add(inst_intv, inst_endl, inst_endr):
+                raise ValueError('Cannot add primitive on row %d, '
+                                 'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
+
+        x0 = left_margin + col_idx * col_width
+        if flip:
+            x0 += master.digital_size[0]
+
+        y0 = row_idx * self._row_height + self._ybot[2]
+        if row_idx % 2 == 0:
+            orient = 'MY' if flip else 'R0'
+        else:
+            y0 += self._row_height
+            orient = 'R180' if flip else 'MX'
+
+        # convert horizontal pitch to resolution units
+        spx *= col_width
+
+        inst_name = 'XR%dC%d' % (row_idx, col_idx)
+        return self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=orient,
+                                 nx=nx, spx=spx, unit_mode=True)
+
+    def draw_boundary_cells(self):
         pass
