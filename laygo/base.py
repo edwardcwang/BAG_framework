@@ -106,7 +106,7 @@ class LaygoPrimitive(TemplateBase):
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
-        return self.to_immutable_id((basename, self.params['options'], self.params['flip_parity']))
+        return self.to_immutable_id((basename, self.params['options'], self.grid.get_flip_parity()))
 
     def draw_layout(self):
         lch = self.params['lch']
@@ -201,7 +201,7 @@ class LaygoSubstrate(TemplateBase):
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
-        return self.to_immutable_id((basename, self.params['options'], self.params['flip_parity']))
+        return self.to_immutable_id((basename, self.params['options'], self.grid.get_flip_parity()))
 
     def draw_layout(self):
         lch = self.params['lch']

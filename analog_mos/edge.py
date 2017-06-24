@@ -226,7 +226,7 @@ class AnalogEdge(TemplateBase):
 
     def compute_unique_key(self):
         base_name = self.get_layout_basename()
-        return self.to_immutable_id((base_name, self.params['layout_info'], self.params['flip_parity']))
+        return self.to_immutable_id((base_name, self.params['layout_info'], self.grid.get_flip_parity()))
 
     def draw_layout(self):
         top_layer = self.params['top_layer']

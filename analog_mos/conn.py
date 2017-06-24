@@ -121,7 +121,7 @@ class AnalogMOSConn(TemplateBase):
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
-        return self.to_immutable_id((basename, self.params['flip_parity'], self.params['options']))
+        return self.to_immutable_id((basename, self.grid.get_flip_parity(), self.params['options']))
 
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
@@ -205,7 +205,7 @@ class AnalogMOSDummy(TemplateBase):
     def compute_unique_key(self):
         basename = self.get_layout_basename()
         gtr = tuple(int(2 * v) for v in self.params['gate_tracks'])
-        return self.to_immutable_id((basename, gtr, self.params['flip_parity']))
+        return self.to_immutable_id((basename, gtr, self.grid.get_flip_parity()))
 
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
@@ -371,7 +371,7 @@ class AnalogSubstrateConn(TemplateBase):
         basename = self.get_layout_basename()
         port_tracks = tuple(int(2 * v) for v in self.params['port_tracks'])
         dum_tracks = tuple(int(2 * v) for v in self.params['dum_tracks'])
-        flip_parity = self.params['flip_parity']
+        flip_parity = self.grid.get_flip_parity()
         layout_info = self.params['layout_info']
         is_laygo = self.params['is_laygo']
         is_guardring = self.params['is_guardring']
