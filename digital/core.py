@@ -101,7 +101,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             sub_type = 'ptap' if mtype == 'nch' else 'ntap'
             params = dict(
                 lch=lch,
-                mos_type=mtype,
+                mos_type=sub_type,
                 threshold=thres,
                 is_end=bot_end,
                 top_layer=top_layer,
@@ -133,7 +133,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 # because of mirroring, top and bottom masters are the same, except for is_end parameter.
                 params = dict(
                     lch=lch,
-                    mos_type=mtype,
+                    mos_type=sub_type,
                     threshold=thres,
                     is_end=top_end,
                     top_layer=top_layer,
@@ -151,7 +151,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 sub_type = 'ptap' if mtype == 'nch' else 'ntap'
                 params = dict(
                     lch=lch,
-                    mos_type=mtype,
+                    mos_type=sub_type,
                     threshold=thres,
                     is_end=top_end,
                     top_layer=top_layer,
