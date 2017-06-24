@@ -253,7 +253,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._bot_end_master = None
         self._top_end_master = None
         self._has_boundaries = False
-        self._edge_infos = None
+        self._ext_edge_infos = None
         self._bot_sub_extw = 0
         self._top_sub_extw = 0
 
@@ -408,7 +408,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             raise ValueError('LaygoBase with boundaries cannot be used in digital row.')
 
         mos_pitch = self._laygo_info.mos_pitch
-        return dict(
+        ans = dict(
             config=self.params['config'],
             row_height=self.bound_box.top_unit,
             row_types=self._row_types,
@@ -419,7 +419,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             top_sub_extw=self._top_sub_extw,
             bot_ext_info=self._row_infos[0]['ext_bot_info'],
             top_ext_info=self._row_infos[-1]['ext_top_info'],
+            row_edge_infos=self._get_row_edge_infos(),
+            ext_edge_infos=self._ext_edge_infos,
         )
+        return ans
 
     def _get_row_specs(self, row_types, row_widths, row_orientations, row_thresholds, row_min_tracks, row_kwargs,
                        num_g_tracks, num_gb_tracks, num_ds_tracks):
@@ -741,7 +744,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self.add_cell_boundary(bound_box)
 
             # draw extensions
-            self._edge_infos = self._tech_cls.draw_extensions(self, num_col, self._ext_params, self._laygo_info)
+            self._ext_edge_infos = self._tech_cls.draw_extensions(self, num_col, self._ext_params, self._laygo_info)
 
     def add_laygo_primitive(self, blk_type, loc=(0, 0), flip=False, nx=1, spx=0, **kwargs):
         # type: (str, Tuple[int, int], bool, int, int, **kwargs) -> Instance
@@ -840,6 +843,27 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         y0 = row_y[1] if row_orient == 'R0' else row_y[2]
         self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=row_orient, unit_mode=True)
 
+    def _get_row_edge_infos(self):
+        top_layer = self._laygo_info.top_layer
+        guard_ring_nf = self._laygo_info.guard_ring_nf
+
+        row_edge_infos = []
+        for ridx, (orient, ytuple, rinfo) in enumerate(zip(self._row_orientations, self._row_y, self._row_infos)):
+            if orient == 'R0':
+                y = ytuple[1]
+            else:
+                y = ytuple[2]
+
+            row_edge_params = dict(
+                top_layer=top_layer,
+                guard_ring_nf=guard_ring_nf,
+                row_info=rinfo,
+                is_laygo=True,
+            )
+            row_edge_infos.append((y, orient, row_edge_params))
+
+        return row_edge_infos
+
     def draw_boundary_cells(self):
         draw_boundaries = self._laygo_info.draw_boundaries
 
@@ -847,41 +871,42 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             if self._laygo_size is None:
                 raise ValueError('laygo_size must be set before drawing boundaries.')
 
-            # compute row edge information
-            top_layer = self._laygo_info.top_layer
             end_mode = self._laygo_info.end_mode
-            guard_ring_nf = self._laygo_info.guard_ring_nf
             xr = self.bound_box.right_unit
 
             left_end = (end_mode & 4) != 0
             right_end = (end_mode & 8) != 0
-            for ridx, (orient, ytuple, rinfo) in enumerate(zip(self._row_orientations, self._row_y, self._row_infos)):
+
+            edge_infos = []
+            # compute extension edge information
+            for y, ee_params in self._ext_edge_infos:
+                for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
+                    edge_params = ee_params.copy()
+                    edge_params['is_end'] = is_end
+                    eorient = 'MY' if flip_lr else 'R0'
+                    edge_infos.append((x, y, eorient, edge_params))
+
+            # compute row edge information
+            row_edge_infos = self._get_row_edge_infos()
+            for ridx, (y, orient, re_params) in enumerate(row_edge_infos):
                 endl, endr = self._get_end_info_row(ridx)
-                _, ycur, ytop, _ = ytuple
-                if orient == 'R0':
-                    y = ycur
-                else:
-                    y = ytop
                 for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
-                    edge_info = self._tech_cls.get_laygo_edge_info(rinfo, end_flag)
-                    edge_params = dict(
-                        top_layer=top_layer,
-                        is_end=is_end,
-                        guard_ring_nf=guard_ring_nf,
-                        name_id=edge_info['name_id'],
-                        layout_info=edge_info,
-                        is_laygo=True,
-                    )
+                    edge_info = self._tech_cls.get_laygo_edge_info(re_params['row_info'], end_flag)
+                    edge_params = re_params.copy()
+                    del edge_params['row_info']
+                    edge_params['is_end'] = is_end
+                    edge_params['name_id'] = edge_info['name_id']
+                    edge_params['layout_info'] = edge_info
                     if flip_lr:
                         eorient = 'MY' if orient == 'R0' else 'R180'
                     else:
                         eorient = orient
-                    self._edge_infos.append((x, y, eorient, edge_params))
+                    edge_infos.append((x, y, eorient, edge_params))
 
             yt = self.bound_box.top_unit
             vdd_warrs, vss_warrs = self._tech_cls.draw_boundaries(self, self._laygo_info, self._laygo_size[0],
                                                                   yt, self._bot_end_master, self._top_end_master,
-                                                                  self._edge_infos)
+                                                                  edge_infos)
 
             self._has_boundaries = True
             return vdd_warrs, vss_warrs

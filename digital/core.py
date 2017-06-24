@@ -57,7 +57,8 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._ybot = None
         self._ytop = None
         self._ext_params = None
-        self._edge_infos = None
+        self._ext_edge_infos = None
+        self._has_boundaries = False
 
     @property
     def digital_size(self):
@@ -210,7 +211,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self.add_cell_boundary(bound_box)
 
             # draw extensions
-            self._edge_infos = tech_cls.draw_extensions(self, num_col, self._ext_params, self._laygo_info)
+            self._ext_edge_infos = tech_cls.draw_extensions(self, num_col, self._ext_params, self._laygo_info)
 
     def add_digital_block(self, master, loc=(0, 0), flip=False, nx=1, spx=0):
         col_idx, row_idx = loc
@@ -225,9 +226,11 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if flip:
             inst_endl, inst_endr = inst_endr, inst_endl
 
+        num_inst_col = master.laygo_size[0]
+
         for inst_num in range(nx):
             intv_offset = col_idx + spx * inst_num
-            inst_intv = intv_offset, intv_offset + 1
+            inst_intv = intv_offset, intv_offset + num_inst_col
             if not intv.add(inst_intv, inst_endl, inst_endr):
                 raise ValueError('Cannot add primitive on row %d, '
                                  'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
@@ -250,5 +253,96 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=orient,
                                  nx=nx, spx=spx, unit_mode=True)
 
-    def draw_boundary_cells(self):
+    def fill_space(self):
         pass
+
+    def _get_end_info_row(self, row_idx):
+        num_col = self._dig_size[0]
+        endl, endr = self._used_list[row_idx].get_end_info(num_col)
+        return endl, endr
+
+    @staticmethod
+    def _flip_ud(orient):
+        if orient == 'R0':
+            return 'MX'
+        elif orient == 'MX':
+            return 'R0'
+        elif orient == 'MY':
+            return 'R180'
+        elif orient == 'R180':
+            return 'MY'
+        else:
+            raise ValueError('Unknonw orientation: %s' % orient)
+
+    def draw_boundary_cells(self):
+        draw_boundaries = self._laygo_info.draw_boundaries
+
+        if draw_boundaries and not self._has_boundaries:
+            if self._dig_size is None:
+                raise ValueError('digital_size must be set before drawing boundaries.')
+
+            # compute row edge information
+            num_col = self._dig_size[0]
+            end_mode = self._laygo_info.end_mode
+            tech_cls = self._laygo_info.tech_cls
+            xr = self.bound_box.right_unit
+
+            left_end = (end_mode & 4) != 0
+            right_end = (end_mode & 8) != 0
+
+            # get edge information for each row
+            edge_infos = []
+            ext_edge_infos = self._row_info['ext_edge_infos']
+            row_edge_infos = self._row_info['row_edge_infos']
+
+            # add extension edge in digital block
+            for y, ee_params in self._ext_edge_infos:
+                for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
+                    edge_params = ee_params.copy()
+                    edge_params['is_end'] = is_end
+                    eorient = 'MY' if flip_lr else 'R0'
+                    edge_infos.append((x, y, eorient, edge_params))
+
+            for ridx in range(self._num_rows):
+                endl_list, endr_list = self._get_end_info_row(ridx)
+                if ridx % 2 == 0:
+                    yscale = 1
+                    yoff = self._ybot[1] + ridx * self._row_height
+                else:
+                    yscale = -1
+                    yoff = self._ybot[1] + (ridx + 1) * self._row_height
+                # add extension edges
+                for y, ee_params in ext_edge_infos:
+                    for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
+                        edge_params = ee_params.copy()
+                        edge_params['is_end'] = is_end
+                        eorient = 'MY' if flip_lr else 'R0'
+                        if yscale < 0:
+                            eorient = self._flip_ud(eorient)
+                        edge_infos.append((x, yscale * y + yoff, eorient, edge_params))
+                # add row edges
+                for (y, row_orient, re_params), endl, endr in zip(row_edge_infos, endl_list, endr_list):
+                    for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
+                        edge_info = tech_cls.get_laygo_edge_info(re_params['row_info'], end_flag)
+                        edge_params = re_params.copy()
+                        del edge_params['row_info']
+                        edge_params['is_end'] = is_end
+                        edge_params['name_id'] = edge_info['name_id']
+                        edge_params['layout_info'] = edge_info
+                        if flip_lr:
+                            eorient = 'MY' if row_orient == 'R0' else 'R180'
+                        else:
+                            eorient = row_orient
+                        if yscale < 0:
+                            eorient = self._flip_ud(eorient)
+                        edge_infos.append((x, yscale * y + yoff, eorient, edge_params))
+
+            yt = self.bound_box.top_unit
+            vdd_warrs, vss_warrs = tech_cls.draw_boundaries(self, self._laygo_info, num_col, yt,
+                                                            self._bot_end_master, self._top_end_master,
+                                                            edge_infos)
+
+            self._has_boundaries = True
+            return vdd_warrs, vss_warrs
+
+        return [], []

@@ -330,17 +330,11 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             a list of X/Y coordinate, orientation, and parameters for extension edge blocks.
             empty list if draw_boundaries is False.
         """
-        end_mode = laygo_info.end_mode
         left_margin = laygo_info.left_margin
         col_width = laygo_info.col_width
-        right_margin = laygo_info.right_margin
-        draw_boundaries = laygo_info.draw_boundaries
         top_layer = laygo_info.top_layer
         guard_ring_nf = laygo_info.guard_ring_nf
 
-        left_end = (end_mode & 4) != 0
-        right_end = (end_mode & 8) != 0
-        xr = left_margin + col_width * num_col + right_margin
         ext_edges = []
         for idx, (ext_params, yext) in enumerate(ext_infos):
             if ext_params is not None:
@@ -349,18 +343,14 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
                     ext_master = template.new_template(params=ext_params, temp_cls=AnalogMOSExt)
                     template.add_instance(ext_master, inst_name='XEXT%d' % idx, loc=(left_margin, yext),
                                           nx=num_col, spx=col_width, unit_mode=True)
-                    if draw_boundaries:
-                        for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
-                            edge_params = dict(
-                                top_layer=top_layer,
-                                is_end=is_end,
-                                guard_ring_nf=guard_ring_nf,
-                                name_id=ext_master.get_layout_basename(),
-                                layout_info=ext_master.get_edge_layout_info(),
-                                is_laygo=True,
-                            )
-                            edge_orient = 'MY' if flip_lr else 'R0'
-                            ext_edges.append((x, yext, edge_orient, edge_params))
+                    edge_params = dict(
+                        top_layer=top_layer,
+                        guard_ring_nf=guard_ring_nf,
+                        name_id=ext_master.get_layout_basename(),
+                        layout_info=ext_master.get_edge_layout_info(),
+                        is_laygo=True,
+                    )
+                    ext_edges.append((yext, edge_params))
         return ext_edges
 
     @classmethod
