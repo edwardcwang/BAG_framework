@@ -81,12 +81,16 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         lch = self._laygo_info.lch
         mos_pitch = self._laygo_info.mos_pitch
         tot_height = self._row_height * num_rows
+        tech_cls = self._laygo_info.tech_cls
 
         bot_extw = row_info['bot_extw']
         bot_sub_extw = row_info['bot_sub_extw']
+        bot_extw_tot = bot_extw + bot_sub_extw
 
+        self._ext_params = []
         if draw_boundaries:
             top_layer = self._laygo_info.top_layer
+            lch_unit = self._laygo_info.lch_unit
             w_sub = self._laygo_info['w_sub']
             bot_end = (end_mode & 1) != 0
             top_end = (end_mode & 2) != 0
@@ -111,6 +115,19 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 options={},
             )
             self._bot_sub_master = self.new_template(params=params, temp_cls=LaygoSubstrate)
+            sub_info = tech_cls.get_laygo_sub_info(lch_unit, w_sub, sub_type, thres)
+            sub_ext_info = sub_info['ext_top_info']
+            bot_ext_params = dict(
+                lch=lch,
+                w=bot_extw_tot,
+                bot_mtype=sub_type,
+                top_mtype=mtype,
+                bot_thres=thres,
+                top_thres=thres,
+                top_ext_info=row_info['bot_ext_info'],
+                bot_ext_info=sub_ext_info,
+                is_laygo=True,
+            )
 
             if num_rows % 2 == 0:
                 # because of mirroring, top and bottom masters are the same, except for is_end parameter.
@@ -123,7 +140,9 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 )
                 self._top_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
                 self._top_sub_master = self._bot_sub_master
-                top_sub_extw = bot_sub_extw
+                top_extw = bot_extw
+                top_ext_params = bot_ext_params
+                top_extw_tot = bot_extw_tot
             else:
                 mtype = row_info['row_types'][-1]
                 thres = row_info['row_thresholds'][-1]
@@ -144,20 +163,43 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     options={},
                 )
                 self._top_sub_master = self.new_template(params=params, temp_cls=LaygoSubstrate)
+                top_extw = row_info['top_extw']
                 top_sub_extw = row_info['top_sub_extw']
+                top_extw_tot = top_extw + top_sub_extw
+                sub_info = tech_cls.get_laygo_sub_info(lch_unit, w_sub, sub_type, thres)
+                sub_ext_info = sub_info['ext_top_info']
+                top_ext_params = dict(
+                    lch=lch,
+                    w=top_extw_tot,
+                    bot_mtype=sub_type,
+                    top_mtype=mtype,
+                    bot_thres=thres,
+                    top_thres=thres,
+                    top_ext_info=row_info['top_ext_info'],
+                    bot_ext_info=sub_ext_info,
+                    is_laygo=True,
+                )
 
             y0 = self._bot_end_master.bound_box.height_unit
             y1 = y0 + self._bot_sub_master.bound_box.height_unit + bot_sub_extw * mos_pitch
             self._ybot = (y0, y1)
-            y0 = y1 + tot_height + top_sub_extw * mos_pitch + self._top_sub_master.bound_box.height_unit
+            bot_yext = y1 - bot_sub_extw * mos_pitch
+            top_yext = y1 + tot_height - top_extw * mos_pitch
+            y0 = top_yext + top_extw_tot * mos_pitch + self._top_sub_master.bound_box.height_unit
             y1 = y0 + self._top_end_master.bound_box.height_unit
             self._ytop = (y0, y1)
+
+            # add extension between substrate and edge rows
+            for yext, extw, ext_params in ((bot_yext, bot_extw_tot, bot_ext_params),
+                                           (top_yext, top_extw_tot, top_ext_params)):
+                ext_params['w'] = extw
+                self._ext_params.append((ext_params, yext))
+
         else:
             self._ybot = (0, 0)
             self._ytop = (tot_height, tot_height)
 
-        # find extension parameters
-        self._ext_params = []
+        # add rest of extension parameters
         ycur = self._ybot[1] + self._row_height
         for row_idx in range(num_rows - 1):
             if row_idx % 2 == 0:
@@ -274,6 +316,52 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         else:
             raise ValueError('Unknonw orientation: %s' % orient)
 
+    def _draw_end_substrates(self):
+        num_col = self._dig_size[0]
+        top_layer = self._laygo_info.top_layer
+        guard_ring_nf = self._laygo_info.guard_ring_nf
+        x0 = self._laygo_info.left_margin
+        spx = self._laygo_info.col_width
+        end_mode = self._laygo_info.end_mode
+        tech_cls = self._laygo_info.tech_cls
+        xr = self.bound_box.right_unit
+
+        left_end = (end_mode & 4) != 0
+        right_end = (end_mode & 8) != 0
+
+        ybot = self._ybot[0]
+        bot_inst = self.add_instance(self._bot_sub_master, inst_name='XBSUB', loc=(x0, ybot), orient='R0',
+                                     nx=num_col, spx=spx, unit_mode=True)
+        ytop = self._ytop[0]
+        top_inst = self.add_instance(self._top_sub_master, inst_name='XBSUB', loc=(x0, ytop), orient='MX',
+                                     nx=num_col, spx=spx, unit_mode=True)
+
+        bot_warrs = bot_inst.get_all_port_pins()
+        top_warrs = top_inst.get_all_port_pins()
+
+        edge_infos = []
+
+        for master, y, orient in ((self._bot_sub_master, ybot, 'R0'), (self._top_sub_master, ytop, 'MX')):
+            endl, endr = master.get_end_info()
+            rinfo = master.row_info
+            for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
+                edge_info = tech_cls.get_laygo_edge_info(rinfo, end_flag)
+                edge_params = dict(
+                    top_layer=top_layer,
+                    guard_ring_nf=guard_ring_nf,
+                    is_end=is_end,
+                    name_id=edge_info['name_id'],
+                    layout_info=edge_info,
+                    is_laygo=True,
+                )
+                if orient == 'R0':
+                    eorient = 'MY' if flip_lr else 'R0'
+                else:
+                    eorient = 'R180' if flip_lr else 'MX'
+                edge_infos.append((x, y, eorient, edge_params))
+
+        return edge_infos, bot_warrs, top_warrs
+
     def draw_boundary_cells(self):
         draw_boundaries = self._laygo_info.draw_boundaries
 
@@ -291,9 +379,11 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             right_end = (end_mode & 8) != 0
 
             # get edge information for each row
-            edge_infos = []
             ext_edge_infos = self._row_info['ext_edge_infos']
             row_edge_infos = self._row_info['row_edge_infos']
+
+            # draw end substrates
+            edge_infos, bot_warrs, top_warrs = self._draw_end_substrates()
 
             # add extension edge in digital block
             for y, ee_params in self._ext_edge_infos:
@@ -338,11 +428,11 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                         edge_infos.append((x, yscale * y + yoff, eorient, edge_params))
 
             yt = self.bound_box.top_unit
-            vdd_warrs, vss_warrs = tech_cls.draw_boundaries(self, self._laygo_info, num_col, yt,
-                                                            self._bot_end_master, self._top_end_master,
-                                                            edge_infos)
+            gr_vdd_warrs, gr_vss_warrs = tech_cls.draw_boundaries(self, self._laygo_info, num_col, yt,
+                                                                  self._bot_end_master, self._top_end_master,
+                                                                  edge_infos)
 
             self._has_boundaries = True
-            return vdd_warrs, vss_warrs
+            return bot_warrs, top_warrs, gr_vdd_warrs, gr_vss_warrs
 
-        return [], []
+        return [], [], [], []

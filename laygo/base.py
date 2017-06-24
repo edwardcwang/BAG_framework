@@ -155,9 +155,14 @@ class LaygoSubstrate(TemplateBase):
         self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         self._end_info = None
+        self._row_info = None
 
     def get_end_info(self):
         return self._end_info
+
+    @property
+    def row_info(self):
+        return self._row_info
 
     @property
     def laygo_size(self):
@@ -208,13 +213,13 @@ class LaygoSubstrate(TemplateBase):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, w, mos_type, threshold, **options)
+        self._row_info = self._tech_cls.get_laygo_sub_info(lch_unit, w, mos_type, threshold, **options)
         # draw transistor
-        self._tech_cls.draw_mos(self, mos_info['layout_info'])
+        self._tech_cls.draw_mos(self, self._row_info['layout_info'])
         # draw connection
         if options is None:
             options = {}
-        self._end_info = self._tech_cls.draw_laygo_connection(self, mos_info, 'sub', options)
+        self._end_info = self._tech_cls.draw_laygo_connection(self, self._row_info, 'sub', options)
 
 
 class LaygoEndRow(TemplateBase):
