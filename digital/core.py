@@ -141,7 +141,9 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 self._top_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
                 self._top_sub_master = self._bot_sub_master
                 top_extw = bot_extw
-                top_ext_params = bot_ext_params
+                top_ext_params = bot_ext_params.copy()
+                top_ext_params['bot_mtype'] = mtype
+                top_ext_params['top_mtype'] = sub_type
                 top_extw_tot = bot_extw_tot
             else:
                 mtype = row_info['row_types'][-1]
@@ -171,8 +173,8 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 top_ext_params = dict(
                     lch=lch,
                     w=top_extw_tot,
-                    bot_mtype=sub_type,
-                    top_mtype=mtype,
+                    bot_mtype=mtype,
+                    top_mtype=sub_type,
                     bot_thres=thres,
                     top_thres=thres,
                     top_ext_info=row_info['top_ext_info'],
