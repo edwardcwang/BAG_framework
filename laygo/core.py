@@ -133,6 +133,10 @@ class LaygoBaseInfo(object):
         return self._tech_cls.get_laygo_fg2d_s_short()
 
     @property
+    def min_sub_space(self):
+        return self._tech_cls.get_min_sub_space_columns(self._lch_unit)
+
+    @property
     def lch(self):
         return self._lch_unit * self.grid.layout_unit * self.grid.resolution
 
@@ -273,6 +277,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     @property
     def fg2d_s_short(self):
         return self._laygo_info.fg2d_s_short
+
+    @property
+    def min_sub_space(self):
+        return self._laygo_info.min_sub_space
 
     def _get_track_intervals(self, hm_layer, orient, info, ycur, ybot, ytop, delta):
         if 'g_conn_y' in info:

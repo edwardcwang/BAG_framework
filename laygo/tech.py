@@ -85,6 +85,24 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
 
     @classmethod
     @abc.abstractmethod
+    def get_min_sub_space_columns(cls, lch_unit):
+        # type: (int) -> int
+        """Returns the minimum number of space columns needed around substrate blocks.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+
+        Returns
+        -------
+        num_cols : int
+            minimum number of space columns.
+        """
+        return 1
+
+    @classmethod
+    @abc.abstractmethod
     def get_laygo_sub_info(cls, lch_unit, w, mos_type, threshold, **kwargs):
         # type: (int, int, str, str, **kwargs) -> Dict[str, Any]
         """Returns the transistor information dictionary for laygo blocks.
