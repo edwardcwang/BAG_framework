@@ -85,10 +85,11 @@ class LaygoIntvSet(object):
             start_info = self._end_flags[0]
 
         if num_col not in self._end_flags:
-            end_flag = self._default_end_info
+            end_info = self._default_end_info
         else:
-            end_flag = self._end_flags[num_col]
-        return start_info, end_flag
+            end_info = self._end_flags[num_col]
+
+        return start_info, end_info
 
     def get_end(self):
         if not self._intv:
@@ -131,6 +132,10 @@ class LaygoBaseInfo(object):
     @property
     def fg2d_s_short(self):
         return self._tech_cls.get_laygo_fg2d_s_short()
+
+    @property
+    def sub_columns(self):
+        return self._tech_cls.get_sub_columns(self._lch_unit)
 
     @property
     def min_sub_space(self):
@@ -277,6 +282,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     @property
     def fg2d_s_short(self):
         return self._laygo_info.fg2d_s_short
+
+    @property
+    def sub_columns(self):
+        return self._laygo_info.sub_columns
 
     @property
     def min_sub_space(self):
@@ -780,11 +789,14 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             threshold=threshold,
             options=options,
         )
+        num_col = 1
         if mos_type == 'ntap' or mos_type == 'ptap':
             master = self.new_template(params=params, temp_cls=LaygoSubstrate)
         else:
             params['blk_type'] = blk_type
             master = self.new_template(params=params, temp_cls=LaygoPrimitive)
+            if blk_type == 'sub':
+                num_col = self.sub_columns
 
         intv = self._used_list[row_idx]
         inst_endl, inst_endr = master.get_end_info()
@@ -792,7 +804,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             inst_endl, inst_endr = inst_endr, inst_endl
         for inst_num in range(nx):
             intv_offset = col_idx + spx * inst_num
-            inst_intv = intv_offset, intv_offset + 1
+            inst_intv = intv_offset, intv_offset + num_col
             if not intv.add(inst_intv, inst_endl, inst_endr):
                 raise ValueError('Cannot add primitive on row %d, '
                                  'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
@@ -832,11 +844,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         row_orient = self._row_orientations[row_idx]
         intv = self._used_list[row_idx]
 
-        # update used interval
-        inst_intv = (col_idx, col_idx + num_blk)
-        if not intv.add(inst_intv, False, False):
-            raise ValueError('Cannot add space on row %d, column [%d, %d)' % (row_idx, inst_intv[0], inst_intv[1]))
-
         params = dict(
             row_info=row_info,
             name_id=row_info['row_name_id'],
@@ -846,6 +853,12 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         params.update(kwargs)
         inst_name = 'XR%dC%d' % (row_idx, col_idx)
         master = self.new_template(params=params, temp_cls=LaygoSpace)
+
+        # update used interval
+        endl, endr = master.get_end_info()
+        inst_intv = (col_idx, col_idx + num_blk)
+        if not intv.add(inst_intv, endl, endr):
+            raise ValueError('Cannot add space on row %d, column [%d, %d)' % (row_idx, inst_intv[0], inst_intv[1]))
 
         x0 = self._laygo_info.left_margin + col_idx * self._laygo_info.col_width
         y0 = row_y[1] if row_orient == 'R0' else row_y[2]
