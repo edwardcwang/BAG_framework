@@ -276,7 +276,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
     @classmethod
     @abc.abstractmethod
     def get_valid_extension_widths(cls, lch_unit, top_ext_info, bot_ext_info):
-        # type: (int, Tuple[Any, ...], Tuple[Any, ...]) -> List[int]
+        # type: (int, Any, Any) -> List[int]
         """Returns a list of valid extension widths in mos_pitch units.
         
         the list should be sorted in increasing order, and any extension widths greater than
@@ -288,18 +288,17 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         ----------
         lch_unit : int
             the channel length in resolution units.
-        top_ext_info : Tuple[Any, ...]
-            a tuple containing layout information about the top block.
-        bot_ext_info : Tuple[Any, ...]
-            a tuple containing layout information about the bottom block.
+        top_ext_info : Any
+            layout information about the top block.
+        bot_ext_info : Any
+            layout information about the bottom block.
         """
         return [0]
 
     @classmethod
     @abc.abstractmethod
-    def get_ext_info(cls, lch_unit, w, bot_mtype, top_mtype, bot_thres, top_thres, fg,
-                     top_ext_info, bot_ext_info):
-        # type: (int, int, str, str, str, str, int, Tuple[Any, ...], Tuple[Any, ...]) -> Dict[str, Any]
+    def get_ext_info(cls, lch_unit, w, fg, top_ext_info, bot_ext_info):
+        # type: (int, int, int, Any, Any) -> Dict[str, Any]
         """Returns the extension layout information dictionary.
         
         Parameters
@@ -308,21 +307,13 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             the channel length in resolution units.
         w : int
             the transistor width in number of fins/resolution units.
-        bot_mtype : str
-            the bottom block type.
-        top_mtype : str
-            the top block type.
-        bot_thres : str
-            the bottom threshold flavor.
-        top_thres : str
-            the top threshold flavor.
         fg : int
             total number of fingers.
-        top_ext_info : Tuple[Any, ...]
-            a tuple containing layout information about the top block.
-        bot_ext_info : Tuple[Any, ...]
-            a tuple containing layout information about the bottom block.
-            
+        top_ext_info : Any
+            layout information about the top block.
+        bot_ext_info : Any
+            layout information about the bottom block.
+
         Returns
         -------
         ext_info : Dict[str, Any]

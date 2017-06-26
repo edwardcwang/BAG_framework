@@ -156,10 +156,8 @@ class AnalogMOSExt(TemplateBase):
         self._layout_info = None
         if self.params['is_laygo']:
             self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
-            self._fg = self._tech_cls.get_analog_unit_fg()
         else:
             self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
-            self._fg = self._tech_cls.get_analog_unit_fg()
 
     @classmethod
     def get_default_param_values(cls):
@@ -179,10 +177,7 @@ class AnalogMOSExt(TemplateBase):
         return dict(
             lch='channel length, in meters.',
             w='extension width, in layout units/number of fins.',
-            bot_mtype="bottom transistor/substrate type",
-            top_mtype="top transistor/substrate type.",
-            bot_thres='bottom transistor/substrate threshold flavor.',
-            top_thres='top transistor/substrate threshold flavor.',
+            fg='number of fingers.',
             top_ext_info='top extension info.',
             bot_ext_info='bottom extension info.',
             is_laygo='True if this extension is used in LaygoBase.',
@@ -192,14 +187,11 @@ class AnalogMOSExt(TemplateBase):
         return self._layout_info
 
     def get_layout_basename(self):
-        fmt = 'ext_b%s_t%s_l%s_w%s_b%s_t%s'
-        bot_mtype = self.params['bot_mtype']
-        top_mtype = self.params['top_mtype']
-        bot_thres = self.params['bot_thres']
-        top_thres = self.params['top_thres']
+        fmt = 'ext_l%s_w%s_fg%d'
         lstr = float_to_si_string(self.params['lch'])
         wstr = float_to_si_string(self.params['w'])
-        ans = fmt % (bot_mtype, top_mtype, lstr, wstr, bot_thres, top_thres)
+        fg = self.params['fg']
+        ans = fmt % (lstr, wstr, fg)
         if self.params['is_laygo']:
             ans = 'laygo_' + ans
         return ans
@@ -209,14 +201,15 @@ class AnalogMOSExt(TemplateBase):
         return self.to_immutable_id(key)
 
     def draw_layout(self):
-        self._draw_layout_helper(**self.params)
+        lch = self.params['lch']
+        w = self.params['w']
+        fg = self.params['fg']
+        top_ext_info = self.params['top_ext_info']
+        bot_ext_info = self.params['bot_ext_info']
 
-    def _draw_layout_helper(self, lch, w, bot_mtype, top_mtype, bot_thres, top_thres, top_ext_info,
-                            bot_ext_info, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        ext_info = self._tech_cls.get_ext_info(lch_unit, w, bot_mtype, top_mtype, bot_thres, top_thres, self._fg,
-                                               top_ext_info, bot_ext_info)
+        ext_info = self._tech_cls.get_ext_info(lch_unit, w, fg, top_ext_info, bot_ext_info)
         self._layout_info = ext_info
         self._tech_cls.draw_mos(self, ext_info)

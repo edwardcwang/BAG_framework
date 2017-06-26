@@ -875,7 +875,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         mos_kwargs = [{}] + mos_kwargs + [{}]
         return track_spec_list, master_list, mos_kwargs, w_list_final
 
-    def _place_helper(self, bot_ext_w, track_spec_list, master_list, gds_space, hm_layer, mos_pitch, tot_pitch, dy):
+    def _place_helper(self, fg_tot, bot_ext_w, track_spec_list, master_list, gds_space, hm_layer,
+                      mos_pitch, tot_pitch, dy):
 
         # based on line-end spacing, find the number of horizontal tracks
         # needed between routing tracks of adjacent blocks.
@@ -883,7 +884,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         via_ext = self.grid.get_via_extensions(hm_layer - 1, 1, 1, unit_mode=True)[0]
         hm_w = self.grid.get_track_width(hm_layer, 1, unit_mode=True)
         conn_delta = via_ext + hm_w // 2
-        fg = self._tech_cls.get_analog_unit_fg()
 
         # place bottom substrate at dy
         y_cur = dy
@@ -1035,22 +1035,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                         # update y_next
                         y_next = y_top_cur + ext_w * mos_pitch
 
-                if 'mos_type' in cur_master.params:
-                    bot_mtype = cur_master.params['mos_type']
-                else:
-                    bot_mtype = cur_master.params['sub_type']
-                if 'mos_type' in next_master.params:
-                    top_mtype = next_master.params['mos_type']
-                else:
-                    top_mtype = next_master.params['sub_type']
                 ext_params = dict(
                     lch=cur_master.params['lch'],
                     w=ext_w,
-                    bot_mtype=bot_mtype,
-                    top_mtype=top_mtype,
-                    bot_thres=cur_master.params['threshold'],
-                    top_thres=next_master.params['threshold'],
-                    fg=fg,
+                    fg=fg_tot,
                     top_ext_info=top_ext_info,
                     bot_ext_info=bot_ext_info,
                 )
@@ -1095,17 +1083,18 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         dy = bot_end_master.array_box.height_unit
 
         # first try: place everything, but blocks as close to the bottom as possible.
-        y_list, ext_list, tot_ntr, gtr_intv, dtr_intv = self._place_helper(0, track_spec_list, master_list, gds_space,
-                                                                           hm_layer, mos_pitch, tot_pitch, dy)
+        y_list, ext_list, tot_ntr, gtr_intv, dtr_intv = self._place_helper(fg_tot, 0, track_spec_list, master_list,
+                                                                           gds_space, hm_layer, mos_pitch,
+                                                                           tot_pitch, dy)
         ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
         print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
         while ext_first < ext_last - 1:
             # if the bottom extension width is smaller than the top extension width (and differ by more than 1),
             # then we can potentially get a more centered placement by increasing the minimum bottom extenison width.
             bot_ext_w = ext_first + 1
-            y_next, ext_next, tot_ntr_next, gnext, dnext = self._place_helper(bot_ext_w, track_spec_list, master_list,
-                                                                              gds_space, hm_layer, mos_pitch,
-                                                                              tot_pitch, dy)
+            y_next, ext_next, tot_ntr_next, gnext, dnext = self._place_helper(fg_tot, bot_ext_w, track_spec_list,
+                                                                              master_list, gds_space, hm_layer,
+                                                                              mos_pitch, tot_pitch, dy)
             ext_first_next, ext_last_next = ext_next[0][0], ext_next[-1][0]
             print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first_next, ext_last_next, tot_ntr_next))
             if tot_ntr_next > tot_ntr or abs(ext_last - ext_first) < abs(ext_last_next - ext_first_next):
@@ -1215,7 +1204,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 ext_edgel_master = self.new_template(params=ext_edgel_params, temp_cls=AnalogEdge)
                 yo = inst.array_box.top_unit
                 edgel = self.add_instance(ext_edgel_master, loc=(0, yo), unit_mode=True)
-                self.add_instance(ext_master, loc=(inst_xo, yo), nx=nx, spx=spx, unit_mode=True)
+                self.add_instance(ext_master, loc=(inst_xo, yo), unit_mode=True)
                 ext_edger_params = dict(
                     top_layer=top_layer,
                     is_end=right_end,
