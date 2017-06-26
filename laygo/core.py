@@ -122,6 +122,10 @@ class LaygoBaseInfo(object):
         self.end_mode = end_mode
 
     @property
+    def unit_fg(self):
+        return self._tech_cls.get_laygo_unit_fg()
+
+    @property
     def tech_cls(self):
         return self._tech_cls
 
@@ -357,7 +361,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             row_min_tracks = [{}] * self._num_rows
 
         # update LaygoInfo information
-
         if not draw_boundaries:
             end_mode = 0
         if top_layer is not None:
@@ -415,7 +418,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                         row_kwargs, num_g_tracks, num_gb_tracks, num_ds_tracks)
 
         # compute location and information of each row
-        result = self._place_rows(ybot, tot_height_pitch, row_specs, row_types, row_thresholds)
+        result = self._place_rows(ybot, tot_height_pitch, row_specs)
         self._row_infos, self._ext_params, self._row_y = result
 
     def get_digital_row_info(self):
@@ -550,7 +553,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return ext_w, sub_extw
 
-    def _place_rows(self, ybot, tot_height_pitch, row_specs, row_types, row_thresholds):
+    def _place_rows(self, ybot, tot_height_pitch, row_specs):
         lch_unit = self._laygo_info.lch_unit
         ext_params_list = []
         row_infos = []
@@ -684,12 +687,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 ext_params = dict(
                     lch=self._laygo_info.lch,
                     w=prev_ext_h + cur_bot_ext_h,
-                    bot_mtype=row_types[idx - 1],
-                    top_mtype=row_type,
-                    bot_thres=row_thresholds[idx - 1],
-                    top_thres=row_thresholds[idx],
-                    top_ext_info=prev_ext_info,
-                    bot_ext_info=ext_bot_info,
+                    fg=self._laygo_info.unit_fg,
+                    top_ext_info=ext_bot_info,
+                    bot_ext_info=prev_ext_info,
                     is_laygo=True,
                 )
                 ext_y = row_y[-1][2]

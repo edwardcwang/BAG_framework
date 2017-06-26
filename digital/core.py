@@ -82,6 +82,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         mos_pitch = self._laygo_info.mos_pitch
         tot_height = self._row_height * num_rows
         tech_cls = self._laygo_info.tech_cls
+        fg_unit = self._laygo_info.unit_fg
 
         bot_extw = row_info['bot_extw']
         bot_sub_extw = row_info['bot_sub_extw']
@@ -120,10 +121,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             bot_ext_params = dict(
                 lch=lch,
                 w=bot_extw_tot,
-                bot_mtype=sub_type,
-                top_mtype=mtype,
-                bot_thres=thres,
-                top_thres=thres,
+                fg=fg_unit,
                 top_ext_info=row_info['bot_ext_info'],
                 bot_ext_info=sub_ext_info,
                 is_laygo=True,
@@ -142,8 +140,8 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 self._top_sub_master = self._bot_sub_master
                 top_extw = bot_extw
                 top_ext_params = bot_ext_params.copy()
-                top_ext_params['bot_mtype'] = mtype
-                top_ext_params['top_mtype'] = sub_type
+                top_ext_params['bot_ext_info'] = bot_ext_params['top_ext_info']
+                top_ext_params['top_ext_info'] = bot_ext_params['bot_ext_info']
                 top_extw_tot = bot_extw_tot
             else:
                 mtype = row_info['row_types'][-1]
@@ -173,12 +171,9 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 top_ext_params = dict(
                     lch=lch,
                     w=top_extw_tot,
-                    bot_mtype=mtype,
-                    top_mtype=sub_type,
-                    bot_thres=thres,
-                    top_thres=thres,
-                    top_ext_info=row_info['top_ext_info'],
-                    bot_ext_info=sub_ext_info,
+                    fg=fg_unit,
+                    top_ext_info=sub_ext_info,
+                    bot_ext_info=row_info['top_ext_info'],
                     is_laygo=True,
                 )
 
@@ -206,22 +201,15 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         for row_idx in range(num_rows - 1):
             if row_idx % 2 == 0:
                 w = row_info['top_extw']
-                mtype = row_info['row_types'][-1]
-                thres = row_info['row_thresholds'][-1]
                 ext_info = row_info['top_ext_info']
             else:
                 w = bot_extw
-                mtype = row_info['row_types'][0]
-                thres = row_info['row_thresholds'][0]
                 ext_info = row_info['bot_ext_info']
 
             cur_params = dict(
                 lch=lch,
                 w=w * 2,
-                bot_mtype=mtype,
-                top_mtype=mtype,
-                bot_thres=thres,
-                top_thres=thres,
+                fg=fg_unit,
                 top_ext_info=ext_info,
                 bot_ext_info=ext_info,
                 is_laygo=True,
