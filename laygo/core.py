@@ -736,7 +736,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return TrackID(hm_layer, tid, width=width, num=num, pitch=pitch)
 
     def get_ext_info(self):
-        return self._get_ext_info_row(self._num_rows - 1, 1), self._get_ext_info_row(0, 0)
+        return self._get_ext_info_row(0, 0), self._get_ext_info_row(self._num_rows - 1, 1)
 
     def _get_ext_info_row(self, row_idx, ext_idx):
         intv = self._used_list[row_idx]

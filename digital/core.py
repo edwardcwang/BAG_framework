@@ -324,7 +324,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return self._draw_boundary_cells()
 
     def get_ext_info(self):
-        return self._get_ext_info_row(self._num_rows - 1, 1), self._get_ext_info_row(0, 0)
+        return self._get_ext_info_row(0, 0), self._get_ext_info_row(self._num_rows - 1, 1)
 
     def _get_ext_info_row(self, row_idx, ext_idx):
         num_col, num_row = self._dig_size
