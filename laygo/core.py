@@ -298,6 +298,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def min_sub_space(self):
         return self._laygo_info.min_sub_space
 
+    @property
+    def tot_height(self):
+        return self._row_y[-1][-1]
+
     def _get_track_intervals(self, hm_layer, orient, info, ycur, ybot, ytop, delta):
         if 'g_conn_y' in info:
             gyt = info['g_conn_y'][1]
@@ -716,6 +720,11 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             prev_ext_h = cur_top_ext_h
 
         return row_infos, ext_params_list, row_y
+
+    def get_num_tracks(self, row_idx, tr_type):
+        row_info = self._row_infos[row_idx]
+        intv = row_info['%s_intv' % tr_type]
+        return int(intv[1] - intv[0])
 
     def get_track_index(self, row_idx, tr_type, tr_idx):
         row_info = self._row_infos[row_idx]
