@@ -259,11 +259,14 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             inst_endl, inst_endr = inst_endr, inst_endl
 
         num_inst_col = master.laygo_size[0]
+        ext_info = master.get_ext_info()
+        if row_idx % 2 == 1:
+            ext_info = ext_info[1], ext_info[0]
 
         for inst_num in range(nx):
             intv_offset = col_idx + spx * inst_num
             inst_intv = intv_offset, intv_offset + num_inst_col
-            if not intv.add(inst_intv, inst_endl, inst_endr):
+            if not intv.add(inst_intv, ext_info, inst_endl, inst_endr):
                 raise ValueError('Cannot add primitive on row %d, '
                                  'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
 

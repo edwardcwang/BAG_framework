@@ -68,6 +68,9 @@ class LaygoIntvSet(object):
         else:
             return False
 
+    def items(self):
+        return self._intv.items()
+
     def get_complement(self, total_intv):
         compl_intv = self._intv.get_complement(total_intv)
         intv_list = []
@@ -720,6 +723,13 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         tid = self.get_track_index(row_idx, tr_type, tr_idx)
         hm_layer = self._tech_cls.get_dig_conn_layer() + 1
         return TrackID(hm_layer, tid, width=width, num=num, pitch=pitch)
+
+    def get_ext_info(self):
+        return self._get_ext_info_row(self._num_rows - 1, 1), self._get_ext_info_row(0, 0)
+
+    def _get_ext_info_row(self, row_idx, ext_idx):
+        intv = self._used_list[row_idx]
+        return [(end - start, ext_info[ext_idx]) for (start, end), ext_info in intv.items()]
 
     def get_end_info(self):
         endl_list, endr_list = [], []
