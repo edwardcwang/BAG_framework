@@ -52,8 +52,8 @@ class LaygoIntvSet(object):
         self._end_flags = {}
         self._default_end_info = default_end_info
 
-    def add(self, intv, endl, endr):
-        ans = self._intv.add(intv)
+    def add(self, intv, ext_info, endl, endr):
+        ans = self._intv.add(intv, val=ext_info)
         if ans:
             start, stop = intv
             if start in self._end_flags:
@@ -800,12 +800,15 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         intv = self._used_list[row_idx]
         inst_endl, inst_endr = master.get_end_info()
+        ext_info = master.get_ext_info()
+        if row_orient == 'MX':
+            ext_info = ext_info[1], ext_info[0]
         if flip:
             inst_endl, inst_endr = inst_endr, inst_endl
         for inst_num in range(nx):
             intv_offset = col_idx + spx * inst_num
             inst_intv = intv_offset, intv_offset + num_col
-            if not intv.add(inst_intv, inst_endl, inst_endr):
+            if not intv.add(inst_intv, ext_info, inst_endl, inst_endr):
                 raise ValueError('Cannot add primitive on row %d, '
                                  'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
 
@@ -856,8 +859,12 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # update used interval
         endl, endr = master.get_end_info()
+        ext_info = master.get_ext_info()
+        if row_orient == 'MX':
+            ext_info = ext_info[1], ext_info[0]
+
         inst_intv = (col_idx, col_idx + num_blk)
-        if not intv.add(inst_intv, endl, endr):
+        if not intv.add(inst_intv, ext_info, endl, endr):
             raise ValueError('Cannot add space on row %d, column [%d, %d)' % (row_idx, inst_intv[0], inst_intv[1]))
 
         x0 = self._laygo_info.left_margin + col_idx * self._laygo_info.col_width
