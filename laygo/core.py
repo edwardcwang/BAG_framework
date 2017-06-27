@@ -41,6 +41,7 @@ from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.objects import Instance
 from bag.layout.routing import TrackID
 
+from ..analog_mos.mos import AnalogMOSExt
 from .tech import LaygoTech
 from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow, LaygoSpace
 
@@ -268,7 +269,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._used_list = None  # type: List[LaygoIntvSet]
         self._bot_end_master = None
         self._top_end_master = None
-        self._has_boundaries = False
         self._ext_edge_infos = None
         self._bot_sub_extw = 0
         self._top_sub_extw = 0
@@ -558,6 +558,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     def _place_rows(self, ybot, tot_height_pitch, row_specs):
         lch_unit = self._laygo_info.lch_unit
+        top_layer = self._laygo_info.top_layer
+        guard_ring_nf = self._laygo_info.guard_ring_nf
+
         ext_params_list = []
         row_infos = []
         row_y = []
@@ -684,10 +687,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             mos_info['ds_intv'] = ds_intv
             mos_info['gb_intv'] = gb_intv
             if prev_ext_info is None:
-                ext_params = None
                 ext_y = 0
+                edge_params = None
             else:
-                ext_params = dict(
+                nom_ext_params = dict(
                     lch=self._laygo_info.lch,
                     w=prev_ext_h + cur_bot_ext_h,
                     fg=self._laygo_info.unit_fg,
@@ -695,10 +698,18 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     bot_ext_info=prev_ext_info,
                     is_laygo=True,
                 )
+                nom_ext_master = self.new_template(params=nom_ext_params, temp_cls=AnalogMOSExt)
+                edge_params = dict(
+                    top_layer=top_layer,
+                    guard_ring_nf=guard_ring_nf,
+                    name_id=nom_ext_master.get_layout_basename(),
+                    layout_info=nom_ext_master.get_edge_layout_info(),
+                    is_laygo=True,
+                )
                 ext_y = row_y[-1][2]
             row_y.append((y0, ycur, ycur + blk_height, ytop))
             row_infos.append(mos_info)
-            ext_params_list.append((ext_params, ext_y))
+            ext_params_list.append((prev_ext_h + cur_bot_ext_h, ext_y, edge_params))
 
             y0 = ytop
             prev_ext_info = ext_top_info
@@ -729,7 +740,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     def _get_ext_info_row(self, row_idx, ext_idx):
         intv = self._used_list[row_idx]
-        return [(end - start, ext_info[ext_idx]) for (start, end), ext_info in intv.items()]
+        return [(end, ext_info[ext_idx]) for (_, end), ext_info in intv.items()]
 
     def get_end_info(self):
         endl_list, endr_list = [], []
@@ -769,9 +780,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             bound_box = BBox(0, 0, width, height, self.grid.resolution, unit_mode=True)
             self.set_size_from_bound_box(top_layer, bound_box)
             self.add_cell_boundary(bound_box)
-
-            # draw extensions
-            self._ext_edge_infos = self._tech_cls.draw_extensions(self, num_col, self._ext_params, self._laygo_info)
 
     def add_laygo_primitive(self, blk_type, loc=(0, 0), flip=False, nx=1, spx=0, **kwargs):
         # type: (str, Tuple[int, int], bool, int, int, **kwargs) -> Instance
@@ -845,10 +853,26 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if self._laygo_size is None:
             raise ValueError('laygo_size must be set before filling spaces.')
 
-        total_intv = (0, self._laygo_size[0])
+        num_col = self._laygo_size[0]
+        # add space blocks
+        total_intv = (0, num_col)
         for row_idx, intv in enumerate(self._used_list):
             for (start, end), end_info in zip(*intv.get_complement(total_intv)):
                 self.add_laygo_space(end_info, num_blk=end - start, loc=(start, row_idx))
+
+        # draw extensions
+        self._ext_edge_infos = []
+        laygo_info = self._laygo_info
+        tech_cls = laygo_info.tech_cls
+        for bot_ridx in range(0, self._num_rows - 1):
+            w, yext, edge_params = self._ext_params[bot_ridx + 1]
+            bot_ext_list = self._get_ext_info_row(bot_ridx, 1)
+            top_ext_list = self._get_ext_info_row(bot_ridx + 1, 0)
+            self._ext_edge_infos.extend(tech_cls.draw_extensions(self, laygo_info, w, yext, bot_ext_list,
+                                                                 top_ext_list, edge_params))
+
+        # draw boundaries and return guard ring supplies in boundary cells
+        return self._draw_boundary_cells()
 
     def add_laygo_space(self, adj_end_info, num_blk=1, loc=(0, 0), **kwargs):
         col_idx, row_idx = loc
@@ -902,10 +926,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return row_edge_infos
 
-    def draw_boundary_cells(self):
-        draw_boundaries = self._laygo_info.draw_boundaries
-
-        if draw_boundaries and not self._has_boundaries:
+    def _draw_boundary_cells(self):
+        if self._laygo_info.draw_boundaries:
             if self._laygo_size is None:
                 raise ValueError('laygo_size must be set before drawing boundaries.')
 
@@ -946,7 +968,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                                                   yt, self._bot_end_master, self._top_end_master,
                                                                   edge_infos)
 
-            self._has_boundaries = True
             return vdd_warrs, vss_warrs
 
         return [], []

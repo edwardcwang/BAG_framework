@@ -349,9 +349,12 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
     @classmethod
     def draw_extensions(cls,  # type: LaygoTech
                         template,  # type: TemplateBase
-                        num_col,  # type: int
-                        ext_infos,  # type: List[Tuple[Dict[str, Any], int]]
                         laygo_info,  # type: 'LaygoBaseInfo'
+                        w,  # type: int
+                        yext,  # type: int
+                        bot_ext_list,  # type: List[Tuple[int, Any]]
+                        top_ext_list,  # type: List[Tuple[int, Any]]
+                        edge_params,  # type: Dict[str, Any]
                         ):
         # type: (...) -> List[Tuple[int, int, str, Dict[str, Any]]]
         """Draw extension rows in the given LaygoBase/DigitalBase template.
@@ -360,12 +363,18 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
         ----------
         template : TemplateBase
             the LaygoBase/DigitalBase object to draw layout in.
-        num_col : int
-            number of primitive columns in the template.
-        ext_infos : List[Tuple[Dict[str, Any], int]]
-            a list of parameters and Y coordinates of each extension row.
         laygo_info : LaygoBaseInfo
             the LaygoBaseInfo object.
+        w : int
+            extension width in number of mos pitches.
+        yext : int
+            Y coordinate of the extension block.
+        bot_ext_list : List[Tuple[int, Any]]
+            list of tuples of end finger index and bottom extension information
+        top_ext_list : List[Tuple[int, Any]]
+            list of tuples of end finger index and top extension information
+        edge_params : Dict[str, Any]
+            edge parameters dictionary.
 
         Returns
         -------
@@ -373,28 +382,45 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             a list of X/Y coordinate, orientation, and parameters for extension edge blocks.
             empty list if draw_boundaries is False.
         """
+        lch = laygo_info.lch
         left_margin = laygo_info.left_margin
-        col_width = laygo_info.col_width
-        top_layer = laygo_info.top_layer
-        guard_ring_nf = laygo_info.guard_ring_nf
 
-        ext_edges = []
-        for idx, (ext_params, yext) in enumerate(ext_infos):
-            if ext_params is not None:
-                ext_h = ext_params['w']
-                if ext_h > 0 or cls.draw_zero_extension():
-                    ext_master = template.new_template(params=ext_params, temp_cls=AnalogMOSExt)
-                    template.add_instance(ext_master, inst_name='XEXT%d' % idx, loc=(left_margin, yext),
-                                          nx=num_col, spx=col_width, unit_mode=True)
-                    edge_params = dict(
-                        top_layer=top_layer,
-                        guard_ring_nf=guard_ring_nf,
-                        name_id=ext_master.get_layout_basename(),
-                        layout_info=ext_master.get_edge_layout_info(),
-                        is_laygo=True,
-                    )
-                    ext_edges.append((yext, edge_params))
-        return ext_edges
+        cur_col = 0
+        bot_idx = top_idx = 0
+        bot_len = len(bot_ext_list)
+        top_len = len(top_ext_list)
+        ext_groups = []
+        while bot_idx < bot_len and top_idx < top_len:
+            bot_stop, bot_info = bot_ext_list[bot_idx]
+            top_stop, top_info = top_ext_list[top_idx]
+            if bot_stop < top_stop:
+                ext_groups.append((bot_stop - cur_col, bot_info, top_info))
+                cur_col = bot_stop
+                bot_idx += 1
+            else:
+                ext_groups.append((top_stop - cur_col, bot_info, top_info))
+                cur_col = top_stop
+                top_idx += 1
+                if bot_stop == top_stop:
+                    bot_idx += 1
+
+        curx = left_margin
+        for num_col, bot_info, top_info in ext_groups:
+            if w > 0 or cls.draw_zero_extension():
+                ext_params = dict(
+                    lch=lch,
+                    w=w,
+                    fg=num_col * cls.get_laygo_unit_fg(),
+                    top_ext_info=top_info,
+                    bot_ext_info=bot_info,
+                    is_laygo=True,
+                )
+                ext_master = template.new_template(params=ext_params, temp_cls=AnalogMOSExt)
+                template.add_instance(ext_master, loc=(curx, yext), unit_mode=True)
+                curx += ext_master.prim_bound_box.width_unit
+
+        return [(left_margin, yext, 'R0', edge_params),
+                (curx + left_margin, yext, 'MY', edge_params)]
 
     @classmethod
     def draw_boundaries(cls,  # type: LaygoTech
