@@ -356,7 +356,7 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
                         top_ext_list,  # type: List[Tuple[int, Any]]
                         edge_params,  # type: Dict[str, Any]
                         ):
-        # type: (...) -> List[Tuple[int, int, str, Dict[str, Any]]]
+        # type: (...) -> List[Tuple[int, str, Dict[str, Any]]]
         """Draw extension rows in the given LaygoBase/DigitalBase template.
 
         Parameters
@@ -378,8 +378,8 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
 
         Returns
         -------
-        ext_edges : List[Tuple[int, int, str, Dict[str, Any]]]
-            a list of X/Y coordinate, orientation, and parameters for extension edge blocks.
+        ext_edges : List[Tuple[int, str, Dict[str, Any]]]
+            a list of Y coordinate, orientation, and parameters for extension edge blocks.
             empty list if draw_boundaries is False.
         """
         lch = laygo_info.lch
@@ -419,8 +419,7 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
                 template.add_instance(ext_master, loc=(curx, yext), unit_mode=True)
                 curx += ext_master.prim_bound_box.width_unit
 
-        return [(left_margin, yext, 'R0', edge_params),
-                (curx + left_margin, yext, 'MY', edge_params)]
+        return [(yext, 'R0', edge_params), (yext, 'MY', edge_params)]
 
     @classmethod
     def draw_boundaries(cls,  # type: LaygoTech

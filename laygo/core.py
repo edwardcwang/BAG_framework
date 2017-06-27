@@ -939,12 +939,15 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
             edge_infos = []
             # compute extension edge information
-            for y, ee_params in self._ext_edge_infos:
-                for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
-                    edge_params = ee_params.copy()
-                    edge_params['is_end'] = is_end
-                    eorient = 'MY' if flip_lr else 'R0'
-                    edge_infos.append((x, y, eorient, edge_params))
+            for y, orient, edge_params in self._ext_edge_infos:
+                tmp_copy = edge_params.copy()
+                if orient == 'R0':
+                    x = 0
+                    tmp_copy['is_end'] = left_end
+                else:
+                    x = xr
+                    tmp_copy['is_end'] = right_end
+                edge_infos.append((x, y, orient, tmp_copy))
 
             # compute row edge information
             row_edge_infos = self._get_row_edge_infos()
