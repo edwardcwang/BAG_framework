@@ -330,17 +330,15 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         num_col, num_row = self._dig_size
         if row_idx == -1:
             ext_info = self._bot_sub_master.get_ext_info()[1]
-            return [(end_idx, ext_info) for end_idx in range(1, num_col + 1)]
+            return [ext_info] * num_col
         elif row_idx == num_row:
             ext_info = self._top_sub_master.get_ext_info()[1]
-            return [(end_idx, ext_info) for end_idx in range(1, num_col + 1)]
+            return [ext_info] * num_col
         else:
             intv = self._used_list[row_idx]
             ext_info_row = []
-            for (start, end), ext_info_inst in intv.items():
-                ext_info_list = ext_info_inst[ext_idx]
-                for (eidx, ext_info) in ext_info_list:
-                    ext_info_row.append((start + eidx, ext_info))
+            for ext_info_inst in intv.values():
+                ext_info_row.extend(ext_info_inst[ext_idx])
             return ext_info_row
 
     def get_end_info(self):

@@ -324,6 +324,26 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
         return None, None
 
     @classmethod
+    @abc.abstractmethod
+    def get_row_extension_info(cls, bot_ext_list, top_ext_list):
+        # type: (List[Any], List[Any]) -> List[Tuple[int, Any, Any]]
+        """Compute the list of bottom/top extension information pair needed to create Laygo extension row.
+
+        Parameters
+        ----------
+        bot_ext_list : List[Any]
+            list of bottom extension information objects.
+        top_ext_list : List[Any]
+            list of top extension information objects.
+
+        Returns
+        -------
+        ext_combo_list : List[Tuple[int, Any, Any]]
+            list of number of fingers and bottom/top extension information objects for each extension primitive.
+        """
+        return []
+
+    @classmethod
     def get_laygo_conn_track_info(cls, lch_unit):
         # type: (int) -> Tuple[int, int]
         """Returns dummy connection layer space and width.
@@ -385,32 +405,15 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
         lch = laygo_info.lch
         left_margin = laygo_info.left_margin
 
-        cur_col = 0
-        bot_idx = top_idx = 0
-        bot_len = len(bot_ext_list)
-        top_len = len(top_ext_list)
-        ext_groups = []
-        while bot_idx < bot_len and top_idx < top_len:
-            bot_stop, bot_info = bot_ext_list[bot_idx]
-            top_stop, top_info = top_ext_list[top_idx]
-            if bot_stop < top_stop:
-                ext_groups.append((bot_stop - cur_col, bot_info, top_info))
-                cur_col = bot_stop
-                bot_idx += 1
-            else:
-                ext_groups.append((top_stop - cur_col, bot_info, top_info))
-                cur_col = top_stop
-                top_idx += 1
-                if bot_stop == top_stop:
-                    bot_idx += 1
+        ext_groups = cls.get_row_extension_info(bot_ext_list, top_ext_list)
 
         curx = left_margin
-        for num_col, bot_info, top_info in ext_groups:
+        for fg, bot_info, top_info in ext_groups:
             if w > 0 or cls.draw_zero_extension():
                 ext_params = dict(
                     lch=lch,
                     w=w,
-                    fg=num_col * cls.get_laygo_unit_fg(),
+                    fg=fg,
                     top_ext_info=top_info,
                     bot_ext_info=bot_info,
                     is_laygo=True,

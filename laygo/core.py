@@ -69,8 +69,8 @@ class LaygoIntvSet(object):
         else:
             return False
 
-    def items(self):
-        return self._intv.items()
+    def values(self):
+        return self._intv.values()
 
     def get_complement(self, total_intv):
         compl_intv = self._intv.get_complement(total_intv)
@@ -740,7 +740,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     def _get_ext_info_row(self, row_idx, ext_idx):
         intv = self._used_list[row_idx]
-        return [(end, ext_info[ext_idx]) for (_, end), ext_info in intv.items()]
+        return [ext_info[ext_idx] for ext_info in intv.values()]
 
     def get_end_info(self):
         endl_list, endr_list = [], []
