@@ -278,7 +278,7 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
     @classmethod
     @abc.abstractmethod
     def draw_laygo_connection(cls, template, mos_info, blk_type, options):
-        # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> Tuple[Any, Any]
+        # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> Tuple[Tuple[Any, Any], Tuple[Any, Any]]
         """Draw digital transistor connection in the given template.
 
         Parameters
@@ -294,6 +294,8 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
 
         Returns
         -------
+        ext_info : Tuple[Any, ANy]
+            a tuple of extension information on top and bottom.
         end_info : Tuple[Any, Any]
             a tuple of the end information on left and right.
         """
@@ -302,7 +304,7 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
     @classmethod
     @abc.abstractmethod
     def draw_laygo_space_connection(cls, template, space_info, adj_end_info):
-        # type: (TemplateBase, Dict[str, Any], Tuple[Any, Any]) -> None
+        # type: (TemplateBase, Dict[str, Any], Tuple[Any, Any]) -> Tuple[Any, Any]
         """Draw digital transistor connection in the given template.
 
         Parameters
@@ -313,8 +315,13 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             the layout information dictionary.
         adj_end_info : Tuple[Any, Any]
             tuple of left and right end information object.
+
+        Returns
+        -------
+        ext_info : Tuple[Any, ANy]
+            a tuple of extension information on top and bottom.
         """
-        pass
+        return None, None
 
     @classmethod
     def get_laygo_conn_track_info(cls, lch_unit):
