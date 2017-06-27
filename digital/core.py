@@ -34,6 +34,7 @@ from future.utils import with_metaclass
 from bag.layout.util import BBox
 from bag.layout.template import TemplateBase, TemplateDB
 
+from ..analog_mos.mos import AnalogMOSExt
 from ..laygo.base import LaygoEndRow, LaygoSubstrate
 from ..laygo.core import LaygoBaseInfo, LaygoIntvSet
 
@@ -58,7 +59,6 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._ytop = None
         self._ext_params = None
         self._ext_edge_infos = None
-        self._has_boundaries = False
 
     @property
     def digital_size(self):
@@ -79,6 +79,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._used_list = [LaygoIntvSet(default_end_info) for _ in range(num_rows)]
 
         lch = self._laygo_info.lch
+        top_layer = self._laygo_info.top_layer
         mos_pitch = self._laygo_info.mos_pitch
         tot_height = self._row_height * num_rows
         tech_cls = self._laygo_info.tech_cls
@@ -90,7 +91,6 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         self._ext_params = []
         if draw_boundaries:
-            top_layer = self._laygo_info.top_layer
             lch_unit = self._laygo_info.lch_unit
             w_sub = self._laygo_info['w_sub']
             bot_end = (end_mode & 1) != 0
@@ -124,6 +124,14 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 fg=fg_unit,
                 top_ext_info=row_info['bot_ext_info'],
                 bot_ext_info=sub_ext_info,
+                is_laygo=True,
+            )
+            bot_ext_master = self.new_template(params=bot_ext_params, temp_cls=AnalogMOSExt)
+            bot_ext_edge_params = dict(
+                top_layer=top_layer,
+                guard_ring_nf=guard_ring_nf,
+                name_id=bot_ext_master.get_layout_basename(),
+                layout_info=bot_ext_master.get_edge_layout_info(),
                 is_laygo=True,
             )
 
@@ -177,6 +185,15 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     is_laygo=True,
                 )
 
+            top_ext_master = self.new_template(params=top_ext_params, temp_cls=AnalogMOSExt)
+            top_ext_edge_params = dict(
+                top_layer=top_layer,
+                guard_ring_nf=guard_ring_nf,
+                name_id=top_ext_master.get_layout_basename(),
+                layout_info=top_ext_master.get_edge_layout_info(),
+                is_laygo=True,
+            )
+
             y0 = self._bot_end_master.bound_box.height_unit
             y1 = y0 + self._bot_sub_master.bound_box.height_unit + bot_sub_extw * mos_pitch
             self._ybot = (y0, y1)
@@ -187,10 +204,8 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self._ytop = (y0, y1)
 
             # add extension between substrate and edge rows
-            for yext, extw, ext_params in ((bot_yext, bot_extw_tot, bot_ext_params),
-                                           (top_yext, top_extw_tot, top_ext_params)):
-                ext_params['w'] = extw
-                self._ext_params.append((ext_params, yext))
+            self._ext_params.append((0, bot_extw_tot, bot_yext, bot_ext_edge_params))
+            self._ext_params.append((self._num_rows, top_extw_tot, top_yext, top_ext_edge_params))
 
         else:
             self._ybot = (0, 0)
@@ -214,7 +229,15 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 bot_ext_info=ext_info,
                 is_laygo=True,
             )
-            self._ext_params.append((cur_params, ycur - w * mos_pitch))
+            cur_ext_master = self.new_template(params=cur_params, temp_cls=AnalogMOSExt)
+            cur_ext_edge_params = dict(
+                top_layer=top_layer,
+                guard_ring_nf=guard_ring_nf,
+                name_id=cur_ext_master.get_layout_basename(),
+                layout_info=cur_ext_master.get_edge_layout_info(),
+                is_laygo=True,
+            )
+            self._ext_params.append((row_idx + 1, w * 2, ycur - w * mos_pitch, cur_ext_edge_params))
             ycur += self._row_height
 
     def set_digital_size(self, num_col=None):
@@ -231,7 +254,6 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             col_width = self._laygo_info.col_width
             left_margin = self._laygo_info.left_margin
             right_margin = self._laygo_info.right_margin
-            tech_cls = self._laygo_info.tech_cls
 
             width = col_width * num_col
             height = self._ytop[1]
@@ -241,9 +263,6 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             bound_box = BBox(0, 0, width, height, self.grid.resolution, unit_mode=True)
             self.set_size_from_bound_box(top_layer, bound_box)
             self.add_cell_boundary(bound_box)
-
-            # draw extensions
-            self._ext_edge_infos = tech_cls.draw_extensions(self, num_col, self._ext_params, self._laygo_info)
 
     def add_digital_block(self, master, loc=(0, 0), flip=False, nx=1, spx=0):
         col_idx, row_idx = loc
@@ -289,7 +308,50 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                  nx=nx, spx=spx, unit_mode=True)
 
     def fill_space(self):
-        pass
+        if self._dig_size is None:
+            raise ValueError('digital size must be set before filling spaces.')
+
+        # draw extensions
+        self._ext_edge_infos = []
+        laygo_info = self._laygo_info
+        tech_cls = laygo_info.tech_cls
+        for top_ridx, w, yext, edge_params in self._ext_params:
+            bot_ext_list = self._get_ext_info_row(top_ridx - 1, 1)
+            top_ext_list = self._get_ext_info_row(top_ridx, 0)
+            self._ext_edge_infos.extend(tech_cls.draw_extensions(self, laygo_info, w, yext, bot_ext_list,
+                                                                 top_ext_list, edge_params))
+
+        return self._draw_boundary_cells()
+
+    def get_ext_info(self):
+        return self._get_ext_info_row(self._num_rows - 1, 1), self._get_ext_info_row(0, 0)
+
+    def _get_ext_info_row(self, row_idx, ext_idx):
+        num_col, num_row = self._dig_size
+        if row_idx == -1:
+            ext_info = self._bot_sub_master.get_ext_info()[1]
+            return [(end_idx, ext_info) for end_idx in range(1, num_col + 1)]
+        elif row_idx == num_row:
+            ext_info = self._top_sub_master.get_ext_info()[1]
+            return [(end_idx, ext_info) for end_idx in range(1, num_col + 1)]
+        else:
+            intv = self._used_list[row_idx]
+            ext_info_row = []
+            for (start, end), ext_info_inst in intv.items():
+                ext_info_list = ext_info_inst[ext_idx]
+                for (eidx, ext_info) in ext_info_list:
+                    ext_info_row.append((start + eidx, ext_info))
+            return ext_info_row
+
+    def get_end_info(self):
+        endl_list, endr_list = [], []
+        num_col = self._dig_size[0]
+        for intv in self._used_list:
+            endl, endr = intv.get_end_info(num_col)
+            endl_list.extend(endl)
+            endr_list.extend(endr)
+
+        return endl_list, endr_list
 
     def _get_end_info_row(self, row_idx):
         num_col = self._dig_size[0]
@@ -355,10 +417,8 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return edge_infos, bot_warrs, top_warrs
 
-    def draw_boundary_cells(self):
-        draw_boundaries = self._laygo_info.draw_boundaries
-
-        if draw_boundaries and not self._has_boundaries:
+    def _draw_boundary_cells(self):
+        if self._laygo_info.draw_boundaries:
             if self._dig_size is None:
                 raise ValueError('digital_size must be set before drawing boundaries.')
 
@@ -379,12 +439,15 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             edge_infos, bot_warrs, top_warrs = self._draw_end_substrates()
 
             # add extension edge in digital block
-            for y, ee_params in self._ext_edge_infos:
-                for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
-                    edge_params = ee_params.copy()
-                    edge_params['is_end'] = is_end
-                    eorient = 'MY' if flip_lr else 'R0'
-                    edge_infos.append((x, y, eorient, edge_params))
+            for y, orient, edge_params in self._ext_edge_infos:
+                tmp_copy = edge_params.copy()
+                if orient == 'R0':
+                    x = 0
+                    tmp_copy['is_end'] = left_end
+                else:
+                    x = xr
+                    tmp_copy['is_end'] = right_end
+                edge_infos.append((x, y, orient, tmp_copy))
 
             for ridx in range(self._num_rows):
                 endl_list, endr_list = self._get_end_info_row(ridx)
@@ -395,14 +458,17 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     yscale = -1
                     yoff = self._ybot[1] + (ridx + 1) * self._row_height
                 # add extension edges
-                for y, ee_params in ext_edge_infos:
-                    for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
-                        edge_params = ee_params.copy()
-                        edge_params['is_end'] = is_end
-                        eorient = 'MY' if flip_lr else 'R0'
-                        if yscale < 0:
-                            eorient = self._flip_ud(eorient)
-                        edge_infos.append((x, yscale * y + yoff, eorient, edge_params))
+                for y, orient, ee_params in ext_edge_infos:
+                    tmp_copy = ee_params.copy()
+                    if orient == 'R0':
+                        x = 0
+                        tmp_copy['is_end'] = left_end
+                    else:
+                        x = xr
+                        tmp_copy['is_end'] = right_end
+                    if yscale < 0:
+                        orient = self._flip_ud(orient)
+                    edge_infos.append((x, yscale * y + yoff, orient, tmp_copy))
                 # add row edges
                 for (y, row_orient, re_params), endl, endr in zip(row_edge_infos, endl_list, endr_list):
                     for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
@@ -425,7 +491,6 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                                                   self._bot_end_master, self._top_end_master,
                                                                   edge_infos)
 
-            self._has_boundaries = True
             return bot_warrs, top_warrs, gr_vdd_warrs, gr_vss_warrs
 
         return [], [], [], []
