@@ -1284,13 +1284,14 @@ class RoutingGrid(object):
         pitch = self.sp_tracks[layer_id] + w
 
         q, r = divmod(width - w, pitch)
+        ans = q + 1
         if r != 0:
             # check if this is a override width
-            test_width = self.get_track_width(layer_id, q + 1, unit_mode=True)
+            test_width = self.get_track_width(layer_id, q + 2, unit_mode=True)
             if test_width != width:
                 raise ValueError('Interval {} on layer {} width not quantized'.format(intv, layer_id))
-
-        return track, q + 1
+            ans = q + 2
+        return track, ans
 
     def copy(self):
         """Returns a deep copy of this RoutingGrid."""
