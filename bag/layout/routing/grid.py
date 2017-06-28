@@ -94,6 +94,7 @@ class RoutingGrid(object):
         self.dir_tracks = {}
         self.max_num_tr_tracks = {}
         self.block_pitch = {}
+        self.w_override = {}
 
         cur_dir = bot_dir
         for lay, sp, w, max_num in zip(layers, spaces, widths, max_num_tr):
@@ -256,6 +257,7 @@ class RoutingGrid(object):
         w = self.w_tracks[layer_id]
         sp = self.sp_tracks[layer_id]
         w_unit = width_ntr * (w + sp) - sp
+        w_unit = self.w_override[layer_id].get(width_ntr, w_unit)
         if unit_mode:
             return w_unit
         return w_unit * self._resolution
@@ -345,8 +347,11 @@ class RoutingGrid(object):
         sp_min_unit = self.tech_info.get_min_space(layer_type, width, unit_mode=True)
         w_unit = self.w_tracks[layer_id]
         sp_unit = self.sp_tracks[layer_id]
+        # if this width is overridden, we may have extra space
+        width_normal = w_unit * width_ntr + sp_unit * (width_ntr - 1)
+        extra_space = (width_normal - width) // 2
         half_pitch = (w_unit + sp_unit) // 2
-        num_half_pitch = -(-(sp_min_unit - sp_unit) // half_pitch)
+        num_half_pitch = -(-(sp_min_unit - sp_unit - extra_space) // half_pitch)
         if num_half_pitch % 2 == 0:
             return num_half_pitch // 2
         elif half_space:
@@ -704,15 +709,13 @@ class RoutingGrid(object):
         upper : Union[float, int]
             the upper bound coordinate perpendicular to wire direction.
         """
-        w = self.w_tracks[layer_id]
-        sp = self.sp_tracks[layer_id]
-        w_wire = width * w + (width - 1) * sp
-        center = int(tr_idx * (w + sp)) + self.offset_tracks[layer_id]
-        w_half = w_wire // 2
+        width_unit = self.get_track_width(layer_id, width, unit_mode=True)
+        center = self.track_to_coord(layer_id, tr_idx, unit_mode=True)
+        lower, upper = center - width_unit // 2, center + width_unit // 2
         if unit_mode:
-            return center - w_half, center + w_half
+            return lower, upper
         else:
-            return (center - w_half) * self._resolution, (center + w_half) * self._resolution
+            return lower * self._resolution, upper * self._resolution
 
     def get_bbox(self, layer_id, tr_idx, lower, upper, width=1):
         """Compute bounding box for the given wire.
@@ -804,13 +807,11 @@ class RoutingGrid(object):
 
         # use binary search to find the minimum track width
         bin_iter = BinaryIterator(1, None)
-        tr_w = self.w_tracks[layer_id]
-        tr_sp = self.sp_tracks[layer_id]
         tr_dir = self.dir_tracks[layer_id]
         bot_dir = 'x' if tr_dir == 'y' else 'y'
         while bin_iter.has_next():
             ntr = bin_iter.get_next()
-            width = ntr * (tr_w + tr_sp) - tr_sp
+            width = self.get_track_width(layer_id, ntr, unit_mode=True)
             idc_max, irms_max, ipeak_max = self.tech_info.get_metal_em_specs(layer_name, width * res,
                                                                              l=l * res, **kwargs)
             if idc > idc_max or iac_rms > irms_max or iac_peak > ipeak_max:
@@ -1284,7 +1285,10 @@ class RoutingGrid(object):
 
         q, r = divmod(width - w, pitch)
         if r != 0:
-            raise ValueError('Interval {} on layer {} width not quantized'.format(intv, layer_id))
+            # check if this is a override width
+            test_width = self.get_track_width(layer_id, q + 1, unit_mode=True)
+            if test_width != width:
+                raise ValueError('Interval {} on layer {} width not quantized'.format(intv, layer_id))
 
         return track, q + 1
 
@@ -1304,6 +1308,9 @@ class RoutingGrid(object):
         attrs['w_tracks'] = self.w_tracks.copy()
         attrs['max_num_tr_tracks'] = self.max_num_tr_tracks.copy()
         attrs['block_pitch'] = self.block_pitch.copy()
+        attrs['w_override'] = self.w_override.copy()
+        for lay in self.layers:
+            attrs['w_override'][lay] = self.w_override[lay].copy()
 
         return result
 
@@ -1351,8 +1358,28 @@ class RoutingGrid(object):
         self.sp_tracks[layer_id] = sp_unit
         self.w_tracks[layer_id] = w_unit
         self.dir_tracks[layer_id] = direction
+        self.w_override[layer_id] = {}
         self.max_num_tr_tracks[layer_id] = max_num_tr
         offset = (sp_unit + w_unit) // 2
         self.offset_tracks[layer_id] = offset
         if layer_id not in self._flip_parity:
             self._flip_parity[layer_id] = (1, 0)
+
+    def add_width_override(self, layer_id, width_ntr, tr_width, unit_mode=False):
+        """Add width override.
+
+        Parameters
+        ----------
+        layer_id : int
+            the new layer ID.
+        width_ntr : int
+            the width in number of tracks.
+        tr_width : Union[int, float]
+            the actual width in layout units.
+        unit_mode : bool
+            True if tr_width is in resolution units.
+        """
+        if not unit_mode:
+            tr_width = int(round(tr_width / self.resolution))
+
+        self.w_override[layer_id][width_ntr] = tr_width
