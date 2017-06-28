@@ -152,6 +152,10 @@ class LaygoBaseInfo(object):
         return self._tech_cls.get_sub_columns(self._lch_unit)
 
     @property
+    def sub_port_columns(self):
+        return self._tech_cls.get_sub_port_columns(self._lch_unit)
+
+    @property
     def min_sub_space(self):
         return self._tech_cls.get_min_sub_space_columns(self._lch_unit)
 

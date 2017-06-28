@@ -103,6 +103,24 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
 
     @classmethod
     @abc.abstractmethod
+    def get_sub_port_columns(cls, lch_unit):
+        # type: (int) -> List[int]
+        """Returns the columns indices that have ports in substrate block.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+
+        Returns
+        -------
+        port_cols : List[int]
+            the columns indices that have ports in substrate block.
+        """
+        return [0]
+
+    @classmethod
+    @abc.abstractmethod
     def get_min_sub_space_columns(cls, lch_unit):
         # type: (int) -> int
         """Returns the minimum number of space columns needed around substrate blocks.

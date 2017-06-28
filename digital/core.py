@@ -64,6 +64,10 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def digital_size(self):
         return self._dig_size
 
+    @property
+    def laygo_info(self):
+        return self._laygo_info
+
     def initialize(self, row_info, num_rows, draw_boundaries, end_mode, guard_ring_nf=0):
         self._laygo_info = LaygoBaseInfo(self.grid, row_info['config'])
         self.grid = self._laygo_info.grid
@@ -307,7 +311,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=orient,
                                  nx=nx, spx=spx, unit_mode=True)
 
-    def fill_space(self):
+    def fill_space(self, port_cols=None):
         if self._dig_size is None:
             raise ValueError('digital size must be set before filling spaces.')
 
@@ -321,7 +325,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self._ext_edge_infos.extend(tech_cls.draw_extensions(self, laygo_info, w, yext, bot_ext_list,
                                                                  top_ext_list, edge_params))
 
-        return self._draw_boundary_cells()
+        return self._draw_boundary_cells(port_cols)
 
     def get_ext_info(self):
         return self._get_ext_info_row(0, 0), self._get_ext_info_row(self._num_rows - 1, 1)
@@ -369,7 +373,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         else:
             raise ValueError('Unknonw orientation: %s' % orient)
 
-    def _draw_end_substrates(self):
+    def _draw_end_substrates(self, port_cols):
         num_col = self._dig_size[0]
         top_layer = self._laygo_info.top_layer
         guard_ring_nf = self._laygo_info.guard_ring_nf
@@ -382,18 +386,32 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         left_end = (end_mode & 4) != 0
         right_end = (end_mode & 8) != 0
 
-        ybot = self._ybot[0]
-        bot_inst = self.add_instance(self._bot_sub_master, inst_name='XBSUB', loc=(x0, ybot), orient='R0',
-                                     nx=num_col, spx=spx, unit_mode=True)
-        ytop = self._ytop[0]
-        top_inst = self.add_instance(self._top_sub_master, inst_name='XBSUB', loc=(x0, ytop), orient='MX',
-                                     nx=num_col, spx=spx, unit_mode=True)
+        if port_cols is None:
+            port_cols = set(range(num_col))
+            bot_sub2 = top_sub2 = None
+        else:
+            port_cols = set(port_cols)
+            # get substrate master with no ports
+            bot_sub2 = self._bot_sub_master.new_template_with(options=dict(export=False))
+            top_sub2 = self._top_sub_master.new_template_with(options=dict(export=False))
 
-        bot_warrs = bot_inst.get_all_port_pins()
-        top_warrs = top_inst.get_all_port_pins()
+        # add substrate blocks in substrate rows
+        bot_warrs = []
+        top_warrs = []
+        ybot = self._ybot[0]
+        ytop = self._ytop[0]
+        for warrs, m1, m2, y, orient, name in ((bot_warrs, self._bot_sub_master, bot_sub2, ybot, 'R0', 'XBSUB%d'),
+                                               (top_warrs, self._top_sub_master, top_sub2, ytop, 'MX', 'XTSUB%d')):
+            xcur = x0
+            for col_idx in range(num_col):
+                if col_idx in port_cols:
+                    inst = self.add_instance(m1, inst_name=name % col_idx, loc=(xcur, y), orient=orient, unit_mode=True)
+                    warrs.extend(inst.get_all_port_pins())
+                else:
+                    self.add_instance(m2, inst_name=name % col_idx, loc=(xcur, y), orient=orient, unit_mode=True)
+                xcur += spx
 
         edge_infos = []
-
         for master, y, orient in ((self._bot_sub_master, ybot, 'R0'), (self._top_sub_master, ytop, 'MX')):
             endl, endr = master.get_end_info()
             rinfo = master.row_info
@@ -415,7 +433,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return edge_infos, bot_warrs, top_warrs
 
-    def _draw_boundary_cells(self):
+    def _draw_boundary_cells(self, port_cols):
         if self._laygo_info.draw_boundaries:
             if self._dig_size is None:
                 raise ValueError('digital_size must be set before drawing boundaries.')
@@ -434,7 +452,7 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             row_edge_infos = self._row_info['row_edge_infos']
 
             # draw end substrates
-            edge_infos, bot_warrs, top_warrs = self._draw_end_substrates()
+            edge_infos, bot_warrs, top_warrs = self._draw_end_substrates(port_cols)
 
             # add extension edge in digital block
             for y, orient, edge_params in self._ext_edge_infos:
