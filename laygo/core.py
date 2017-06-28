@@ -688,6 +688,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     ytop = ybot + tot_height
                     # step 4: update ycur
                     ycur = ytop - ydelta - blk_height
+                    cur_bot_ext_h = (ycur - y0) // mos_pitch
 
             # recompute gate and drain/source track indices
             g_intv, ds_intv, gb_intv = self._get_track_intervals(hm_layer, row_orient, mos_info,
