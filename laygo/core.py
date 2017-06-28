@@ -118,6 +118,12 @@ class LaygoBaseInfo(object):
 
         self.grid.update_block_pitch()
 
+        w_override = self._config.get('w_override', None)
+        if w_override:
+            for layer_id, w_lookup in w_override.items():
+                for width_ntr, w_unit in w_lookup.items():
+                    self.grid.add_width_override(layer_id, width_ntr, w_unit, unit_mode=True)
+
         # set attributes
         self.top_layer = self._config['tr_layers'][-1] if top_layer is None else top_layer
         self._col_width = self._tech_cls.get_sd_pitch(self._lch_unit) * self._tech_cls.get_laygo_unit_fg()
