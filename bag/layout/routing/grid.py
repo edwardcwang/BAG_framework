@@ -317,7 +317,7 @@ class RoutingGrid(object):
         else:
             return min_length
 
-    def get_num_space_tracks(self, layer_id, width_ntr, half_space=False):
+    def get_num_space_tracks(self, layer_id, width_ntr, half_space=False, same_color=False):
         """Returns the number of tracks needed to reserve for space around a track of the given width.
 
         In advance technologies, metal spacing is often a function of the metal width, so for a
@@ -332,6 +332,8 @@ class RoutingGrid(object):
             the track width in number of tracks.
         half_space : bool
             True to allow half-integer spacing.
+        same_color : bool
+            True to use same-color spacing.
 
         Returns
         -------
@@ -344,7 +346,7 @@ class RoutingGrid(object):
         layer_type = self.tech_info.get_layer_type(layer_name)
 
         width = self.get_track_width(layer_id, width_ntr, unit_mode=True)
-        sp_min_unit = self.tech_info.get_min_space(layer_type, width, unit_mode=True)
+        sp_min_unit = self.tech_info.get_min_space(layer_type, width, unit_mode=True, same_color=same_color)
         w_unit = self.w_tracks[layer_id]
         sp_unit = self.sp_tracks[layer_id]
         # if this width is overridden, we may have extra space

@@ -149,7 +149,7 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         return self._layout_unit
 
     @abc.abstractmethod
-    def get_min_space(self, layer_type, width, unit_mode=False):
+    def get_min_space(self, layer_type, width, unit_mode=False, same_color=False):
         """Returns the minimum spacing needed around a wire on the given layer with the given width.
 
         Parameters
@@ -160,6 +160,8 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
             the width of the wire, in layout units.
         unit_mode : bool
             True if dimension are given/returned in resolution units.
+        same_color : bool
+            True to use same-color spacing.
 
         Returns
         -------
@@ -904,7 +906,7 @@ class DummyTechInfo(TechInfo):
     def get_via_drc_info(cls, vname, vtype, mtype, mw_unit, is_bot):
         return (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
 
-    def get_min_space(self, layer_type, width, unit_mode=False):
+    def get_min_space(self, layer_type, width, unit_mode=False, same_color=False):
         return 0
 
     def get_min_line_end_space(self, layer_type, width, unit_mode=False):
