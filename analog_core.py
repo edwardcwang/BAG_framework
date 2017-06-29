@@ -1360,7 +1360,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             ngr_w = ptap_w
 
         if guard_ring_nf == 0:
-            pgr_w = ngr_w = 0
+            ngr_w = 0 if pw_list else ptap_w
+            pgr_w = 0 if nw_list else ntap_w
 
         # place transistor blocks
         master_list = []
