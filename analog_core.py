@@ -1731,7 +1731,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # step 7: draw dummy tracks to substrates
         dum_layer = self.dum_conn_layer
         for htr, dum_y in dum_y_table.items():
-            self.add_wires(dum_layer, (htr - 1) / 2, dum_y[0], dum_y[1], unit_mode=True)
+            dum_yb, dum_yt = dum_y
+            if dum_yt > dum_yb:
+                self.add_wires(dum_layer, (htr - 1) / 2, dum_y[0], dum_y[1], unit_mode=True)
 
         # update substrate master to only export necessary wires
         if bot_sub_inst is not None:
