@@ -716,6 +716,13 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             gate_ext_mode=gate_ext_mode,
             export_gate=export_gate,
         )
+
+        if 'sdir' in kwargs and 'ddir' in kwargs:
+            if orient == 'MX':
+                # flip source/drain directions
+                kwargs['sdir'] = 2 - kwargs['sdir']
+                kwargs['ddir'] = 2 - kwargs['ddir']
+
         conn_params.update(kwargs)
 
         conn_master = self.new_template(params=conn_params, temp_cls=AnalogMOSDecap)

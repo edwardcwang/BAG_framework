@@ -305,7 +305,7 @@ class AnalogMOSDecap(TemplateBase):
         return basename
 
     def compute_unique_key(self):
-        return self.get_layout_basename()
+        return self.to_immutable_id((self.get_layout_basename(), self.grid.get_flip_parity()))
 
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
