@@ -41,7 +41,6 @@ from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.objects import Instance
 from bag.layout.routing import TrackID
 
-from ..analog_mos.mos import AnalogMOSExt
 from .tech import LaygoTech
 from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow, LaygoSpace
 
@@ -572,8 +571,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     def _place_rows(self, ybot, tot_height_pitch, row_specs):
         lch_unit = self._laygo_info.lch_unit
-        top_layer = self._laygo_info.top_layer
-        guard_ring_nf = self._laygo_info.guard_ring_nf
 
         ext_params_list = []
         row_infos = []
@@ -703,28 +700,11 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             mos_info['gb_intv'] = gb_intv
             if prev_ext_info is None:
                 ext_y = 0
-                edge_params = None
             else:
-                nom_ext_params = dict(
-                    lch=self._laygo_info.lch,
-                    w=prev_ext_h + cur_bot_ext_h,
-                    fg=self._laygo_info.unit_fg,
-                    top_ext_info=ext_bot_info,
-                    bot_ext_info=prev_ext_info,
-                    is_laygo=True,
-                )
-                nom_ext_master = self.new_template(params=nom_ext_params, temp_cls=AnalogMOSExt)
-                edge_params = dict(
-                    top_layer=top_layer,
-                    guard_ring_nf=guard_ring_nf,
-                    name_id=nom_ext_master.get_layout_basename(),
-                    layout_info=nom_ext_master.get_edge_layout_info(),
-                    is_laygo=True,
-                )
                 ext_y = row_y[-1][2]
             row_y.append((y0, ycur, ycur + blk_height, ytop))
             row_infos.append(mos_info)
-            ext_params_list.append((prev_ext_h + cur_bot_ext_h, ext_y, edge_params))
+            ext_params_list.append((prev_ext_h + cur_bot_ext_h, ext_y))
 
             y0 = ytop
             prev_ext_info = ext_top_info
@@ -885,11 +865,11 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         laygo_info = self._laygo_info
         tech_cls = laygo_info.tech_cls
         for bot_ridx in range(0, self._num_rows - 1):
-            w, yext, edge_params = self._ext_params[bot_ridx + 1]
+            w, yext = self._ext_params[bot_ridx + 1]
             bot_ext_list = self._get_ext_info_row(bot_ridx, 1)
             top_ext_list = self._get_ext_info_row(bot_ridx + 1, 0)
-            self._ext_edge_infos.extend(tech_cls.draw_extensions(self, laygo_info, w, yext, bot_ext_list,
-                                                                 top_ext_list, edge_params))
+            self._ext_edge_infos.extend(tech_cls.draw_extensions(self, laygo_info, w, yext,
+                                                                 bot_ext_list, top_ext_list))
 
         # draw boundaries and return guard ring supplies in boundary cells
         return self._draw_boundary_cells()

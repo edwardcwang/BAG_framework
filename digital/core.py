@@ -34,7 +34,6 @@ from future.utils import with_metaclass
 from bag.layout.util import BBox
 from bag.layout.template import TemplateBase, TemplateDB
 
-from ..analog_mos.mos import AnalogMOSExt
 from ..laygo.base import LaygoEndRow, LaygoSubstrate
 from ..laygo.core import LaygoBaseInfo, LaygoIntvSet
 
@@ -130,14 +129,6 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 bot_ext_info=sub_ext_info,
                 is_laygo=True,
             )
-            bot_ext_master = self.new_template(params=bot_ext_params, temp_cls=AnalogMOSExt)
-            bot_ext_edge_params = dict(
-                top_layer=top_layer,
-                guard_ring_nf=guard_ring_nf,
-                name_id=bot_ext_master.get_layout_basename(),
-                layout_info=bot_ext_master.get_edge_layout_info(),
-                is_laygo=True,
-            )
 
             if num_rows % 2 == 0:
                 # because of mirroring, top and bottom masters are the same, except for is_end parameter.
@@ -178,25 +169,6 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 top_extw = row_info['top_extw']
                 top_sub_extw = row_info['top_sub_extw']
                 top_extw_tot = top_extw + top_sub_extw
-                sub_info = tech_cls.get_laygo_sub_info(lch_unit, w_sub, sub_type, thres)
-                sub_ext_info = sub_info['ext_top_info']
-                top_ext_params = dict(
-                    lch=lch,
-                    w=top_extw_tot,
-                    fg=fg_unit,
-                    top_ext_info=sub_ext_info,
-                    bot_ext_info=row_info['top_ext_info'],
-                    is_laygo=True,
-                )
-
-            top_ext_master = self.new_template(params=top_ext_params, temp_cls=AnalogMOSExt)
-            top_ext_edge_params = dict(
-                top_layer=top_layer,
-                guard_ring_nf=guard_ring_nf,
-                name_id=top_ext_master.get_layout_basename(),
-                layout_info=top_ext_master.get_edge_layout_info(),
-                is_laygo=True,
-            )
 
             y0 = self._bot_end_master.bound_box.height_unit
             y1 = y0 + self._bot_sub_master.bound_box.height_unit + bot_sub_extw * mos_pitch
@@ -208,8 +180,8 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self._ytop = (y0, y1)
 
             # add extension between substrate and edge rows
-            self._ext_params.append((0, bot_extw_tot, bot_yext, bot_ext_edge_params))
-            self._ext_params.append((self._num_rows, top_extw_tot, top_yext, top_ext_edge_params))
+            self._ext_params.append((0, bot_extw_tot, bot_yext))
+            self._ext_params.append((self._num_rows, top_extw_tot, top_yext))
 
         else:
             self._ybot = (0, 0)
@@ -220,28 +192,10 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         for row_idx in range(num_rows - 1):
             if row_idx % 2 == 0:
                 w = row_info['top_extw']
-                ext_info = row_info['top_ext_info']
             else:
                 w = bot_extw
-                ext_info = row_info['bot_ext_info']
 
-            cur_params = dict(
-                lch=lch,
-                w=w * 2,
-                fg=fg_unit,
-                top_ext_info=ext_info,
-                bot_ext_info=ext_info,
-                is_laygo=True,
-            )
-            cur_ext_master = self.new_template(params=cur_params, temp_cls=AnalogMOSExt)
-            cur_ext_edge_params = dict(
-                top_layer=top_layer,
-                guard_ring_nf=guard_ring_nf,
-                name_id=cur_ext_master.get_layout_basename(),
-                layout_info=cur_ext_master.get_edge_layout_info(),
-                is_laygo=True,
-            )
-            self._ext_params.append((row_idx + 1, w * 2, ycur - w * mos_pitch, cur_ext_edge_params))
+            self._ext_params.append((row_idx + 1, w * 2, ycur - w * mos_pitch))
             ycur += self._row_height
 
     def set_digital_size(self, num_col=None):
@@ -319,11 +273,11 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._ext_edge_infos = []
         laygo_info = self._laygo_info
         tech_cls = laygo_info.tech_cls
-        for top_ridx, w, yext, edge_params in self._ext_params:
+        for top_ridx, w, yext in self._ext_params:
             bot_ext_list = self._get_ext_info_row(top_ridx - 1, 1)
             top_ext_list = self._get_ext_info_row(top_ridx, 0)
             self._ext_edge_infos.extend(tech_cls.draw_extensions(self, laygo_info, w, yext, bot_ext_list,
-                                                                 top_ext_list, edge_params))
+                                                                 top_ext_list))
 
         return self._draw_boundary_cells(port_cols)
 

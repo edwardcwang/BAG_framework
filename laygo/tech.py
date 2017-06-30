@@ -392,7 +392,6 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
                         yext,  # type: int
                         bot_ext_list,  # type: List[Tuple[int, Any]]
                         top_ext_list,  # type: List[Tuple[int, Any]]
-                        edge_params,  # type: Dict[str, Any]
                         ):
         # type: (...) -> List[Tuple[int, str, Dict[str, Any]]]
         """Draw extension rows in the given LaygoBase/DigitalBase template.
@@ -411,8 +410,6 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             list of tuples of end finger index and bottom extension information
         top_ext_list : List[Tuple[int, Any]]
             list of tuples of end finger index and top extension information
-        edge_params : Dict[str, Any]
-            edge parameters dictionary.
 
         Returns
         -------
@@ -422,11 +419,15 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
         """
         lch = laygo_info.lch
         left_margin = laygo_info.left_margin
+        top_layer = laygo_info.top_layer
+        guard_ring_nf = laygo_info.guard_ring_nf
 
         ext_groups = cls.get_row_extension_info(bot_ext_list, top_ext_list)
+        num_ext = len(ext_groups)
 
         curx = left_margin
-        for fg, bot_info, top_info in ext_groups:
+        ext_edges = []
+        for idx, (fg, bot_info, top_info) in enumerate(ext_groups):
             if w > 0 or cls.draw_zero_extension():
                 ext_params = dict(
                     lch=lch,
@@ -440,7 +441,19 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
                 template.add_instance(ext_master, loc=(curx, yext), unit_mode=True)
                 curx += ext_master.prim_bound_box.width_unit
 
-        return [(yext, 'R0', edge_params), (yext, 'MY', edge_params)]
+                if idx == 0 or idx == num_ext - 1:
+                    # compute edge parameters
+                    cur_ext_edge_params = dict(
+                        top_layer=top_layer,
+                        guard_ring_nf=guard_ring_nf,
+                        name_id=ext_master.get_layout_basename(),
+                        layout_info=ext_master.get_edge_layout_info(),
+                        is_laygo=True,
+                    )
+                    edge_orient = 'R0' if idx == 0 else 'MY'
+                    ext_edges.append((yext, edge_orient, cur_ext_edge_params))
+
+        return ext_edges
 
     @classmethod
     def draw_boundaries(cls,  # type: LaygoTech
