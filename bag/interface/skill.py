@@ -117,6 +117,7 @@ class VirtuosoException(Exception):
     """Exception raised when Virtuoso returns an error."""
 
     def __init__(self, *args, **kwargs):
+        # noinspection PyArgumentList
         Exception.__init__(self, *args, **kwargs)
 
 
@@ -216,8 +217,7 @@ class SkillInterface(DbAccess):
         template : str
             the content of the netlist structure file.
         """
-        exc_libs = to_skill_list_str(self.db_config['schematic']['exclude_libraries'])
-        cmd = 'parse_cad_sch( "%s" "%s" %s {netlist_info} )' % (lib_name, cell_name, exc_libs)
+        cmd = 'parse_cad_sch( "%s" "%s" {netlist_info} )' % (lib_name, cell_name)
         return self._eval_skill(cmd, out_file='netlist_info')
 
     def get_cells_in_library(self, lib_name):

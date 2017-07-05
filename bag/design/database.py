@@ -32,6 +32,8 @@ from builtins import *
 
 from bag.util.libimport import ClassImporter
 
+from .module import GenericModule
+
 
 class Database(object):
     """A database of all design modules.
@@ -45,11 +47,14 @@ class Database(object):
         path to the design library definition file.
     tech_info : :class:`bag.layout.core.TechInfo`
         the :class:`~bag.layout.core.TechInfo` instance.
+    sch_exc_libs : List[str]
+        list of libraries that are excluded from import.
     """
 
-    def __init__(self, lib_defs, tech_info):
+    def __init__(self, lib_defs, tech_info, sch_exc_libs):
         self._importer = ClassImporter(lib_defs)
         self._tech_info = tech_info
+        self._exc_libs = set(sch_exc_libs)
 
     @property
     def tech_info(self):
@@ -96,7 +101,7 @@ class Database(object):
             the parent design module instance, or None for top level design.
         prj : :class:`bag.BagProject` or None
             the BagProject instance.  Used to implement design.
-        kwargs : dict[str, any]
+        **kwargs :
             optional parameters.
 
         Returns
@@ -104,5 +109,8 @@ class Database(object):
         module : :class:`bag.design.Module`
             a new :class:`~bag.design.Module` instance.
         """
-        cls = self._importer.get_class(lib_name, cell_name)
-        return cls(self, parent=parent, prj=prj, **kwargs)
+        if lib_name in self._exc_libs:
+            return GenericModule(self, lib_name, cell_name, parent=parent, prj=prj, **kwargs)
+        else:
+            cls = self._importer.get_class(lib_name, cell_name)
+            return cls(self, parent=parent, prj=prj, **kwargs)

@@ -182,7 +182,7 @@ def open_temp(**kwargs):
 
     Parameters
     ----------
-    kwargs : dict[string, any]
+    **kwargs
         the tempfile keyword arguments.  See documentation for
         :func:`tempfile.NamedTemporaryFile`.
 

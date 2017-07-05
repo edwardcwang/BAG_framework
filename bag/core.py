@@ -111,8 +111,8 @@ def _import_class_from_str(class_str):
 
     module_str = '.'.join(sections[:-1])
     class_str = sections[-1]
-    module = importlib.import_module(module_str)
-    return getattr(module, class_str)
+    modul = importlib.import_module(module_str)
+    return getattr(modul, class_str)
 
 
 class Testbench(object):
@@ -459,7 +459,8 @@ class BagProject(object):
             self.tech_info = DummyTechInfo(tech_params)
 
         # create design module database.
-        self.dsn_db = design.Database(self.bag_config['lib_defs'], self.tech_info)
+        sch_exc_libs = self.bag_config['database']['schematic']['exclude_libraries']
+        self.dsn_db = design.Database(self.bag_config['lib_defs'], self.tech_info, sch_exc_libs)
 
         if port is not None:
             # make DbAccess instance.

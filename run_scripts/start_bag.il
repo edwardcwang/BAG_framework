@@ -114,7 +114,7 @@ procedure( get_cells_in_library_file( lib_name fname "tt" )
 
 ; Parse the netlist of the given cellview.
 ; Works on schematic and veriloga.
-procedure( parse_cad_sch(lib_name cell_name exc_libs file_name "ttlt")
+procedure( parse_cad_sch(lib_name cell_name file_name "ttt")
     let( (cv cell_type p indent direction term_names tb_list tb_match
           inst_lib_name inst_cell_name inst_cnt)
         indent = ""
@@ -150,31 +150,29 @@ procedure( parse_cad_sch(lib_name cell_name exc_libs file_name "ttlt")
             inst_cnt = 0
             fprintf( p "%sinstances:\n" indent )
             foreach( inst cv~>instances
-                when( not( member( inst~>libName exc_libs ) )
-                    inst_cnt++
-                    ; print entry for instance
-                    indent = "  "
-                    fprintf( p "%s%s:\n" indent inst~>name )
-                    ; print instance master information.
-                    indent = "    "
-                    fprintf( p "%slib_name: %s\n" indent inst~>libName )
-                    fprintf( p "%scell_name: %s\n" indent inst~>cellName )
-                    ; print instance terminal information
-                    if( !(inst~>instTerms) then
-                        fprintf( p "%sinstpins: {}\n" indent )
-                    else
-                        fprintf( p "%sinstpins:\n" indent )
-                        foreach( inst_term inst~>instTerms
-                            unless( direction = inst_term~>direction
-                                direction = ""
-                            )
-                            indent = "      "
-                            fprintf( p "%s%s:\n" indent inst_term~>name )
-                            indent = "        "
-                            fprintf( p "%sdirection: %s\n" indent direction )
-                            fprintf( p "%snet_name: \"%s\"\n" indent inst_term~>net~>name )
-                            fprintf( p "%snum_bits: %d\n" indent inst_term~>numBits )
+                inst_cnt++
+                ; print entry for instance
+                indent = "  "
+                fprintf( p "%s%s:\n" indent inst~>name )
+                ; print instance master information.
+                indent = "    "
+                fprintf( p "%slib_name: %s\n" indent inst~>libName )
+                fprintf( p "%scell_name: %s\n" indent inst~>cellName )
+                ; print instance terminal information
+                if( !(inst~>instTerms) then
+                    fprintf( p "%sinstpins: {}\n" indent )
+                else
+                    fprintf( p "%sinstpins:\n" indent )
+                    foreach( inst_term inst~>instTerms
+                        unless( direction = inst_term~>direction
+                            direction = ""
                         )
+                        indent = "      "
+                        fprintf( p "%s%s:\n" indent inst_term~>name )
+                        indent = "        "
+                        fprintf( p "%sdirection: %s\n" indent direction )
+                        fprintf( p "%snet_name: \"%s\"\n" indent inst_term~>net~>name )
+                        fprintf( p "%snum_bits: %d\n" indent inst_term~>numBits )
                     )
                 )
             )
