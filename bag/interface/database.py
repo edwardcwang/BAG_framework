@@ -149,6 +149,7 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
         """
         self.tmp_dir = bag.io.make_temp_dir('dbTmp', parent_dir=tmp_dir)
         self.db_config = db_config
+        self.exc_libs = set(db_config['schematic']['exclude_libraries'])
         try:
             check_kwargs = self.db_config['checker'].copy()
             check_kwargs['tmp_dir'] = self.tmp_dir
@@ -565,9 +566,10 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
         # recursively import all children
         for inst_name, inst_attrs in sch_info['instances'].items():
             inst_lib_name = inst_attrs['lib_name']
-            inst_cell_name = inst_attrs['cell_name']
-            self._import_design(inst_lib_name, inst_cell_name, imported_cells, dsn_db,
-                                new_lib_path)
+            if inst_lib_name not in self.exc_libs:
+                inst_cell_name = inst_attrs['cell_name']
+                self._import_design(inst_lib_name, inst_cell_name, imported_cells, dsn_db,
+                                    new_lib_path)
 
     def implement_design(self, lib_name, dsn_module, lib_path=''):
         """Implement the given design.

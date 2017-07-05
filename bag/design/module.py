@@ -89,8 +89,8 @@ class Module(with_metaclass(abc.ABCMeta, object)):
     ----------
     database : :class:`~bag.design.Database`
         the design database object.
-    yaml_fname : str
-        the netlist information file name.
+    yaml_fname : Optional[str]
+        the netlist information file name.  If this is a generic module, this should be None.
     parent : :class:`bag.design.Module`
         the parent of this design module.  None if this is the top level design.
     prj : :class:`~bag.core.BagProject` or None
@@ -105,9 +105,6 @@ class Module(with_metaclass(abc.ABCMeta, object)):
     """
 
     def __init__(self, database, yaml_fname, parent=None, prj=None, **kwargs):
-        self._yaml_fname = os.path.abspath(yaml_fname)
-        self.sch_info = bag.io.read_yaml(self._yaml_fname)
-
         self.prj = prj
         self.database = database
         self.tech_info = database.tech_info
@@ -117,29 +114,40 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         self.instances = {}
         self.instance_map = {}
         self.pin_map = {}
-        self._lib_name = self.sch_info['lib_name']
-        self._cell_name = self.sch_info['cell_name']
         self._generated_lib_name = None
         self._generated_cell_name = None
         self.orig_instances = {}
 
-        # populate instance map
-        for inst_name, inst_attr in self.sch_info['instances'].items():
-            lib_name = inst_attr['lib_name']
-            cell_name = inst_attr['cell_name']
-            module = self.database.make_design_module(lib_name, cell_name, parent=self, prj=prj)
-            rinst = dict(name=inst_name,
-                         cell_name=cell_name,
-                         params={},
-                         term_mapping={},
-                         )
-            self.instances[inst_name] = module
-            self.instance_map[inst_name] = [rinst, ]
-            self.orig_instances[inst_name] = (lib_name, cell_name)
+        if yaml_fname is not None:
+            self._yaml_fname = os.path.abspath(yaml_fname)
+            self.sch_info = bag.io.read_yaml(self._yaml_fname)
 
-        # fill in pin map
-        for pin in self.sch_info['pins']:
-            self.pin_map[pin] = pin
+            self._lib_name = self.sch_info['lib_name']
+            self._cell_name = self.sch_info['cell_name']
+
+            # populate instance map
+            for inst_name, inst_attr in self.sch_info['instances'].items():
+                lib_name = inst_attr['lib_name']
+                cell_name = inst_attr['cell_name']
+                modul = self.database.make_design_module(lib_name, cell_name, parent=self, prj=prj)
+                rinst = dict(name=inst_name,
+                             cell_name=cell_name,
+                             params={},
+                             term_mapping={},
+                             )
+                self.instances[inst_name] = modul
+                self.instance_map[inst_name] = [rinst, ]
+                self.orig_instances[inst_name] = (lib_name, cell_name)
+
+            # fill in pin map
+            for pin in self.sch_info['pins']:
+                self.pin_map[pin] = pin
+        else:
+            # This is a dummy module.
+            self._yaml_fname = None
+            self.sch_info = None
+            self._lib_name = kwargs['lib_name']
+            self._cell_name = kwargs['cell_name']
 
     @property
     def generated_lib_name(self):
@@ -253,9 +261,9 @@ class Module(with_metaclass(abc.ABCMeta, object)):
     def is_primitive(self):
         """Returns True if this Module represents a BAG primitive.
 
-        NOTE: This method is only used by BAG primitives.  This method prevents
-        BAG primitives from being copied during design implementation.  Custom
-        subclasses should not override this method.
+        NOTE: This method is only used by BAG and schematic primitives.  This method prevents
+        the module from being copied during design implementation.  Custom subclasses should
+        not override this method.
 
         Returns
         -------
@@ -378,14 +386,14 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             the instance to restore.
         """
         lib_name, cell_name = self.orig_instances[inst_name]
-        module = self.database.make_design_module(lib_name, cell_name, parent=self)
+        modul = self.database.make_design_module(lib_name, cell_name, parent=self)
         rinst = dict(name=inst_name,
                      cell_name=cell_name,
                      params={},
                      term_mapping={},
                      )
 
-        self.instances[inst_name] = module
+        self.instances[inst_name] = modul
         self.instance_map[inst_name] = [rinst, ]
 
     def array_instance(self, inst_name, inst_name_list, term_list=None, same=False):
@@ -422,14 +430,14 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         module_list = []
         if not same:
             for iname, iterm in zip(inst_name_list, term_list):
-                module = self.database.make_design_module(lib_name, cell_name, parent=self)
+                modul = self.database.make_design_module(lib_name, cell_name, parent=self)
                 rinst = dict(name=iname,
                              cell_name=cell_name,
                              params={},
                              term_mapping=iterm,
                              )
                 rinst_list.append(rinst)
-                module_list.append(module)
+                module_list.append(modul)
         else:
             module_list = [orig_module] * len(inst_name_list)
             rinst_list = [dict(name=iname, cell_name=cell_name, params={}, term_mapping=iterm)
@@ -457,12 +465,12 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             if not isinstance(module_list, list):
                 module_list = [module_list]
 
-            for module, rinst in zip(module_list, rinst_list):
+            for modul, rinst in zip(module_list, rinst_list):
                 name = '%s.%s' % (cur_inst_name, rinst['name'])
-                if module.is_primitive():
-                    prim_dict[name] = module
+                if modul.is_primitive():
+                    prim_dict[name] = modul
                 else:
-                    sub_dict = module.get_primitives_descendants(name)
+                    sub_dict = modul.get_primitives_descendants(name)
                     prim_dict.update(sub_dict)
         return prim_dict
 
@@ -518,15 +526,15 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             # Traverse list backward so we can remove instances
             for idx in range(len(rinst_list) - 1, -1, -1):
                 rinst = rinst_list[idx]
-                module = module_list[idx]
-                module.update_bag_primitives()
-                if module.should_delete_instance():
+                modul = module_list[idx]
+                modul.update_bag_primitives()
+                if modul.should_delete_instance():
                     # check if we need to delete this instance based on its parameters
                     del rinst_list[idx]
                 else:
                     # update parameter/cell name information.
-                    rinst['params'] = module.get_schematic_parameters()
-                    rinst['cell_name'] = module.get_cell_name_from_parameters()
+                    rinst['params'] = modul.get_schematic_parameters()
+                    rinst['cell_name'] = modul.get_cell_name_from_parameters()
 
     def update_structure(self, lib_name, top_cell_name='', prefix='', suffix='', used_names=None):
         """Update the generated schematic structure.
@@ -659,17 +667,17 @@ class Module(with_metaclass(abc.ABCMeta, object)):
 
                 child_inst_id = '%s_%s' % (inst_identifier, inst_name)
                 concrete_rinst_list = []
-                for module, rinst in zip(module_list, rinst_list):
-                    child_cell_name = module.cell_name
-                    child_id = module.populate_hierarchy_graph(lib_name, hier_graph, used_concrete_names,
-                                                               child_cell_name, prefix, suffix, child_inst_id)
-                    if not module.is_primitive():
+                for modul, rinst in zip(module_list, rinst_list):
+                    child_cell_name = modul.cell_name
+                    child_id = modul.populate_hierarchy_graph(lib_name, hier_graph, used_concrete_names,
+                                                              child_cell_name, prefix, suffix, child_inst_id)
+                    if not modul.is_primitive():
                         hier_graph.add_edge(cell_id, child_id)
                         concrete_lib_name = None
                         concrete_cell_name = hier_graph.node[child_id]['concrete_cell_name']
                     else:
                         # bag primitive
-                        concrete_lib_name = module.lib_name
+                        concrete_lib_name = modul.lib_name
                         concrete_cell_name = rinst['cell_name']
                     concrete_rinst = dict(
                         name=rinst['name'],
@@ -847,6 +855,46 @@ class MosModuleBase(Module):
             True if parent should delete this instance.
         """
         return self.parameters['nf'] == 0 or self.parameters['w'] == 0
+
+
+class GenericModule(Module):
+    """A generic module.  Used to represent schematic instances that aren't imported into Python.
+
+    Schematic parameters can be set by modifying the self.parameters dictionary.
+
+    Parameters
+    ----------
+    database : :class:`bag.design.Database`
+        the design database object.
+    lib_name : str
+        the library name.
+    cell_name : str
+        the cell name.
+    parent : :class:`bag.design.Module`
+        the parent of this design module.  None if this is the top level design.
+    prj : :class:`bag.BagProject` or None
+        the BagProject instance.  Used to implement design.
+    **kwargs :
+        additional arguments.
+    """
+
+    def __init__(self, database, lib_name, cell_name, parent=None, prj=None, **kwargs):
+        Module.__init__(self, database, None, parent=parent, prj=prj, lib_name=lib_name, cell_name=cell_name, **kwargs)
+
+    def is_primitive(self):
+        return True
+
+    def get_layout_params(self, **kwargs):
+        return {}
+
+    def design(self):
+        pass
+
+    def get_layout_pin_mapping(self):
+        return {}
+
+    def get_schematic_parameters(self):
+        return self.parameters.copy()
 
 
 class ResIdealModuleBase(Module):
