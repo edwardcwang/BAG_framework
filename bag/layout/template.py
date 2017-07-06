@@ -425,6 +425,11 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             else:
                 self.params[key] = params[key]
 
+        # add hidden parameters
+        hidden_params = kwargs.get('hidden_params', {})
+        for name, value in hidden_params.items():
+            self.params[name] = params.get(name, value)
+
         # always add flip_parity parameter
         if 'flip_parity' not in self.params:
             self.params['flip_parity'] = params.get('flip_parity', None)
