@@ -1,0 +1,40 @@
+lib_name: demo_testbenches
+cell_name: tb_tran_pwl
+pins: [  ]
+instances:
+  XPWL:
+    lib_name: demo_testbenches
+    cell_name: stimuli_pwl
+    instpins:
+      VSS:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      in:
+        direction: inputOutput
+        net_name: "in"
+        num_bits: 1
+  XBIAS:
+    lib_name: demo_testbenches
+    cell_name: stimuli_bias
+    instpins:
+      VSS:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+  XDUT:
+    lib_name: demo_templates
+    cell_name: rc_lowpass
+    instpins:
+      VSS:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      out:
+        direction: inputOutput
+        net_name: "out"
+        num_bits: 1
+      in:
+        direction: inputOutput
+        net_name: "in"
+        num_bits: 1
