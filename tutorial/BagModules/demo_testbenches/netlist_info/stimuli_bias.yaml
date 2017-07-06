@@ -1,0 +1,28 @@
+lib_name: demo_testbenches
+cell_name: stimuli_bias
+pins: [ "VSS" ]
+instances:
+  VVSS:
+    lib_name: analogLib
+    cell_name: vdc
+    instpins:
+      PLUS:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+      MINUS:
+        direction: inputOutput
+        net_name: "gnd!"
+        num_bits: 1
+  I0:
+    lib_name: analogLib
+    cell_name: gnd
+    instpins:
+      gnd!:
+        direction: inputOutput
+        net_name: "gnd!"
+        num_bits: 1
+  PIN0:
+    lib_name: basic
+    cell_name: iopin
+    instpins: {}

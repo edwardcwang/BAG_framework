@@ -1,0 +1,24 @@
+lib_name: demo_testbenches
+cell_name: stimuli_pwl
+pins: [ "in", "VSS" ]
+instances:
+  VPWL:
+    lib_name: analogLib
+    cell_name: vpwlf
+    instpins:
+      PLUS:
+        direction: inputOutput
+        net_name: "in"
+        num_bits: 1
+      MINUS:
+        direction: inputOutput
+        net_name: "VSS"
+        num_bits: 1
+  PIN1:
+    lib_name: basic
+    cell_name: iopin
+    instpins: {}
+  PIN2:
+    lib_name: basic
+    cell_name: iopin
+    instpins: {}
