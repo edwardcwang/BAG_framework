@@ -35,7 +35,58 @@ from bag.layout.util import BBox
 from bag.layout.template import TemplateBase, TemplateDB
 
 from ..laygo.base import LaygoEndRow, LaygoSubstrate
-from ..laygo.core import LaygoBaseInfo, LaygoIntvSet
+from ..laygo.core import LaygoBase, LaygoBaseInfo, LaygoIntvSet
+
+
+class DigitalSpace(LaygoBase):
+    """Stack driver substrate contact between core devices.
+
+    Parameters
+    ----------
+    temp_db : TemplateDB
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : Dict[str, Any]
+        the parameter values.
+    used_names : Set[str]
+        a set of already used cell names.
+    **kwargs
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(DigitalSpace, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            config='laygo configuration dictionary.',
+            dig_row_info='digital row information dictionary.',
+            num_col='number of columns.',
+        )
+
+    def draw_layout(self):
+        """Draw the layout of a dynamic latch chain.
+        """
+        dig_row_info = self.params['dig_row_info']
+        num_col = self.params['num_col']
+
+        self.set_rows_direct(dig_row_info)
+
+        self.set_laygo_size(num_col=num_col)
+        self.fill_space()
 
 
 class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
@@ -268,6 +319,20 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def fill_space(self, port_cols=None):
         if self._dig_size is None:
             raise ValueError('digital size must be set before filling spaces.')
+
+        # add spaces
+        num_col = self._dig_size[0]
+        # add space blocks
+        total_intv = (0, num_col)
+        for row_idx, intv in enumerate(self._used_list):
+            for (start, end), end_info in zip(*intv.get_complement(total_intv)):
+                space_params = dict(
+                    config=self._row_info['config'],
+                    dig_row_info=self._row_info,
+                    num_col=end-start,
+                )
+                space_master = self.new_template(params=space_params, temp_cls=DigitalSpace)
+                self.add_digital_block(space_master, loc=(start, row_idx))
 
         # draw extensions
         self._ext_edge_infos = []

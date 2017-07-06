@@ -358,6 +358,27 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return g_intv, s_intv, d_intv
 
+    def set_rows_direct(self, dig_row_info):
+        self._laygo_info.top_layer = dig_row_info['top_layer']
+        self._laygo_info.guard_ring_nf = dig_row_info['guard_ring_nf']
+        self._laygo_info.draw_boundaries = False
+        self._laygo_info.end_mode = 0
+
+        row_types = dig_row_info['row_types']
+        default_end_info = self._tech_cls.get_default_end_info()
+
+        self._num_rows = len(row_types)
+        self._row_types = row_types
+        self._row_widths = dig_row_info['row_widths']
+        self._row_orientations = dig_row_info['row_orientations']
+        self._row_thresholds = dig_row_info['row_thresholds']
+        self._row_kwargs = dig_row_info['row_kwargs']
+        self._row_min_tracks = dig_row_info['row_min_tracks']
+        self._used_list = [LaygoIntvSet(default_end_info) for _ in range(self._num_rows)]
+        self._row_infos = dig_row_info['row_infos']
+        self._ext_params = dig_row_info['ext_params']
+        self._row_y = dig_row_info['row_y']
+
     def set_row_types(self, row_types, row_widths, row_orientations, row_thresholds, draw_boundaries, end_mode,
                       num_g_tracks, num_gb_tracks, num_ds_tracks, row_min_tracks=None, top_layer=None, guard_ring_nf=0,
                       row_kwargs=None):
@@ -446,9 +467,18 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         mos_pitch = self._laygo_info.mos_pitch
         ans = dict(
             config=self.params['config'],
-            row_height=self.bound_box.top_unit,
+            top_layer=self._laygo_info.top_layer,
+            guard_ring_nf=self._laygo_info.guard_ring_nf,
             row_types=self._row_types,
+            row_widths=self._row_widths,
+            row_orientations=self._row_orientations,
             row_thresholds=self._row_thresholds,
+            row_kwargs=self._row_kwargs,
+            row_min_tracks=self._row_min_tracks,
+            row_infos=self._row_infos,
+            ext_params=self._ext_params,
+            row_y=self._row_y,
+            row_height=self.bound_box.top_unit,
             bot_extw=(self._row_y[0][1] - self._row_y[0][0]) // mos_pitch,
             top_extw=(self._row_y[-1][3] - self._row_y[-1][2]) // mos_pitch,
             bot_sub_extw=self._bot_sub_extw,
