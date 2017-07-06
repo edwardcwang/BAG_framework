@@ -336,6 +336,9 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if self._dig_size is None:
             raise ValueError('digital size must be set before filling spaces.')
 
+        # TODO: need to update laygo_endl_infos/laygo_endr_infos/digital_endl_infos/digital_endr_infos parameters
+        # TODO: for all instances in this block.
+
         # add spaces
         num_col = self._dig_size[0]
         total_intv = (0, num_col)
