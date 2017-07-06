@@ -71,14 +71,14 @@ class LaygoIntvSet(object):
     def values(self):
         return self._intv.values()
 
-    def get_complement(self, total_intv):
+    def get_complement(self, total_intv, endl_info, endr_info):
         compl_intv = self._intv.get_complement(total_intv)
         intv_list = []
         end_list = []
         for intv in compl_intv:
             intv_list.append(intv)
-            end_list.append((self._end_flags.get(intv[0], self._default_end_info),
-                             self._end_flags.get(intv[1], self._default_end_info)))
+            end_list.append((self._end_flags.get(intv[0], endl_info),
+                             self._end_flags.get(intv[1], endr_info)))
         return intv_list, end_list
 
     def get_end_info(self, num_col):
@@ -257,7 +257,12 @@ class LaygoBaseInfo(object):
 class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(LaygoBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+        hidden_params = kwargs.pop('hidden_params', {}).copy()
+        hidden_params['laygo_endl_infos'] = None
+        hidden_params['laygo_endr_infos'] = None
+
+        super(LaygoBase, self).__init__(temp_db, lib_name, params, used_names, hidden_params=hidden_params, **kwargs)
 
         self._laygo_info = LaygoBaseInfo(self.grid, self.params['config'])
         self.grid = self._laygo_info.grid
@@ -281,6 +286,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._ext_edge_infos = None
         self._bot_sub_extw = 0
         self._top_sub_extw = 0
+        self._endl_infos = None
+        self._endr_infos = None
 
     @property
     def laygo_info(self):
@@ -358,6 +365,15 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return g_intv, s_intv, d_intv
 
+    def _set_endlr_infos(self, num_rows):
+        default_end_info = self._tech_cls.get_default_end_info()
+        self._endl_infos = self.params['laygo_endl_infos']
+        if self._endl_infos is None:
+            self._endl_infos = [default_end_info] * num_rows
+        self._endr_infos = self.params['laygo_endr_infos']
+        if self._endr_infos is None:
+            self._endr_infos = [default_end_info] * num_rows
+
     def set_rows_direct(self, dig_row_info):
         self._laygo_info.top_layer = dig_row_info['top_layer']
         self._laygo_info.guard_ring_nf = dig_row_info['guard_ring_nf']
@@ -379,6 +395,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._ext_params = dig_row_info['ext_params']
         self._row_y = dig_row_info['row_y']
 
+        # set left and right end information list
+        self._set_endlr_infos(self._num_rows)
+
     def set_row_types(self, row_types, row_widths, row_orientations, row_thresholds, draw_boundaries, end_mode,
                       num_g_tracks, num_gb_tracks, num_ds_tracks, row_min_tracks=None, top_layer=None, guard_ring_nf=0,
                       row_kwargs=None):
@@ -392,6 +411,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             raise ValueError('Must draw at least 2 rows.')
 
         self._num_rows = len(row_types)
+        # set left and right end information list
+        self._set_endlr_infos(self._num_rows)
+
         if row_kwargs is None:
             row_kwargs = [{}] * self._num_rows
         if row_min_tracks is None:
@@ -886,8 +908,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         num_col = self._laygo_size[0]
         # add space blocks
         total_intv = (0, num_col)
-        for row_idx, intv in enumerate(self._used_list):
-            for (start, end), end_info in zip(*intv.get_complement(total_intv)):
+        for row_idx, (intv, endl_info, endr_info) in \
+                enumerate(zip(self._used_list, self._endl_infos, self._endr_infos)):
+            for (start, end), end_info in zip(*intv.get_complement(total_intv, endl_info, endr_info)):
                 self.add_laygo_space(end_info, num_blk=end - start, loc=(start, row_idx))
 
         # draw extensions

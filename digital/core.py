@@ -92,7 +92,12 @@ class DigitalSpace(LaygoBase):
 class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(DigitalBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+        hidden_params = kwargs.pop('hidden_params', {}).copy()
+        hidden_params['digital_endl_infos'] = None
+        hidden_params['digital_endr_infos'] = None
+
+        super(DigitalBase, self).__init__(temp_db, lib_name, params, used_names, hidden_params=hidden_params, **kwargs)
         self._laygo_info = None
 
         # initialize attributes
@@ -109,6 +114,8 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._ytop = None
         self._ext_params = None
         self._ext_edge_infos = None
+        self._endl_infos = None
+        self._endr_infos = None
 
     @property
     def digital_size(self):
@@ -142,6 +149,15 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         bot_extw = row_info['bot_extw']
         bot_sub_extw = row_info['bot_sub_extw']
         bot_extw_tot = bot_extw + bot_sub_extw
+
+        # set left and right end informations
+        default_end_info = tech_cls.get_default_end_info()
+        self._endl_infos = self.params['digital_endl_infos']
+        if self._endl_infos is None:
+            self._endl_infos = [[default_end_info] * num_laygo_rows] * num_rows
+        self._endr_infos = self.params['digital_endr_infos']
+        if self._endr_infos is None:
+            self._endr_infos = [[default_end_info] * num_laygo_rows] * num_rows
 
         self._ext_params = []
         if draw_boundaries:
@@ -322,14 +338,16 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # add spaces
         num_col = self._dig_size[0]
-        # add space blocks
         total_intv = (0, num_col)
-        for row_idx, intv in enumerate(self._used_list):
-            for (start, end), end_info in zip(*intv.get_complement(total_intv)):
+        for row_idx, (intv, endl_info, endr_info) in \
+                enumerate(zip(self._used_list, self._endl_infos, self._endr_infos)):
+            for (start, end), end_info in zip(*intv.get_complement(total_intv, endl_info, endr_info)):
                 space_params = dict(
                     config=self._row_info['config'],
                     dig_row_info=self._row_info,
                     num_col=end-start,
+                    laygo_endl_infos=end_info[0],
+                    laygo_endr_infos=end_info[1],
                 )
                 space_master = self.new_template(params=space_params, temp_cls=DigitalSpace)
                 self.add_digital_block(space_master, loc=(start, row_idx))
