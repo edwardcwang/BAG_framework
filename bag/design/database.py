@@ -109,7 +109,8 @@ class Database(object):
         module : :class:`bag.design.Module`
             a new :class:`~bag.design.Module` instance.
         """
-        if lib_name in self._exc_libs:
+        static = kwargs.get('static', False)
+        if lib_name in self._exc_libs or static:
             return GenericModule(self, lib_name, cell_name, parent=parent, prj=prj, **kwargs)
         else:
             cls = self._importer.get_class(lib_name, cell_name)

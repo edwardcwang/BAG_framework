@@ -160,7 +160,6 @@ class Testbench(object):
         self.sim_envs = default_envs
         self.config_rules = {}
         self.outputs = outputs
-        self.inst_map = {}
         self.save_dir = None
 
     def get_defined_simulation_environments(self):
@@ -306,24 +305,6 @@ class Testbench(object):
         key = '%s__%s' % (lib_name, cell_name)
         self.config_rules[key] = sim_view
 
-    def rename_instance(self, old_name, new_name):
-        """Rename an instance in this testbench.
-
-        Parameters
-        ----------
-        old_name : string
-            the old instance name.
-        new_name : string
-            the new instance name.
-        """
-        self.inst_map[old_name] = [
-            dict(name=new_name,
-                 lib_name='',
-                 cell_name='',
-                 params={},
-                 term_mapping={},),
-        ]
-
     def update_testbench(self):
         """Commit the testbench changes to the CAD database.
         """
@@ -339,10 +320,6 @@ class Testbench(object):
                 env_params.append(list(val_table.items()))
         self.db.update_testbench(self.lib, self.cell, self.parameters, self.sim_envs, config_list,
                                  env_params)
-
-        # if self.inst_map:
-        #     # update schematic
-        #     self.db.modify_schematic(self.lib, self.cell, {}, inst_map=self.inst_map)
 
     def run_simulation(self, precision=6, sim_tag=None, block=True, callback=None):
         """Run simulation.
@@ -571,28 +548,18 @@ class BagProject(object):
 
         self.impl_db.implement_design(lib_name, design_module, lib_path=lib_path)
 
-    def create_testbench(self, tb_lib, tb_cell, dut_lib, dut_cell, targ_lib, lib_path=''):
-        # type: (str, str, str, str, str, str) -> Testbench
-        """Create a new testbench for the given DUT.
+    def configure_testbench(self, tb_lib, tb_cell):
+        """Update testbench state for the given testbench.
 
-        This method copies a pre-made testbench template, then replaces the
-        device-under-test (DUT) with the given location.  It then sets up the
-        testbench with all process-specific information for simulation to run.
+        This method fill in process-specific information for the given testbench, then returns
+        a testbench object which you can use to control simulation.
 
         Parameters
         ----------
         tb_lib : str
-            testbench template library name.
+            testbench library name.
         tb_cell : str
-            testbench template cell name.
-        dut_lib : str
-            DUT library name.
-        dut_cell : str
-            DUT cell name.
-        targ_lib : str
-            library to save the new testbench to.
-        lib_path : str
-            the path to create the library in.  If empty, use default location.
+            testbench cell name.
 
         Returns
         -------
@@ -604,9 +571,8 @@ class BagProject(object):
         if self.sim is None:
             raise Exception('SimAccess is not set up.')
 
-        c, clist, params, outputs = self.impl_db.instantiate_testbench(tb_lib, tb_cell, targ_lib, dut_lib,
-                                                                       dut_cell, lib_path)
-        return Testbench(self.sim, self.impl_db, targ_lib, tb_cell, params, clist, [c], outputs)
+        c, clist, params, outputs = self.impl_db.configure_testbench(tb_lib, tb_cell)
+        return Testbench(self.sim, self.impl_db, tb_lib, tb_cell, params, clist, [c], outputs)
 
     def load_testbench(self, tb_lib, tb_cell):
         """Loads a testbench from the database.
