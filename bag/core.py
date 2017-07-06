@@ -252,7 +252,7 @@ class Testbench(object):
             parameter name.
         precision : int
             the parameter value will be rounded to this precision.
-        kwargs : dict[string, any]
+        **kwargs :
             the sweep parameters.  Refer to the above for example calls.
         """
         if 'values' in kwargs:
