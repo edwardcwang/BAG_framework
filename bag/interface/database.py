@@ -250,26 +250,17 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
         pass
 
     @abc.abstractmethod
-    def instantiate_testbench(self, tb_lib, tb_cell, targ_lib, dut_lib, dut_cell, new_lib_path=''):
-        """Create a new process-specific testbench based on a testbench template.
+    def configure_testbench(self, tb_lib, tb_cell):
+        """Configure testbench state for the given testbench.
 
-        Copies the testbench template to another library, replace the device-under-test (DUT),
-        then fill in process-specific information.
+        This method fill in process-specific information for the given testbench.
 
         Parameters
         ----------
         tb_lib : str
-            testbench template library name.
+            testbench library name.
         tb_cell : str
             testbench cell name.
-        targ_lib : str
-            the process-specific testbench library name.
-        dut_lib : str
-            DUT library name.
-        dut_cell : str
-            DUT cell name.
-        new_lib_path : str
-            path to put targ_lib if it does not exist.  If Empty, use default location.
 
         Returns
         -------

@@ -312,26 +312,17 @@ class SkillInterface(DbAccess):
 
         return self._eval_skill(cmd, input_files=in_files)
 
-    def instantiate_testbench(self, tb_lib, tb_cell, targ_lib, dut_lib, dut_cell, new_lib_path=''):
-        """Create a new process-specific testbench based on a testbench template.
+    def configure_testbench(self, tb_lib, tb_cell):
+        """Update testbench state for the given testbench.
 
-        Copies the testbench template to another library, replace the device-under-test (DUT),
-        then fill in process-specific information.
+        This method fill in process-specific information for the given testbench.
 
         Parameters
         ----------
         tb_lib : str
-            testbench template library name.
+            testbench library name.
         tb_cell : str
             testbench cell name.
-        targ_lib : str
-            the process-specific testbench library name.
-        dut_lib : str
-            DUT library name.
-        dut_cell : str
-            DUT cell name.
-        new_lib_path : str
-            path to put targ_lib if it does not exist.  If Empty, use default location.
 
         Returns
         -------
@@ -342,19 +333,15 @@ class SkillInterface(DbAccess):
         parameters : dict[str, str]
             a list of testbench parameter values, represented as string.
         """
-        new_lib_path = new_lib_path or self.default_lib_path
 
         tb_config = self.db_config['testbench']
 
-        cmd = ('instantiate_testbench("{tb_lib}" "{tb_cell}" "{targ_lib}" "{dut_lib}" "{dut_cell}" ' +
+        cmd = ('instantiate_testbench("{tb_cell}" "{targ_lib}" ' +
                '"{config_libs}" "{config_views}" "{config_stops}" ' +
                '"{default_corner}" "{corner_file}" {def_files} ' +
-               '"{tech_lib}" "{new_lib_path}" {result_file})')
-        cmd = cmd.format(tb_lib=tb_lib,
-                         tb_cell=tb_cell,
-                         targ_lib=targ_lib,
-                         dut_lib=dut_lib,
-                         dut_cell=dut_cell,
+               '"{tech_lib}" {result_file})')
+        cmd = cmd.format(tb_cell=tb_cell,
+                         targ_lib=tb_lib,
                          config_libs=tb_config['config_libs'],
                          config_views=tb_config['config_views'],
                          config_stops=tb_config['config_stops'],
@@ -362,7 +349,6 @@ class SkillInterface(DbAccess):
                          corner_file=tb_config['env_file'],
                          def_files=to_skill_list_str(tb_config['def_files']),
                          tech_lib=self.db_config['schematic']['tech_lib'],
-                         new_lib_path=new_lib_path,
                          result_file='{result_file}')
         output = yaml.load(self._eval_skill(cmd, out_file='result_file'))
         return tb_config['default_env'], output['corners'], output['parameters'], output['outputs']

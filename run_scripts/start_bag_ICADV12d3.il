@@ -803,10 +803,14 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
 
 ; given a copied template cell, modify it to a concrete schematic.
 procedure( convert_template_cells(lib_name cell_name pin_map inst_list sympin ipin opin iopin simulators)
-    let( (sch)
+    let( (sym_cv sch)
         ; update symbol view first.
-        printf("*INFO* Updating %s__%s symbol pins.\n" lib_name cell_name)
-        update_symbol_pin(lib_name cell_name pin_map sympin simulators)
+        if( sym_cv = dbOpenCellViewByType(lib_name cell_name "symbol" nil "r") then
+            printf("*INFO* Updating %s__%s symbol pins.\n" lib_name cell_name)
+            update_symbol_pin(lib_name cell_name pin_map sympin simulators)
+        else
+            warn("Did not find symbol for %s__%s.  Skipping.  Is it testbench?" lib_name cell_name)
+        )
 
         ; attempt to open schematic in append mode
         unless( sch = dbOpenCellViewByType(lib_name cell_name "schematic" nil "a")
@@ -1330,15 +1334,14 @@ procedure( write_testbench_info_to_file(sdb result_file output_list en_corner_li
 ; and also setup corner settings in adexl.
 ; this method will also record list of corners, global variables, and output expressions
 ; to result_file
-procedure( instantiate_testbench(tb_lib tb_cell targ_lib dut_lib dut_cell
+procedure( instantiate_testbench(tb_cell targ_lib
                                  config_libs config_views config_stops
                                  default_corner corner_file def_files
-                                 tech_lib new_lib_path result_file
-                                 "ttttttttttlttt")
+                                 tech_lib result_file
+                                 "tttttttltt")
     let( (session_name session_sdb session sdb test_names test_name test tool_args corner_list
           ade_symbol ade_session output_list)
-        ; copy testbench and create config view
-        copy_testbench(tb_lib tb_cell targ_lib dut_lib dut_cell tech_lib new_lib_path)
+        ; create config view
         create_config_view(targ_lib tb_cell "config" config_libs config_views config_stops)
 
         session_name = "modify_adexl"
@@ -1354,15 +1357,28 @@ procedure( instantiate_testbench(tb_lib tb_cell targ_lib dut_lib dut_cell
 	    error("ADEXL testbench must have exactly 1 test defined.")
 	)
 
+    ; save current test setup state
+    axlSaveSetupState(session "adexl_default" "All")
+
     ; change all tests to use config view, and set all test's definition files
 	; also get a list of defined output expressions
+	; step 1: get ADE session
 	test_name = car(test_names)
+	ade_symbol = axlGetToolSession(session_name test_name)
+    ade_session = asiGetSession(ade_symbol)
+    ; step 2: save original ADE session
+    asiSaveState(ade_session ?name "orig_state" ?option 'cellview ?lib targ_lib ?cell tb_cell)
+    ; step 3: change test library
     test = axlGetTest(sdb test_name)
     tool_args = axlGetTestToolArgs(test)
     set_assoc_list(tool_args "view" "config")
+    set_assoc_list(tool_args "lib" targ_lib)
+    set_assoc_list(tool_args "cell" tb_cell)
     axlSetTestToolArgs(test tool_args)
-    ade_symbol = axlGetToolSession(session_name test_name)
+    ; step 4: reopen ADE session, then load original ADE state
+	ade_symbol = axlGetToolSession(session_name test_name)
     ade_session = asiGetSession(ade_symbol)
+    asiLoadState(ade_session ?name "orig_state" ?option 'cellview)
     asiSetEnvOptionVal(ade_session 'definitionFiles def_files)
 	output_list = setof(ele asiGetOutputList(ade_session) ele->name)
 

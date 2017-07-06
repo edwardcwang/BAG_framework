@@ -315,7 +315,7 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         self.instances[inst_name] = None
         self.instance_map[inst_name] = []
 
-    def replace_instance_master(self, inst_name, lib_name, cell_name):
+    def replace_instance_master(self, inst_name, lib_name, cell_name, static=False):
         """Replace the master of the given instance.
 
         FOr this method to work, all the pin names must be exactly the same, and
@@ -329,8 +329,10 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             the new library name.
         cell_name : str
             the new cell name.
+        static : bool
+            True if we're replacing instance with a static schematic instead of a design module.
         """
-        new_module = self.database.make_design_module(lib_name, cell_name, parent=self)
+        new_module = self.database.make_design_module(lib_name, cell_name, parent=self, static=static)
         rinst = dict(name=inst_name,
                      cell_name=cell_name,
                      params={},
