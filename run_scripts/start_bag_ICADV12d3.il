@@ -605,13 +605,36 @@ procedure( update_symbol_pin(lib_name cell_name pin_map sympin simulators "ttlll
     )
 )
 
+; record an association list from pin name to pin location in units of snap distances.
+; the pin name is sorted alphabetically so we can use the equal function to test
+; for equality.
+procedure( get_instance_pin_info(inst "g")
+    let( (snap_dist term_name pin_fig xval yval inst_term_xy ans)
+        ans = nil
+        snap_dist = schGetEnv("schSnapSpacing")
+        foreach( inst_term inst~>instTerms
+            term_name = inst_term~>name
+            ; get instance terminal coordinate in schematic
+            pin_fig = car(inst_term~>term~>pins)~>fig
+            bbox = pin_fig~>bBox
+            xval = xCoord(car(bbox)) + (xCoord(cadr(bbox)) - xCoord(car(bbox))) / 2.0
+            yval = yCoord(car(bbox)) + (yCoord(cadr(bbox)) - yCoord(car(bbox))) / 2.0
+            ; quantize to schematic snap spacing to avoid floating point rounding error.
+            inst_term_xy = round2(xval / snap_dist):round2(yval / snap_dist)
+            ans = cons(list(term_name inst_term_xy) ans)
+        )
+        sortcar(ans nil)
+    )
+)
+
 ; get all the wire objects connected to terminals of the given instance.
 ; we assume each terminal has exactly one pin with 1 wire connected, with a
 ; single label on the wire.  The wire doesn't connect to anything else.
-; returns an association list from terminal name to the wire figure object.
+; returns an association list from terminal name to a list of net name and wire figure object.
 procedure( get_instance_terminal_wires(sch inst "gg")
-    let( (snap_dist term_name pin_fig xval yval inst_term_xy ans)
+    let( (snap_dist term_name pin_fig xval yval inst_term_xy net_name ans net_map)
         ans = nil
+        net_map = nil
         snap_dist = schGetEnv("schSnapSpacing")
         foreach( inst_term inst~>instTerms
             term_name = inst_term~>name
@@ -631,6 +654,8 @@ procedure( get_instance_terminal_wires(sch inst "gg")
             yval = yCoord(car(bbox)) + (yCoord(cadr(bbox)) - yCoord(car(bbox))) / 2.0
             ; quantize to schematic snap spacing to avoid floating point rounding error.
             inst_term_xy = round2(xval / snap_dist) * snap_dist:round2(yval / snap_dist) * snap_dist
+            net_name = inst_term~>net~>name
+            net_map = cons(list(term_name net_name) net_map)
             ; printf("terminal pin x/y: %A\n" inst_term_xy)
             foreach( fig inst_term~>net~>figs
                 points = fig~>points
@@ -644,37 +669,65 @@ procedure( get_instance_terminal_wires(sch inst "gg")
                 )
             )
         )
-        ans
+        list(ans net_map)
     )
 )
 
 ; Modify the instance terminal connections of the given instance.
-; we assume each terminal to modify has exactly 1 wire connected,
-; the wire connects to nothing else, and the wire has a label on it.
+; we assume each terminal to modify has at most 1 wire connected,
+; if it exists, the wire connects to nothing else, and it has a label.
 ; In this way, this function just have to change the label text.
 ;
+; if wire_list is not empty, then that means each terminal has exactly one
+; wire connected.  This function will update the label on the wires according
+; to term_mapping.
+;
+; if wire_list is empty, then that means no wires are connected to terminals.
+; this function will attach labels directly to each terminal.  The labels are
+; determined first from term_mapping, then from net_map
+; 
 ; sch is the schematic database object.  Must be opened in append/write mode.
 ; inst is the instance object to modify.
 ; term_mapping is a list of key-value pairs, where keys are old net names,
 ; and values are new net names.
-procedure( modify_instance_terminal(sch inst wire_list term_mapping "ggll")
-    let( (snap_dist key_val old_name new_name fig points mid_point new_wire)
+procedure( modify_instance_terminal(sch inst wire_list net_map term_mapping "gglll")
+    let( (snap_dist key_val old_name new_name fig points mid_point new_wire inst_term inst_pin bbox xval yval)
         ; get schematic snap distance spacing.
         snap_dist = schGetEnv("schSnapSpacing")
-        foreach( wire_info wire_list
-            old_name = car(wire_info)
-            when(key_val = assoc(old_name term_mapping)
-                new_name = cadr(key_val)
-                fig = cadr(wire_info)
-                points = fig~>points
-                mid_point = foreach(mapcar (c1 c2) car(points) cadr(points) (c1 + c2) / 2.0)
-                ; delete old wire, then add wire back with new label.
-                schDelete(fig)
-                new_wire = car(schCreateWire(sch "draw" "full" points snap_dist snap_dist 0))
-                schCreateWireLabel(sch new_wire mid_point new_name "lowerCenter" "R0" "stick" 0.0625 nil)
+        if( wire_list then
+            foreach( wire_info wire_list
+                old_name = car(wire_info)
+                when(key_val = assoc(old_name term_mapping)
+                    new_name = cadr(key_val)
+                    fig = cadr(wire_info)
+                    points = fig~>points
+                    mid_point = foreach(mapcar (c1 c2) car(points) cadr(points) (c1 + c2) / 2.0)
+                    ; delete old wire, then add wire back with new label.
+                    schDelete(fig)
+                    new_wire = car(schCreateWire(sch "draw" "full" points snap_dist snap_dist 0))
+                    schCreateWireLabel(sch new_wire mid_point new_name "lowerCenter" "R0" "stick" 0.0625 nil)
+                )
             )
+            't
+	    else
+	        foreach( inst_term inst~>instTerms
+	            old_name = inst_term~>name
+                inst_pin = car(inst_term~>term~>pins)~>fig
+                bbox = dbTransformBBox(inst_pin~>bBox inst~>transform)
+                xval = xCoord(car(bbox)) + (xCoord(cadr(bbox)) - xCoord(car(bbox))) / 2.0
+                yval = yCoord(car(bbox)) + (yCoord(cadr(bbox)) - yCoord(car(bbox))) / 2.0
+                xval = round2(xval / snap_dist) * snap_dist
+                yval = round2(yval / snap_dist) * snap_dist
+
+                key_val = assoc(old_name term_mapping)
+                unless(key_val
+                    key_val = assoc(old_name net_map)
+                )
+                new_wire = car(schCreateWire(sch "draw" "full" list(xval-snap_dist:yval-snap_dist xval:yval) snap_dist snap_dist 0))
+                schCreateWireLabel(sch new_wire xval:yval cadr(key_val) "lowerCenter" "R0" "stick" 0.0625 nil)
+            )
+            't
         )
-        't
     )
 )
 
@@ -728,8 +781,8 @@ procedure( check_and_save_schematic(sch "g")
 ;
 ; This procedure allows one to delete or array any instances in the schematic template.
 procedure( modify_schematic_content(sch_cv inst_list "gl")
-    let( (inst_obj inst_name rinst_list rinst_len cur_inst wire_list par_val xl xr transform
-          snap_dist tmp_list errmsg)
+    let( (inst_obj inst_name rinst_list rinst_len cur_inst wire_list net_map par_val xl xr transform
+          snap_dist errmsg pin_info tmp_result)
         snap_dist = schGetEnv("schSnapSpacing")
         foreach( inst inst_list
             inst_name = car(inst)
@@ -742,7 +795,7 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
             last_inst = nil
             if( rinst_len == 0 then
                 ; no instances to replace by, delete.
-                wire_list = get_instance_terminal_wires(sch_cv inst_obj)
+                wire_list = car(get_instance_terminal_wires(sch_cv inst_obj))
                 ; delete wires connected to instance
                 foreach( wire_info wire_list
                     schDelete(cadr(wire_info))
@@ -751,11 +804,15 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
                 dbDeleteObject(inst_obj)
             else
                 cur_inst = nil
+                pin_info = nil
                 foreach( rinst rinst_list
                     if( !cur_inst then
                         cur_inst = inst_obj
                         ; printf("inst %s lib = %s, cell = %s\n" inst_name inst_obj->master->libName inst_obj->master->cellName)
-                        wire_list = get_instance_terminal_wires(sch_cv cur_inst)
+                        tmp_result = get_instance_terminal_wires(sch_cv cur_inst)
+                        net_map = cadr(tmp_result)
+                        wire_list = car(tmp_result)
+                        pin_info = get_instance_pin_info(cur_inst)
                         ; printf("%s wire_list: %A\n" inst_name wire_list)
                         ; figure out bounding box for potential future array
                         xl = xCoord(car(cur_inst~>bBox))
@@ -766,14 +823,8 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
                         )
                         transform = list((xr - xl + snap_dist):0 "R0" 1.0)
                     else
-                        ; more than 1 rinst, copy cur_inst and wire_list
-                        ; copy wires
-                        tmp_list = nil
-                        foreach( wire_info wire_list
-                            tmp_list = cons(list(car(wire_info) dbCopyFig(cadr(wire_info) nil transform))
-                                            tmp_list)
-                        )
-                        wire_list = tmp_list
+                        ; more than 1 rinst, copy cur_inst, do not copy wires
+                        wire_list = nil
                         ; copy instance
                         cur_inst = dbCopyFig(cur_inst nil transform)
                     )
@@ -791,13 +842,22 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
                             cdf_par->value = par_val
                         )
                     )
-                    ; modify connections
-                    ; NOTE: after updating master, the pins may have changed, so we need to re-acquire wire_list.
-                    ; printf("%s %A %A\n" inst_name rinst->term_mapping wire_list)
-                    modify_instance_terminal(sch_cv cur_inst wire_list rinst->term_mapping)
+                    when( wire_list
+                        ; if wire_list is not empty, check that the pins match.  If so, keep wires around,
+                        ; otherwise, delete wires
+                        unless( equal(pin_info get_instance_pin_info(cur_inst))
+                            ; delete wires connected to instance
+                            foreach( wire_info wire_list
+                                schDelete(cadr(wire_info))
+                            )
+                            wire_list = nil
+                        )
+                    )
+                    ; modify connections, keeping old wires around
+                    modify_instance_terminal(sch_cv cur_inst wire_list net_map rinst->term_mapping)
                 )
             )
-	    )
+        )
     )
 )
 
