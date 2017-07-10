@@ -440,6 +440,20 @@ procedure( get_unique_term_name( cvid name_base "gt")
         new_term_name
     )
 )
+; helper method to open pin master
+procedure( open_pin_master(cvid pin_cv_info)
+    let( (pin_master mpin_lib mpin_cell mpin_view)
+        mpin_lib = car(pin_cv_info)
+        mpin_cell = cadr(pin_cv_info)
+        mpin_view = caddr(pin_cv_info)
+        unless( pin_master = dbOpenCellViewByType( mpin_lib mpin_cell mpin_view nil "r" )
+            dbClose(cvid)
+            error( "Cannot find pin master cellview: %s__%s (%s)" mpin_lib mpin_cell mpin_view)
+        )
+        pin_master
+    )
+)
+
 
 ; update pins of a schematic
 ; cvid is the opened cellview id of the schematic.  It must be in append mode.
@@ -447,9 +461,23 @@ procedure( get_unique_term_name( cvid name_base "gt")
 ; ipin, opin, and iopin are lists of three strings for input/output/inout pins, respectively.
 ; first element is the pin master library, second element is the pin mater cell, and third element
 ; is the pin master cellview.
-procedure( update_schematic_pin(cvid pin_map ipin opin iopin "gllll")
-    let( (cur_term_name new_term_name term pin pin_orient pin_location pin_direction
-          temp_new_term_name pin_cv_info pin_master new_term mpin_lib mpin_cell mpin_view)
+procedure( update_schematic_pin(cvid pin_map new_pins ipin opin iopin "glllll")
+    let( (snap_dist cur_term_name new_term_name term pin pin_orient pin_location pin_direction
+          temp_new_term_name pin_master ipin_master opin_master iopin_master
+          pin_xy_info npin_xl npin_yl npin_xr npin_yr npin_name npin_type)
+
+        snap_dist = schGetEnv("schSnapSpacing")
+
+        ; open pin masters
+        ipin_master = open_pin_master(cvid ipin)
+        opin_master = open_pin_master(cvid opin)
+        iopin_master = open_pin_master(cvid iopin)
+        pin_master = nil
+
+        ; get new pin locations before any pin addition/substraction.
+        pin_xy_info = get_new_pin_locations(cvid snap_dist)
+
+        ; rename or remove pins
         foreach( p pin_map
             cur_term_name = car(p)
             new_term_name = cadr(p)
@@ -457,47 +485,122 @@ procedure( update_schematic_pin(cvid pin_map ipin opin iopin "gllll")
             when(cur_term_name != new_term_name
                 unless( term = dbFindTermByName(cvid cur_term_name)
                     dbClose(cvid)
+                    dbClose(ipin_master)
+                    dbClose(opin_master)
+                    dbClose(iopin_master)
                     error( "Terminal %s not found." cur_term_name )
                 )
                 when( term~>pinCount != 1
                     dbClose(cvid)
+                    dbClose(ipin_master)
+                    dbClose(opin_master)
+                    dbClose(iopin_master)
                     error( "Terminal %s does not have exactly one pin." cur_term_name)
                 )
                 pin = car(term~>pins)
-                pin_orient = pin~>fig~>orient
-                pin_location = pin~>fig~>xy
-                pin_direction = term~>direction
 
-                ; create new pin figure
-                cond( ( pin_direction == "input" pin_cv_info = ipin)
-                      ( pin_direction == "output" pin_cv_info = opin)
-                      ( 't pin_cv_info = iopin)
+                if( strlen(new_term_name) != 0 then
+                    ; rename pin
+                    pin_orient = pin~>fig~>orient
+                    pin_location = pin~>fig~>xy
+                    pin_direction = term~>direction
+
+                    ; create new pin figure
+                    cond( ( pin_direction == "input" pin_master = ipin_master)
+                          ( pin_direction == "output" pin_master = opin_master)
+                          ( 't pin_master = iopin_master)
+                    )
+
+                    ; delete pin
+                    unless( dbDeleteObject(pin~>fig)
+                        dbClose(cvid)
+                        dbClose(ipin_master)
+                        dbClose(opin_master)
+                        dbClose(iopin_master)
+                        error( "Cannot delete pin for terminal %s" cur_term_name )
+                    )
+
+                    ; create a temporary terminal with a unique name so we can change the number of bits without getting an error
+                    temp_new_term_name = get_unique_term_name(cvid new_term_name)
+                    schCreatePin(cvid pin_master temp_new_term_name pin_direction nil pin_location "R0" )
+
+                    ; now rename the new terminal
+                    new_term = dbFindTermByName(cvid temp_new_term_name )
+                    new_term~>name = new_term_name
+                else
+                    ; remove pin
+                    dbDeleteObject(pin~>fig)
                 )
-                mpin_lib = car(pin_cv_info)
-                mpin_cell = cadr(pin_cv_info)
-                mpin_view = caddr(pin_cv_info)
-                unless( pin_master = dbOpenCellViewByType( mpin_lib mpin_cell mpin_view nil "r" )
-                    dbClose(cvid)
-                    error( "Cannot find pin master cellview: %s__%s (%s)" mpin_lib mpin_cell mpin_view)
-                )
-
-                ; delete pin
-                unless( dbDeleteObject(pin~>fig)
-                    dbClose(cvid)
-                    dbClose(pin_master)
-                    error( "Cannot delete pin for terminal %s" cur_term_name )
-                )
-
-                ; create a temporary terminal with a unique name so we can change the number of bits without getting an error
-                temp_new_term_name = get_unique_term_name(cvid new_term_name)
-                schCreatePin(cvid pin_master temp_new_term_name pin_direction nil pin_location "R0" )
-
-                ; now rename the new terminal
-                new_term = dbFindTermByName(cvid temp_new_term_name )
-                new_term~>name = new_term_name
-                dbClose(pin_master)
             )
         )
+
+        ; add new pins
+        when( new_pins
+            ; get location for new pins
+            npin_xl = xCoord(car(pin_xy_info))
+            npin_yl = yCoord(car(pin_xy_info)) - 2 * snap_dist
+            npin_xr = xCoord(cadr(pin_xy_info))
+            npin_yr = yCoord(cadr(pin_xy_info)) - 2 * snap_dist
+            foreach( npin_info new_pins
+                npin_name = car(npin_info)
+                npin_type = cadr(npin_info)
+
+                ; verify that this pin does not exist yet
+                when(dbFindTermByName(cvid npin_name)
+                    dbClose(cvid)
+                    dbClose(ipin_master)
+                    dbClose(opin_master)
+                    dbClose(iopin_master)
+                    error( "Terminal %s already exists" npin_name)
+                )
+
+                ; get pin location based on pin type
+                cond( ( npin_type == "input" pin_master = ipin_master pin_location = npin_xl:npin_yl npin_yl = npin_yl - 2 * snap_dist)
+                      ( npin_type == "output" pin_master = opin_master pin_location = npin_xr:npin_yr npin_yr = npin_yr - 2 * snap_dist)
+                      ( 't pin_master = iopin_master pin_location = npin_xl:npin_yl npin_yl = npin_yl - 2 * snap_dist)
+                )
+                ; create pin
+                schCreatePin(cvid pin_master npin_name npin_type nil pin_location "R0")
+            )
+        )
+
+        dbClose(ipin_master)
+        dbClose(opin_master)
+        dbClose(iopin_master)
+    )
+)
+
+; find X and Y coordinates to insert new symbol pins
+procedure( get_new_pin_locations(cvid snap_dist)
+    let( (pin bbox pin_x pin_y xl xr yl yr)
+        ; find the left-most/right-most pin X coordinates, and find the lowst
+        ; Y coordinate of the left-most/right-most pins
+        xl = nil
+        xr = nil
+        yl = nil
+        yr = nil
+        foreach( term cvid->terminals
+            when( term~>pinCount != 1
+                dbClose(cvid)
+                error( "Terminal %s does not have exactly one pin" term~>name)
+            )
+            pin = car(term~>pins)
+            bbox = pin~>fig~>bBox
+            pin_x = round2((xCoord(car(bbox)) + xCoord(cadr(bbox))) / 2.0 / snap_dist)
+            pin_y = round2((yCoord(car(bbox)) + yCoord(cadr(bbox))) / 2.0 / snap_dist)
+            if( xl == nil then
+                xl = pin_x
+                xr = pin_x
+                yl = pin_y
+                yr = pin_y
+            else
+                cond( (pin_x < xl xl = pin_x yl = pin_y)
+                      (pin_x == xl yl = min(yl pin_y)))
+                cond( (pin_x > xr xr = pin_x yr = pin_y)
+                      (pin_x == xr yr = min(yr pin_y)))
+            )
+        )
+        list((xl * snap_dist):(yl * snap_dist) (xr * snap_dist):(yr * snap_dist))
     )
 )
 
@@ -507,13 +610,18 @@ procedure( update_schematic_pin(cvid pin_map ipin opin iopin "gllll")
 ; second element is the pin mater cell, and third element is the pin master cellview.
 ; simulators is a list of simulator names for which termOrder should be updated.
 ; Usually simulators = '("auLvs" "auCdl" "spectre" "hspiceD")
-procedure( update_symbol_pin(lib_name cell_name pin_map sympin simulators "ttlll")
-    let( (cvid pin_master cur_term_name new_term_name term pin bb pin_location pin_direction
-          label_location label_orientation label_rel_location label_font label_font_size
-          label_type label_text temp_new_term_name new_term new_port_order cell_obj bc
-          mpin_lib mpin_cell mpin_view)
+procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulators "ttllll")
+    let( (snap_dist cvid pin_master cur_term_name new_term_name term pin bbox pin_x pin_y pin_location pin_direction
+          label_location label_rel_location temp_new_term_name new_term new_port_order cell_obj bc
+          mpin_lib mpin_cell mpin_view pin_xy_info npin_xl npin_yl npin_xr npin_yr npin_name npin_type
+          modified_pins)
 
-        cvid = nil
+        snap_dist = schGetEnv("schSnapSpacing")
+        unless( cvid = dbOpenCellViewByType(lib_name cell_name "symbol" nil "a")
+            dbClose(pin_master)
+            error("Cannot open cellview %s__%s (symbol)." lib_name cell_name)
+        )
+        modified_pins = nil
         mpin_lib = car(sympin)
         mpin_cell = cadr(sympin)
         mpin_view = caddr(sympin)
@@ -521,19 +629,17 @@ procedure( update_symbol_pin(lib_name cell_name pin_map sympin simulators "ttlll
             error("Cannot open symbol pin cellview %s__%s (%s)." mpin_lib mpin_cell mpin_view)
         )
 
+        ; get new pin locations before any pin addition/substraction.
+        pin_xy_info = get_new_pin_locations(cvid snap_dist)
+
+        ; modify existing pins
         new_port_order = tconc(nil "")
         foreach( p pin_map
             cur_term_name = car(p)
             new_term_name = cadr(p)
             new_port_order = tconc(new_port_order new_term_name)
             when( cur_term_name != new_term_name
-                unless( cvid
-                    ; open pin cellview if we haven't already
-                    unless( cvid = dbOpenCellViewByType(lib_name cell_name "symbol" nil "a")
-                        dbClose(pin_master)
-                        error("Cannot open cellview %s__%s (symbol)." lib_name cell_name)
-                    )
-                )
+                modified_pins = 't
                 ; printf("%s %s\n" cur_term_name new_term_name)
                 unless( term = dbFindTermByName(cvid cur_term_name)
                     dbClose(pin_master)
@@ -546,43 +652,98 @@ procedure( update_symbol_pin(lib_name cell_name pin_map sympin simulators "ttlll
                     error( "Terminal %s does not have exactly one pin." cur_term_name)
                 )
                 pin = car(term~>pins)
-                bb = pin~>fig~>bBox
-                pin_location = ((car(cadr(bb)) + car(car(bb)))/2.0):((cadr(cadr(bb)) + cadr(car(bb)))/2.0)
-                pin_direction = term~>direction
 
-                ; change label
-                foreach( label pin~>fig~>children
-                    when( label~>objType == "label"
-                        label_location = label~>xy
-                        label_orientation = label~>orient
-                        label_rel_location = label~>justify
-                        label_font = label~>font
-                        label_font_size = label~>height
-                        label_type = label~>labelType
-                        label_text = label~>theLabel
-                        when( label_text == cur_term_name
-                            schCreateSymbolLabel(cvid label_location "pin label" new_term_name label_rel_location
-                                                 label_orientation label_font label_font_size label_type)
+                if( strlen(new_term_name) != 0 then
+                    ; rename pin
+                    bbox = pin~>fig~>bBox
+                    pin_x = (xCoord(car(bbox)) + xCoord(cadr(bbox))) / 2.0
+                    pin_y = (yCoord(car(bbox)) + yCoord(cadr(bbox))) / 2.0
+                    pin_location = round2(pin_x / snap_dist) * snap_dist:round2(pin_y / snap_dist) * snap_dist
+                    pin_direction = term~>direction
+
+                    ; change label
+                    prog( (label_orientation label_font label_font_size label_type label_text)
+                        foreach( label pin~>fig~>children
+                            when( label~>objType == "label"
+                                label_location = label~>xy
+                                label_orientation = label~>orient
+                                label_rel_location = label~>justify
+                                label_font = label~>font
+                                label_font_size = label~>height
+                                label_type = label~>labelType
+                                label_text = label~>theLabel
+                                when( label_text == cur_term_name
+                                    schCreateSymbolLabel(cvid label_location "pin label" new_term_name label_rel_location
+                                                         label_orientation label_font label_font_size label_type)
+                                    return('t)
+                                )
+                            )
                         )
+                        return(nil)
                     )
+
+                    dbDeleteObject(pin~>fig)
+                    dbDeleteObject(pin)
+
+                    ;create a temporary terminal with a unique name so we can change the number of bits without getting an error
+                    temp_new_term_name = get_unique_term_name(cvid new_term_name)
+                    schCreateSymbolPin(cvid pin_master temp_new_term_name pin_direction pin_location "R0" )
+
+                    new_term = dbFindTermByName(cvid temp_new_term_name )
+                    dbDeleteObject(term)
+                    new_term~>name = new_term_name
+                else
+                    ; remove pin
+                    dbDeleteObject(pin~>fig)
+                    dbDeleteObject(pin)
+                    dbDeleteObject(term)
+                )
+            )
+        )
+
+        ; add new pins
+        when( new_pins
+            modified_pins = 't
+            ; get location for new pins
+            npin_xl = xCoord(car(pin_xy_info))
+            npin_yl = yCoord(car(pin_xy_info)) - 2 * snap_dist
+            npin_xr = xCoord(cadr(pin_xy_info))
+            npin_yr = yCoord(cadr(pin_xy_info)) - 2 * snap_dist
+            foreach( npin_info new_pins
+                npin_name = car(npin_info)
+                npin_type = cadr(npin_info)
+
+                ; verify that this pin does not exist yet
+                when(dbFindTermByName(cvid npin_name)
+                    dbClose(pin_master)
+                    dbClose(cvid)
+                    error( "Terminal %s already exists" npin_name)
                 )
 
-                dbDeleteObject(pin~>fig)
-                dbDeleteObject(pin)
+                ; update pin order
+                new_port_order = tconc(new_port_order npin_name)
 
-                ;create a temporary terminal with a unique name so we can change the number of bits without getting an error
-                temp_new_term_name = get_unique_term_name(cvid new_term_name)
-                schCreateSymbolPin(cvid pin_master temp_new_term_name pin_direction pin_location "R0" )
+                ; get pin location based on pin type
+                if( equal(npin_type "output") then
+                    label_location = npin_xr:npin_yr
+                    label_rel_location = "lowerLeft"
+                    npin_yr = npin_yr - 2 * snap_dist
+                else
+                    label_location = npin_xl:npin_yl
+                    label_rel_location = "lowerRight"
+                    npin_yl = npin_yl - 2 * snap_dist
+                )
 
-                new_term = dbFindTermByName(cvid temp_new_term_name )
-                dbDeleteObject(term)
-                new_term~>name = new_term_name
+                ; create label and pin
+                schCreateSymbolLabel(cvid label_location "pin label" npin_name label_rel_location
+                                     "R0" "stick" snap_dist "normalLabel")
+                schCreateSymbolPin(cvid pin_master npin_name npin_type label_location "R0")
             )
         )
 
         dbClose(pin_master)
 
-        when( cvid
+        when( modified_pins
             ; update pin order
             new_port_order = cdar(new_port_order)
             schEditPinOrder(cvid new_port_order 't)
@@ -626,8 +787,8 @@ procedure( get_instance_pin_info(inst "g")
             ; get instance terminal coordinate in schematic
             pin_fig = car(inst_term~>term~>pins)~>fig
             bbox = pin_fig~>bBox
-            xval = xCoord(car(bbox)) + (xCoord(cadr(bbox)) - xCoord(car(bbox))) / 2.0
-            yval = yCoord(car(bbox)) + (yCoord(cadr(bbox)) - yCoord(car(bbox))) / 2.0
+            xval = (xCoord(car(bbox)) + xCoord(cadr(bbox))) / 2.0
+            yval = (yCoord(car(bbox)) + yCoord(cadr(bbox))) / 2.0
             ; quantize to schematic snap spacing to avoid floating point rounding error.
             inst_term_xy = round2(xval / snap_dist):round2(yval / snap_dist)
             ans = cons(list(term_name inst_term_xy) ans)
@@ -719,21 +880,25 @@ procedure( modify_instance_terminal(sch inst wire_list net_map term_mapping "ggl
             )
             't
         else
-            foreach( inst_term inst~>instTerms
-                old_name = inst_term~>name
+            foreach( net_info net_map
+                old_name = car(net_info)
+                key_val = assoc(old_name term_mapping)
+                if( key_val then
+                    new_name = cadr(key_val)
+                else
+                    new_name = cadr(net_info)
+                )
+                inst_term = dbCreateInstTerm(nil inst dbFindTermByName(inst->master old_name))
                 inst_pin = car(inst_term~>term~>pins)~>fig
                 bbox = dbTransformBBox(inst_pin~>bBox inst~>transform)
-                xval = xCoord(car(bbox)) + (xCoord(cadr(bbox)) - xCoord(car(bbox))) / 2.0
-                yval = yCoord(car(bbox)) + (yCoord(cadr(bbox)) - yCoord(car(bbox))) / 2.0
+                xval = (xCoord(car(bbox)) + xCoord(cadr(bbox))) / 2.0
+                yval = (yCoord(car(bbox)) + yCoord(cadr(bbox))) / 2.0
                 xval = round2(xval / snap_dist) * snap_dist
                 yval = round2(yval / snap_dist) * snap_dist
 
-                key_val = assoc(old_name term_mapping)
-                unless(key_val
-                    key_val = assoc(old_name net_map)
-                )
                 new_wire = car(schCreateWire(sch "draw" "full" list(xval-snap_dist:yval-snap_dist xval:yval) snap_dist snap_dist 0))
-                schCreateWireLabel(sch new_wire xval:yval cadr(key_val) "lowerCenter" "R0" "stick" 0.0625 nil)
+                schCreateWireLabel(sch new_wire xval:yval new_name "lowerCenter" "R0" "stick" 0.0625 nil)
+
             )
             't
         )
@@ -825,13 +990,16 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
                         pin_info = get_instance_pin_info(cur_inst)
                         ; printf("%s wire_list: %A\n" inst_name wire_list)
                         ; figure out bounding box for potential future array
+                        ; printf("instance %s bbox: %A\n" cur_inst~>name cur_inst~>bBox)
                         xl = xCoord(car(cur_inst~>bBox))
                         xr = xCoord(cadr(cur_inst~>bBox))
                         foreach( wire_info wire_list
+                            ; printf("instance %s wire: %A %A\n" cur_inst~>name xCoord(car(cadr(wire_info)~>bBox)) xCoord(cadr(cadr(wire_info)~>bBox)))
                             xl = min(xl xCoord(car(cadr(wire_info)~>bBox)))
                             xr = max(xr xCoord(cadr(cadr(wire_info)~>bBox)))
                         )
                         transform = list((xr - xl + snap_dist):0 "R0" 1.0)
+                        ; printf("instance %s transform: %A\n" cur_inst~>name transform)
                     else
                         ; more than 1 rinst, copy cur_inst, do not copy wires
                         wire_list = nil
@@ -842,8 +1010,8 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
                     when(cur_inst->name != rinst->name
                         cur_inst->name = rinst->name
                     )
-                    schReplaceProperty(list(cur_inst) "master" sprintf(nil "%s %s symbol" rinst->lib_name
-                                                                       rinst->cell_name))
+                    schReplaceProperty(list(cur_inst) "master" sprintf(nil "%s %s %s" rinst->lib_name
+                                                                       rinst->cell_name cur_inst->viewName))
                     ; set parameters
                     foreach( cdf_par cdfGetInstCDF(cur_inst)~>parameters
                         par_val = cadr(assoc(cdf_par->name rinst->params))
@@ -864,19 +1032,22 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
                         )
                     )
                     ; modify connections, keeping old wires around
+                    ; printf("instance %s wire_list: %A net_map: %A term_map: %A\n" cur_inst~>name wire_list net_map rinst->term_mapping)
                     modify_instance_terminal(sch_cv cur_inst wire_list net_map rinst->term_mapping)
                 )
             )
         )
     )
 )
+
+
 ; given a copied template cell, modify it to a concrete schematic.
-procedure( convert_template_cells(lib_name cell_name pin_map inst_list sympin ipin opin iopin simulators)
+procedure( convert_template_cells(lib_name cell_name pin_map new_pins inst_list sympin ipin opin iopin simulators)
     let( (sym_cv sch)
         ; update symbol view first.
         if( sym_cv = dbOpenCellViewByType(lib_name cell_name "symbol" nil "r") then
             printf("*INFO* Updating %s__%s symbol pins.\n" lib_name cell_name)
-            update_symbol_pin(lib_name cell_name pin_map sympin simulators)
+            update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulators)
         else
             warn("Did not find symbol for %s__%s.  Skipping.  Is it testbench?" lib_name cell_name)
         )
@@ -890,7 +1061,7 @@ procedure( convert_template_cells(lib_name cell_name pin_map inst_list sympin ip
         modify_schematic_content(sch inst_list)
         ; update schematic pins
         printf("*INFO* Updating %s__%s schematic pins.\n" lib_name cell_name)
-        update_schematic_pin(sch pin_map ipin opin iopin)
+        update_schematic_pin(sch pin_map new_pins ipin opin iopin)
         check_and_save_schematic(sch)
     )
 )
@@ -911,9 +1082,10 @@ procedure( create_concrete_schematic( lib_name tech_lib lib_path temp_file chang
         foreach( change change_list
             cell_name = change->name
             pin_map = change->pin_map
+            new_pins = change->new_pins
             inst_list = change->inst_list
             printf("*INFO* Updating cell %s__%s\n" lib_name cell_name)
-            convert_template_cells( lib_name cell_name pin_map inst_list
+            convert_template_cells( lib_name cell_name pin_map new_pins inst_list
                                     sympin ipin opin iopin simulators )
         )
         't
