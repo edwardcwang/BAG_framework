@@ -117,6 +117,7 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         self._generated_lib_name = None
         self._generated_cell_name = None
         self.orig_instances = {}
+        self.new_pins = []
 
         if yaml_fname is not None:
             self._yaml_fname = os.path.abspath(yaml_fname)
@@ -289,9 +290,6 @@ class Module(with_metaclass(abc.ABCMeta, object)):
     def rename_pin(self, old_pin, new_pin):
         """Renames an input/output pin of this schematic.
 
-        This method should only be used for variable buses, i.e. a DAC that needs
-        to change the number of data bits.
-
         NOTE: Make sure to call :meth:`.reconnect_instance_terminal` so that instances are
         connected to the new pin.
 
@@ -303,6 +301,31 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             the new pin name.
         """
         self.pin_map[old_pin] = new_pin
+
+    def add_pin(self, new_pin, pin_type):
+        """Adds a new pin to this schematic.
+
+        NOTE: Make sure to call :meth:`.reconnect_instance_terminal` so that instances are
+        connected to the new pin.
+
+        Parameters
+        ----------
+        new_pin : str
+            the new pin name.
+        pin_type : str
+            the new pin type.  We current support "input", "output", or "inputOutput"
+        """
+        self.new_pins.append([new_pin, pin_type])
+
+    def remove_pin(self, remove_pin):
+        """Removes a pin from this schematic.
+
+        Parameters
+        ----------
+        remove_pin : str
+            the pin to remove.
+        """
+        self.rename_pin(remove_pin, '')
 
     def delete_instance(self, inst_name):
         """Delete the instance with the given name.
@@ -659,7 +682,7 @@ class Module(with_metaclass(abc.ABCMeta, object)):
 
             used_concrete_names.add(new_concrete_cell_name)
             hier_graph.add_node(cell_id, concrete_cell_name=new_concrete_cell_name,
-                                pin_map=self.pin_map)
+                                pin_map=self.pin_map, new_pins=self.new_pins)
 
             concrete_inst_map = {}
             for inst_name, rinst_list in sorted(self.instance_map.items()):
