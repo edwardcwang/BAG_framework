@@ -600,6 +600,14 @@ procedure( get_new_pin_locations(cvid snap_dist)
                       (pin_x == xr yr = min(yr pin_y)))
             )
         )
+        when(xl == nil
+            ; default values if schematic has no terminals
+            ; this usually means you have a testbench schematic
+            xl = 0
+            yl = 0
+            xr = 10
+            yr = 0
+        )
         list((xl * snap_dist):(yl * snap_dist) (xr * snap_dist):(yr * snap_dist))
     )
 )
