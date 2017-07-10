@@ -19,9 +19,9 @@ Eric Chang, Mar 2, 2017.
 procedure( parse_data_from_file( fname "t" )
     let( (p ans)
         unless( p = infile( fname )
-	    error("Cannot open file %s" fname)
-	)
-	ans = parse_data_from_file_helper(p)
+            error("Cannot open file %s" fname)
+        )
+        ans = parse_data_from_file_helper(p)
         close( p )
         ans
     )
@@ -83,12 +83,12 @@ procedure( get_cells_in_library( lib_name "t" )
     let( ( lib_obj ans )
         if( lib_obj = ddGetObj(lib_name nil nil nil nil "r") then
             ans = ddGetObjChildren(lib_obj)~>name
-        	ddReleaseObj(lib_obj)
+            ddReleaseObj(lib_obj)
         else
             ; library does not exist, return empty list
             ans = '()
         )
-	ans
+        ans
     )
 )
 
@@ -341,10 +341,10 @@ procedure( create_or_erase_library(lib_name tech_lib lib_path erase "tttg")
             't
         else
             ; create library if not exist
-	    when( and(lib_path (lib_path != "."))
-	        lib_path = strcat(lib_path "/" lib_name)
-	    )
-	    lib_obj = ddCreateLib(lib_name lib_path)
+            when( and(lib_path (lib_path != "."))
+                lib_path = strcat(lib_path "/" lib_name)
+            )
+            lib_obj = ddCreateLib(lib_name lib_path)
             ; attach technology file
             techBindTechFile(lib_obj tech_lib)
             ; close library
@@ -440,56 +440,56 @@ procedure( get_unique_term_name( cvid name_base "gt")
 ; is the pin master cellview.
 procedure( update_schematic_pin(cvid pin_map ipin opin iopin "gllll")
     let( (cur_term_name new_term_name term pin pin_orient pin_location pin_direction
-	      temp_new_term_name pin_cv_info pin_master new_term mpin_lib mpin_cell mpin_view)
-	    foreach( p pin_map
-	        cur_term_name = car(p)
-	        new_term_name = cadr(p)
-	        ; printf("%s %s\n" cur_term_name new_term_name)
-	        when(cur_term_name != new_term_name
-	            unless( term = dbFindTermByName(cvid cur_term_name)
-	                dbClose(cvid)
-	                error( "Terminal %s not found." cur_term_name )
-	            )
-	            when( term~>pinCount != 1
-	                dbClose(cvid)
-	                error( "Terminal %s does not have exactly one pin." cur_term_name)
-	            )
-	            pin = car(term~>pins)
-	            pin_orient = pin~>fig~>orient
-	            pin_location = pin~>fig~>xy
-	            pin_direction = term~>direction
+          temp_new_term_name pin_cv_info pin_master new_term mpin_lib mpin_cell mpin_view)
+        foreach( p pin_map
+            cur_term_name = car(p)
+            new_term_name = cadr(p)
+            ; printf("%s %s\n" cur_term_name new_term_name)
+            when(cur_term_name != new_term_name
+                unless( term = dbFindTermByName(cvid cur_term_name)
+                    dbClose(cvid)
+                    error( "Terminal %s not found." cur_term_name )
+                )
+                when( term~>pinCount != 1
+                    dbClose(cvid)
+                    error( "Terminal %s does not have exactly one pin." cur_term_name)
+                )
+                pin = car(term~>pins)
+                pin_orient = pin~>fig~>orient
+                pin_location = pin~>fig~>xy
+                pin_direction = term~>direction
 
-	            ; create new pin figure
-	            cond( ( pin_direction == "input" pin_cv_info = ipin)
-	                  ( pin_direction == "output" pin_cv_info = opin)
-	                  ( 't pin_cv_info = iopin)
-	            )
-	            mpin_lib = car(pin_cv_info)
-	            mpin_cell = cadr(pin_cv_info)
-	            mpin_view = caddr(pin_cv_info)
-	            unless( pin_master = dbOpenCellViewByType( mpin_lib mpin_cell mpin_view nil "r" )
-	                dbClose(cvid)
-	                error( "Cannot find pin master cellview: %s__%s (%s)" mpin_lib mpin_cell mpin_view)
-	            )
+                ; create new pin figure
+                cond( ( pin_direction == "input" pin_cv_info = ipin)
+                      ( pin_direction == "output" pin_cv_info = opin)
+                      ( 't pin_cv_info = iopin)
+                )
+                mpin_lib = car(pin_cv_info)
+                mpin_cell = cadr(pin_cv_info)
+                mpin_view = caddr(pin_cv_info)
+                unless( pin_master = dbOpenCellViewByType( mpin_lib mpin_cell mpin_view nil "r" )
+                    dbClose(cvid)
+                    error( "Cannot find pin master cellview: %s__%s (%s)" mpin_lib mpin_cell mpin_view)
+                )
 
-	            ; delete pin
-	            unless( dbDeleteObject(pin~>fig)
-	                dbClose(cvid)
-	                dbClose(pin_master)
-	                error( "Cannot delete pin for terminal %s" cur_term_name )
-	            )
+                ; delete pin
+                unless( dbDeleteObject(pin~>fig)
+                    dbClose(cvid)
+                    dbClose(pin_master)
+                    error( "Cannot delete pin for terminal %s" cur_term_name )
+                )
 
-	            ; create a temporary terminal with a unique name so we can change the number of bits without getting an error
-	            temp_new_term_name = get_unique_term_name(cvid new_term_name)
-	            schCreatePin(cvid pin_master temp_new_term_name pin_direction nil pin_location "R0" )
+                ; create a temporary terminal with a unique name so we can change the number of bits without getting an error
+                temp_new_term_name = get_unique_term_name(cvid new_term_name)
+                schCreatePin(cvid pin_master temp_new_term_name pin_direction nil pin_location "R0" )
 
-	            ; now rename the new terminal
-	            new_term = dbFindTermByName(cvid temp_new_term_name )
-	            new_term~>name = new_term_name
-	            dbClose(pin_master)
-	        )
-	    )
-	)
+                ; now rename the new terminal
+                new_term = dbFindTermByName(cvid temp_new_term_name )
+                new_term~>name = new_term_name
+                dbClose(pin_master)
+            )
+        )
+    )
 )
 
 ; update pins of a symbol
@@ -504,7 +504,7 @@ procedure( update_symbol_pin(lib_name cell_name pin_map sympin simulators "ttlll
           label_type label_text temp_new_term_name new_term new_port_order cell_obj bc
           mpin_lib mpin_cell mpin_view)
 
-	cvid = nil
+        cvid = nil
         mpin_lib = car(sympin)
         mpin_cell = cadr(sympin)
         mpin_view = caddr(sympin)
@@ -518,13 +518,13 @@ procedure( update_symbol_pin(lib_name cell_name pin_map sympin simulators "ttlll
             new_term_name = cadr(p)
             new_port_order = tconc(new_port_order new_term_name)
             when( cur_term_name != new_term_name
-	        unless( cvid
-		    ; open pin cellview if we haven't already
-		    unless( cvid = dbOpenCellViewByType(lib_name cell_name "symbol" nil "a")
-		        dbClose(pin_master)
-		        error("Cannot open cellview %s__%s (symbol)." lib_name cell_name)
-        	    )
-		)
+                unless( cvid
+                    ; open pin cellview if we haven't already
+                    unless( cvid = dbOpenCellViewByType(lib_name cell_name "symbol" nil "a")
+                        dbClose(pin_master)
+                        error("Cannot open cellview %s__%s (symbol)." lib_name cell_name)
+                    )
+                )
                 ; printf("%s %s\n" cur_term_name new_term_name)
                 unless( term = dbFindTermByName(cvid cur_term_name)
                     dbClose(pin_master)
@@ -595,12 +595,12 @@ procedure( update_symbol_pin(lib_name cell_name pin_map sympin simulators "ttlll
                 error("Cannot save termOrder CDF for %s__%s." lib_name cell_name)
             )
             ddReleaseObj(cell_obj)
-	    ; opening schematic will open all symbols inside that schematic.
-	    ; as the result, dbClose may not close this symbol view.  To get rid
-	    ; of edit lock, we use dbReopen so even if dbClose fails the edit lock
-	    ; will be gone.
-	    dbReopen(cvid, "r")
-	    dbClose(cvid)
+            ; opening schematic will open all symbols inside that schematic.
+            ; as the result, dbClose may not close this symbol view.  To get rid
+            ; of edit lock, we use dbReopen so even if dbClose fails the edit lock
+            ; will be gone.
+            dbReopen(cvid, "r")
+            dbClose(cvid)
         )
     )
 )
@@ -709,9 +709,9 @@ procedure( modify_instance_terminal(sch inst wire_list net_map term_mapping "ggl
                 )
             )
             't
-	    else
-	        foreach( inst_term inst~>instTerms
-	            old_name = inst_term~>name
+        else
+            foreach( inst_term inst~>instTerms
+                old_name = inst_term~>name
                 inst_pin = car(inst_term~>term~>pins)~>fig
                 bbox = dbTransformBBox(inst_pin~>bBox inst~>transform)
                 xval = xCoord(car(bbox)) + (xCoord(cadr(bbox)) - xCoord(car(bbox))) / 2.0
@@ -1117,7 +1117,7 @@ procedure( create_layout_helper( cv tech_file inst_list rect_list via_list pin_l
             ; printf("make_pin_rect: %A\n" make_pin_rect)
             ; create pin object only if make_pin_rect is True.
             when( make_pin_rect != 0
-	    	; printf("making pin.\n")
+                ; printf("making pin.\n")
                 dbCreatePin( dbMakeNet(cv pin->net_name) dbCreateRect(cv pin->layer pin_bb) pin->pin_name )
             )
             ; printf("%A %A %A %A\n" pin->label pin->layer pin_xc pin_yc)
@@ -1208,10 +1208,10 @@ procedure( copy_testbench(master_lib master_cell targ_lib
 
         ; create target library if does not exist
         unless( tlib_obj = ddGetObj(targ_lib nil nil nil nil "r")
-	    when( and(new_lib_path (new_lib_path != "."))
-	        new_lib_path = strcat(new_lib_path "/" lib_name)
-	    )
-	    tlib_obj = ddCreateLib(targ_lib new_lib_path)
+            when( and(new_lib_path (new_lib_path != "."))
+                new_lib_path = strcat(new_lib_path "/" lib_name)
+            )
+            tlib_obj = ddCreateLib(targ_lib new_lib_path)
             ; attach technology file
             techBindTechFile(tlib_obj tech_lib)
         )
@@ -1352,14 +1352,14 @@ procedure( edit_config_view(lib_name cell_name view_name conf_list "tttl")
 procedure( write_testbench_info_to_file(sdb result_file output_list en_corner_list)
     let( (p output_count)
 
-	; write testbench information to result_file
+        ; write testbench information to result_file
         p = outfile(result_file "w")
 
         fprintf(p "corners:\n")
         foreach( corn cadr(axlGetCorners(sdb))
             fprintf(p "  - %s\n" corn)
         )
-	fprintf(p "enabled_corners:\n")
+        fprintf(p "enabled_corners:\n")
         foreach( corn en_corner_list
             fprintf(p "  - %s\n" corn)
         )
@@ -1372,19 +1372,19 @@ procedure( write_testbench_info_to_file(sdb result_file output_list en_corner_li
             fprintf(p "  {}\n")
         )
         fprintf(p "outputs:\n")
-	output_count = 0
+        output_count = 0
         foreach( out_obj output_list
-  	    if( rexMatchp( "\"" out_obj->name) then
-  	        warn("Output expression name (%s) have quotes, skipping" out_obj->name)
-	    else
+            if( rexMatchp( "\"" out_obj->name) then
+                warn("Output expression name (%s) have quotes, skipping" out_obj->name)
+            else
                 fprintf(p "  \"%s\": !!str %A\n" out_obj->name out_obj->expression)
-		output_count = output_count + 1
-	    )
+                output_count = output_count + 1
+            )
         )
         when( output_count == 0
             fprintf(p "  {}\n")
         )
-	close(p)
+        close(p)
     )
 )
 
@@ -1409,22 +1409,22 @@ procedure( instantiate_testbench(tb_cell targ_lib
         session = car(session_sdb)
         sdb = cadr(session_sdb)
 
-	; check that only one test is defined
+        ; check that only one test is defined
         test_names = cadr(axlGetTests(sdb))
-	when(length(test_names) != 1
-	    axlCloseSetupDB(sdb)
-        axlCloseSession(session)
-	    error("ADEXL testbench must have exactly 1 test defined.")
-	)
+        when(length(test_names) != 1
+            axlCloseSetupDB(sdb)
+            axlCloseSession(session)
+            error("ADEXL testbench must have exactly 1 test defined.")
+        )
 
     ; save current test setup state
     axlSaveSetupState(session "adexl_default" "All")
 
     ; change all tests to use config view, and set all test's definition files
-	; also get a list of defined output expressions
-	; step 1: get ADE session
-	test_name = car(test_names)
-	ade_symbol = axlGetToolSession(session_name test_name)
+    ; also get a list of defined output expressions
+    ; step 1: get ADE session
+    test_name = car(test_names)
+    ade_symbol = axlGetToolSession(session_name test_name)
     ade_session = asiGetSession(ade_symbol)
     ; step 2: save original ADE session
     asiSaveState(ade_session ?name "orig_state" ?option 'cellview ?lib targ_lib ?cell tb_cell)
@@ -1436,27 +1436,27 @@ procedure( instantiate_testbench(tb_cell targ_lib
     set_assoc_list(tool_args "cell" tb_cell)
     axlSetTestToolArgs(test tool_args)
     ; step 4: reopen ADE session, then load original ADE state
-	ade_symbol = axlGetToolSession(session_name test_name)
+    ade_symbol = axlGetToolSession(session_name test_name)
     ade_session = asiGetSession(ade_symbol)
     asiLoadState(ade_session ?name "orig_state" ?option 'cellview)
     asiSetEnvOptionVal(ade_session 'definitionFiles def_files)
-	output_list = setof(ele asiGetOutputList(ade_session) ele->name)
+    output_list = setof(ele asiGetOutputList(ade_session) ele->name)
 
     axlMainAppSaveSetup(session_name)
 
     ; load corner
     unless(axlLoadCorners(sdb corner_file)
-    	axlCloseSetupDB(sdb)
+        axlCloseSetupDB(sdb)
         axlCloseSession(session)
         error("Error loading corner file %s to %s__%s (%s)" corner_file lib_name cell_name view_name)
     )
 
     ; set default corner
-	corner_list = list(default_corner)
+    corner_list = list(default_corner)
     enable_adexl_corners(sdb corner_list nil)
 
-	; write testbench information to file
-	write_testbench_info_to_file(sdb result_file output_list corner_list)
+    ; write testbench information to file
+    write_testbench_info_to_file(sdb result_file output_list corner_list)
 
     ; save and close
     axlSaveSetupState(session "adexl_default" "All")
@@ -1470,33 +1470,33 @@ procedure( instantiate_testbench(tb_cell targ_lib
 ; Returns parameter and corner information of a testbench.
 procedure( get_testbench_info(tb_lib tb_cell result_file "ttt")
     let( (session_name session_sdb session sdb test_names test_name ade_symbol asi_sess
-    	  output_list corner_list en_list success)
-    	session_name = "read_adexl"
+        output_list corner_list en_list success)
+        session_name = "read_adexl"
         session_sdb = open_adexl_session(tb_lib tb_cell "adexl" session_name "r")
         session = car(session_sdb)
         sdb = cadr(session_sdb)
         ; axlCommitSetupDB(sdb)
 
-	    ; check that only one test is defined
+        ; check that only one test is defined
         test_names = cadr(axlGetTests(sdb))
-	    when(length(test_names) != 1
+        when(length(test_names) != 1
             axlCloseSetupDB(sdb)
             axlCloseSession(session)
-	        error("ADEXL testbench must have exactly 1 test defined.")
-	    )
+            error("ADEXL testbench must have exactly 1 test defined.")
+        )
 
-	    ; get output list
-	    test_name = car(test_names)
-	    ade_symbol = axlGetToolSession(session_name test_name)
-	    asi_sess = sevEnvironment(ade_symbol)
-	    output_list = setof(ele asiGetOutputList(asi_sess) ele->name)
+        ; get output list
+        test_name = car(test_names)
+        ade_symbol = axlGetToolSession(session_name test_name)
+        asi_sess = sevEnvironment(ade_symbol)
+        output_list = setof(ele asiGetOutputList(asi_sess) ele->name)
 
-	    ; get enabled corners
+        ; get enabled corners
         corner_list = cadr(axlGetCorners(sdb))
         en_list = setof(corner corner_list axlGetEnabled(axlGetCorner(sdb corner)))
 
-	    ; write testbench information to file
-	    write_testbench_info_to_file(sdb result_file output_list en_list)
+        ; write testbench information to file
+        write_testbench_info_to_file(sdb result_file output_list en_list)
 
         ; close
         axlCloseSetupDB(sdb)
