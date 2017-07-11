@@ -657,14 +657,20 @@ class AnalogResCore(TemplateBase):
     def compute_unique_key(self):
         basename = self.get_layout_basename()
         min_tracks = self.params['min_tracks']
-        flip_parity = self.params['flip_parity']
+        flip_parity = self.grid.get_flip_parity()
         em_specs = self.params['em_specs']
         return self.to_immutable_id((basename, min_tracks, em_specs, flip_parity))
 
     def draw_layout(self):
-        self._draw_layout_helper(**self.params)
+        l = self.params['l']
+        w = self.params['w']
+        res_type = self.params['res_type']
+        sub_type = self.params['sub_type']
+        threshold = self.params['threshold']
+        min_tracks = self.params['min_tracks']
+        em_specs = self.params['em_specs']
+        ext_dir = self.params['ext_dir']
 
-    def _draw_layout_helper(self, l, w, res_type, sub_type, threshold, min_tracks, em_specs, ext_dir, flip_parity):
         res = self.grid.resolution
         lay_unit = self.grid.layout_unit
         l_unit = int(round(l / lay_unit / res))

@@ -220,7 +220,7 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                    em_specs=None,  # type: Optional[Dict[str, Any]]
                    grid_type='standard',  # type: str
                    ext_dir='',  # type: str
-                   well_end_mode=0,  # type: int
+                   **kwargs
                    ):
         # type: (...) -> None
         """Draws the resistor array.
@@ -252,8 +252,6 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             the lower resistor routing grid name.
         ext_dir : str
             resistor core extension direction.
-        well_end_mode : int
-            integer flag that controls whether to extend well layer to top/bottom.
         """
         # modify resistor layer routing grid.
         grid_layers = self.grid.tech_info.tech_params['layout']['analog_res'][grid_type]
@@ -292,13 +290,13 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         core_master = self.new_template(params=core_params, temp_cls=AnalogResCore)
         lr_params = core_master.get_boundary_params('lr')
         lr_master = self.new_template(params=lr_params, temp_cls=AnalogResBoundary)
-        top_params = core_master.get_boundary_params('tb', end_mode=well_end_mode // 2 != 0)
+        top_params = core_master.get_boundary_params('tb')
         top_master = self.new_template(params=top_params, temp_cls=AnalogResBoundary)
-        bot_params = core_master.get_boundary_params('tb', end_mode=well_end_mode % 2 != 0)
+        bot_params = core_master.get_boundary_params('tb')
         bot_master = self.new_template(params=bot_params, temp_cls=AnalogResBoundary)
-        tcorner_params = core_master.get_boundary_params('corner', end_mode=well_end_mode // 2 != 0)
+        tcorner_params = core_master.get_boundary_params('corner')
         tcorner_master = self.new_template(params=tcorner_params, temp_cls=AnalogResBoundary)
-        bcorner_params = core_master.get_boundary_params('corner', end_mode=well_end_mode % 2 != 0)
+        bcorner_params = core_master.get_boundary_params('corner')
         bcorner_master = self.new_template(params=bcorner_params, temp_cls=AnalogResBoundary)
 
         # place core
@@ -389,7 +387,6 @@ class TerminationCore(ResArrayBase):
             res_type='reference',
             em_specs={},
             ext_dir='',
-            well_end_mode=0,
         )
 
     @classmethod
@@ -414,7 +411,6 @@ class TerminationCore(ResArrayBase):
             res_type='the resistor type.',
             em_specs='EM specifications for the termination network.',
             ext_dir='resistor core extension direction.',
-            well_end_mode='integer flag that controls whether to extend well layer to top/bottom.',
         )
 
     def draw_layout(self):
@@ -575,30 +571,36 @@ class Termination(TemplateBase):
         sub_w = res_params.pop('sub_w')
         sub_type = self.params['sub_type']
 
-        res_params['well_end_mode'] = 3
         res_master = self.new_template(params=res_params, temp_cls=TerminationCore)
 
         # draw contact and move array up
         top_layer, nx_arr, ny_arr = res_master.size
-        _, h_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
+        w_pitch, h_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
         sub_params = dict(
             lch=sub_lch,
             w=sub_w,
             sub_type=sub_type,
             threshold=self.params['threshold'],
-            top_layer=top_layer,
-            blk_width=nx_arr,
             well_width=res_master.get_well_width(),
             show_pins=False,
-            well_end_mode=2,
             is_passive=True,
         )
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
-        ny_shift = sub_master.size[2]
-        bot_inst = self.add_instance(sub_master, inst_name='XBSUB')
+        sub_box = sub_master.bound_box
+        ny_shift = -(-sub_box.height_unit // h_pitch)
+
+        # compute substrate X coordinate so substrate is on its own private horizontal pitch
+        sub_x_pitch, _ = sub_master.grid.get_size_pitch(sub_master.size[0], unit_mode=True)
+        sub_x = ((w_pitch * nx_arr - sub_box.width_unit) // 2 // sub_x_pitch) * sub_x_pitch
+
+        bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(sub_x, 0), unit_mode=True)
         res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0, ny_shift * h_pitch), unit_mode=True)
         top_yo = (ny_arr + 2 * ny_shift) * h_pitch
-        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0, top_yo), orient='MX', unit_mode=True)
+        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(sub_x, top_yo), orient='MX', unit_mode=True)
+
+        # connect implant layers of resistor array and substrate contact together
+        for lay in self.grid.tech_info.get_implant_layers(sub_type):
+            self.add_rect(lay, self.get_rect_bbox(lay))
 
         # export supplies and recompute array_box/size
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'

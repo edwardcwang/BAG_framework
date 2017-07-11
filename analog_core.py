@@ -837,6 +837,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if bot_sub_w > 0:
             sub_params = dict(
                 lch=lch,
+                fg=self._tech_cls.get_analog_unit_fg(),
                 w=bot_sub_w,
                 sub_type=sub_type,
                 threshold=th_list[0],
@@ -870,6 +871,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             sub_params = dict(
                 lch=lch,
                 w=top_sub_w,
+                fg=self._tech_cls.get_analog_unit_fg(),
                 sub_type=sub_type,
                 threshold=th_list[-1],
                 top_layer=None,
@@ -1072,6 +1074,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # make end rows
         bot_end_params = dict(
             lch=self._lch,
+            fg=self._tech_cls.get_analog_unit_fg(),
             sub_type=master_list[0].params['sub_type'],
             threshold=master_list[0].params['threshold'],
             is_end=bot_end,
@@ -1080,6 +1083,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         bot_end_master = self.new_template(params=bot_end_params, temp_cls=AnalogEndRow)
         top_end_params = dict(
             lch=self._lch,
+            fg=self._tech_cls.get_analog_unit_fg(),
             sub_type=master_list[-1].params['sub_type'],
             threshold=master_list[-1].params['threshold'],
             is_end=top_end,
@@ -1978,37 +1982,31 @@ class SubstrateContact(TemplateBase):
             w='substrate width, in meters/number of fins.',
             sub_type='substrate type.',
             threshold='substrate threshold flavor.',
-            top_layer='the top level layer ID.',
-            blk_width='Width of this template in number of top level track pitches.',
-            well_width='Width of the well in layout units.  We assume the well is centered horizontally in the block.',
+            well_width='Width of the well in layout units.',
             show_pins='True to show pin labels.',
-            well_end_mode='integer flag that controls whether to extend well layer to top/bottom.',
             is_passive='True if this substrate is used as substrate contact for passive devices.',
         )
 
     def draw_layout(self):
         # type: () -> None
-        self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, lch, w, sub_type, threshold, top_layer, blk_width, well_width, show_pins,
-                            well_end_mode, is_passive):
-        # type: (float, Union[float, int], str, str, int, int, bool) -> None
+        lch = self.params['lch']
+        w = self.params['w']
+        sub_type = self.params['sub_type']
+        threshold = self.params['threshold']
+        well_width = self.params['well_width']
+        show_pins = self.params['show_pins']
+        is_passive = self.params['is_passive']
+
         sub_end_mode = 15
         res = self.grid.resolution
         well_width = int(round(well_width / res))
 
-        # get template quantization based on parent grid.
-        parent_grid = self.grid
-        wtot = parent_grid.get_size_dimension((top_layer, blk_width, 1), unit_mode=True)[0]
-
+        # get layout info, also set RoutingGrid to substrate grid.
         self._layout_info = AnalogBaseInfo(self.grid, lch, 0, None, sub_end_mode)
         sd_pitch = self._layout_info.sd_pitch_unit
-        self.grid = self._layout_info.grid
 
         hm_layer = self._layout_info.mconn_port_layer + 1
-
-        if top_layer < hm_layer:
-            raise ValueError('SubstrateContact top layer must be >= %d' % hm_layer)
 
         # compute template width in number of sd pitches
         q = well_width // sd_pitch
@@ -2029,13 +2027,10 @@ class SubstrateContact(TemplateBase):
         sub_fg_tot = bin_iter.get_last_save()
         if sub_fg_tot is None:
             raise ValueError('Cannot draw substrate that fit in width: %d' % well_width)
+        sub_tot_width = self._layout_info.get_total_width(sub_fg_tot) * sd_pitch
 
-        # compute horizontal offset
-        sub_width = self._layout_info.get_total_width(sub_fg_tot) * sd_pitch
-        wsub_pitch, hsub_pitch = self.grid.get_size_pitch(hm_layer, unit_mode=True)
-        nx_pitch = wtot // wsub_pitch
-        nsub_pitch = sub_width // wsub_pitch
-        x0 = (nx_pitch - nsub_pitch) // 2 * wsub_pitch
+        # get height pitch
+        _, htot_pitch = self.grid.get_size_pitch(hm_layer, unit_mode=True)
 
         # create substrate
         self._num_fingers = sub_fg_tot
@@ -2059,35 +2054,60 @@ class SubstrateContact(TemplateBase):
         )
         edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
 
+        end_row_params = dict(
+            lch=lch,
+            fg=sub_fg_tot,
+            sub_type=sub_type,
+            threshold=threshold,
+            is_end=True,
+            top_layer=hm_layer,
+        )
+        end_row_master = self.new_template(params=end_row_params, temp_cls=AnalogEndRow)
+        end_edge_params = dict(
+            top_layer=hm_layer,
+            is_end=True,
+            guard_ring_nf=0,
+            name_id=end_row_master.get_layout_basename(),
+            layout_info=end_row_master.get_edge_layout_info(),
+        )
+        end_edge_master = self.new_template(params=end_edge_params, temp_cls=AnalogEdge)
+        conn_params = dict(
+            layout_info=edge_layout_info,
+            layout_name=sub_master.get_layout_basename() + '_subconn',
+            is_laygo=False,
+        )
+        conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
+
         # find substrate height and set size
         hsub = sub_master.prim_bound_box.height_unit
-        self.size = parent_grid.get_size_tuple(top_layer, wtot, hsub, round_up=True, unit_mode=True)
-        # add cell boundary
-        self.add_cell_boundary(self.bound_box)
+        hend = end_row_master.prim_bound_box.height_unit
+        htot = hsub + 2 * hend
         # find substrate Y offset to center it in the middle.
-        sub_ny = hsub // hsub_pitch
-        tot_ny = self.bound_box.height_unit // hsub_pitch
-        y0 = (tot_ny - sub_ny) // 2 * hsub_pitch
+        sub_ny = htot // htot_pitch
+        tot_ny = -(-htot // htot_pitch)
+        y0 = (tot_ny - sub_ny) // 2 * htot_pitch
         # add substrate and edge at the right locations
-        loc = x0, y0
-        instl = self.add_instance(edge_master, inst_name='XLE', loc=loc, unit_mode=True)
-        loc = instl.array_box.right_unit, y0
-        insts = self.add_instance(sub_master, inst_name='XSUB', loc=loc, unit_mode=True)
-        loc = insts.array_box.right_unit + edge_master.array_box.right_unit, y0
-        instr = self.add_instance(edge_master, inst_name='XRE', loc=loc, orient='MY', unit_mode=True)
+        x1 = edge_master.prim_bound_box.width_unit
+        x2 = x1 + sub_master.prim_bound_box.width_unit + edge_master.prim_bound_box.width_unit
+        y1 = y0 + end_edge_master.prim_bound_box.height_unit
+        y2 = y1 + edge_master.prim_bound_box.height_unit + end_edge_master.prim_bound_box.height_unit
+        instlb = self.add_instance(end_edge_master, inst_name='XLBE', loc=(0, y0), unit_mode=True)
+        self.add_instance(edge_master, inst_name='XLE', loc=(0, y1), unit_mode=True)
+        self.add_instance(end_edge_master, inst_name='XLTE', orient='MX', loc=(0, y2), unit_mode=True)
+        self.add_instance(end_row_master, inst_name='XB', loc=(x1, y0), unit_mode=True)
+        self.add_instance(sub_master, inst_name='XSUB', loc=(x1, y1), unit_mode=True)
+        self.add_instance(end_row_master, inst_name='XT', orient='MX', loc=(x1, y2), unit_mode=True)
+        self.add_instance(end_edge_master, inst_name='XRBE', orient='MY', loc=(x2, y0), unit_mode=True)
+        self.add_instance(edge_master, inst_name='XRE', orient='MY', loc=(x2, y1), unit_mode=True)
+        sub_conn = self.add_instance(conn_master, inst_name='XSUBCONN', loc=(x1, y1), unit_mode=True)
 
-        self.array_box = instl.array_box.merge(instr.array_box)
-        # add well layer
-        well_box = insts.translate_master_box(sub_master.get_well_box())
-        well_xl = wtot // 2 - well_width // 2
-        well_xr = well_xl + well_width
-        well_box = well_box.extend(x=well_xl, unit_mode=True).extend(x=well_xr, unit_mode=True)
-        if well_end_mode % 2 == 1:
-            well_box = well_box.extend(y=0, unit_mode=True)
-        if well_end_mode // 2 == 1:
-            well_box = well_box.extend(y=self.bound_box.top_unit, unit_mode=True)
+        instrt = self.add_instance(end_edge_master, inst_name='XRTE', orient='R180', loc=(x2, y2), unit_mode=True)
 
-        self.add_well_geometry(sub_type, well_box)
+        # set array box and size
+        self.array_box = instlb.array_box.merge(instrt.array_box)
+        self.set_size_from_bound_box(hm_layer, BBox(0, 0, sub_tot_width, tot_ny * htot_pitch,
+                                                    res, unit_mode=True))
+        self.add_cell_boundary(self.bound_box)
 
         # find the first horizontal track index inside the array box
         hm_mid = self.grid.coord_to_nearest_track(hm_layer, self.array_box.yc_unit, mode=0,
@@ -2098,5 +2118,5 @@ class SubstrateContact(TemplateBase):
         tr_width = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
         track_id = TrackID(hm_layer, hm_mid, width=tr_width)
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
-        sub_wires = self.connect_to_tracks(insts.get_port(port_name).get_pins(hm_layer - 1), track_id)
+        sub_wires = self.connect_to_tracks(sub_conn.get_port(port_name).get_pins(hm_layer - 1), track_id)
         self.add_pin(port_name, sub_wires, show=show_pins)

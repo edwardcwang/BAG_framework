@@ -131,18 +131,20 @@ class AnalogSubstrate(TemplateBase):
             threshold='transistor threshold flavor.',
             is_passive='True if this substrate is used as substrate contact for passive devices.',
             top_layer='The top routing layer.  Used to determine vertical pitch.',
+            fg='number of substrate fingers.',
         )
 
     def get_layout_basename(self):
-        fmt = '%s_l%s_w%s_%s_lay%d'
+        fmt = '%s_l%s_w%s_%s_lay%d_fg%d'
         sub_type = self.params['sub_type']
         lstr = float_to_si_string(self.params['lch'])
         wstr = float_to_si_string(self.params['w'])
+        fg = self.params['fg']
         th = self.params['threshold']
         top_layer = self.params['top_layer']
         if top_layer is None:
             top_layer = 0
-        basename = fmt % (sub_type, lstr, wstr, th, top_layer)
+        basename = fmt % (sub_type, lstr, wstr, th, top_layer, fg)
         if self.params['is_passive']:
             basename += '_passive'
 
@@ -155,7 +157,7 @@ class AnalogSubstrate(TemplateBase):
     def draw_layout(self):
         self._draw_layout_helper(**self.params)
 
-    def _draw_layout_helper(self, lch, w, sub_type, threshold, is_passive, top_layer, **kwargs):
+    def _draw_layout_helper(self, lch, w, fg, sub_type, threshold, is_passive, top_layer, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
@@ -163,7 +165,6 @@ class AnalogSubstrate(TemplateBase):
             blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
         else:
             blk_pitch = 1
-        fg = self._tech_cls.get_analog_unit_fg()
         info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg,
                                                  blk_pitch=blk_pitch, is_passive=is_passive)
         self._layout_info = info['layout_info']

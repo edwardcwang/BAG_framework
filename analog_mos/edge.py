@@ -43,7 +43,6 @@ class AnalogEndRow(TemplateBase):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(AnalogEndRow, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
-        self._fg = self._tech_cls.get_analog_unit_fg()
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
         self._layout_info = None
 
@@ -63,6 +62,7 @@ class AnalogEndRow(TemplateBase):
         """
         return dict(
             lch='channel length, in meters.',
+            fg='number of fingers.',
             sub_type="substrate type, either 'ptap' or 'ntap'.",
             threshold='transistor threshold flavor.',
             is_end='True if there are no blocks abutting the end.',
@@ -70,12 +70,13 @@ class AnalogEndRow(TemplateBase):
         )
 
     def get_layout_basename(self):
-        fmt = '%s_end_l%s_%s_lay%d'
+        fmt = '%s_end_l%s_%s_lay%d_fg%d'
         sub_type = self.params['sub_type']
         lstr = float_to_si_string(self.params['lch'])
         th = self.params['threshold']
         top_layer = self.params['top_layer']
-        basename = fmt % (sub_type, lstr, th, top_layer)
+        fg = self.params['fg']
+        basename = fmt % (sub_type, lstr, th, top_layer, fg)
         if self.params['is_end']:
             basename += '_end'
 
@@ -86,13 +87,14 @@ class AnalogEndRow(TemplateBase):
 
     def draw_layout(self):
         lch_unit = int(round(self.params['lch'] / self.grid.layout_unit / self.grid.resolution))
+        fg = self.params['fg']
         sub_type = self.params['sub_type']
         threshold = self.params['threshold']
         is_end = self.params['is_end']
         top_layer = self.params['top_layer']
 
         blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
-        end_info = self._tech_cls.get_analog_end_info(lch_unit, sub_type, threshold, self._fg, is_end, blk_pitch)
+        end_info = self._tech_cls.get_analog_end_info(lch_unit, sub_type, threshold, fg, is_end, blk_pitch)
 
         self._layout_info = end_info
         self._tech_cls.draw_mos(self, end_info)
