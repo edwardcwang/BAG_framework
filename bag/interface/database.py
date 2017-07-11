@@ -589,6 +589,7 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
             concrete_cell_name = attrs['concrete_cell_name']
             pin_map = attrs['pin_map']
             inst_map = attrs['inst_map']
+            new_pins = attrs['new_pins']
 
             # add to template list
             template_list.append([master_lib, master_cell, concrete_cell_name])
@@ -598,6 +599,7 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
                 name=concrete_cell_name,
                 pin_map=dict_to_item_list(pin_map),
                 inst_list=format_inst_map(inst_map, lib_name),
+                new_pins=new_pins,
             )
             change_list.append(change)
 
