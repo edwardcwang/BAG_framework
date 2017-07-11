@@ -459,6 +459,13 @@ class Instance(Arrayable):
         return self._master.get_used_tracks().transform(self._master.grid, inst_loc, self._orient,
                                                         unit_mode=True)
 
+    def get_rect_bbox(self, layer):
+        """Returns the overall bounding box of all rectangles on the given layer.
+
+        Note: currently this does not check primitive instances or vias.
+        """
+        return self.translate_master_box(self._master.get_rect_bbox(layer))
+
     @property
     def master(self):
         # type: () -> 'TemplateBase'
