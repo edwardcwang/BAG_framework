@@ -78,6 +78,23 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_implant_layers(cls, mos_type):
+        """Returns a list of implant layers associated with the given transistor/substrate type.
+
+        Parameters
+        ----------
+        mos_type : str
+            one of 'nch', 'pch', 'ntap', or 'ptap'
+
+        Returns
+        -------
+        imp_list : List[Tuple[str, str]]
+            list of implant layers.
+        """
+        return []
+
+    @classmethod
+    @abc.abstractmethod
     def add_cell_boundary(cls, template, box):
         """Adds a cell boundary object to the given template.
         
@@ -899,6 +916,10 @@ class DummyTechInfo(TechInfo):
         TechInfo.__init__(self, 0.001, 1e-6, '', tech_params)
 
     @classmethod
+    def get_implant_layers(cls, mos_type):
+        return []
+
+    @classmethod
     def add_cell_boundary(cls, template, box):
         pass
 
@@ -1184,6 +1205,24 @@ class BagLayout(object):
         """Returns flattened geometries in this layout."""
         # TODO: add blockage/boundary support
         return self._flat_inst_list, self._flat_rect_list, self._flat_via_list, self._flat_path_list
+
+    def get_rect_bbox(self, layer):
+        """Returns the overall bounding box of all rectangles on the given layer.
+
+        Note: currently this does not check primitive instances or vias.
+        """
+        if isinstance(layer, str):
+            layer = (layer, 'drawing')
+
+        box = BBox.get_invalid_bbox()
+        for rect in self._rect_list:
+            if layer == rect.layer:
+                box = box.merge(rect.bbox)
+
+        for inst in self._inst_list:
+            box = box.merge(inst.get_rect_bbox(layer))
+
+        return box
 
     def get_masters_set(self):
         """Returns a set of all template master keys used in this layout."""

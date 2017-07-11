@@ -447,6 +447,13 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         # type: () -> UsedTracks
         return self._used_tracks
 
+    def get_rect_bbox(self, layer):
+        """Returns the overall bounding box of all rectangles on the given layer.
+
+        Note: currently this does not check primitive instances or vias.
+        """
+        return self._layout.get_rect_bbox(layer)
+
     def new_template_with(self, **kwargs):
         # type: (TempBase, **Any) -> TempBase
         """Create a new template with the given parameters.
@@ -1954,10 +1961,10 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                         count += 1
                     else:
                         # pitch does not match, add current wires and start anew
-                        tr_idx, tr_width = self.grid.interval_to_track(layer_id, base_intv, unit_mode=True)
+                        tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv, unit_mode=True)
                         track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
                         warr = WireArray(track_id, base_range[0] * res, base_range[1] * res)
-                        for layer_name, bbox_arr in warr.wire_arr_iter(self.grid):
+                        for layer_name, bbox_arr in warr.wire_arr_iter(grid):
                             self.add_rect(layer_name, bbox_arr)
                         new_warr_list.append(warr)
                         base_range = wrange
@@ -1967,10 +1974,10 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                         hpitch = 0
                 else:
                     # length/width does not match, add cumulated wires and start anew
-                    tr_idx, tr_width = self.grid.interval_to_track(layer_id, base_intv, unit_mode=True)
+                    tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv, unit_mode=True)
                     track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
                     warr = WireArray(track_id, base_range[0] * res, base_range[1] * res)
-                    for layer_name, bbox_arr in warr.wire_arr_iter(self.grid):
+                    for layer_name, bbox_arr in warr.wire_arr_iter(grid):
                         self.add_rect(layer_name, bbox_arr)
                     new_warr_list.append(warr)
                     base_range = wrange
@@ -1983,10 +1990,10 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             last_lower = cur_lower
 
         # add last wires
-        tr_idx, tr_width = self.grid.interval_to_track(layer_id, base_intv, unit_mode=True)
+        tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv, unit_mode=True)
         track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
         warr = WireArray(track_id, base_range[0] * res, base_range[1] * res)
-        for layer_name, bbox_arr in warr.wire_arr_iter(self.grid):
+        for layer_name, bbox_arr in warr.wire_arr_iter(grid):
             self.add_rect(layer_name, bbox_arr)
         new_warr_list.append(warr)
 
@@ -2242,7 +2249,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
         if min_len_mode is not None:
             # extend track to meet minimum length
-            min_len = self.grid.get_min_length(tr_layer_id, track_id.width, unit_mode=True)
+            min_len = grid.get_min_length(tr_layer_id, track_id.width, unit_mode=True)
             tr_len = track_upper - track_lower
             if min_len > tr_len:
                 ext = min_len - tr_len
@@ -2256,7 +2263,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
         # draw tracks
         result = WireArray(track_id, track_lower * res, track_upper * res)
-        for layer_name, bbox_arr in result.wire_arr_iter(self.grid):
+        for layer_name, bbox_arr in result.wire_arr_iter(grid):
             self.add_rect(layer_name, bbox_arr)
 
         self._used_tracks.add_wire_arrays(result, fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
