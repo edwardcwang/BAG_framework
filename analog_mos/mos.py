@@ -108,6 +108,7 @@ class AnalogMOSBase(TemplateBase):
             w='transistor width, in meters/number of fins.',
             mos_type="transistor type, either 'pch' or 'nch'.",
             threshold='transistor threshold flavor.',
+            options='a dictionary of transistor options.',
         )
 
     def get_layout_basename(self):
@@ -119,17 +120,21 @@ class AnalogMOSBase(TemplateBase):
         return fmt % (mos_type, lstr, wstr, th)
 
     def compute_unique_key(self):
-        return self.get_layout_basename()
+        options = self.params['options']
+        return self.to_immutable_id((self.get_layout_basename(), options))
 
     def draw_layout(self):
-        self._draw_layout_helper(**self.params)
+        lch = self.params['lch']
+        w = self.params['w']
+        mos_type = self.params['mos_type']
+        threshold = self.params['threshold']
+        options = self.params['options']
 
-    def _draw_layout_helper(self, lch, w, mos_type, threshold, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
         fg = self._tech_cls.get_analog_unit_fg()
-        mos_info = self._tech_cls.get_mos_info(lch_unit, w, mos_type, threshold, fg)
+        mos_info = self._tech_cls.get_mos_info(lch_unit, w, mos_type, threshold, fg, **options)
         self._layout_info = mos_info['layout_info']
         # set parameters
         self._ext_top_info = mos_info['ext_top_info']

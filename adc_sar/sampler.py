@@ -205,7 +205,7 @@ class NPassGateWClk(AnalogBase):
     def _draw_layout_helper(self, lch, wp, wn, fgn, fg_inbuf_list, fg_outbuf_list,
                             nduml, ndumr, nsep, threshold, ptap_w, ntap_w, io_width,
                             num_track_sep, rename_dict, guard_ring_nf, show_pins, tot_width,
-                            pgr_w, ngr_w):
+                            pgr_w, ngr_w, **kwargs):
         """Draw the layout of a transistor for characterization.
         """
         end_mode = 15
@@ -266,6 +266,8 @@ class NPassGateWClk(AnalogBase):
 
         xshift = (tot_width - cur_width) // 2
 
+        n_kwargs = [dict(ds_dummy=True), dict(ds_dummy=False)]
+
         # draw transistor rows
         self.draw_base(lch, fg_tot, ptap_w, ntap_w, nw_list,
                        nth_list, pw_list, pth_list, num_track_sep,
@@ -273,7 +275,7 @@ class NPassGateWClk(AnalogBase):
                        pg_tracks=pg_tracks, pds_tracks=pds_tracks,
                        n_orientations=['MX', 'MX'], p_orientations=['R0'],
                        guard_ring_nf=guard_ring_nf,
-                       n_ds_dummy=[True, False],
+                       n_kwargs=n_kwargs,
                        pitch_offset=(xshift, 0),
                        pgr_w=pgr_w, ngr_w=ngr_w,
                        top_layer=top_layer,

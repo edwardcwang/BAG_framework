@@ -1264,8 +1264,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                   n_orientations=None,  # type: Optional[List[str]]
                   p_orientations=None,  # type: Optional[List[str]]
                   guard_ring_nf=0,  # type: int
-                  n_kwargs=None,  # type: Optional[Dict[str, Any]]
-                  p_kwargs=None,  # type: Optional[Dict[str, Any]]
+                  n_kwargs=None,  # type: Optional[List[Dict[str, Any]]]
+                  p_kwargs=None,  # type: Optional[List[Dict[str, Any]]]
                   pgr_w=None,  # type: Optional[Union[float, int]]
                   ngr_w=None,  # type: Optional[Union[float, int]]
                   min_fg_sep=0,  # type: int

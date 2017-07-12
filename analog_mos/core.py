@@ -238,8 +238,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_mos_info(cls, lch_unit, w, mos_type, threshold, fg):
-        # type: (int, int, str, str, int) -> Dict[str, Any]
+    def get_mos_info(cls, lch_unit, w, mos_type, threshold, fg, **kwargs):
+        # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
         """Returns the transistor information dictionary.
         
         The returned dictionary must have the following entries:
@@ -265,6 +265,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             the transistor threshold flavor.
         fg : int
             number of fingers in this transistor row.
+        **kwargs :
+            optional transistor row options.
 
         Returns
         -------
