@@ -1340,6 +1340,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # error checking
         if numn == 0 and nump == 0:
             raise ValueError('Cannot make empty AnalogBase.')
+        if ntap_w <= 0 or ptap_w <= 0:
+            raise ValueError('ntap/ptap widths must be positive')
 
         # make AnalogBaseInfo object.  Also update routing grid.
         self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf,
