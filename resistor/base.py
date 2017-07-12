@@ -193,7 +193,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
         pass
 
     @classmethod
-    def fill_symmetric(cls, tot_space, n_min, n_max, sp):
+    def fill_symmetric(cls, tot_space, n_min, n_max, sp, cyclic=False):
         """Compute 1-D fill pattern that maximizes the filled region and symmetric about the center.
         
         Given an empty space and fill parameters, determine location and size of each fill block
@@ -210,7 +210,10 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             maximum length of the fill block.
         sp : int
             minimum space between each fill block.
-            
+        cyclic : bool
+            True if the empty space actually wraps around.  This is usually the case if the space is
+            arrayed.
+
         Returns
         -------
         num_filled : int
@@ -221,7 +224,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
         if tot_space <= 0:
             return 0, []
 
-        # dynamic programming
+        # first, find non-cyclic solution using dynamic programming
         soln_vec = [(0, [])] * n_min + [(i, [(0, i)]) for i in range(n_min, n_max + 1)]
         for i in range(n_max + 1, tot_space + 1):
             # try using one block
@@ -235,7 +238,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
                 # using two blocks is better than using one block, update maximum
                 opt_n = n2 * 2
                 opt_combo = [(0, n2), (i - n2, i)]
-            # try using three blocks
+            # try using three or more blocks (dynamic programming)
             for n_end in range(n_min, n_max + 1):
                 remainder = i - 2 * (n_end + sp)
                 if remainder >= n_min:
@@ -254,8 +257,43 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             # record best solution.
             soln_vec.append((opt_n, opt_combo))
 
-        # return best combination
-        return soln_vec[tot_space]
+        if cyclic:
+            # if the given space is cyclic, then there are two possibilities:
+            # 1. there's no fill at the boundary.  In this case, there must be ceil(sp / 2) empty
+            #    spaces at both ends.
+            sp_end = -(-sp // 2)
+            opt_n, opt_combo = soln_vec[tot_space - sp_end * 2]
+            boundary_fill = -1
+            delta = sp_end
+            # 2. there's fill at the boundary.  Then, we compute the best fill solution for all
+            #    possible boundary fill length.
+            # the boundary fill length must be even
+            n_start = -(-n_min // 2) * 2
+            for bnd_fill in range(n_start, n_max + 1, 2):
+                cur_delta = bnd_fill // 2 + sp
+                cur_n, cur_combo = soln_vec[tot_space - 2 * cur_delta]
+                cur_n += bnd_fill
+                # find best solution
+                if cur_n > opt_n:
+                    opt_n = cur_n
+                    opt_combo = cur_combo
+                    boundary_fill = bnd_fill
+                    delta = cur_delta
+
+            # we found the best solution now.  Fill fix opt_combo list
+            new_combo = []
+            if boundary_fill > 0:
+                half_fill = boundary_fill // 2
+                new_combo.append((-half_fill, half_fill))
+                new_combo.extend(((a + delta, b + delta) for (a, b) in opt_combo))
+                new_combo.append((tot_space - half_fill, tot_space + half_fill))
+            else:
+                new_combo.extend(((a + delta, b + delta) for (a, b) in opt_combo))
+
+            return opt_n, new_combo
+        else:
+            # return best non-cyclic solution.
+            return soln_vec[tot_space]
 
     @classmethod
     def get_core_track_info(cls,  # type: ResTech
