@@ -515,6 +515,10 @@ class BBox(object):
         """
         return self._right_unit >= self._left_unit and self._top_unit >= self._bot_unit
 
+    def get_immutable_key(self):
+        """Returns an immutable key object that can be used to uniquely identify this BBox."""
+        return self.__class__.__name__, self._left_unit, self._bot_unit, self._right_unit, self._top_unit, self._res
+
     def __str__(self):
         return repr(self)
 
@@ -522,6 +526,12 @@ class BBox(object):
         precision = max(1, -1 * int(np.floor(np.log10(self._res))))
         fmt_str = '%s(%.{0}f, %.{0}f, %.{0}f, %.{0}f)'.format(precision)
         return fmt_str % (self.__class__.__name__, self.left, self.bottom, self.right, self.top)
+
+    def __hash__(self):
+        return hash(self.get_immutable_key())
+
+    def __eq__(self, other):
+        return self.get_immutable_key() == other.get_immutable_key()
 
 
 class BBoxArray(object):
