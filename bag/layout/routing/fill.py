@@ -487,3 +487,125 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
                       for intv in fill_track_set[hidx].intervals())
 
     return vdd_warr_list, vss_warr_list
+
+
+def fill_symmetric(area, sp_max, seg_len, offset=0):
+    # type: (int, int, int) -> List[Tuple[int, int]]
+    """Fill the given 1-D area given maximum space constraint.
+
+    Compute fill location such that the given area is filled with the following properties:
+
+    1. the filled area is as uniform as possible.
+    2. the filled area is symmetric about the center.
+    3. all space are as close to the given space as possible, without exceeding it.
+
+    fill is drawn such that there is space between area boundary and first fill segment.
+
+    Parameters
+    ----------
+    area : int
+        the 1-D area to fill.
+    sp_max : int
+        the maximum space.
+    seg_len : int
+        length of each fill segment.
+    offset : int
+        the fill area starting coordinate.
+
+    Returns
+    -------
+    start_list : List[Tuple[int, int]]
+        list of fill intervals.
+    """
+    # calculate number of segments
+    num_seg = -(-(area - sp_max) // (seg_len + sp_max))
+    if num_seg == 0:
+        # no fill needed
+        return []
+    num_sp = num_seg + 1
+    # get small space value, and number of large/small spaces.
+    sp_small = (area - num_seg * seg_len) // num_sp
+    num_large = area - num_seg * seg_len - sp_small * num_sp
+    num_small = num_sp - num_large
+
+    num_large2 = num_large // 2
+    num_small2 = num_small // 2
+
+    # figure out if we have a space or a segment in the middle, and its value
+    mid_seg_len = seg_len
+    if num_large % 2 == 1:
+        if num_small % 2 == 1:
+            # we have odd number of large and small spaces.  Which means we have a segment
+            # right in the center, and total space area is odd.  In order to keep everything
+            # symmetric, the middle segment length must be increase by 1
+            mid_seg_len += 1
+            # because we increase middle segment size, we need to correct number of small spaces
+            num_small2 += 1
+            mid_space = -1
+        else:
+            # the middle space is large space
+            mid_space = sp_small + 1
+    elif num_small % 2 == 1:
+        # the middle space is small space
+        mid_space = sp_small
+    else:
+        # no middle space
+        mid_space = -1
+
+    # now we need to distribute the spaces evenly.  We do so using cumulative modding
+    # in this case, the first space is the more common space
+    m = num_large2 + num_small2
+    if num_large2 >= num_small2:
+        # we prefer having large spaces on the outside
+        sp1 = sp_small + 1
+        sp0 = sp_small
+        k = num_large2
+    else:
+        sp1 = sp_small
+        sp0 = sp_small
+        k = num_small2
+
+    # now compute fill intervals
+    # add the first half of fill
+    ans = []
+    marker = offset
+    cur_sum = 0
+    prev_sum = 1
+    for _ in range(m):
+        if cur_sum < prev_sum:
+            marker += sp1
+        else:
+            marker += sp0
+        ans.append((marker, marker + seg_len))
+        marker += seg_len
+        prev_sum = cur_sum
+        cur_sum = (cur_sum + k) % m
+
+    # add middle space or middle segment
+    if mid_space >= 0:
+        marker += mid_space
+        ans.append((marker, marker + seg_len))
+        marker += seg_len
+    else:
+        # middle segment, we added one more segment by accident
+        marker -= seg_len
+        del ans[-1]
+        ans.append((marker, marker + mid_seg_len))
+        marker += mid_seg_len
+
+    # add the second half of fill
+    prev_sum = 0
+    cur_sum = m - k
+    for _ in range(m):
+        if cur_sum > prev_sum:
+            marker += sp1
+        else:
+            marker += sp0
+        ans.append((marker, marker + seg_len))
+        marker += seg_len
+        prev_sum = cur_sum
+        cur_sum = (cur_sum - k) % m
+
+    # remove last added segment, then return answer
+    del ans[-1]
+    return ans
