@@ -111,6 +111,18 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def draw_device_blockage(cls, template):
+        """Draw device blockage layers on the given template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the template to draw the device block layers on
+        """
+        pass
+
+    @classmethod
+    @abc.abstractmethod
     def get_via_drc_info(cls, vname, vtype, mtype, mw_unit, is_bot):
         """Return data structures used to identify VIA DRC rules.
 
@@ -921,6 +933,10 @@ class DummyTechInfo(TechInfo):
 
     @classmethod
     def add_cell_boundary(cls, template, box):
+        pass
+
+    @classmethod
+    def draw_device_blockage(cls, template):
         pass
 
     @classmethod
