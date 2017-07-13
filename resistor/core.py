@@ -709,7 +709,7 @@ class ResLadderCore(ResArrayBase):
         # copy routing grid before calling draw_array so substrate contact can have its own grid
         min_tracks = (4 + 2 * hcon_space, 7 + vcon_space, nx, 1)
         self.draw_array(l, w, sub_type, threshold, nx=nx + 2 * ndum, ny=ny + 2 * ndum,
-                        min_tracks=min_tracks, res_type=res_type, grid_type='low_res')
+                        min_tracks=min_tracks, res_type=res_type, grid_type='low_res', ext_dir='x')
 
         # export supplies and recompute array_box/size
         hcon_idx_list, vcon_idx_list, xm_bot_idx, num_xm_sup = self._draw_metal_tracks(nx, ny, ndum, hcon_space)
