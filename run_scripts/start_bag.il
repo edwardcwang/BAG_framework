@@ -790,10 +790,10 @@ procedure( get_instance_pin_info(inst "g")
     let( (snap_dist term_name pin_fig xval yval inst_term_xy ans)
         ans = nil
         snap_dist = schGetEnv("schSnapSpacing")
-        foreach( inst_term inst~>instTerms
-            term_name = inst_term~>name
-            ; get instance terminal coordinate in schematic
-            pin_fig = car(inst_term~>term~>pins)~>fig
+        foreach( term inst->master->terminals
+            term_name = term~>name
+            ; get terminal coordinate in symbol
+            pin_fig = car(term~>pins)~>fig
             bbox = pin_fig~>bBox
             xval = (xCoord(car(bbox)) + xCoord(cadr(bbox))) / 2.0
             yval = (yCoord(car(bbox)) + yCoord(cadr(bbox))) / 2.0
@@ -869,7 +869,8 @@ procedure( get_instance_terminal_wires(sch inst "gg")
 ; term_mapping is a list of key-value pairs, where keys are old net names,
 ; and values are new net names.
 procedure( modify_instance_terminal(sch inst wire_list net_map term_mapping "gglll")
-    let( (snap_dist key_val old_name new_name fig points mid_point new_wire inst_term inst_pin bbox xval yval)
+    let( (snap_dist key_val old_name new_name fig points mid_point new_wire inst_term inst_pin
+          bbox xval yval term_map_final db_term)
         ; get schematic snap distance spacing.
         snap_dist = schGetEnv("schSnapSpacing")
         if( wire_list then
@@ -888,25 +889,33 @@ procedure( modify_instance_terminal(sch inst wire_list net_map term_mapping "ggl
             )
             't
         else
+            ; combine net_map and term_mapping
+            term_map_final = copy(term_mapping)
             foreach( net_info net_map
                 old_name = car(net_info)
-                key_val = assoc(old_name term_mapping)
-                if( key_val then
-                    new_name = cadr(key_val)
-                else
-                    new_name = cadr(net_info)
+                unless( assoc(old_name term_map_final)
+                    ; add net mapping only if it's not in term_mapping
+                    term_map_final = cons(net_info term_map_final)
                 )
-                inst_term = dbCreateInstTerm(nil inst dbFindTermByName(inst->master old_name))
-                inst_pin = car(inst_term~>term~>pins)~>fig
-                bbox = dbTransformBBox(inst_pin~>bBox inst~>transform)
-                xval = (xCoord(car(bbox)) + xCoord(cadr(bbox))) / 2.0
-                yval = (yCoord(car(bbox)) + yCoord(cadr(bbox))) / 2.0
-                xval = round2(xval / snap_dist) * snap_dist
-                yval = round2(yval / snap_dist) * snap_dist
+            )
+            foreach( net_info term_map_final
+                old_name = car(net_info)
+                new_name = cadr(net_info)
 
-                new_wire = car(schCreateWire(sch "draw" "full" list(xval-snap_dist:yval-snap_dist xval:yval) snap_dist snap_dist 0))
-                schCreateWireLabel(sch new_wire xval:yval new_name "lowerCenter" "R0" "stick" 0.0625 nil)
+                when(db_term = dbFindTermByName(inst->master old_name)
+                    ; only create terminal that's present in the current master
+                    inst_term = dbCreateInstTerm(nil inst db_term)
+                    inst_pin = car(inst_term~>term~>pins)~>fig
+                    bbox = dbTransformBBox(inst_pin~>bBox inst~>transform)
+                    xval = (xCoord(car(bbox)) + xCoord(cadr(bbox))) / 2.0
+                    yval = (yCoord(car(bbox)) + yCoord(cadr(bbox))) / 2.0
+                    xval = round2(xval / snap_dist) * snap_dist
+                    yval = round2(yval / snap_dist) * snap_dist
 
+                    new_wire = car(schCreateWire(sch "draw" "full" list(xval-snap_dist:yval-snap_dist xval:yval)
+                                   snap_dist snap_dist 0))
+                    schCreateWireLabel(sch new_wire xval:yval new_name "lowerCenter" "R0" "stick" 0.0625 nil)
+                )
             )
             't
         )
@@ -1006,7 +1015,7 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
                             xl = min(xl xCoord(car(cadr(wire_info)~>bBox)))
                             xr = max(xr xCoord(cadr(cadr(wire_info)~>bBox)))
                         )
-                        transform = list((xr - xl + snap_dist):0 "R0" 1.0)
+                        transform = list(round2((xr - xl + snap_dist) / snap_dist) * snap_dist:0 "R0" 1.0)
                         ; printf("instance %s transform: %A\n" cur_inst~>name transform)
                     else
                         ; more than 1 rinst, copy cur_inst, do not copy wires
