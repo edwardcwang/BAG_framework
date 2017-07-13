@@ -147,12 +147,14 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def update_layout_info(cls, layout_info):
-        # type: (Dict[str, Any]) -> None
+    def update_layout_info(cls, grid, layout_info):
+        # type: (RoutingGrid, Dict[str, Any]) -> None
         """Given the layout information dictionary, compute and add extra entries if needed.
         
         Parameters
         ----------
+        grid : RoutingGrid
+            the routing grid object.
         layout_info : Dict[str, Any]
             dictionary containing block dimensions.  Add new entries to this dictionary
             if they are needed by draw_res_core() or draw_res_boundary().
@@ -556,7 +558,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             num_corner_tracks=num_corner_tracks,
         )
 
-        cls.update_layout_info(res_info)
+        cls.update_layout_info(grid, res_info)
         return res_info
 
 
