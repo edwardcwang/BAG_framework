@@ -639,6 +639,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             return tuple((cls.to_immutable_id(item) for item in val))
         elif isinstance(val, dict):
             return tuple(((k, cls.to_immutable_id(val[k])) for k in sorted(val.keys())))
+        elif isinstance(val, BBox):
+            return val.get_immutable_key()
         else:
             raise Exception('Unrecognized value %s with type %s' % (str(val), type(val)))
 
