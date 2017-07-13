@@ -1408,6 +1408,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._place(fg_tot, track_spec_list, master_list, gds_space, guard_ring_nf, top_layer,
                     left_end != 0, right_end != 0, bot_sub_end != 0, top_sub_end != 0)
 
+        # draw device blockages
+        self.grid.tech_info.draw_device_blockage(self)
+
     def _connect_substrate(self,  # type: AnalogBase
                            sub_type,  # type: str
                            sub_list,  # type: List[Instance]

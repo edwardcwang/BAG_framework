@@ -343,6 +343,9 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self.set_size_from_array_box(top_layer)
         self.add_cell_boundary(self.bound_box)
 
+        # draw device blockages
+        self.grid.tech_info.draw_device_blockage(self)
+
 
 class TerminationCore(ResArrayBase):
     """An template for creating termination resistors.
