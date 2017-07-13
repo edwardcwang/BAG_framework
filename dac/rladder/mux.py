@@ -78,10 +78,8 @@ class PassgateRow(StdCellBase):
 
     def draw_layout(self):
         # type: () -> None
-        self._draw_layout_helper(**self.params)
-
-    def _draw_layout_helper(self, col_nbits, config_file):
-        # type: (int, int, int, str) -> None
+        col_nbits = self.params['col_nbits']
+        config_file = self.params['config_file']
 
         # use standard cell routing grid
         self.update_routing_grid()
@@ -160,10 +158,8 @@ class InputBuffer(StdCellBase):
 
     def draw_layout(self):
         # type: () -> None
-        self._draw_layout_helper(**self.params)
-
-    def _draw_layout_helper(self, num_bits, config_file):
-        # type: (int, str) -> None
+        num_bits = self.params['num_bits']
+        config_file = self.params['config_file']
 
         # use standard cell routing grid
         self.update_routing_grid()
@@ -244,10 +240,8 @@ class RowDecoder(StdCellBase):
 
     def draw_layout(self):
         # type: () -> None
-        self._draw_layout_helper(**self.params)
-
-    def _draw_layout_helper(self, row_nbits, config_file):
-        # type: (int, str) -> None
+        row_nbits = self.params['row_nbits']
+        config_file = self.params['config_file']
 
         # use standard cell routing grid
         self.update_routing_grid()
@@ -331,10 +325,8 @@ class ColDecoder(StdCellBase):
 
     def draw_layout(self):
         # type: () -> None
-        self._draw_layout_helper(**self.params)
-
-    def _draw_layout_helper(self, col_nbits, config_file):
-        # type: (int, str) -> None
+        col_nbits = self.params['col_nbits']
+        config_file = self.params['config_file']
 
         # use standard cell routing grid
         self.update_routing_grid()
@@ -414,10 +406,9 @@ class RLadderMux(StdCellBase):
 
     def draw_layout(self):
         # type: () -> None
-        self._draw_layout_helper(**self.params)
-
-    def _draw_layout_helper(self, col_nbits, row_nbits, config_file):
-        # type: (int, int, str) -> None
+        col_nbits = self.params['col_nbits']
+        row_nbits = self.params['row_nbits']
+        config_file = self.params['config_file']
 
         # use standard cell routing grid
         self.update_routing_grid()
@@ -622,10 +613,10 @@ class RLadderMuxArray(StdCellBase):
 
     def draw_layout(self):
         # type: () -> None
-        self._draw_layout_helper(**self.params)
-
-    def _draw_layout_helper(self, num_mux, col_nbits, row_nbits, config_file):
-        # type: (int, int, int, str) -> None
+        num_mux = self.params['num_mux']
+        col_nbits = self.params['col_nbits']
+        row_nbits = self.params['row_nbits']
+        config_file = self.params['config_file']
 
         # use standard cell routing grid
         self.update_routing_grid()

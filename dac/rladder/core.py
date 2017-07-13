@@ -126,7 +126,8 @@ class ResLadderDAC(TemplateBase):
                             num_out,  # type: int
                             col_nbits,  # type: int
                             row_nbits,  # type: int
-                            config_file  # type: str
+                            config_file,  # type: str
+                            **kwargs
                             ):
         # type: (...) -> None
         if num_out <= 0:

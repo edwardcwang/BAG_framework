@@ -253,6 +253,8 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         ext_dir : str
             resistor core extension direction.
         """
+        if em_specs is None:
+            em_specs = {}
         # modify resistor layer routing grid.
         grid_layers = self.grid.tech_info.tech_params['layout']['analog_res'][grid_type]
         for lay_id, tr_w, tr_sp, tr_dir, necessary in grid_layers:
@@ -686,19 +688,14 @@ class ResLadderCore(ResArrayBase):
 
     def draw_layout(self):
         # type: () -> None
-        self._draw_layout_helper(**self.params)
-
-    def _draw_layout_helper(self,  # type: ResLadderCore
-                            l,  # type: float
-                            w,  # type: float
-                            sub_type,  # type: str
-                            threshold,  # type: str
-                            nx,  # type: int
-                            ny,  # type: int
-                            ndum,  # type: int
-                            res_type  # type: str
-                            ):
-        # type: (...) -> None
+        l = self.params['l']
+        w = self.params['w']
+        sub_type = self.params['sub_type']
+        threshold = self.params['threshold']
+        nx = self.params['nx']
+        ny = self.params['ny']
+        ndum = self.params['ndum']
+        res_type = self.params['res_type']
 
         hcon_space = 0
         vcon_space = 0
@@ -759,7 +756,7 @@ class ResLadderCore(ResArrayBase):
         hconn = hcon_idx_list[0]
         vm_idx_list = [vm_off + vcon_idx_list[2], vm_prev + vcon_idx_list[-3],
                        vm_prev + vcon_idx_list[-2]]
-        xm_idx_list = [xm_bot_idx + idx for idx in range(xm_off, xm_off + num_xm_sup)]
+        xm_idx_list = [xm_off + xm_bot_idx + idx for idx in range(num_xm_sup)]
         for vm_idx in vm_idx_list:
             # connect supply to vm layer
             self.add_via_on_grid(hm_layer, hm_off + hconn, vm_idx)
@@ -780,7 +777,7 @@ class ResLadderCore(ResArrayBase):
 
         vm_idx_list = [vm_off + vcon_idx_list[1], vm_off + vcon_idx_list[2],
                        vm_prev + vcon_idx_list[-3], vm_prev + vcon_idx_list[-2]]
-        xm_idx_list = [xm_bot_idx + idx for idx in range(xm_prev + nx - num_xm_sup, xm_prev + nx)]
+        xm_idx_list = [xm_prev + xm_bot_idx + idx for idx in range(nx - num_xm_sup, nx)]
         xm_idx_list.append(xm_off + xm_bot_idx)
         for vm_idx in vm_idx_list:
             # connect supply to vm layer
@@ -1048,26 +1045,37 @@ class ResLadder(TemplateBase):
 
         # draw contact and move array up
         top_layer, nx_arr, ny_arr = res_master.size
-        _, h_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
+        w_pitch, h_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
         sub_params = dict(
             lch=sub_lch,
             w=sub_w,
             sub_type=sub_type,
             threshold=self.params['threshold'],
-            top_layer=top_layer,
-            blk_width=nx_arr,
+            well_width=res_master.get_well_width(),
             show_pins=False,
+            is_passive=True,
         )
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
-        ny_shift = sub_master.size[2]
-        bot_inst = self.add_instance(sub_master, inst_name='XBSUB')
+        sub_box = sub_master.bound_box
+        ny_shift = -(-sub_box.height_unit // h_pitch)
+
+        # compute substrate X coordinate so substrate is on its own private horizontal pitch
+        sub_x_pitch, _ = sub_master.grid.get_size_pitch(sub_master.size[0], unit_mode=True)
+        sub_x = ((w_pitch * nx_arr - sub_box.width_unit) // 2 // sub_x_pitch) * sub_x_pitch
+
+        bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(sub_x, 0), unit_mode=True)
         res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0, ny_shift * h_pitch), unit_mode=True)
         top_yo = (ny_arr + 2 * ny_shift) * h_pitch
-        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(0, top_yo), orient='MX', unit_mode=True)
+        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(sub_x, top_yo), orient='MX', unit_mode=True)
+
+        # connect implant layers of resistor array and substrate contact together
+        for lay in self.grid.tech_info.get_implant_layers(sub_type):
+            self.add_rect(lay, self.get_rect_bbox(lay))
 
         # recompute array_box/size
         self.size = top_layer, nx_arr, ny_arr + 2 * ny_shift
         self.array_box = bot_inst.array_box.merge(top_inst.array_box)
+        self.add_cell_boundary(self.bound_box)
 
         # gather supply and re-export outputs
         sup_table = {'VDD': [], 'VSS': []}
