@@ -272,8 +272,10 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             # the boundary fill length must be even
             n_start = -(-n_min // 2) * 2
             for bnd_fill in range(n_start, n_max + 1, 2):
+                if bnd_fill + sp > tot_space:
+                    break
                 cur_delta = bnd_fill // 2 + sp
-                cur_n, cur_combo = soln_vec[tot_space - 2 * cur_delta]
+                cur_n, cur_combo = soln_vec[max(0, tot_space - 2 * cur_delta)]
                 cur_n += bnd_fill
                 # find best solution
                 if cur_n > opt_n:
