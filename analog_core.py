@@ -1144,6 +1144,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         track_spec_list.append(('MX', 0, 0))
         # draw
         for ybot, ext_info, master, track_spec in zip(y_list, ext_list, master_list, track_spec_list):
+            if (isinstance(master, AnalogEndRow) and master.prim_bound_box.height_unit == 0 and
+                    not self._tech_cls.draw_zero_end_row()):
+                continue
+
             orient = track_spec[0]
             edge_layout_info = master.get_edge_layout_info()
             edgel_params = dict(
