@@ -1471,8 +1471,10 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
         res = self.grid.resolution
         if not unit_mode:
-            lower = int(round(lower / res))
-            upper = int(round(upper / res))
+            if lower is not None:
+                lower = int(round(lower / res))
+            if upper is not None:
+                upper = int(round(upper / res))
             fill_margin = int(round(fill_margin / res))
 
         new_warr_list = []
