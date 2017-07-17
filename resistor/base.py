@@ -32,7 +32,6 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
-import math
 from typing import Dict, Set, Tuple, Any, List, Optional
 
 from bag import float_to_si_string
@@ -58,19 +57,6 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_res_density(cls):
-        # type: () -> float
-        """Returns the maximum resistor density, as a floating point number between 0 and 1.
-        
-        Returns
-        -------
-        density : float
-            the maximum resistor density.
-        """
-        return 0.5
-
-    @classmethod
-    @abc.abstractmethod
     def get_block_pitch(cls):
         # type: () -> Tuple[int, int]
         """Returns the horizontal/vertical block pitch of the resistor core in resolution units.  
@@ -88,62 +74,100 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_min_res_core_size(cls, l, w):
-        # type: (int, int) -> Tuple[int, int, Tuple[int, int, int]]
+    def get_min_res_core_size(cls, l, w, res_type, sub_type, threshold):
+        # type: (int, int, str, str, str) -> Tuple[int, int]
         """Calculate the minimum size of a resistor core based on DRC rules.
+
+        This function usually calculates the minimum size based on spacing rules and not density rules.
+        density rule calculations are usually handled in get_core_info().
 
         Parameters
         ----------
         l : int
-            length of resistor in resolution units.
+            resistor length in resolution units.
         w : int
-            width of resistor in resolution units.
+            resistor width in resolution units
+        res_type : str
+            resistor type.
+        sub_type : str
+            substrate type.
+        threshold : str
+            threshold type.
 
         Returns
         -------
-        wres : int
+        wcore : int
             minimum width of resistor core from DRC rules.
-        hres : int
+        hcore : int
             minimum height of resistor core from DRC rules.
-        ares : Tuple[int, int, int]
-            resistor area in core/lr_edge/tb_edge blocks, in resolution units squared.  Used for density
-            DRC rule.
         """
-        return 1, 1, (1, 1, 1)
+        return 1, 1
 
     @classmethod
     @abc.abstractmethod
-    def get_edge_size(cls, wblk, hblk, nxcore, nycore, nxlr, nytb, l, w):
-        # type: (int, int, int, int, int, int, int, int) -> Tuple[int, int]
-        """Calculate the width and height of boundary cells.
+    def get_core_info(cls, width, height, l, w, res_type, sub_type, threshold):
+        # type: (int, int, int, int, str, str, str) -> Optional[Dict[str, Any]]
+        """Returns a dictionary of core layout information.
+
+        If the given core size does not meet DRC rules, return None.
 
         Parameters
         ----------
-        wblk : int
-            width quantization, in resolution units.
-        hblk : int
-            height quantization, in resolution units.
-        nxcore : int
-            number of horizontal blocks in resistor core.
-        nycore : int
-            number of vertical blocks in resistor core.
-        nxlr : int
-            minimum number of horizontal blocks in left/right edge.
-        nytb : int
-            minimum number of vertical blocks in top/bottom edge.
+        width : int
+            the width of core block in resolution units.
+        height : int
+            the height tof core block in resolution units.
         l : int
-            length of resistor in resolution units.
+            resistor length in resolution units.
         w : int
-            width of resistor in resolution units.
+            resistor width in resolution units
+        res_type : str
+            resistor type.
+        sub_type : str
+            substrate type.
+        threshold : str
+            threshold type.
 
         Returns
         -------
-        wedge : int
-            width of left/right edge, in resolution units.
-        hedge : int
-            width of top/bottom edge, in resolution units.
+        layout_info : Optional[Dict[str, Any]]
+            the core layout information dictionary.
         """
-        return 1, 1
+        return None
+
+    @classmethod
+    @abc.abstractmethod
+    def get_edge_info(cls, width, height, is_lr_edge, l, w, res_type, sub_type, threshold):
+        # type: (int, int, bool, int, int, str, str, str) -> Optional[Dict[str, Any]]
+        """Returns a dictionary of edge layout information.
+
+        If the given edge size does not meet DRC rules, return None.
+
+        Parameters
+        ----------
+        width : int
+            the width of edge block in resolution units.
+        height : int
+            the height tof edge block in resolution units.
+        is_lr_edge : bool
+            True if this is left/right edge, False if this is top/bottom edge.
+        l : int
+            resistor length in resolution units.
+        w : int
+            resistor width in resolution units
+        res_type : str
+            resistor type.
+        sub_type : str
+            substrate type.
+        threshold : str
+            threshold type.
+
+        Returns
+        -------
+        layout_info : Optional[Dict[str, Any]]
+            the edge layout information dictionary.
+        """
+        return None
 
     @classmethod
     @abc.abstractmethod
@@ -193,111 +217,6 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             True to extend well layers to bottom.
         """
         pass
-
-    @classmethod
-    def fill_symmetric(cls, tot_space, n_min, n_max, sp, cyclic=False):
-        """Compute 1-D fill pattern that maximizes the filled region and symmetric about the center.
-        
-        Given an empty space and fill parameters, determine location and size of each fill block
-        such that we maximize filled region but keep the pattern symmetric about the center.  This method
-        is useful for computing fill pattern inside the resistor core.
-        
-        Parameters
-        ----------
-        tot_space : int
-            total number of space we need to fill.
-        n_min : int
-            minimum length of the fill block.
-        n_max : int
-            maximum length of the fill block.
-        sp : int
-            minimum space between each fill block.
-        cyclic : bool
-            True if the empty space actually wraps around.  This is usually the case if the space is
-            arrayed.
-
-        Returns
-        -------
-        num_filled : int
-            total number of units filled
-        fill_interval : List[Tuple[int, int]]
-            a list of [start, end) intervals that needs to be filled.
-        """
-        if tot_space <= 0:
-            return 0, []
-
-        # first, find non-cyclic solution using dynamic programming
-        soln_vec = [(0, [])] * n_min + [(i, [(0, i)]) for i in range(n_min, n_max + 1)]
-        for i in range(n_max + 1, tot_space + 1):
-            # try using one block
-            opt_n = n_max if (i - n_max) % 2 == 0 else n_max - 1
-            start = (i - opt_n) // 2
-            opt_combo = [(start, start + opt_n)]
-            # try using two blocks
-            sp_sep = sp if (i - sp) % 2 == 0 else sp + 1
-            n2 = min((i - sp_sep) // 2, n_max)
-            if n2 >= n_min and n2 * 2 > opt_n:
-                # using two blocks is better than using one block, update maximum
-                opt_n = n2 * 2
-                opt_combo = [(0, n2), (i - n2, i)]
-            # try using three or more blocks (dynamic programming)
-            for n_end in range(n_min, n_max + 1):
-                remainder = i - 2 * (n_end + sp)
-                if remainder >= n_min:
-                    recur_n, recur_combo = soln_vec[remainder]
-                    if recur_n + 2 * n_end > opt_n:
-                        # found new optimum.  update
-                        opt_n = recur_n + 2 * n_end
-                        opt_combo = [(0, n_end)]
-                        delta = n_end + sp
-                        for sidx, eidx in recur_combo:
-                            opt_combo.append((sidx + delta, eidx + delta))
-                        opt_combo.append((i - n_end, i))
-                else:
-                    break
-
-            # record best solution.
-            soln_vec.append((opt_n, opt_combo))
-
-        if cyclic:
-            # if the given space is cyclic, then there are two possibilities:
-            # 1. there's no fill at the boundary.  In this case, there must be ceil(sp / 2) empty
-            #    spaces at both ends.
-            sp_end = -(-sp // 2)
-            opt_n, opt_combo = soln_vec[tot_space - sp_end * 2]
-            boundary_fill = -1
-            delta = sp_end
-            # 2. there's fill at the boundary.  Then, we compute the best fill solution for all
-            #    possible boundary fill length.
-            # the boundary fill length must be even
-            n_start = -(-n_min // 2) * 2
-            for bnd_fill in range(n_start, n_max + 1, 2):
-                if bnd_fill + sp > tot_space:
-                    break
-                cur_delta = bnd_fill // 2 + sp
-                cur_n, cur_combo = soln_vec[max(0, tot_space - 2 * cur_delta)]
-                cur_n += bnd_fill
-                # find best solution
-                if cur_n > opt_n:
-                    opt_n = cur_n
-                    opt_combo = cur_combo
-                    boundary_fill = bnd_fill
-                    delta = cur_delta
-
-            # we found the best solution now.  Fill fix opt_combo list
-            new_combo = []
-            if boundary_fill > 0:
-                half_fill = boundary_fill // 2
-                new_combo.append((-half_fill, half_fill))
-                new_combo.extend(((a + delta, b + delta) for (a, b) in opt_combo))
-                new_combo.append((tot_space - half_fill, tot_space + half_fill))
-            else:
-                new_combo.extend(((a + delta, b + delta) for (a, b) in opt_combo))
-
-            return opt_n, new_combo
-        else:
-            # return best non-cyclic solution.
-            return soln_vec[tot_space]
 
     @classmethod
     def get_core_track_info(cls,  # type: ResTech
@@ -365,15 +284,17 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
         return track_widths, track_spaces, (min_w, min_h), (wblk, hblk)
 
     @classmethod
-    def check_density_rule_core(cls, wres, hres, wblk, hblk, ares, ext_dir):
-        # type: (int, int, int, int, int, Optional[str]) -> Tuple[int, int]
-        """Compute resistor core size that meets resistor density DRC rule.
+    def find_core_size(cls, params, wres, hres, wblk, hblk, ext_dir, max_blk_dim):
+        # type: (Dict[str, Any], int, int, int, int, str, int) -> Tuple[int, int, Dict[str, Any]]
+        """Compute resistor core size that meets DRC rules.
         
         Given current resistor block size and the block pitch, increase the resistor block
-        size if necessary to meet density DRC rule.
+        size if necessary to meet DRC rules.
         
         Parameters
         ----------
+        params : Dict[str, Any]
+            the resistor parameters dictionary.
         wres : int
             resistor core width, in resolution units.
         hres : int
@@ -382,13 +303,13 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             the horizontal block pitch, in resolution units.
         hblk : int
             the vertical block pitch, in resolution units.
-        ares : int
-            the resistor area inside the resistor core that should be used for density rule
-            calculation.  In resolution units squared.
         ext_dir : Optional[str]
             if equal to 'x', then we will only stretch the resistor core horizontally.  If equal
             to 'y', we will only stretch the resistor core vertically.  Otherwise, we will find
             the resistor core with the minimum area that meets the density spec.
+        max_blk_dim : int
+            number of block pitches we can extend the resistor core size by.  If we cannot
+            find a valid core size by extending this many block pitches, we declare failure.
         
         Returns
         -------
@@ -396,85 +317,140 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             width of the resistor core, in units of wblk.
         nyblk : int
             height of the resistor core, in units of hblk.
+        layout_info : Dict[str, Any]
+            the core layout information dictionary.
         """
         nxblk = wres // wblk
         nyblk = hres // hblk
-        density = cls.get_res_density()
 
-        # convert to float so we're doing floating point comparison
-        ares = float(ares)
-        if ares < wres * hres * density:
-            return nxblk, nyblk
+        ans = None
+        x_only = (ext_dir == 'x')
+        if x_only or (ext_dir == 'y'):
+            # only extend X or Y direction
+            if x_only:
+                bin_iter = BinaryIterator(nxblk, nxblk + max_blk_dim + 1)
+            else:
+                bin_iter = BinaryIterator(nyblk, nyblk + max_blk_dim + 1)
+            while bin_iter.has_next():
+                ncur = bin_iter.get_next()
+                if x_only:
+                    wcur, hcur = ncur * wblk, hres
+                else:
+                    wcur, hcur = wres, ncur * hblk
+                tmp = cls.get_core_info(wcur, hcur, **params)
+                if tmp is None:
+                    bin_iter.up()
+                else:
+                    ans = tmp
+                    bin_iter.save()
+                    bin_iter.down()
 
-        # find maximum horizontal/vertical extension that meets DRC rule.
-        nxblk_max = int(math.ceil(ares / density / hres / wblk))
-        nyblk_max = int(math.ceil(ares / density / wres / hblk))
-        # if we're only extending in one direction, just return
-        if ext_dir == 'x':
-            return nxblk_max, nyblk
-        elif ext_dir == 'y':
-            return nxblk, nyblk_max
-
-        # otherwise, find extension that minimizes area of the core.
-        # this is a simple exhaustive search.
-        opt = nxblk, nyblk_max
-        opt_area = nxblk * nyblk_max * wblk * hblk
-        for nxblk_cur in range(nxblk + 1, nxblk_max + 1):
-            wcur = nxblk_cur * wblk
-            for nyblk_cur in range(nyblk, nyblk_max + 1):
-                acur = wcur * nyblk_cur * hblk
-                if acur >= opt_area:
+            if ans is None:
+                raise ValueError('failed to find DRC clean core with maximum %d '
+                                 'additional block pitches.' % max_blk_dim)
+            if x_only:
+                nxblk = bin_iter.get_last_save()
+            else:
+                nyblk = bin_iter.get_last_save()
+            return nxblk, nyblk, ans
+        else:
+            # extend in both direction
+            opt_area = (nxblk + max_blk_dim + 1) * (nyblk + max_blk_dim + 1)
+            # linear search in height, binary search in width
+            # in this way, for same area, use height as tie breaker
+            nxopt, nyopt = nxblk, nyblk
+            for nycur in range(nyblk, nyblk + max_blk_dim + 1):
+                # check if we should terminate linear search
+                if nycur * nxblk >= opt_area:
                     break
-                if ares < acur * density:
-                    opt_area = acur
-                    opt = nxblk_cur, nyblk_cur
+                bin_iter = BinaryIterator(nxblk, nxblk + max_blk_dim + 1)
+                hcur = nycur * hblk
+                while bin_iter.has_next():
+                    nxcur = bin_iter.get_next()
+                    if nxcur * nycur >= opt_area:
+                        # this point can't beat current optimum
+                        bin_iter.down()
+                    else:
+                        tmp = cls.get_core_info(nxcur * wblk, hcur, **params)
+                        if tmp is None:
+                            bin_iter.up()
+                        else:
+                            # found new optimum
+                            ans, nxopt, nyopt = tmp, nxcur, nycur
+                            opt_area = nxcur * nycur
+                            bin_iter.down()
 
-        return opt
+            if ans is None:
+                raise ValueError('failed to find DRC clean core with maximum %d '
+                                 'additional block pitches.' % max_blk_dim)
+            return nxopt, nyopt, ans
 
     @classmethod
-    def check_density_rule_edge(cls, n0, s0, s1, area):
-        # type: (int, int, int, int) -> int
-        """Compute edge block dimension from density spec.
+    def find_edge_size(cls, is_lr_edge, params, dim0, blk1, max_blk_dim):
+        # type: (bool, Dict[str, Any], int, int, int) -> Tuple[int, Dict[str, Any]]
+        """Compute resistor edge size that meets DRC rules.
 
-        Given edge width or height (as dimension 0), find the missing dimension (dimension 1)
-        such that density rule is met.
+        Given edge width or height (as dimension 0), extend the other dimension (dimension 1)
+        until we meet DRC rules
 
         Parameters
         ----------
-        n0 : int
-            edge length in dimension 0 as number of blocks.
-        s0 : int
-            dimension 0 block length in resolution units.
-        s1 : int
-            dimension 1 block length in resolution units.
-        area : int
-            the resistor area in the edge block that should be used for density spec.
-            In resolution units squared.
+        is_lr_edge : bool
+            True if this is left/right edge, False if this is top/bottom edge.
+        params : Dict[str, Any]
+            the resistor parameters dictionary.
+        dim0 : int
+            length of dimension 0 in resolution units.
+        blk1 : int
+            dimension1 block size in resolution units.
+        max_blk_dim : int
+            maximum number of blocks we can extend by.
 
         Returns
         -------
         n1 : int
             edge length in dimension 1 as number of blocks.
+        layout_info : Dict[str, Any]
+            the edge layout information dictionary.
         """
-        density = cls.get_res_density()
-        # convert to float so we're doing floating point comparison
-        area = float(area)
 
-        bin_iter = BinaryIterator(1, None)
-        a0 = n0 * s0 * s1
+        bin_iter = BinaryIterator(1, max_blk_dim + 2)
+        ans = None
         while bin_iter.has_next():
             n1 = bin_iter.get_next()
-            if area <= a0 * n1 * density:
+            if is_lr_edge:
+                wcur, hcur = n1 * blk1, dim0
+            else:
+                wcur, hcur = dim0, n1 * blk1
+
+            tmp = cls.get_edge_info(wcur, hcur, is_lr_edge, **params)
+            if tmp is None:
+                bin_iter.up()
+            else:
+                ans = tmp
                 bin_iter.save()
                 bin_iter.down()
-            else:
-                bin_iter.up()
 
-        return bin_iter.get_last_save()
+        if ans is None:
+            raise ValueError('failed to find DRC clean core with maximum %d '
+                             'additional block pitches.' % max_blk_dim)
+
+        return bin_iter.get_last_save(), ans
 
     @classmethod
-    def get_res_info(cls, grid, l, w, res_type, sub_type, threshold, min_tracks, em_specs, ext_dir):
-        # type: (RoutingGrid, int, int, str, str, str, Tuple[int, ...], Dict[str, Any], Optional[str]) -> Dict[str, Any]
+    def get_res_info(cls,
+                     grid,  # type: RoutingGrid
+                     l,  # type: int
+                     w,  # type: int
+                     res_type,  # type: str
+                     sub_type,  # type: str
+                     threshold,  # type: str
+                     min_tracks,  # type: Tuple[int, ...]
+                     em_specs,  # type: Dict[str, Any]
+                     ext_dir,  # type: Optional[str]
+                     max_blk_dim=100,  # type: int
+                     ):
+        # type: (...) -> Dict[str, Any]
         """Compute the resistor layout information dictionary.
         
         This method compute the width/height of each resistor primitive block and also the
@@ -502,6 +478,9 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             if equal to 'x', then we will only stretch the resistor core horizontally.  If equal
             to 'y', we will only stretch the resistor core vertically.  Otherwise, we will find
             the resistor core with the minimum area that meets the density spec.
+        max_blk_dim : int
+            number of block pitches we can extend the resistor core/edge size by.  If we cannot
+            find a valid core size by extending this many block pitches, we declare failure.
 
         Returns
         -------
@@ -509,24 +488,29 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             the resistor layout information dictionary.
         
         """
+        params = dict(
+            l=l,
+            w=w,
+            res_type=res_type,
+            sub_type=sub_type,
+            threshold=threshold,
+        )
         # step 1: get track/size parameters
         track_widths, track_spaces, min_size, blk_pitch = cls.get_core_track_info(grid, min_tracks, em_specs)
-        # step 2: get minimum DRC size, then update and round to block size.
-        wres, hres, ares = cls.get_min_res_core_size(l, w)
+        # step 2: get minimum DRC core size, then update with minimum size and round to block size.
+        wres, hres = cls.get_min_res_core_size(**params)
         wres = max(wres, min_size[0])
         hres = max(hres, min_size[1])
         wblk, hblk = blk_pitch
         wres = -(-wres // wblk) * wblk
         hres = -(-hres // hblk) * hblk
         # step 3: extend core until density rule is satisfied.
-        nxblk, nyblk = cls.check_density_rule_core(wres, hres, wblk, hblk, ares[0], ext_dir)
-        # step 4: calculate edge size that satisfies density rule.
-        nxblk_lr = cls.check_density_rule_edge(nyblk, hblk, wblk, ares[1])
-        nyblk_tb = cls.check_density_rule_edge(nxblk, wblk, hblk, ares[2])
-
-        # step 5: get final edge sizes
-        wedge, hedge = cls.get_edge_size(wblk, hblk, nxblk, nyblk, nxblk_lr, nyblk_tb, l, w)
+        nxblk, nyblk, core_info = cls.find_core_size(params, wres, hres, wblk, hblk, ext_dir, max_blk_dim)
         wcore, hcore = nxblk * wblk, nyblk * hblk
+        # step 4: calculate edge size that satisfies density rule.
+        nxblk_lr, edge_lr_info = cls.find_edge_size(True, params, hcore, wblk, max_blk_dim)
+        nyblk_tb, edge_tb_info = cls.find_edge_size(False, params, wcore, hblk, max_blk_dim)
+        wedge, hedge = nxblk_lr * wblk, nyblk_tb * hblk
 
         # step 6: calculate geometry information of each primitive block.
         bot_layer = cls.get_bot_layer()
