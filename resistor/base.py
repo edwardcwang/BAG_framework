@@ -105,14 +105,16 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_core_info(cls, width, height, l, w, res_type, sub_type, threshold):
-        # type: (int, int, int, int, str, str, str) -> Optional[Dict[str, Any]]
+    def get_core_info(cls, grid, width, height, l, w, res_type, sub_type, threshold, track_widths, track_spaces):
+        # type: (RoutingGrid, int, int, int, int, str, str, str, List[int], List[int]) -> Optional[Dict[str, Any]]
         """Returns a dictionary of core layout information.
 
         If the given core size does not meet DRC rules, return None.
 
         Parameters
         ----------
+        grid : RoutingGrid
+            the RoutingGrid object.
         width : int
             the width of core block in resolution units.
         height : int
@@ -127,6 +129,10 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             substrate type.
         threshold : str
             threshold type.
+        track_widths : List[int]
+            the track widths on each layer to meet EM specs.
+        track_spaces : List[int]
+            the track spaces on each layer.
 
         Returns
         -------
@@ -137,20 +143,31 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_edge_info(cls, width, height, is_lr_edge, l, w, res_type, sub_type, threshold):
-        # type: (int, int, bool, int, int, str, str, str) -> Optional[Dict[str, Any]]
-        """Returns a dictionary of edge layout information.
+    def get_lr_edge_info(cls,
+                         grid,  # type: RoutingGrid
+                         core_info,  # type: Dict[str, Any]
+                         wedge,  # type: int
+                         l,  # type: int
+                         w,  # type: int
+                         res_type,  # type: str
+                         sub_type,  # type: str
+                         threshold,  # type: str
+                         track_widths,  # type: List[int]
+                         track_spaces,  # type: List[int]
+                         ):
+        # type: (...) -> Optional[Dict[str, Any]]
+        """Returns a dictionary of LR edge layout information.
 
         If the given edge size does not meet DRC rules, return None.
 
         Parameters
         ----------
-        width : int
-            the width of edge block in resolution units.
-        height : int
-            the height tof edge block in resolution units.
-        is_lr_edge : bool
-            True if this is left/right edge, False if this is top/bottom edge.
+        grid: RoutingGrid
+            the RoutingGrid object.
+        core_info : Dict[str, Any]
+            core layout information dictionary.
+        wedge : int
+            LR edge width in resolution units.
         l : int
             resistor length in resolution units.
         w : int
@@ -161,6 +178,10 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             substrate type.
         threshold : str
             threshold type.
+        track_widths : List[int]
+            the track widths on each layer to meet EM specs.
+        track_spaces : List[int]
+            the track spaces on each layer.
 
         Returns
         -------
@@ -171,18 +192,52 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def update_layout_info(cls, grid, layout_info):
-        # type: (RoutingGrid, Dict[str, Any]) -> None
-        """Given the layout information dictionary, compute and add extra entries if needed.
-        
+    def get_tb_edge_info(cls,
+                         grid,  # type: RoutingGrid
+                         core_info,  # type: Dict[str, Any]
+                         hedge,  # type: int
+                         l,  # type: int
+                         w,  # type: int
+                         res_type,  # type: str
+                         sub_type,  # type: str
+                         threshold,  # type: str
+                         track_widths,  # type: List[int]
+                         track_spaces,  # type: List[int]
+                         ):
+        # type: (...) -> Optional[Dict[str, Any]]
+        """Returns a dictionary of TB edge layout information.
+
+        If the given edge size does not meet DRC rules, return None.
+
         Parameters
         ----------
-        grid : RoutingGrid
-            the routing grid object.
-        layout_info : Dict[str, Any]
-            dictionary containing block dimensions.  Add new entries to this dictionary
-            if they are needed by draw_res_core() or draw_res_boundary().
+        grid: RoutingGrid
+            the RoutingGrid object.
+        core_info : Dict[str, Any]
+            core layout information dictionary.
+        hedge : int
+            TB edge height in resolution units.
+        l : int
+            resistor length in resolution units.
+        w : int
+            resistor width in resolution units
+        res_type : str
+            resistor type.
+        sub_type : str
+            substrate type.
+        threshold : str
+            threshold type.
+        track_widths : List[int]
+            the track widths on each layer to meet EM specs.
+        track_spaces : List[int]
+            the track spaces on each layer.
+
+        Returns
+        -------
+        layout_info : Optional[Dict[str, Any]]
+            the edge layout information dictionary.
         """
+        return None
 
     @classmethod
     @abc.abstractmethod
@@ -284,8 +339,8 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
         return track_widths, track_spaces, (min_w, min_h), (wblk, hblk)
 
     @classmethod
-    def find_core_size(cls, params, wres, hres, wblk, hblk, ext_dir, max_blk_dim):
-        # type: (Dict[str, Any], int, int, int, int, str, int) -> Tuple[int, int, Dict[str, Any]]
+    def find_core_size(cls, grid, params, wres, hres, wblk, hblk, ext_dir, max_blk_dim):
+        # type: (RoutingGrid, Dict[str, Any], int, int, int, int, str, int) -> Tuple[int, int, Dict[str, Any]]
         """Compute resistor core size that meets DRC rules.
         
         Given current resistor block size and the block pitch, increase the resistor block
@@ -293,6 +348,8 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
         
         Parameters
         ----------
+        grid : RoutingGrid
+            the RoutingGrid object.
         params : Dict[str, Any]
             the resistor parameters dictionary.
         wres : int
@@ -337,7 +394,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
                     wcur, hcur = ncur * wblk, hres
                 else:
                     wcur, hcur = wres, ncur * hblk
-                tmp = cls.get_core_info(wcur, hcur, **params)
+                tmp = cls.get_core_info(grid, wcur, hcur, **params)
                 if tmp is None:
                     bin_iter.up()
                 else:
@@ -371,7 +428,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
                         # this point can't beat current optimum
                         bin_iter.down()
                     else:
-                        tmp = cls.get_core_info(nxcur * wblk, hcur, **params)
+                        tmp = cls.get_core_info(grid, nxcur * wblk, hcur, **params)
                         if tmp is None:
                             bin_iter.up()
                         else:
@@ -386,21 +443,22 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             return nxopt, nyopt, ans
 
     @classmethod
-    def find_edge_size(cls, is_lr_edge, params, dim0, blk1, max_blk_dim):
-        # type: (bool, Dict[str, Any], int, int, int) -> Tuple[int, Dict[str, Any]]
+    def find_edge_size(cls, grid, core_info, is_lr_edge, params, blk1, max_blk_dim):
+        # type: (RoutingGrid, Dict[str, Any], bool, Dict[str, Any], int, int) -> Tuple[int, Dict[str, Any]]
         """Compute resistor edge size that meets DRC rules.
 
-        Given edge width or height (as dimension 0), extend the other dimension (dimension 1)
-        until we meet DRC rules
+        Calculate edge dimension (width for LR edge, height for TB edge) that meets DRC rules
 
         Parameters
         ----------
+        grid : RoutingGrid
+            the RoutingGrid object.
+        core_info : Dict[str, Any]
+            core layout information dictionary.
         is_lr_edge : bool
             True if this is left/right edge, False if this is top/bottom edge.
         params : Dict[str, Any]
             the resistor parameters dictionary.
-        dim0 : int
-            length of dimension 0 in resolution units.
         blk1 : int
             dimension1 block size in resolution units.
         max_blk_dim : int
@@ -418,12 +476,12 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
         ans = None
         while bin_iter.has_next():
             n1 = bin_iter.get_next()
-            if is_lr_edge:
-                wcur, hcur = n1 * blk1, dim0
-            else:
-                wcur, hcur = dim0, n1 * blk1
 
-            tmp = cls.get_edge_info(wcur, hcur, is_lr_edge, **params)
+            if is_lr_edge:
+                tmp = cls.get_lr_edge_info(grid, core_info, n1 * blk1, **params)
+            else:
+                tmp = cls.get_tb_edge_info(grid, core_info, n1 * blk1, **params)
+
             if tmp is None:
                 bin_iter.up()
             else:
@@ -488,28 +546,30 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             the resistor layout information dictionary.
         
         """
+        # step 1: get track/size parameters
+        track_widths, track_spaces, min_size, blk_pitch = cls.get_core_track_info(grid, min_tracks, em_specs)
         params = dict(
             l=l,
             w=w,
             res_type=res_type,
             sub_type=sub_type,
             threshold=threshold,
+            track_widths=track_widths,
+            track_spaces=track_spaces,
         )
-        # step 1: get track/size parameters
-        track_widths, track_spaces, min_size, blk_pitch = cls.get_core_track_info(grid, min_tracks, em_specs)
         # step 2: get minimum DRC core size, then update with minimum size and round to block size.
-        wres, hres = cls.get_min_res_core_size(**params)
+        wres, hres = cls.get_min_res_core_size(l, w, res_type, sub_type, threshold)
         wres = max(wres, min_size[0])
         hres = max(hres, min_size[1])
         wblk, hblk = blk_pitch
         wres = -(-wres // wblk) * wblk
         hres = -(-hres // hblk) * hblk
         # step 3: extend core until density rule is satisfied.
-        nxblk, nyblk, core_info = cls.find_core_size(params, wres, hres, wblk, hblk, ext_dir, max_blk_dim)
+        nxblk, nyblk, core_info = cls.find_core_size(grid, params, wres, hres, wblk, hblk, ext_dir, max_blk_dim)
         wcore, hcore = nxblk * wblk, nyblk * hblk
         # step 4: calculate edge size that satisfies density rule.
-        nxblk_lr, edge_lr_info = cls.find_edge_size(True, params, hcore, wblk, max_blk_dim)
-        nyblk_tb, edge_tb_info = cls.find_edge_size(False, params, wcore, hblk, max_blk_dim)
+        nxblk_lr, edge_lr_info = cls.find_edge_size(grid, core_info, True, params, wblk, max_blk_dim)
+        nyblk_tb, edge_tb_info = cls.find_edge_size(grid, core_info, False, params, hblk, max_blk_dim)
         wedge, hedge = nxblk_lr * wblk, nyblk_tb * hblk
 
         # step 6: calculate geometry information of each primitive block.
@@ -542,9 +602,12 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             track_spaces=track_spaces,
             num_tracks=num_tracks,
             num_corner_tracks=num_corner_tracks,
+            core_info=core_info,
+            edge_lr_info=edge_lr_info,
+            edge_tb_info=edge_tb_info,
+            well_xl=edge_lr_info['well_xl'],
         )
 
-        cls.update_layout_info(grid, res_info)
         return res_info
 
 
