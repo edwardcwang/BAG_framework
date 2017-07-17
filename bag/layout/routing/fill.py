@@ -491,7 +491,7 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
 
 def fill_symmetric(area, sp_max, seg_len, offset=0):
     # type: (int, int, int) -> List[Tuple[int, int]]
-    """Fill the given 1-D area given maximum space constraint.
+    """Fill the given 1-D area only when necessary, with given maximum space constraint.
 
     Compute fill location such that the given area is filled with the following properties:
 
@@ -499,7 +499,7 @@ def fill_symmetric(area, sp_max, seg_len, offset=0):
     2. the filled area is symmetric about the center.
     3. all space are as close to the given space as possible, without exceeding it.
 
-    fill is drawn such that there is space between area boundary and first fill segment.
+    fill is drawn such that space blocks abuts both area boundaries.
 
     Parameters
     ----------
@@ -514,56 +514,147 @@ def fill_symmetric(area, sp_max, seg_len, offset=0):
 
     Returns
     -------
-    start_list : List[Tuple[int, int]]
+    fill_intv : List[Tuple[int, int]]
         list of fill intervals.
     """
-    # calculate number of segments
-    num_seg = -(-(area - sp_max) // (seg_len + sp_max))
-    if num_seg == 0:
-        # no fill needed
-        return []
-    num_sp = num_seg + 1
-    # get small space value, and number of large/small spaces.
-    sp_small = (area - num_seg * seg_len) // num_sp
-    num_large = area - num_seg * seg_len - sp_small * num_sp
-    num_small = num_sp - num_large
+    # filling as few as possible is the same as drawing spacing as much as possible,
+    # so we just pretend we're doing max fill but we are drawing spaces instead.
+    # calculate number of space blocks
+    num_space = -(-(area + seg_len) // (sp_max + seg_len))
+    # calculate space location
+    fill_intv = _fill_symmetric_helper(area, num_space, seg_len, offset=offset, inc_sp=True,
+                                       invert=True, fill_on_edge=True)
+    # return
+    return fill_intv
 
-    num_large2 = num_large // 2
-    num_small2 = num_small // 2
 
-    # figure out if we have a space or a segment in the middle, and its value
-    mid_seg_len = seg_len
-    if num_large % 2 == 1:
-        if num_small % 2 == 1:
-            # we have odd number of large and small spaces.  Which means we have a segment
-            # right in the center, and total space area is odd.  In order to keep everything
-            # symmetric, the middle segment length must be increase by 1
-            mid_seg_len += 1
-            # because we increase middle segment size, we need to correct number of small spaces
-            num_small2 += 1
-            mid_space = -1
-        else:
-            # the middle space is large space
-            mid_space = sp_small + 1
-    elif num_small % 2 == 1:
-        # the middle space is small space
-        mid_space = sp_small
+def fill_symmetric_max(area, n_max, sp, offset=0, cyclic=False):
+    """Fill the given 1-D area as much as possible, given minimum space constraint.
+
+    Compute fill location such that the given area is filled with the following properties:
+
+    1. the area is as uniform as possible.
+    2. the area is symmetric with respect to the center
+    3. the area is filled as much as possible.
+
+    fill is drawn such that fill blocks abut both area boundaries.
+
+    Parameters
+    ----------
+    area : int
+        total number of space we need to fill.
+    n_max : int
+        maximum length of the fill block.
+    sp : int
+        minimum space between each fill block.
+    offset : int
+        the area starting coordinate.
+    cyclic : bool
+        True if the given area actually wraps around.  This is usually the case if you are
+        filling an area that is arrayed.
+
+    Returns
+    -------
+    fill_interval : List[Tuple[int, int]]
+        a list of [start, stop) intervals that needs to be filled.
+    """
+    if area <= 0:
+        return 0, []
+
+    # step 1: find minimum number of blocks we can put in the given area
+    num_blk_min = (area + sp) // (n_max + sp)
+    # step 2: compute the amount of space if we use minimum number of blocks
+    min_space_with_max_blk = area - num_blk_min * n_max
+    # step 3: determine number of blocks to use
+    # If we use (num_blk_min + 1) or more blocks, we will have a space
+    # area of at least num_blk_min * sp.
+    if min_space_with_max_blk <= num_blk_min * sp:
+        # If we're here, we can achieve the minimum amount of space by using all large blocks,
+        # now we just need to place the blocks in a symmetric way.
+
+        # since all blocks has width n_max, we will try to distribute empty space
+        # between blocks evenly symmetrically.
+        fill_intv = _fill_symmetric_helper(area, num_blk_min - 1, n_max, offset=offset, inc_sp=False, invert=True,
+                                           fill_on_edge=False)
     else:
-        # no middle space
-        mid_space = -1
+        # If we're here, we need to use num_blk_min + 1 number of fill blocks, and we can achieve
+        # a minimum space of num_blk_min * sp.  Now we need to determine the size of each fill block
+        # and place them symmetrically.
+        fill_intv = _fill_symmetric_helper(area, num_blk_min + 1, sp, offset=offset, inc_sp=True)
 
-    # now we need to distribute the spaces evenly.  We do so using cumulative modding
-    # in this case, the first space is the more common space
-    m = num_large2 + num_small2
-    if num_large2 >= num_small2:
-        # we prefer having large spaces on the outside
-        sp1 = sp_small + 1
-        sp0 = sp_small
-        k = num_large2
+    return fill_intv
+
+
+def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, invert=False, fill_on_edge=True):
+    """Helper method for fill symmetric method.
+
+    Parameters
+    ----------
+    tot_area : int
+        the total 1-D area to fill.
+    num_blk_tot : int
+        total number of solid blocks to use.
+    sp : int
+        space length between blocks.
+    inc_sp : bool
+        in the event where symmetric fill can only be achieved by adjustment the
+        middle space length, if inc_sp is True, we will increase the middle space
+        length by 1.  Otherwise, we will decrease by 1.
+    invert : bool
+        If True, we return space intervals instead of fill intervals.
+    fill_on_edge : bool
+        If True, we put fill blocks on area boundary.  Otherwise, we put space block on area boundary.
+
+    Returns
+    -------
+    ans : List[(int, int)]
+        list of fill of space intervals.
+    """
+    adj_sp_sgn = 1 if inc_sp else -1
+
+    if fill_on_edge:
+        # fill on edge, we have less space blocks than fill.
+        fill_area = tot_area - (num_blk_tot - 1) * sp
     else:
-        sp1 = sp_small
-        sp0 = sp_small
-        k = num_small2
+        # space on edge, we have more space blocks than fill.
+        fill_area = tot_area - (num_blk_tot + 1) * sp
+
+    # we don't know if we have a block in the middle or space in the middle yet, set to -1 first.
+    mid_blk_len = mid_sp_len = -1
+
+    # find minimum block length
+    blk_len, num_blk1 = divmod(fill_area, num_blk_tot)
+
+    # now we have num_blk_tot blocks with length blk0.  We have num_blk1 fill units
+    # remaining that we need to distribute to the fill blocks
+    if num_blk_tot % 2 == 0:
+        # we have even number of fill blocks, so we have a space block in the middle
+        mid_sp_len = sp
+        if num_blk1 % 2 == 1:
+            # we need to distribute odd number of fill units to even number of fill blocks,
+            # which is impossible to do so symmetrically.
+            # To solve this, we adjust the length of the middle space block by 1, so we
+            # have even number of fill units to fill in even number of blocks.
+            mid_sp_len += adj_sp_sgn
+            num_blk1 += -adj_sp_sgn
+    else:
+        # we have odd number of fill blocks, so we have a fill block in the middle
+        mid_blk_len = blk_len
+        if num_blk1 % 2 == 1:
+            # we need to distrbute odd number of fill units to odd number of fill blocks,
+            # so one fill unit goes to the middle
+            mid_blk_len += 1
+
+    # now we need to distribute the fill units evenly.  We do so using cumulative modding
+    num_large = num_blk1 // 2
+    num_small = (num_blk_tot - num_blk1) // 2
+    m = num_large + num_small
+    if num_large >= num_small:
+        blk0, blk1 = blk_len, blk_len + 1
+        k = num_large
+    else:
+        blk1, blk0 = blk_len, blk_len + 1
+        k = num_small
 
     # now compute fill intervals
     # add the first half of fill
@@ -572,40 +663,61 @@ def fill_symmetric(area, sp_max, seg_len, offset=0):
     cur_sum = 0
     prev_sum = 1
     for _ in range(m):
+        # determine current fill length from cumulative modding result
         if cur_sum < prev_sum:
-            marker += sp1
+            cur_len = blk1
         else:
-            marker += sp0
-        ans.append((marker, marker + seg_len))
-        marker += seg_len
+            cur_len = blk0
+
+        # record fill/space interval
+        if invert:
+            if fill_on_edge:
+                ans.append((marker + cur_len, marker + sp + cur_len))
+            else:
+                ans.append((marker, marker + sp))
+        else:
+            if fill_on_edge:
+                ans.append((marker, marker + cur_len))
+            else:
+                ans.append((marker + sp, marker + sp + cur_len))
+
+        marker += cur_len + sp
         prev_sum = cur_sum
         cur_sum = (cur_sum + k) % m
 
-    # add middle space or middle segment
-    if mid_space >= 0:
-        marker += mid_space
-        ans.append((marker, marker + seg_len))
-        marker += seg_len
-    else:
-        # middle segment, we added one more segment by accident
-        marker -= seg_len
-        del ans[-1]
-        ans.append((marker, marker + mid_seg_len))
-        marker += mid_seg_len
-
-    # add the second half of fill
-    prev_sum = 0
-    cur_sum = m - k
-    for _ in range(m):
-        if cur_sum > prev_sum:
-            marker += sp1
+    # add middle fill or space
+    if mid_blk_len >= 0:
+        # fill in middle
+        if invert:
+            if not fill_on_edge:
+                # we have one more space block before reaching middle block
+                ans.append((marker, marker + sp))
+            half_len = len(ans)
         else:
-            marker += sp0
-        ans.append((marker, marker + seg_len))
-        marker += seg_len
-        prev_sum = cur_sum
-        cur_sum = (cur_sum - k) % m
+            # we don't want to replicate middle fill, so get half length now
+            half_len = len(ans)
+            if fill_on_edge:
+                ans.append((marker, marker + mid_blk_len))
+            else:
+                ans.append((marker + sp, marker + sp + mid_blk_len))
+    else:
+        # space in middle
+        if invert:
+            if fill_on_edge:
+                # the last space we added is wrong, we need to remove
+                del ans[-1]
+                marker -= sp
+            # we don't want to replicate middle space, so get half length now
+            half_len = len(ans)
+            ans.append((marker, marker + mid_sp_len))
+        else:
+            # don't need to do anything if we're recording blocks
+            half_len = len(ans)
 
-    # remove last added segment, then return answer
-    del ans[-1]
+    # now add the second half of the list
+    shift = tot_area + offset * 2
+    for idx in range(half_len - 1, -1, -1):
+        start, stop = ans[idx]
+        ans.append((shift - stop, shift - start))
+
     return ans
