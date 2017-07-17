@@ -489,7 +489,7 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
     return vdd_warr_list, vss_warr_list
 
 
-def fill_symmetric(area, sp_max, seg_len, offset=0):
+def fill_symmetric_min(area, sp_max, seg_len, offset=0):
     # type: (int, int, int) -> List[Tuple[int, int]]
     """Fill the given 1-D area only when necessary, with given maximum space constraint.
 
@@ -528,7 +528,7 @@ def fill_symmetric(area, sp_max, seg_len, offset=0):
     return fill_intv
 
 
-def fill_symmetric_max(area, n_max, sp, offset=0, cyclic=False):
+def fill_symmetric_max(area, n_max, sp_min, offset=0, cyclic=False):
     """Fill the given 1-D area as much as possible, given minimum space constraint.
 
     Compute fill location such that the given area is filled with the following properties:
@@ -545,7 +545,7 @@ def fill_symmetric_max(area, n_max, sp, offset=0, cyclic=False):
         total number of space we need to fill.
     n_max : int
         maximum length of the fill block.
-    sp : int
+    sp_min : int
         minimum space between each fill block.
     offset : int
         the area starting coordinate.
@@ -563,17 +563,17 @@ def fill_symmetric_max(area, n_max, sp, offset=0, cyclic=False):
 
     # step 1: find minimum number of blocks we can put in the given area
     if cyclic:
-        num_blk_min = area // (n_max + sp)
+        num_blk_min = area // (n_max + sp_min)
         num_sp_min = num_blk_min
     else:
-        num_blk_min = (area + sp) // (n_max + sp)
+        num_blk_min = (area + sp_min) // (n_max + sp_min)
         num_sp_min = num_blk_min - 1
     # step 2: compute the amount of space if we use minimum number of blocks
     min_space_with_max_blk = area - num_blk_min * n_max
     # step 3: determine number of blocks to use
     # If we use (num_blk_min + 1) or more blocks, we will have a space
     # area of at least (num_sp_min + 1) * sp.
-    if min_space_with_max_blk <= (num_sp_min + 1) * sp:
+    if min_space_with_max_blk <= (num_sp_min + 1) * sp_min:
         # If we're here, we can achieve the minimum amount of space by using all large blocks,
         # now we just need to place the blocks in a symmetric way.
 
@@ -585,7 +585,7 @@ def fill_symmetric_max(area, n_max, sp, offset=0, cyclic=False):
         # If we're here, we need to use num_blk_min + 1 number of fill blocks, and we can achieve
         # a minimum space of (num_sp_min + 1) * sp.  Now we need to determine the size of each fill block
         # and place them symmetrically.
-        fill_intv = _fill_symmetric_helper(area, num_blk_min + 1, sp, offset=offset, inc_sp=True,
+        fill_intv = _fill_symmetric_helper(area, num_blk_min + 1, sp_min, offset=offset, inc_sp=True,
                                            fill_on_edge=not cyclic, cyclic=cyclic)
 
     return fill_intv
