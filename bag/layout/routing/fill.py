@@ -562,30 +562,37 @@ def fill_symmetric_max(area, n_max, sp, offset=0, cyclic=False):
         return 0, []
 
     # step 1: find minimum number of blocks we can put in the given area
-    num_blk_min = (area + sp) // (n_max + sp)
+    if cyclic:
+        num_blk_min = area // (n_max + sp)
+        num_sp_min = num_blk_min
+    else:
+        num_blk_min = (area + sp) // (n_max + sp)
+        num_sp_min = num_blk_min - 1
     # step 2: compute the amount of space if we use minimum number of blocks
     min_space_with_max_blk = area - num_blk_min * n_max
     # step 3: determine number of blocks to use
     # If we use (num_blk_min + 1) or more blocks, we will have a space
-    # area of at least num_blk_min * sp.
-    if min_space_with_max_blk <= num_blk_min * sp:
+    # area of at least (num_sp_min + 1) * sp.
+    if min_space_with_max_blk <= (num_sp_min + 1) * sp:
         # If we're here, we can achieve the minimum amount of space by using all large blocks,
         # now we just need to place the blocks in a symmetric way.
 
         # since all blocks has width n_max, we will try to distribute empty space
         # between blocks evenly symmetrically.
-        fill_intv = _fill_symmetric_helper(area, num_blk_min - 1, n_max, offset=offset, inc_sp=False, invert=True,
-                                           fill_on_edge=False)
+        fill_intv = _fill_symmetric_helper(area, num_sp_min, n_max, offset=offset, inc_sp=False, invert=True,
+                                           fill_on_edge=cyclic, cyclic=cyclic)
     else:
         # If we're here, we need to use num_blk_min + 1 number of fill blocks, and we can achieve
-        # a minimum space of num_blk_min * sp.  Now we need to determine the size of each fill block
+        # a minimum space of (num_sp_min + 1) * sp.  Now we need to determine the size of each fill block
         # and place them symmetrically.
-        fill_intv = _fill_symmetric_helper(area, num_blk_min + 1, sp, offset=offset, inc_sp=True)
+        fill_intv = _fill_symmetric_helper(area, num_blk_min + 1, sp, offset=offset, inc_sp=True,
+                                           fill_on_edge=not cyclic, cyclic=cyclic)
 
     return fill_intv
 
 
-def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, invert=False, fill_on_edge=True):
+def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, invert=False,
+                           fill_on_edge=True, cyclic=False):
     """Helper method for fill symmetric method.
 
     Parameters
@@ -604,6 +611,8 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
         If True, we return space intervals instead of fill intervals.
     fill_on_edge : bool
         If True, we put fill blocks on area boundary.  Otherwise, we put space block on area boundary.
+    cyclic : bool
+        If True, we assume we're filling in a cyclic area (it wraps around).
 
     Returns
     -------
@@ -612,12 +621,16 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
     """
     adj_sp_sgn = 1 if inc_sp else -1
 
-    if fill_on_edge:
-        # fill on edge, we have less space blocks than fill.
-        fill_area = tot_area - (num_blk_tot - 1) * sp
+    # determine the number of space blocks
+    if cyclic:
+        num_sp_tot = num_blk_tot
     else:
-        # space on edge, we have more space blocks than fill.
-        fill_area = tot_area - (num_blk_tot + 1) * sp
+        if fill_on_edge:
+            num_sp_tot = num_blk_tot - 1
+        else:
+            num_sp_tot = num_blk_tot + 1
+
+    fill_area = tot_area - num_sp_tot * sp
 
     # we don't know if we have a block in the middle or space in the middle yet, set to -1 first.
     mid_blk_len = mid_sp_len = -1
@@ -649,17 +662,36 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
     num_large = num_blk1 // 2
     num_small = (num_blk_tot - num_blk1) // 2
     m = num_large + num_small
-    if num_large >= num_small:
-        blk0, blk1 = blk_len, blk_len + 1
-        k = num_large
+    if cyclic and not fill_on_edge and sp % 2 == 1:
+        # cyclic and space is on edge works only if space length is even
+        raise ValueError('Cannot fill cyclic area with odd space on edge.')
+    elif cyclic and fill_on_edge:
+        # if cyclic and fill is on the edge, we need to make sure the first block is even length
+        if blk_len % 2 == 0:
+            blk1, blk0 = blk_len, blk_len + 1
+            k = num_small
+        else:
+            blk0, blk1 = blk_len, blk_len + 1
+            k = num_large
     else:
-        blk1, blk0 = blk_len, blk_len + 1
-        k = num_small
+        # determine the first block size so we get even distribution
+        if num_large >= num_small:
+            blk0, blk1 = blk_len, blk_len + 1
+            k = num_large
+        else:
+            blk1, blk0 = blk_len, blk_len + 1
+            k = num_small
 
     # now compute fill intervals
     # add the first half of fill
     ans = []
-    marker = offset
+    if cyclic:
+        if fill_on_edge:
+            marker = offset - blk1 // 2
+        else:
+            marker = offset - sp // 2
+    else:
+        marker = offset
     cur_sum = 0
     prev_sum = 1
     for _ in range(m):
