@@ -930,6 +930,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 cur_ntr = cur_ntr_test // 2
                 dtr_intv.append((tr_next, tr_next + cur_ntr))
                 gtr_intv.append((tr_tmp, tr_tmp))
+                cur_top_ntr = cur_ntr
             else:
                 # transistor.  find first unused track.
                 if cur_orient == 'R0':
@@ -944,13 +945,21 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     tr_ds_bot = self.grid.coord_to_nearest_track(hm_layer, d_conn_yb + conn_delta, half_track=True,
                                                                  mode=1, unit_mode=True)
                     tr_ds_bot = max(tr_ds_bot, tr_g_top + gds_space + 1)
-                    tr_ds_top1 = tr_ds_bot + cur_nds - 1
+                    tr_ds_top = tr_ds_bot + cur_nds - 1
                     tr_ds_top2 = self.grid.coord_to_nearest_track(hm_layer, d_conn_yt - conn_delta, half_track=True,
                                                                   mode=1, unit_mode=True)
-                    tr_ds_top = max(tr_ds_top1, tr_ds_top2)
-                    tr_tmp = tr_ds_top + 1 + hm_sep
+                    if tr_ds_top2 >= tr_ds_top:
+                        # if we have more intrinsic number of tracks than the number of tracks user specified,
+                        # then mos_conn_layer line-end spacing DRC rule is embedded in extension height constraint,
+                        # and we don't need to account for it here.
+                        # this also opens the possibility to draw very compact layout if the user knows they can
+                        # disable line-end spacing DRC check.
+                        tr_tmp = tr_ds_top + 1
+                    else:
+                        tr_tmp = tr_ds_top + 1 + hm_sep
                     gtr_intv.append((tr_g_top + 1 - cur_ng, tr_g_top + 1))
                     dtr_intv.append((tr_ds_bot, tr_ds_top + 1))
+                    cur_top_ntr = cur_nds
                 else:
                     # gate tracks on top
                     g_conn_yb, g_conn_yt = cur_master.get_g_conn_y()
@@ -963,19 +972,32 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     tr_g_bot = self.grid.coord_to_nearest_track(hm_layer, g_conn_yt + conn_delta, half_track=True,
                                                                 mode=1, unit_mode=True)
                     tr_ds_top = min(tr_ds_top, tr_g_bot - 1 - gds_space)
-                    tr_g_top1 = tr_g_bot + cur_ng - 1
+                    tr_g_top = tr_g_bot + cur_ng - 1
                     tr_g_top2 = self.grid.coord_to_nearest_track(hm_layer, g_conn_yb - conn_delta, half_track=True,
                                                                  mode=1, unit_mode=True)
-                    tr_g_top = max(tr_g_top1, tr_g_top2)
-                    tr_tmp = tr_g_top + 1 + hm_sep
+                    if tr_g_top2 >= tr_g_top:
+                        # if we have more intrinsic number of tracks than the number of tracks user specified,
+                        # then mos_conn_layer line-end spacing DRC rule is embedded in extension height constraint,
+                        # and we don't need to account for it here.
+                        # this also opens the possibility to draw very compact layout if the user knows they can
+                        # disable line-end spacing DRC check.
+                        tr_tmp = tr_g_top + 1
+                    else:
+                        tr_tmp = tr_g_top + 1 + hm_sep
                     dtr_intv.append((tr_ds_top + 1 - cur_nds, tr_ds_top + 1))
                     gtr_intv.append((tr_g_bot, tr_g_top + 1))
+                    cur_top_ntr = cur_ng
 
             tr_next = tr_tmp
 
-            # step 2.5: find minimum Y coordinate of next block based on track information.
-            y_tr_last_top = self.grid.get_wire_bounds(hm_layer, tr_next - 1, unit_mode=True)[1]
-            y_next_min = -(-y_tr_last_top // mos_pitch) * mos_pitch
+            if cur_top_ntr > 0:
+                # step 2.5: find minimum Y coordinate of next block based on track information.
+                y_tr_last_top = self.grid.get_wire_bounds(hm_layer, tr_next - 1, unit_mode=True)[1]
+                y_next_min = -(-y_tr_last_top // mos_pitch) * mos_pitch
+            else:
+                # if we don't have routing tracks, we don't have to worry that next block contains
+                # this block's routing tracks.
+                y_next_min = y_top_cur
 
             # step 3: compute extension to next master and location of next master
             if idx + 1 < num_master:
