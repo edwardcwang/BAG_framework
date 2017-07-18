@@ -565,6 +565,7 @@ class Termination(TemplateBase):
         # type: () -> None
 
         res_params = self.params.copy()
+        res_type = res_params['res_type']
         sub_lch = res_params.pop('sub_lch')
         sub_w = res_params.pop('sub_w')
         sub_type = self.params['sub_type']
@@ -597,7 +598,7 @@ class Termination(TemplateBase):
         top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(sub_x, top_yo), orient='MX', unit_mode=True)
 
         # connect implant layers of resistor array and substrate contact together
-        for lay in self.grid.tech_info.get_implant_layers(sub_type):
+        for lay in self.grid.tech_info.get_implant_layers(sub_type, res_type=res_type):
             self.add_rect(lay, self.get_rect_bbox(lay))
 
         # export supplies and recompute array_box/size
@@ -1033,6 +1034,7 @@ class ResLadder(TemplateBase):
         sub_lch = res_params.pop('sub_lch')
         sub_w = res_params.pop('sub_w')
         sub_type = self.params['sub_type']
+        res_type = res_params['res_type']
 
         res_master = self.new_template(params=res_params, temp_cls=ResLadderCore)
 
@@ -1062,7 +1064,7 @@ class ResLadder(TemplateBase):
         top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(sub_x, top_yo), orient='MX', unit_mode=True)
 
         # connect implant layers of resistor array and substrate contact together
-        for lay in self.grid.tech_info.get_implant_layers(sub_type):
+        for lay in self.grid.tech_info.get_implant_layers(sub_type, res_type=res_type):
             self.add_rect(lay, self.get_rect_bbox(lay))
 
         # recompute array_box/size
