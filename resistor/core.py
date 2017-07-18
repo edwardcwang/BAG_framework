@@ -220,6 +220,8 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                    em_specs=None,  # type: Optional[Dict[str, Any]]
                    grid_type='standard',  # type: str
                    ext_dir='',  # type: str
+                   max_blk_ext=100,  # type: int
+                   options=None,  # type: Optional[Dict[str, Any]]
                    **kwargs
                    ):
         # type: (...) -> None
@@ -246,12 +248,16 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             minimum number of tracks per layer in the resistor unit cell.
         res_type : str
             the resistor type.
-        em_specs : Union[None, Dict[str, Any]]
+        em_specs : Optional[Dict[str, Any]]
             resistor EM specifications dictionary.
         grid_type : str
             the lower resistor routing grid name.
         ext_dir : str
             resistor core extension direction.
+        max_blk_ext : int
+            maximum number of block pitches we can extend for primitives.
+        options : Optional[Dict[str, Any]]
+            custom options for resistor primitives.
         """
         if em_specs is None:
             em_specs = {}
@@ -269,7 +275,8 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         l_unit = int(round(l / lay_unit / res))
         w_unit = int(round(w / lay_unit / res))
         res_info = self._tech_cls.get_res_info(self.grid, l_unit, w_unit, res_type, sub_type, threshold,
-                                               min_tracks, em_specs, ext_dir)
+                                               min_tracks, em_specs, ext_dir, max_blk_ext=max_blk_ext,
+                                               options=options)
         w_edge, h_edge = res_info['w_edge'], res_info['h_edge']
         w_core, h_core = res_info['w_core'], res_info['h_core']
         self._core_offset = w_edge, h_edge
@@ -279,47 +286,33 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._w_tracks = tuple(res_info['track_widths'])
 
         # make template masters
-        core_params = dict(
-            l=l,
-            w=w,
-            res_type=res_type,
-            sub_type=sub_type,
-            threshold=threshold,
-            min_tracks=min_tracks,
-            em_specs=em_specs,
-            ext_dir=ext_dir,
-        )
+        core_params = dict(res_info=res_info)
         core_master = self.new_template(params=core_params, temp_cls=AnalogResCore)
         lr_params = core_master.get_boundary_params('lr')
         lr_master = self.new_template(params=lr_params, temp_cls=AnalogResBoundary)
-        top_params = core_master.get_boundary_params('tb')
-        top_master = self.new_template(params=top_params, temp_cls=AnalogResBoundary)
-        bot_params = core_master.get_boundary_params('tb')
-        bot_master = self.new_template(params=bot_params, temp_cls=AnalogResBoundary)
-        tcorner_params = core_master.get_boundary_params('corner')
-        tcorner_master = self.new_template(params=tcorner_params, temp_cls=AnalogResBoundary)
-        bcorner_params = core_master.get_boundary_params('corner')
-        bcorner_master = self.new_template(params=bcorner_params, temp_cls=AnalogResBoundary)
+        tb_params = core_master.get_boundary_params('tb')
+        tb_master = self.new_template(params=tb_params, temp_cls=AnalogResBoundary)
+        corner_params = core_master.get_boundary_params('corner')
+        corner_master = self.new_template(params=corner_params, temp_cls=AnalogResBoundary)
 
         # place core
         for row in range(ny):
             for col in range(nx):
                 cur_name = 'XCORE%d' % (col + nx * row)
                 cur_loc = (w_edge + col * w_core, h_edge + row * h_core)
-                cur_master = self.new_template(params=core_params, temp_cls=AnalogResCore)
-                self.add_instance(cur_master, inst_name=cur_name, loc=cur_loc, unit_mode=True)
+                self.add_instance(core_master, inst_name=cur_name, loc=cur_loc, unit_mode=True)
                 if row == 0 and col == 0:
-                    self._bot_port = cur_master.get_port('bot')
-                    self._top_port = cur_master.get_port('top')
+                    self._bot_port = core_master.get_port('bot')
+                    self._top_port = core_master.get_port('top')
 
         # place boundaries
         # bottom-left corner
-        inst_bl = self.add_instance(bcorner_master, inst_name='XBL')
+        inst_bl = self.add_instance(corner_master, inst_name='XBL')
         # bottom edge
-        self.add_instance(bot_master, inst_name='XB', loc=(w_edge, 0), nx=nx, spx=w_core, unit_mode=True)
+        self.add_instance(tb_master, inst_name='XB', loc=(w_edge, 0), nx=nx, spx=w_core, unit_mode=True)
         # bottom-right corner
         loc = (2 * w_edge + nx * w_core, 0)
-        self.add_instance(bcorner_master, inst_name='XBR', loc=loc, orient='MY', unit_mode=True)
+        self.add_instance(corner_master, inst_name='XBR', loc=loc, orient='MY', unit_mode=True)
         # left edge
         loc = (0, h_edge)
         well_xl = lr_master.get_well_left(unit_mode=True)
@@ -331,13 +324,13 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self.add_instance(lr_master, inst_name='XR', loc=loc, orient='MY', ny=ny, spy=h_core, unit_mode=True)
         # top-left corner
         loc = (0, 2 * h_edge + ny * h_core)
-        self.add_instance(tcorner_master, inst_name='XTL', loc=loc, orient='MX', unit_mode=True)
+        self.add_instance(corner_master, inst_name='XTL', loc=loc, orient='MX', unit_mode=True)
         # top edge
         loc = (w_edge, 2 * h_edge + ny * h_core)
-        self.add_instance(top_master, inst_name='XT', loc=loc, orient='MX', nx=nx, spx=w_core, unit_mode=True)
+        self.add_instance(tb_master, inst_name='XT', loc=loc, orient='MX', nx=nx, spx=w_core, unit_mode=True)
         # top-right corner
         loc = (2 * w_edge + nx * w_core, 2 * h_edge + ny * h_core)
-        inst_tr = self.add_instance(tcorner_master, inst_name='XTR', loc=loc, orient='R180', unit_mode=True)
+        inst_tr = self.add_instance(corner_master, inst_name='XTR', loc=loc, orient='R180', unit_mode=True)
 
         # set array box and size
         self.array_box = inst_bl.array_box.merge(inst_tr.array_box)
