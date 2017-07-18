@@ -78,13 +78,15 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_implant_layers(cls, mos_type):
-        """Returns a list of implant layers associated with the given transistor/substrate type.
+    def get_implant_layers(cls, mos_type, res_type=None):
+        """Returns a list of implant layers associated with the given transistor/substrate/resistor type.
 
         Parameters
         ----------
         mos_type : str
             one of 'nch', 'pch', 'ntap', or 'ptap'
+        res_type : Optional[str]
+            If given, the return implant layers will be for the substrate of the given resistor type.
 
         Returns
         -------
@@ -928,7 +930,7 @@ class DummyTechInfo(TechInfo):
         TechInfo.__init__(self, 0.001, 1e-6, '', tech_params)
 
     @classmethod
-    def get_implant_layers(cls, mos_type):
+    def get_implant_layers(cls, mos_type, res_type=None):
         return []
 
     @classmethod
