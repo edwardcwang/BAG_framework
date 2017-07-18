@@ -517,15 +517,14 @@ def fill_symmetric_min(area, sp_max, seg_len, offset=0):
     fill_intv : List[Tuple[int, int]]
         list of fill intervals.
     """
+    # calculate minimum number of fill blocks we need
+    num_seg = -(-(area + seg_len) // (sp_max + seg_len)) - 1
+    if num_seg <= 0:
+        return []
     # filling as few as possible is the same as drawing spacing as much as possible,
     # so we just pretend we're doing max fill but we are drawing spaces instead.
-    # calculate number of space blocks
-    num_space = -(-(area + seg_len) // (sp_max + seg_len))
-    # calculate space location
-    fill_intv = _fill_symmetric_helper(area, num_space, seg_len, offset=offset, inc_sp=True,
-                                       invert=True, fill_on_edge=True)
-    # return
-    return fill_intv
+    return _fill_symmetric_helper(area, num_seg + 1, seg_len, offset=offset, inc_sp=True,
+                                  invert=True, fill_on_edge=True)
 
 
 def fill_symmetric_max(area, n_min, n_max, sp_min, offset=0, cyclic=False):
@@ -567,15 +566,15 @@ def fill_symmetric_max(area, n_min, n_max, sp_min, offset=0, cyclic=False):
     blk_len_max = n_max
     for blk_len_max in range(n_max, n_min - 1, -1):
         if cyclic:
-            num_blk_min = area // (n_max + sp_min)
+            num_blk_min = area // (blk_len_max + sp_min)
             num_sp_min = num_blk_min
         else:
-            num_blk_min = (area + sp_min) // (n_max + sp_min)
+            num_blk_min = (area + sp_min) // (blk_len_max + sp_min)
             num_sp_min = num_blk_min - 1
         if num_blk_min > 0 and num_sp_min > 0:
             break
 
-    if num_blk_min == 0:
+    if num_blk_min <= 0 or num_sp_min <= 0:
         # we cannot draw any fill at all
         return []
 
@@ -643,6 +642,58 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
             num_sp_tot = num_blk_tot + 1
 
     fill_area = tot_area - num_sp_tot * sp
+
+    # handle special cases
+    if num_sp_tot == 0:
+        if sp == 0:
+            # fill entire space
+            return [(offset, offset + tot_area)]
+        else:
+            raise ValueError('Cannot draw 0 spaces blocks with nonzero spacing.')
+
+    # handle small area special cases
+    if num_blk_tot == 1:
+        blk_len = fill_area
+        if invert:
+            # record space
+            if cyclic:
+                if fill_on_edge:
+                    # center space block in middle
+                    if blk_len % 2 == 1:
+                        blk_len += -adj_sp_sgn
+                    l2 = blk_len // 2
+                    return [(offset + l2, offset + tot_area - l2)]
+                else:
+                    # center space block on middle of both edges
+                    sp = tot_area - blk_len
+                    if sp % 2 == 1:
+                        sp += adj_sp_sgn
+                    sp2 = sp // 2
+                    return [(offset - sp2, offset + sp2), (offset + tot_area - sp2, offset + tot_area + sp2)]
+            else:
+                # fill_on_edge must be False, we cannot have 0 space blocks.
+                # space block at both edges
+                sp = tot_area - blk_len
+                if sp % 2 == 1:
+                    sp += adj_sp_sgn
+                sp2 = sp // 2
+                return [(offset, offset + sp2), (offset + tot_area - sp2, offset + tot_area)]
+
+        else:
+            # record fill
+            if cyclic and fill_on_edge:
+                # center fill block on middle of both edges
+                if blk_len % 2 == 1:
+                    blk_len += -adj_sp_sgn
+                l2 = blk_len // 2
+                return [(offset - l2, offset + l2), (offset + tot_area - l2, offset + tot_area + l2)]
+            else:
+                # center fill block in area
+                sp = tot_area - blk_len
+                if sp % 2 == 1:
+                    sp += adj_sp_sgn
+                sp2 = sp // 2
+                return [(offset + sp2, offset + tot_area - sp2)]
 
     # we don't know if we have a block in the middle or space in the middle yet, set to -1 first.
     mid_blk_len = mid_sp_len = -1
