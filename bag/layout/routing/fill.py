@@ -489,15 +489,16 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
     return vdd_warr_list, vss_warr_list
 
 
-def fill_symmetric_min(area, sp_max, seg_len, offset=0):
-    # type: (int, int, int) -> List[Tuple[int, int]]
-    """Fill the given 1-D area only when necessary, with given maximum space constraint.
+def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
+    # type: (int, int, int, int, int) -> List[Tuple[int, int]]
+    """Fill the given 1-D area while trying to maintain constant space between fill.
 
     Compute fill location such that the given area is filled with the following properties:
 
-    1. the filled area is as uniform as possible.
-    2. the filled area is symmetric about the center.
-    3. all space are as close to the given space as possible, without exceeding it.
+    1. all spaces are as close to the given space as possible, without exceeding it.
+    2. the filled area is as uniform as possible.
+    3. the filled area is symmetric about the center.
+    4. fill is drawn as much as possible given the above constraints.
 
     fill is drawn such that space blocks abuts both area boundaries.
 
@@ -507,8 +508,10 @@ def fill_symmetric_min(area, sp_max, seg_len, offset=0):
         the 1-D area to fill.
     sp_max : int
         the maximum space.
-    seg_len : int
-        length of each fill segment.
+    n_min : int
+        minimum fill length.
+    n_max : int
+        maximum fill length
     offset : int
         the fill area starting coordinate.
 
@@ -517,14 +520,20 @@ def fill_symmetric_min(area, sp_max, seg_len, offset=0):
     fill_intv : List[Tuple[int, int]]
         list of fill intervals.
     """
-    # calculate minimum number of fill blocks we need
-    num_seg = -(-(area + seg_len) // (sp_max + seg_len)) - 1
-    if num_seg <= 0:
+    # calculate number of fill blocks that maximizes fill area
+    num_fill = -(-(area - sp_max) // (n_max + sp_max))
+    if num_fill == 0:
+        # we don't need fill
         return []
-    # filling as few as possible is the same as drawing spacing as much as possible,
-    # so we just pretend we're doing max fill but we are drawing spaces instead.
-    return _fill_symmetric_helper(area, num_seg + 1, seg_len, offset=offset, inc_sp=True,
-                                  invert=True, fill_on_edge=True)
+
+    # calculate minimum fill block length
+    blk_len = (area - (num_fill + 1) * sp_max) // num_fill
+    if blk_len < n_min:
+        # we cannot set all spacing to sp_max.  We need to relax spacing
+        sp_max = (area - num_fill * n_min) // (num_fill + 1)
+
+    return _fill_symmetric_helper(area, num_fill, sp_max, offset=offset, inc_sp=False,
+                                  invert=False, fill_on_edge=False)
 
 
 def fill_symmetric_max(area, n_min, n_max, sp_min, offset=0, cyclic=False):
@@ -561,6 +570,9 @@ def fill_symmetric_max(area, n_min, n_max, sp_min, offset=0, cyclic=False):
     fill_interval : List[Tuple[int, int]]
         a list of [start, stop) intervals that needs to be filled.
     """
+    # special case: we can fill the entire block
+    if n_min <= area <= n_max and not cyclic:
+        return [(offset, offset + area)]
     # step 1: find maximum block size and minimum number of blocks we can put in the given area
     num_blk_min = num_sp_min = 0
     blk_len_max = n_max
@@ -654,6 +666,8 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
     # handle small area special cases
     if num_blk_tot == 1:
         blk_len = fill_area
+        if blk_len <= 0:
+            raise ValueError('Cannot fill with block less <= 0.')
         if invert:
             # record space
             if cyclic:
@@ -700,6 +714,8 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
 
     # find minimum block length
     blk_len, num_blk1 = divmod(fill_area, num_blk_tot)
+    if blk_len <= 0:
+        raise ValueError('Cannot fill with block less <= 0.')
 
     # now we have num_blk_tot blocks with length blk0.  We have num_blk1 fill units
     # remaining that we need to distribute to the fill blocks
