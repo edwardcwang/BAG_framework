@@ -69,6 +69,8 @@ class AnalogMOSBase(TemplateBase):
         self._layout_info = None
         self._ext_top_info = None
         self._ext_bot_info = None
+        self._left_edge_info = None
+        self._right_edge_info = None
 
         self._g_conn_y = None
         self._d_conn_y = None
@@ -85,6 +87,12 @@ class AnalogMOSBase(TemplateBase):
 
     def get_ext_bot_info(self):
         return self._ext_bot_info
+
+    def get_left_edge_info(self):
+        return self._left_edge_info
+
+    def get_right_edge_info(self):
+        return self._right_edge_info
 
     def get_sd_yc(self):
         return self._sd_yc
@@ -105,6 +113,7 @@ class AnalogMOSBase(TemplateBase):
         """
         return dict(
             lch='channel length, in meters.',
+            fg='number of fingers.',
             w='transistor width, in meters/number of fins.',
             mos_type="transistor type, either 'pch' or 'nch'.",
             threshold='transistor threshold flavor.',
@@ -112,12 +121,13 @@ class AnalogMOSBase(TemplateBase):
         )
 
     def get_layout_basename(self):
-        fmt = '%s_l%s_w%s_%s'
+        fmt = '%s_l%s_w%s_%s_%d'
         mos_type = self.params['mos_type']
+        fg = self.params['fg']
         lstr = float_to_si_string(self.params['lch'])
         wstr = float_to_si_string(self.params['w'])
         th = self.params['threshold']
-        return fmt % (mos_type, lstr, wstr, th)
+        return fmt % (mos_type, lstr, wstr, th, fg)
 
     def compute_unique_key(self):
         options = self.params['options']
@@ -126,6 +136,7 @@ class AnalogMOSBase(TemplateBase):
     def draw_layout(self):
         lch = self.params['lch']
         w = self.params['w']
+        fg = self.params['fg']
         mos_type = self.params['mos_type']
         threshold = self.params['threshold']
         options = self.params['options']
@@ -133,12 +144,13 @@ class AnalogMOSBase(TemplateBase):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        fg = self._tech_cls.get_analog_unit_fg()
         mos_info = self._tech_cls.get_mos_info(lch_unit, w, mos_type, threshold, fg, **options)
         self._layout_info = mos_info['layout_info']
         # set parameters
         self._ext_top_info = mos_info['ext_top_info']
         self._ext_bot_info = mos_info['ext_bot_info']
+        self._left_edge_info = mos_info['left_edge_info']
+        self._right_edge_info = mos_info['right_edge_info']
         self._sd_yc = mos_info['sd_yc']
         self._g_conn_y = mos_info['g_conn_y']
         self._d_conn_y = mos_info['d_conn_y']
@@ -163,10 +175,21 @@ class AnalogMOSExt(TemplateBase):
             self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         else:
             self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
+        self._left_edge_info = None
+        self._right_edge_info = None
 
     @classmethod
     def get_default_param_values(cls):
         return dict(is_laygo=False)
+
+    def get_edge_layout_info(self):
+        return self._layout_info
+
+    def get_left_edge_info(self):
+        return self._left_edge_info
+
+    def get_right_edge_info(self):
+        return self._right_edge_info
 
     @classmethod
     def get_params_info(cls):
@@ -187,9 +210,6 @@ class AnalogMOSExt(TemplateBase):
             bot_ext_info='bottom extension info.',
             is_laygo='True if this extension is used in LaygoBase.',
         )
-
-    def get_edge_layout_info(self):
-        return self._layout_info
 
     def get_layout_basename(self):
         fmt = 'ext_l%s_w%s_fg%d'
@@ -216,5 +236,7 @@ class AnalogMOSExt(TemplateBase):
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
         ext_info = self._tech_cls.get_ext_info(lch_unit, w, fg, top_ext_info, bot_ext_info)
-        self._layout_info = ext_info
-        self._tech_cls.draw_mos(self, ext_info)
+        self._layout_info = ext_info['layout_info']
+        self._left_edge_info = ext_info['left_edge_info']
+        self._right_edge_info = ext_info['right_edge_info']
+        self._tech_cls.draw_mos(self, self._layout_info)

@@ -45,9 +45,17 @@ class AnalogEndRow(TemplateBase):
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
         self._layout_info = None
+        self._left_edge_info = None
+        self._right_edge_info = None
 
     def get_edge_layout_info(self):
         return self._layout_info
+
+    def get_left_edge_info(self):
+        return self._left_edge_info
+
+    def get_right_edge_info(self):
+        return self._right_edge_info
 
     @classmethod
     def get_params_info(cls):
@@ -96,8 +104,10 @@ class AnalogEndRow(TemplateBase):
         blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
         end_info = self._tech_cls.get_analog_end_info(lch_unit, sub_type, threshold, fg, is_end, blk_pitch)
 
-        self._layout_info = end_info
-        self._tech_cls.draw_mos(self, end_info)
+        self._layout_info = end_info['layout_info']
+        self._left_edge_info = end_info['left_edge_info']
+        self._right_edge_info = end_info['right_edge_info']
+        self._tech_cls.draw_mos(self, self._layout_info)
 
 
 class AnalogOuterEdge(TemplateBase):
@@ -213,6 +223,7 @@ class AnalogEdge(TemplateBase):
             top_layer='The top layer used to calculate width quantization.',
             is_end='True if this edge is at the end.',
             guard_ring_nf='number of guard ring fingers.',
+            adj_blk_info='data structure storing layout information of adjacent block.',
             name_id='cell name ID.',
             layout_info='the layout information dictionary.',
             is_laygo='True if this extension is used in LaygoBase.',
@@ -228,7 +239,8 @@ class AnalogEdge(TemplateBase):
 
     def compute_unique_key(self):
         base_name = self.get_layout_basename()
-        return self.to_immutable_id((base_name, self.params['layout_info'], self.grid.get_flip_parity()))
+        return self.to_immutable_id((base_name, self.params['layout_info'],
+                                     self.params['adj_blk_info'], self.grid.get_flip_parity()))
 
     def draw_layout(self):
         top_layer = self.params['top_layer']
@@ -236,9 +248,16 @@ class AnalogEdge(TemplateBase):
         guard_ring_nf = self.params['guard_ring_nf']
         layout_info = self.params['layout_info']
         is_laygo = self.params['is_laygo']
+        adj_blk_info = self.params['adj_blk_info']
         basename = self.get_layout_basename()
 
-        out_info = self._tech_cls.get_outer_edge_info(self.grid, guard_ring_nf, layout_info, top_layer, is_end)
+        if guard_ring_nf > 0:
+            outer_adj_blk = None
+        else:
+            outer_adj_blk = adj_blk_info
+
+        out_info = self._tech_cls.get_outer_edge_info(self.grid, guard_ring_nf, layout_info, top_layer,
+                                                      is_end, outer_adj_blk)
         # add outer edge
         out_params = dict(
             layout_name='%s_outer' % basename,
@@ -277,7 +296,7 @@ class AnalogEdge(TemplateBase):
                     self.reexport(conn_inst.get_port(port_name), show=False)
 
             x0 = inst.array_box.right_unit
-            sep_info = self._tech_cls.get_gr_sep_info(layout_info)
+            sep_info = self._tech_cls.get_gr_sep_info(layout_info, adj_blk_info)
             sep_params = dict(
                 layout_name='%s_sep' % basename,
                 layout_info=sep_info,

@@ -32,7 +32,7 @@ from __future__ import (absolute_import, division,
 from builtins import *
 from future.utils import with_metaclass
 
-from typing import Dict, Any, Union, Tuple, List
+from typing import Dict, Any, Union, Tuple, List, Optional
 
 from bag.layout.routing import RoutingGrid
 from bag.layout.template import TemplateBase
@@ -395,8 +395,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_outer_edge_info(cls, grid, guard_ring_nf, layout_info, top_layer, is_end):
-        # type: (RoutingGrid, int, Dict[str, Any], int, bool) -> Dict[str, Any]
+    def get_outer_edge_info(cls, grid, guard_ring_nf, layout_info, top_layer, is_end, adj_blk_info):
+        # type: (RoutingGrid, int, Dict[str, Any], int, bool, Optional[Any]) -> Dict[str, Any]
         """Returns the outer edge layout information dictionary.
         
         Parameters
@@ -411,7 +411,9 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             the top routing layer ID.  Used to determine width quantization.
         is_end : bool
             True if there are no blocks abutting the left edge.
-            
+        adj_blk_info : Optional[Any]
+            data structure storing layout information of adjacent block.
+            If None, will use default settings.
         Returns
         -------
         outer_edge_info : Dict[str, Any]
@@ -441,14 +443,17 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_gr_sep_info(cls, layout_info):
-        # type: (Dict[str, Any]) -> Dict[str, Any]
+    def get_gr_sep_info(cls, layout_info, adj_blk_info):
+        # type: (Dict[str, Any], Any) -> Dict[str, Any]
         """Returns the guard ring separator layout information dictionary.
 
         Parameters
         ----------
         layout_info : Dict[str, Any]
             layout information dictionary of the center block.
+        adj_blk_info : Optional[Any]
+            data structure storing layout information of adjacent block.
+            If None, will use default settings.
 
         Returns
         -------

@@ -93,6 +93,8 @@ class AnalogSubstrate(TemplateBase):
         self._layout_info = None
         self._ext_top_info = None
         self._ext_bot_info = None
+        self._left_edge_info = None
+        self._right_edge_info = None
         self._sd_yc = None
 
     def get_ext_top_info(self):
@@ -100,6 +102,12 @@ class AnalogSubstrate(TemplateBase):
 
     def get_ext_bot_info(self):
         return self._ext_bot_info
+
+    def get_left_edge_info(self):
+        return self._left_edge_info
+
+    def get_right_edge_info(self):
+        return self._right_edge_info
 
     def get_sd_yc(self):
         return self._sd_yc
@@ -155,9 +163,14 @@ class AnalogSubstrate(TemplateBase):
         return basename
 
     def draw_layout(self):
-        self._draw_layout_helper(**self.params)
+        lch = self.params['lch']
+        w = self.params['w']
+        fg = self.params['fg']
+        sub_type = self.params['sub_type']
+        threshold = self.params['threshold']
+        is_passive = self.params['is_passive']
+        top_layer = self.params['top_layer']
 
-    def _draw_layout_helper(self, lch, w, fg, sub_type, threshold, is_passive, top_layer, **kwargs):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
@@ -171,6 +184,8 @@ class AnalogSubstrate(TemplateBase):
         self._sd_yc = info['sd_yc']
         self._ext_top_info = info['ext_top_info']
         self._ext_bot_info = info['ext_bot_info']
+        self._left_edge_info = info['left_edge_info']
+        self._right_edge_info = info['right_edge_info']
 
         core_params = dict(
             layout_name=self.get_layout_basename() + '_core',

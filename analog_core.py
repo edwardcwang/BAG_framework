@@ -800,7 +800,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return {key: conn_inst.get_port(key).get_pins(self.mos_conn_layer)[0]
                 for key in conn_inst.port_names_iter()}
 
-    def _make_masters(self, mos_type, lch, bot_sub_w, bot_sub_end, top_sub_w, top_sub_end, w_list, th_list,
+    def _make_masters(self, fg_tot, mos_type, lch, bot_sub_w, top_sub_w, w_list, th_list,
                       g_tracks, ds_tracks, orientations, mos_kwargs, row_offset):
 
         # error checking + set default values.
@@ -837,7 +837,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if bot_sub_w > 0:
             sub_params = dict(
                 lch=lch,
-                fg=self._tech_cls.get_analog_unit_fg(),
+                fg=fg_tot,
                 w=bot_sub_w,
                 sub_type=sub_type,
                 threshold=th_list[0],
@@ -855,6 +855,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 raise ValueError('number of gate/drain/source tracks cannot be negative.')
             params = dict(
                 lch=lch,
+                fg=fg_tot,
                 w=w,
                 mos_type=mos_type,
                 threshold=th,
@@ -871,7 +872,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             sub_params = dict(
                 lch=lch,
                 w=top_sub_w,
-                fg=self._tech_cls.get_analog_unit_fg(),
+                fg=fg_tot,
                 sub_type=sub_type,
                 threshold=th_list[-1],
                 top_layer=None,
@@ -1096,7 +1097,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # make end rows
         bot_end_params = dict(
             lch=self._lch,
-            fg=self._tech_cls.get_analog_unit_fg(),
+            fg=fg_tot,
             sub_type=master_list[0].params['sub_type'],
             threshold=master_list[0].params['threshold'],
             is_end=bot_end,
@@ -1105,7 +1106,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         bot_end_master = self.new_template(params=bot_end_params, temp_cls=AnalogEndRow)
         top_end_params = dict(
             lch=self._lch,
-            fg=self._tech_cls.get_analog_unit_fg(),
+            fg=fg_tot,
             sub_type=master_list[-1].params['sub_type'],
             threshold=master_list[-1].params['threshold'],
             is_end=top_end,
@@ -1144,8 +1145,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # at this point we've found the optimal placement.  Place instances
         fg_unit = self._tech_cls.get_analog_unit_fg()
-        nx = fg_tot // fg_unit
-        spx = fg_unit * self.sd_pitch_unit
         self.array_box = BBox.get_invalid_bbox()
         top_bound_box = BBox.get_invalid_bbox()
         self._gtr_intv = gtr_intv
@@ -1178,6 +1177,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
+                adj_blk_info=master.get_left_edge_info(),
             )
             edgel_master = self.new_template(params=edgel_params, temp_cls=AnalogEdge)
             edgel = self.add_instance(edgel_master, orient=orient)
@@ -1186,7 +1186,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             edgel.move_by(dy=yo, unit_mode=True)
             inst_xo = cur_box.right_unit
             inst_loc = (inst_xo, yo)
-            inst = self.add_instance(master, loc=inst_loc, orient=orient, nx=nx, spx=spx, unit_mode=True)
+            inst = self.add_instance(master, loc=inst_loc, orient=orient, unit_mode=True)
             if isinstance(master, AnalogSubstrate):
                 conn_layout_info = edge_layout_info.copy()
                 conn_layout_info['fg'] = fg_tot
@@ -1222,6 +1222,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
+                adj_blk_info=master.get_right_edge_info(),
+
             )
             edger_master = self.new_template(params=edger_params, temp_cls=AnalogEdge)
             edger = self.add_instance(edger_master, loc=edger_loc, orient=orient_r, unit_mode=True)
@@ -1237,6 +1239,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
                     layout_info=ext_edge_layout_info,
+                    adj_blk_info=ext_master.get_left_edge_info(),
                 )
                 ext_edgel_master = self.new_template(params=ext_edgel_params, temp_cls=AnalogEdge)
                 yo = inst.array_box.top_unit
@@ -1248,6 +1251,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
                     layout_info=ext_edge_layout_info,
+                    adj_blk_info=ext_master.get_right_edge_info(),
                 )
                 ext_edger_master = self.new_template(params=ext_edger_params, temp_cls=AnalogEdge)
                 edger = self.add_instance(ext_edger_master, loc=(edger_xo, yo), orient='MY', unit_mode=True)
@@ -1259,7 +1263,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 if inst.has_port('VDD'):
                     gr_vdd_warrs.extend(inst.get_all_port_pins('VDD', layer=mconn_layer))
                     gr_vdd_dum_warrs.extend(inst.get_all_port_pins('VDD', layer=dum_layer))
-                elif inst.has_port('VSS'):
+                if inst.has_port('VSS'):
                     gr_vss_warrs.extend(inst.get_all_port_pins('VSS', layer=mconn_layer))
                     gr_vss_dum_warrs.extend(inst.get_all_port_pins('VSS', layer=dum_layer))
 
@@ -1409,20 +1413,18 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         top_sub_end = (end_mode & 2) >> 1
         left_end = (end_mode & 4) >> 2
         right_end = (end_mode & 8) >> 3
-        top_nsub_end = top_sub_end if not pw_list else 0
-        bot_psub_end = bot_sub_end if not nw_list else 0
         top_layer = self._layout_info.top_layer
         # make NMOS substrate/transistor masters.
-        tr_list, m_list, n_kwargs, nw_list = self._make_masters('nch', self._lch, ptap_w, bot_sub_end, ngr_w,
-                                                                top_nsub_end, nw_list, nth_list, ng_tracks,
+        tr_list, m_list, n_kwargs, nw_list = self._make_masters(fg_tot, 'nch', self._lch, ptap_w, ngr_w,
+                                                                nw_list, nth_list, ng_tracks,
                                                                 nds_tracks, n_orientations, n_kwargs, 0)
         master_list.extend(m_list)
         track_spec_list.extend(tr_list)
         self._mos_kwargs_list.extend(n_kwargs)
         self._w_list.extend(nw_list)
         # make PMOS substrate/transistor masters.
-        tr_list, m_list, p_kwargs, pw_list = self._make_masters('pch', self._lch, pgr_w, bot_psub_end, ntap_w,
-                                                                top_sub_end, pw_list, pth_list, pg_tracks,
+        tr_list, m_list, p_kwargs, pw_list = self._make_masters(fg_tot, 'pch', self._lch, pgr_w, ntap_w,
+                                                                pw_list, pth_list, pg_tracks,
                                                                 pds_tracks, p_orientations, p_kwargs, len(m_list))
         master_list.extend(m_list)
         track_spec_list.extend(tr_list)
