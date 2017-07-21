@@ -1144,7 +1144,7 @@ class BagLayout(object):
         for obj in self._rect_list:
             if obj.valid:
                 if not obj.bbox.is_physical():
-                    print('WARNING: rectangle with non-physical bounding box found.')
+                    print('WARNING: rectangle with non-physical bounding box found.', obj.layer)
                 else:
                     obj_content = obj.content
                     rect_list.append(obj_content)
