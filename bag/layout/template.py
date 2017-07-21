@@ -476,6 +476,12 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                                           grid=self.grid)
 
     @property
+    def is_empty(self):
+        # type: () -> bool
+        """Returns True if this template is empty."""
+        return self._layout.is_empty
+
+    @property
     def template_db(self):
         # type: () -> TemplateDB
         """Returns the template database object"""
@@ -957,21 +963,6 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             the Y shift.
         """
         self._layout.move_all_by(dx=dx, dy=dy)
-
-    def add_well_geometry(self, sub_type, well_box):
-        # type: (str, BBox) -> None
-        """Add well layers with the given bounding box.
-        
-        Parameters
-        ----------
-        sub_type : str
-            the substrate type.  Either 'ntap' or 'ptap'
-        well_box : BBox
-            the bounding box of the well.
-        """
-        layers = self.grid.tech_info.tech_params['layout']['well_layers'][sub_type]
-        for lay in layers:
-            self.add_rect(lay, well_box)
 
     def add_instance(self, master, inst_name=None, loc=(0, 0),
                      orient="R0", nx=1, ny=1, spx=0, spy=0, unit_mode=False):
