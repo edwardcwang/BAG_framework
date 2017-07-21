@@ -495,7 +495,7 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
 
     Compute fill location such that the given area is filled with the following properties:
 
-    1. all spaces are as close to the given space as possible, without exceeding it.
+    1. all spaces are as close to the given space as possible (differ by at most 1), without exceeding it.
     2. the filled area is as uniform as possible.
     3. the filled area is symmetric about the center.
     4. fill is drawn as much as possible given the above constraints.
@@ -520,20 +520,52 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
     fill_intv : List[Tuple[int, int]]
         list of fill intervals.
     """
-    # calculate number of fill blocks that maximizes fill area
+    if n_min > n_max:
+        raise ValueError('min fill length = %d > %d = max fill length' % (n_min, n_max))
+
+    # suppose we draw N fill blocks, then the filled area is A - (N + 1) * sp.
+    # therefore, to maximize fill, with A and sp given, we need to minimize N.
+    # since N = (A - sp) / (f + sp), where f is length of the fill, this tells
+    # us we want to try filling with max block.
+    # so we calculate the maximum number of fill blocks we'll use if we use
+    # largest fill block.
     num_fill = -(-(area - sp_max) // (n_max + sp_max))
     if num_fill == 0:
-        # we don't need fill
+        # we don't need fill; total area is less than sp_max.
         return []
 
-    # calculate minimum fill block length
-    blk_len = (area - (num_fill + 1) * sp_max) // num_fill
-    if blk_len < n_min:
-        # we cannot set all spacing to sp_max.  We need to relax spacing
-        sp_max = (area - num_fill * n_min) // (num_fill + 1)
+    # at this point, using (num_fill - 1) max blocks is not enough, but num_fill
+    # max blocks either fits perfectly or exceeds area.
 
-    return _fill_symmetric_helper(area, num_fill, sp_max, offset=offset, inc_sp=False,
-                                  invert=False, fill_on_edge=False)
+    # calculate the fill block length if we use num_fill fill blocks, and sp_max
+    # between blocks.
+    blk_len = (area - (num_fill + 1) * sp_max) // num_fill
+    if blk_len >= n_min:
+        # we can draw fill using num_fill fill blocks.
+        return _fill_symmetric_helper(area, num_fill, sp_max, offset=offset, inc_sp=False,
+                                      invert=False, fill_on_edge=False)[0]
+
+    # trying to draw num_fill fill blocks with sp_max between them results in fill blocks
+    # that are too small.  This means we need to reduce the space between fill blocks.
+    sp_max, remainder = divmod(area - num_fill * n_min, num_fill + 1)
+    # we can achieve the new sp_max using fill with length n_min or n_min + 1.
+    if n_max > n_min or remainder == 0:
+        # if everything divides evenly or we can use two different fill lengths,
+        # then we're done.
+        return _fill_symmetric_helper(area, num_fill, sp_max, offset=offset, inc_sp=False,
+                                      invert=False, fill_on_edge=False)[0]
+    # If we're here, then we must use only one fill length
+    # fill by inverting fill/space to try to get only one fill length
+    sol, same_sp = _fill_symmetric_helper(area, num_fill + 1, n_max, offset=offset, inc_sp=False,
+                                          invert=True, fill_on_edge=True)
+    if same_sp:
+        # we manage to fill using only one fill length
+        return sol
+
+    # If we're here, that means num_fill + 1 is even.  So using num_fill + 2 will
+    # guarantee solution.
+    return _fill_symmetric_helper(area, num_fill + 2, n_max, offset=offset, inc_sp=False,
+                                  invert=True, fill_on_edge=True)[0]
 
 
 def fill_symmetric_max(area, n_min, n_max, sp_min, offset=0, cyclic=False):
@@ -553,7 +585,7 @@ def fill_symmetric_max(area, n_min, n_max, sp_min, offset=0, cyclic=False):
     area : int
         total number of space we need to fill.
     n_min : int
-        minimum length of the fill block
+        minimum length of the fill block.  Must be less than n_max.
     n_max : int
         maximum length of the fill block.
     sp_min : int
@@ -570,6 +602,10 @@ def fill_symmetric_max(area, n_min, n_max, sp_min, offset=0, cyclic=False):
     fill_interval : List[Tuple[int, int]]
         a list of [start, stop) intervals that needs to be filled.
     """
+    if n_min >= n_max:
+        # TODO: support n_min == n_max?
+        raise ValueError('min fill length = %d >= %d = max fill length' % (n_min, n_max))
+
     # special case: we can fill the entire block
     if n_min <= area <= n_max and not cyclic:
         return [(offset, offset + area)]
@@ -599,48 +635,67 @@ def fill_symmetric_max(area, n_min, n_max, sp_min, offset=0, cyclic=False):
         # If we're here, we can achieve the minimum amount of space by using all large blocks,
         # now we just need to place the blocks in a symmetric way.
 
-        # since all blocks has width n_max, we will try to distribute empty space
+        # since all blocks has width blk_len_max, we will try to distribute empty space
         # between blocks evenly symmetrically.
         inc_sp = blk_len_max < n_max
-        fill_intv = _fill_symmetric_helper(area, num_sp_min, blk_len_max, offset=offset, inc_sp=inc_sp, invert=True,
-                                           fill_on_edge=cyclic, cyclic=cyclic)
-    else:
-        # If we're here, we need to use num_blk_min + 1 number of fill blocks, and we can achieve
-        # a minimum space of (num_sp_min + 1) * sp.  Now we need to determine the size of each fill block
-        # and place them symmetrically.
-        fill_intv = _fill_symmetric_helper(area, num_blk_min + 1, sp_min, offset=offset, inc_sp=True,
-                                           fill_on_edge=not cyclic, cyclic=cyclic)
+        return _fill_symmetric_helper(area, num_sp_min, blk_len_max, offset=offset, inc_sp=inc_sp,
+                                      invert=True, fill_on_edge=cyclic, cyclic=cyclic)[0]
 
-    return fill_intv
+    # If we're here, we need to use num_blk_min + 1 number of fill blocks, and we can achieve
+    # a minimum space of (num_sp_min + 1) * sp.  Now we need to determine the size of each fill block
+    # and place them symmetrically.
+    min_blk_len = (area - (num_sp_min + 1) * sp_min) // (num_blk_min + 1)
+    if min_blk_len < n_min:
+        # TODO: deal with this later
+        raise ValueError("No fill solution found")
+
+    return _fill_symmetric_helper(area, num_blk_min + 1, sp_min, offset=offset, inc_sp=True,
+                                  fill_on_edge=not cyclic, cyclic=cyclic)[0]
 
 
 def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, invert=False,
                            fill_on_edge=True, cyclic=False):
-    """Helper method for fill symmetric method.
+    # type: (int, int, int, int, bool, bool, bool, bool) -> Tuple[List[Tuple[int, int]], bool]
+    """Helper method for all fill symmetric methods.
+
+    This method fills an area with given number of fill blocks such that the space between
+    blocks is equal to the given space.  Other fill_symmetric methods basically transpose
+    the constraints into this problem, with the proper options.
+
+    The solution has the following properties:
+
+    1. it is symmetric about the center.
+    2. it is as uniform as possible.
+    3. it uses at most 2 values of fill lengths, and they differ by 1.
+    4. it uses at most 2 values of space lengths, controlled by sp and inc_sp parameters.
 
     Parameters
     ----------
     tot_area : int
-        the total 1-D area to fill.
+        the fill area length.
     num_blk_tot : int
-        total number of solid blocks to use.
+        total number of fill blocks to use.
     sp : int
-        space length between blocks.
+        space between blocks.
     inc_sp : bool
-        in the event where symmetric fill can only be achieved by adjustment the
-        middle space length, if inc_sp is True, we will increase the middle space
-        length by 1.  Otherwise, we will decrease by 1.
+        when num_blk_tot is 1 or even, it may not be possible to keep the space between
+        every block to be the same as given space, and the middle space will need to
+        increment/decrement by 1.  If inc_sp is True, we will increase the middle space
+        length by 1.  Otherwise, we will decrease it by 1.
     invert : bool
         If True, we return space intervals instead of fill intervals.
     fill_on_edge : bool
-        If True, we put fill blocks on area boundary.  Otherwise, we put space block on area boundary.
+        If True, we put fill blocks on area boundary.  Otherwise, we put space block on
+        area boundary.
     cyclic : bool
         If True, we assume we're filling in a cyclic area (it wraps around).
 
     Returns
     -------
     ans : List[(int, int)]
-        list of fill of space intervals.
+        list of fill or space intervals.
+    same_sp : bool
+        True if all space between blocks are equal to the given spacing, False otherwise.
     """
     adj_sp_sgn = 1 if inc_sp else -1
 
@@ -659,10 +714,11 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
     if num_sp_tot == 0:
         if sp == 0:
             # fill entire space
-            return [(offset, offset + tot_area)]
+            return [(offset, offset + tot_area)], True
         else:
             raise ValueError('Cannot draw 0 spaces blocks with nonzero spacing.')
 
+    same_sp = True
     # handle small area special cases
     if num_blk_tot == 1:
         blk_len = fill_area
@@ -675,39 +731,43 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
                     # center space block in middle
                     if blk_len % 2 == 1:
                         blk_len += -adj_sp_sgn
+                        same_sp = False
                     l2 = blk_len // 2
-                    return [(offset + l2, offset + tot_area - l2)]
+                    return [(offset + l2, offset + tot_area - l2)], same_sp
                 else:
                     # center space block on middle of both edges
                     sp = tot_area - blk_len
                     if sp % 2 == 1:
                         sp += adj_sp_sgn
+                        same_sp = False
                     sp2 = sp // 2
-                    return [(offset - sp2, offset + sp2), (offset + tot_area - sp2, offset + tot_area + sp2)]
+                    return [(offset - sp2, offset + sp2), (offset + tot_area - sp2, offset + tot_area + sp2)], same_sp
             else:
                 # fill_on_edge must be False, we cannot have 0 space blocks.
                 # space block at both edges
                 sp = tot_area - blk_len
                 if sp % 2 == 1:
                     sp += adj_sp_sgn
+                    same_sp = False
                 sp2 = sp // 2
-                return [(offset, offset + sp2), (offset + tot_area - sp2, offset + tot_area)]
-
+                return [(offset, offset + sp2), (offset + tot_area - sp2, offset + tot_area)], same_sp
         else:
             # record fill
             if cyclic and fill_on_edge:
                 # center fill block on middle of both edges
                 if blk_len % 2 == 1:
                     blk_len += -adj_sp_sgn
+                    same_sp = False
                 l2 = blk_len // 2
-                return [(offset - l2, offset + l2), (offset + tot_area - l2, offset + tot_area + l2)]
+                return [(offset - l2, offset + l2), (offset + tot_area - l2, offset + tot_area + l2)], same_sp
             else:
                 # center fill block in area
                 sp = tot_area - blk_len
                 if sp % 2 == 1:
                     sp += adj_sp_sgn
+                    same_sp = False
                 sp2 = sp // 2
-                return [(offset + sp2, offset + tot_area - sp2)]
+                return [(offset + sp2, offset + tot_area - sp2)], same_sp
 
     # we don't know if we have a block in the middle or space in the middle yet, set to -1 first.
     mid_blk_len = mid_sp_len = -1
@@ -729,6 +789,7 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
             # have even number of fill units to fill in even number of blocks.
             mid_sp_len += adj_sp_sgn
             num_blk1 += -adj_sp_sgn
+            same_sp = False
     else:
         # we have odd number of fill blocks, so we have a fill block in the middle
         mid_blk_len = blk_len
@@ -831,4 +892,4 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
         start, stop = ans[idx]
         ans.append((shift - stop, shift - start))
 
-    return ans
+    return ans, same_sp
