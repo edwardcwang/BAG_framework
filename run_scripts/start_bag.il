@@ -1610,6 +1610,7 @@ procedure( instantiate_testbench(tb_cell targ_lib
         ; check that only one test is defined
         test_names = cadr(axlGetTests(sdb))
         when(length(test_names) != 1
+            axlCommitSetupDB(sdb)
             axlCloseSetupDB(sdb)
             axlCloseSession(session)
             error("ADEXL testbench must have exactly 1 test defined.")
@@ -1644,6 +1645,7 @@ procedure( instantiate_testbench(tb_cell targ_lib
 
     ; load corner
     unless(axlLoadCorners(sdb corner_file)
+        axlCommitSetupDB(sdb)
         axlCloseSetupDB(sdb)
         axlCloseSession(session)
         error("Error loading corner file %s to %s__%s (%s)" corner_file lib_name cell_name view_name)
@@ -1660,6 +1662,7 @@ procedure( instantiate_testbench(tb_cell targ_lib
     axlSaveSetupState(session "adexl_default" "All")
     axlSaveSetupState(session "ocean_default" "All")
     axlMainAppSaveSetup(session_name)
+    axlCommitSetupDB(sdb)
     axlCloseSetupDB(sdb)
     axlCloseSession(session)
     )
@@ -1673,11 +1676,11 @@ procedure( get_testbench_info(tb_lib tb_cell result_file "ttt")
         session_sdb = open_adexl_session(tb_lib tb_cell "adexl" session_name "r")
         session = car(session_sdb)
         sdb = cadr(session_sdb)
-        ; axlCommitSetupDB(sdb)
 
         ; check that only one test is defined
         test_names = cadr(axlGetTests(sdb))
         when(length(test_names) != 1
+            axlCommitSetupDB(sdb)
             axlCloseSetupDB(sdb)
             axlCloseSession(session)
             error("ADEXL testbench must have exactly 1 test defined.")
@@ -1697,6 +1700,7 @@ procedure( get_testbench_info(tb_lib tb_cell result_file "ttt")
         write_testbench_info_to_file(sdb result_file output_list en_list)
 
         ; close
+        axlCommitSetupDB(sdb)
         axlCloseSetupDB(sdb)
         axlCloseSession(session)
     )
@@ -1763,6 +1767,7 @@ procedure( modify_testbench(tb_lib tb_cell conf_file opt_file corner_file param_
         axlSaveSetupState(session "adexl_default" "All")
         axlSaveSetupState(session "ocean_default" "All")
         axlMainAppSaveSetup(session_name)
+        axlCommitSetupDB(sdb)
         axlCloseSetupDB(sdb)
         axlCloseSession(session)
     )
