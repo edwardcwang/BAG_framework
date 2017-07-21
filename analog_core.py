@@ -1144,7 +1144,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 print('pick')
 
         # at this point we've found the optimal placement.  Place instances
-        fg_unit = self._tech_cls.get_analog_unit_fg()
         self.array_box = BBox.get_invalid_bbox()
         top_bound_box = BBox.get_invalid_bbox()
         self._gtr_intv = gtr_intv
@@ -2084,6 +2083,7 @@ class SubstrateContact(TemplateBase):
             guard_ring_nf=0,
             name_id=sub_master.get_layout_basename(),
             layout_info=edge_layout_info,
+            adj_blk_info=sub_master.get_left_edge_info(),
         )
         edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
 
@@ -2102,6 +2102,7 @@ class SubstrateContact(TemplateBase):
             guard_ring_nf=0,
             name_id=end_row_master.get_layout_basename(),
             layout_info=end_row_master.get_edge_layout_info(),
+            adj_blk_info=end_row_master.get_left_edge_info(),
         )
         end_edge_master = self.new_template(params=end_edge_params, temp_cls=AnalogEdge)
         conn_params = dict(
