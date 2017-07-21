@@ -257,14 +257,20 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         
         The returned dictionary must have the following entries:
         
-        layout_info: the layout information dictionary.
-        ext_top_info: a tuple of values used to compute extension layout above the transistor.
-        ext_bot_info : a tuple of values used to compute extension layout below the transistor.
-        sd_yc : the Y coordinate of the center of source/drain junction.
-        g_conn_y : a Tuple of bottom/top Y coordinates of gate wire on mos_conn_layer.  Used to determine
-                   gate tracks location.
-        d_conn_y : a Tuple of bottom/top Y coordinates of drain/source wire on mos_conn_layer.  Used to
-                   determine drain/source tracks location.
+        layout_info
+            the layout information dictionary.
+        ext_top_info
+            a tuple of values used to compute extension layout above the transistor.
+        ext_bot_info
+            a tuple of values used to compute extension layout below the transistor.
+        sd_yc
+            the Y coordinate of the center of source/drain junction.
+        g_conn_y
+            a Tuple of bottom/top Y coordinates of gate wire on mos_conn_layer.  Used to determine
+            gate tracks location.
+        d_conn_y
+            a Tuple of bottom/top Y coordinates of drain/source wire on mos_conn_layer.  Used to
+            determine drain/source tracks location.
 
         Parameters
         ----------

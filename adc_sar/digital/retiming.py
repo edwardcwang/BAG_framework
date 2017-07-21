@@ -279,8 +279,8 @@ class RetimeBufferRow(StdCellBase):
 
     Parameters
     ----------
-        temp_db : TemplateDB
-            the template database.
+    temp_db : TemplateDB
+        the template database.
     lib_name : str
         the layout library name.
     params : Dict[str, Any]
@@ -423,8 +423,8 @@ class Retimer(StdCellBase):
 
     Parameters
     ----------
-        temp_db : TemplateDB
-            the template database.
+    temp_db : TemplateDB
+        the template database.
     lib_name : str
         the layout library name.
     params : Dict[str, Any]

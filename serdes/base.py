@@ -161,25 +161,25 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
             a dictionary containing number of fingers per transistor type.
             Possible entries are:
 
-            load :
+            load
                 number of fingers of load transistor.  Only one of load/offset can be nonzero.
-            offset :
+            offset
                 number of fingers of offset cancellation transistor.  Only one of load/offset can be nonzero.
-            but :
+            but
                 number of fingers of butterfly transistor.
-            casc :
+            casc
                 number of fingers of cascode transistor.
-            in :
+            in
                 nummber of fingers of input transistor.
-            sw :
+            sw
                 number of fingers of tail switch transistor.
-            en :
+            en
                 number of fingers of enable transistor.
-            tail :
+            tail
                 number of fingers of tail bias transistor.
-            sep :
+            sep
                 number of fingers used as separation between P and N side.
-            min :
+            min
                 minimum number of fingers for this circuit.
         flip_sd : bool
             True to flip source/drain connections.
@@ -414,8 +414,8 @@ class SerdesRXBaseInfo(AnalogBaseInfo):
 class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
     """Subclass of AmplifierBase that draws serdes circuits.
 
-    To use this class, :py:method:`draw_rows` must be the first function called,
-    which will call :py:method:`draw_base` for you with the right arguments.
+    To use this class, :py:meth:`draw_rows` must be the first function called,
+    which will call :py:meth:`draw_base` for you with the right arguments.
 
     Parameters
     ----------
@@ -485,19 +485,19 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             a dictionary containing number of fingers per transistor type.
             Possible entries are:
 
-            but :
+            but
                 number of fingers of butterfly transistor.
-            casc :
+            casc
                 number of fingers of cascode transistor.
-            in :
+            in
                 nummber of fingers of input transistor.
-            sw :
+            sw
                 number of fingers of tail switch transistor.
-            en :
+            en
                 number of fingers of enable transistor.
-            tail :
+            tail
                 number of fingers of tail bias transistor.
-            min :
+            min
                 minimum number of fingers for this circuit.
         hm_width : int
             width of horizontal tracks.
@@ -804,9 +804,9 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             a dictionary containing number of fingers per transistor type.
             Possible entries are:
 
-            sample :
+            sample
                 number of sampler fingers of butterfly transistor.
-            min :
+            min
                 minimum number of fingers for this circuit.
         hm_width : int
             width of horizontal tracks.
@@ -905,25 +905,25 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             a dictionary containing number of fingers per transistor type.
             Possible entries are:
 
-            load :
+            load
                 number of fingers of load transistor.  Only one of load/offset can be nonzero.
-            offset :
+            offset
                 number of fingers of offset cancellation transistor.  Only one of load/offset can be nonzero.
-            but :
+            but
                 number of fingers of butterfly transistor.
-            casc :
+            casc
                 number of fingers of cascode transistor.
-            in :
+            in
                 nummber of fingers of input transistor.
-            sw :
+            sw
                 number of fingers of tail switch transistor.
-            en :
+            en
                 number of fingers of enable transistor.
-            tail :
+            tail
                 number of fingers of tail bias transistor.
-            sep :
+            sep
                 number of fingers used as separation between P and N side.
-            min :
+            min
                 minimum number of fingers for this circuit.
         hm_width : int
             width of horizontal tracks.
@@ -1282,32 +1282,36 @@ class SerdesRXBase(with_metaclass(abc.ABCMeta, AnalogBase)):
             nwell substrate contact width.
         w_dict : Dict[str, Union[float, int]]
             dictionary from transistor type to row width.  Possible entries are:
-            load :
+
+            load
                 width of load transistor.
-            casc :
+            casc
                 width of butterfly/cascode transistor.
-            in :
+            in
                 width of input transistor.
-            sw :
+            sw
                 width of tail switch transistor.
-            en :
+            en
                 width of enable transistor.
-            tail :
+            tail
                 width of tail bias transistor.
+
         th_dict : Dict[str, str]
             dictionary from transistor type to threshold flavor.  Possible entries are:
-            load :
+
+            load
                 threshold of load transistor.
-            casc :
+            casc
                 threshold of butterfly/cascode transistor.
-            in :
+            in
                 threshold of input transistor.
-            sw :
+            sw
                 threshold of tail switch transistor.
-            en :
+            en
                 threshold of enable transistor.
-            tail :
+            tail
                 threshold of tail bias transistor.
+
         **kwargs
             any addtional parameters for AnalogBase's draw_base() method.
         """
