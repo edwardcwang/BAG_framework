@@ -158,8 +158,13 @@ class DiffAmp(SerdesRXBase):
         fg_tot = diffamp_info['fg_tot'] + nduml + ndumr
         self._num_fg = fg_tot
 
+        hm_layer = serdes_info.mconn_port_layer + 1
         if hm_cur_width < 0:
             hm_cur_width = hm_width  # type: int
+
+        hm_cur_space = self.grid.get_num_space_tracks(hm_layer, hm_cur_width)
+        diff_space = max(hm_cur_space, diff_space)
+        gds_space = max(hm_cur_space, gds_space)
 
         # draw AnalogBase rows
         # compute pmos/nmos gate/drain/source number of tracks
