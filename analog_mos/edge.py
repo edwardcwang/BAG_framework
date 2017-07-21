@@ -264,7 +264,8 @@ class AnalogEdge(TemplateBase):
             layout_info=out_info,
         )
         master = self.new_template(params=out_params, temp_cls=AnalogOuterEdge)
-        self.add_instance(master, 'XOUTER')
+        if not master.is_empty:
+            self.add_instance(master, 'XOUTER')
 
         self.array_box = master.array_box
         self.prim_bound_box = master.prim_bound_box
