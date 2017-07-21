@@ -1024,6 +1024,7 @@ class BagLayout(object):
         self._used_inst_names = set()
         self._used_pin_names = set()
         self._content = None
+        self._is_empty = True
         self._finalized = False
         self._flat_inst_list = None
         self._flat_rect_list = None
@@ -1043,6 +1044,11 @@ class BagLayout(object):
     def pin_purpose(self):
         """Returns the default pin layer purpose name."""
         return self._pin_purpose
+
+    @property
+    def is_empty(self):
+        """Returns True if this layout is empty."""
+        return self._is_empty
 
     def inst_iter(self):
         # type: () -> Iterator[Instance]
@@ -1215,6 +1221,11 @@ class BagLayout(object):
                          self._pin_list,
                          path_list,
                          ]
+        if (not inst_list and not rect_list and not blockage_list and not boundary_list and
+                not via_list and not self._pin_list and not path_list):
+            self._is_empty = True
+        else:
+            self._is_empty = False
 
         if flatten:
             self.flatten()
