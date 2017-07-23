@@ -355,7 +355,7 @@ class ProcessManager(object):
         Returns
         -------
         output :
-            output of the thrad if it successfully terminates.  Otherwise return None.
+            output of the thread if it successfully terminates.  Otherwise return None.
         """
         if cancel_timeout is None:
             cancel_timeout = self._cancel_timeout

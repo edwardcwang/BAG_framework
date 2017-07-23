@@ -31,8 +31,7 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
-
-from bag.io.process import ProcessManager
+from typing import Optional, Union
 
 
 class Checker(with_metaclass(abc.ABCMeta, object)):
@@ -120,5 +119,34 @@ class Checker(with_metaclass(abc.ABCMeta, object)):
             If blocking, the netlist file name.  If not blocking, the RCX ID.
         log_fname : str
             name of the RCX log file.
+        """
+        return None
+
+    @abc.abstractmethod
+    def wait_lvs_rcx(self, job_id, timeout=None, cancel_timeout=10.0):
+        # type: (str, Optional[float], float) -> Optional[Union[bool, str]]
+        """Wait for the given LVS/RCX job to finish, then return the result.
+
+        If ``timeout`` is None, waits indefinitely.  Otherwise, if after
+        ``timeout`` seconds the simulation is still running, a
+        :class:`concurrent.futures.TimeoutError` will be raised.
+        However, it is safe to catch this error and call wait again.
+
+        If Ctrl-C is pressed before the job is finished or before timeout
+        is reached, the job will be cancelled.
+
+        Parameters
+        ----------
+        job_id : str
+            the job ID.
+        timeout : float or None
+            number of seconds to wait.  If None, waits indefinitely.
+        cancel_timeout : float
+            number of seconds to wait for job cancellation.
+
+        Returns
+        -------
+        result : Optional[Union[bool, str]]
+            the job result.  None if the job is cancelled.
         """
         return None

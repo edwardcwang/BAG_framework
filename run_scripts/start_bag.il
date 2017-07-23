@@ -1602,7 +1602,10 @@ procedure( instantiate_testbench(tb_cell targ_lib
         ; create config view
         create_config_view(targ_lib tb_cell "config" config_libs config_views config_stops)
 
-        session_name = "modify_adexl"
+        ; session_name = "modify_adexl"
+        session_name = sprintf(nil "modify_adexl_%d" bag_modify_adexl_counter)
+        bag_modify_adexl_counter = bag_modify_adexl_counter + 1
+
         session_sdb = open_adexl_session(targ_lib tb_cell "adexl" session_name "a")
         session = car(session_sdb)
         sdb = cadr(session_sdb)
@@ -1810,3 +1813,4 @@ procedure( start_bag_server()
 )
 
 bag_proc = start_bag_server()
+bag_modify_adexl_counter = 0
