@@ -30,8 +30,8 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 import os
-
 import yaml
+from typing import Optional, Union
 
 from .base import Checker
 from ..io import read_file, write_file, open_temp, readlines_iter, fix_string
@@ -442,3 +442,34 @@ class PVS(Checker):
             return result
         else:
             return pid, log_file
+
+    def wait_lvs_rcx(self, job_id, timeout=None, cancel_timeout=10.0):
+        # type: (str, Optional[float], float) -> Optional[Union[bool, str]]
+        """Wait for the given LVS/RCX job to finish, then return the result.
+
+        If ``timeout`` is None, waits indefinitely.  Otherwise, if after
+        ``timeout`` seconds the simulation is still running, a
+        :class:`concurrent.futures.TimeoutError` will be raised.
+        However, it is safe to catch this error and call wait again.
+
+        If Ctrl-C is pressed before the job is finished or before timeout
+        is reached, the job will be cancelled.
+
+        Parameters
+        ----------
+        job_id : str
+            the job ID.
+        timeout : float or None
+            number of seconds to wait.  If None, waits indefinitely.
+        cancel_timeout : float
+            number of seconds to wait for job cancellation.
+
+        Returns
+        -------
+        result : Optional[Union[bool, str]]
+            the job result.  None if the job is cancelled.
+        """
+        result = self._manager.wait(job_id, timeout=timeout, cancel_timeout=cancel_timeout)
+        if result is None:
+            return None
+        return result[0]

@@ -32,7 +32,7 @@ from builtins import *
 
 import os
 import yaml
-from typing import List, Dict, Optional, Any, Tuple
+from typing import List, Dict, Optional, Any, Tuple, Union
 
 from jinja2 import Template
 
@@ -142,6 +142,7 @@ class SkillInterface(DbAccess):
         """
         DbAccess.__init__(self, tmp_dir, db_config)
         self.handler = dealer
+        self._rcx_jobs = {}
 
     def close(self):
         """Terminate the database server gracefully.
@@ -594,7 +595,57 @@ class SkillInterface(DbAccess):
             else:
                 return value, log_fname
         else:
+            self._rcx_jobs[value] = dict(create_schematic=create_schematic,
+                                         lib_name=lib_name, cell_name=cell_name)
+
             return value, log_fname
+
+    def wait_lvs_rcx(self, job_id, timeout=None, cancel_timeout=10.0):
+        # type: (str, Optional[float], float) -> Optional[Union[bool, str]]
+        """Wait for the given LVS/RCX job to finish, then return the result.
+
+        If ``timeout`` is None, waits indefinitely.  Otherwise, if after
+        ``timeout`` seconds the simulation is still running, a
+        :class:`concurrent.futures.TimeoutError` will be raised.
+        However, it is safe to catch this error and call wait again.
+
+        If Ctrl-C is pressed before the job is finished or before timeout
+        is reached, the job will be cancelled.
+
+        Parameters
+        ----------
+        job_id : str
+            the job ID.
+        timeout : float or None
+            number of seconds to wait.  If None, waits indefinitely.
+        cancel_timeout : float
+            number of seconds to wait for job cancellation.
+
+        Returns
+        -------
+        result : Optional[Union[bool, str]]
+            the job result.  None if the job is cancelled.
+        """
+        if self.checker is None:
+            raise Exception('LVS/RCX is disabled.')
+
+        result = self.checker.wait_lvs_rcx(job_id, timeout=timeout, cancel_timeout=cancel_timeout)
+        rcx_job_params = self._rcx_jobs.pop(job_id, None)
+        if rcx_job_params is None:
+            return result
+
+        # If RCX job, we may need to create schematic from netlist.
+        if rcx_job_params['create_schematic']:
+            if result is None:
+                return False
+            if result:
+                lib_name = rcx_job_params['lib_name']
+                cell_name = rcx_job_params['cell_name']
+                # create schematic only if netlist name is not empty.
+                self.create_schematic_from_netlist(result, lib_name, cell_name)
+            return True
+        else:
+            return result
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):

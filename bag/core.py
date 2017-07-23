@@ -32,7 +32,7 @@ from builtins import *
 import os
 import string
 import importlib
-from typing import List, Optional
+from typing import List, Optional, Union
 
 # noinspection PyPackageRequirements
 import yaml
@@ -161,6 +161,7 @@ class Testbench(object):
         self.config_rules = {}
         self.outputs = outputs
         self.save_dir = None
+        self.sim_id = None
 
     def get_defined_simulation_environments(self):
         """Return a list of defined simulation environments"""
@@ -343,13 +344,47 @@ class Testbench(object):
             Either the save directory path or the simulation ID.  If simulation
             is cancelled, return None.
         """
+        if self.sim_id is not None:
+            raise ValueError('An simulation is currently running with this testbench.')
+
         retval = self.sim.run_simulation(self.lib, self.cell, self.outputs,
                                          precision=precision, sim_tag=sim_tag,
                                          block=block, callback=callback)
         if block:
             self.save_dir = retval
+        else:
+            self.sim_id = retval
 
         return retval
+
+    def wait(self, timeout=None, cancel_timeout=10.0):
+        # type: (Optional[float], float) -> Optional[str]
+        """Wait for the simulation to finish, then return the results.
+
+        Parameters
+        ----------
+        timeout : Optional[float]
+            number of seconds to wait.  If None, waits indefinitely.
+        cancel_timeout : float
+            number of seconds to wait for simulation cancellation.
+
+        Returns
+        -------
+        save_dir : Optional[str]
+            the save directory.  None if the simulation is cancelled.
+        """
+        if self.sim_id is None:
+            raise ValueError('No simulation is associated with this testbench.')
+
+        save_dir, retcode = self.sim.wait(self.sim_id, timeout=timeout, cancel_timeout=cancel_timeout)
+        if retcode is not None:
+            self.save_dir = save_dir
+        else:
+            save_dir = None
+
+        self.sim_id = None
+
+        return save_dir
 
     def load_sim_results(self, hist_name, precision=6, block=True, callback=None):
         """Load previous simulation data.
@@ -764,6 +799,37 @@ class BagProject(object):
         return self.impl_db.run_rcx(lib_name, cell_name, sch_view, lay_view, rcx_params,
                                     block=block, callback=callback,
                                     create_schematic=create_schematic)
+
+    def wait_lvs_rcx(self, job_id, timeout=None, cancel_timeout=10.0):
+        # type: (str, Optional[float], float) -> Optional[Union[bool, str]]
+        """Wait for the given LVS/RCX job to finish, then return the result.
+
+        If ``timeout`` is None, waits indefinitely.  Otherwise, if after
+        ``timeout`` seconds the simulation is still running, a
+        :class:`concurrent.futures.TimeoutError` will be raised.
+        However, it is safe to catch this error and call wait again.
+
+        If Ctrl-C is pressed before the job is finished or before timeout
+        is reached, the job will be cancelled.
+
+        Parameters
+        ----------
+        job_id : str
+            the job ID.
+        timeout : float or None
+            number of seconds to wait.  If None, waits indefinitely.
+        cancel_timeout : float
+            number of seconds to wait for job cancellation.
+
+        Returns
+        -------
+        result : Optional[Union[bool, str]]
+            the job result.  None if the job is cancelled.
+        """
+        if self.impl_db is None:
+            raise Exception('BAG Server is not set up.')
+
+        return self.impl_db.wait_lvs_rcx(job_id, timeout=timeout, cancel_timeout=cancel_timeout)
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):

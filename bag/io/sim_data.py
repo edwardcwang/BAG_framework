@@ -121,6 +121,8 @@ def _get_sweep_params(fname):
         values = data[0:end_idx:skip_len, idx]
         if header[idx] != 'corner':
             values = values.astype(np.float)
+        else:
+            values = [v.encode('utf-8') for v in values]
         skip_len *= len(values)
         values_list.append(values)
 
