@@ -70,39 +70,14 @@ class Transistor(AnalogBase):
             mos_type="transistor type, either 'pch' or 'nch'.",
             lch='channel length, in meters.',
             w='transistor width, in meters/number of fins.',
+            threshold='transistor threshold flavor.',
+            stack='number of transistors to stack',
             fg='number of fingers.',
             fg_dum='number of dummies on each side.',
-            threshold='transistor threshold flavor.',
             ptap_w='NMOS substrate width, in meters/number of fins.',
             ntap_w='PMOS substrate width, in meters/number of fins.',
-            num_track_sep='number of tracks reserved as space between ports.',
-            min_ds_cap='True to minimize parasitic Cds.',
-            global_gnd_layer='layer of the global ground pin.  None to disable drawing global ground.',
-            global_gnd_name='name of global ground pin.',
-            draw_other='True to draw the other type of transistor as dummies.',
-            nd_tracks='Number of drain tracks.',
-        )
-
-    @classmethod
-    def get_default_param_values(cls):
-        """Returns a dictionary containing default parameter values.
-
-        Override this method to define default parameter values.  As good practice,
-        you should avoid defining default values for technology-dependent parameters
-        (such as channel length, transistor width, etc.), but only define default
-        values for technology-independent parameters (such as number of tracks).
-
-        Returns
-        -------
-        default_params : dict[str, any]
-            dictionary of default parameter values.
-        """
-        return dict(
-            min_ds_cap=False,
-            global_gnd_layer=None,
-            global_gnd_name='gnd!',
-            draw_other=False,
-            nd_tracks=1,
+            tr_w_dict='track width dictionary.',
+            tr_sp_dict='track space dictionary.',
         )
 
     def draw_layout(self):
@@ -112,46 +87,46 @@ class Transistor(AnalogBase):
         mos_type = self.params['mos_type']
         lch = self.params['lch']
         w = self.params['w']
+        threshold = self.params['threshold']
+        stack = self.params['stack']
         fg = self.params['fg']
         fg_dum = self.params['fg_dum']
-        threshold = self.params['threshold']
         ptap_w = self.params['ptap_w']
         ntap_w = self.params['ntap_w']
-        num_track_sep = self.params['num_track_sep']
-        global_gnd_layer = self.params['global_gnd_layer']
-        global_gnd_name = self.params['global_gnd_name']
-        draw_other = self.params['draw_other']
-        nd_tracks = self.params['nd_tracks']
-        
-        fg_tot = fg + 2 * fg_dum
+        tr_w_dict = self.params['tr_w_dict']
+        tr_sp_dict = self.params['tr_sp_dict']
 
-        nw_list = []
-        nth_list = []
-        pw_list = []
-        pth_list = []
-        ng_tracks = []
-        nds_tracks = []
-        pg_tracks = []
-        pds_tracks = []
-        num_gate_tr = 2 + num_track_sep
-        if mos_type == 'nch' or draw_other:
-            nw_list.append(w)
-            nth_list.append(threshold)
-            ng_tracks.append(num_gate_tr)
-            if mos_type == 'nch':
-                nds_tracks.append(nd_tracks)
-            else:
-                nds_tracks.append(1)
-        if mos_type == 'pch' or draw_other:
-            pw_list.append(w)
-            pth_list.append(threshold)
-            pg_tracks.append(num_gate_tr)
-            if mos_type == 'pch':
-                pds_tracks.append(nd_tracks)
-            else:
-                pds_tracks.append(1)
+        g_tr_w = tr_w_dict['g']
+        d_tr_w = tr_w_dict['d']
+        s_tr_w = tr_w_dict['s']
+        gs_tr_sp = tr_sp_dict['gs']
+        gd_tr_sp = tr_sp_dict['gd']
+        sb_tr_sp = tr_sp_dict['sb']
+        db_tr_sp = tr_sp_dict['db']
+
+        fg_tot = (fg * stack) + 2 * fg_dum
+        w_list = [w]
+        th_list = [threshold]
+        g_tracks = [sb_tr_sp + s_tr_w + gs_tr_sp + g_tr_w]
+        ds_tracks = [gd_tr_sp + d_tr_w + db_tr_sp]
+
+        nw_list = pw_list = []
+        nth_list = pth_list = []
+        ng_tracks = pg_tracks = []
+        nds_tracks = pds_tracks = []
+        if mos_type == 'nch':
+            nw_list = w_list
+            nth_list = th_list
+            ng_tracks = g_tracks
+            nds_tracks = ds_tracks
+        else:
+            pw_list = w_list
+            pth_list = th_list
+            pg_tracks = g_tracks
+            pds_tracks = ds_tracks
+
         self.draw_base(lch, fg_tot, ptap_w, ntap_w, nw_list,
-                       nth_list, pw_list, pth_list, num_track_sep,
+                       nth_list, pw_list, pth_list,
                        ng_tracks=ng_tracks, nds_tracks=nds_tracks,
                        pg_tracks=pg_tracks, pds_tracks=pds_tracks,
                        )
@@ -160,28 +135,22 @@ class Transistor(AnalogBase):
             sdir, ddir = 2, 0
         else:
             sdir, ddir = 0, 2
-        mos_ports = self.draw_mos_conn(mos_type, 0, fg_dum, fg, sdir, ddir, min_ds_cap=self.params['min_ds_cap'])
-        tr_id = self.make_track_id(mos_type, 0, 'g', num_gate_tr - 1)
+
+        mos_ports = self.draw_mos_conn(mos_type, 0, fg_dum, fg, sdir, ddir, stack=stack)
+        tr_id = self.make_track_id(mos_type, 0, 'g', sb_tr_sp + (s_tr_w - 1) / 2, width=s_tr_w)
+        warr = self.connect_to_tracks(mos_ports['s'], tr_id)
+        self.add_pin('s', warr, show=True)
+        tr_id = self.make_track_id(mos_type, 0, 'g', sb_tr_sp + s_tr_w + gs_tr_sp + (g_tr_w - 1) / 2, width=g_tr_w)
         warr = self.connect_to_tracks(mos_ports['g'], tr_id)
         self.add_pin('g', warr, show=True)
-
-        tr_id = self.make_track_id(mos_type, 0, 'ds', nd_tracks // 2)
+        tr_id = self.make_track_id(mos_type, 0, 'd', gd_tr_sp + (d_tr_w - 1) / 2, width=d_tr_w)
         warr = self.connect_to_tracks(mos_ports['d'], tr_id)
         self.add_pin('d', warr, show=True)
 
-        tr_id = self.make_track_id(mos_type, 0, 'g', 0)
-        warr = self.connect_to_tracks(mos_ports['s'], tr_id)
-        self.add_pin('s', warr, show=True)
-
         ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy()
         # export body
-        blabel = 'b:' if draw_other else 'b'
-        self.add_pin('b', ptap_wire_arrs, label=blabel, show=True)
-        self.add_pin('b', ntap_wire_arrs, label=blabel, show=True)
-
-        if global_gnd_layer is not None:
-            _, global_gnd_box = next(ptap_wire_arrs[0].wire_iter(self.grid))
-            self.add_pin_primitive(global_gnd_name, global_gnd_layer, global_gnd_box)
+        self.add_pin('b', ptap_wire_arrs, show=True)
+        self.add_pin('b', ntap_wire_arrs, show=True)
 
 
 class TransistorGD(AnalogBase):
