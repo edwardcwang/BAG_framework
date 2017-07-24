@@ -121,8 +121,6 @@ def _get_sweep_params(fname):
         values = data[0:end_idx:skip_len, idx]
         if header[idx] != 'corner':
             values = values.astype(np.float)
-        else:
-            values = [v.encode('utf-8') for v in values]
         skip_len *= len(values)
         values_list.append(values)
 
@@ -233,13 +231,17 @@ def save_sim_results(results, fname, compression='gzip'):
             data = results[name]
             dset = f.create_dataset(name, data=data, compression=compression)
             # h5py workaround: need to explicitly store unicode
-            dset.attrs['sweep_params'] = [swp.encode(encoding=bag_encoding,
-                                                     errors=bag_codec_error) for swp in swp_vars]
+            dset.attrs['sweep_params'] = [swp.encode(encoding=bag_encoding, errors=bag_codec_error)
+                                          for swp in swp_vars]
 
             # store sweep parameter values
             for var in swp_vars:
-                swp_data = results[var]
                 if var not in f:
+                    swp_data = results[var]
+                    if np.issubdtype(swp_data.dtype, str):
+                        # we need to explicitly encode unicode strings to bytes
+                        swp_data = [v.encode(encoding=bag_encoding, errors=bag_codec_error) for v in swp_data]
+
                     f.create_dataset(var, data=swp_data, compression=compression)
 
 
@@ -264,13 +266,18 @@ def load_sim_file(fname):
     with h5py.File(fname, 'r') as f:
         for name in f:
             dset = f[name]
+            dset_data = dset[()]
+            if np.issubdtype(dset.dtype, bytes):
+                # decode byte values to unicode arrays
+                dset_data = np.array([v.decode(encoding=bag_encoding, errors=bag_codec_error) for v in dset_data])
+
             if 'sweep_params' in dset.attrs:
-                cur_swp = [swp.decode(encoding=bag_encoding,
-                                      errors=bag_codec_error) for swp in dset.attrs['sweep_params']]
-                results[name] = SweepArray(dset, cur_swp)
+                cur_swp = [swp.decode(encoding=bag_encoding, errors=bag_codec_error)
+                           for swp in dset.attrs['sweep_params']]
+                results[name] = SweepArray(dset_data, cur_swp)
                 sweep_params[name] = cur_swp
             else:
-                results[name] = dset[()]
+                results[name] = dset_data
 
     results['sweep_params'] = sweep_params
     return results
