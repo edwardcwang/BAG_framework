@@ -519,13 +519,22 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         mos_pitch = self._laygo_info.mos_pitch
 
         row_specs = []
-        for row_type, row_w, row_orient, row_thres, min_tracks, kwargs, ng, ngb, nds in \
-                zip(row_types, row_widths, row_orientations, row_thresholds, row_min_tracks, row_kwargs,
-                    num_g_tracks, num_gb_tracks, num_ds_tracks):
+        for row_idx, (row_type, row_w, row_orient, row_thres, min_tracks, kwargs, ng, ngb, nds) in \
+                enumerate(zip(row_types, row_widths, row_orientations, row_thresholds, row_min_tracks, row_kwargs,
+                              num_g_tracks, num_gb_tracks, num_ds_tracks)):
+            if row_idx == 0:
+                bot_row_type = row_type
+            else:
+                bot_row_type = row_types[row_idx - 1]
+            if row_idx == len(row_types) - 1:
+                top_row_type = row_type
+            else:
+                top_row_type = row_types[row_idx + 1]
 
             # get information dictionary
             if row_type == 'nch' or row_type == 'pch':
-                mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, row_w, row_type, row_thres, 'general', **kwargs)
+                mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, row_w, row_type, row_thres, 'fg2d',
+                                                             bot_row_type, top_row_type, **kwargs)
             elif row_type == 'ptap' or row_type == 'ntap':
                 mos_info = self._tech_cls.get_laygo_sub_info(lch_unit, row_w, row_type, row_thres, **kwargs)
             else:
@@ -864,13 +873,16 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             master = self.new_template(params=params, temp_cls=LaygoSubstrate)
         else:
             params['blk_type'] = blk_type
+            params['bot_row_type'] = self._row_types[max(0, row_idx - 1)]
+            params['top_row_type'] = self._row_types[min(row_idx + 1, len(self._row_types) - 1)]
             master = self.new_template(params=params, temp_cls=LaygoPrimitive)
             if blk_type == 'sub':
                 num_col = self.sub_columns
 
         intv = self._used_list[row_idx]
-        inst_endl, inst_endr = master.get_end_info()
-        ext_info = master.get_ext_info()
+        inst_endl = master.get_left_edge_info()
+        inst_endr = master.get_right_edge_info()
+        ext_info = master.get_ext_bot_info(), master.get_ext_top_info()
         if row_orient == 'MX':
             ext_info = ext_info[1], ext_info[0]
         if flip:
@@ -938,15 +950,17 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             row_info=row_info,
             name_id=row_info['row_name_id'],
             num_blk=num_blk,
-            adj_end_info=adj_end_info,
+            left_blk_info=adj_end_info[0],
+            right_blk_info=adj_end_info[1],
         )
         params.update(kwargs)
         inst_name = 'XR%dC%d' % (row_idx, col_idx)
         master = self.new_template(params=params, temp_cls=LaygoSpace)
 
         # update used interval
-        endl, endr = master.get_end_info()
-        ext_info = master.get_ext_info()
+        endl = master.get_left_edge_info()
+        endr = master.get_right_edge_info()
+        ext_info = master.get_ext_bot_info(), master.get_ext_top_info()
         if row_orient == 'MX':
             ext_info = ext_info[1], ext_info[0]
 
@@ -1006,13 +1020,13 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             row_edge_infos = self._get_row_edge_infos()
             for ridx, (y, orient, re_params) in enumerate(row_edge_infos):
                 endl, endr = self._get_end_info_row(ridx)
-                for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
-                    edge_info = self._tech_cls.get_laygo_edge_info(re_params['row_info'], end_flag)
+                for x, is_end, flip_lr, end_info in ((0, left_end, False, endl), (xr, right_end, True, endr)):
                     edge_params = re_params.copy()
                     del edge_params['row_info']
                     edge_params['is_end'] = is_end
-                    edge_params['name_id'] = edge_info['name_id']
-                    edge_params['layout_info'] = edge_info
+                    edge_params['name_id'] = re_params['row_info']['row_name_id']
+                    edge_params['layout_info'] = re_params['row_info']['layout_info']
+                    edge_params['adj_blk_info'] = end_info
                     if flip_lr:
                         eorient = 'MY' if orient == 'R0' else 'R180'
                     else:

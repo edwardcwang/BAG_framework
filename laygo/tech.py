@@ -181,8 +181,8 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
 
     @classmethod
     @abc.abstractmethod
-    def get_laygo_mos_info(cls, lch_unit, w, mos_type, threshold, blk_type, **kwargs):
-        # type: (int, int, str, str, str, **kwargs) -> Dict[str, Any]
+    def get_laygo_mos_info(cls, lch_unit, w, mos_type, threshold, blk_type, bot_row_type, top_row_type, **kwargs):
+        # type: (int, int, str, str, str, str, str, **kwargs) -> Dict[str, Any]
         """Returns the transistor information dictionary for laygo blocks.
 
         The returned dictionary must have the following entries:
@@ -213,6 +213,10 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             the transistor threshold flavor.
         blk_type : str
             the digital block type.
+        bot_row_type : str
+            the bottom (next to gate) laygo row type.
+        top_row_type: str
+            the top (next to drain/source) laygo row type.
         **kwargs
             optional keyword arguments.
 
@@ -253,28 +257,8 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
 
     @classmethod
     @abc.abstractmethod
-    def get_laygo_edge_info(cls, blk_info, end_info):
-        # type: (Dict[str, Any], Any) -> Dict[str, Any]
-        """Returns a new layout information dictionary for drawing LaygoBase edge blocks.
-
-        Parameters
-        ----------
-        blk_info : Dict[str, Any]
-            the layout information dictionary.
-        end_info : Any
-            the end information of the block adjacent to this edge.
-
-        Returns
-        -------
-        edge_info : Dict[str, Any]
-            the edge layout information dictionary.
-        """
-        pass
-
-    @classmethod
-    @abc.abstractmethod
-    def get_laygo_space_info(cls, row_info, num_blk, adj_end_info):
-        # type: (Dict[str, Any], int, Any) -> Dict[str, Any]
+    def get_laygo_space_info(cls, row_info, num_blk, left_blk_info, right_blk_info):
+        # type: (Dict[str, Any], int, Any, Any) -> Dict[str, Any]
         """Returns a new layout information dictionary for drawing LaygoBase space blocks.
 
         Parameters
@@ -283,8 +267,10 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             the Laygo row information dictionary.
         num_blk : int
             number of space blocks.
-        adj_end_info : int
-            end information ofthe blocks adjacent to this space.
+        left_blk_info : Any
+            left block information.
+        right_blk_info : Any
+            right block information.
 
         Returns
         -------
@@ -296,7 +282,7 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
     @classmethod
     @abc.abstractmethod
     def draw_laygo_connection(cls, template, mos_info, blk_type, options):
-        # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> Tuple[Tuple[Any, Any], Tuple[Any, Any]]
+        # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> None
         """Draw digital transistor connection in the given template.
 
         Parameters
@@ -309,20 +295,13 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             the digital block type.
         options : Dict[str, Any]
             any additional connection options.
-
-        Returns
-        -------
-        ext_info : Tuple[Any, ANy]
-            a tuple of extension information on top and bottom.
-        end_info : Tuple[Any, Any]
-            a tuple of the end information on left and right.
         """
         pass
 
     @classmethod
     @abc.abstractmethod
-    def draw_laygo_space_connection(cls, template, space_info, adj_end_info):
-        # type: (TemplateBase, Dict[str, Any], Tuple[Any, Any]) -> Tuple[Any, Any]
+    def draw_laygo_space_connection(cls, template, space_info, left_blk_info, right_blk_info):
+        # type: (TemplateBase, Dict[str, Any], Any, Any) -> Tuple[Any, Any]
         """Draw digital transistor connection in the given template.
 
         Parameters
@@ -331,15 +310,19 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             the TemplateBase object to draw layout in.
         space_info : Dict[str, Any]
             the layout information dictionary.
-        adj_end_info : Tuple[Any, Any]
-            tuple of left and right end information object.
+        left_blk_info : Any
+            left block information.
+        right_blk_info : Any
+            right block information.
 
         Returns
         -------
-        ext_info : Tuple[Any, ANy]
-            a tuple of extension information on top and bottom.
+        bot_ext_info : Any
+            space block bottom extension information.
+        top_ext_info : Any
+            space block top extension information.
         """
-        return None, None
+        pass
 
     @classmethod
     @abc.abstractmethod
@@ -518,6 +501,7 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
                     top_layer=top_layer,
                     is_end=is_end,
                     guard_ring_nf=guard_ring_nf,
+                    adj_blk_info=master.get_left_edge_info(),
                     name_id=master.get_layout_basename(),
                     layout_info=master.get_edge_layout_info(),
                     is_laygo=True,
