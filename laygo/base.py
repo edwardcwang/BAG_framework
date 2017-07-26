@@ -329,6 +329,7 @@ class LaygoEndRow(TemplateBase):
         self._end_info = self._tech_cls.get_laygo_end_info(lch_unit, mos_type, threshold, self._fg, is_end, blk_pitch)
         self._tech_cls.draw_mos(self, self._end_info['layout_info'])
 
+
 class LaygoSpace(TemplateBase):
     """An abstract template for analog mosfet.
 
