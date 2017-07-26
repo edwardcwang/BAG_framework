@@ -531,6 +531,9 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             else:
                 top_row_type = row_types[row_idx + 1]
 
+            if row_orient != 'R0':
+                bot_row_type, top_row_type = top_row_type, bot_row_type
+
             # get information dictionary
             if row_type == 'nch' or row_type == 'pch':
                 mos_info = self._tech_cls.get_laygo_mos_info(lch_unit, row_w, row_type, row_thres, 'fg2d',
@@ -883,9 +886,13 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if mos_type == 'ntap' or mos_type == 'ptap':
             master = self.new_template(params=params, temp_cls=LaygoSubstrate)
         else:
+            bot_row_type = self._row_types[max(0, row_idx - 1)]
+            top_row_type = self._row_types[min(row_idx + 1, len(self._row_types) - 1)]
+            if row_orient == 'MX':
+                bot_row_type, top_row_type = top_row_type, bot_row_type
             params['blk_type'] = blk_type
-            params['bot_row_type'] = self._row_types[max(0, row_idx - 1)]
-            params['top_row_type'] = self._row_types[min(row_idx + 1, len(self._row_types) - 1)]
+            params['bot_row_type'] = bot_row_type
+            params['top_row_type'] = top_row_type
             master = self.new_template(params=params, temp_cls=LaygoPrimitive)
             if blk_type == 'sub':
                 num_col = self.sub_columns
