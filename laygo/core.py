@@ -733,7 +733,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     # step 2: make sure ydelta can satisfy extension constraints.
                     row_thres = self._row_thresholds[idx]
                     cur_top_ext_h, self._top_sub_extw = self._place_mirror_or_sub(row_type, row_thres, lch_unit,
-                                                                                  mos_pitch, ydelta, ext_bot_info)
+                                                                                  mos_pitch, ydelta, ext_top_info)
                     ydelta = cur_top_ext_h * mos_pitch
                     # step 3: compute row height given ycur and ydelta, round to row_pitch
                     ytop = max(ycur + blk_height + ydelta, y0 + min_row_height)
