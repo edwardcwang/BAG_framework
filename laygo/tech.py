@@ -425,13 +425,14 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
                 curx += ext_master.prim_bound_box.width_unit
 
                 if idx == 0 or idx == num_ext - 1:
+                    adj_blk_info = ext_master.get_left_edge_info() if idx == 0 else ext_master.get_right_edge_info()
                     # compute edge parameters
                     cur_ext_edge_params = dict(
                         top_layer=top_layer,
                         guard_ring_nf=guard_ring_nf,
                         name_id=ext_master.get_layout_basename(),
                         layout_info=ext_master.get_edge_layout_info(),
-                        adj_blk_info=cls.get_default_end_info(),
+                        adj_blk_info=adj_blk_info,
                         is_laygo=True,
                     )
                     edge_orient = 'R0' if idx == 0 else 'MY'
