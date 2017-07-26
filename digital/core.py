@@ -298,12 +298,13 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         left_margin = self._laygo_info.left_margin
 
         intv = self._used_list[row_idx]
-        inst_endl, inst_endr = master.get_end_info()
+        inst_endl = master.get_left_edge_info()
+        inst_endr = master.get_right_edge_info()
         if flip:
             inst_endl, inst_endr = inst_endr, inst_endl
 
         num_inst_col = master.laygo_size[0]
-        ext_info = master.get_ext_info()
+        ext_info = master.get_ext_bot_info(), master.get_ext_top_info()
         if row_idx % 2 == 1:
             ext_info = ext_info[1], ext_info[0]
 
@@ -367,16 +368,19 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return self._draw_boundary_cells(port_cols)
 
-    def get_ext_info(self):
-        return self._get_ext_info_row(0, 0), self._get_ext_info_row(self._num_rows - 1, 1)
+    def get_ext_bot_info(self):
+        return self._get_ext_info_row(0, 0)
+
+    def get_ext_top_info(self):
+        return self._get_ext_info_row(self._num_rows - 1, 1)
 
     def _get_ext_info_row(self, row_idx, ext_idx):
         num_col, num_row = self._dig_size
         if row_idx == -1:
-            ext_info = self._bot_sub_master.get_ext_info()[1]
+            ext_info = self._bot_sub_master.get_ext_top_info()
             return [ext_info] * num_col
         elif row_idx == num_row:
-            ext_info = self._top_sub_master.get_ext_info()[1]
+            ext_info = self._top_sub_master.get_ext_top_info()
             return [ext_info] * num_col
         else:
             intv = self._used_list[row_idx]
@@ -385,15 +389,23 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 ext_info_row.extend(ext_info_inst[ext_idx])
             return ext_info_row
 
-    def get_end_info(self):
-        endl_list, endr_list = [], []
+    def get_left_edge_info(self):
+        endl_list = []
         num_col = self._dig_size[0]
         for intv in self._used_list:
             endl, endr = intv.get_end_info(num_col)
-            endl_list.extend(endl)
-            endr_list.extend(endr)
+            endl_list.append(endl)
 
-        return endl_list, endr_list
+        return endl_list
+
+    def get_right_edge_info(self):
+        endr_list = []
+        num_col = self._dig_size[0]
+        for intv in self._used_list:
+            endl, endr = intv.get_end_info(num_col)
+            endr_list.append(endr)
+
+        return endr_list
 
     def _get_end_info_row(self, row_idx):
         num_col = self._dig_size[0]
@@ -420,7 +432,6 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         x0 = self._laygo_info.left_margin
         spx = self._laygo_info.col_width
         end_mode = self._laygo_info.end_mode
-        tech_cls = self._laygo_info.tech_cls
         xr = self.bound_box.right_unit
 
         left_end = (end_mode & 4) != 0
@@ -453,16 +464,17 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         edge_infos = []
         for master, y, orient in ((self._bot_sub_master, ybot, 'R0'), (self._top_sub_master, ytop, 'MX')):
-            endl, endr = master.get_end_info()
+            endl = master.get_left_edge_info()
+            endr = master.get_right_edge_info()
             rinfo = master.row_info
             for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
-                edge_info = tech_cls.get_laygo_edge_info(rinfo, end_flag)
                 edge_params = dict(
                     top_layer=top_layer,
                     guard_ring_nf=guard_ring_nf,
                     is_end=is_end,
-                    name_id=edge_info['name_id'],
-                    layout_info=edge_info,
+                    name_id=rinfo['row_name_id'],
+                    layout_info=rinfo['layout_info'],
+                    adj_blk_info=end_flag,
                     is_laygo=True,
                 )
                 if orient == 'R0':
@@ -528,12 +540,12 @@ class DigitalBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 # add row edges
                 for (y, row_orient, re_params), endl, endr in zip(row_edge_infos, endl_list, endr_list):
                     for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
-                        edge_info = tech_cls.get_laygo_edge_info(re_params['row_info'], end_flag)
                         edge_params = re_params.copy()
                         del edge_params['row_info']
                         edge_params['is_end'] = is_end
-                        edge_params['name_id'] = edge_info['name_id']
-                        edge_params['layout_info'] = edge_info
+                        edge_params['name_id'] = re_params['row_info']['row_name_id']
+                        edge_params['layout_info'] = re_params['row_info']['layout_info']
+                        edge_params['adj_blk_info'] = end_flag
                         if flip_lr:
                             eorient = 'MY' if row_orient == 'R0' else 'R180'
                         else:

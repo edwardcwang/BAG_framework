@@ -277,7 +277,7 @@ class LaygoEndRow(TemplateBase):
         self._end_info = None
 
     def get_edge_layout_info(self):
-        return self._end_info
+        return self._end_info['layout_info']
 
     def get_left_edge_info(self):
         return self._end_info['left_edge_info']

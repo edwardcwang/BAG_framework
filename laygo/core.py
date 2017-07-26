@@ -796,22 +796,33 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         hm_layer = self._tech_cls.get_dig_conn_layer() + 1
         return TrackID(hm_layer, tid, width=width, num=num, pitch=pitch)
 
-    def get_ext_info(self):
-        return self._get_ext_info_row(0, 0), self._get_ext_info_row(self._num_rows - 1, 1)
+    def get_ext_bot_info(self):
+        return self._get_ext_info_row(0, 0)
+
+    def get_ext_top_info(self):
+        return self._get_ext_info_row(self._num_rows - 1, 1)
 
     def _get_ext_info_row(self, row_idx, ext_idx):
         intv = self._used_list[row_idx]
         return [ext_info[ext_idx] for ext_info in intv.values()]
 
-    def get_end_info(self):
-        endl_list, endr_list = [], []
+    def get_left_edge_info(self):
+        endl_list = []
         num_col = self._laygo_size[0]
         for intv in self._used_list:
             endl, endr = intv.get_end_info(num_col)
             endl_list.append(endl)
+
+        return endl_list
+
+    def get_right_edge_info(self):
+        endr_list = []
+        num_col = self._laygo_size[0]
+        for intv in self._used_list:
+            endl, endr = intv.get_end_info(num_col)
             endr_list.append(endr)
 
-        return endl_list, endr_list
+        return endr_list
 
     def _get_end_info_row(self, row_idx):
         num_col = self._laygo_size[0]

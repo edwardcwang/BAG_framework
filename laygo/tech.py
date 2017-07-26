@@ -431,6 +431,7 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
                         guard_ring_nf=guard_ring_nf,
                         name_id=ext_master.get_layout_basename(),
                         layout_info=ext_master.get_edge_layout_info(),
+                        adj_blk_info=cls.get_default_end_info(),
                         is_laygo=True,
                     )
                     edge_orient = 'R0' if idx == 0 else 'MY'
