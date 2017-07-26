@@ -334,16 +334,13 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
             gbtr = self.grid.coord_to_nearest_track(hm_layer, ybot + delta, half_track=True, mode=1, unit_mode=True)
             gttr = self.grid.coord_to_nearest_track(hm_layer, gyt - delta, half_track=True, mode=-1, unit_mode=True)
-            num_tr = max(0, int(gttr - gbtr + 1))
-            g_intv = (gttr - num_tr + 1, gttr + 1)
+            g_intv = (gbtr, gttr + 1)
             sbtr = self.grid.coord_to_nearest_track(hm_layer, syb + delta, half_track=True, mode=1, unit_mode=True)
             sttr = self.grid.coord_to_nearest_track(hm_layer, ytop - delta, half_track=True, mode=-1, unit_mode=True)
-            num_tr = max(0, int(sttr - sbtr + 1))
-            s_intv = (sbtr, sbtr + num_tr)
+            s_intv = (sbtr, sttr + 1)
             dbtr = self.grid.coord_to_nearest_track(hm_layer, dyb + delta, half_track=True, mode=1, unit_mode=True)
             dttr = self.grid.coord_to_nearest_track(hm_layer, ytop - delta, half_track=True, mode=-1, unit_mode=True)
-            num_tr = max(0, int(dttr - dbtr + 1))
-            d_intv = (dbtr, dbtr + num_tr)
+            d_intv = (dbtr, dttr + 1)
         else:
             h = info['blk_height']
             gyb = ycur + h - gyt
@@ -352,16 +349,13 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
             gbtr = self.grid.coord_to_nearest_track(hm_layer, gyb + delta, half_track=True, mode=1, unit_mode=True)
             gttr = self.grid.coord_to_nearest_track(hm_layer, ytop - delta, half_track=True, mode=-1, unit_mode=True)
-            num_tr = max(0, int(gttr - gbtr + 1))
-            g_intv = (gbtr, gbtr + num_tr)
+            g_intv = (gbtr, gttr + 1)
             sbtr = self.grid.coord_to_nearest_track(hm_layer, ybot + delta, half_track=True, mode=1, unit_mode=True)
             sttr = self.grid.coord_to_nearest_track(hm_layer, syt - delta, half_track=True, mode=-1, unit_mode=True)
-            num_tr = max(0, int(sttr - sbtr + 1))
-            s_intv = (sttr - num_tr + 1, sttr + 1)
+            s_intv = (sbtr, sttr + 1)
             dbtr = self.grid.coord_to_nearest_track(hm_layer, ybot + delta, half_track=True, mode=1, unit_mode=True)
             dttr = self.grid.coord_to_nearest_track(hm_layer, dyt - delta, half_track=True, mode=-1, unit_mode=True)
-            num_tr = max(0, int(dttr - dbtr + 1))
-            d_intv = (dttr - num_tr + 1, dttr + 1)
+            d_intv = (dbtr, dttr + 1)
 
         return g_intv, s_intv, d_intv
 
@@ -557,8 +551,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         blk_height = row_info['blk_height']
         if row_orient == 'R0':
             # gate tracks on bottom
-            num_tr1 = ng
-            num_tr2 = num_tr1
+            num_tr1 = num_tr2 = ng
             conn_yb1, conn_yt1 = row_info.get('g_conn_y', (0, 0))
             conn_yb2, conn_yt2 = conn_yb1, conn_yt1
         else:
@@ -571,7 +564,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # step B: find max Y coordinate from constraints
         ycur = y0
-        tr0 = self.grid.find_next_track(hm_layer, y0 + conn_delta, half_track=True, mode=1, unit_mode=True)
+        tr0 = self.grid.coord_to_nearest_track(hm_layer, y0 + conn_delta, half_track=True, mode=1, unit_mode=True)
         tr_ybot = self.grid.track_to_coord(hm_layer, tr0, unit_mode=True)
         for ntr, cyb, cyt in ((num_tr1, conn_yb1, conn_yt1),
                               (num_tr2, conn_yb2, conn_yt2)):
@@ -703,14 +696,13 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             else:
                 if idx != self._num_rows - 1:
                     if row_orient == 'MX':
-                        # gate tracks on bottom
-                        num_tr1 = 0 if is_sub else ng
-                        num_tr2 = num_tr1
+                        # gate tracks on top
+                        num_tr1 = num_tr2 = 0 if is_sub else ng
                         conn_yb1, conn_yt1 = mos_info['g_conn_y']
                         conn_yb1, conn_yt1 = blk_height - conn_yt1, blk_height - conn_yb1
                         conn_yb2, conn_yt2 = conn_yb1, conn_yt1
                     else:
-                        # drain/source tracks on bottom
+                        # drain/source tracks on top
                         num_tr1, num_tr2 = ngb, nds
                         conn_yb1, conn_yt1 = mos_info['gb_conn_y']
                         conn_yb2, conn_yt2 = mos_info['ds_conn_y']
@@ -721,9 +713,11 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                                           (num_tr2, conn_yb2, conn_yt2)):
                         if ntr > 0:
                             ybtr = ycur + cyb + conn_delta
-                            tr0 = self.grid.find_next_track(hm_layer, ybtr, half_track=True, mode=1, unit_mode=True)
+                            tr0 = self.grid.coord_to_nearest_track(hm_layer, ybtr, half_track=True,
+                                                                   mode=1, unit_mode=True)
                             yttr = ycur + cyt - conn_delta
-                            tr1 = self.grid.find_next_track(hm_layer, yttr, half_track=True, mode=-1, unit_mode=True)
+                            tr1 = self.grid.coord_to_nearest_track(hm_layer, yttr, half_track=True,
+                                                                   mode=-1, unit_mode=True)
                             tr1 = max(tr1, tr0 + ntr - 1)
                             ytop = max(ytop, self.grid.track_to_coord(hm_layer, tr1, unit_mode=True) + conn_delta)
 
@@ -755,9 +749,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             g_intv, ds_intv, gb_intv = self._get_track_intervals(hm_layer, row_orient, mos_info,
                                                                  ycur, y0, ytop, conn_delta)
 
-            if ng > g_intv[1] - g_intv[0] or nds > ds_intv[1] - ds_intv[0] or ngb > gb_intv[1] - gb_intv[0]:
-                g_intv, ds_intv, gb_intv = self._get_track_intervals(hm_layer, row_orient, mos_info,
-                                                                     ycur, y0, ytop, conn_delta)
             # record information
             mos_info['g_intv'] = g_intv
             mos_info['ds_intv'] = ds_intv
@@ -779,13 +770,13 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def get_num_tracks(self, row_idx, tr_type):
         row_info = self._row_infos[row_idx]
         intv = row_info['%s_intv' % tr_type]
-        return int(intv[1] - intv[0])
+        return intv[1] - intv[0]
 
     def get_track_index(self, row_idx, tr_type, tr_idx):
         row_info = self._row_infos[row_idx]
         orient = self._row_orientations[row_idx]
         intv = row_info['%s_intv' % tr_type]
-        ntr = int(intv[1] - intv[0])
+        ntr = intv[1] - intv[0]
         if tr_idx >= ntr:
             raise ValueError('tr_idx = %d >= %d' % (tr_idx, ntr))
 
