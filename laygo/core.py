@@ -622,7 +622,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 # did not pass extension constraint, update extension width.
                 ext_w_valid = False
                 ext_w_test = valid_widths[bisect.bisect_left(valid_widths, ext_w_test)]
-                ext_w = -(-(ext_w_test // 2))
+                ext_w = -(-ext_w_test // 2)
 
         return ext_w, sub_extw
 
