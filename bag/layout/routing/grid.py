@@ -166,8 +166,8 @@ class RoutingGrid(object):
 
     def set_flip_parity(self, fp):
         """set the flip track parity dictionary."""
-        for lay in self.sp_tracks:
-            self._flip_parity[lay] = fp.get(lay, (1, 0))
+        for lay in fp:
+            self._flip_parity[lay] = fp[lay]
 
     @property
     def tech_info(self):
