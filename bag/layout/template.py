@@ -1230,6 +1230,23 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """
         self._layout.add_pin(net_name, layer, bbox, label=label)
 
+    def add_label(self, label, layer, bbox):
+        # type: (str, Union[str, Tuple[str, str]], BBox) -> None
+        """Adds a label to the layout.
+
+        This is mainly used to add voltage text labels.
+
+        Parameters
+        ----------
+        label : str
+            the label text.
+        layer : Union[str, Tuple[str, str]]
+            the pin layer name.
+        bbox : BBox
+            the pin bounding box.
+        """
+        self._layout.add_label(label, layer, bbox)
+
     def add_pin(self, net_name, wire_arr_list, label='', show=True):
         # type: (str, Union[WireArray, List[WireArray]], str, bool) -> None
         """Add new pin to the layout.
