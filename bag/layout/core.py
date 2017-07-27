@@ -1586,3 +1586,38 @@ class BagLayout(object):
 
         self._used_pin_names.add(pin_name)
         self._pin_list.append(par)
+
+    def add_label(self, label, layer, bbox):
+        """Add a new label.
+
+        This is mainly used to add voltage text labels.
+
+        Parameters
+        ----------
+        label : str
+            the label text.
+        layer : Union[str, Tuple[str, str]]
+            the layer name, or (layer, purpose) pair.
+            if purpose is not specified, defaults to 'pin'.
+        bbox : bag.layout.util.BBox
+            the rectangle bounding box
+        """
+        if self._finalized:
+            raise Exception('Layout is already finalized.')
+
+        if isinstance(layer, bytes):
+            # interpret as unicode
+            layer = layer.decode('utf-8')
+        if isinstance(layer, str):
+            layer = (layer, self._pin_purpose)
+        else:
+            layer = layer[0], layer[1]
+
+        par = PinInfo(self._res, net_name='',
+                      pin_name='',
+                      label=label,
+                      layer=list(layer),
+                      bbox=[[bbox.left, bbox.bottom], [bbox.right, bbox.top]],
+                      make_rect=False)
+
+        self._pin_list.append(par)
