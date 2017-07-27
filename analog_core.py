@@ -773,7 +773,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         sd_pitch = self.sd_pitch_unit
         ridx = self._ridx_lookup[mos_type][row_idx]
         orient = self._orient_list[ridx]
-        mos_kwargs = self._mos_kwargs_list[ridx]
+        mos_kwargs = self._mos_kwargs_list[ridx].copy()
         w = self._w_list[ridx]
         xc, yc = self._layout_info.sd_xc_unit, self._sd_yc_list[ridx]
         xc += col_idx * sd_pitch
@@ -784,6 +784,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             ddir = 2 - ddir
 
         loc = xc, yc
+        mos_kwargs.update(kwargs)
         conn_params = dict(
             lch=self._lch,
             w=w,
