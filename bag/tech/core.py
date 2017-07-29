@@ -102,8 +102,6 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
         impl_lib :
             the implementation library name.
-        routing_grid :
-            the Layout RoutingGrid specification.
         dut_lib :
             the DUT schematic library name.
         dut_cell :
@@ -120,6 +118,8 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
             generated DUT instances information YAML file name.
         sim_envs :
             list of simulation environment names.
+        routing_grid :
+            the Layout RoutingGrid specification.
         rcx_params :
             RCX parameters dictionary.  Optional.
 
