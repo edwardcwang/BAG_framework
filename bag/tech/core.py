@@ -33,18 +33,23 @@ from future.utils import with_metaclass
 import os
 import abc
 import itertools
-import pprint
+import importlib
 from typing import List, Union, Tuple, Dict, Any, Optional, Set
 
+import yaml
 import numpy as np
 import h5py
 import openmdao.api as omdao
 
-from .. import data
+from bag import float_to_si_string
+from bag.core import BagProject, Testbench
+from bag.layout.routing import RoutingGrid
+from bag.layout.template import TemplateDB
+from bag.data import load_sim_results, save_sim_results
 from ..math.interpolate import interpolate_grid
 from bag.math.dfun import VectorDiffFunction, DiffFunction
 from ..mdao.core import GroupBuilder
-from ..io import fix_string, to_bytes
+from ..io import fix_string, to_bytes, read_yaml
 
 
 def _equal(a, b, rtol, atol):
@@ -81,138 +86,406 @@ def _in_list(item_list, item, rtol, atol):
     return _index_in_list(item_list, item, rtol, atol) >= 0
 
 
-class CircuitCharacterization(with_metaclass(abc.ABCMeta, object)):
-    """A class that handles characterization a circuit with simulation and saving simulation results to file.
+class SimulationManager(with_metaclass(abc.ABCMeta, object)):
+    """A class that provide simple methods for running simulations.
 
-    This class never overwrites old simulation data.  If you wish to overwrite it, rename or delete the file
-    manually.
+    This class allows you to run simulations with schematic parameter sweeps.
+
+    For now, this class will overwrite existing data, so please backup if you need to.
 
     Parameters
     ----------
-    prj : bag.BagProject
-        the BagProject instance.
-    root_dir : str
-        path to the root simulation data directory.  Supports environment variables
-    output_list : list[str]
-        list of output names to save.
-    impl_lib : str
-        the library to store the generated testbenches/schematics/layout.
-    impl_cell : str
-        the generated schematic cell name.
-    layout_params : dict[str, any]
-        dictionary of layout specific parameters.
-    compression : str
-        HDF5 compression method.
-    rtol : float
-        relative tolerance used to compare constants/sweep parameters/sweep attributes.
-    atol : float
-        relative tolerance used to compare constants/sweep parameters/sweep attributes.
+    prj : BagProject
+        The BagProject instance.
+    spec_file : str
+        the specification file name.  Contains the following entries:
+
+        impl_lib :
+            the implementation library name.
+        routing_grid :
+            the Layout RoutingGrid specification.
+        dut_lib :
+            the DUT schematic library name.
+        dut_cell :
+            the DUT schematic cell name.
+        layout_package :
+            the XBase layout package name.
+        layout_class :
+            the XBase layout class name.
+        sweep_params :
+            a dictionary of schematic parameters to sweep and their values.
+        dsn_name_base :
+            base cell name for generated DUT instances.
+        dsn_info_file :
+            generated DUT instances information YAML file name.
+        sim_envs :
+            list of simulation environment names.
+        rcx_params :
+            RCX parameters dictionary.  Optional.
+
+        <tb_type> :
+            parameters for testbench <tb_type>.  Contains the following entries:
+
+            tb_lib :
+                testbench library name.
+            tb_cell :
+                testbench cell name.
+            tb_name_base :
+                base cell name for generated testbench schematics.
+            results_dir :
+                simulation results save directory.
     """
 
-    def __init__(self, prj, root_dir, output_list, impl_lib, impl_cell, layout_params,
-                 compression='gzip', rtol=1e-5, atol=1e-18):
-        self._prj = prj
-        self._root_dir = os.path.abspath(os.path.expandvars(root_dir))
-        self._output_list = output_list
-        self._impl_lib = impl_lib
-        self._impl_cell = impl_cell
-        self._layout_params = layout_params
-        self._compression = compression
-        self._rtol = rtol
-        self._atol = atol
+    def __init__(self, prj, spec_file):
+        # type: (BagProject, str) -> None
+        self.prj = prj
+        self._specs = None
+        with open(spec_file, 'r') as f:
+            self._specs = yaml.load(f)
+
+        self._swp_var_list = sorted(self._specs['sweep_params'].keys())
 
     @property
-    def prj(self):
-        """the BagProject instance."""
-        return self._prj
+    def specs(self):
+        # type: () -> Dict[str, Any]
+        """Return the specification dictionary."""
+        return self._specs
 
     @property
-    def output_list(self):
-        """Returns the list of output names."""
-        return self._output_list
+    def swp_var_list(self):
+        # type: () -> List[str]
+        return self._swp_var_list
 
     @abc.abstractmethod
-    def create_schematic_design(self, constants, attrs, **kwargs):
-        """Create a new DesignModule with the given parameters.
-
-        Parameters
-        ----------
-        constants : dict[str, any]
-            simulation constants dictionary.
-        attrs : dict[str, any]
-            attributes dictionary.
-        kwargs : dict[str, any]
-            additional schematic parameters.
-
-        Returns
-        -------
-        dsn : bag.design.Module
-            the DesignModule with the given transistor parameters.
-        """
-        return None
+    def get_sch_lay_params(self, var_list, val_list):
+        # type: (List[str], List[Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]
+        """Returns the schematic and layout dictionary from the given sweep parameter values."""
+        return {}, {}
 
     @abc.abstractmethod
-    def create_layout(self, temp_db, lib_name, cell_name, layout_params, **kwargs):
-        """Create layout with the given parameters.
-
-        Parameters
-        ----------
-        temp_db : bag.layout.template.TemplateDB
-            the TemplateDB instance used to create templates.
-        lib_name : str
-            library to save the layout.
-        cell_name : str
-            layout cell name.
-        layout_params : dict[str, any]
-            the layout parameters dictionary.
-        kwargs : dict[str, any]
-            additional parameters needed to create layout.
-        """
+    def configure_tb(self, tb_type, tb, var_list, val_list):
+        # type: (str, Testbench, List[str], List[Any]) -> None
+        """Setup the testbench with the given sweep parameter values."""
         pass
 
-    @abc.abstractmethod
-    def setup_testbench(self, dut_lib, dut_cell, impl_lib, env_list, constants, sweep_params, extracted):
-        """Create and setup the characterization testbench.
+    def make_tdb(self):
+        # type: () -> TemplateDB
+        """Create and return a new TemplateDB object."""
+        target_lib = self.specs['impl_lib']
+        grid_specs = self.specs['routing_grid']
+        layers = grid_specs['layers']
+        spaces = grid_specs['spaces']
+        widths = grid_specs['widths']
+        bot_dir = grid_specs['bot_dir']
 
-        Parameters
-        ----------
-        dut_lib : str
-            the device-under-test library name.
-        dut_cell : str
-            the device-under-test cell name.
-        impl_lib : str
-            library to put the created testbench in.
-        env_list : list[str]
-            a list of simulation environments to characterize.
-        constants : dict[str, any]
-            simulation constants.
-        sweep_params : dict[str, any]
-            the sweep parameters dictionary, the values are (<start>, <stop>, <num_points>).
-        extracted : bool
-            True to run extracted simulation.
+        routing_grid = RoutingGrid(self.prj.tech_info, layers, spaces, widths, bot_dir)
+        tdb = TemplateDB('template_libs.def', routing_grid, target_lib, use_cybagoa=True)
+        return tdb
 
-        Returns
-        -------
-        tb : bag.core.Testbench
-            the resulting testbench object.
+    def create_dut_sch(self, sch_params, dsn_cell_name):
+        # type: (Dict[str, Any], str) -> None
+        """Create a new DUT schematic."""
+        dut_lib = self.specs['dut_lib']
+        dut_cell = self.specs['dut_cell']
+        impl_lib = self.specs['impl_lib']
+
+        dsn = self.prj.create_design_module(dut_lib, dut_cell)
+        dsn.design(**sch_params)
+        dsn.implement_design(impl_lib, top_cell_name=dsn_cell_name, erase=True)
+
+    def create_tb_sch(self, tb_type, dsn_cell_name, tb_cell_name):
+        # type: (str, str, str) -> None
+        """Create a new testbench schematic of the given type with the given DUT and testbench cell name."""
+        impl_lib = self.specs['impl_lib']
+        tb_specs = self.specs[tb_type]
+        tb_lib = tb_specs['tb_lib']
+        tb_cell = tb_specs['tb_cell']
+
+        tb_sch = self.prj.create_design_module(tb_lib, tb_cell)
+        tb_sch.design(dut_lib=impl_lib, dut_cell=dsn_cell_name)
+        tb_sch.implement_design(impl_lib, top_cell_name=tb_cell_name, erase=True)
+
+    def create_layout(self, lay_params, cell_name, temp_db):
+        # type: (Dict[str, Any], str, TemplateDB) -> None
+        """Create the DUT layout."""
+
+        cls_package = self.specs['layout_package']
+        cls_name = self.specs['layout_class']
+
+        lay_module = importlib.import_module(cls_package)
+        temp_cls = getattr(lay_module, cls_name)
+
+        temp_list = [temp_db.new_template(params=lay_params, temp_cls=temp_cls, debug=False), ]
+        temp_db.batch_layout(self.prj, temp_list, [cell_name])
+
+    @classmethod
+    def get_instance_name(cls, name_base, var_list, combo_list):
+        # type: (str, List[str], List[Any]) -> str
+        """Generate cell names based on sweep parameter values."""
+        suffix = ''
+        for var, val in zip(var_list, combo_list):
+            if isinstance(val, str):
+                suffix += '_%s_%s' % (var, val)
+            elif isinstance(val, int):
+                suffix += '_%s_%d' % (var, val)
+            elif isinstance(val, float):
+                suffix += '_%s_%s' % (var, float_to_si_string(val))
+            else:
+                raise ValueError('Unsupported parameter type: %s' % (type(val)))
+
+        return name_base + suffix
+
+    def test_layout(self, gen_sch=True):
+        # type: (bool) -> None
+        """Create a test schematic and layout for debugging purposes"""
+
+        sweep_params = self.specs['sweep_params']
+        dsn_name = self.specs['dsn_name_base'] + '_TEST'
+
+        val_list = [sweep_params[key][0] for key in self.swp_var_list]
+        sch_params, lay_params = self.get_sch_lay_params(self.swp_var_list, val_list)
+
+        temp_db = self.make_tdb()
+        if gen_sch:
+            self.create_dut_sch(sch_params, dsn_name)
+        self.create_layout(lay_params, dsn_name, temp_db)
+
+    def run_lvs_rcx(self, tb_type=''):
+        # type: (str) -> None
+        """Run LVS/RCX, and simulate testbench if a testbench type is given."""
+        impl_lib = self.specs['impl_lib']
+        dsn_name_base = self.specs['dsn_name_base']
+        dsn_info_fname = self.specs['dsn_info_file']
+        rcx_params = self.specs.get('rcx_params', {})
+        swp_par_dict = self.specs['sweep_params']
+
+        temp_db = self.make_tdb()
+
+        # get sweep parameters
+        var_list = self.swp_var_list
+        swp_val_list = [swp_par_dict[var] for var in var_list]
+
+        # make schematic, layout, and start LVS jobs
+        dsn_info_list = []
+        job_info_list = []
+        for combo_list in itertools.product(*swp_val_list):
+            dsn_name = self.get_instance_name(dsn_name_base, var_list, combo_list)
+            sch_params, lay_params = self.get_sch_lay_params(var_list, combo_list)
+
+            print('create schematic for %s' % dsn_name)
+            self.create_dut_sch(sch_params, dsn_name)
+            print('create layout for %s' % dsn_name)
+            self.create_layout(lay_params, dsn_name, temp_db)
+            print('start lvs job')
+            lvs_id, lvs_log = self.prj.run_lvs(impl_lib, dsn_name, block=False)
+            dsn_info_list.append(dict(
+                name=dsn_name,
+                swp_values=combo_list,
+                layout_params=lay_params,
+            ))
+            job_info_list.append([lvs_id, lvs_log])
+
+        # start RCX jobs
+        for idx in range(len(job_info_list)):
+            lvs_id, lvs_log = job_info_list[idx]
+            print('wait for %s LVS to finish' % dsn_name)
+            lvs_passed = self.prj.wait_lvs_rcx(lvs_id)
+            if not lvs_passed:
+                print('ERROR: LVS died for %s, cancelling rest of the jobs...' % dsn_name)
+                for cancel_idx in range(idx + 1, len(job_info_list)):
+                    self.prj.cancel(job_info_list[cancel_idx][0])
+                raise Exception('oops, LVS died for %s.  See LVS log file %s' % (dsn_name, lvs_log))
+            print('%s LVS passed.  start RCX' % dsn_name)
+            rcx_id, rcx_log = self.prj.run_rcx(impl_lib, dsn_name, block=False, rcx_params=rcx_params)
+            job_info_list[idx][0] = rcx_id
+            job_info_list[idx][1] = rcx_log
+
+        # finish RCX jobs.  Start testbench jobs if necessary
+        sim_info_list = []
+        for idx in range(len(job_info_list)):
+            rcx_id, rcx_log = job_info_list[idx]
+            print('wait for %s RCX to finish' % dsn_name)
+            rcx_passed = self.prj.wait_lvs_rcx(rcx_id)
+            if not rcx_passed:
+                print('ERROR: RCX died for %s, cancelling rest of the jobs...' % dsn_name)
+                for cancel_idx in range(idx + 1, len(job_info_list)):
+                    self.prj.cancel(job_info_list[cancel_idx][0])
+                raise Exception('oops, RCX died for %s.  See RCX log file %s' % (dsn_name, rcx_log))
+            print('%s RCX passed.' % dsn_name)
+
+            if tb_type:
+                dsn_info_dict = dsn_info_list[idx]
+                dsn_name = dsn_info_dict['name']
+                val_list = dsn_info_dict['swp_values']
+                sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, var_list, val_list))
+
+        if sim_info_list:
+            self.save_sim_data(tb_type, var_list, sim_info_list, dsn_info_list)
+            print('characterization done.')
+
+        # save design information
+        info_dict = dict(
+            swp_names=var_list,
+            dsn_list=dsn_info_list,
+        )
+        with open(dsn_info_fname, 'w') as f:
+            yaml.dump(info_dict, f)
+
+    def run_simulations(self, tb_type):
+        # type: (str) -> None
+        """Create the given testbench type for all DUTs and run simulations in parallel."""
+        dsn_info_file = self.specs['dsn_info_file']
+
+        dsn_info = read_yaml(dsn_info_file)
+        var_list = dsn_info['swp_names']
+        dsn_info_list = dsn_info['dsn_list']
+
+        sim_info_list = []
+        for info_dict in dsn_info_list:
+            dsn_name = info_dict['name']
+            val_list = info_dict['swp_values']
+            sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, var_list, val_list))
+
+        self.save_sim_data(tb_type, var_list, sim_info_list, dsn_info_list)
+        print('simulation done.')
+
+    def _run_tb_sim(self, tb_type, dsn_name, var_list, val_list):
+        # type: (str, str, List[str], List[Any]) -> Tuple[str, Testbench]
+        """Create testbench of the given type and run simulation."""
+        impl_lib = self.specs['impl_lib']
+        tb_specs = self.specs[tb_type]
+
+        tb_name_base = tb_specs['tb_name_base']
+
+        tb_name = self.get_instance_name(tb_name_base, var_list, val_list)
+        print('create testbench %s' % tb_name)
+        self.create_tb_sch(tb_type, dsn_name, tb_name)
+
+        tb = self.prj.configure_testbench(impl_lib, tb_name)
+
+        self.configure_tb(tb_type, tb, var_list, val_list)
+        tb.update_testbench()
+
+        print('start simulation for %s' % tb_name)
+        tb.run_simulation(sim_tag=tb_name, block=False)
+        return tb_name, tb
+
+    def save_sim_data(self, tb_type, var_list, sim_info_list, dsn_info_list):
+        # type: (str, List[str], List[Tuple[str, Testbench]], List[Dict[str, Any]]) -> None
+        """Save the simulation results to HDF5 files."""
+
+        tb_specs = self.specs[tb_type]
+        results_dir = tb_specs['results_dir']
+
+        for (tb_name, tb), dsn_info in zip(sim_info_list, dsn_info_list):
+            dsn_name = dsn_info['name']
+            val_list = dsn_info['swp_values']
+            lay_params = dsn_info['layout_params']
+            print('wait for %s simulation to finish' % tb_name)
+            save_dir = tb.wait()
+            print('%s simulation done.' % tb_name)
+            if save_dir is not None:
+                try:
+                    cur_results = load_sim_results(save_dir)
+                except:
+                    print('Error when loading results for %s' % tb_name)
+                    cur_results = None
+            else:
+                cur_results = None
+
+            if cur_results is not None:
+                info = dict(
+                    tb_name=tb_name,
+                    dsn_name=dsn_name,
+                    save_dir=save_dir,
+                    lay_params=lay_params,
+                    sweep_values=dict(zip(var_list, val_list)),
+                )
+                self.record_results(tb_type, cur_results, results_dir, tb_name, info)
+
+    def record_results(self, tb_type, data, results_dir, tb_name, info):
+        # type: (str, Dict[str, Any], str, str, Dict[str, Any]) -> None
+        """Record simulation results to file."""
+        cur_result_dir = os.path.join(results_dir, tb_name)
+        os.makedirs(cur_result_dir, exist_ok=True)
+
+        with open(os.path.join(cur_result_dir, 'info.yaml'), 'w') as info_file:
+            yaml.dump(info, info_file)
+
+        save_data_path = os.path.join(cur_result_dir, 'data.hdf5')
+        save_sim_results(data, save_data_path)
+
+
+class CircuitCharacterization(with_metaclass(abc.ABCMeta, SimulationManager)):
+    """A class that handles characterization of a circuit.
+
+    This class sweeps schematic parameters and run a testbench with a single analysis.
+    It will then save the simulation data in a format CharDB understands.
+
+    For now, this class will overwrite existing data, so please backup if you need to.
+
+    Parameters
+    ----------
+    prj : BagProject
+        the BagProject instance.
+    spec_file : str
+        the SimulationManager specification file.
+    tb_type : str
+        the testbench type name.  The parameter dictionary corresponding to this
+        testbench should have the following entries (in addition to those required
+        by Simulation Manager:
+
+        outputs :
+            list of testbench output names to save.
+        constants :
+            constant values used to identify this simulation run.
+        sweep_params:
+            a dictionary from testbench parameters to (start, stop, num_points)
+            sweep tuple.
+
+    compression : str
+        HDF5 compression method.
+    """
+
+    def __init__(self, prj, spec_file, tb_type, compression='gzip'):
+        super(CircuitCharacterization, self).__init__(prj, spec_file)
+        self._compression = compression
+        self._outputs = self.specs[tb_type]['outputs']
+        self._constants = self.specs[tb_type]['constants']
+        self._sweep_params = self.specs[tb_type]['sweep_params']
+
+    def record_results(self, tb_type, data, results_dir, tb_name, info):
+        # type: (str, Dict[str, Any], str, str, Dict[str, Any]) -> None
+        """Record simulation results to file.
+
+        Override implementation in SimulationManager in order to save data
+        in a format that CharDB understands.
         """
-        return None
+        env_list = self.specs['sim_envs']
 
-    @abc.abstractmethod
-    def get_sim_file_name(self, constants):
-        """Returns the simulation file name with the given constants.
+        os.makedirs(results_dir, exist_ok=True)
+        fname = os.path.join(results_dir, 'data.hdf5')
 
-        Parameters
-        ----------
-        constants : dict[str, any]
-            the constants dictionary.
+        attributes = info['sweep_values']
 
-        Returns
-        -------
-        fname : str
-            the simulation file name.
-        """
-        return ''
+        with h5py.File(fname, 'w') as f:
+            for key, val in self._constants.items():
+                f.attrs[key] = val
+            for key, val in self._sweep_params.items():
+                f.attrs[key] = val
+
+            for env in env_list:
+                env_result, sweep_list = self._get_env_result(data, env)
+
+                grp = f.create_group('%d' % len(f))
+                for key, val in attributes:
+                    grp.attrs[key] = val
+                # h5py workaround: explicitly store strings as encoded unicode data
+                grp.attrs['env'] = to_bytes(env)
+                grp.attrs['sweep_params'] = [to_bytes(swp) for swp in sweep_list]
+
+                for name, val in env_result.items():
+                    grp.create_dataset(name, data=val, compression=self._compression)
 
     def _get_env_result(self, sim_results, env):
         """Extract results from a given simulation environment from the given data.
@@ -235,14 +508,14 @@ class CircuitCharacterization(with_metaclass(abc.ABCMeta, object)):
         """
         if 'corner' not in sim_results:
             # no corner sweep anyways
-            results = {output: sim_results[output] for output in self.output_list}
-            sweep_list = sim_results['sweep_params'][self.output_list[0]]
+            results = {output: sim_results[output] for output in self._outputs}
+            sweep_list = sim_results['sweep_params'][self._outputs[0]]
             return results, sweep_list
 
         corner_list = sim_results['corner'].tolist()
         results = {}
         # we know all sweep order and shape is the same.
-        test_name = self.output_list[0]
+        test_name = self._outputs[0]
         sweep_list = list(sim_results['sweep_params'][test_name])
         shape = sim_results[test_name].shape
         # make numpy array slice index list
@@ -253,193 +526,10 @@ class CircuitCharacterization(with_metaclass(abc.ABCMeta, object)):
             del sweep_list[idx]
 
         # store outputs in results
-        for output in self.output_list:
+        for output in self._outputs:
             results[output] = sim_results[output][index_list]
 
         return results, sweep_list
-
-    def _get_missing_sweep_config(self, fname, constants, sweep_attrs, env_list, sweep_params):
-        """Return missing attributes/env combination in the existing file.
-
-        If the file does not exist, create an empty file.
-
-        Parameters
-        ----------
-        fname : str
-            file containing existing data.
-        constants : dict[str, any]
-            constants dictionary.
-        sweep_attrs : dict[str, list]
-            dictionary from sweep attributes to list of sweep values.
-        env_list : list[str]
-            a list of simulation environments to characterize.
-        sweep_params : dict[str, any]
-            the sweep parameters dictionary, the values are (<start>, <stop>, <num_points>).
-
-        Returns
-        -------
-        attr_list : list[str]
-            list of attribute names
-        total_combo : dict
-            a dictionary from attribute combinations to env_list, which are the missing combinations in the file.
-        """
-        attr_list = list(sweep_attrs.keys())
-        combo_iter = itertools.product(*(sweep_attrs[attr_name] for attr_name in attr_list))
-        total_combo = [(combo, list(env_list)) for combo in combo_iter]
-
-        if not os.path.exists(fname):
-            # create empty file
-            dir_name = os.path.dirname(fname)
-            if not os.path.exists(dir_name):
-                os.makedirs(dir_name)
-
-            with h5py.File(fname, 'w') as f:
-                for key, val in constants.items():
-                    f.attrs[key] = val
-                for key, val in sweep_params.items():
-                    f.attrs[key] = val
-
-            return attr_list, total_combo
-
-        # check file is consistent.
-        with h5py.File(fname, 'r') as f:
-            # check constants are consistent.
-            for key, val in constants.items():
-                if not _equal(val, f.attrs[key], self._rtol, self._atol):
-                    raise Exception('file %s constant %s = %s != %s' % (fname, key, f.attrs[key], val))
-
-            # check sweep parameters are consistent.
-            for key, val in sweep_params.items():
-                if not _equal(val, f.attrs[key], self._rtol, self._atol):
-                    raise Exception('file %s sweep %s = %s != %s' % (fname, key, f.attrs[key], val))
-
-            # delete existing attribute/env configurations.
-            for gname in f:
-                grp = f[gname]
-                key = tuple((grp.attrs[attr_name] for attr_name in attr_list))
-                cur_env = fix_string(grp.attrs['env'])
-                for combo, env_list in total_combo:
-                    if env_list:
-                        if _equal_list(combo, key, self._rtol, self._atol):
-                            # remove existing environment.
-                            try:
-                                env_list.remove(cur_env)
-                            except ValueError:
-                                pass
-                            break
-
-        return attr_list, total_combo
-
-    def _record_data(self, fname, results, attributes, env_list):
-        """Save the given simulation data to file.
-
-        Parameters
-        ----------
-        fname : str
-            simulation file name.
-        results : dict[str, any]
-            the simulation result dictionary.
-        attributes : dict[str, any]
-            the dataset attributes dictionary.
-        env_list : list[str]
-            a list of simulation environments to record.
-        """
-        if 'env' in attributes or 'sweep_params' in attributes:
-            raise ValueError('Cannot have attributes named "env" or "sweep_params".')
-
-        with h5py.File(fname, 'a') as f:
-            for env in env_list:
-                env_result, sweep_list = self._get_env_result(results, env)
-
-                grp = f.create_group('%d' % len(f))
-                for key, val in attributes.items():
-                    grp.attrs[key] = val
-                # h5py workaround: explicitly store strings as encoded unicode data
-                grp.attrs['env'] = to_bytes(env)
-                grp.attrs['sweep_params'] = [to_bytes(swp) for swp in sweep_list]
-
-                for name, val in env_result.items():
-                    grp.create_dataset(name, data=val, compression=self._compression)
-
-    def simulate(self, temp_db, constants, sweep_attrs, sweep_params, env_list,
-                 sch_kwargs=None, lay_kwargs=None, extracted=True, rcx_params=None, skip_lvs=False):
-        """Run simulations and save results to raw simulation data file.
-
-        Parameters
-        ----------
-        temp_db : bag.layout.template.TemplateDB
-            the TemplateDB instance used to create templates.
-        constants : dict[str, any]
-            constants dictionary.
-        sweep_attrs : dict[str, list]
-            dictionary from sweep attributes to list of sweep values.
-        sweep_params : dict[str, any]
-            the sweep parameters dictionary, the values are (<start>, <stop>, <num_points>).
-        env_list : list[str]
-            a list of simulation environments to characterize.
-        sch_kwargs : dict[str, any]
-            additional schematic creation parameters.
-        lay_kwargs : dict[str, any]
-            additional layout creation parameters.
-        extracted : bool
-            True to run extracted simulation.
-        rcx_params : dict[str, any]
-            Override RCX parameters.
-        skip_lvs : bool
-            True to directly run RCX and skip running LVS.  Set this to true if RCX runs LVS
-            first anyways.
-        """
-        sch_kwargs = sch_kwargs or {}
-        lay_kwargs = lay_kwargs or {}
-        rcx_params = rcx_params or {}
-
-        fname = os.path.join(self._root_dir, self.get_sim_file_name(constants))
-
-        attr_list, total_combo = self._get_missing_sweep_config(fname, constants, sweep_attrs, env_list, sweep_params)
-        print('sweeping the following:')
-        for val in total_combo:
-            print(val)
-        for attr_values, env_list in total_combo:
-            attr_table = dict(zip(attr_list, attr_values))
-
-            if env_list:
-                print('characterizing:\n %s\n' % pprint.pformat(attr_table))
-                print('creating schematic')
-                dsn = self.create_schematic_design(constants, attr_table, **sch_kwargs)
-                dsn.implement_design(self._impl_lib, top_cell_name=self._impl_cell, erase=True)
-                print('schematic done')
-
-                if extracted:
-                    print('creating layout')
-                    layout_params = dsn.get_layout_params(**self._layout_params)
-                    self.create_layout(temp_db, self._impl_lib, self._impl_cell, layout_params, **lay_kwargs)
-                    print('layout done')
-
-                    if not skip_lvs:
-                        print('running lvs')
-                        lvs_passed, lvs_log = self.prj.run_lvs(self._impl_lib, self._impl_cell)
-                        if not lvs_passed:
-                            raise Exception('oops lvs died.  See LVS log file %s' % lvs_log)
-                        print('lvs passed')
-
-                    print('running rcx')
-                    rcx_passed, rcx_log = self.prj.run_rcx(self._impl_lib, self._impl_cell,
-                                                           rcx_params=rcx_params)
-                    if not rcx_passed:
-                        raise Exception('oops rcx died.  See RCX log file %s' % rcx_log)
-                    print('rcx passed')
-
-                print('setup testbench')
-                tb = self.setup_testbench(self._impl_lib, self._impl_cell, self._impl_lib,
-                                          env_list, constants, sweep_params, extracted)
-                print('testbench done')
-
-                print('run simulation')
-                tb.run_simulation()
-                print('simulation done')
-
-                results = data.load_sim_results(tb.save_dir)
-                self._record_data(fname, results, attr_table, env_list)
 
 
 class CharDB(with_metaclass(abc.ABCMeta, object)):
