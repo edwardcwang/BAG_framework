@@ -831,6 +831,54 @@ class BagProject(object):
 
         return self.impl_db.wait_lvs_rcx(job_id, timeout=timeout, cancel_timeout=cancel_timeout)
 
+    def cancel(self, job_id, timeout=None):
+        # type: (str, Optional[float]) -> Optional[Union[bool, str]]
+        """Cancel the given LVS/RCX job.
+
+        If the process haven't started, this method prevents it from started.
+        Otherwise, we first send a SIGTERM signal to kill the process.  If
+        after ``timeout`` seconds the process is still alive, we will send a
+        SIGKILL signal.  If after another ``timeout`` seconds the process is
+        still alive, an Exception will be raised.
+
+        Parameters
+        ----------
+        job_id : str
+            the process ID to cancel.
+        timeout : float or None
+            number of seconds to wait for cancellation.  If None, use default
+            timeout.
+
+        Returns
+        -------
+        output : Optional[Union[bool, str]]
+            output of the job if it successfully terminates.
+            Otherwise, return None.
+        """
+        if self.impl_db is None:
+            raise Exception('BAG Server is not set up.')
+
+        return self.impl_db.cancel(job_id, timeout=timeout)
+
+    def done(self, job_id):
+        # type: (str) -> bool
+        """Returns True if the given process finished or is cancelled successfully.
+
+        Parameters
+        ----------
+        job_id : str
+            the process ID.
+
+        Returns
+        -------
+        done : bool
+            True if the process is cancelled or completed.
+        """
+        if self.impl_db is None:
+            raise Exception('BAG Server is not set up.')
+
+        return self.impl_db.done(job_id)
+
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
         # type: (str, str, str, Optional[str], **kwargs) -> None
