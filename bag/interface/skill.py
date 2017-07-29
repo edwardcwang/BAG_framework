@@ -647,6 +647,70 @@ class SkillInterface(DbAccess):
         else:
             return result
 
+    def cancel(self, job_id, timeout=None):
+        # type: (str, Optional[float]) -> Optional[Union[bool, str]]
+        """Cancel the given LVS/RCX job.
+
+        If the process haven't started, this method prevents it from started.
+        Otherwise, we first send a SIGTERM signal to kill the process.  If
+        after ``timeout`` seconds the process is still alive, we will send a
+        SIGKILL signal.  If after another ``timeout`` seconds the process is
+        still alive, an Exception will be raised.
+
+        Parameters
+        ----------
+        job_id : str
+            the process ID to cancel.
+        timeout : float or None
+            number of seconds to wait for cancellation.  If None, use default
+            timeout.
+
+        Returns
+        -------
+        output : Optional[Union[bool, str]]
+            output of the job if it successfully terminates.
+            Otherwise, return None.
+        """
+        if self.checker is None:
+            raise Exception('LVS/RCX is disabled.')
+
+        result = self.checker.cancel(job_id, timeout=timeout)
+        rcx_job_params = self._rcx_jobs.pop(job_id, None)
+        if rcx_job_params is None:
+            return result
+
+        # If RCX job, we may need to create schematic from netlist.
+        if rcx_job_params['create_schematic']:
+            if result is None:
+                return False
+            if result:
+                lib_name = rcx_job_params['lib_name']
+                cell_name = rcx_job_params['cell_name']
+                # create schematic only if netlist name is not empty.
+                self.create_schematic_from_netlist(result, lib_name, cell_name)
+            return True
+        else:
+            return result
+
+    def done(self, proc_id):
+        # type: (str) -> bool
+        """Returns True if the given process finished or is cancelled successfully.
+
+        Parameters
+        ----------
+        proc_id : str
+            the process ID.
+
+        Returns
+        -------
+        done : bool
+            True if the process is cancelled or completed.
+        """
+        if self.checker is None:
+            raise Exception('LVS/RCX is disabled.')
+
+        return self.checker.done(proc_id)
+
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
         # type: (str, str, str, Optional[str], **kwargs) -> None

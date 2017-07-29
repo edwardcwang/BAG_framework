@@ -601,3 +601,45 @@ class Calibre(Checker):
         """
         result, log_file = self._manager.wait(job_id, timeout=timeout, cancel_timeout=cancel_timeout)
         return result
+
+    def cancel(self, job_id, timeout=None):
+        # type: (str, Optional[float]) -> Optional[Union[bool, str]]
+        """Cancel the given LVS/RCX job.
+
+        If the process haven't started, this method prevents it from started.
+        Otherwise, we first send a SIGTERM signal to kill the process.  If
+        after ``timeout`` seconds the process is still alive, we will send a
+        SIGKILL signal.  If after another ``timeout`` seconds the process is
+        still alive, an Exception will be raised.
+
+        Parameters
+        ----------
+        job_id : str
+            the process ID to cancel.
+        timeout : float or None
+            number of seconds to wait for cancellation.  If None, use default
+            timeout.
+
+        Returns
+        -------
+        output : Optional[Union[bool, str]]
+            output of the job if it successfully terminates.
+            Otherwise, return None.
+        """
+        return self._manager.cancel(job_id, timeout=timeout)
+
+    def done(self, proc_id):
+        # type: (str) -> bool
+        """Returns True if the given process finished or is cancelled successfully.
+
+        Parameters
+        ----------
+        proc_id : str
+            the process ID.
+
+        Returns
+        -------
+        done : bool
+            True if the process is cancelled or completed.
+        """
+        return self._manager.done(proc_id)
