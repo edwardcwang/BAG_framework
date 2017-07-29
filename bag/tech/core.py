@@ -34,7 +34,7 @@ import os
 import abc
 import itertools
 import importlib
-from typing import List, Union, Tuple, Dict, Any, Optional, Set
+from typing import List, Union, Tuple, Dict, Any, Optional, Set, Iterable
 
 import yaml
 import numpy as np
@@ -45,7 +45,7 @@ from bag import float_to_si_string
 from bag.core import BagProject, Testbench
 from bag.layout.routing import RoutingGrid
 from bag.layout.template import TemplateDB
-from bag.data import load_sim_results, save_sim_results
+from bag.data import load_sim_results, save_sim_results, load_sim_file
 from ..math.interpolate import interpolate_grid
 from bag.math.dfun import VectorDiffFunction, DiffFunction
 from ..mdao.core import GroupBuilder
@@ -157,16 +157,26 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         return self._swp_var_list
 
     @abc.abstractmethod
-    def get_sch_lay_params(self, var_list, val_list):
-        # type: (List[str], List[Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]
+    def get_sch_lay_params(self, val_list):
+        # type: (Tuple[Any, ...]) -> Tuple[Dict[str, Any], Dict[str, Any]]
         """Returns the schematic and layout dictionary from the given sweep parameter values."""
         return {}, {}
 
     @abc.abstractmethod
-    def configure_tb(self, tb_type, tb, var_list, val_list):
-        # type: (str, Testbench, List[str], List[Any]) -> None
+    def configure_tb(self, tb_type, tb, val_list):
+        # type: (str, Testbench, Tuple[Any, ...]) -> None
         """Setup the testbench with the given sweep parameter values."""
         pass
+
+    def get_combinations_iter(self):
+        # type: () -> Iterable[Tuple[Any, ...]]
+        """Returns an iterator of schematic parameter combinations we sweep over."""
+
+        swp_par_dict = self.specs['sweep_params']
+        var_list = self.swp_var_list
+        swp_val_list = [swp_par_dict[var] for var in var_list]
+
+        return itertools.product(*swp_val_list)
 
     def make_tdb(self):
         # type: () -> TemplateDB
@@ -218,12 +228,11 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         temp_list = [temp_db.new_template(params=lay_params, temp_cls=temp_cls, debug=False), ]
         temp_db.batch_layout(self.prj, temp_list, [cell_name])
 
-    @classmethod
-    def get_instance_name(cls, name_base, var_list, combo_list):
-        # type: (str, List[str], List[Any]) -> str
+    def get_instance_name(self, name_base, combo_list):
+        # type: (str, Tuple[Any, ...]) -> str
         """Generate cell names based on sweep parameter values."""
         suffix = ''
-        for var, val in zip(var_list, combo_list):
+        for var, val in zip(self.swp_var_list, combo_list):
             if isinstance(val, str):
                 suffix += '_%s_%s' % (var, val)
             elif isinstance(val, int):
@@ -242,8 +251,8 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         sweep_params = self.specs['sweep_params']
         dsn_name = self.specs['dsn_name_base'] + '_TEST'
 
-        val_list = [sweep_params[key][0] for key in self.swp_var_list]
-        sch_params, lay_params = self.get_sch_lay_params(self.swp_var_list, val_list)
+        val_list = tuple((sweep_params[key][0] for key in self.swp_var_list))
+        sch_params, lay_params = self.get_sch_lay_params(val_list)
 
         temp_db = self.make_tdb()
         if gen_sch:
@@ -257,20 +266,18 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         dsn_name_base = self.specs['dsn_name_base']
         dsn_info_fname = self.specs['dsn_info_file']
         rcx_params = self.specs.get('rcx_params', {})
-        swp_par_dict = self.specs['sweep_params']
 
         temp_db = self.make_tdb()
 
         # get sweep parameters
         var_list = self.swp_var_list
-        swp_val_list = [swp_par_dict[var] for var in var_list]
 
         # make schematic, layout, and start LVS jobs
         dsn_info_list = []
         job_info_list = []
-        for combo_list in itertools.product(*swp_val_list):
-            dsn_name = self.get_instance_name(dsn_name_base, var_list, combo_list)
-            sch_params, lay_params = self.get_sch_lay_params(var_list, combo_list)
+        for combo_list in self.get_combinations_iter():
+            dsn_name = self.get_instance_name(dsn_name_base, combo_list)
+            sch_params, lay_params = self.get_sch_lay_params(combo_list)
 
             print('create schematic for %s' % dsn_name)
             self.create_dut_sch(sch_params, dsn_name)
@@ -317,10 +324,10 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
                 dsn_info_dict = dsn_info_list[idx]
                 dsn_name = dsn_info_dict['name']
                 val_list = dsn_info_dict['swp_values']
-                sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, var_list, val_list))
+                sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, val_list))
 
         if sim_info_list:
-            self.save_sim_data(tb_type, var_list, sim_info_list, dsn_info_list)
+            self.save_sim_data(tb_type, sim_info_list, dsn_info_list)
             print('characterization done.')
 
         # save design information
@@ -337,41 +344,40 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         dsn_info_file = self.specs['dsn_info_file']
 
         dsn_info = read_yaml(dsn_info_file)
-        var_list = dsn_info['swp_names']
         dsn_info_list = dsn_info['dsn_list']
 
         sim_info_list = []
         for info_dict in dsn_info_list:
             dsn_name = info_dict['name']
             val_list = info_dict['swp_values']
-            sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, var_list, val_list))
+            sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, val_list))
 
-        self.save_sim_data(tb_type, var_list, sim_info_list, dsn_info_list)
+        self.save_sim_data(tb_type, sim_info_list, dsn_info_list)
         print('simulation done.')
 
-    def _run_tb_sim(self, tb_type, dsn_name, var_list, val_list):
-        # type: (str, str, List[str], List[Any]) -> Tuple[str, Testbench]
+    def _run_tb_sim(self, tb_type, dsn_name, val_list):
+        # type: (str, str, Tuple[Any, ...]) -> Tuple[str, Testbench]
         """Create testbench of the given type and run simulation."""
         impl_lib = self.specs['impl_lib']
         tb_specs = self.specs[tb_type]
 
         tb_name_base = tb_specs['tb_name_base']
 
-        tb_name = self.get_instance_name(tb_name_base, var_list, val_list)
+        tb_name = self.get_instance_name(tb_name_base, val_list)
         print('create testbench %s' % tb_name)
         self.create_tb_sch(tb_type, dsn_name, tb_name)
 
         tb = self.prj.configure_testbench(impl_lib, tb_name)
 
-        self.configure_tb(tb_type, tb, var_list, val_list)
+        self.configure_tb(tb_type, tb, val_list)
         tb.update_testbench()
 
         print('start simulation for %s' % tb_name)
         tb.run_simulation(sim_tag=tb_name, block=False)
         return tb_name, tb
 
-    def save_sim_data(self, tb_type, var_list, sim_info_list, dsn_info_list):
-        # type: (str, List[str], List[Tuple[str, Testbench]], List[Dict[str, Any]]) -> None
+    def save_sim_data(self, tb_type, sim_info_list, dsn_info_list):
+        # type: (str, List[Tuple[str, Testbench]], List[Dict[str, Any]]) -> None
         """Save the simulation results to HDF5 files."""
 
         tb_specs = self.specs[tb_type]
@@ -399,7 +405,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
                     dsn_name=dsn_name,
                     save_dir=save_dir,
                     lay_params=lay_params,
-                    sweep_values=dict(zip(var_list, val_list)),
+                    sweep_values=dict(zip(self.swp_var_list, val_list)),
                 )
                 self.record_results(tb_type, cur_results, results_dir, tb_name, info)
 
@@ -414,6 +420,21 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
         save_data_path = os.path.join(cur_result_dir, 'data.hdf5')
         save_sim_results(data, save_data_path)
+
+    def get_sim_results(self, tb_type, val_list):
+        # type: (str, Tuple[Any, ...]) -> Tuple[Dict[str, Any], Dict[str, Any]]
+        """Return simulation results corresponding to the given schematic parameters."""
+        tb_specs = self.specs[tb_type]
+        tb_name_base = tb_specs['tb_name_base']
+
+        tb_name = self.get_instance_name(tb_name_base, val_list)
+        results_dir = os.path.join(tb_specs['results_dir'], tb_name)
+
+        info_fname = os.path.join(results_dir, 'info.yaml')
+        info = read_yaml(info_fname)
+        data_fname = os.path.join(results_dir, 'data.hdf5')
+        results = load_sim_file(data_fname)
+        return info, results
 
 
 class CircuitCharacterization(with_metaclass(abc.ABCMeta, SimulationManager)):
