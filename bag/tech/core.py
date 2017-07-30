@@ -49,7 +49,7 @@ from bag.data import load_sim_results, save_sim_results, load_sim_file
 from ..math.interpolate import interpolate_grid
 from bag.math.dfun import VectorDiffFunction, DiffFunction
 from ..mdao.core import GroupBuilder
-from ..io import fix_string, to_bytes, read_yaml
+from ..io import fix_string, to_bytes, read_yaml, open_file
 
 
 def _equal(a, b, rtol, atol):
@@ -114,14 +114,14 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
             a dictionary of schematic parameters to sweep and their values.
         dsn_name_base :
             base cell name for generated DUT instances.
-        dsn_info_file :
-            generated DUT instances information YAML file name.
         sim_envs :
             list of simulation environment names.
         routing_grid :
             the Layout RoutingGrid specification.
         rcx_params :
             RCX parameters dictionary.  Optional.
+        root_dir :
+            directory to save all simulation results in.
 
         <tb_type> :
             parameters for testbench <tb_type>.  Contains the following entries:
@@ -132,18 +132,28 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
                 testbench cell name.
             tb_name_base :
                 base cell name for generated testbench schematics.
-            results_dir :
-                simulation results save directory.
     """
 
     def __init__(self, prj, spec_file):
         # type: (BagProject, str) -> None
         self.prj = prj
         self._specs = None
-        with open(spec_file, 'r') as f:
-            self._specs = yaml.load(f)
+        self._specs = read_yaml(spec_file)
 
-        self._swp_var_list = sorted(self._specs['sweep_params'].keys())
+        self._swp_var_list = tuple(sorted(self._specs['sweep_params'].keys()))
+
+        # save specifications to file
+        root_dir = self._specs['root_dir']
+        os.makedirs(root_dir, exist_ok=True)
+        save_spec_file = os.path.join(root_dir, 'specs.yaml')
+        with open_file(save_spec_file, 'w') as f:
+            yaml.dump(self._specs, f)
+
+    @classmethod
+    def load_simulation_state(cls, prj, root_dir):
+        # type: (BagProject, str) -> SimulationManager
+        """Create the SimulationManager instance corresponding to data in the given directory."""
+        return cls(prj, os.path.join(root_dir, 'specs.yaml'))
 
     @property
     def specs(self):
@@ -153,7 +163,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
     @property
     def swp_var_list(self):
-        # type: () -> List[str]
+        # type: () -> Tuple[str, ...]
         return self._swp_var_list
 
     @abc.abstractmethod
@@ -173,10 +183,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         """Returns an iterator of schematic parameter combinations we sweep over."""
 
         swp_par_dict = self.specs['sweep_params']
-        var_list = self.swp_var_list
-        swp_val_list = [swp_par_dict[var] for var in var_list]
-
-        return itertools.product(*swp_val_list)
+        return itertools.product(*(swp_par_dict[var] for var in self.swp_var_list))
 
     def make_tdb(self):
         # type: () -> TemplateDB
@@ -264,13 +271,9 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         """Run LVS/RCX, and simulate testbench if a testbench type is given."""
         impl_lib = self.specs['impl_lib']
         dsn_name_base = self.specs['dsn_name_base']
-        dsn_info_fname = self.specs['dsn_info_file']
         rcx_params = self.specs.get('rcx_params', {})
 
         temp_db = self.make_tdb()
-
-        # get sweep parameters
-        var_list = self.swp_var_list
 
         # make schematic, layout, and start LVS jobs
         dsn_info_list = []
@@ -285,11 +288,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
             self.create_layout(lay_params, dsn_name, temp_db)
             print('start lvs job')
             lvs_id, lvs_log = self.prj.run_lvs(impl_lib, dsn_name, block=False)
-            dsn_info_list.append(dict(
-                name=dsn_name,
-                swp_values=combo_list,
-                layout_params=lay_params,
-            ))
+            dsn_info_list.append((dsn_name, combo_list))
             job_info_list.append([lvs_id, lvs_log])
 
         # start RCX jobs
@@ -321,35 +320,23 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
             print('%s RCX passed.' % dsn_name)
 
             if tb_type:
-                dsn_info_dict = dsn_info_list[idx]
-                dsn_name = dsn_info_dict['name']
-                val_list = dsn_info_dict['swp_values']
+                dsn_name, val_list = dsn_info_list[idx]
                 sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, val_list))
 
         if sim_info_list:
             self.save_sim_data(tb_type, sim_info_list, dsn_info_list)
             print('characterization done.')
 
-        # save design information
-        info_dict = dict(
-            swp_names=var_list,
-            dsn_list=dsn_info_list,
-        )
-        with open(dsn_info_fname, 'w') as f:
-            yaml.dump(info_dict, f)
-
     def run_simulations(self, tb_type):
         # type: (str) -> None
         """Create the given testbench type for all DUTs and run simulations in parallel."""
-        dsn_info_file = self.specs['dsn_info_file']
+        dsn_name_base = self.specs['dsn_name_base']
 
-        dsn_info = read_yaml(dsn_info_file)
-        dsn_info_list = dsn_info['dsn_list']
-
+        dsn_info_list = []
         sim_info_list = []
-        for info_dict in dsn_info_list:
-            dsn_name = info_dict['name']
-            val_list = info_dict['swp_values']
+        for val_list in self.get_combinations_iter():
+            dsn_name = self.get_instance_name(dsn_name_base, val_list)
+            dsn_info_list.append((dsn_name, val_list))
             sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, val_list))
 
         self.save_sim_data(tb_type, sim_info_list, dsn_info_list)
@@ -377,10 +364,9 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         return tb_name, tb
 
     def save_sim_data(self, tb_type, sim_info_list, dsn_info_list):
-        # type: (str, List[Tuple[str, Testbench]], List[Dict[str, Any]]) -> None
+        # type: (str, List[Tuple[str, Testbench]], List[Tuple[str, Tuple[Any, ...]]]) -> None
         """Save the simulation results to HDF5 files."""
-        for (tb_name, tb), dsn_info in zip(sim_info_list, dsn_info_list):
-            val_list = dsn_info['swp_values']
+        for (tb_name, tb), (_, val_list) in zip(sim_info_list, dsn_info_list):
             print('wait for %s simulation to finish' % tb_name)
             save_dir = tb.wait()
             print('%s simulation done.' % tb_name)
@@ -399,10 +385,12 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def record_results(self, data, tb_type, val_list):
         # type: (Dict[str, Any], str, Tuple[Any, ...]) -> None
         """Record simulation results to file."""
+        root_dir = self.specs['root_dir']
         tb_specs = self.specs[tb_type]
-        results_dir = tb_specs['results_dir']
+
         tb_name_base = tb_specs['tb_name_base']
         tb_name = self.get_instance_name(tb_name_base, val_list)
+        results_dir = os.path.join(root_dir, tb_type)
 
         os.makedirs(results_dir, exist_ok=True)
         save_data_path = os.path.join(results_dir, '%s.hdf5' % tb_name)
@@ -411,11 +399,14 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def get_sim_results(self, tb_type, val_list):
         # type: (str, Tuple[Any, ...]) -> Dict[str, Any]
         """Return simulation results corresponding to the given schematic parameters."""
+        root_dir = self.specs['root_dir']
         tb_specs = self.specs[tb_type]
-        tb_name_base = tb_specs['tb_name_base']
 
+        tb_name_base = tb_specs['tb_name_base']
         tb_name = self.get_instance_name(tb_name_base, val_list)
-        data_fname = os.path.join(tb_specs['results_dir'], '%s.hdf5' % tb_name)
+        results_dir = os.path.join(root_dir, tb_type)
+
+        data_fname = os.path.join(results_dir, '%s.hdf5' % tb_name)
         results = load_sim_file(data_fname)
         return results
 

@@ -59,7 +59,7 @@ def open_file(fname, mode):
         a file objects that reads/writes string with the BAG system encoding.
     """
     if mode != 'r' and mode != 'w' and mode != 'a':
-        raise ValueError("Only supports 'r' or 'w' mode.")
+        raise ValueError("Only supports 'r', 'w', or 'a' mode.")
     return open(fname, mode, encoding=bag_encoding, errors=bag_codec_error)
 
 
