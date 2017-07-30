@@ -379,14 +379,8 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def save_sim_data(self, tb_type, sim_info_list, dsn_info_list):
         # type: (str, List[Tuple[str, Testbench]], List[Dict[str, Any]]) -> None
         """Save the simulation results to HDF5 files."""
-
-        tb_specs = self.specs[tb_type]
-        results_dir = tb_specs['results_dir']
-
         for (tb_name, tb), dsn_info in zip(sim_info_list, dsn_info_list):
-            dsn_name = dsn_info['name']
             val_list = dsn_info['swp_values']
-            lay_params = dsn_info['layout_params']
             print('wait for %s simulation to finish' % tb_name)
             save_dir = tb.wait()
             print('%s simulation done.' % tb_name)
@@ -400,41 +394,30 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
                 cur_results = None
 
             if cur_results is not None:
-                info = dict(
-                    tb_name=tb_name,
-                    dsn_name=dsn_name,
-                    save_dir=save_dir,
-                    lay_params=lay_params,
-                    sweep_values=dict(zip(self.swp_var_list, val_list)),
-                )
-                self.record_results(tb_type, cur_results, results_dir, tb_name, info)
+                self.record_results(cur_results, tb_type, val_list)
 
-    def record_results(self, tb_type, data, results_dir, tb_name, info):
-        # type: (str, Dict[str, Any], str, str, Dict[str, Any]) -> None
+    def record_results(self, data, tb_type, val_list):
+        # type: (Dict[str, Any], str, Tuple[Any, ...]) -> None
         """Record simulation results to file."""
-        cur_result_dir = os.path.join(results_dir, tb_name)
-        os.makedirs(cur_result_dir, exist_ok=True)
+        tb_specs = self.specs[tb_type]
+        results_dir = tb_specs['results_dir']
+        tb_name_base = tb_specs['tb_name_base']
+        tb_name = self.get_instance_name(tb_name_base, val_list)
 
-        with open(os.path.join(cur_result_dir, 'info.yaml'), 'w') as info_file:
-            yaml.dump(info, info_file)
-
-        save_data_path = os.path.join(cur_result_dir, 'data.hdf5')
+        os.makedirs(results_dir, exist_ok=True)
+        save_data_path = os.path.join(results_dir, '%s.hdf5' % tb_name)
         save_sim_results(data, save_data_path)
 
     def get_sim_results(self, tb_type, val_list):
-        # type: (str, Tuple[Any, ...]) -> Tuple[Dict[str, Any], Dict[str, Any]]
+        # type: (str, Tuple[Any, ...]) -> Dict[str, Any]
         """Return simulation results corresponding to the given schematic parameters."""
         tb_specs = self.specs[tb_type]
         tb_name_base = tb_specs['tb_name_base']
 
         tb_name = self.get_instance_name(tb_name_base, val_list)
-        results_dir = os.path.join(tb_specs['results_dir'], tb_name)
-
-        info_fname = os.path.join(results_dir, 'info.yaml')
-        info = read_yaml(info_fname)
-        data_fname = os.path.join(results_dir, 'data.hdf5')
+        data_fname = os.path.join(tb_specs['results_dir'], '%s.hdf5' % tb_name)
         results = load_sim_file(data_fname)
-        return info, results
+        return results
 
 
 class CircuitCharacterization(with_metaclass(abc.ABCMeta, SimulationManager)):
@@ -475,8 +458,8 @@ class CircuitCharacterization(with_metaclass(abc.ABCMeta, SimulationManager)):
         self._constants = self.specs[tb_type]['constants']
         self._sweep_params = self.specs[tb_type]['sweep_params']
 
-    def record_results(self, tb_type, data, results_dir, tb_name, info):
-        # type: (str, Dict[str, Any], str, str, Dict[str, Any]) -> None
+    def record_results(self, data, tb_type, val_list):
+        # type: (Dict[str, Any], str, Tuple[Any, ...]) -> None
         """Record simulation results to file.
 
         Override implementation in SimulationManager in order to save data
@@ -484,10 +467,11 @@ class CircuitCharacterization(with_metaclass(abc.ABCMeta, SimulationManager)):
         """
         env_list = self.specs['sim_envs']
 
+        tb_specs = self.specs[tb_type]
+        results_dir = tb_specs['results_dir']
+
         os.makedirs(results_dir, exist_ok=True)
         fname = os.path.join(results_dir, 'data.hdf5')
-
-        attributes = info['sweep_values']
 
         with h5py.File(fname, 'w') as f:
             for key, val in self._constants.items():
@@ -499,7 +483,7 @@ class CircuitCharacterization(with_metaclass(abc.ABCMeta, SimulationManager)):
                 env_result, sweep_list = self._get_env_result(data, env)
 
                 grp = f.create_group('%d' % len(f))
-                for key, val in attributes:
+                for key, val in zip(self.swp_var_list, val_list):
                     grp.attrs[key] = val
                 # h5py workaround: explicitly store strings as encoded unicode data
                 grp.attrs['env'] = to_bytes(env)
@@ -507,6 +491,11 @@ class CircuitCharacterization(with_metaclass(abc.ABCMeta, SimulationManager)):
 
                 for name, val in env_result.items():
                     grp.create_dataset(name, data=val, compression=self._compression)
+
+    def get_sim_results(self, tb_type, val_list):
+        # type: (str, Tuple[Any, ...]) -> Dict[str, Any]
+        # TODO: implement this.
+        raise NotImplementedError('not implemented yet.')
 
     def _get_env_result(self, sim_results, env):
         """Extract results from a given simulation environment from the given data.
