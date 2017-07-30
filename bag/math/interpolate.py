@@ -29,7 +29,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
 import scipy.interpolate as interp
@@ -115,7 +115,7 @@ def interpolate_grid(scale_list, values, method='spline',
 
 
 class LinearInterpolator(DiffFunction):
-    """A linear interpolator on a regular grid for 2 or more dimensions.
+    """A linear interpolator on a regular grid for arbitrary dimensions.
 
     This class is backed by scipy.interpolate.RegularGridInterpolator.
     Derivatives are calculated using finite difference.
@@ -136,7 +136,8 @@ class LinearInterpolator(DiffFunction):
         # type: (List[np.multiarray.ndarray], np.multiarray.ndarray, List[float], bool) -> None
         ndim = len(values.shape)
         DiffFunction.__init__(self, ndim, delta_list=delta_list)
-        # noinspection PyTypeChecker
+        self._points = points
+        self._extrapolate = extrapolate
         self.fun = interp.RegularGridInterpolator(points, values, method='linear',
                                                   bounds_error=not extrapolate,
                                                   fill_value=None)
@@ -155,6 +156,118 @@ class LinearInterpolator(DiffFunction):
             The interpolated values at the given coordinates.
         """
         return self.fun(xi)
+
+    def integrate(self, xstart, xstop, axis=-1, logx=False, logy=False):
+        # type: (float, float, int, bool, bool) -> Union[LinearInterpolator, float]
+        """Integrate away the given axis.
+
+        if logx/logy is True, that means this LinearInterpolator is actually used
+        to do linear interpolation on the logarithm of the actual data.  This method
+        will returns the integral of the actual data.
+
+        Parameters
+        ----------
+        xstart : float
+            the X start value.
+        xstop : float
+            the X stop value.
+        axis : int
+            the axis of integration.
+        logx : bool
+            True if the values on the given axis are actually the logarithm of
+            the real values.
+        logy : bool
+            True if the Y values are actually the logarithm of the real values.
+
+        Returns
+        -------
+        result : Union[LinearInterpolator, float]
+            float if this interpolator has only 1 dimension, otherwise a new
+            LinearInterpolator is returned.
+        """
+        if logx != logy:
+            raise ValueError('Currently only works for linear or log-log relationship.')
+
+        ndim = self.ndim
+        if axis < 0:
+            axis += ndim
+        if axis < 0 or axis >= ndim:
+            raise IndexError('index out of range.')
+
+        # get all input sample points we need to integrate.
+        plist = []
+        integ_x = None
+        new_points = []
+        new_deltas = []
+        for axis_idx, vec in enumerate(self._points):
+            if axis == axis_idx:
+                # find data points between xstart and xstop
+                start_idx, stop_idx = np.searchsorted(vec, [xstart, xstop])
+
+                cur_len = stop_idx - start_idx
+                if vec[start_idx] > xstart:
+                    cur_len += 1
+                    istart = 1
+                else:
+                    istart = 0
+                if vec[stop_idx - 1] < xstop:
+                    cur_len += 1
+                    istop = cur_len - 2
+                else:
+                    istop = cur_len - 1
+
+                integ_x = np.empty(cur_len)
+                integ_x[istart:istop] = vec[start_idx:stop_idx]
+                if istart != 0:
+                    integ_x[0] = xstart
+
+                if istop != (cur_len - 1):
+                    integ_x[cur_len - 1] = xstop
+
+                plist.append(integ_x)
+            else:
+                plist.append(vec)
+                new_points.append(vec)
+                new_deltas.append(self.delta_list[axis_idx])
+
+        fun_arg = np.stack(np.meshgrid(*plist, indexing='ij'), axis=-1)
+        values = self.fun(fun_arg)
+
+        if logx:
+            if axis != ndim - 1:
+                # transpose values so that broadcasting/slicing is easier
+                new_order = [idx for idx in range(ndim) if idx != axis]
+                new_order.append(axis)
+                values = np.transpose(values, axes=new_order)
+
+            # integrate given that log-log plot is piece-wise linear
+            ly1 = values[..., :-1]
+            ly2 = values[..., 1:]
+            lx1 = integ_x[:-1]
+            lx2 = integ_x[1:]
+            m = (ly2 - ly1) / (lx2 - lx1)
+
+            x1 = np.exp(lx1)
+            y1 = np.exp(ly1)
+            scale = y1 / np.power(x1, m)
+
+            log_idx = np.abs(m + 1) < 1e-6
+            log_idxb = np.invert(log_idx)
+            area = np.empty(m.shape)
+            area[log_idx] = scale[log_idx] * (lx2[log_idx] - lx1[log_idx])
+
+            mp1 = m[log_idxb] + 1
+            x2 = np.exp(lx2[log_idxb])
+            area[log_idxb] = scale[log_idxb] / mp1 * (np.power(x2, mp1) - np.power(x1[log_idxb], mp1))
+            new_values = np.sum(area, axis=-1)
+        else:
+            # just use trapezoid integration
+            new_values = np.trapz(values, x=integ_x, axis=axis)  # type: np.multiarray.ndarray
+
+        if new_points:
+            return LinearInterpolator(new_points, new_values, new_deltas, extrapolate=self._extrapolate)
+        else:
+            return new_values
 
 
 class Interpolator1D(DiffFunction):

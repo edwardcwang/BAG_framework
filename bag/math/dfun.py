@@ -57,7 +57,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
             raise ValueError('finite difference list length inconsistent.')
 
         self._ndim = ndim
-        self._delta_list = delta_list
+        self.delta_list = delta_list
 
     @property
     def ndim(self):
@@ -100,7 +100,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
         val : np.multiarray.ndarray
             The derivatives at the given coordinates.
         """
-        return self._fd(xi, j, self._delta_list[j])
+        return self._fd(xi, j, self.delta_list[j])
 
     def jacobian(self, xi):
         """Calculate the Jacobian at the given coordinates.
@@ -120,8 +120,8 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
         val : np.multiarray.ndarray
             The Jacobian matrices at the given coordinates.
         """
-        if self._delta_list:
-            return self._fd_jacobian(xi, self._delta_list)
+        if self.delta_list:
+            return self._fd_jacobian(xi, self.delta_list)
         else:
             xi = np.asarray(xi, dtype=float)
             ans = np.empty(xi.shape)
