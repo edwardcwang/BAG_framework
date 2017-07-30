@@ -81,7 +81,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
         val : np.multiarray.ndarray
             The interpolated values at the given coordinates.
         """
-        raise Exception('Not implemented')
+        raise NotImplementedError('Not implemented')
 
     def deriv(self, xi, j):
         """Calculate the derivative at the given coordinates with respect to input j.

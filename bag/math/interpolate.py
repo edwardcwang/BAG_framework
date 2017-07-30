@@ -29,6 +29,8 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
+from typing import List, Tuple
+
 import numpy as np
 import scipy.interpolate as interp
 import scipy.ndimage.interpolation as imag_interp
@@ -39,17 +41,42 @@ __author__ = 'erichang'
 __all__ = ['interpolate_grid']
 
 
+def _scales_to_points(scale_list, values, delta=1e-4):
+    # type: (List[Tuple[float, float]], np.multiarray.ndarray, delta) -> Tuple[List[np.multiarray.ndarray], List[float]]
+    """convert scale_list to list of point values and finite difference deltas."""
+
+    ndim = len(values.shape)
+    # error checking
+    if ndim == 1:
+        raise ValueError('This class only works for dimension >= 2.')
+    elif ndim != len(scale_list):
+        raise ValueError('input and output dimension mismatch.')
+
+    points = []
+    delta_list = []
+    for idx in range(ndim):
+        num_pts = values.shape[idx]  # type: int
+        if num_pts < 2:
+            raise ValueError('Every dimension must have at least 2 points.')
+        offset, scale = scale_list[idx]
+        points.append(np.linspace(offset, (num_pts - 1) * scale + offset, num_pts))
+        delta_list.append(scale * delta)
+
+    return points, delta_list
+
+
 def interpolate_grid(scale_list, values, method='spline',
                      extrapolate=False, delta=1e-4, num_extrapolate=2):
+    # type: (List[Tuple[float, float]], np.multiarray.ndarray, str, bool, float, int) -> DiffFunction
     """Interpolates multidimensional data on a regular grid.
 
     returns an Interpolator for the given dataset.
 
     Parameters
     ----------
-    scale_list : list[(float, float)]
+    scale_list : List[Tuple[float, float]]
         a list of (offset, spacing).
-    values : numpy.array
+    values : np.multiarray.ndarray
         The output data in N dimensions.  The length in each dimension must
         be at least 2.
     method : str
@@ -68,14 +95,15 @@ def interpolate_grid(scale_list, values, method='spline',
 
     Returns
     -------
-    fun : bag.math.dfun.DiffFunction
+    fun : DiffFunction
         the interpolator function.
     """
     ndim = len(values.shape)
-    if ndim == 1:
+    if method == 'linear':
+        points, delta_list = _scales_to_points(scale_list, values, delta)
+        return LinearInterpolator(points, values, delta_list, extrapolate=extrapolate)
+    elif ndim == 1:
         return Interpolator1D(scale_list, values, method=method, extrapolate=extrapolate)
-    elif method == 'linear':
-        return LinearInterpolator(scale_list, values, delta=delta, extrapolate=extrapolate)
     elif method == 'spline':
         if ndim == 2:
             return Spline2D(scale_list, values, extrapolate=extrapolate)
@@ -94,35 +122,19 @@ class LinearInterpolator(DiffFunction):
 
     Parameters
     ----------
-    scale_list : list[(float, float)]
-        a list of (offset, spacing) for each input dimension.
-    values : numpy.array
+    points : List[np.multiarray.ndarray]
+        list of points of each dimension.
+    values : np.multiarray.ndarray
         The output data in N dimensions.
+    delta_list : List[float]
+        list of finite difference step size for each axis.
     extrapolate : bool
         True to extrapolate data output of given bounds.  Defaults to False.
-    delta : float
-        the finite difference step size.  Defaults to 1e-4 (relative to a spacing of 1).
     """
 
-    def __init__(self, scale_list, values, extrapolate=False, delta=1e-4):
+    def __init__(self, points, values, delta_list, extrapolate=False):
+        # type: (List[np.multiarray.ndarray], np.multiarray.ndarray, List[float], bool) -> None
         ndim = len(values.shape)
-        # error checking
-        if ndim == 1:
-            raise ValueError('This class only works for dimension >= 2.')
-        elif ndim != len(scale_list):
-            raise ValueError('input and output dimension mismatch.')
-
-        # compute points and deltas
-        points = []
-        delta_list = []
-        for idx in range(ndim):
-            num_pts = values.shape[idx]  # type: int
-            if num_pts < 2:
-                raise ValueError('Every dimension must have at least 2 points.')
-            offset, scale = scale_list[idx]
-            points.append(np.linspace(offset, (num_pts - 1) * scale + offset, num_pts))
-            delta_list.append(scale * delta)
-
         DiffFunction.__init__(self, ndim, delta_list=delta_list)
         # noinspection PyTypeChecker
         self.fun = interp.RegularGridInterpolator(points, values, method='linear',
@@ -356,7 +368,8 @@ class MapCoordinateSpline(DiffFunction):
         self._ext = num_extrapolate
 
         # linearly extrapolate given values
-        self._extfun = LinearInterpolator([(0, 1)] * ndim, values, extrapolate=True)
+        points, delta_list = _scales_to_points(scale_list, values, delta)
+        self._extfun = LinearInterpolator(points, values, delta_list, extrapolate=True)
         self._extrapolate = extrapolate
         swp_values = []
         ext_xi_shape = []
