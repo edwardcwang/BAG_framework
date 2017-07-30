@@ -48,7 +48,7 @@ def mos_y_to_ss(sim_data, char_freq, fg, ibias):
     fg : int
         number of transistor fingers used for the Y parameter measurement.
     ibias : np.ndarray
-        the DC bias current of the transistor.
+        the DC bias current of the transistor.  Always positive.
 
     Returns
     -------
@@ -69,7 +69,7 @@ def mos_y_to_ss(sim_data, char_freq, fg, ibias):
     cdb = sim_data['y22'].imag / w - cds - cgd
     csb = sim_data['y33'].imag / w - cgs - cds
 
-    ids = ibias / fg  # type: np.ndarray
+    ibias = ibias / fg  # type: np.ndarray
     gm = gm / fg  # type: np.ndarray
     gds = gds / fg  # type: np.ndarray
     gb = gb / fg  # type: np.ndarray
@@ -81,7 +81,7 @@ def mos_y_to_ss(sim_data, char_freq, fg, ibias):
     csb = csb / fg  # type: np.ndarray
 
     return dict(
-        ids=ids,
+        ibias=ibias,
         gm=gm,
         gds=gds,
         gb=gb,
