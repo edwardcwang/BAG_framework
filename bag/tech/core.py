@@ -144,6 +144,10 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
         # save specifications to file
         root_dir = self._specs['root_dir']
+        # before saving, convert root_dir to absolute path, in this way
+        # everything will still work if the user start python from a different directory.
+        root_dir = os.path.abspath(root_dir)
+        self._specs['root_dir'] = root_dir
         os.makedirs(root_dir, exist_ok=True)
         save_spec_file = os.path.join(root_dir, 'specs.yaml')
         with open_file(save_spec_file, 'w') as f:
