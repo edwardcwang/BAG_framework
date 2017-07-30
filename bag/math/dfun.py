@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 import abc
-from typing import Union
+from typing import Union, List, Optional, Tuple
 
 import numpy as np
 from future.utils import with_metaclass
@@ -45,12 +45,13 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
     ----------
     ndim : int
         number of input dimensions.
-    delta_list : list[float] or None
+    delta_list : Optional[List[float]]
         a list of finite difference step size for each input.  If None,
         finite difference will be disabled.
     """
 
     def __init__(self, ndim, delta_list=None):
+        # type: (int, Optional[List[float]]) -> None
         # error checking
         if delta_list and len(delta_list) != ndim:
             raise ValueError('finite difference list length inconsistent.')
@@ -60,6 +61,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
 
     @property
     def ndim(self):
+        # type: () -> int
         """Number of input dimensions."""
         return self._ndim
 
@@ -76,7 +78,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
 
         Returns
         -------
-        val : numpy.array
+        val : np.multiarray.ndarray
             The interpolated values at the given coordinates.
         """
         raise Exception('Not implemented')
@@ -95,7 +97,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
 
         Returns
         -------
-        val : numpy.array
+        val : np.multiarray.ndarray
             The derivatives at the given coordinates.
         """
         return self._fd(xi, j, self._delta_list[j])
@@ -115,7 +117,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
 
         Returns
         -------
-        val : numpy.array
+        val : np.multiarray.ndarray
             The Jacobian matrices at the given coordinates.
         """
         if self._delta_list:
@@ -141,7 +143,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
 
         Returns
         -------
-        val : numpy.array
+        val : np.multiarray.ndarray
             The derivatives at the given coordinates.
         """
         if idx < 0 or idx >= self.ndim:
@@ -166,12 +168,12 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
         ----------
         xi : array_like
             The coordinates to evaluate, with shape (..., ndim)
-        delta_list : list[float]
+        delta_list : List[float]
             list of finite difference step sizes for each input.
 
         Returns
         -------
-        val : numpy.array
+        val : np.multiarray.ndarray
             The Jacobian matrices at the given coordinates.
         """
         xi = np.asarray(xi, dtype=float)
@@ -192,14 +194,14 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
         return ans
 
     def transform_input(self, amat, bmat):
-        # type: (np.ndarray, np.ndarray) -> DiffFunction
+        # type: (np.multiarray.ndarray, np.multiarray.ndarray) -> DiffFunction
         """Returns f(Ax + B), where f is this function and A, B are matrices.
 
         Parameters
         ----------
-        amat : np.ndarray
+        amat : np.multiarray.ndarray
             the input transform matrix.
-        bmat : np.ndarray
+        bmat : np.multiarray.ndarray
             the input shift matrix.
 
         Returns
@@ -210,87 +212,98 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
         return InLinTransformFunction(self, amat, bmat)
 
     def __add__(self, other):
+        # type: (Union[DiffFunction, float, int, np.multiarray.ndarray]) -> DiffFunction
         if isinstance(other, DiffFunction):
             return SumDiffFunction(self, other, f2_sgn=1.0)
         elif isinstance(other, float) or isinstance(other, int):
             return ScaleAddFunction(self, other, 1.0)
-        elif isinstance(other, np.ndarray):
+        elif isinstance(other, np.multiarray.ndarray):
             return ScaleAddFunction(self, np.asscalar(other), 1.0)
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
 
     def __radd__(self, other):
+        # type: (Union[DiffFunction, float, int, np.multiarray.ndarray]) -> DiffFunction
         return self.__add__(other)
 
     def __sub__(self, other):
-        # type: (Union[DiffFunction, float, int, np.ndarray]) -> DiffFunction
+        # type: (Union[DiffFunction, float, int, np.multiarray.ndarray]) -> DiffFunction
         if isinstance(other, DiffFunction):
             return SumDiffFunction(self, other, f2_sgn=-1.0)
         elif isinstance(other, float) or isinstance(other, int):
             return ScaleAddFunction(self, -other, 1.0)
-        elif isinstance(other, np.ndarray):
+        elif isinstance(other, np.multiarray.ndarray):
             return ScaleAddFunction(self, -np.asscalar(other), 1.0)
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
 
     def __rsub__(self, other):
+        # type: (Union[DiffFunction, float, int, np.multiarray.ndarray]) -> DiffFunction
         if isinstance(other, DiffFunction):
             return SumDiffFunction(other, self, f2_sgn=-1.0)
         elif isinstance(other, float) or isinstance(other, int):
             return ScaleAddFunction(self, other, -1.0)
-        elif isinstance(other, np.ndarray):
+        elif isinstance(other, np.multiarray.ndarray):
             return ScaleAddFunction(self, np.asscalar(other), -1.0)
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
 
     def __mul__(self, other):
+        # type: (Union[DiffFunction, float, int, np.multiarray.ndarray]) -> DiffFunction
         if isinstance(other, DiffFunction):
             return ProdFunction(self, other)
         elif isinstance(other, float) or isinstance(other, int):
             return ScaleAddFunction(self, 0.0, other)
-        elif isinstance(other, np.ndarray):
+        elif isinstance(other, np.multiarray.ndarray):
             return ScaleAddFunction(self, 0.0, np.asscalar(other))
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
 
     def __rmul__(self, other):
+        # type: (Union[DiffFunction, float, int, np.multiarray.ndarray]) -> DiffFunction
         return self.__mul__(other)
 
     def __pow__(self, other):
+        # type: (Union[float, int, np.multiarray.ndarray]) -> DiffFunction
         if isinstance(other, float) or isinstance(other, int):
             return PwrFunction(self, other, scale=1.0)
-        elif isinstance(other, np.ndarray):
+        elif isinstance(other, np.multiarray.ndarray):
             return PwrFunction(self, np.asscalar(other), scale=1.0)
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
 
     def __div__(self, other):
+        # type: (Union[DiffFunction, float, int, np.multiarray.ndarray]) -> DiffFunction
         if isinstance(other, DiffFunction):
             return DivFunction(self, other)
         elif isinstance(other, float) or isinstance(other, int):
             return ScaleAddFunction(self, 0.0, 1.0 / other)
-        elif isinstance(other, np.ndarray):
+        elif isinstance(other, np.multiarray.ndarray):
             return ScaleAddFunction(self, 0.0, 1.0 / np.asscalar(other))
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
 
     def __truediv__(self, other):
+        # type: (Union[DiffFunction, float, int, np.multiarray.ndarray]) -> DiffFunction
         return self.__div__(other)
 
     def __rdiv__(self, other):
+        # type: (Union[DiffFunction, float, int, np.multiarray.ndarray]) -> DiffFunction
         if isinstance(other, DiffFunction):
             return DivFunction(other, self)
         elif isinstance(other, float) or isinstance(other, int):
             return PwrFunction(self, -1.0, scale=other)
-        elif isinstance(other, np.ndarray):
+        elif isinstance(other, np.multiarray.ndarray):
             return PwrFunction(self, -1.0, scale=np.asscalar(other))
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
 
     def __rtruediv__(self, other):
+        # type: (Union[DiffFunction, float, int, np.multiarray.ndarray]) -> DiffFunction
         return self.__rdiv__(other)
 
     def __neg__(self):
+        # type: () -> DiffFunction
         return ScaleAddFunction(self, 0.0, -1.0)
 
 
@@ -303,13 +316,13 @@ class InLinTransformFunction(DiffFunction):
     ----------
     f1 : DiffFunction
         the parent function.
-    amat : np.ndarray
+    amat : np.multiarray.ndarray
         the input transform matrix.
-    bmat : np.ndarray
+    bmat : np.multiarray.ndarray
         the input shift matrix.
     """
     def __init__(self, f1, amat, bmat):
-        # type: (DiffFunction, np.ndarray, np.ndarray) -> None
+        # type: (DiffFunction, np.multiarray.ndarray, np.multiarray.ndarray) -> None
         if amat.shape[0] != f1.ndim or bmat.shape[0] != f1.ndim:
             raise ValueError('amat/bmat number of rows must be %d' % f1.ndim)
         if len(bmat.shape) != 1:
@@ -342,7 +355,8 @@ class InLinTransformFunction(DiffFunction):
     def jacobian(self, xi):
         farg, xi_shape = self._get_arg(xi)
         jmat = self._f1.jacobian(farg).dot(self._amat)
-        return jmat.reshape(xi_shape[:-1] + (1, self.ndim))
+        shape_trunc = xi_shape[:-1]  # type: Tuple[int, ...]
+        return jmat.reshape(shape_trunc + (1, self.ndim))
 
 
 class ScaleAddFunction(DiffFunction):
@@ -350,7 +364,7 @@ class ScaleAddFunction(DiffFunction):
 
     Parameters
     ----------
-    f1 : bag.math.dfun.DiffFunction
+    f1 : DiffFunction
         the first function.
     adder : float
         constant to add.
@@ -358,6 +372,7 @@ class ScaleAddFunction(DiffFunction):
         constant to multiply.
     """
     def __init__(self, f1, adder, scaler):
+        # type: (DiffFunction, float, float) -> None
         DiffFunction.__init__(self, f1.ndim, delta_list=None)
         self._f1 = f1
         self._adder = adder
@@ -378,14 +393,15 @@ class SumDiffFunction(DiffFunction):
 
     Parameters
     ----------
-    f1 : bag.math.dfun.DiffFunction
+    f1 : DiffFunction
         the first function.
-    f2 : bag.math.dfun.DiffFunction
+    f2 : DiffFunction
         the second function.
-    f2_sgn : float or int
+    f2_sgn : float
         1 if adding, -1 if subtracting.
     """
     def __init__(self, f1, f2, f2_sgn=1.0):
+        # type: (DiffFunction, DiffFunction, float) -> None
         if f1.ndim != f2.ndim:
             raise ValueError('functions dimension mismatch.')
         DiffFunction.__init__(self, f1.ndim, delta_list=None)
@@ -408,12 +424,13 @@ class ProdFunction(DiffFunction):
 
     Parameters
     ----------
-    f1 : bag.math.dfun.DiffFunction
+    f1 : DiffFunction
         the first function.
-    f2 : bag.math.dfun.DiffFunction
+    f2 : DiffFunction
         the second function.
     """
     def __init__(self, f1, f2):
+        # type: (DiffFunction, DiffFunction) -> None
         if f1.ndim != f2.ndim:
             raise ValueError('functions dimension mismatch.')
         DiffFunction.__init__(self, f1.ndim, delta_list=None)
@@ -439,12 +456,13 @@ class DivFunction(DiffFunction):
 
     Parameters
     ----------
-    f1 : bag.math.dfun.DiffFunction
+    f1 : DiffFunction
         the first function.
-    f2 : bag.math.dfun.DiffFunction
+    f2 : DiffFunction
         the second function.
     """
     def __init__(self, f1, f2):
+        # type: (DiffFunction, DiffFunction) -> None
         if f1.ndim != f2.ndim:
             raise ValueError('functions dimension mismatch.')
         DiffFunction.__init__(self, f1.ndim, delta_list=None)
@@ -472,7 +490,7 @@ class PwrFunction(DiffFunction):
 
     Parameters
     ----------
-    f : bag.math.dfun.DiffFunction
+    f : DiffFunction
         the DiffFunction.
     pwr : float
         the power.
@@ -480,6 +498,7 @@ class PwrFunction(DiffFunction):
         scaling factor.  Used to implement a / x.
     """
     def __init__(self, f, pwr, scale=1.0):
+        # type: (DiffFunction, float, float) -> None
         DiffFunction.__init__(self, f.ndim, delta_list=None)
         self._f = f
         self._pwr = pwr
@@ -502,11 +521,12 @@ class VectorDiffFunction(object):
 
     Parameters
     ----------
-    fun_list : list[bag.math.dfun.DiffFunction]
+    fun_list : List[DiffFunction]
         list of interpolator functions, one for each element of the output vector.
     """
 
     def __init__(self, fun_list):
+        # type: (List[DiffFunction]) -> None
         # error checking
         if not fun_list:
             raise ValueError('No interpolators are given.')
@@ -521,11 +541,13 @@ class VectorDiffFunction(object):
 
     @property
     def in_dim(self):
+        # type: () -> int
         """Input dimension number."""
         return self._in_dim
 
     @property
     def out_dim(self):
+        # type: () -> int
         """Output dimension number."""
         return self._out_dim
 
@@ -543,7 +565,8 @@ class VectorDiffFunction(object):
             The interpolated values at the given coordinates.
         """
         xi = np.asarray(xi, dtype=float)
-        ans = np.empty(xi.shape[:-1] + (self._out_dim,))
+        shape_trunc = xi.shape[:-1]  # type: Tuple[int, ...]
+        ans = np.empty(shape_trunc + (self._out_dim, ))
         for idx in range(self._out_dim):
             ans[..., idx] = self._fun_list[idx](xi)
         return ans
@@ -562,7 +585,8 @@ class VectorDiffFunction(object):
             The jacobian matrix at the given coordinates.
         """
         xi = np.asarray(xi, dtype=float)
-        ans = np.empty(xi.shape[:-1] + (self._out_dim, self._in_dim))
+        shape_trunc = xi.shape[:-1]  # type: Tuple[int, ...]
+        ans = np.empty(shape_trunc + (self._out_dim, self._in_dim))
         for m in range(self._out_dim):
             ans[..., m, :] = self._fun_list[m].jacobian(xi)
         return ans
