@@ -31,6 +31,7 @@ from builtins import *
 
 import os
 import yaml
+import time
 from typing import Optional, Union
 
 from .base import Checker
@@ -179,6 +180,13 @@ class PVS(Checker):
         """
         run_dir = os.path.join(os.path.abspath(self.lvs_run_dir), cell_name)
         data_dir = os.path.join(run_dir, 'svdb')
+        # wait 10 seconds to see if not finding directory is just a network drive problem
+        query_timeout = 10.0
+        tstart = time.time()
+        elapsed = 0.0
+        while not os.path.isdir(data_dir) and elapsed < query_timeout:
+            time.sleep(0.1)
+            elapsed = time.time() - tstart
         if not os.path.isdir(data_dir):
             raise ValueError('cannot find directory %s.  Did you run PVS first?' % data_dir)
 
