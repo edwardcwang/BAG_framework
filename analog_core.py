@@ -677,6 +677,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     def draw_mos_decap(self, mos_type, row_idx, col_idx, fg, gate_ext_mode, export_gate=False,
                        inner=False, **kwargs):
+        # type: (str, int, int, int, int, bool, bool, **kwargs) -> Dict[str, WireArray]
         """Draw decap connection."""
         # mark transistors as connected
         val = -1 if inner else 1
@@ -734,11 +735,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             return {}
 
     def draw_mos_conn(self, mos_type, row_idx, col_idx, fg, sdir, ddir, **kwargs):
+        # type: (str, int, int, int, int, int, **kwargs) -> Dict[str, WireArray]
         """Draw transistor connection.
 
         Parameters
         ----------
-        mos_type : string
+        mos_type : str
             the row type, one of 'nch', 'pch', 'ntap', or 'ptap'.
         row_idx : int
             the center row index.  0 is the bottom-most row.
@@ -754,9 +756,17 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             optional arguments for AnalogMosConn.
         Returns
         -------
-        ports : dict[str, :class:`~bag.layout.routing.WireArray`]
+        ports : Dict[str, WireArray]
             a dictionary of ports as WireArrays.  The keys are 'g', 'd', and 's'.
         """
+        # sanity checking
+        if not isinstance(fg, int):
+            raise ValueError('number of fingers must be integer.')
+        if not isinstance(row_idx, int):
+            raise ValueError('row_idx must be integer.')
+        if not isinstance(col_idx, int):
+            raise ValueError('col_idx must be integer')
+
         # mark transistors as connected
         if mos_type == 'pch':
             intv_set = self._p_intvs[row_idx]
