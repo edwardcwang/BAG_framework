@@ -29,7 +29,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Sequence
 
 import numpy as np
 import scipy.interpolate as interp
@@ -122,7 +122,7 @@ class LinearInterpolator(DiffFunction):
 
     Parameters
     ----------
-    points : List[np.multiarray.ndarray]
+    points : Sequence[np.multiarray.ndarray]
         list of points of each dimension.
     values : np.multiarray.ndarray
         The output data in N dimensions.
@@ -133,7 +133,7 @@ class LinearInterpolator(DiffFunction):
     """
 
     def __init__(self, points, values, delta_list, extrapolate=False):
-        # type: (List[np.multiarray.ndarray], np.multiarray.ndarray, List[float], bool) -> None
+        # type: (Sequence[np.multiarray.ndarray], np.multiarray.ndarray, List[float], bool) -> None
         ndim = len(values.shape)
         DiffFunction.__init__(self, ndim, delta_list=delta_list)
         self._points = points
