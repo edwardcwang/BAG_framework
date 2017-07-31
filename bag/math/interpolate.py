@@ -142,6 +142,11 @@ class LinearInterpolator(DiffFunction):
                                                   bounds_error=not extrapolate,
                                                   fill_value=None)
 
+    def get_input_points(self, idx):
+        # type: (int) -> np.multiarray.ndarray
+        """Returns the input points for the given dimension."""
+        return self._points[idx]
+
     def __call__(self, xi):
         """Interpolate at the given coordinate.
 
@@ -212,16 +217,16 @@ class LinearInterpolator(DiffFunction):
                     istart = 0
                 if vec[stop_idx - 1] < xstop:
                     cur_len += 1
-                    istop = cur_len - 2
-                else:
                     istop = cur_len - 1
+                else:
+                    istop = cur_len
 
                 integ_x = np.empty(cur_len)
                 integ_x[istart:istop] = vec[start_idx:stop_idx]
                 if istart != 0:
                     integ_x[0] = xstart
 
-                if istop != (cur_len - 1):
+                if istop != cur_len:
                     integ_x[cur_len - 1] = xstop
 
                 plist.append(integ_x)
@@ -243,8 +248,8 @@ class LinearInterpolator(DiffFunction):
             # integrate given that log-log plot is piece-wise linear
             ly1 = values[..., :-1]
             ly2 = values[..., 1:]
-            lx1 = integ_x[:-1]
-            lx2 = integ_x[1:]
+            lx1 = np.broadcast_to(integ_x[:-1], ly1.shape)
+            lx2 = np.broadcast_to(integ_x[1:], ly1.shape)
             m = (ly2 - ly1) / (lx2 - lx1)
 
             x1 = np.exp(lx1)
