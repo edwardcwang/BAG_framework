@@ -95,7 +95,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
     Parameters
     ----------
-    prj : BagProject
+    prj : Optional[BagProject]
         The BagProject instance.
     spec_file : str
         the specification file name.  Contains the following entries:
@@ -135,7 +135,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     """
 
     def __init__(self, prj, spec_file):
-        # type: (BagProject, str) -> None
+        # type: (Optional[BagProject], str) -> None
         self.prj = prj
         self._specs = None
         self._specs = read_yaml(spec_file)
@@ -197,6 +197,9 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def make_tdb(self):
         # type: () -> TemplateDB
         """Create and return a new TemplateDB object."""
+        if self.prj is None:
+            raise ValueError('BagProject instance is not given.')
+
         target_lib = self.specs['impl_lib']
         grid_specs = self.specs['routing_grid']
         layers = grid_specs['layers']
@@ -211,6 +214,9 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def create_dut_sch(self, sch_params, dsn_cell_name):
         # type: (Dict[str, Any], str) -> None
         """Create a new DUT schematic."""
+        if self.prj is None:
+            raise ValueError('BagProject instance is not given.')
+
         dut_lib = self.specs['dut_lib']
         dut_cell = self.specs['dut_cell']
         impl_lib = self.specs['impl_lib']
@@ -222,6 +228,9 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def create_tb_sch(self, tb_type, dsn_cell_name, tb_cell_name):
         # type: (str, str, str) -> None
         """Create a new testbench schematic of the given type with the given DUT and testbench cell name."""
+        if self.prj is None:
+            raise ValueError('BagProject instance is not given.')
+
         impl_lib = self.specs['impl_lib']
         tb_specs = self.specs[tb_type]
         tb_lib = tb_specs['tb_lib']
@@ -234,6 +243,8 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def create_layout(self, lay_params, cell_name, temp_db):
         # type: (Dict[str, Any], str, TemplateDB) -> None
         """Create the DUT layout."""
+        if self.prj is None:
+            raise ValueError('BagProject instance is not given.')
 
         cls_package = self.specs['layout_package']
         cls_name = self.specs['layout_class']
@@ -291,6 +302,9 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def run_lvs_rcx(self, tb_type=''):
         # type: (str) -> None
         """Run LVS/RCX, and simulate testbench if a testbench type is given."""
+        if self.prj is None:
+            raise ValueError('BagProject instance is not given.')
+
         impl_lib = self.specs['impl_lib']
         dsn_name_base = self.specs['dsn_name_base']
         rcx_params = self.specs.get('rcx_params', {})
@@ -367,6 +381,9 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def _run_tb_sim(self, tb_type, dsn_name, val_list):
         # type: (str, str, Tuple[Any, ...]) -> Tuple[str, Testbench]
         """Create testbench of the given type and run simulation."""
+        if self.prj is None:
+            raise ValueError('BagProject instance is not given.')
+
         impl_lib = self.specs['impl_lib']
         tb_specs = self.specs[tb_type]
 
