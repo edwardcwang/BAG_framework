@@ -134,8 +134,8 @@ class LinearInterpolator(DiffFunction):
 
     def __init__(self, points, values, delta_list, extrapolate=False):
         # type: (Sequence[np.multiarray.ndarray], np.multiarray.ndarray, List[float], bool) -> None
-        ndim = len(values.shape)
-        DiffFunction.__init__(self, ndim, delta_list=delta_list)
+        input_range = [(pvec[0], pvec[-1]) for pvec in points]
+        DiffFunction.__init__(self, input_range, delta_list=delta_list)
         self._points = points
         self._extrapolate = extrapolate
         self.fun = interp.RegularGridInterpolator(points, values, method='linear',
@@ -306,10 +306,12 @@ class Interpolator1D(DiffFunction):
         else:
             raise ValueError('Unsuppoorted interpolation method: %s' % method)
 
-        DiffFunction.__init__(self, 1, delta_list=None)
         offset, scale = scale_list[0]
         num_pts = values.shape[0]
-        points = np.linspace(offset, (num_pts - 1) * scale + offset, num_pts)
+        points = np.linspace(offset, (num_pts - 1) * scale + offset, num_pts)  # type: np.multiarray.ndarray
+
+        DiffFunction.__init__(self, [(points[0], points[-1])], delta_list=None)
+
         ext = 0 if extrapolate else 2
         self.fun = interp.InterpolatedUnivariateSpline(points, values, k=k, ext=ext)
 
@@ -371,16 +373,17 @@ class Spline2D(DiffFunction):
         elif len(scale_list) != 1:
             raise ValueError('input and output dimension mismatch.')
 
-        DiffFunction.__init__(self, 2, delta_list=None)
-
         nx, ny = values.shape
         offset, scale = scale_list[0]
-        x = np.linspace(offset, (nx - 1) * scale + offset, nx)
+        x = np.linspace(offset, (nx - 1) * scale + offset, nx)  # type: np.multiarray.ndarray
         offset, scale = scale_list[1]
-        y = np.linspace(offset, (ny - 1) * scale + offset, ny)
+        y = np.linspace(offset, (ny - 1) * scale + offset, ny)  # type: np.multiarray.ndarray
 
         self._min = x[0], y[0]
         self._max = x[-1], y[-1]
+
+        DiffFunction.__init__(self, [(x[0], x[-1]), (y[0], y[-1])], delta_list=None)
+
         self.fun = interp.RectBivariateSpline(x, y, values)
         self._extrapolate = extrapolate
 
@@ -392,8 +395,8 @@ class Spline2D(DiffFunction):
                              "but this interpolator has dimension 2" % (xi.shape[-1]))
 
         # check input within bounds.
-        x = xi[..., 0]
-        y = xi[..., 1]
+        x = xi[..., 0]  # type: np.multiarray.ndarray
+        y = xi[..., 1]  # type: np.multiarray.ndarray
         if not self._extrapolate and not np.all((self._min[0] <= x) & (x <= self._max[0]) &
                                                 (self._min[1] <= y) & (y <= self._max[1])):
             raise ValueError('some inputs are out of bounds.')
@@ -487,6 +490,7 @@ class MapCoordinateSpline(DiffFunction):
 
         # linearly extrapolate given values
         points, delta_list = _scales_to_points(scale_list, values, delta)
+        input_ranges = [(pvec[0], pvec[1]) for pvec in points]
         self._extfun = LinearInterpolator(points, values, delta_list, extrapolate=True)
         self._extrapolate = extrapolate
         swp_values = []
@@ -505,7 +509,7 @@ class MapCoordinateSpline(DiffFunction):
 
         values_ext = self._extfun(xi)
         self._filt_values = imag_interp.spline_filter(values_ext)
-        DiffFunction.__init__(self, ndim, delta_list=delta_list)
+        DiffFunction.__init__(self, input_ranges, delta_list=delta_list)
 
     def _normalize_inputs(self, xi):
         """Normalize the inputs."""

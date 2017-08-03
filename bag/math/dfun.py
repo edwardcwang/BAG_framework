@@ -43,21 +43,27 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
 
     Parameters
     ----------
-    ndim : int
-        number of input dimensions.
+    input_ranges : List[Tuple[Optional[float], Optional[float]]]
+        input ranges.
     delta_list : Optional[List[float]]
         a list of finite difference step size for each input.  If None,
         finite difference will be disabled.
     """
 
-    def __init__(self, ndim, delta_list=None):
-        # type: (int, Optional[List[float]]) -> None
+    def __init__(self, input_ranges, delta_list=None):
+        # type: (List[Tuple[Optional[float], Optional[float]]], Optional[List[float]]) -> None
         # error checking
-        if delta_list and len(delta_list) != ndim:
+        self._ndim = len(input_ranges)
+        if delta_list is not None and len(delta_list) != self._ndim:
             raise ValueError('finite difference list length inconsistent.')
 
-        self._ndim = ndim
+        self._input_ranges = input_ranges
         self.delta_list = delta_list
+
+    @property
+    def input_ranges(self):
+        # type: () -> List[Tuple[Optional[float], Optional[float]]]
+        return self._input_ranges
 
     @property
     def ndim(self):
@@ -82,6 +88,11 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
             The interpolated values at the given coordinates.
         """
         raise NotImplementedError('Not implemented')
+
+    def get_input_range(self, idx):
+        # type: (int) -> Tuple[Optional[float], Optional[float]]
+        """Returns the input range of the given dimension."""
+        return self._input_ranges[idx]
 
     def deriv(self, xi, j):
         """Calculate the derivative at the given coordinates with respect to input j.
@@ -328,7 +339,8 @@ class InLinTransformFunction(DiffFunction):
         if len(bmat.shape) != 1:
             raise ValueError('bmat must be 1 dimension.')
 
-        super(InLinTransformFunction, self).__init__(amat.shape[1], delta_list=None)
+        # domain of f(Ax+B) cannot be represented by input ranges.
+        super(InLinTransformFunction, self).__init__([(None, None)] * amat.shape[1], delta_list=None)
         self._f1 = f1
         self._amat = amat
         self._bmat = bmat.reshape(-1, 1)
@@ -373,7 +385,7 @@ class ScaleAddFunction(DiffFunction):
     """
     def __init__(self, f1, adder, scaler):
         # type: (DiffFunction, float, float) -> None
-        DiffFunction.__init__(self, f1.ndim, delta_list=None)
+        DiffFunction.__init__(self, f1.input_ranges, delta_list=None)
         self._f1 = f1
         self._adder = adder
         self._scaler = scaler
@@ -386,6 +398,26 @@ class ScaleAddFunction(DiffFunction):
 
     def jacobian(self, xi):
         return self._f1.jacobian(xi) * self._scaler
+
+
+def _intersection(*args):
+    input_ranges = []
+    for bound_list in zip(*args):
+        lmax, umin = None, None
+        for l, u in bound_list:
+            if l is None:
+                lmax, umin = None, None
+                break
+            else:
+                if lmax is None:
+                    lmax, umin = l, u
+                else:
+                    lmax = max(l, lmax)
+                    umin = min(u, umin)
+
+        input_ranges.append((lmax, umin))
+
+    return input_ranges
 
 
 class SumDiffFunction(DiffFunction):
@@ -404,7 +436,8 @@ class SumDiffFunction(DiffFunction):
         # type: (DiffFunction, DiffFunction, float) -> None
         if f1.ndim != f2.ndim:
             raise ValueError('functions dimension mismatch.')
-        DiffFunction.__init__(self, f1.ndim, delta_list=None)
+
+        DiffFunction.__init__(self, _intersection(f1.input_ranges, f2.input_ranges), delta_list=None)
         self._f1 = f1
         self._f2 = f2
         self._f2_sgn = f2_sgn
@@ -433,7 +466,8 @@ class ProdFunction(DiffFunction):
         # type: (DiffFunction, DiffFunction) -> None
         if f1.ndim != f2.ndim:
             raise ValueError('functions dimension mismatch.')
-        DiffFunction.__init__(self, f1.ndim, delta_list=None)
+
+        DiffFunction.__init__(self, _intersection(f1.input_ranges, f2.input_ranges), delta_list=None)
         self._f1 = f1
         self._f2 = f2
 
@@ -465,7 +499,8 @@ class DivFunction(DiffFunction):
         # type: (DiffFunction, DiffFunction) -> None
         if f1.ndim != f2.ndim:
             raise ValueError('functions dimension mismatch.')
-        DiffFunction.__init__(self, f1.ndim, delta_list=None)
+
+        DiffFunction.__init__(self, _intersection(f1.input_ranges, f2.input_ranges), delta_list=None)
         self._f1 = f1
         self._f2 = f2
 
@@ -499,7 +534,7 @@ class PwrFunction(DiffFunction):
     """
     def __init__(self, f, pwr, scale=1.0):
         # type: (DiffFunction, float, float) -> None
-        DiffFunction.__init__(self, f.ndim, delta_list=None)
+        DiffFunction.__init__(self, f.input_ranges, delta_list=None)
         self._f = f
         self._pwr = pwr
         self._scale = scale
@@ -531,6 +566,8 @@ class VectorDiffFunction(object):
         if not fun_list:
             raise ValueError('No interpolators are given.')
 
+        self._input_ranges = _intersection((f.input_ranges for f in fun_list))
+
         self._in_dim = fun_list[0].ndim
         for fun in fun_list:
             if fun.ndim != self._in_dim:
@@ -550,6 +587,11 @@ class VectorDiffFunction(object):
         # type: () -> int
         """Output dimension number."""
         return self._out_dim
+
+    def get_input_range(self, idx):
+        # type: (int) -> Tuple[Optional[float], Optional[float]]
+        """Returns the input range of the given dimension."""
+        return self._input_ranges[idx]
 
     def __call__(self, xi):
         """Returns the output vector at the given coordinates.
