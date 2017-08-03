@@ -182,6 +182,11 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         """Setup the testbench with the given sweep parameter values."""
         pass
 
+    def get_swp_var_values(self, var):
+        # type: (str) -> List[Any]
+        """Returns a list of valid sweep variable values."""
+        return self.specs['sweep_params'][var]
+
     def get_combinations_iter(self):
         # type: () -> Iterable[Tuple[Any, ...]]
         """Returns an iterator of schematic parameter combinations we sweep over."""
