@@ -34,7 +34,7 @@ import os
 import abc
 import itertools
 import importlib
-from typing import List, Union, Tuple, Dict, Any, Optional, Set, Iterable
+from typing import List, Union, Tuple, Dict, Any, Optional, Set, Iterable, Sequence
 
 import yaml
 import numpy as np
@@ -239,8 +239,21 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         temp_list = [temp_db.new_template(params=lay_params, temp_cls=temp_cls, debug=False), ]
         temp_db.batch_layout(self.prj, temp_list, [cell_name])
 
+    def get_design_name(self, dsn_params):
+        # type: (Dict[str, Any]) -> str
+        """Returns the name of the design with the given parameters."""
+        dsn_name_base = self.specs['dsn_name_base']
+        try:
+            combo_list = [dsn_params[key] for key in self.swp_var_list]
+            return self.get_instance_name(dsn_name_base, combo_list)
+        except KeyError:
+            for key in self.swp_var_list:
+                if key not in dsn_params:
+                    raise ValueError('Unspecified design parameter: %s' % key)
+            raise ValueError('something is wrong...')
+
     def get_instance_name(self, name_base, combo_list):
-        # type: (str, Tuple[Any, ...]) -> str
+        # type: (str, Sequence[Any, ...]) -> str
         """Generate cell names based on sweep parameter values."""
         suffix = ''
         for var, val in zip(self.swp_var_list, combo_list):
