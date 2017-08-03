@@ -82,6 +82,7 @@ class BinaryIterator(object):
             self.low = self.current
         else:
             self.low = self.current + self.step
+
         if self.high is not None:
             if self.is_float:
                 self.current = (self.low + self.high) / 2
@@ -93,6 +94,12 @@ class BinaryIterator(object):
             else:
                 self.current = self.step
 
+        # quantize self.current according to step size
+        num = max(1, int((self.current - self.low) // self.step))
+        self.current = self.low + num * self.step
+        if self.high is not None:
+            self.current = min(self.high - self.step, self.current)
+
     def down(self):
         # type: () -> None
         """Decrement this iterator."""
@@ -101,6 +108,10 @@ class BinaryIterator(object):
             self.current = (self.low + self.high) / 2
         else:
             self.current = (self.low + self.high) // 2
+
+        # quantize self.current according to step size
+        num = max(1, int((self.high - self.current) // self.step))
+        self.current = max(self.low, self.high - num * self.step)
 
     def save(self):
         # type: () -> None
