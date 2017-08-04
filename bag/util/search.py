@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Union, Optional
+from typing import Optional
 
 
 class BinaryIterator(object):
@@ -40,85 +40,76 @@ class BinaryIterator(object):
 
     Parameters
     ----------
-    low : Union[float, int]
-        the lower index/bound (inclusive).
-    high : Optional[Union[float, int]]
-        the higher index (exclusive).  None for unbounded binary search.
-    step : Union[float, int]
-        the step size.
-    is_float : bool
-        True if this BinaryIterator is used for float values.
+    low : int
+        the lower bound (inclusive).
+    high : Optional[int]
+        the upper bound (exclusive).  None for unbounded binary search.
+    step : int
+        the step size.  All return values will be low + N * step
     """
 
-    def __init__(self, low, high, step=1, is_float=False):
-        # type: (Union[float, int], Optional[Union[float, int]], Union[float, int], bool) -> None
-        self.low = low
-        self.high = high
-        self.step = step
-        self.is_float = is_float
+    def __init__(self, low, high, step=1):
+        # type: (int, Optional[int], int) -> None
+
+        if not isinstance(low, int) or not isinstance(step, int):
+            raise ValueError('low and step must be integers.')
+
+        self._offset = low
+        self._step = step
+        self._low = 0
+
         if high is not None:
-            if is_float:
-                self.current = (low + high) / 2
-            else:
-                self.current = (low + high) // 2
+            if not isinstance(high, int):
+                raise ValueError('high must be None or integer.')
+
+            nmax = (high - low) // step
+            if low + step * nmax < high:
+                nmax += 1
+            self._high = nmax
+            self._current = (self._low + self._high) // 2
         else:
-            self.current = low
-        self.save_marker = None
+            self._high = None
+            self._current = self._low
+
+        self._save_marker = None
 
     def has_next(self):
         # type: () -> bool
         """returns True if this iterator is not finished yet."""
-        return self.high is None or self.low + self.step <= self.high
+        return self._high is None or self._low < self._high
 
     def get_next(self):
-        # type: () -> Union[float, int]
+        # type: () -> int
         """Returns the next value to look at."""
-        return self.current
+        return self._current * self._step + self._offset
 
     def up(self):
         # type: () -> None
         """Increment this iterator."""
-        if self.is_float:
-            self.low = self.current
-        else:
-            self.low = self.current + self.step
+        self._low = self._current + 1
 
-        if self.high is not None:
-            if self.is_float:
-                self.current = (self.low + self.high) / 2
-            else:
-                self.current = (self.low + self.high) // 2
+        if self._high is not None:
+            self._current = (self._low + self._high) // 2
         else:
-            if self.current > 0:
-                self.current *= 2
+            if self._current > 0:
+                self._current *= 2
             else:
-                self.current = self.step
-
-        # quantize self.current according to step size
-        num = max(1, int((self.current - self.low) // self.step))
-        self.current = self.low + num * self.step
-        if self.high is not None:
-            self.current = min(self.high - self.step, self.current)
+                self._current = 1
 
     def down(self):
         # type: () -> None
         """Decrement this iterator."""
-        self.high = self.current
-        if self.is_float:
-            self.current = (self.low + self.high) / 2
-        else:
-            self.current = (self.low + self.high) // 2
-
-        # quantize self.current according to step size
-        num = max(1, int((self.high - self.current) // self.step))
-        self.current = max(self.low, self.high - num * self.step)
+        self._high = self._current
+        self._current = (self._low + self._high) // 2
 
     def save(self):
         # type: () -> None
         """Save the current index"""
-        self.save_marker = self.current
+        self._save_marker = self._current
 
     def get_last_save(self):
-        # type: () -> Union[float, int]
+        # type: () -> Optional[int]
         """Returns the last saved index."""
-        return self.save_marker
+        if self._save_marker is None:
+            return None
+        return self._save_marker * self._step + self._offset
