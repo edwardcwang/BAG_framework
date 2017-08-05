@@ -30,6 +30,6 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from .base import TrackID, WireArray, Port
+from .base import TrackID, WireArray, Port, TrackManager
 from .grid import RoutingGrid
 from .fill import UsedTracks
