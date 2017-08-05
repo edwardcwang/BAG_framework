@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Tuple, Union, Generator
+from typing import Tuple, Union, Generator, Dict, List, Sequence
 
 from ..util import BBox, BBoxArray
 from .grid import RoutingGrid
@@ -431,3 +431,120 @@ class Port(object):
         new_pin_dict = {lay: [wa.transform(grid, loc=loc, orient=orient) for wa in wa_list]
                         for lay, wa_list in self._pin_dict.items()}
         return Port(self.net_name, new_pin_dict)
+
+
+class TrackManager(object):
+    """A class that makes it easy to compute track locations.
+
+    Parameters
+    ----------
+    grid : RoutingGrid
+        the RoutingGrid object.
+    tr_widths : Dict[str, Dict[int, int]]
+        dictionary from wire types to its width on each layer.
+    tr_spaces : Dict[Union[str, Tuple[str, str]], Dict[int, Union[float, int]]]
+        dictionary from wire types to its spaces on each layer.
+    """
+    def __init__(self,
+                 grid,  # type: RoutingGrid
+                 tr_widths,  # type: Dict[str, Dict[int, int]]
+                 tr_spaces,  # type: Dict[Union[str, Tuple[str, str]], Dict[int, Union[float, int]]]
+                 ):
+        # type: (...) -> None
+        self._grid = grid
+        self._tr_widths = tr_widths
+        self._tr_spaces = tr_spaces
+
+    def get_width(self, layer_id, wire_name):
+        # type: (int, str) -> int
+        """Returns the track width.
+
+        Parameters
+        ----------
+        layer_id : int
+            the track layer ID.
+        wire_name : str
+            the track type.
+        """
+        return self._tr_widths[wire_name].get(layer_id, 1)
+
+    def get_space(self, layer_id, name_tuple, **kwargs):
+        # type: (int, Union[str, Tuple[str, str]], **kwargs) -> Union[int, float]
+        """Returns the track spacing.
+
+        Parameters
+        ----------
+        layer_id : int
+            the track layer ID.
+        name_tuple : Union[str, Tuple[str, str]]
+            If a single string is given, will return the minimum spacing needed around that track type.
+            If a tuple of two strings are given, will return the specific spacing between those two
+            track types if specified.  Otherwise, returns the maximum of all the valid spacing.
+        **kwargs:
+            keyword arguments for get_num_space_tracks() method of RoutingGrid.
+        """
+        if isinstance(name_tuple, tuple):
+            # if two specific wires are given, first check if any specific ruels exist
+            if name_tuple in self._tr_spaces:
+                return self._tr_spaces[name_tuple][layer_id]
+            name_tuple = (name_tuple[1], name_tuple[0])
+            if name_tuple in self._tr_spaces:
+                return self._tr_spaces[name_tuple][layer_id]
+            # no specific rules, so return max of wire spacings.
+            ans = 0
+            for name in name_tuple:
+                cur_width = self.get_width(layer_id, name)
+                cur_space = self._tr_spaces[name].get(layer_id, 0)
+                ans = max(ans, cur_space, self._grid.get_num_space_tracks(layer_id, cur_width, **kwargs))
+            return ans
+        else:
+            cur_width = self.get_width(layer_id, name_tuple)
+            cur_space = self._tr_spaces[name_tuple].get(layer_id, 0)
+            return max(cur_space, self._grid.get_num_space_tracks(layer_id, cur_width, **kwargs))
+
+    def place_wires(self, layer_id, name_list, start_idx=0):
+        # type: (int, Sequence[str], Union[float, int]) -> Tuple[Union[float, int], List[Union[float, int]]]
+        """Place the given wires next to each other, then return the number of tracks used and center track locations.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer of the tracks.
+        name_list : Sequence[str]
+            list of wire types.
+        start_idx : Union[float, int]
+            the starting track index.
+
+        Returns
+        -------
+        num_tracks : Union[float, int]
+            number of tracks used.
+        locations : List[Union[float, int]]
+            the center track index of each wire.
+        """
+        num_wires = len(name_list)
+        marker_htr = int(start_idx * 2 + 1)
+        answer = []
+        num_tracks = 0
+        for idx, name in enumerate(name_list):
+            cur_width = self.get_width(layer_id, name)
+            num_tracks += cur_width
+            cur_center_htr = marker_htr + cur_width - 1
+            cur_center = (cur_center_htr - 1) // 2 if cur_center_htr % 2 == 1 else (cur_center_htr - 1) / 2
+            answer.append(cur_center)
+            if idx != num_wires - 1:
+                next_name = name_list[idx + 1]
+                # figure out the current spacing
+                cur_space = self.get_space(layer_id, (name, next_name))
+
+                num_tracks += cur_space
+                # advance marker
+                cur_space_htr = int(cur_space * 2 + 1)
+                marker_htr += 2 * cur_width - 1 + cur_space_htr
+
+        # make sure num_tracks is integer type if we use integer number of tracks.
+        num_tracks_half = int(2 * num_tracks)
+        if num_tracks_half % 2 == 0:
+            num_tracks = num_tracks_half // 2
+
+        return num_tracks, answer
