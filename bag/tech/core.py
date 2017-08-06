@@ -330,11 +330,12 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         # start RCX jobs
         for idx in range(len(job_info_list)):
             lvs_id, lvs_log = job_info_list[idx]
+            dsn_name = dsn_info_list[idx][0]
             print('wait for %s LVS to finish' % dsn_name)
             lvs_passed = self.prj.wait_lvs_rcx(lvs_id)
             if not lvs_passed:
                 print('ERROR: LVS died for %s, cancelling rest of the jobs...' % dsn_name)
-                for cancel_idx in range(idx + 1, len(job_info_list)):
+                for cancel_idx in range(len(job_info_list)):
                     self.prj.cancel(job_info_list[cancel_idx][0])
                 raise Exception('oops, LVS died for %s.  See LVS log file %s' % (dsn_name, lvs_log))
             print('%s LVS passed.  start RCX' % dsn_name)
@@ -346,17 +347,17 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         sim_info_list = []
         for idx in range(len(job_info_list)):
             rcx_id, rcx_log = job_info_list[idx]
+            dsn_name, val_list = dsn_info_list[idx]
             print('wait for %s RCX to finish' % dsn_name)
             rcx_passed = self.prj.wait_lvs_rcx(rcx_id)
             if not rcx_passed:
                 print('ERROR: RCX died for %s, cancelling rest of the jobs...' % dsn_name)
-                for cancel_idx in range(idx + 1, len(job_info_list)):
+                for cancel_idx in range(len(job_info_list)):
                     self.prj.cancel(job_info_list[cancel_idx][0])
                 raise Exception('oops, RCX died for %s.  See RCX log file %s' % (dsn_name, rcx_log))
             print('%s RCX passed.' % dsn_name)
 
             if tb_type:
-                dsn_name, val_list = dsn_info_list[idx]
                 sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, val_list))
 
         if sim_info_list:
