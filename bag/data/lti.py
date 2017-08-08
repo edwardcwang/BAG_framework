@@ -564,6 +564,39 @@ class LTICircuit(object):
 
         return StateSpaceContinuous(amat, bmat, cmat, dmat)
 
+    def get_num_den(self, in_name, out_name, in_type='v', atol=0.0):
+        # type: (str, str, str, float) -> Tuple[np.ndarray, np.ndarray]
+        """Compute the transfer function between the two given nodes.
+
+        Parameters
+        ----------
+        in_name : str
+            the input voltage/current node name.
+        out_name : Union[str, List[str]]
+            the output voltage node name.
+        in_type : str
+            set to 'v' for input voltage sources.  Otherwise, current sources.
+        atol : float
+            absolute tolerance for checking zeros in the numerator.  Used to filter out scipy warnings.
+
+        Returns
+        -------
+        num : np.ndarray
+            the numerator polynomial.
+        den : np.ndarray
+            the denominator polynomial.
+        """
+        state_space = self.get_state_space(in_name, out_name, in_type=in_type)
+        num, den = scipy.signal.ss2tf(state_space.A, state_space.B, state_space.C, state_space.D)
+        num = num[0, :]
+        # check if numerator has leading zeros.
+        # this makes it so the user have full control over numerical precision, and
+        # avoid scipy bad conditioning warnings.
+        while abs(num[0]) <= atol:
+            num = num[1:]
+
+        return num, den
+
     def get_transfer_function(self, in_name, out_name, in_type='v', atol=0.0):
         # type: (str, str, str, float) -> TransferFunctionContinuous
         """Compute the transfer function between the two given nodes.
@@ -584,14 +617,7 @@ class LTICircuit(object):
         system : TransferFunctionContinuous
             the scipy transfer function object.  See scipy.signal package on how to use this object.
         """
-        state_space = self.get_state_space(in_name, out_name, in_type=in_type)
-        num, den = scipy.signal.ss2tf(state_space.A, state_space.B, state_space.C, state_space.D)
-        num = num[0, :]
-        # check if numerator has leading zeros.
-        # this makes it so the user have full control over numerical precision, and
-        # avoid scipy bad conditioning warnings.
-        while abs(num[0]) <= atol:
-            num = num[1:]
+        num, den = self.get_num_den(in_name, out_name, in_type=in_type, atol=atol)
         return TransferFunctionContinuous(num, den)
 
     def get_impedance(self, node_name, freq, atol=0.0):
