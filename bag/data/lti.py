@@ -763,13 +763,10 @@ def get_stability_margins(num, den, rtol=1e-8, atol=1e-8):
         else:
             # gain is always greater than 1, unstable
             phase_margin = -1
+    elif w_gain is not None and w_phase > w_gain + max(w_gain * rtol, atol):
+        # unity gain frequency > 180 degree frequency, we're unstable
+        phase_margin = -1
     else:
-        val = poly_n(1j * w_phase) / poly_d(1j * w_phase)
-        print('%.4g: (%.4g, %.4g)' % (w_phase, abs(val), np.angle(val, deg=True)))
-        if w_phase > w_gain + max(w_gain * rtol, atol):
-            # unity gain frequency > 180 degree frequency, we're unstable
-            phase_margin = -1
-        else:
-            phase_margin = np.angle(poly_n(1j * w_phase) / poly_d(1j * w_phase), deg=True) + 180
+        phase_margin = np.angle(poly_n(1j * w_phase) / poly_d(1j * w_phase), deg=True) + 180
 
     return phase_margin, gain_margin
