@@ -29,7 +29,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Optional
 
 import numpy as np
 import scipy.signal
@@ -643,3 +643,133 @@ class LTICircuit(object):
         w_test = 2 * np.pi * freq
         _, zin_vec = sys.freqresp(w=[w_test])
         return zin_vec[0]
+
+
+def get_w_crossings(num, den, atol=1e-8):
+    # type: (np.multiarray.ndarray, np.multiarray.ndarray, float) -> Tuple[Optional[float], Optional[float]]
+    """Given the numerator and denominator of the transfer function, compute gain margin/phase margin frequencies.
+
+    To determine the crossover frequencies, we write the transfer function as:
+
+    .. math::
+
+        \\frac{A(w) + jB(w)}{C(w) + jD(w)}
+
+    where :math:`A(w)`, :math:`B(w)`, :math:`C(w)`, and :math:`D(w)` are real polynomials.  The gain margin frequency
+    is the frequency at which:
+
+    .. math::
+
+        \\frac{B(w)}{A(w)} = \\frac{D(w)}{C(w)} \\implies A(w)D(w) - B(w)C(w) = 0
+
+
+    The phase margin frequency is the frequency at which:
+
+    .. math::
+
+        \\frac{A^2(w) + B^2(w)}{C^2(w) + D^2(w)} = 1 \implies A^2(w) + B^2(w) - C^2(w) - D^2(w) = 0
+
+    This function solves these two equations and return the smallest real and positive roots.
+
+    Parameters
+    ----------
+    num : np.multiarray.ndarray
+        the numerator polynomial coefficients array.  index 0 is coefficient for highest term.
+    den : np.multiarray.ndarray
+        the denominator polynomial coefficients array.  index 0 is coefficient for highest term.
+    atol : float
+        absolute tolerance used to check if the imaginary part of a root is 0, or if a root is greater than 0.
+
+    Returns
+    -------
+    w_phase : Optional[float]
+        lowest positive frequency at which the gain becomes unity.  None if no such frequency exist.
+    w_gain : Optional[float]
+        lower positive frequency at which the phase becomes 180 degrees.  None if no such frequency exist.
+    """
+    # construct A(w), B(w), C(w), and D(w)
+    num_flip = num[::-1]
+    den_flip = den[::-1]
+    avec = np.copy(num_flip)
+    bvec = np.copy(num_flip)
+    cvec = np.copy(den_flip)
+    dvec = np.copy(den_flip)
+    avec[1::2] = 0
+    avec[2::4] *= -1
+    bvec[0::2] = 0
+    bvec[3::4] *= -1
+    cvec[1::2] = 0
+    cvec[2::4] *= -1
+    dvec[0::2] = 0
+    dvec[3::4] *= -1
+
+    apoly = np.poly1d(avec[::-1])
+    bpoly = np.poly1d(bvec[::-1])
+    cpoly = np.poly1d(cvec[::-1])
+    dpoly = np.poly1d(dvec[::-1])
+
+    # solve for w_phase/w_gain
+    poly_list = [apoly**2 + bpoly**2 - cpoly**2 - dpoly**2,
+                 apoly * dpoly - bpoly * cpoly]
+    w_list = [None, None]
+    for idx in range(2):
+        for root in poly_list[idx].roots:
+            root_real = root.real
+            if abs(root.imag) < atol < root_real and (w_list[idx] is None or root_real < w_list[idx]):
+                w_list[idx] = root_real
+
+    return w_list[0], w_list[1]
+
+
+def get_stability_margins(num, den, rtol=1e-8, atol=1e-8):
+    # type: (np.multiarray.ndarray, np.multiarray.ndarray, float, float) -> Tuple[float, float]
+    """Given the numerator and denominator of the transfer function, compute phase and gain margins.
+
+    Parameters
+    ----------
+    num : np.multiarray.ndarray
+        the numerator polynomial coefficients array.  index 0 is coefficient for highest term.
+    den : np.multiarray.ndarray
+        the denominator polynomial coefficients array.  index 0 is coefficient for highest term.
+    rtol : float
+        relative tolerance.  Used to check if two frequencies are equal.
+    atol : float
+        absolute tolerance.  Used to check a number is equal to 0.
+
+    Returns
+    -------
+    phase_margin : float
+        the phase margin in degrees. If the system is unstable, a negative number is returned.
+    gain_margin : float
+        the gain margin.
+    """
+    poly_n = np.poly1d(num)
+    poly_d = np.poly1d(den)
+
+    # compute gain margin.
+    w_phase, w_gain = get_w_crossings(num, den, atol=atol)
+    if w_gain is None:
+        gain_margin = float('inf')
+    else:
+        gain_margin = abs(poly_d(1j * w_gain) / poly_n(1j * w_gain))
+
+    # compute phase margin
+    if w_phase is None:
+        # gain never equal to 1.  That means gain is always greater than 1 or gain is always less than 1.
+        dc_gain = poly_n(0) / poly_d(0)
+        if dc_gain < 1 - max(rtol, atol):
+            # gain is always less than 1, infinite phase margin
+            phase_margin = float('inf')
+        else:
+            # gain is always greater than 1, unstable
+            phase_margin = -1
+    else:
+        val = poly_n(1j * w_phase) / poly_d(1j * w_phase)
+        print('%.4g: (%.4g, %.4g)' % (w_phase, abs(val), np.angle(val, deg=True)))
+        if w_phase > w_gain + max(w_gain * rtol, atol):
+            # unity gain frequency > 180 degree frequency, we're unstable
+            phase_margin = -1
+        else:
+            phase_margin = np.angle(poly_n(1j * w_phase) / poly_d(1j * w_phase), deg=True) + 180
+
+    return phase_margin, gain_margin
