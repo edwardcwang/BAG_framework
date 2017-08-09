@@ -364,17 +364,19 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
             self.save_sim_data(tb_type, sim_info_list, dsn_info_list)
             print('characterization done.')
 
-    def run_simulations(self, tb_type):
-        # type: (str) -> None
+    def run_simulations(self, tb_type, overwrite=True):
+        # type: (str, bool) -> None
         """Create the given testbench type for all DUTs and run simulations in parallel."""
         dsn_name_base = self.specs['dsn_name_base']
 
         dsn_info_list = []
         sim_info_list = []
         for val_list in self.get_combinations_iter():
-            dsn_name = self.get_instance_name(dsn_name_base, val_list)
-            dsn_info_list.append((dsn_name, val_list))
-            sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, val_list))
+            save_data_path = self._get_data_path(tb_type, val_list)
+            if overwrite or not os.path.isfile(save_data_path):
+                dsn_name = self.get_instance_name(dsn_name_base, val_list)
+                dsn_info_list.append((dsn_name, val_list))
+                sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, val_list))
 
         self.save_sim_data(tb_type, sim_info_list, dsn_info_list)
         print('simulation done.')
@@ -422,9 +424,9 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
             if cur_results is not None:
                 self.record_results(cur_results, tb_type, val_list)
 
-    def record_results(self, data, tb_type, val_list):
-        # type: (Dict[str, Any], str, Tuple[Any, ...]) -> None
-        """Record simulation results to file."""
+    def _get_data_path(self, tb_type, val_list):
+        # type: (str, Tuple[Any, ...]) -> str
+        """Returns the save file name."""
         root_dir = self.specs['root_dir']
         tb_specs = self.specs[tb_type]
 
@@ -432,23 +434,19 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         tb_name = self.get_instance_name(tb_name_base, val_list)
         results_dir = os.path.join(root_dir, tb_type)
 
-        os.makedirs(results_dir, exist_ok=True)
-        save_data_path = os.path.join(results_dir, '%s.hdf5' % tb_name)
+        return os.path.join(results_dir, '%s.hdf5' % tb_name)
+
+    def record_results(self, data, tb_type, val_list):
+        # type: (Dict[str, Any], str, Tuple[Any, ...]) -> None
+        """Record simulation results to file."""
+        save_data_path = self._get_data_path(tb_type, val_list)
+        os.makedirs(os.path.dirname(save_data_path), exist_ok=True)
         save_sim_results(data, save_data_path)
 
     def get_sim_results(self, tb_type, val_list):
         # type: (str, Tuple[Any, ...]) -> Dict[str, Any]
         """Return simulation results corresponding to the given schematic parameters."""
-        root_dir = self.specs['root_dir']
-        tb_specs = self.specs[tb_type]
-
-        tb_name_base = tb_specs['tb_name_base']
-        tb_name = self.get_instance_name(tb_name_base, val_list)
-        results_dir = os.path.join(root_dir, tb_type)
-
-        data_fname = os.path.join(results_dir, '%s.hdf5' % tb_name)
-        results = load_sim_file(data_fname)
-        return results
+        return load_sim_file(self._get_data_path(tb_type, val_list))
 
 
 class CircuitCharacterization(with_metaclass(abc.ABCMeta, SimulationManager)):
