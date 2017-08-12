@@ -299,9 +299,9 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
             self.create_dut_sch(sch_params, dsn_name)
         self.create_layout(lay_params, dsn_name, temp_db)
 
-    def run_lvs_rcx(self, tb_type=''):
-        # type: (str) -> None
-        """Run LVS/RCX, and simulate testbench if a testbench type is given."""
+    def create_designs(self, tb_type='', extract=True):
+        # type: (str, bool) -> None
+        """Create DUT schematics, and run LVS/RCX, then simulate testbench if a testbench type is given."""
         if self.prj is None:
             raise ValueError('BagProject instance is not given.')
 
@@ -320,42 +320,47 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
             print('create schematic for %s' % dsn_name)
             self.create_dut_sch(sch_params, dsn_name)
-            print('create layout for %s' % dsn_name)
-            self.create_layout(lay_params, dsn_name, temp_db)
-            print('start lvs job')
-            lvs_id, lvs_log = self.prj.run_lvs(impl_lib, dsn_name, block=False)
-            dsn_info_list.append((dsn_name, combo_list))
-            job_info_list.append([lvs_id, lvs_log])
 
+            dsn_info_list.append((dsn_name, combo_list))
+            if extract:
+                print('create layout for %s' % dsn_name)
+                self.create_layout(lay_params, dsn_name, temp_db)
+                print('start lvs job')
+                lvs_id, lvs_log = self.prj.run_lvs(impl_lib, dsn_name, block=False)
+                job_info_list.append([lvs_id, lvs_log])
+
+        num_dsns = len(dsn_info_list)
         # start RCX jobs
-        for idx in range(len(job_info_list)):
-            lvs_id, lvs_log = job_info_list[idx]
-            dsn_name = dsn_info_list[idx][0]
-            print('wait for %s LVS to finish' % dsn_name)
-            lvs_passed = self.prj.wait_lvs_rcx(lvs_id)
-            if not lvs_passed:
-                print('ERROR: LVS died for %s, cancelling rest of the jobs...' % dsn_name)
-                for cancel_idx in range(len(job_info_list)):
-                    self.prj.cancel(job_info_list[cancel_idx][0])
-                raise Exception('oops, LVS died for %s.  See LVS log file %s' % (dsn_name, lvs_log))
-            print('%s LVS passed.  start RCX' % dsn_name)
-            rcx_id, rcx_log = self.prj.run_rcx(impl_lib, dsn_name, block=False, rcx_params=rcx_params)
-            job_info_list[idx][0] = rcx_id
-            job_info_list[idx][1] = rcx_log
+        if extract:
+            for idx in range(num_dsns):
+                lvs_id, lvs_log = job_info_list[idx]
+                dsn_name = dsn_info_list[idx][0]
+                print('wait for %s LVS to finish' % dsn_name)
+                lvs_passed = self.prj.wait_lvs_rcx(lvs_id)
+                if not lvs_passed:
+                    print('ERROR: LVS died for %s, cancelling rest of the jobs...' % dsn_name)
+                    for cancel_idx in range(len(job_info_list)):
+                        self.prj.cancel(job_info_list[cancel_idx][0])
+                    raise Exception('oops, LVS died for %s.  See LVS log file %s' % (dsn_name, lvs_log))
+                print('%s LVS passed.  start RCX' % dsn_name)
+                rcx_id, rcx_log = self.prj.run_rcx(impl_lib, dsn_name, block=False, rcx_params=rcx_params)
+                job_info_list[idx][0] = rcx_id
+                job_info_list[idx][1] = rcx_log
 
         # finish RCX jobs.  Start testbench jobs if necessary
         sim_info_list = []
-        for idx in range(len(job_info_list)):
-            rcx_id, rcx_log = job_info_list[idx]
+        for idx in range(num_dsns):
             dsn_name, val_list = dsn_info_list[idx]
-            print('wait for %s RCX to finish' % dsn_name)
-            rcx_passed = self.prj.wait_lvs_rcx(rcx_id)
-            if not rcx_passed:
-                print('ERROR: RCX died for %s, cancelling rest of the jobs...' % dsn_name)
-                for cancel_idx in range(len(job_info_list)):
-                    self.prj.cancel(job_info_list[cancel_idx][0])
-                raise Exception('oops, RCX died for %s.  See RCX log file %s' % (dsn_name, rcx_log))
-            print('%s RCX passed.' % dsn_name)
+            if extract:
+                rcx_id, rcx_log = job_info_list[idx]
+                print('wait for %s RCX to finish' % dsn_name)
+                rcx_passed = self.prj.wait_lvs_rcx(rcx_id)
+                if not rcx_passed:
+                    print('ERROR: RCX died for %s, cancelling rest of the jobs...' % dsn_name)
+                    for cancel_idx in range(len(job_info_list)):
+                        self.prj.cancel(job_info_list[cancel_idx][0])
+                    raise Exception('oops, RCX died for %s.  See RCX log file %s' % (dsn_name, rcx_log))
+                print('%s RCX passed.' % dsn_name)
 
             if tb_type:
                 sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, val_list))
