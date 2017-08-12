@@ -98,7 +98,8 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     prj : Optional[BagProject]
         The BagProject instance.
     spec_file : str
-        the specification file name.  Contains the following entries:
+        the specification file name or the data directory.  The specification file
+        contains the following entries:
 
         impl_lib :
             the implementation library name.
@@ -138,18 +139,24 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         # type: (Optional[BagProject], str) -> None
         self.prj = prj
         self._specs = None
-        self._specs = read_yaml(spec_file)
+
+        if os.path.isfile(spec_file):
+            self._specs = read_yaml(spec_file)
+            root_dir = os.path.abspath(self._specs['root_dir'])
+            save_spec_file = os.path.join(root_dir, 'specs.yaml')
+        elif os.path.isdir(spec_file):
+            root_dir = os.path.abspath(spec_file)
+            save_spec_file = spec_file = os.path.join(root_dir, 'specs.yaml')
+            self._specs = read_yaml(spec_file)
+        else:
+            raise ValueError('%s is neither data directory or specification file.' % spec_file)
 
         self._swp_var_list = tuple(sorted(self._specs['sweep_params'].keys()))
 
-        # save specifications to file
-        root_dir = self._specs['root_dir']
-        # before saving, convert root_dir to absolute path, in this way
-        # everything will still work if the user start python from a different directory.
-        root_dir = os.path.abspath(root_dir)
+        # save root_dir as absolute path, in this way everything will still work
+        # if the user start python from a different directory.
         self._specs['root_dir'] = root_dir
         os.makedirs(root_dir, exist_ok=True)
-        save_spec_file = os.path.join(root_dir, 'specs.yaml')
         with open_file(save_spec_file, 'w') as f:
             yaml.dump(self._specs, f)
 
