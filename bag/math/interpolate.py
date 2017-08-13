@@ -489,17 +489,16 @@ class MapCoordinateSpline(DiffFunction):
         self._ext = num_extrapolate
 
         # linearly extrapolate given values
+        ext_points = [np.arange(n) for n in shape]
         points, delta_list = _scales_to_points(scale_list, values, delta)
         input_ranges = [(pvec[0], pvec[1]) for pvec in points]
-        self._extfun = LinearInterpolator(points, values, delta_list, extrapolate=True)
+        self._extfun = LinearInterpolator(ext_points, values, [1e-4] * ndim, extrapolate=True)
         self._extrapolate = extrapolate
         swp_values = []
         ext_xi_shape = []
-        delta_list = []
-        for (offset, scale), n in zip(scale_list, shape):
+        for n in shape:
             swp_values.append(np.arange(-num_extrapolate, n + num_extrapolate))
             ext_xi_shape.append(n + 2 * num_extrapolate)
-            delta_list.append(scale * delta)
 
         ext_xi_shape.append(ndim)
         xi = np.empty(ext_xi_shape)
