@@ -1,0 +1,57 @@
+dsn_name_base: NCH
+dut_cell: mos_analogbase
+dut_lib: bag_testbenches_ec
+impl_lib: AAAFOO_MOSCHAR_NCH
+layout_class: Transistor
+layout_package: abs_templates_ec.mos_char
+layout_params:
+  ntap_w: 6
+  ptap_w: 6
+  tr_sp_dict: {db: 1, gd: 1, gs: 1, sb: 1}
+  tr_w_dict: {d: 2, g: 1, s: 2}
+rcx_params:
+  capacitance: {ground_net: b}
+root_dir: /tools/projects/erichang/bag_gen/BAG2_cds_ff_mpt/BAG_framework/tutorial/data/mos_char_nch
+routing_grid:
+  bot_dir: x
+  layers: [4, 5, 6, 7]
+  spaces: [0.084, 0.1, 0.084, 0.1]
+  widths: [0.06, 0.08, 0.06, 0.08]
+sch_params: {intent: svt, l: 1.8e-08, mos_type: nch, ndum: 4, nf: 20, stack: 1, w: 4}
+sim_envs: [tt, ff_hot, ss_cold]
+sweep_params:
+  intent: [lvt, svt, hvt]
+tb_ibias:
+  ibias_max_fg: 0.0001
+  ibias_min_fg: 1.0e-06
+  tb_cell: mos_tb_ibias
+  tb_lib: bag_testbenches_ec
+  tb_name_base: TB_IBIAS
+  tb_params: {vgs_max: 1.0, vgs_num: 200}
+  vgs_resolution: 0.002
+tb_noise:
+  tb_cell: mos_tb_noise
+  tb_lib: bag_testbenches_ec
+  tb_name_base: TB_NOISE
+  tb_params:
+    freq_start: 1
+    freq_stop: 10000000.0
+    num_per_dec: 20
+    vbs: [0.0, 0.2, 0.4, 0.6]
+    vds_max: 1.0
+    vds_min: 0.005
+    vds_num: 20
+    vgs_num: 30
+tb_sp:
+  tb_cell: mos_tb_sp
+  tb_lib: bag_testbenches_ec
+  tb_name_base: TB_SP
+  tb_params:
+    sp_freq: 1000000.0
+    vbs: [0.0, 0.2, 0.4, 0.6]
+    vds_max: 1.0
+    vds_min: 0.005
+    vds_num: 20
+    vgs_num: 30
+vgs_file: vgs_specs.yaml
+view_name: schematic
