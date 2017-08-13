@@ -228,7 +228,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
             return SumDiffFunction(self, other, f2_sgn=1.0)
         elif isinstance(other, float) or isinstance(other, int):
             return ScaleAddFunction(self, other, 1.0)
-        elif isinstance(other, np.multiarray.ndarray):
+        elif isinstance(other, np.ndarray):
             return ScaleAddFunction(self, np.asscalar(other), 1.0)
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
@@ -243,7 +243,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
             return SumDiffFunction(self, other, f2_sgn=-1.0)
         elif isinstance(other, float) or isinstance(other, int):
             return ScaleAddFunction(self, -other, 1.0)
-        elif isinstance(other, np.multiarray.ndarray):
+        elif isinstance(other, np.ndarray):
             return ScaleAddFunction(self, -np.asscalar(other), 1.0)
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
@@ -254,7 +254,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
             return SumDiffFunction(other, self, f2_sgn=-1.0)
         elif isinstance(other, float) or isinstance(other, int):
             return ScaleAddFunction(self, other, -1.0)
-        elif isinstance(other, np.multiarray.ndarray):
+        elif isinstance(other, np.ndarray):
             return ScaleAddFunction(self, np.asscalar(other), -1.0)
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
@@ -265,7 +265,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
             return ProdFunction(self, other)
         elif isinstance(other, float) or isinstance(other, int):
             return ScaleAddFunction(self, 0.0, other)
-        elif isinstance(other, np.multiarray.ndarray):
+        elif isinstance(other, np.ndarray):
             return ScaleAddFunction(self, 0.0, np.asscalar(other))
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
@@ -278,7 +278,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
         # type: (Union[float, int, np.multiarray.ndarray]) -> DiffFunction
         if isinstance(other, float) or isinstance(other, int):
             return PwrFunction(self, other, scale=1.0)
-        elif isinstance(other, np.multiarray.ndarray):
+        elif isinstance(other, np.ndarray):
             return PwrFunction(self, np.asscalar(other), scale=1.0)
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
@@ -289,7 +289,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
             return DivFunction(self, other)
         elif isinstance(other, float) or isinstance(other, int):
             return ScaleAddFunction(self, 0.0, 1.0 / other)
-        elif isinstance(other, np.multiarray.ndarray):
+        elif isinstance(other, np.ndarray):
             return ScaleAddFunction(self, 0.0, 1.0 / np.asscalar(other))
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
@@ -304,7 +304,7 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
             return DivFunction(other, self)
         elif isinstance(other, float) or isinstance(other, int):
             return PwrFunction(self, -1.0, scale=other)
-        elif isinstance(other, np.multiarray.ndarray):
+        elif isinstance(other, np.ndarray):
             return PwrFunction(self, -1.0, scale=np.asscalar(other))
         else:
             raise NotImplementedError('Unknown type %s' % type(other))
