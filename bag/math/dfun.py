@@ -566,7 +566,7 @@ class VectorDiffFunction(object):
         if not fun_list:
             raise ValueError('No interpolators are given.')
 
-        self._input_ranges = _intersection((f.input_ranges for f in fun_list))
+        self._input_ranges = _intersection(*(f.input_ranges for f in fun_list))
 
         self._in_dim = fun_list[0].ndim
         for fun in fun_list:
