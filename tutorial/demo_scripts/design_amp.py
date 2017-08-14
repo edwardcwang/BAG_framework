@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import pprint
+
 from demo_package.demo_dsn.core import design_amp_cs
 
 from ckt_dsn_ec.mos.core import MOSDBDiscrete
@@ -19,4 +21,5 @@ if __name__ == '__main__':
     nch_db = MOSDBDiscrete(w_list, nch_conf_list, 1)
     pch_db = MOSDBDiscrete(w_list, pch_conf_list, 1)
 
-    design_amp_cs(nch_db, pch_db, vdd, vout, cload, fbw, gain_min)
+    best_op = design_amp_cs(nch_db, pch_db, vdd, vout, cload, fbw, gain_min)
+    pprint.pprint(best_op)
