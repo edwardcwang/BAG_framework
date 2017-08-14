@@ -1,2 +1,0 @@
-"_DEXPR_1" (tran_stop fields "VAR(\"tsim\")")
-"_DEXPR_2" (tran_strobeperiod options "VAR(\"tstep\")")
