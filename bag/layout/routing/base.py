@@ -499,7 +499,10 @@ class TrackManager(object):
             return ans
         else:
             cur_width = self.get_width(layer_id, name_tuple)
-            cur_space = self._tr_spaces[name_tuple].get(layer_id, 0)
+            if name_tuple not in self._tr_spaces:
+                cur_space = 0
+            else:
+                cur_space = self._tr_spaces[name_tuple].get(layer_id, 0)
             return max(cur_space, self._grid.get_num_space_tracks(layer_id, cur_width, **kwargs))
 
     def place_wires(self, layer_id, name_list, start_idx=0):
