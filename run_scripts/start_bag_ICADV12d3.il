@@ -391,12 +391,17 @@ procedure( copy_templates_to_library(lib_name template_list "tl")
                     ; purge target cellview if exist
                     when( targ_lib_obj
                         test_cv = dbFindOpenCellView(targ_lib_obj target_cell "schematic")
-                        when(test_cv
+                        when( test_cv
                             dbPurge(test_cv)
                         )
                         test_cv = dbFindOpenCellView(targ_lib_obj target_cell "symbol")
-                        when(test_cv
+                        when( test_cv
                             dbPurge(test_cv)
+                        )
+                        ; hard remove adexl state if it exists
+                        test_cv = ddGetObj(lib_name target_cell "adexl")
+                        when( test_cv
+                            ddDeleteObj(test_cv)
                         )
                     )
                     gdmAddSpecToSpecList(gdmCreateSpec(master_lib master_cell nil nil "CDBA") src_gdm)
@@ -1593,7 +1598,19 @@ procedure( instantiate_testbench(tb_cell targ_lib
                                  tech_lib result_file
                                  "tttttttltt")
     let( (session_name session_sdb session sdb test_names test_name test tool_args corner_list
-          ade_symbol ade_session output_list)
+          ade_symbol ade_session output_list tmp_state_name state_obj success)
+
+        tmp_state_name = "orig_state"
+
+        ; check if temporary ADE session state already exists, if so, delete it
+        state_obj = ddGetObj(targ_lib tb_cell tmp_state_name)
+        when( state_obj
+            success = ddDeleteObj(state_obj)
+            unless( success
+                error("Cannot delete orig_state cellview.")
+            )
+        )
+
         ; create config view
         create_config_view(targ_lib tb_cell "config" config_libs config_views config_stops)
 
@@ -1614,55 +1631,58 @@ procedure( instantiate_testbench(tb_cell targ_lib
             error("ADEXL testbench must have exactly 1 test defined.")
         )
 
-    ; save current test setup state
-    axlSaveSetupState(session "adexl_default" "All")
+        ; save current test setup state
+        axlSaveSetupState(session "adexl_default" "All")
 
-    ; change all tests to use config view, and set all test's definition files
-    ; also get a list of defined output expressions
-    ; step 1: get ADE session
-    test_name = car(test_names)
-    ade_symbol = axlGetToolSession(session_name test_name)
-    ade_session = asiGetSession(ade_symbol)
-    ; step 2: save original ADE session
-    asiSaveState(ade_session ?name "orig_state" ?option 'cellview ?lib targ_lib ?cell tb_cell)
-    ; step 3: change test library
-    test = axlGetTest(sdb test_name)
-    tool_args = axlGetTestToolArgs(test)
-    set_assoc_list(tool_args "view" "config")
-    set_assoc_list(tool_args "lib" targ_lib)
-    set_assoc_list(tool_args "cell" tb_cell)
-    axlSetTestToolArgs(test tool_args)
-    ; step 4: reopen ADE session, then load original ADE state
-    ade_symbol = axlGetToolSession(session_name test_name)
-    ade_session = asiGetSession(ade_symbol)
-    asiLoadState(ade_session ?name "orig_state" ?option 'cellview)
-    asiSetEnvOptionVal(ade_session 'definitionFiles def_files)
-    output_list = setof(ele asiGetOutputList(ade_session) ele->name)
+        ; change all tests to use config view, and set all test's definition files
+        ; also get a list of defined output expressions
+        ; step 1: get ADE session
+        test_name = car(test_names)
+        ade_symbol = axlGetToolSession(session_name test_name)
+        ade_session = asiGetSession(ade_symbol)
+        ; step 2: save original ADE session
+        asiSaveState(ade_session ?name tmp_state_name ?option 'cellview ?lib targ_lib ?cell tb_cell)
+        ; step 3: change test library
+        test = axlGetTest(sdb test_name)
+        tool_args = axlGetTestToolArgs(test)
+        set_assoc_list(tool_args "view" "config")
+        set_assoc_list(tool_args "lib" targ_lib)
+        set_assoc_list(tool_args "cell" tb_cell)
+        axlSetTestToolArgs(test tool_args)
+        ; step 4: reopen ADE session, then load original ADE state
+        ade_symbol = axlGetToolSession(session_name test_name)
+        ade_session = asiGetSession(ade_symbol)
+        asiLoadState(ade_session ?name tmp_state_name ?option 'cellview)
+        asiSetEnvOptionVal(ade_session 'definitionFiles def_files)
+        output_list = setof(ele asiGetOutputList(ade_session) ele->name)
+        ; step 5: delete temporary ADE session state
+        state_obj = ddGetObj(targ_lib tb_cell tmp_state_name)
+        ddDeleteObj(state_obj)
 
-    axlMainAppSaveSetup(session_name)
+        axlMainAppSaveSetup(session_name)
 
-    ; load corner
-    unless(axlLoadCorners(sdb corner_file)
+        ; load corner
+        unless(axlLoadCorners(sdb corner_file)
+            axlCommitSetupDB(sdb)
+            axlCloseSetupDB(sdb)
+            axlCloseSession(session)
+            error("Error loading corner file %s to %s__%s (%s)" corner_file lib_name cell_name view_name)
+        )
+
+        ; set default corner
+        corner_list = list(default_corner)
+        enable_adexl_corners(sdb corner_list nil)
+
+        ; write testbench information to file
+        write_testbench_info_to_file(sdb result_file output_list corner_list)
+
+        ; save and close
+        axlSaveSetupState(session "adexl_default" "All")
+        axlSaveSetupState(session "ocean_default" "All")
+        axlMainAppSaveSetup(session_name)
         axlCommitSetupDB(sdb)
         axlCloseSetupDB(sdb)
         axlCloseSession(session)
-        error("Error loading corner file %s to %s__%s (%s)" corner_file lib_name cell_name view_name)
-    )
-
-    ; set default corner
-    corner_list = list(default_corner)
-    enable_adexl_corners(sdb corner_list nil)
-
-    ; write testbench information to file
-    write_testbench_info_to_file(sdb result_file output_list corner_list)
-
-    ; save and close
-    axlSaveSetupState(session "adexl_default" "All")
-    axlSaveSetupState(session "ocean_default" "All")
-    axlMainAppSaveSetup(session_name)
-    axlCommitSetupDB(sdb)
-    axlCloseSetupDB(sdb)
-    axlCloseSession(session)
     )
 )
 
