@@ -99,7 +99,7 @@ class Calibre(Checker):
         self.rcx_run_dir = rcx_run_dir
         self.rcx_runset = rcx_runset
         self.xact_rules = xact_rules
-        self.source_added_file = source_added_file or '$DK/Calibre/lvs/source.added'
+        self.source_added_file = source_added_file
         self.rcx_mode = rcx_mode
 
     def modify_lvs_runset(self, lib_name, cell_name, lay_view, gds_file, netlist,

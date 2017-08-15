@@ -111,7 +111,7 @@ class PVS(Checker):
         self.lvs_runset = lvs_runset
         self.lvs_rule_file = lvs_rule_file
         self.rcx_runset = rcx_runset
-        self.source_added_file = source_added_file or '$DK/Calibre/lvs/source.added'
+        self.source_added_file = source_added_file
 
     def modify_lvs_runset(self, cell_name, lvs_params):
         """Modify the given LVS runset file.
