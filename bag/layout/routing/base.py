@@ -55,11 +55,34 @@ class TrackID(object):
 
     def __init__(self, layer_id, track_idx, width=1, num=1, pitch=0.0):
         # type: (int, Union[float, int], int, int, Union[float, int]) -> None
+        if num < 1:
+            raise ValueError('TrackID must have 1 or more tracks.')
+
         self._layer_id = layer_id
         self._hidx = int(round(2 * track_idx)) + 1
         self._w = width
         self._n = num
-        self._hpitch = int(pitch * 2)
+        self._hpitch = 0 if num == 1 else int(pitch * 2)
+
+    def __repr__(self):
+        arg_list = ['layer=%d' % self._layer_id]
+        if self._hidx % 2 == 1:
+            arg_list.append('track=%d' % ((self._hidx - 1) // 2))
+        else:
+            arg_list.append('track=%.1f' % ((self._hidx - 1) / 2))
+        if self._w != 1:
+            arg_list.append('width=%d' % self._w)
+        if self._n != 1:
+            arg_list.append('num=%d' % self._n)
+            if self._hpitch % 2 == 0:
+                arg_list.append('pitch=%d' % (self._hpitch // 2))
+            else:
+                arg_list.append('pitch=%.1f' % (self._hpitch / 2))
+
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(arg_list))
+
+    def __str__(self):
+        return repr(self)
 
     @property
     def layer_id(self):
@@ -190,6 +213,12 @@ class WireArray(object):
         self._track_id = track_id
         self._lower = lower
         self._upper = upper
+
+    def __repr__(self):
+        return '%s(%s, %.4g, %.4g)' % (self.__class__.__name__, self._track_id, self._lower, self._upper)
+
+    def __str__(self):
+        return repr(self)
 
     @property
     def lower(self):
