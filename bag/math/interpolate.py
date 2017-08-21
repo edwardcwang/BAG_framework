@@ -66,7 +66,7 @@ def _scales_to_points(scale_list, values, delta=1e-4):
 
 
 def interpolate_grid(scale_list, values, method='spline',
-                     extrapolate=False, delta=1e-4, num_extrapolate=2):
+                     extrapolate=False, delta=1e-4, num_extrapolate=3):
     # type: (List[Tuple[float, float]], np.multiarray.ndarray, str, bool, float, int) -> DiffFunction
     """Interpolates multidimensional data on a regular grid.
 
@@ -473,7 +473,7 @@ class MapCoordinateSpline(DiffFunction):
         the finite difference step size.  Defaults to 1e-4 (relative to a spacing of 1).
     """
 
-    def __init__(self, scale_list, values, extrapolate=False, num_extrapolate=2,
+    def __init__(self, scale_list, values, extrapolate=False, num_extrapolate=3,
                  delta=1e-4):
         shape = values.shape
         ndim = len(shape)
@@ -486,28 +486,21 @@ class MapCoordinateSpline(DiffFunction):
 
         self._scale_list = scale_list
         self._max = values.shape
+        self._extrapolate = extrapolate
         self._ext = num_extrapolate
 
         # linearly extrapolate given values
         ext_points = [np.arange(n) for n in shape]
         points, delta_list = _scales_to_points(scale_list, values, delta)
         input_ranges = [(pvec[0], pvec[1]) for pvec in points]
-        self._extfun = LinearInterpolator(ext_points, values, [1e-4] * ndim, extrapolate=True)
-        self._extrapolate = extrapolate
-        swp_values = []
-        ext_xi_shape = []
-        for n in shape:
-            swp_values.append(np.arange(-num_extrapolate, n + num_extrapolate))
-            ext_xi_shape.append(n + 2 * num_extrapolate)
+        self._extfun = LinearInterpolator(ext_points, values, [delta] * ndim, extrapolate=True)
 
-        ext_xi_shape.append(ndim)
-        xi = np.empty(ext_xi_shape)
-        xmat_list = np.meshgrid(*swp_values, indexing='ij', copy=False)
-        for idx, xmat in enumerate(xmat_list):
-            xi[..., idx] = xmat
+        xi = np.stack(np.meshgrid(*(np.arange(-num_extrapolate, n + num_extrapolate) for n in shape),
+                                  indexing='ij', copy=False), axis=-1)
 
         values_ext = self._extfun(xi)
         self._filt_values = imag_interp.spline_filter(values_ext)
+
         DiffFunction.__init__(self, input_ranges, delta_list=delta_list)
 
     def _normalize_inputs(self, xi):
