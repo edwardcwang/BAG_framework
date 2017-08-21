@@ -485,20 +485,20 @@ class MapCoordinateSpline(DiffFunction):
             raise ValueError('input and output dimension mismatch.')
 
         self._scale_list = scale_list
-        self._max = values.shape
+        self._max = [n - 1 + num_extrapolate for n in shape]
         self._extrapolate = extrapolate
         self._ext = num_extrapolate
 
         # linearly extrapolate given values
-        ext_points = [np.arange(n) for n in shape]
+        ext_points = [np.arange(num_extrapolate, n + num_extrapolate) for n in shape]
         points, delta_list = _scales_to_points(scale_list, values, delta)
-        input_ranges = [(pvec[0], pvec[1]) for pvec in points]
+        input_ranges = [(pvec[0], pvec[-1]) for pvec in points]
         self._extfun = LinearInterpolator(ext_points, values, [delta] * ndim, extrapolate=True)
 
-        xi = np.stack(np.meshgrid(*(np.arange(-num_extrapolate, n + num_extrapolate) for n in shape),
-                                  indexing='ij', copy=False), axis=-1)
+        xi_ext = np.stack(np.meshgrid(*(np.arange(0, n + 2 * num_extrapolate) for n in shape),
+                                      indexing='ij', copy=False), axis=-1)
 
-        values_ext = self._extfun(xi)
+        values_ext = self._extfun(xi_ext)
         self._filt_values = imag_interp.spline_filter(values_ext)
 
         DiffFunction.__init__(self, input_ranges, delta_list=delta_list)
@@ -511,26 +511,14 @@ class MapCoordinateSpline(DiffFunction):
                              "but this interpolator has dimension %d" % (xi.shape[-1], self.ndim))
 
         xi = np.atleast_2d(xi.copy())
-        need_extrapolate = False
         for idx, (offset, scale) in enumerate(self._scale_list):
             xi[..., idx] -= offset
             xi[..., idx] /= scale
-            max_val = np.max(xi[..., idx])
-            if max_val > self._max[idx]:
-                if not self._extrapolate:
-                    raise ValueError('Some inputs on dimension %d out of bounds.  Max value = %.4g' % (idx, max_val))
-                else:
-                    need_extrapolate = True
-        min_val = np.min(xi)
-        if min_val < 0.0:
-            if not self._extrapolate:
-                raise ValueError('Some inputs are negative.  Min Value = %.4g' % min_val)
-            else:
-                need_extrapolate = True
+
         # take extension input account.
         xi += self._ext
 
-        return xi, need_extrapolate
+        return xi
 
     def __call__(self, xi):
         """Interpolate at the given coordinate.
@@ -545,8 +533,24 @@ class MapCoordinateSpline(DiffFunction):
         val : numpy.array
             The interpolated values at the given coordinates.
         """
-        xi, extrapolate = self._normalize_inputs(xi)
-        if extrapolate:
-            return self._extfun(xi)
-        else:
-            return imag_interp.map_coordinates(self._filt_values, xi.T, mode='nearest', prefilter=False).T
+        ext = self._ext
+        ndim = self.ndim
+        xi = self._normalize_inputs(xi)
+        ans_shape = xi.shape[:-1]
+        xi = xi.reshape(-1, ndim)
+
+        ext_idx_vec = False
+        for idx in range(self.ndim):
+            ext_idx_vec = ext_idx_vec | (xi[:, idx] < ext) | (xi[:, idx] > self._max[idx])
+
+        int_idx_vec = ~ext_idx_vec
+        xi_ext = xi[ext_idx_vec, :]
+        xi_int = xi[int_idx_vec, :]
+        ans = np.empty(xi.shape[0])
+        ans[int_idx_vec] = imag_interp.map_coordinates(self._filt_values, xi_int.T, mode='nearest', prefilter=False)
+        if xi_ext.size > 0:
+            if not self._extrapolate:
+                raise ValueError('some inputs are out of bounds.')
+            ans[ext_idx_vec] = self._extfun(xi_ext)
+
+        return ans.reshape(ans_shape)
