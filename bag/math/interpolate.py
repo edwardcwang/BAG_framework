@@ -368,9 +368,9 @@ class Spline2D(DiffFunction):
 
     def __init__(self, scale_list, values, extrapolate=False):
         # error checking
-        if len(values.shape) != 1:
+        if len(values.shape) != 2:
             raise ValueError('This class only works for 2D data.')
-        elif len(scale_list) != 1:
+        elif len(scale_list) != 2:
             raise ValueError('input and output dimension mismatch.')
 
         nx, ny = values.shape
