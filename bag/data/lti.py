@@ -697,7 +697,7 @@ def get_w_crossings(num, den, atol=1e-8):
 
         \\frac{A^2(w) + B^2(w)}{C^2(w) + D^2(w)} = 1 \implies A^2(w) + B^2(w) - C^2(w) - D^2(w) = 0
 
-    This function solves these two equations and return the smallest real and positive roots.
+    This function solves these two equations and returns the smallest real and positive roots.
 
     Parameters
     ----------
@@ -711,9 +711,9 @@ def get_w_crossings(num, den, atol=1e-8):
     Returns
     -------
     w_phase : Optional[float]
-        lowest positive frequency at which the gain becomes unity.  None if no such frequency exist.
+        lowest positive frequency in rad/s at which the gain becomes unity.  None if no such frequency exist.
     w_gain : Optional[float]
-        lower positive frequency at which the phase becomes 180 degrees.  None if no such frequency exist.
+        lower positive frequency in rad/s at which the phase becomes 180 degrees.  None if no such frequency exist.
     """
     # construct A(w), B(w), C(w), and D(w)
     num_flip = num[::-1]
@@ -747,6 +747,72 @@ def get_w_crossings(num, den, atol=1e-8):
                 w_list[idx] = root_real
 
     return w_list[0], w_list[1]
+
+
+def get_w_3db(num, den, atol=1e-8):
+    # type: (np.multiarray.ndarray, np.multiarray.ndarray, float) -> Optional[float]
+    """Given the numerator and denominator of the transfer function, compute the 3dB frequency.
+
+    To determine the 3dB frequency, we first normalize the transfer function so that its DC gain is one,
+    then we write the transfer function as:
+
+    .. math::
+
+        \\frac{A(w) + jB(w)}{C(w) + jD(w)}
+
+    where :math:`A(w)`, :math:`B(w)`, :math:`C(w)`, and :math:`D(w)` are real polynomials.  The 3dB frequency
+    is the frequency at which:
+
+    .. math::
+
+        \\frac{A^2(w) + B^2(w)}{C^2(w) + D^2(w)} = 0.5 \implies A^2(w) + B^2(w) - 0.5\\left(C^2(w) + D^2(w)\\right) = 0
+
+    This function solves this equation and returns the smallest real and positive roots.
+
+    Parameters
+    ----------
+    num : np.multiarray.ndarray
+        the numerator polynomial coefficients array.  index 0 is coefficient for highest term.
+    den : np.multiarray.ndarray
+        the denominator polynomial coefficients array.  index 0 is coefficient for highest term.
+    atol : float
+        absolute tolerance used to check if the imaginary part of a root is 0, or if a root is greater than 0.
+
+    Returns
+    -------
+    w_3db : Optional[float]
+        the 3dB frequency in rad/s.  None if no such frequency exist.
+    """
+    # construct A(w), B(w), C(w), and D(w) of normalized transfer function
+    num_flip = num[::-1] / num[-1]
+    den_flip = den[::-1] / den[-1]
+    avec = np.copy(num_flip)
+    bvec = np.copy(num_flip)
+    cvec = np.copy(den_flip)
+    dvec = np.copy(den_flip)
+    avec[1::2] = 0
+    avec[2::4] *= -1
+    bvec[0::2] = 0
+    bvec[3::4] *= -1
+    cvec[1::2] = 0
+    cvec[2::4] *= -1
+    dvec[0::2] = 0
+    dvec[3::4] *= -1
+
+    apoly = np.poly1d(avec[::-1])
+    bpoly = np.poly1d(bvec[::-1])
+    cpoly = np.poly1d(cvec[::-1])
+    dpoly = np.poly1d(dvec[::-1])
+
+    # solve for w_phase/w_gain
+    poly = apoly**2 + bpoly**2 - (cpoly**2 + dpoly**2) / 2  # type: np.poly1d
+    w_ans = None
+    for root in poly.roots:
+        root_real = root.real
+        if abs(root.imag) < atol < root_real and (w_ans is None or root_real < w_ans):
+            w_ans = root_real
+
+    return w_ans
 
 
 def get_stability_margins(num, den, rtol=1e-8, atol=1e-8):
