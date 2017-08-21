@@ -110,6 +110,34 @@ class LTICircuit(object):
             self._add(self._gmat_data, (node_n, node_p), -g)
             self._add(self._gmat_data, (node_n, node_n), g)
 
+    def add_conductance(self, g, p_name, n_name):
+        # type: (float, str, str) -> None
+        """Adds a resistor to the circuit given conductance value.
+
+        Parameters
+        ----------
+        g : float
+            the conductance value, in inverse Ohms.
+        p_name : str
+            the positive terminal net name.
+        n_name : str
+            the negative terminal net name.
+        """
+        node_p = self._get_node_id(p_name)
+        node_n = self._get_node_id(n_name)
+
+        if node_p == node_n:
+            return
+        if node_p < node_n:
+            node_p, node_n = node_n, node_p
+
+        # avoid 0 resistance.
+        self._add(self._gmat_data, (node_p, node_p), g)
+        if node_n >= 0:
+            self._add(self._gmat_data, (node_p, node_n), -g)
+            self._add(self._gmat_data, (node_n, node_p), -g)
+            self._add(self._gmat_data, (node_n, node_n), g)
+
     def add_vccs(self, gm, p_name, n_name, cp_name, cn_name='gnd'):
         # type: (float, str, str, str, str) -> None
         """Adds a voltage controlled current source to the circuit.
