@@ -170,7 +170,11 @@ class DiffFunction(with_metaclass(abc.ABCMeta, object)):
         xtest[0, ..., idx] += delta / 2.0
         xtest[1, ..., idx] -= delta / 2.0
         val = self(xtest)
-        return (val[0] - val[1]) / delta
+        ans = (val[0] - val[1]) / delta  # type: np.ndarray
+
+        if ans.size == 1 and not np.isscalar(ans):
+            return ans[0]
+        return ans
 
     def _fd_jacobian(self, xi, delta_list):
         """Calculate the Jacobian matrix using central finite difference.
@@ -358,6 +362,8 @@ class InLinTransformFunction(DiffFunction):
     def __call__(self, xi):
         farg, xi_shape = self._get_arg(xi)
         result = self._f1(farg)
+        if np.isscalar(result):
+            return result
         return result.reshape(xi_shape[:-1])
 
     def deriv(self, xi, j):

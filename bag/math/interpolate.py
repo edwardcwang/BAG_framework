@@ -160,7 +160,10 @@ class LinearInterpolator(DiffFunction):
         val : numpy.array
             The interpolated values at the given coordinates.
         """
-        return self.fun(xi)
+        ans = self.fun(xi)
+        if ans.size == 1:
+            return ans[0]
+        return ans
 
     def integrate(self, xstart, xstop, axis=-1, logx=False, logy=False):
         # type: (float, float, int, bool, bool) -> Union[LinearInterpolator, float]
@@ -328,7 +331,10 @@ class Interpolator1D(DiffFunction):
         val : numpy.array
             The interpolated values at the given coordinates.
         """
-        return self.fun(xi)
+        ans = self.fun(xi)
+        if ans.size == 1:
+            return ans[0]
+        return ans
 
     def deriv(self, xi, idx):
         """Calculate the derivative of the spline along the given index.
@@ -348,7 +354,10 @@ class Interpolator1D(DiffFunction):
         if idx != 0:
             raise ValueError('Invalid derivative index: %d' % idx)
 
-        return self.fun(xi, 1)
+        ans = self.fun(xi, 1)
+        if ans.size == 1:
+            return ans[0]
+        return ans
 
 
 class Spline2D(DiffFunction):
@@ -553,4 +562,6 @@ class MapCoordinateSpline(DiffFunction):
                 raise ValueError('some inputs are out of bounds.')
             ans[ext_idx_vec] = self._extfun(xi_ext)
 
+        if ans.size == 1:
+            return ans[0]
         return ans.reshape(ans_shape)
