@@ -93,22 +93,10 @@ class LTICircuit(object):
         n_name : str
             the negative terminal net name.
         """
-        node_p = self._get_node_id(p_name)
-        node_n = self._get_node_id(n_name)
-
-        if node_p == node_n:
-            return
-        if node_p < node_n:
-            node_p, node_n = node_n, node_p
-
         # avoid 0 resistance.
         res_sgn = 1 if res >= 0 else -1
         g = res_sgn / max(abs(res), self._float_min)
-        self._add(self._gmat_data, (node_p, node_p), g)
-        if node_n >= 0:
-            self._add(self._gmat_data, (node_p, node_n), -g)
-            self._add(self._gmat_data, (node_n, node_p), -g)
-            self._add(self._gmat_data, (node_n, node_n), g)
+        self.add_conductance(g, p_name, n_name)
 
     def add_conductance(self, g, p_name, n_name):
         # type: (float, str, str) -> None
@@ -131,7 +119,6 @@ class LTICircuit(object):
         if node_p < node_n:
             node_p, node_n = node_n, node_p
 
-        # avoid 0 resistance.
         self._add(self._gmat_data, (node_p, node_p), g)
         if node_n >= 0:
             self._add(self._gmat_data, (node_p, node_n), -g)
@@ -261,13 +248,13 @@ class LTICircuit(object):
         else:
             self._ind_data[key] = 1.0 / (1.0 / ind + 1.0 / self._ind_data[key])
 
-    def add_transistor(self, tran_info, d_name, g_name, s_name, b_name='gnd', fg=1):
-        # type: (Dict[str, np.ndarray], str, str, str, str, int) -> None
+    def add_transistor(self, tran_info, d_name, g_name, s_name, b_name='gnd', fg=1, neg_cap=True):
+        # type: (Dict[str, float], str, str, str, str, int, bool) -> None
         """Adds a small signal transistor model to the circuit.
 
         Parameters
         ----------
-        tran_info : Dict[str, np.ndarray]
+        tran_info : Dict[str, float]
             a dictionary of 1-finger transistor small signal parameters.  Should contain gm, gds, gb,
             cgd, cgs, cgb, cds, cdb, and csb.
         d_name : str
@@ -280,30 +267,39 @@ class LTICircuit(object):
             body net name.  Defaults to 'gnd'.
         fg : int
             number of transistor fingers.
+        neg_cap : bool
+            True to allow negative capacitance (which is there due to model fitting).
         """
-        gm = tran_info['gm'][0] * fg
-        ro = 1 / (tran_info['gds'][0] * fg)
-        cgd = tran_info['cgd'][0] * fg
-        cgs = tran_info['cgs'][0] * fg
-        cds = tran_info['cds'][0] * fg
+        gm = tran_info['gm'] * fg
+        gds = tran_info['gds'] * fg
+        cgd = tran_info['cgd'] * fg
+        cgs = tran_info['cgs'] * fg
+        cds = tran_info['cds'] * fg
+        cgb = tran_info.get('cgb', 0) * fg
+        cdb = tran_info.get('cdb', 0) * fg
+        csb = tran_info.get('csb', 0) * fg
+
+        if not neg_cap:
+            cgd = max(cgd, 0)
+            cgs = max(cgs, 0)
+            cds = max(cds, 0)
+            cgb = max(cgb, 0)
+            cdb = max(cdb, 0)
+            csb = max(csb, 0)
 
         self.add_vccs(gm, d_name, s_name, g_name, s_name)
-        self.add_res(ro, d_name, s_name)
+        self.add_conductance(gds, d_name, s_name)
         self.add_cap(cgd, g_name, d_name)
         self.add_cap(cgs, g_name, s_name)
         self.add_cap(cds, d_name, s_name)
+        self.add_cap(cgb, g_name, b_name)
+        self.add_cap(cdb, d_name, b_name)
+        self.add_cap(csb, s_name, b_name)
 
         if 'gb' in tran_info:
             # only add these if source is not shorted to body.
-            gb = tran_info['gb'][0] * fg
-            cgb = tran_info['cgb'][0] * fg
-            cdb = tran_info['cdb'][0] * fg
-            csb = tran_info['csb'][0] * fg
-
+            gb = tran_info['gb'] * fg
             self.add_vccs(gb, d_name, s_name, b_name, s_name)
-            self.add_cap(cgb, g_name, b_name)
-            self.add_cap(cdb, d_name, b_name)
-            self.add_cap(csb, s_name, b_name)
 
     @classmethod
     def _count_rank(cls, diag):
