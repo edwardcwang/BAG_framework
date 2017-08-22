@@ -249,7 +249,7 @@ class LTICircuit(object):
             self._ind_data[key] = 1.0 / (1.0 / ind + 1.0 / self._ind_data[key])
 
     def add_transistor(self, tran_info, d_name, g_name, s_name, b_name='gnd', fg=1, neg_cap=True):
-        # type: (Dict[str, float], str, str, str, str, int, bool) -> None
+        # type: (Dict[str, float], str, str, str, str, Union[float, int], bool) -> None
         """Adds a small signal transistor model to the circuit.
 
         Parameters
@@ -265,7 +265,7 @@ class LTICircuit(object):
             source net name.
         b_name : str
             body net name.  Defaults to 'gnd'.
-        fg : int
+        fg : Union[float, int]
             number of transistor fingers.
         neg_cap : bool
             True to allow negative capacitance (which is there due to model fitting).
