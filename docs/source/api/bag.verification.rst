@@ -1,35 +1,35 @@
-bag\.verification package
-=========================
+bag.verification package
+========================
 
 Submodules
 ----------
 
-bag\.verification\.base module
-------------------------------
+bag.verification.base module
+----------------------------
 
 .. automodule:: bag.verification.base
     :members:
     :undoc-members:
     :show-inheritance:
 
-bag\.verification\.calibre module
----------------------------------
+bag.verification.calibre module
+-------------------------------
 
 .. automodule:: bag.verification.calibre
     :members:
     :undoc-members:
     :show-inheritance:
 
-bag\.verification\.pvs module
------------------------------
+bag.verification.pvs module
+---------------------------
 
 .. automodule:: bag.verification.pvs
     :members:
     :undoc-members:
     :show-inheritance:
 
-bag\.verification\.virtuoso\_export module
-------------------------------------------
+bag.verification.virtuoso_export module
+---------------------------------------
 
 .. automodule:: bag.verification.virtuoso_export
     :members:

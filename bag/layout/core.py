@@ -1289,7 +1289,7 @@ class BagLayout(object):
 
         Returns
         -------
-        content :
+        content : Any
             a list describing this layout, or PyOALayout if cybagoa package is enabled.
         """
         if not self._finalized:

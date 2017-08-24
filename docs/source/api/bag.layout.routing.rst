@@ -1,27 +1,27 @@
-bag\.layout\.routing package
-============================
+bag.layout.routing package
+==========================
 
 Submodules
 ----------
 
-bag\.layout\.routing\.base module
----------------------------------
+bag.layout.routing.base module
+------------------------------
 
 .. automodule:: bag.layout.routing.base
     :members:
     :undoc-members:
     :show-inheritance:
 
-bag\.layout\.routing\.fill module
----------------------------------
+bag.layout.routing.fill module
+------------------------------
 
 .. automodule:: bag.layout.routing.fill
     :members:
     :undoc-members:
     :show-inheritance:
 
-bag\.layout\.routing\.grid module
----------------------------------
+bag.layout.routing.grid module
+------------------------------
 
 .. automodule:: bag.layout.routing.grid
     :members:
