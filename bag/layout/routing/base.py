@@ -201,7 +201,7 @@ class WireArray(object):
 
     Parameters
     ----------
-    track_id : :class:`bag.layout.routing.TrackID
+    track_id : :class:`bag.layout.routing.TrackID`
         TrackArray representing the track locations of this wire array.
     lower : float
         the lower coordinate along the track direction.
@@ -210,6 +210,7 @@ class WireArray(object):
     """
 
     def __init__(self, track_id, lower, upper):
+        # type: (TrackID, float, float) -> None
         self._track_id = track_id
         self._lower = lower
         self._upper = upper

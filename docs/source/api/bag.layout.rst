@@ -1,5 +1,5 @@
-bag\.layout package
-===================
+bag.layout package
+==================
 
 Subpackages
 -----------
@@ -11,56 +11,48 @@ Subpackages
 Submodules
 ----------
 
-bag\.layout\.connection module
-------------------------------
+bag.layout.connection module
+----------------------------
 
 .. automodule:: bag.layout.connection
     :members:
     :undoc-members:
     :show-inheritance:
 
-bag\.layout\.core module
-------------------------
+bag.layout.core module
+----------------------
 
 .. automodule:: bag.layout.core
     :members:
     :undoc-members:
     :show-inheritance:
 
-bag\.layout\.digital module
----------------------------
+bag.layout.digital module
+-------------------------
 
 .. automodule:: bag.layout.digital
     :members:
     :undoc-members:
     :show-inheritance:
 
-bag\.layout\.objects module
----------------------------
+bag.layout.objects module
+-------------------------
 
 .. automodule:: bag.layout.objects
     :members:
     :undoc-members:
     :show-inheritance:
 
-bag\.layout\.placement module
------------------------------
-
-.. automodule:: bag.layout.placement
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-bag\.layout\.template module
-----------------------------
+bag.layout.template module
+--------------------------
 
 .. automodule:: bag.layout.template
     :members:
     :undoc-members:
     :show-inheritance:
 
-bag\.layout\.util module
-------------------------
+bag.layout.util module
+----------------------
 
 .. automodule:: bag.layout.util
     :members:
