@@ -1,6 +1,0 @@
-Berkeley Analog Generator (BAG) version 2.0 and later.
-
-BAG 2.0 is a complete rewrite of BAG 1.x (which is in pre-alpha stage and
-never released publically).  The setup requirements is in setup.py,
-and the (half-complete) documentation can be build in docs using Sphinx.
-
