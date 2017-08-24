@@ -125,13 +125,13 @@ to the BAG repository location.  At Berkeley, this directory is :file:`/tools/pr
 
    You should see the IPython interpreter starting up.  In the interpreter, type:
 
-    .. code-block:: ipython
+    .. code-block:: none
 
         In [1]: run -i demo_scripts/bag_import.py
 
    to executes the script :file:`bag_import.py`.  When it completes without errors, type:
 
-    .. code-block:: ipython
+    .. code-block:: none
 
         In [2]: exit
 
@@ -169,13 +169,13 @@ to the BAG repository location.  At Berkeley, this directory is :file:`/tools/pr
 
    In the IPython console, type:
 
-    .. code-block:: ipython
+    .. code-block:: none
 
         In [1]: run -i bag_dsn.py
 
    You should see the following output:
 
-    .. code-block:: ipython
+    .. code-block:: none
 
         In [1]: run -i bag_dsn.py
         creating BAG project
