@@ -9,7 +9,7 @@ Welcome to BAG's documentation!
 Contents:
 
 .. toctree::
-   :maxdepth: 6
+   :maxdepth: 2
 
    tutorial/tutorial
    overview/overview
