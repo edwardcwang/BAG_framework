@@ -82,7 +82,7 @@ good idea of how to use other people's generators.
 
    to start the IPython interpreter.  Once you're in the interpreter, type:
 
-    .. code-block:: ipython
+    .. code-block:: none
 
         In [1]: run -i demo_scripts/diffamp_tran.py
 

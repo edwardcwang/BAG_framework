@@ -41,8 +41,6 @@ extensions = [
     # napoleon has better support for class instance attribute than numpydoc.
     'sphinx.ext.napoleon',
     # 'numpydoc',
-    'IPython.sphinxext.ipython_console_highlighting',
-    # 'IPython.sphinxext.ipython_directive',
 ]
 
 # make numpydoc work with autosummary
