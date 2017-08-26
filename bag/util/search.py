@@ -197,8 +197,8 @@ class FloatBinaryIterator(object):
         return self._save_marker + self._offset
 
 
-def minimize_cost_binary(f, vmin, start=0, stop=None, save=None, nfev=0):
-    # type: (Callable[[int], float], float, int, Optional[int], Optional[int], int) -> MinCostResult
+def minimize_cost_binary(f, vmin, start=0, stop=None, step=1, save=None, nfev=0):
+    # type: (Callable[[int], float], float, int, Optional[int], int, Optional[int], int) -> MinCostResult
     """Minimize cost given minimum output constraint using binary search.
 
     Given discrete function f, find the minimum integer x such that f(x) >= vmin using binary search.
@@ -217,6 +217,8 @@ def minimize_cost_binary(f, vmin, start=0, stop=None, save=None, nfev=0):
         the input lower bound.
     stop : Optional[int]
         the input upper bound.  Use None for unbounded binary search.
+    step : int
+        the input step.  function will only be evaulated at the points start + step * N
     save : Optional[int]
         If not none, this value will be returned if no solution is found.
     nfev : int
@@ -233,7 +235,7 @@ def minimize_cost_binary(f, vmin, start=0, stop=None, save=None, nfev=0):
             total number of function calls made.
 
     """
-    bin_iter = BinaryIterator(start, stop)
+    bin_iter = BinaryIterator(start, stop, step=step)
     while bin_iter.has_next():
         x_cur = bin_iter.get_next()
         v_cur = f(x_cur)
@@ -247,7 +249,7 @@ def minimize_cost_binary(f, vmin, start=0, stop=None, save=None, nfev=0):
     return MinCostResult(x=save, xmax=None, vmax=None, nfev=nfev)
 
 
-def minimize_cost_golden(f, vmin, offset=0, maxiter=1000):
+def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
     # type: (Callable[[int], float], float, int) -> MinCostResult
     """Minimize cost given minimum output constraint using golden section/binary search.
 
@@ -268,6 +270,8 @@ def minimize_cost_golden(f, vmin, offset=0, maxiter=1000):
         the minimum output value.
     offset : int
         the input lower bound.  We will for x in the range [offset, infinity).
+    step : int
+        the input step.  function will only be evaulated at the points offset + step * N
     maxiter : int
         maximum number of iterations to perform.
 
@@ -291,26 +295,27 @@ def minimize_cost_golden(f, vmin, offset=0, maxiter=1000):
     xmax = vmax = v_prev = None
     while nfev < maxiter:
         x_cur = fib_list[cur_idx]
-        v_cur = f(x_cur + offset)
+        v_cur = f(step * x_cur + offset)
         nfev += 1
 
         if v_cur >= vmin:
             # found upper bound, use binary search to find answer
-            return minimize_cost_binary(f, vmin, start=fib_list[cur_idx - 1] + offset, stop=x_cur + offset,
-                                        save=x_cur + offset, nfev=nfev)
+            stop = step * x_cur + offset
+            return minimize_cost_binary(f, vmin, start=step * fib_list[cur_idx - 1] + offset,
+                                        stop=stop, save=stop, step=step, nfev=nfev)
         else:
             if vmax is not None and v_cur <= vmax:
                 if cur_idx <= 3:
                     # special case: 0 <= xmax < 3, and we already checked all possibilities, so
                     # we know vmax < vmin.  There is no solution and just return.
-                    return MinCostResult(x=None, xmax=xmax, vmax=vmax, nfev=nfev)
+                    return MinCostResult(x=None, xmax=step * xmax + offset, vmax=vmax, nfev=nfev)
                 else:
                     # we found the bracket that encloses maximum, perform golden section search
                     a, x, b = fib_list[cur_idx - 2], fib_list[cur_idx - 1], fib_list[cur_idx]
                     fx = v_prev
                     while x > a + 1 and b > x + 1:
                         u = a + b - x
-                        fu = f(u + offset)
+                        fu = f(step * u + offset)
                         nfev + 1
 
                         if fu >= fx:
@@ -323,8 +328,9 @@ def minimize_cost_golden(f, vmin, offset=0, maxiter=1000):
 
                             if fx >= vmin:
                                 # found upper bound, use binary search to find answer
-                                return minimize_cost_binary(f, vmin, start=a + offset, stop=x + offset,
-                                                            save=x + offset, nfev=nfev)
+                                stop = step * x + offset
+                                return minimize_cost_binary(f, vmin, start=step * a + offset,
+                                                            stop=stop, save=stop, step=step, nfev=nfev)
                         else:
                             if u > x:
                                 b = u
@@ -332,7 +338,7 @@ def minimize_cost_golden(f, vmin, offset=0, maxiter=1000):
                                 a = u
 
                     # golden section search terminated, we found the maximum and it is less than vmin
-                    return MinCostResult(x=None, xmax=x, vmax=fx, nfev=nfev)
+                    return MinCostResult(x=None, xmax=step * x + offset, vmax=fx, nfev=nfev)
             else:
                 # still not close to maximum, continue searching
                 vmax = v_prev = v_cur
