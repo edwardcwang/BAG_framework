@@ -30,9 +30,10 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Optional
+from collections import namedtuple
+from typing import Optional, Callable
 
-import numpy as np
+MinCostResult = namedtuple('MinCostResult', ['x', 'xmax', 'vmax', 'nfev'])
 
 
 class BinaryIterator(object):
@@ -196,133 +197,146 @@ class FloatBinaryIterator(object):
         return self._save_marker + self._offset
 
 
-def minimize_brent_discrete(func, a, x, b, maxiter=500):
-    """Find minimum of a discrete function given interval.
+def minimize_cost_binary(f, vmin, start=0, stop=None, save=None, nfev=0):
+    # type: (Callable[[int], float], float, int, Optional[int], Optional[int], int) -> MinCostResult
+    """Minimize cost given minimum output constraint using binary search.
 
-    This is a modification of the Brent's method so function arguments are
-    quantized to integers.
+    Given discrete function f, find the minimum integer x such that f(x) >= vmin using binary search.
+
+    This algorithm only works if f is monotonically increasing, or if f monontonically increases
+    then monontonically decreases, but stop is given and f(stop) >= vmin.
 
     Parameters
     ----------
-    func : callable
-        function to minimize.  Must take a single integer and returns a scalar value.
-    a : int
-        lower bound of the interval.
-    x : int
-        a point in the interval for which f(x) < f(a), f(b).
-    b: int
-        upper bound of the interval.
-    maxiter : int
-        maximum number of iterations.
+    f : Callable[[int], float]
+        a function that takes a single integer and output a scalar value.  Must monotonically
+        increase then monotonically decrease.
+    vmin : float
+        the minimum output value.
+    start : int
+        the input lower bound.
+    stop : Optional[int]
+        the input upper bound.  Use None for unbounded binary search.
+    save : Optional[int]
+        If not none, this value will be returned if no solution is found.
+    nfev : int
+        number of function calls already made.
 
     Returns
     -------
-    xmin : Optional[int]
-        the minimum X solution, None if solution cannot be found within maxiter iterations.
+    result : MinCostResult
+        the MinCostResult named tuple, with attributes:
+
+        x : Optional[int]
+            the minimum integer such that f(x) >= vmin.  If no such x exists, this will be None.
+        nfev : int
+            total number of function calls made.
+
     """
-    # set up for optimization
-    tol = 1e-8
-    _mintol = 1e-2
-    _cg = 0.3819660
+    bin_iter = BinaryIterator(start, stop)
+    while bin_iter.has_next():
+        x_cur = bin_iter.get_next()
+        v_cur = f(x_cur)
+        nfev += 1
 
-    w = v = x
-    fw = fv = fx = func(x)
-    deltax = 0.0
-    iter_cnt = 0
-    rat = 0
-    while iter_cnt < maxiter and (x > a + 1 or b > x + 1):
-        tol1 = tol * np.abs(x) + _mintol
-        tol2 = 2.0 * tol1
-        xmid = 0.5 * (a + b)
-        # XXX In the first iteration, rat is only bound in the true case
-        # of this conditional. This used to cause an UnboundLocalError
-        # (gh-4140). It should be set before the if (but to what?).
-        if np.abs(deltax) <= tol1:
-            # noinspection PyTypeChecker
-            if x >= xmid:
-                deltax = a - x       # do a golden section step
-            else:
-                deltax = b - x
-            rat = _cg * deltax
-        else:                              # do a parabolic step
-            tmp1 = (x - w) * (fx - fv)
-            tmp2 = (x - v) * (fx - fw)
-            p = (x - v) * tmp2 - (x - w) * tmp1
-            tmp2 = 2.0 * (tmp2 - tmp1)
-            if tmp2 > 0.0:
-                p = -p
-            tmp2 = np.abs(tmp2)
-            dx_temp = deltax
-            deltax = rat
-            # check parabolic fit
-            if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
-                    (np.abs(p) < np.abs(0.5 * tmp2 * dx_temp))):
-                rat = p * 1.0 / tmp2        # if parabolic step is useful.
-                u = x + rat
-                if (u - a) < tol2 or (b - u) < tol2:
-                    if xmid >= x:
-                        rat = tol1
-                    else:
-                        rat = -tol1
-            else:
-                # noinspection PyTypeChecker
-                if x >= xmid:
-                    deltax = a - x  # if it's not do a golden section step
+        if v_cur >= vmin:
+            save = x_cur
+            bin_iter.down()
+        else:
+            bin_iter.up()
+    return MinCostResult(x=save, xmax=None, vmax=None, nfev=nfev)
+
+
+def minimize_cost_golden(f, vmin, offset=0, maxiter=1000):
+    # type: (Callable[[int], float], float, int) -> MinCostResult
+    """Minimize cost given minimum output constraint using golden section/binary search.
+
+    Given discrete function f that monotonically increases then monotonically decreases,
+    find the minimum integer x such that f(x) >= vmin.
+
+    This method uses Fibonacci search to find the upper bound of x.  If the upper bound
+    is found, a binary search is performed in the interval to find the solution.  If
+    vmin is close to the maximum of f, a golden section search is performed to attempt
+    to find x.
+
+    Parameters
+    ----------
+    f : Callable[[int], float]
+        a function that takes a single integer and output a scalar value.  Must monotonically
+        increase then monotonically decrease.
+    vmin : float
+        the minimum output value.
+    offset : int
+        the input lower bound.  We will for x in the range [offset, infinity).
+    maxiter : int
+        maximum number of iterations to perform.
+
+    Returns
+    -------
+    result : MinCostResult
+        the MinCostResult named tuple, with attributes:
+
+        x : Optional[int]
+            the minimum integer such that f(x) >= vmin.  If no such x exists, this will be None.
+        xmax : Optional[int]
+            the value at which f achieves its maximum.  This is set only if x is None
+        vmax : Optional[float]
+            the maximum value of f.  This is set only if x is None.
+        nfev : int
+            total number of function calls made.
+    """
+    fib_list = [0, 1, 2, 3]
+    cur_idx = 0
+    nfev = 0
+    xmax = vmax = v_prev = None
+    while nfev < maxiter:
+        x_cur = fib_list[cur_idx]
+        v_cur = f(x_cur + offset)
+        nfev += 1
+
+        if v_cur >= vmin:
+            # found upper bound, use binary search to find answer
+            return minimize_cost_binary(f, vmin, start=fib_list[cur_idx - 1] + offset, stop=x_cur + offset,
+                                        save=x_cur + offset, nfev=nfev)
+        else:
+            if vmax is not None and v_cur <= vmax:
+                if cur_idx <= 3:
+                    # special case: 0 <= xmax < 3, and we already checked all possibilities, so
+                    # we know vmax < vmin.  There is no solution and just return.
+                    return MinCostResult(x=None, xmax=xmax, vmax=vmax, nfev=nfev)
                 else:
-                    deltax = b - x
-                rat = _cg * deltax
+                    # we found the bracket that encloses maximum, perform golden section search
+                    a, x, b = fib_list[cur_idx - 2], fib_list[cur_idx - 1], fib_list[cur_idx]
+                    fx = v_prev
+                    while x > a + 1 and b > x + 1:
+                        u = a + b - x
+                        fu = f(u + offset)
+                        nfev + 1
 
-        if np.abs(rat) < 1:            # update by at least tol1
-            if rat >= 0:
-                u = max(int(round(x + tol1)), x + 1)
+                        if fu >= fx:
+                            if u > x:
+                                a, x = x, u
+                                fx = fu
+                            else:
+                                x, b = u, x
+                                fx = fu
+
+                            if fx >= vmin:
+                                # found upper bound, use binary search to find answer
+                                return minimize_cost_binary(f, vmin, start=a + offset, stop=x + offset,
+                                                            save=x + offset, nfev=nfev)
+                        else:
+                            if u > x:
+                                b = u
+                            else:
+                                a = u
+
+                    # golden section search terminated, we found the maximum and it is less than vmin
+                    return MinCostResult(x=None, xmax=x, vmax=fx, nfev=nfev)
             else:
-                u = min(int(round(x - tol1)), x - 1)
-        else:
-            u = int(round(x + rat))
-
-        # if rounding to integer causes u to be equal to boundaries,
-        # we change our picks of u to narrow the range as much as
-        # possible.
-        if u == b:
-            if b > x + 1:
-                u = (x + b) // 2
-            else:
-                u = int(round(x - (x - a) * _cg))
-        elif u == a:
-            if a < x - 1:
-                u = (a + x) // 2
-            else:
-                u = int(round(x + (b - x) * _cg))
-
-        fu = func(u)      # calculate new output value
-
-        if fu > fx:                 # if it's bigger than current
-            if u < x:
-                a = u
-            else:
-                b = u
-            if fu <= fw or w == x:
-                v = w
-                w = u
-                fv = fw
-                fw = fu
-            elif fu <= fv or v == x or v == w:
-                v = u
-                fv = fu
-        else:
-            if u >= x:
-                a = x
-            else:
-                b = x
-            v = w
-            w = x
-            x = u
-            fv = fw
-            fw = fx
-            fx = fu
-
-        iter_cnt += 1
-
-    if x > a + 1 or b > x + 1:
-        return None
-    return x
+                # still not close to maximum, continue searching
+                vmax = v_prev = v_cur
+                xmax = x_cur
+                cur_idx += 1
+                if cur_idx > 3:
+                    fib_list.append(fib_list[-1] + fib_list[-2])
