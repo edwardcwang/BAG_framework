@@ -32,6 +32,8 @@ from builtins import *
 
 from typing import Optional
 
+import numpy as np
+
 
 class BinaryIterator(object):
     """A class that performs binary search over integers.
@@ -192,3 +194,135 @@ class FloatBinaryIterator(object):
         if self._save_marker is None:
             return None
         return self._save_marker + self._offset
+
+
+def minimize_brent_discrete(func, a, x, b, maxiter=500):
+    """Find minimum of a discrete function given interval.
+
+    This is a modification of the Brent's method so function arguments are
+    quantized to integers.
+
+    Parameters
+    ----------
+    func : callable
+        function to minimize.  Must take a single integer and returns a scalar value.
+    a : int
+        lower bound of the interval.
+    x : int
+        a point in the interval for which f(x) < f(a), f(b).
+    b: int
+        upper bound of the interval.
+    maxiter : int
+        maximum number of iterations.
+
+    Returns
+    -------
+    xmin : Optional[int]
+        the minimum X solution, None if solution cannot be found within maxiter iterations.
+    """
+    # set up for optimization
+    tol = 1e-8
+    _mintol = 1e-2
+    _cg = 0.3819660
+
+    w = v = x
+    fw = fv = fx = func(x)
+    deltax = 0.0
+    iter_cnt = 0
+    rat = 0
+    while iter_cnt < maxiter and (x > a + 1 or b > x + 1):
+        tol1 = tol * np.abs(x) + _mintol
+        tol2 = 2.0 * tol1
+        xmid = 0.5 * (a + b)
+        # XXX In the first iteration, rat is only bound in the true case
+        # of this conditional. This used to cause an UnboundLocalError
+        # (gh-4140). It should be set before the if (but to what?).
+        if np.abs(deltax) <= tol1:
+            # noinspection PyTypeChecker
+            if x >= xmid:
+                deltax = a - x       # do a golden section step
+            else:
+                deltax = b - x
+            rat = _cg * deltax
+        else:                              # do a parabolic step
+            tmp1 = (x - w) * (fx - fv)
+            tmp2 = (x - v) * (fx - fw)
+            p = (x - v) * tmp2 - (x - w) * tmp1
+            tmp2 = 2.0 * (tmp2 - tmp1)
+            if tmp2 > 0.0:
+                p = -p
+            tmp2 = np.abs(tmp2)
+            dx_temp = deltax
+            deltax = rat
+            # check parabolic fit
+            if ((p > tmp2 * (a - x)) and (p < tmp2 * (b - x)) and
+                    (np.abs(p) < np.abs(0.5 * tmp2 * dx_temp))):
+                rat = p * 1.0 / tmp2        # if parabolic step is useful.
+                u = x + rat
+                if (u - a) < tol2 or (b - u) < tol2:
+                    if xmid >= x:
+                        rat = tol1
+                    else:
+                        rat = -tol1
+            else:
+                # noinspection PyTypeChecker
+                if x >= xmid:
+                    deltax = a - x  # if it's not do a golden section step
+                else:
+                    deltax = b - x
+                rat = _cg * deltax
+
+        if np.abs(rat) < 1:            # update by at least tol1
+            if rat >= 0:
+                u = max(int(round(x + tol1)), x + 1)
+            else:
+                u = min(int(round(x - tol1)), x - 1)
+        else:
+            u = int(round(x + rat))
+
+        # if rounding to integer causes u to be equal to boundaries,
+        # we change our picks of u to narrow the range as much as
+        # possible.
+        if u == b:
+            if b > x + 1:
+                u = (x + b) // 2
+            else:
+                u = int(round(x - (x - a) * _cg))
+        elif u == a:
+            if a < x - 1:
+                u = (a + x) // 2
+            else:
+                u = int(round(x + (b - x) * _cg))
+
+        fu = func(u)      # calculate new output value
+
+        if fu > fx:                 # if it's bigger than current
+            if u < x:
+                a = u
+            else:
+                b = u
+            if fu <= fw or w == x:
+                v = w
+                w = u
+                fv = fw
+                fw = fu
+            elif fu <= fv or v == x or v == w:
+                v = u
+                fv = fu
+        else:
+            if u >= x:
+                a = x
+            else:
+                b = x
+            v = w
+            w = x
+            x = u
+            fv = fw
+            fw = fx
+            fx = fu
+
+        iter_cnt += 1
+
+    if x > a + 1 or b > x + 1:
+        return None
+    return x
