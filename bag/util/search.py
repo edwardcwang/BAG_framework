@@ -289,19 +289,18 @@ def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
         nfev : int
             total number of function calls made.
     """
-    fib_list = [0, 1, 2, 3]
+    fib2 = fib1 = fib0 = 0
     cur_idx = 0
     nfev = 0
     xmax = vmax = v_prev = None
     while nfev < maxiter:
-        x_cur = fib_list[cur_idx]
-        v_cur = f(step * x_cur + offset)
+        v_cur = f(step * fib0 + offset)
         nfev += 1
 
         if v_cur >= vmin:
             # found upper bound, use binary search to find answer
-            stop = step * x_cur + offset
-            return minimize_cost_binary(f, vmin, start=step * (fib_list[cur_idx - 1] + 1) + offset,
+            stop = step * fib0 + offset
+            return minimize_cost_binary(f, vmin, start=step * (fib1 + 1) + offset,
                                         stop=stop, save=stop, step=step, nfev=nfev)
         else:
             if vmax is not None and v_cur <= vmax:
@@ -311,7 +310,7 @@ def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
                     return MinCostResult(x=None, xmax=step * xmax + offset, vmax=vmax, nfev=nfev)
                 else:
                     # we found the bracket that encloses maximum, perform golden section search
-                    a, x, b = fib_list[cur_idx - 2], fib_list[cur_idx - 1], fib_list[cur_idx]
+                    a, x, b = fib2, fib1, fib0
                     fx = v_prev
                     while x > a + 1 or b > x + 1:
                         u = a + b - x
@@ -342,7 +341,9 @@ def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
             else:
                 # still not close to maximum, continue searching
                 vmax = v_prev = v_cur
-                xmax = x_cur
+                xmax = fib0
                 cur_idx += 1
-                if cur_idx > 3:
-                    fib_list.append(fib_list[-1] + fib_list[-2])
+                if cur_idx <= 3:
+                    fib2, fib1, fib0 = fib1, fib0, cur_idx
+                else:
+                    fib2, fib1, fib0 = fib1, fib0, fib1 + fib0
