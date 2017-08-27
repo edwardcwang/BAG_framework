@@ -301,7 +301,7 @@ def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
         if v_cur >= vmin:
             # found upper bound, use binary search to find answer
             stop = step * x_cur + offset
-            return minimize_cost_binary(f, vmin, start=step * fib_list[cur_idx - 1] + offset,
+            return minimize_cost_binary(f, vmin, start=step * (fib_list[cur_idx - 1] + 1) + offset,
                                         stop=stop, save=stop, step=step, nfev=nfev)
         else:
             if vmax is not None and v_cur <= vmax:
@@ -313,10 +313,10 @@ def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
                     # we found the bracket that encloses maximum, perform golden section search
                     a, x, b = fib_list[cur_idx - 2], fib_list[cur_idx - 1], fib_list[cur_idx]
                     fx = v_prev
-                    while x > a + 1 and b > x + 1:
+                    while x > a + 1 or b > x + 1:
                         u = a + b - x
                         fu = f(step * u + offset)
-                        nfev + 1
+                        nfev += 1
 
                         if fu >= fx:
                             if u > x:
@@ -329,7 +329,7 @@ def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
                             if fx >= vmin:
                                 # found upper bound, use binary search to find answer
                                 stop = step * x + offset
-                                return minimize_cost_binary(f, vmin, start=step * a + offset,
+                                return minimize_cost_binary(f, vmin, start=step * (a + 1) + offset,
                                                             stop=stop, save=stop, step=step, nfev=nfev)
                         else:
                             if u > x:
