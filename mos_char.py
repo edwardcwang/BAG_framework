@@ -54,6 +54,11 @@ class Transistor(AnalogBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         AnalogBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        self._sch_params = None
+
+    @property
+    def sch_params(self):
+        return self._sch_params
 
     @classmethod
     def get_params_info(cls):
@@ -70,7 +75,7 @@ class Transistor(AnalogBase):
             mos_type="transistor type, either 'pch' or 'nch'.",
             lch='channel length, in meters.',
             w='transistor width, in meters/number of fins.',
-            threshold='transistor threshold flavor.',
+            intent='transistor threshold flavor.',
             stack='number of transistors to stack',
             fg='number of fingers.',
             fg_dum='number of dummies on each side.',
@@ -87,7 +92,7 @@ class Transistor(AnalogBase):
         mos_type = self.params['mos_type']
         lch = self.params['lch']
         w = self.params['w']
-        threshold = self.params['threshold']
+        intent = self.params['intent']
         stack = self.params['stack']
         fg = self.params['fg']
         fg_dum = self.params['fg_dum']
@@ -106,7 +111,7 @@ class Transistor(AnalogBase):
 
         fg_tot = (fg * stack) + 2 * fg_dum
         w_list = [w]
-        th_list = [threshold]
+        th_list = [intent]
         g_tracks = [sb_tr_sp + s_tr_w + gs_tr_sp + g_tr_w]
         ds_tracks = [gd_tr_sp + d_tr_w + db_tr_sp]
 
@@ -151,6 +156,16 @@ class Transistor(AnalogBase):
         # export body
         self.add_pin('b', ptap_wire_arrs, show=True)
         self.add_pin('b', ntap_wire_arrs, show=True)
+
+        self._sch_params = dict(
+            mos_type=mos_type,
+            w=w,
+            lch=lch,
+            fg=fg,
+            intent=intent,
+            fg_dum=fg_dum,
+            stack=stack,
+        )
 
 
 class TransistorGD(AnalogBase):
