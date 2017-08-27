@@ -178,10 +178,10 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         return self._swp_var_list
 
     @abc.abstractmethod
-    def get_sch_lay_params(self, val_list):
-        # type: (Tuple[Any, ...]) -> Tuple[Dict[str, Any], Dict[str, Any]]
-        """Returns the schematic and layout dictionary from the given sweep parameter values."""
-        return {}, {}
+    def get_layout_params(self, val_list):
+        # type: (Tuple[Any, ...]) -> Dict[str, Any]
+        """Returns the layout dictionary from the given sweep parameter values."""
+        return {}
 
     @abc.abstractmethod
     def configure_tb(self, tb_type, tb, val_list):
@@ -248,7 +248,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         tb_sch.implement_design(impl_lib, top_cell_name=tb_cell_name, erase=True)
 
     def create_layout(self, lay_params, cell_name, temp_db):
-        # type: (Dict[str, Any], str, TemplateDB) -> None
+        # type: (Dict[str, Any], str, TemplateDB) -> Dict[str, Any]
         """Create the DUT layout."""
         if self.prj is None:
             raise ValueError('BagProject instance is not given.')
@@ -259,8 +259,9 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         lay_module = importlib.import_module(cls_package)
         temp_cls = getattr(lay_module, cls_name)
 
-        temp_list = [temp_db.new_template(params=lay_params, temp_cls=temp_cls, debug=False), ]
-        temp_db.batch_layout(self.prj, temp_list, [cell_name])
+        template = temp_db.new_template(params=lay_params, temp_cls=temp_cls, debug=False)
+        temp_db.batch_layout(self.prj, [template], [cell_name])
+        return template.sch_params
 
     def get_design_name(self, dsn_params):
         # type: (Dict[str, Any]) -> str
@@ -299,12 +300,13 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         dsn_name = self.specs['dsn_name_base'] + '_TEST'
 
         val_list = tuple((sweep_params[key][0] for key in self.swp_var_list))
-        sch_params, lay_params = self.get_sch_lay_params(val_list)
+        lay_params = self.get_layout_params(val_list)
 
         temp_db = self.make_tdb()
+        sch_params = self.create_layout(lay_params, dsn_name, temp_db)
+
         if gen_sch:
             self.create_dut_sch(sch_params, dsn_name)
-        self.create_layout(lay_params, dsn_name, temp_db)
 
     def create_designs(self, tb_type='', extract=True):
         # type: (str, bool) -> None
@@ -323,15 +325,14 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         job_info_list = []
         for combo_list in self.get_combinations_iter():
             dsn_name = self.get_instance_name(dsn_name_base, combo_list)
-            sch_params, lay_params = self.get_sch_lay_params(combo_list)
-
+            lay_params = self.get_layout_params(combo_list)
+            print('create layout for %s' % dsn_name)
+            sch_params = self.create_layout(lay_params, dsn_name, temp_db)
             print('create schematic for %s' % dsn_name)
             self.create_dut_sch(sch_params, dsn_name)
 
             dsn_info_list.append((dsn_name, combo_list))
             if extract:
-                print('create layout for %s' % dsn_name)
-                self.create_layout(lay_params, dsn_name, temp_db)
                 print('start lvs job')
                 lvs_id, lvs_log = self.prj.run_lvs(impl_lib, dsn_name, block=False)
                 job_info_list.append([lvs_id, lvs_log])
