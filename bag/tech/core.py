@@ -184,6 +184,12 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         return {}
 
     @abc.abstractmethod
+    def get_tb_sch_params(self, tb_type, val_list):
+        # type: (str, Tuple[Any, ...]) -> Dict[str, Any]
+        """Returns the testbench schematic parameters dictionary from the given sweep parameter values."""
+        return {}
+
+    @abc.abstractmethod
     def configure_tb(self, tb_type, tb, val_list):
         # type: (str, Testbench, Tuple[Any, ...]) -> None
         """Setup the testbench with the given sweep parameter values."""
@@ -218,8 +224,8 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         tdb = TemplateDB('template_libs.def', routing_grid, target_lib, use_cybagoa=True)
         return tdb
 
-    def create_dut_sch(self, sch_params, dsn_cell_name):
-        # type: (Dict[str, Any], str) -> None
+    def create_dut_sch(self, sch_params, dsn_cell_name, wrapper_name=''):
+        # type: (Dict[str, Any], str, str) -> None
         """Create a new DUT schematic."""
         if self.prj is None:
             raise ValueError('BagProject instance is not given.')
@@ -227,13 +233,21 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         dut_lib = self.specs['dut_lib']
         dut_cell = self.specs['dut_cell']
         impl_lib = self.specs['impl_lib']
+        wrapper_cell = self.specs.get('wrapper_cell', '')
 
         dsn = self.prj.create_design_module(dut_lib, dut_cell)
         dsn.design(**sch_params)
         dsn.implement_design(impl_lib, top_cell_name=dsn_cell_name, erase=True)
 
-    def create_tb_sch(self, tb_type, dsn_cell_name, tb_cell_name):
-        # type: (str, str, str) -> None
+        # create wrapper schematic if it exists
+        if wrapper_name and wrapper_cell:
+            wrapper_params = self.specs['wrapper_params']
+            wrapper_dsn = self.prj.create_design_module(dut_lib, wrapper_cell)
+            wrapper_dsn.design(dut_lib=impl_lib, dut_cell=dsn_cell_name, **wrapper_params)
+            wrapper_dsn.implement_design(impl_lib, top_cell_name=wrapper_name, erase=True)
+
+    def create_tb_sch(self, tb_type, dsn_cell_name, tb_name, val_list):
+        # type: (str, str, str, Tuple[Any, ...]) -> None
         """Create a new testbench schematic of the given type with the given DUT and testbench cell name."""
         if self.prj is None:
             raise ValueError('BagProject instance is not given.')
@@ -243,9 +257,10 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         tb_lib = tb_specs['tb_lib']
         tb_cell = tb_specs['tb_cell']
 
+        tb_sch_params = self.get_tb_sch_params(tb_type, val_list)
         tb_sch = self.prj.create_design_module(tb_lib, tb_cell)
-        tb_sch.design(dut_lib=impl_lib, dut_cell=dsn_cell_name)
-        tb_sch.implement_design(impl_lib, top_cell_name=tb_cell_name, erase=True)
+        tb_sch.design(dut_lib=impl_lib, dut_cell=dsn_cell_name, **tb_sch_params)
+        tb_sch.implement_design(impl_lib, top_cell_name=tb_name, erase=True)
 
     def create_layout(self, lay_params, cell_name, temp_db):
         # type: (Dict[str, Any], str, TemplateDB) -> Dict[str, Any]
@@ -316,6 +331,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
         impl_lib = self.specs['impl_lib']
         dsn_name_base = self.specs['dsn_name_base']
+        wrapper_name_base = dsn_name_base + '_WRAPPER'
         rcx_params = self.specs.get('rcx_params', {})
 
         temp_db = self.make_tdb()
@@ -325,11 +341,12 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         job_info_list = []
         for combo_list in self.get_combinations_iter():
             dsn_name = self.get_instance_name(dsn_name_base, combo_list)
+            wrapper_name = self.get_instance_name(wrapper_name_base, combo_list)
             lay_params = self.get_layout_params(combo_list)
             print('create layout for %s' % dsn_name)
             sch_params = self.create_layout(lay_params, dsn_name, temp_db)
             print('create schematic for %s' % dsn_name)
-            self.create_dut_sch(sch_params, dsn_name)
+            self.create_dut_sch(sch_params, dsn_name, wrapper_name=wrapper_name)
 
             dsn_info_list.append((dsn_name, combo_list))
             if extract:
@@ -371,7 +388,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
                 print('%s RCX passed.' % dsn_name)
 
             if tb_type:
-                sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, val_list))
+                sim_info_list.append(self._run_tb_sim(tb_type, val_list))
 
         if sim_info_list:
             self.save_sim_data(tb_type, sim_info_list, dsn_info_list)
@@ -389,25 +406,33 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
             if overwrite or not os.path.isfile(save_data_path):
                 dsn_name = self.get_instance_name(dsn_name_base, val_list)
                 dsn_info_list.append((dsn_name, val_list))
-                sim_info_list.append(self._run_tb_sim(tb_type, dsn_name, val_list))
+                sim_info_list.append(self._run_tb_sim(tb_type, val_list))
 
         self.save_sim_data(tb_type, sim_info_list, dsn_info_list)
         print('simulation done.')
 
-    def _run_tb_sim(self, tb_type, dsn_name, val_list):
-        # type: (str, str, Tuple[Any, ...]) -> Tuple[str, Testbench]
+    def _run_tb_sim(self, tb_type, val_list):
+        # type: (str, Tuple[Any, ...]) -> Tuple[str, Testbench]
         """Create testbench of the given type and run simulation."""
         if self.prj is None:
             raise ValueError('BagProject instance is not given.')
 
         impl_lib = self.specs['impl_lib']
         tb_specs = self.specs[tb_type]
+        dsn_name_base = self.specs['dsn_name_base']
+        wrapper_cell = self.specs.get('wrapper_cell', '')
+
+        if wrapper_cell:
+            wrapper_name_base = dsn_name_base + '_WRAPPER'
+            dut_name = self.get_instance_name(wrapper_name_base, val_list)
+        else:
+            dut_name = self.get_instance_name(dsn_name_base, val_list)
 
         tb_name_base = tb_specs['tb_name_base']
 
         tb_name = self.get_instance_name(tb_name_base, val_list)
         print('create testbench %s' % tb_name)
-        self.create_tb_sch(tb_type, dsn_name, tb_name)
+        self.create_tb_sch(tb_type, dut_name, tb_name, val_list)
 
         tb = self.prj.configure_testbench(impl_lib, tb_name)
 
