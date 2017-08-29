@@ -32,8 +32,6 @@ from builtins import *
 # compatibility import.
 from ..io import load_sim_results, save_sim_results, load_sim_file
 from .core import Waveform
-from .plot import plot_waveforms
 
 __all__ = ['load_sim_results', 'save_sim_results', 'load_sim_file',
-           'Waveform',
-           'plot_waveforms']
+           'Waveform', ]
