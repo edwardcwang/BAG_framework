@@ -36,7 +36,6 @@ import abc
 from future.utils import with_metaclass
 
 from ..io import make_temp_dir
-from ..io import gui
 from ..io.process import ProcessManager
 
 
@@ -276,6 +275,7 @@ class SimProcessManager(with_metaclass(abc.ABCMeta, SimAccess)):
             time to wait in seconds for each simulation process to terminate.
         """
         if self._vproc is not None:
+            from ..io import gui
             gui.close(self._vproc)
             self._vproc = None
         self._manager.close(timeout=timeout)
@@ -354,6 +354,8 @@ class SimProcessManager(with_metaclass(abc.ABCMeta, SimAccess)):
         fname : string
             the log file name.
         """
+        from ..io import gui
+
         if self._run_viewer:
             if self._vproc is None:
                 self._vproc = gui.start_viewer()
@@ -368,6 +370,8 @@ class SimProcessManager(with_metaclass(abc.ABCMeta, SimAccess)):
         tag : string
             a description of this log file.
         """
+        from ..io import gui
+
         if not gui.remove_log(self._vproc, tag):
             self._vproc = None
 
