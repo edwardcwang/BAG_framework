@@ -354,13 +354,14 @@ class SimProcessManager(with_metaclass(abc.ABCMeta, SimAccess)):
         fname : string
             the log file name.
         """
-        from ..io import gui
-
         if self._run_viewer:
+            from ..io import gui
+
             if self._vproc is None:
                 self._vproc = gui.start_viewer()
-        if not gui.add_log(self._vproc, tag, fname):
-            self._vproc = None
+
+            if not gui.add_log(self._vproc, tag, fname):
+                self._vproc = None
 
     def remove_log(self, tag):
         """Remove the given log file from log viewer.
