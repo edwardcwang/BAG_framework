@@ -738,7 +738,7 @@ def get_w_crossings(num, den, atol=1e-8):
     w_list = [None, None]
     for idx in range(2):
         for root in poly_list[idx].roots:
-            root_real = root.real
+            root_real = float(root.real)
             if abs(root.imag) < atol < root_real and (w_list[idx] is None or root_real < w_list[idx]):
                 w_list[idx] = root_real
 
@@ -804,7 +804,7 @@ def get_w_3db(num, den, atol=1e-8):
     poly = apoly**2 + bpoly**2 - (cpoly**2 + dpoly**2) / 2  # type: np.poly1d
     w_ans = None
     for root in poly.roots:
-        root_real = root.real
+        root_real = float(root.real)
         if abs(root.imag) < atol < root_real and (w_ans is None or root_real < w_ans):
             w_ans = root_real
 
