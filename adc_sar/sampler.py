@@ -32,12 +32,13 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 import bag
+from bag.layout.util import BBox
 from bag.layout.routing import TrackID
 
 from ..analog_core import AnalogBase, AnalogBaseInfo
 
 
-class NPassGateWClk(AnalogBase):
+class NPassGateWClkCore(AnalogBase):
     """A differential NMOS passgate track-and-hold circuit with clock driver.
 
     This template is mainly used for ADC purposes.
@@ -58,7 +59,12 @@ class NPassGateWClk(AnalogBase):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        AnalogBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        super(NPassGateWClkCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self._fg_tot = 0
+
+    @property
+    def fg_tot(self):
+        return self._fg_tot
 
     @classmethod
     def get_params_info(cls):
@@ -91,32 +97,6 @@ class NPassGateWClk(AnalogBase):
             rename_dict='pin renaming dictionary.',
             guard_ring_nf='Guard ring width in number of fingers.  0 for no guard ring.',
             show_pins='True to draw pins.',
-            tot_width='Total width in number of source/drain tracks.',
-        )
-
-    @classmethod
-    def get_default_param_values(cls):
-        """Returns a dictionary containing default parameter values.
-
-        Override this method to define default parameter values.  As good practice,
-        you should avoid defining default values for technology-dependent parameters
-        (such as channel length, transistor width, etc.), but only define default
-        values for technology-independent parameters (such as number of tracks).
-
-        Returns
-        -------
-        default_params : dict[str, any]
-            dictionary of default parameter values.
-        """
-        return dict(
-            nduml=4,
-            ndumr=4,
-            nsep=0,
-            num_track_sep=1,
-            io_width=1,
-            rename_dict={},
-            guard_ring_nf=0,
-            show_pins=False,
         )
 
     def draw_layout(self):
@@ -204,7 +184,7 @@ class NPassGateWClk(AnalogBase):
     # noinspection PyUnusedLocal
     def _draw_layout_helper(self, lch, wp, wn, fgn, fg_inbuf_list, fg_outbuf_list,
                             nduml, ndumr, nsep, threshold, ptap_w, ntap_w, io_width,
-                            num_track_sep, rename_dict, guard_ring_nf, show_pins, tot_width,
+                            num_track_sep, rename_dict, guard_ring_nf, show_pins,
                             pgr_w, ngr_w, **kwargs):
         """Draw the layout of a transistor for characterization.
         """
@@ -257,17 +237,9 @@ class NPassGateWClk(AnalogBase):
             fg_tot += cur_fg
 
         fg_tot += (ndumr - nsep)
-
-        cur_width = layout_info.get_total_width(fg_tot)
-
-        if cur_width > tot_width:
-            raise ValueError('Need at least %s sd pitches, but constrained to have %d sd pitches'
-                             % (cur_width, tot_width))
-
-        xshift = (tot_width - cur_width) // 2
+        self._fg_tot = fg_tot
 
         n_kwargs = [dict(ds_dummy=True), dict(ds_dummy=False)]
-
         # draw transistor rows
         self.draw_base(lch, fg_tot, ptap_w, ntap_w, nw_list,
                        nth_list, pw_list, pth_list, num_track_sep,
@@ -276,7 +248,6 @@ class NPassGateWClk(AnalogBase):
                        n_orientations=['MX', 'MX'], p_orientations=['R0'],
                        guard_ring_nf=guard_ring_nf,
                        n_kwargs=n_kwargs,
-                       pitch_offset=(xshift, 0),
                        pgr_w=pgr_w, ngr_w=ngr_w,
                        top_layer=top_layer,
                        end_mode=end_mode,
@@ -352,11 +323,125 @@ class NPassGateWClk(AnalogBase):
         vss_warrs, vdd_warrs = self.fill_dummy(lower=0.0, upper=blk_right)
         vss_warrs.append(vss_exp)
 
+        self.add_pin('VSS', vss_warrs, show=show_pins)
+        self.add_pin('VDD', vdd_warrs, show=show_pins)
+
+
+class NPassGateWClk(AnalogBase):
+    """A differential NMOS passgate track-and-hold circuit with clock driver.
+
+    This template is mainly used for ADC purposes.
+
+    Parameters
+    ----------
+    temp_db : :class:`bag.layout.template.TemplateDB`
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : dict[str, any]
+        the parameter values.
+    used_names : set[str]
+        a set of already used cell names.
+    kwargs : dict[str, any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        super(NPassGateWClk, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            lch='channel length, in meters.',
+            wp='pmos width, in meters/number of fins.',
+            wn='nmos width, in meters/number of fins.',
+            fgn='passgate nmos number of fingers.',
+            fg_inbuf_list='List of input clock buffer pmos/nmos number of fingers.',
+            fg_outbuf_list='List of output clock buffer pmos/nmos number of fingers.',
+            nduml='number of left dummies.',
+            ndumr='number of right dummies.',
+            nsep='number of fingers of separator dummies.',
+            threshold='transistor threshold flavor.',
+            ptap_w='NMOS substrate width, in meters/number of fins.',
+            ntap_w='PMOS substrate width, in meters/number of fins.',
+            pgr_w='NMOS guard-ring substrate width, in meters/number of fins.',
+            ngr_w='PMOS guard-ring substrate width, in meters/number of fins.',
+            num_track_sep='number of tracks reserved as space between clock and signal wires.',
+            io_width='input/output track width in number of tracks.',
+            rename_dict='pin renaming dictionary.',
+            guard_ring_nf='Guard ring width in number of fingers.  0 for no guard ring.',
+            show_pins='True to draw pins.',
+            tot_width='Total width in number of source/drain tracks.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        """Returns a dictionary containing default parameter values.
+
+        Override this method to define default parameter values.  As good practice,
+        you should avoid defining default values for technology-dependent parameters
+        (such as channel length, transistor width, etc.), but only define default
+        values for technology-independent parameters (such as number of tracks).
+
+        Returns
+        -------
+        default_params : dict[str, any]
+            dictionary of default parameter values.
+        """
+        return dict(
+            nduml=4,
+            ndumr=4,
+            nsep=0,
+            num_track_sep=1,
+            io_width=1,
+            rename_dict={},
+            guard_ring_nf=0,
+            show_pins=False,
+        )
+
+    def draw_layout(self):
+        res = self.grid.resolution
+        core_params = self.params.copy()
+        tot_width = core_params.pop('tot_width')
+        show_pins = core_params['show_pins']
+
+        core_params['show_pins'] = False
+        core_master = self.new_template(params=core_params, temp_cls=NPassGateWClkCore)
+
+        sd_pitch = core_master.layout_info.sd_pitch_unit
+        cur_width = core_master.layout_info.get_total_width(core_master.fg_tot)
+
+        if cur_width > tot_width:
+            raise ValueError('Need at least %s sd pitches, but constrained to have %d sd pitches'
+                             % (cur_width, tot_width))
+
+        xshift = (tot_width - cur_width) * sd_pitch // 2
+        inst = self.add_instance(core_master, loc=(xshift, 0), unit_mode=True)
+
+        vdd_warrs = inst.get_all_port_pins('VDD')
+        vss_warrs = inst.get_all_port_pins('VSS')
+
+        # set size
+        vdd_lay_id = vdd_warrs[0].layer_id
+        top_layer = vdd_lay_id + 2
+        height = inst.bound_box.height_unit
+        self.set_size_from_bound_box(top_layer, BBox(0, 0, tot_width * sd_pitch, height, res, unit_mode=True))
+
         # fill and export supplies
         sup_width = 2
         fill_margin = 0.5
         edge_margin = 0.2
-        lay_id = vdd_warrs[0].layer_id + 1
+        lay_id = vdd_lay_id + 1
         vdd_warrs, vss_warrs = self.do_power_fill(lay_id, vdd_warrs, vss_warrs,
                                                   sup_width=sup_width, fill_margin=fill_margin,
                                                   edge_margin=edge_margin)
@@ -365,5 +450,9 @@ class NPassGateWClk(AnalogBase):
         vdd_warrs, vss_warrs = self.do_power_fill(lay_id, vdd_warrs, vss_warrs,
                                                   sup_width=sup_width, fill_margin=fill_margin,
                                                   edge_margin=edge_margin)
-        self.add_pin(self.get_pin_name('VSS'), vss_warrs)
-        self.add_pin(self.get_pin_name('VDD'), vdd_warrs)
+
+        self.add_pin('VSS', vss_warrs, show=show_pins)
+        self.add_pin('VDD', vdd_warrs, show=show_pins)
+        for port_name in inst.port_names_iter():
+            if port_name != 'VSS' and port_name != 'VDD':
+                self.reexport(inst.get_port(port_name), show=show_pins)
