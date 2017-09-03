@@ -164,8 +164,8 @@ class NPassGateWClkCore(AnalogBase):
 
         # connect inputs/outputs to vertical layer
         io_layer = tr_id.layer_id + 1
-        p_tid = self.grid.coord_to_nearest_track(io_layer, outp_track.middle)
-        n_tid = self.grid.coord_to_nearest_track(io_layer, outn_track.middle)
+        p_tid = self.grid.coord_to_nearest_track(io_layer, outp_track.middle, half_track=True)
+        n_tid = self.grid.coord_to_nearest_track(io_layer, outn_track.middle, half_track=True)
         outp = self.connect_to_tracks(outp_track, TrackID(io_layer, p_tid, width=io_width),
                                       track_lower=0.0, fill_type='VSS')
         outn = self.connect_to_tracks(outn_track, TrackID(io_layer, n_tid, width=io_width),
