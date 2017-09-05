@@ -207,9 +207,13 @@ class MOMCapUnit(TemplateBase):
 
     def draw_layout(self):
         # type: () -> None
-        self._draw_layout_helper(**self.params)
+        cap_bot_layer = self.params['cap_bot_layer']
+        cap_top_layer = self.params['cap_top_layer']
+        cap_width = self.params['cap_width']
+        cap_height = self.params['cap_height']
+        port_width = self.params['port_width']
+        show_pins = self.params['show_pins']
 
-    def _draw_layout_helper(self, cap_bot_layer, cap_top_layer, cap_width, cap_height, port_width, show_pins):
         res = self.grid.resolution
         cap_width = int(round(cap_width / res))
         cap_height = int(round(cap_height / res))
