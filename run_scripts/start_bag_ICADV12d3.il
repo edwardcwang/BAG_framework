@@ -69,6 +69,14 @@ procedure( parse_data_from_file_helper( p )
             (strncmp( line "#int" 4 ) == 0
                 atoi(cadr(parseString(line)))
             )
+            ; parse a boolean
+            (strncmp( line "#bool" 5 ) == 0
+                if( atoi(cadr(parseString(line))) == 1 then
+                    't
+                else
+                    nil
+                )
+            )
             ; parse a string token or #end
             ('t
                 ; printf("returning str %s\n" line)

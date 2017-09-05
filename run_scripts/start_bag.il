@@ -71,11 +71,10 @@ procedure( parse_data_from_file_helper( p )
             )
             ; parse a boolean
             (strncmp( line "#bool" 5 ) == 0
-                tmp = atoi(cadr(parseString(line)))
-                if( tmp != 0 then
-                    1
+                if( atoi(cadr(parseString(line))) == 1 then
+                    't
                 else
-                    0
+                    nil
                 )
             )
             ; parse a string token or #end
