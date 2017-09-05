@@ -32,7 +32,7 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
-from typing import List, Iterator, Tuple
+from typing import List, Iterator, Tuple, Optional
 from itertools import chain
 
 import bag
@@ -79,6 +79,7 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
     @classmethod
     @abc.abstractmethod
     def get_implant_layers(cls, mos_type, res_type=None):
+        # type: (str, Optional[str]) -> List[Tuple[str, str]]
         """Returns a list of implant layers associated with the given transistor/substrate/resistor type.
 
         Parameters
@@ -92,6 +93,24 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         -------
         imp_list : List[Tuple[str, str]]
             list of implant layers.
+        """
+        return []
+
+    @classmethod
+    @abc.abstractmethod
+    def get_res_metal_layers(cls, layer_id):
+        # type: (int) -> List[Tuple[str, str]]
+        """Returns a list of layers associated with the given metal resistor.
+
+        Parameters
+        ----------
+        layer_id : int
+            the metal layer ID.
+
+        Returns
+        -------
+        res_list : List[Tuple[str, str]]
+            list of resistor layers.
         """
         return []
 
@@ -931,6 +950,11 @@ class DummyTechInfo(TechInfo):
 
     @classmethod
     def get_implant_layers(cls, mos_type, res_type=None):
+        return []
+
+    @classmethod
+    def get_res_metal_layers(cls, layer_id):
+        # type: (int) -> List[Tuple[str, str]]
         return []
 
     @classmethod

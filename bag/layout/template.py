@@ -36,7 +36,7 @@ import abc
 import copy
 from collections import OrderedDict
 from itertools import chain, islice
-from typing import Union, Dict, Any, List, Set, Type, Optional, Tuple, Generator, TypeVar
+from typing import Union, Dict, Any, List, Set, Type, Optional, Tuple, Iterable, TypeVar
 import yaml
 
 from bag.core import BagProject
@@ -95,7 +95,7 @@ class TemplateDB(object):
 
         self._grid = routing_grid
         self._lib_name = lib_name
-        self._template_lookup = {}  # type: Dict[Any, TempBase]
+        self._template_lookup = {}  # type: Dict[Any, TemplateBase]
         self._name_prefix = name_prefix
         self._used_cell_names = set()  # type: Set[str]
         self._use_cybagoa = use_cybagoa and cybagoa is not None
@@ -217,14 +217,14 @@ class TemplateDB(object):
         return master
 
     def instantiate_layout(self, prj, template, top_cell_name=None, debug=False):
-        # type: (BagProject, TempBase, Optional[str], bool, bool) -> None
+        # type: (BagProject, TemplateBase, Optional[str], bool, bool) -> None
         """Instantiate the layout of the given :class:`~bag.layout.template.TemplateBase`.
 
         Parameters
         ----------
         prj : BagProject
             the :class:`~bag.BagProject` instance used to create layout.
-        template : TempBase
+        template : TemplateBase
             the :class:`~bag.layout.template.TemplateBase` to instantiate.
         top_cell_name : Optional[str]
             name of the top level cell.  If None, a default name is used.
@@ -234,14 +234,14 @@ class TemplateDB(object):
         self.batch_layout(prj, [template], [top_cell_name], debug=debug)
 
     def batch_layout(self, prj, template_list, name_list=None, debug=False):
-        # type: (BagProject, List[TempBase], Optional[List[str]], bool) -> None
+        # type: (BagProject, List[TemplateBase], Optional[List[str]], bool) -> None
         """Instantiate all given templates.
 
         Parameters
         ----------
         prj : BagProject
             the :class:`~bag.BagProject` instance used to create layout.
-        template_list : List[TempBase]
+        template_list : List[TemplateBase]
             list of templates to instantiate.
         name_list : Optional[List[str]]
             list of template layout names.  If not given, default names will be used.
@@ -325,14 +325,14 @@ class TemplateDB(object):
                 print('layout instantiation took %.4g seconds' % (end - start))
 
     def _instantiate_layout_helper(self, layout_dict, template, top_cell_name):
-        # type: (Dict[str, TempBase], TempBase, Optional[str]) -> str
+        # type: (Dict[str, TemplateBase], TemplateBase, Optional[str]) -> str
         """Helper method for batch_layout().
 
         Parameters
         ----------
-        layout_dict : Dict[str, TempBase]
+        layout_dict : Dict[str, TemplateBase]
             dictionary from template cell name to TemplateBase.
-        template : TempBase
+        template : TemplateBase
             the :class:`~bag.layout.template.Template` to instantiate.
         top_cell_name : Optional[str]
             name of the top level cell.  If None, a default name is used.
@@ -455,7 +455,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         return self._layout.get_rect_bbox(layer)
 
     def new_template_with(self, **kwargs):
-        # type: (TempBase, **Any) -> TempBase
+        # type: (TempBase, **Any) -> TemplateBase
         """Create a new template with the given parameters.
 
         This method will update the parameter values with the given dictionary,
@@ -907,7 +907,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         return port_name in self._ports
 
     def port_names_iter(self):
-        # type: () -> Generator[str]
+        # type: () -> Iterable[str]
         """Iterates over port names in this template.
 
         Yields
@@ -938,7 +938,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
         Returns
         -------
-        template : TempBase
+        template : TemplateBase
             the new template instance.
         """
         if 'grid' not in kwargs:
@@ -966,12 +966,12 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
     def add_instance(self, master, inst_name=None, loc=(0, 0),
                      orient="R0", nx=1, ny=1, spx=0, spy=0, unit_mode=False):
-        # type: (TempBase, Optional[str], Tuple[float, float], str, int, int, float, float) -> Instance
+        # type: (TemplateBase, Optional[str], Tuple[float, float], str, int, int, float, float) -> Instance
         """Adds a new (arrayed) instance to layout.
 
         Parameters
         ----------
-        master : TempBase
+        master : TemplateBase
             the master template object.
         inst_name : Optional[str]
             instance name.  If None or an instance with this name already exists,
@@ -1092,6 +1092,30 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         rect = Rect(layer, bbox, nx=nx, ny=ny, spx=spx, spy=spy)
         self._layout.add_rect(rect)
         return rect
+
+    def add_res_metal(self, layer_id, bbox, **kwargs):
+        # type: (int, Union[BBox, BBoxArray], **kwargs) -> List[Rect]
+        """Add a new metal resistor.
+
+        Parameters
+        ----------
+        layer_id : int
+            the metal layer ID.
+        bbox : Union[BBox, BBoxArray]
+            the resistor bounding box.  If BBoxArray is given, its arraying parameters will be used instead.
+        **kwargs :
+            optional arguments to add_rect()
+
+        Returns
+        -------
+        rect_list : List[Rect]
+            list of rectangles defining the metal resistor.
+        """
+        rect_list = []
+        rect_layers = self.grid.tech_info.get_res_metal_layers(layer_id)
+        for lay in rect_layers:
+            rect_list.append(self.add_rect(lay, bbox, **kwargs))
+        return rect_list
 
     def add_path(self, path):
         # type: (Path) -> Path
@@ -1564,6 +1588,40 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
         self._used_tracks.add_wire_arrays(warr, fill_margin=fill_margin, fill_type=fill_type,
                                           unit_mode=unit_mode)
+
+        return warr
+
+    def add_res_metal_warr(self,  # type: TemplateBase
+                           layer_id,  # type: int
+                           track_idx,  # type: Union[float, int]
+                           lower,  # type: Union[float, int]
+                           upper,  # type: Union[float, int]
+                           **kwargs):
+        # type: (...) -> WireArray
+        """Add metal resistor as WireArray to this layout.
+
+        Parameters
+        ----------
+        layer_id : int
+            the wire layer ID.
+        track_idx : Union[float, int]
+            the smallest wire track index.
+        lower : Union[float, int]
+            the wire lower coordinate.
+        upper : Union[float, int]
+            the wire upper coordinate.
+        **kwargs :
+            optional arguments to add_wires()
+
+        Returns
+        -------
+        warr : WireArray
+            the added WireArray object.
+        """
+        warr = self.add_wires(layer_id, track_idx, lower, upper, **kwargs)
+
+        for _, bbox_arr in warr.wire_arr_iter(self.grid):
+            self.add_res_metal(layer_id, bbox_arr)
 
         return warr
 
@@ -2443,10 +2501,12 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                 if cur_bounds[0] is None:
                     cur_bounds[0] = w_lower - w_ext
                 else:
+                    # noinspection PyTypeChecker
                     cur_bounds[0] = min(cur_bounds[0], w_lower - w_ext)
                 if cur_bounds[1] is None:
                     cur_bounds[1] = w_upper + w_ext
                 else:
+                    # noinspection PyTypeChecker
                     cur_bounds[1] = max(cur_bounds[1], w_upper + w_ext)
 
                 # compute track lower/upper including via extension
