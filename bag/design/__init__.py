@@ -35,6 +35,7 @@ from .module import MosModuleBase
 from .module import ResIdealModuleBase
 from .module import ResPhysicalModuleBase
 from .module import CapIdealModuleBase
+from .module import ResMetalModule
 
 __all__ = ['Database', 'Module', 'MosModuleBase', 'ResIdealModuleBase',
-           'ResPhysicalModuleBase', 'CapIdealModuleBase']
+           'ResPhysicalModuleBase', 'CapIdealModuleBase', 'ResMetalModule']

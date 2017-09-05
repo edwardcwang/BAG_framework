@@ -115,6 +115,8 @@ def get_python_template(lib_name, cell_name, primitive_table):
             elif cell_name == 'res_ideal':
                 # ideal resistor template
                 module_name = 'ResIdealModuleBase'
+            elif cell_name == 'res_metal':
+                module_name = 'ResMetalModule'
             elif cell_name == 'cap_ideal':
                 # ideal capacitor template
                 module_name = 'CapIdealModuleBase'

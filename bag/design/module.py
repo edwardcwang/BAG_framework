@@ -1029,6 +1029,70 @@ class ResPhysicalModuleBase(Module):
         return True
 
 
+class ResMetalModule(Module):
+    """The base design class for a metal resistor.
+
+    Parameters
+    ----------
+    database : :class:`bag.design.Database`
+        the design database object.
+    yaml_file : str
+        the netlist information file name.
+    parent : :class:`bag.design.Module`
+        the parent of this design module.  None if this is the top level design.
+    prj : :class:`bag.BagProject` or None
+        the BagProject instance.  Used to implement design.
+    """
+
+    param_list = ['w', 'l', 'layer']
+
+    def __init__(self, database, yaml_file, parent=None, prj=None, **kwargs):
+        Module.__init__(self, database, yaml_file, parent=parent, prj=prj, **kwargs)
+        for par in self.param_list:
+            self.parameters[par] = None
+
+    def design(self, w=1e-6, l=1e-6, layer=1):
+        """Create a metal resistor.
+
+        Parameters
+        ----------
+        w : float
+            the resistor width, in meters.
+        l: float
+            the resistor length, in meters.
+        layer : int
+            the metal layer ID.
+        """
+        local_dict = locals()
+        for name in self.param_list:
+            if name not in local_dict:
+                raise ValueError('Parameter %s not specified.' % name)
+            self.parameters[name] = local_dict[name]
+
+        # get technology parameters
+        tech_dict = self.tech_info.tech_params['res_metal']
+        lib_name = tech_dict['lib_name']
+        l_name = tech_dict['l_name']
+        w_name = tech_dict['w_name']
+        cell_name = tech_dict['cell_table'][layer]
+
+        self.replace_instance_master('R0', lib_name, cell_name, static=True)
+        self.instances['R0'].parameters[l_name] = float_to_si_string(l, precision=6)
+        self.instances['R0'].parameters[w_name] = float_to_si_string(w, precision=6)
+        self.instances['R0'].parameters[w_name] = float_to_si_string(w, precision=6)
+        for key, val in tech_dict['others'].items():
+            if isinstance(val, float):
+                val = float_to_si_string(val, precision=6)
+            elif isinstance(val, int):
+                val = '%d' % val
+            elif isinstance(val, bool) or isinstance(val, str):
+                pass
+            else:
+                raise ValueError('unsupported type: %s' % type(val))
+
+            self.instances['R0'].parameters[key] = val
+
+
 class CapIdealModuleBase(Module):
     """The base design class for an ideal capacitor.
 
