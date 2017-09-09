@@ -1479,7 +1479,7 @@ class RXHalf(TemplateBase):
         # add dummies until we have multiples of block pitch
         blk_w = self.grid.get_block_size(layout_info.mconn_port_layer + 3, unit_mode=True)[0]
         sd_pitch_unit = layout_info.sd_pitch_unit
-        cur_width = layout_info.get_total_width(fg_tot) * sd_pitch_unit
+        cur_width = layout_info.get_total_width(fg_tot)
         final_w = -(-cur_width // blk_w) * blk_w
         fg_tot = final_w // sd_pitch_unit
         self._fg_tot = fg_tot

@@ -500,7 +500,6 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
         for orient, y, master in (('R0', 0, bot_end_master), ('MX', yt, top_end_master)):
             for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
                 edge_params = dict(
-                    top_layer=top_layer,
                     is_end=is_end,
                     guard_ring_nf=guard_ring_nf,
                     adj_blk_info=master.get_left_edge_info(),

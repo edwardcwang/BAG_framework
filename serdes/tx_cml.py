@@ -300,7 +300,7 @@ class CMLCorePMOS(AnalogBase):
             input_space='input track space',
             ntap_w='PMOS substrate width, in meters/number of fins.',
             guard_ring_nf='Guard ring width in number of fingers.  0 for no guard ring.',
-            tot_width='Total width in number of source/drain tracks.',
+            tot_width='Total width in layout units.',
             show_pins='True to draw pins.',
         )
 
@@ -343,18 +343,14 @@ class CMLCorePMOS(AnalogBase):
         res = self.grid.resolution
         tot_width_unit = int(round(tot_width / res))
         sd_pitch = layout_info.sd_pitch_unit
-        if tot_width_unit % sd_pitch != 0:
-            raise ValueError('total width = %.4g not multiple of source/drain pitch.' % tot_width)
 
-        num_pitch = tot_width_unit // sd_pitch
-
-        fg_tot = num_pitch
+        fg_tot = (tot_width_unit // sd_pitch)
         cur_width = layout_info.get_total_width(fg_tot)
-        while cur_width > num_pitch:
+        while cur_width > tot_width_unit:
             fg_tot -= 1
             cur_width = layout_info.get_total_width(fg_tot)
 
-        if cur_width != num_pitch:
+        if cur_width != tot_width_unit:
             raise ValueError('Cannot achieve a total width of %.4g' % tot_width)
 
         # find number of tracks needed for output/tail tracks from EM specs

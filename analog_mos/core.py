@@ -33,11 +33,15 @@ from builtins import *
 from future.utils import with_metaclass
 
 from typing import Dict, Any, Union, Tuple, List, Optional
+from collections import namedtuple
 
 from bag.layout.routing import RoutingGrid
 from bag.layout.template import TemplateBase
 
 import abc
+
+
+PlaceInfo = namedtuple('PlaceInfo', ['tot_width', 'edge_margins', 'edge_widths', 'arr_box_x', ])
 
 
 class MOSTech(with_metaclass(abc.ABCMeta, object)):
@@ -112,6 +116,19 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def floating_dummy(cls):
+        # type: () -> bool
+        """Returns True if floating dummies are allowed.
+
+        Returns
+        -------
+        float_dummy : bool
+            True if floating dummies are allowed.
+        """
+        return False
+
+    @classmethod
+    @abc.abstractmethod
     def get_dum_conn_pitch(cls):
         # type: () -> int
         """Returns the minimum track pitch of dummy connections in number of tracks.
@@ -166,6 +183,19 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_dig_top_layer(cls):
+        # type: () -> int
+        """Returns the digital connection layer ID.  Must be vertical.
+
+        Returns
+        -------
+        dig_layer : int
+            the transistor connection layer ID.
+        """
+        return 3
+
+    @classmethod
+    @abc.abstractmethod
     def get_min_fg_decap(cls, lch_unit):
         # type: (int) -> int
         """Returns the minimum number of fingers for decap connections.
@@ -179,6 +209,24 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         -------
         num_fg : int
             minimum number of decap fingers.
+        """
+        return 2
+
+    @classmethod
+    @abc.abstractmethod
+    def get_min_fg_sep(cls, lch_unit):
+        # type: (int) -> int
+        """Returns the minimum number of dummy fingers needed between active transistors in AnalogBase.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+
+        Returns
+        -------
+        num_fg : int
+            minimum number of dummy fingers.
         """
         return 2
 
@@ -222,23 +270,23 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_edge_info(cls, grid, lch_unit, guard_ring_nf, top_layer, is_end):
-        # type: (RoutingGrid, int, int, int, bool) -> Dict[str, Any]
+    def get_edge_info(cls, lch_unit, guard_ring_nf, is_end):
+        # type: (int, int, bool) -> Dict[str, Any]
         """Returns a dictionary containing transistor edge layout information.
         
-        The returned dictionary must have an entry 'edge_width', which is the width
-        of the edge block in resolution units.
-        
+        The returned dictionary must have two entries
+
+        edge_num_fg : int
+            edge block width in number of fingers.
+        edge_margin : int
+            the left/right margin needed around edge blocks, in resolution units.
+
         Parameters
         ----------
-        grid : RoutingGrid
-            the RoutingGrid object.
         lch_unit : int
             the channel length, in resolution units.
         guard_ring_nf : int
             guard ring width in number of fingers.
-        top_layer : int
-            the top routing layer ID.  Used to determine width quantization.
         is_end : bool
             True if there are no blocks abutting the left edge.
         
@@ -401,20 +449,16 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_outer_edge_info(cls, grid, guard_ring_nf, layout_info, top_layer, is_end, adj_blk_info):
-        # type: (RoutingGrid, int, Dict[str, Any], int, bool, Optional[Any]) -> Dict[str, Any]
+    def get_outer_edge_info(cls, guard_ring_nf, layout_info, is_end, adj_blk_info):
+        # type: (int, Dict[str, Any], bool, Optional[Any]) -> Dict[str, Any]
         """Returns the outer edge layout information dictionary.
         
         Parameters
         ----------
-        grid : RoutingGrid
-            the RoutingGrid object.
         guard_ring_nf : int
             guard ring width in number of fingers.  0 if there is no guard ring.
         layout_info : Dict[str, Any]
             layout information dictionary of the center block.
-        top_layer : int
-            the top routing layer ID.  Used to determine width quantization.
         is_end : bool
             True if there are no blocks abutting the left edge.
         adj_blk_info : Optional[Any]
@@ -681,26 +725,71 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return mos_constants['sd_pitch']
 
     @classmethod
-    def get_left_sd_xc(cls, grid, lch_unit, guard_ring_nf, top_layer, is_end):
-        # type: (RoutingGrid, int, int, int, bool) -> int
-        """Returns the X coordinate of the center of the left-most source/drain junction in a transistor row.
+    def get_placement_info(cls, grid, top_layer, fg_tot, lch_unit, guard_ring_nf, left_end, right_end, is_laygo):
+        # type: (RoutingGrid, int, int, int, int, bool, bool, bool) -> PlaceInfo
+        """Compute edge block placement information.
 
         Parameters
         ----------
         grid: RoutingGrid
             the RoutingGrid object.
+        top_layer : int
+            the top routing layer ID.  Used to determine width quantization.
+        fg_tot : int&
+            total number of fingers.
         lch_unit : int
             channel length in resolution units
         guard_ring_nf : int
             guard ring width in number of fingers.
-        top_layer : int
-            the top routing layer ID.  Used to determine width quantization.
-        is_end : bool
+        left_end : bool
             True if there are no blocks abutting the left edge.
+        right_end : bool
+            True if there are no blocks abutting the right edge.
+        is_laygo : bool
+            True if we're getting placement information for LaygoBase.
 
         Returns
         -------
-        sd_xc : X coordinate of the center of the left-most source/drain junction.
+        place_info : PlaceInfo
+            the placement information named tuple.
         """
-        edge_info = cls.get_edge_info(grid, lch_unit, guard_ring_nf, top_layer, is_end)
-        return edge_info['edge_width']
+        sd_pitch = cls.get_sd_pitch(lch_unit)
+        edgel_info = cls.get_edge_info(lch_unit, guard_ring_nf, left_end)
+        edgel_num_fg = edgel_info['edge_num_fg']
+        edgel_margin = edgel_info['edge_margin']
+        edger_info = cls.get_edge_info(lch_unit, guard_ring_nf, right_end)
+        edger_num_fg = edger_info['edge_num_fg']
+        edger_margin = edger_info['edge_margin']
+
+        if is_laygo:
+            prim_layer = cls.get_dig_top_layer() + 1
+        else:
+            prim_layer = cls.get_mos_conn_layer() + 1
+
+        core_width = (edgel_num_fg + edger_num_fg + fg_tot) * sd_pitch
+        if top_layer <= prim_layer:
+            blk_w = sd_pitch
+            # we can define array box
+            edgel_margin = -(-edgel_margin // blk_w) * blk_w
+            edger_margin = -(-edger_margin // blk_w) * blk_w
+            arr_dxl = edgel_margin
+            arr_dxr = edger_margin
+        else:
+            blk_w = grid.get_block_size(top_layer, unit_mode=True)[0]
+            arr_dxl = 0
+            arr_dxr = 0
+
+        tot_width = core_width + edgel_margin + edger_margin
+        tot_width = -(-tot_width // blk_w) * blk_w
+        space = tot_width - core_width
+        edge_margin_tot = edgel_margin + edger_margin
+        if edge_margin_tot == 0:
+            left_margin = space // 2
+        else:
+            left_margin = space * edgel_margin // edge_margin_tot
+        right_margin = space - left_margin
+
+        return PlaceInfo(tot_width=tot_width,
+                         edge_margins=(left_margin, right_margin),
+                         edge_widths=(sd_pitch * edgel_num_fg, sd_pitch * edger_num_fg),
+                         arr_box_x=(arr_dxl, tot_width - arr_dxr))

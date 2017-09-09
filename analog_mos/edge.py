@@ -220,7 +220,6 @@ class AnalogEdge(TemplateBase):
             dictionary from parameter name to description.
         """
         return dict(
-            top_layer='The top layer used to calculate width quantization.',
             is_end='True if this edge is at the end.',
             guard_ring_nf='number of guard ring fingers.',
             adj_blk_info='data structure storing layout information of adjacent block.',
@@ -230,7 +229,7 @@ class AnalogEdge(TemplateBase):
         )
 
     def get_layout_basename(self):
-        base = 'aedge_%s_gr%d_lay%d' % (self.params['name_id'], self.params['guard_ring_nf'], self.params['top_layer'])
+        base = 'aedge_%s_gr%d' % (self.params['name_id'], self.params['guard_ring_nf'])
         if self.params['is_end']:
             base += '_end'
         if self.params['is_laygo']:
@@ -243,7 +242,6 @@ class AnalogEdge(TemplateBase):
                                      self.params['adj_blk_info'], self.grid.get_flip_parity()))
 
     def draw_layout(self):
-        top_layer = self.params['top_layer']
         is_end = self.params['is_end']
         guard_ring_nf = self.params['guard_ring_nf']
         layout_info = self.params['layout_info']
@@ -256,8 +254,7 @@ class AnalogEdge(TemplateBase):
         else:
             outer_adj_blk = adj_blk_info
 
-        out_info = self._tech_cls.get_outer_edge_info(self.grid, guard_ring_nf, layout_info, top_layer,
-                                                      is_end, outer_adj_blk)
+        out_info = self._tech_cls.get_outer_edge_info(guard_ring_nf, layout_info, is_end, outer_adj_blk)
         # add outer edge
         out_params = dict(
             layout_name='%s_outer' % basename,

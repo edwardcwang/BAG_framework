@@ -61,7 +61,7 @@ class AnalogBaseInfo(object):
     guard_ring_nf : int
         guard ring width in number of fingers.  0 to disable.
     top_layer : Optional[int]
-        the top level routing layer ID.
+        the AnalogBase top layer ID.
     end_mode : int
         right/left/top/bottom end mode flag.  This is a 4-bit integer.  If bit 0 (LSB) is 1, then
         we assume there are no blocks abutting the bottom.  If bit 1 is 1, we assume there are no
@@ -69,21 +69,18 @@ class AnalogBaseInfo(object):
         The default value is 15, which means we assume this AnalogBase is surrounded by empty spaces.
     min_fg_sep : int
         minimum number of separation fingers.
+    fg_tot : Optional[int]
+        number of fingers in a row.
     """
 
-    def __init__(self, grid, lch, guard_ring_nf, top_layer=None, end_mode=15, min_fg_sep=0):
-        # type: (RoutingGrid, float, int, Optional[int], int, int) -> None
+    def __init__(self, grid, lch, guard_ring_nf, top_layer=None, end_mode=15, min_fg_sep=0, fg_tot=None):
+        # type: (RoutingGrid, float, int, Optional[int], int, int, Optional[int]) -> None
         tech_params = grid.tech_info.tech_params
         self._tech_cls = tech_params['layout']['mos_tech_class']  # type: MOSTech
 
-        # get technology parameters
-        self.min_fg_sep = max(min_fg_sep, tech_params['layout']['analog_base']['min_fg_sep'])
-        self.mconn_diff = tech_params['layout']['analog_base']['mconn_diff_mode']
-        self.float_dummy = tech_params['layout']['analog_base']['floating_dummy']
-
         # update RoutingGrid
         lch_unit = int(round(lch / grid.layout_unit / grid.resolution))
-        self.grid = grid
+        self.grid = grid.copy()
         self._lch_unit = lch_unit
         self.mconn_port_layer = self._tech_cls.get_mos_conn_layer()
         self.dum_port_layer = self._tech_cls.get_dum_conn_layer()
@@ -94,16 +91,19 @@ class AnalogBaseInfo(object):
         self.grid.update_block_pitch()
 
         # initialize parameters
-        left_end = (end_mode & 4) != 0
         self.guard_ring_nf = guard_ring_nf
         if top_layer is None:
             top_layer = self.mconn_port_layer + 1
         self.top_layer = top_layer
         self.end_mode = end_mode
+        self.min_fg_sep = max(min_fg_sep, self._tech_cls.get_min_fg_sep(lch_unit))
         self.min_fg_decap = self._tech_cls.get_min_fg_decap(lch_unit)
         self.num_fg_per_sd = self._tech_cls.get_num_fingers_per_sd(lch_unit)
         self._sd_pitch_unit = self._tech_cls.get_sd_pitch(lch_unit)
-        self._sd_xc_unit = self._tech_cls.get_left_sd_xc(self.grid, lch_unit, guard_ring_nf, top_layer, left_end)
+
+        self._fg_tot = None
+        self._sd_xc_unit = None
+        self.fg_tot = fg_tot
 
     @property
     def vertical_pitch_unit(self):
@@ -119,12 +119,26 @@ class AnalogBaseInfo(object):
         return self._sd_pitch_unit
 
     @property
-    def sd_xc(self):
-        return self._sd_xc_unit * self.grid.resolution
+    def fg_tot(self):
+        return self._fg_tot
 
-    @property
-    def sd_xc_unit(self):
-        return self._sd_xc_unit
+    @fg_tot.setter
+    def fg_tot(self, new_fg_tot):
+        self._fg_tot = new_fg_tot
+        if new_fg_tot is not None:
+            place_info = self.get_placement_info(new_fg_tot)
+            left_margin = place_info.edge_margins[0]
+            self._sd_xc_unit = left_margin + place_info.edge_widths[0]
+            self.grid.set_track_offset(self.mconn_port_layer, left_margin, unit_mode=True)
+            self.grid.set_track_offset(self.dum_port_layer, left_margin, unit_mode=True)
+        else:
+            self._sd_xc_unit = None
+
+    def get_placement_info(self, fg_tot):
+        left_end = (self.end_mode & 4) != 0
+        right_end = (self.end_mode & 8) != 0
+        return self._tech_cls.get_placement_info(self.grid, self.top_layer, fg_tot, self._lch_unit,
+                                                 self.guard_ring_nf, left_end, right_end, False)
 
     def get_total_width(self, fg_tot):
         # type: (int) -> int
@@ -137,38 +151,11 @@ class AnalogBaseInfo(object):
 
         Returns
         -------
-        mos_width : int
-            the AnalogMosBase width in number of source/drain tracks.
+        tot_width : int
+            the AnalogMosBase width in resolution units.
         """
-        left_end = (self.end_mode & 4) != 0
-        right_end = (self.end_mode & 8) != 0
-        left_width = self._tech_cls.get_left_sd_xc(self.grid, self._lch_unit, self.guard_ring_nf,
-                                                   self.top_layer, left_end)
-        right_width = self._tech_cls.get_left_sd_xc(self.grid, self._lch_unit, self.guard_ring_nf,
-                                                    self.top_layer, right_end)
-        tot_width = left_width + right_width + fg_tot * self._sd_pitch_unit
-        return tot_width // self._sd_pitch_unit
 
-    def round_up_fg_tot(self, fg_min):
-        # type: (int) -> int
-        """Round up number of fingers so the resulting AnalogBase has the correct width quantization.
-
-        Parameters
-        ----------
-        fg_min : int
-            minimum number of fingers per row.
-
-        Returns
-        -------
-        fg_tot : int
-            number of fingers in a row.  This number is guaranteed to be greater than fg_min, and an
-            AnalogBase drawn with this many fingers will have the correct width quantization with
-            respect to the specified top level routing layer.
-        """
-        blk_w = self.grid.get_block_size(self.top_layer, unit_mode=True)[0]
-        arr_box_w = fg_min * self._sd_pitch_unit
-        tot_w = -(-arr_box_w // blk_w) * blk_w
-        return tot_w // self._sd_pitch_unit
+        return self.get_placement_info(fg_tot).tot_width
 
     def coord_to_col(self, coord, unit_mode=False, mode=0):
         """Convert the given X coordinate to transistor column index.
@@ -188,6 +175,9 @@ class AnalogBaseInfo(object):
         col_idx : int
             the left source/drain index closest to the given coordinate.
         """
+        if self.fg_tot is None:
+            raise ValueError('fg_tot is undefined')
+
         res = self.grid.resolution
         if not unit_mode:
             coord = int(round(coord / res))
@@ -218,6 +208,9 @@ class AnalogBaseInfo(object):
         xcoord : float
             X coordinate of the left source/drain center of the given transistor.
         """
+        if self.fg_tot is None:
+            raise ValueError('fg_tot is undefined')
+
         coord = self._sd_xc_unit + col_idx * self._sd_pitch_unit
         if unit_mode:
             return coord
@@ -226,6 +219,9 @@ class AnalogBaseInfo(object):
     def track_to_col_intv(self, layer_id, tr_idx, width=1):
         # type: (int, Union[float, int], int) -> Tuple[int, int]
         """Returns the smallest column interval that covers the given vertical track."""
+        if self.fg_tot is None:
+            raise ValueError('fg_tot is undefined')
+
         lower, upper = self.grid.get_wire_bounds(layer_id, tr_idx, width=width, unit_mode=True)
 
         lower_col_idx = (lower - self._sd_xc_unit) // self._sd_pitch_unit  # type: int
@@ -386,6 +382,21 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         return tech_cls.get_mos_conn_layer()
 
     @property
+    def mos_conn_layer(self):
+        """Returns the MOSFET connection layer ID."""
+        return self._tech_cls.get_mos_conn_layer()
+
+    @property
+    def dum_conn_layer(self):
+        """Returns the dummy connection layer ID."""
+        return self._tech_cls.get_dum_conn_layer()
+
+    @property
+    def floating_dummy(self):
+        """Returns True if floating dummy connection is OK."""
+        return self._tech_cls.floating_dummy()
+
+    @property
     def layout_info(self):
         # type: () -> AnalogBaseInfo
         return self._layout_info
@@ -415,31 +426,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def sd_pitch_unit(self):
         """Returns the transistor source/drain pitch."""
         return self._layout_info.sd_pitch_unit
-
-    @property
-    def mos_conn_layer(self):
-        """Returns the MOSFET connection layer ID."""
-        return self._layout_info.mconn_port_layer
-
-    @property
-    def dum_conn_layer(self):
-        """REturns the dummy connection layer ID."""
-        return self._layout_info.dum_port_layer
-
-    @property
-    def min_fg_sep(self):
-        """Returns the minimum number of separator fingers."""
-        return self._layout_info.min_fg_sep
-
-    @property
-    def mconn_diff_mode(self):
-        """Returns True if AnalogMosConn supports diffpair mode."""
-        return self._layout_info.mconn_diff
-
-    @property
-    def floating_dummy(self):
-        """Returns True if floating dummy connection is OK."""
-        return self._layout_info.float_dummy
 
     def _find_row_index(self, mos_type, row_idx):
         ridx_list = self._ridx_lookup[mos_type]
@@ -1155,7 +1141,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 print('pick')
 
         # at this point we've found the optimal placement.  Place instances
-        self.array_box = BBox.get_invalid_bbox()
+        place_info = self._layout_info.get_placement_info(fg_tot)
+        edgel_x0 = place_info.edge_margins[0]
+        arr_box_x = place_info.arr_box_x
+        tot_width = place_info.tot_width
+
+        array_box = BBox.get_invalid_bbox()
         top_bound_box = BBox.get_invalid_bbox()
         self._gtr_intv = gtr_intv
         self._dstr_intv = dtr_intv
@@ -1182,7 +1173,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             orient = track_spec[0]
             edge_layout_info = master.get_edge_layout_info()
             edgel_params = dict(
-                top_layer=top_layer,
                 is_end=left_end,
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
@@ -1191,10 +1181,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             )
             edgel_master = self.new_template(params=edgel_params, temp_cls=AnalogEdge)
             edgel = self.add_instance(edgel_master, orient=orient)
-            cur_box = edgel.translate_master_box(edgel_master.prim_bound_box)
+            cur_box = edgel.bound_box
             yo = ybot - cur_box.bottom_unit
-            edgel.move_by(dy=yo, unit_mode=True)
-            inst_xo = cur_box.right_unit
+            edgel.move_by(dx=edgel_x0, dy=yo, unit_mode=True)
+            inst_xo = edgel.bound_box.right_unit
             inst_loc = (inst_xo, yo)
             inst = self.add_instance(master, loc=inst_loc, orient=orient, unit_mode=True)
             if isinstance(master, AnalogSubstrate):
@@ -1224,27 +1214,24 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 orient_r = 'MY'
             else:
                 orient_r = 'R180'
-            edger_xo = inst.array_box.right_unit + edgel_master.prim_bound_box.width_unit
-            edger_loc = edger_xo, yo
             edger_params = dict(
-                top_layer=top_layer,
                 is_end=right_end,
                 guard_ring_nf=guard_ring_nf,
                 name_id=master.get_layout_basename(),
                 layout_info=edge_layout_info,
                 adj_blk_info=master.get_right_edge_info(),
-
             )
             edger_master = self.new_template(params=edger_params, temp_cls=AnalogEdge)
+            edger_xo = inst.array_box.right_unit + edger_master.bound_box.width_unit
+            edger_loc = edger_xo, yo
             edger = self.add_instance(edger_master, loc=edger_loc, orient=orient_r, unit_mode=True)
-            self.array_box = self.array_box.merge(edgel.array_box).merge(edger.array_box)
+            array_box = array_box.merge(edgel.array_box).merge(edger.array_box)
             top_bound_box = top_bound_box.merge(edgel.bound_box).merge(edger.bound_box)
             edge_inst_list = [edgel, edger]
             if ext_info[1] is not None and (ext_info[0] > 0 or self._tech_cls.draw_zero_extension()):
                 ext_master = self.new_template(params=ext_info[1], temp_cls=AnalogMOSExt)
                 ext_edge_layout_info = ext_master.get_edge_layout_info()
                 ext_edgel_params = dict(
-                    top_layer=top_layer,
                     is_end=left_end,
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
@@ -1253,10 +1240,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 )
                 ext_edgel_master = self.new_template(params=ext_edgel_params, temp_cls=AnalogEdge)
                 yo = inst.array_box.top_unit
-                edgel = self.add_instance(ext_edgel_master, loc=(0, yo), unit_mode=True)
+                edgel = self.add_instance(ext_edgel_master, loc=(edgel_x0, yo), unit_mode=True)
                 self.add_instance(ext_master, loc=(inst_xo, yo), unit_mode=True)
                 ext_edger_params = dict(
-                    top_layer=top_layer,
                     is_end=right_end,
                     guard_ring_nf=guard_ring_nf,
                     name_id=ext_master.get_layout_basename(),
@@ -1284,7 +1270,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self.connect_wires(gr_vss_dum_warrs)
 
         # set array box/size/draw PR boundary
-        self.set_size_from_bound_box(top_layer, top_bound_box)
+        self.array_box = BBox(arr_box_x[0], array_box.bottom_unit, arr_box_x[1], array_box.top_unit,
+                              array_box.resolution, unit_mode=True)
+        bound_box = BBox(0, top_bound_box.bottom_unit, tot_width, top_bound_box.top_unit,
+                         top_bound_box.resolution, unit_mode=True)
+        if top_layer <= self.mos_conn_layer + 1:
+            self.prim_bound_box = bound_box
+            self.prim_top_layer = top_layer
+        else:
+            self.set_size_from_bound_box(top_layer, bound_box)
+
         self.add_cell_boundary(self.bound_box)
 
     def draw_base(self,  # type: AnalogBase
@@ -1369,9 +1364,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             The default value is 15, which means we assume this AnalogBase is surrounded by empty spaces.
         top_layer : Optional[int]
             The top metal layer this block will use.  Defaults to the horizontal layer above mos connection layer.
-            The top metal layer decides the quantization of the overall bounding box and the array box.  As
-            the result, the margin between edge of the overall bounding box and the edge of array box is
-            determined by the block pitch.
+            If the top metal layer is equal to the default layer, then this AnalogBase will be a primitive template;
+            self.size will be None, and only the height is quantized.
+            If the top metal layer is above the default layer, then this AnalogBase will be a standard template, and
+            both width and height will be quantized according to the block size.
         **kwargs:
             Other optional arguments.
         """
@@ -1384,8 +1380,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             raise ValueError('ntap/ptap widths must be positive')
 
         # make AnalogBaseInfo object.  Also update routing grid.
-        self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf,
-                                           top_layer=top_layer, end_mode=end_mode, min_fg_sep=min_fg_sep)
+        self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, top_layer=top_layer,
+                                           end_mode=end_mode, min_fg_sep=min_fg_sep, fg_tot=fg_tot)
         self.grid = self._layout_info.grid
 
         # initialize private attributes.
@@ -1968,24 +1964,10 @@ class SubstrateContact(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(SubstrateContact, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
-        tech_params = self.grid.tech_info.tech_params
-        self._tech_cls = tech_params['layout']['mos_tech_class']
-        self._layout_info = None
-        self._num_fingers = None
 
     @property
     def port_name(self):
         return 'VDD' if self.params['sub_type'] == 'ntap' else 'VSS'
-
-    @property
-    def num_fingers(self):
-        return self._num_fingers
-
-    @classmethod
-    def default_top_layer(cls, tech_info):
-        mos_cls = tech_info.tech_params['layout']['mos_template']
-        mconn_layer = mos_cls.port_layer_id()
-        return mconn_layer + 1
 
     @classmethod
     def get_default_param_values(cls):
@@ -2021,6 +2003,7 @@ class SubstrateContact(TemplateBase):
             dictionary from parameter name to description.
         """
         return dict(
+            top_layer='the top layer of the template.',
             lch='channel length, in meters.',
             w='substrate width, in meters/number of fins.',
             sub_type='substrate type.',
@@ -2033,6 +2016,7 @@ class SubstrateContact(TemplateBase):
     def draw_layout(self):
         # type: () -> None
 
+        top_layer = self.params['top_layer']
         lch = self.params['lch']
         w = self.params['w']
         sub_type = self.params['sub_type']
@@ -2046,22 +2030,18 @@ class SubstrateContact(TemplateBase):
         well_width = int(round(well_width / res))
 
         # get layout info, also set RoutingGrid to substrate grid.
-        self._layout_info = AnalogBaseInfo(self.grid, lch, 0, None, sub_end_mode)
-        sd_pitch = self._layout_info.sd_pitch_unit
-
-        hm_layer = self._layout_info.mconn_port_layer + 1
+        layout_info = AnalogBaseInfo(self.grid, lch, 0, top_layer, sub_end_mode)
 
         # compute template width in number of sd pitches
-        q = well_width // sd_pitch
         # find maximum number of fingers we can draw
         bin_iter = BinaryIterator(1, None)
         while bin_iter.has_next():
             cur_fg = bin_iter.get_next()
-            num_sd = self._layout_info.get_total_width(cur_fg)
-            if num_sd == q:
+            cur_tot_width = layout_info.get_total_width(cur_fg)
+            if cur_tot_width == well_width:
                 bin_iter.save()
                 break
-            elif num_sd < q:
+            elif cur_tot_width < well_width:
                 bin_iter.save()
                 bin_iter.up()
             else:
@@ -2070,13 +2050,9 @@ class SubstrateContact(TemplateBase):
         sub_fg_tot = bin_iter.get_last_save()
         if sub_fg_tot is None:
             raise ValueError('Cannot draw substrate that fit in width: %d' % well_width)
-        sub_tot_width = self._layout_info.get_total_width(sub_fg_tot) * sd_pitch
-
-        # get height pitch
-        _, htot_pitch = self.grid.get_size_pitch(hm_layer, unit_mode=True)
+        sub_tot_width = layout_info.get_total_width(sub_fg_tot)
 
         # create substrate
-        self._num_fingers = sub_fg_tot
         params = dict(
             lch=lch,
             w=w,
@@ -2084,12 +2060,11 @@ class SubstrateContact(TemplateBase):
             threshold=threshold,
             fg=sub_fg_tot,
             is_passive=is_passive,
-            top_layer=hm_layer,
+            top_layer=top_layer,
         )
         sub_master = self.new_template(params=params, temp_cls=AnalogSubstrate)
         edge_layout_info = sub_master.get_edge_layout_info()
         edge_params = dict(
-            top_layer=hm_layer,
             is_end=True,
             guard_ring_nf=0,
             name_id=sub_master.get_layout_basename(),
@@ -2104,11 +2079,10 @@ class SubstrateContact(TemplateBase):
             sub_type=sub_type,
             threshold=threshold,
             is_end=True,
-            top_layer=hm_layer,
+            top_layer=top_layer,
         )
         end_row_master = self.new_template(params=end_row_params, temp_cls=AnalogEndRow)
         end_edge_params = dict(
-            top_layer=hm_layer,
             is_end=True,
             guard_ring_nf=0,
             name_id=end_row_master.get_layout_basename(),

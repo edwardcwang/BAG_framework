@@ -419,13 +419,14 @@ class NPassGateWClk(AnalogBase):
         core_master = self.new_template(params=core_params, temp_cls=NPassGateWClkCore)
 
         sd_pitch = core_master.layout_info.sd_pitch_unit
+        tot_width *= sd_pitch
         cur_width = core_master.layout_info.get_total_width(core_master.fg_tot)
 
         if cur_width > tot_width:
-            raise ValueError('Need at least %s sd pitches, but constrained to have %d sd pitches'
+            raise ValueError('Need at least width=%d, but constrained to have width=%d'
                              % (cur_width, tot_width))
 
-        xshift = (tot_width - cur_width) * sd_pitch // 2
+        xshift = (tot_width - cur_width) // 2
         inst = self.add_instance(core_master, loc=(xshift, 0), unit_mode=True)
 
         vdd_warrs = inst.get_all_port_pins('VDD')
