@@ -389,6 +389,8 @@ class Instance(Arrayable):
 
     Parameters
     ----------
+    parent_grid : RoutingGrid
+        the parent RoutingGrid object.
     lib_name : str
         the layout library name.
     master : TemplateBase
@@ -397,9 +399,7 @@ class Instance(Arrayable):
         the origin of this instance.
     orient : str
         the orientation of this instance.
-    res : float
-        the coordinate resolution.
-    name : str
+    name : Optional[str]
         name of this instance.
     nx : int
         number of columns.
@@ -413,14 +413,26 @@ class Instance(Arrayable):
         True if layout dimensions are specified in resolution units.
     """
 
-    def __init__(self, lib_name, master, loc, orient, res, name=None,
-                 nx=1, ny=1, spx=0, spy=0, unit_mode=False):
-        # type: (str, 'TemplateBase', Tuple[ldim, ldim], str, float, str, int, int, ldim, ldim, bool) -> None
+    def __init__(self,
+                 parent_grid,  # type: RoutingGrid
+                 lib_name,  # type: str
+                 master,  # type: TemplateBase
+                 loc,  # type: Tuple[ldim, ldim]
+                 orient,  # type: str
+                 name=None,  # type: Optional[str]
+                 nx=1,  # type: int
+                 ny=1,  # type: int
+                 spx=0,  # type: ldim
+                 spy=0,  # type: ldim
+                 unit_mode=False,  # type: bool
+                 ):
+        # type: (...) -> None
+        res = parent_grid.resolution
         Arrayable.__init__(self, res, nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=unit_mode)
+        self._parent_grid = parent_grid
         self._lib_name = lib_name
         self._inst_name = name
         self._master = master
-        self._res = res
         if unit_mode:
             self._loc_unit = loc[0], loc[1]
         else:
@@ -442,14 +454,12 @@ class Instance(Arrayable):
         """
         self._master = self._master.new_template_with(**kwargs)
 
-    def get_used_tracks(self, grid, bot_layer, top_layer, row=0, col=0):
-        # type: (RoutingGrid, int, int, int, int) -> UsedTracks
+    def get_used_tracks(self, bot_layer, top_layer, row=0, col=0):
+        # type: (int, int, int, int) -> UsedTracks
         """Return the used track object of the given instance in the array.
 
         Parameters
         ----------
-        grid : RoutingGrid
-            the parent RoutingGrid object.
         bot_layer : int
             the bottom layer ID, inclusive.
         top_layer : int
@@ -466,7 +476,7 @@ class Instance(Arrayable):
         """
         dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
         inst_loc = dx + self._loc_unit[0], dy + self._loc_unit[1]
-        return self._master.get_used_tracks().transform(grid, bot_layer, top_layer, inst_loc,
+        return self._master.get_used_tracks().transform(self._parent_grid, bot_layer, top_layer, inst_loc,
                                                         self._orient, unit_mode=True)
 
     def get_rect_bbox(self, layer):
@@ -478,7 +488,7 @@ class Instance(Arrayable):
 
     @property
     def master(self):
-        # type: () -> 'TemplateBase'
+        # type: () -> TemplateBase
         """The master template of this instance."""
         return self._master
 
@@ -648,7 +658,7 @@ class Instance(Arrayable):
             the new track index.
         """
         dx, dy = self.location_unit
-        return self._master.grid.transform_track(layer_id, track_idx, dx=dx, dy=dy,
+        return self._parent_grid.transform_track(layer_id, track_idx, dx=dx, dy=dy,
                                                  orient=self.orientation, unit_mode=True)
 
     def flatten(self):
@@ -780,7 +790,7 @@ class Instance(Arrayable):
         xshift = (xshift + dx) * self.resolution
         yshift = (yshift + dy) * self.resolution
         port = self._master.get_port(name)
-        return port.transform(self._master.grid, loc=(xshift, yshift), orient=self.orientation)
+        return port.transform(self._parent_grid, loc=(xshift, yshift), orient=self.orientation)
 
     def get_all_port_pins(self, name='', layer=-1):
         # type: (Optional[str], int) -> List[WireArray]
@@ -836,8 +846,8 @@ class Instance(Arrayable):
             self._orient = orient
             return self
         else:
-            return Instance(self._lib_name, self._master, self._loc_unit, self._orient,
-                            self.resolution, name=self._inst_name, nx=self.nx, ny=self.ny,
+            return Instance(self._parent_grid, self._lib_name, self._master, self._loc_unit,
+                            self._orient, name=self._inst_name, nx=self.nx, ny=self.ny,
                             spx=self.spx_unit, spy=self.spy_unit, unit_mode=True)
 
 
