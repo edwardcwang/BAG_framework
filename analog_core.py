@@ -134,6 +134,10 @@ class AnalogBaseInfo(object):
         else:
             self._sd_xc_unit = None
 
+    @property
+    def sd_xc_unit(self):
+        return self._sd_xc_unit
+
     def get_placement_info(self, fg_tot):
         left_end = (self.end_mode & 4) != 0
         right_end = (self.end_mode & 8) != 0

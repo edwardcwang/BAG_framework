@@ -82,6 +82,7 @@ class DiffAmp(SerdesRXBase):
         """
         return dict(
             th_dict={},
+            top_layer=None,
             nduml=4,
             ndumr=4,
             min_fg_sep=0,
@@ -107,6 +108,7 @@ class DiffAmp(SerdesRXBase):
             dictionary from parameter name to description.
         """
         return dict(
+            top_layer='the top routing layer.',
             lch='channel length, in meters.',
             ptap_w='NMOS substrate width, in meters/number of fins.',
             ntap_w='PMOS substrate width, in meters/number of fins.',
@@ -132,6 +134,7 @@ class DiffAmp(SerdesRXBase):
         self._draw_layout_helper(**self.params)
 
     def _draw_layout_helper(self,  # type: DiffAmp
+                            top_layer,  # type: Optional[int]
                             lch,  # type: float
                             ptap_w,  # type: Union[float, int]
                             ntap_w,  # type: Union[float, int]
@@ -169,6 +172,7 @@ class DiffAmp(SerdesRXBase):
         # draw AnalogBase rows
         # compute pmos/nmos gate/drain/source number of tracks
         draw_params = dict(
+            top_layer=top_layer,
             lch=lch,
             fg_tot=fg_tot,
             ptap_w=ptap_w,
@@ -194,8 +198,6 @@ class DiffAmp(SerdesRXBase):
         draw_params['nds_tracks'] = nds_tracks
 
         self.draw_rows(**draw_params)
-        self.set_size_from_array_box(self.mos_conn_layer + 1)
-        sup_lower, sup_upper = self.array_box.left_unit, self.array_box.right_unit
 
         gate_locs = {'inp': (hm_width - 1) / 2 + hm_width + diff_space,
                      'inn': (hm_width - 1) / 2}
@@ -207,12 +209,11 @@ class DiffAmp(SerdesRXBase):
         hide_pins = {'midp', 'midn', 'tail', 'foot'}
         for pname, warrs in amp_ports.items():
             if pname == 'vddt':
-                vdd_warrs = self.connect_wires(warrs, lower=sup_lower, upper=sup_upper, unit_mode=True)
+                vdd_warrs = self.connect_wires(warrs, unit_mode=True)
             else:
                 self.add_pin(pname, warrs, show=show_pins and pname not in hide_pins)
 
-        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(lower=sup_lower, upper=sup_upper, vdd_warrs=vdd_warrs,
-                                                         unit_mode=True, sup_margin=1)
+        ptap_wire_arrs, ntap_wire_arrs = self.fill_dummy(vdd_warrs=vdd_warrs, unit_mode=True, sup_margin=1)
         self.add_pin('VSS', ptap_wire_arrs)
         self.add_pin('VDD', ntap_wire_arrs)
         if vdd_warrs is not None:
