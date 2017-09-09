@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from typing import Optional, Union, List, Tuple, Generator, Any, Dict
+from typing import Optional, Union, List, Tuple, Iterable, Any, Dict
 
 import numpy as np
 
@@ -73,11 +73,11 @@ class TrackSet(object):
         return iter(self._tracks)
 
     def keys(self):
-        # type: () -> Generator[int]
+        # type: () -> Iterable[int]
         return self._tracks.keys()
 
     def items(self):
-        # type: () -> Generator[Tuple[int, IntervalSet]]
+        # type: () -> Iterable[int, IntervalSet]
         return self._tracks.items()
 
     def subtract(self, hidx, intv):
@@ -172,7 +172,7 @@ class TrackSet(object):
     def merge(self, track_set):
         # type: (TrackSet) -> None
         """Merge the given TrackSet to this one."""
-        for hidx, new_intv_set in track_set._tracks.items():
+        for hidx, new_intv_set in track_set.items():
             if hidx not in self._tracks:
                 intv_set = IntervalSet()
                 self._tracks[hidx] = intv_set
@@ -202,6 +202,9 @@ class UsedTracks(object):
             pass
         self._track_sets = init_track_sets
         self._res = resolution
+
+    def layer_track_set_iter(self):
+        return self._track_sets.items()
 
     def get_tracks_info(self, layer_id):
         # type: (int) -> TrackSet
@@ -261,14 +264,18 @@ class UsedTracks(object):
                 hidx = base_hidx + idx * step
                 track_set.add_track(hidx, intv, width, value=(fill_margin, fill_type))
 
-    def transform(self, grid, loc=(0, 0), orient='R0', unit_mode=False):
-        # type: (RoutingGrid, Tuple[Union[float, int], Union[float, int]], str, bool) -> UsedTracks
-        """Return a new transformed UsedTracks.
+    def transform(self, grid, bot_layer, top_layer, loc=(0, 0), orient='R0', unit_mode=False):
+        # type: (RoutingGrid, int, int, Tuple[Union[float, int], Union[float, int]], str, bool) -> UsedTracks
+        """Return a new transformed UsedTracks on the given layers.
 
         Parameters
         ----------
-        grid : :RoutingGrid
+        grid : RoutingGrid
             the RoutingGrid object.
+        bot_layer : int
+            the bottom layer ID, inclusive.
+        top_layer : int
+            the top layer ID, inclusive.
         loc : Tuple[Union[float, int], Union[float, int]]
             the X/Y coordinate shift.
         orient : str
@@ -284,22 +291,22 @@ class UsedTracks(object):
 
         new_track_sets = {}
         for layer_id, track_set in self._track_sets.items():
-            new_track_sets[layer_id] = track_set.transform(grid, layer_id, dx, dy, orient=orient)
+            if bot_layer <= layer_id <= top_layer:
+                new_track_sets[layer_id] = track_set.transform(grid, layer_id, dx, dy, orient=orient)
 
         return UsedTracks(self._res, init_track_sets=new_track_sets)
 
-    def merge(self, used_tracks, layers):
+    def merge(self, used_tracks):
         # type: (UsedTracks) -> None
         """Merge the given used tracks to this one."""
-        for layer_id, new_track_set in used_tracks._track_sets.items():
-            if layer_id in layers:
-                if layer_id not in self._track_sets:
-                    track_set = TrackSet()
-                    self._track_sets[layer_id] = track_set
-                else:
-                    track_set = self._track_sets[layer_id]
+        for layer_id, new_track_set in used_tracks.layer_track_set_iter():
+            if layer_id not in self._track_sets:
+                track_set = TrackSet()
+                self._track_sets[layer_id] = track_set
+            else:
+                track_set = self._track_sets[layer_id]
 
-                track_set.merge(new_track_set)
+            track_set.merge(new_track_set)
 
 
 def get_available_tracks(grid,  # type: RoutingGrid
@@ -319,7 +326,6 @@ def get_available_tracks(grid,  # type: RoutingGrid
         avail_track_set.add_track(2 * tidx + 1, (lower, upper), width, value=False)
 
     tech_info = grid.tech_info
-    res = grid.resolution
     layer_name = tech_info.get_layer_name(layer_id)
     if isinstance(layer_name, tuple) or isinstance(layer_name, list):
         layer_name = layer_name[0]

@@ -394,7 +394,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         # initialize template attributes
         self._grid = kwargs.get('grid', temp_db.grid).copy()
-        self._layout = BagLayout(self.grid,
+        self._layout = BagLayout(self._grid,
                                  use_cybagoa=kwargs.get('use_cybagoa', False),
                                  pin_purpose=kwargs.get('pin_purpose', 'pin'),
                                  make_pin_rect=kwargs.get('make_pin_rect', True))
@@ -445,6 +445,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
     def get_used_tracks(self):
         # type: () -> UsedTracks
+        """Returns data structure of used tracks on the given layers."""
         return self._used_tracks
 
     def get_rect_bbox(self, layer):
@@ -535,7 +536,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
     @property
     def size(self):
-        # type: () -> Tuple[int, int, int]
+        # type: () -> Optional[Tuple[int, int, int]]
         """The size of this template, in (layer, num_x_block,  num_y_block) format."""
         return self._size
 
@@ -579,8 +580,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """A unique key representing this template."""
         return self._key
 
-    def set_size_from_bound_box(self, top_layer_id, bbox, grid=None, round_up=False):
-        # type: (int, BBox, Optional[RoutingGrid], bool) -> None
+    def set_size_from_bound_box(self, top_layer_id, bbox, round_up=False):
+        # type: (int, BBox, bool) -> None
         """Compute the size from overall bounding box.
 
         Parameters
@@ -589,15 +590,10 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             the top level routing layer ID that array box is calculated with.
         bbox : BBox
             the overall bounding box
-        grid : Optional[RoutingGrid]
-            the RoutingGrid object to use to get the block pitch.
-            If a template adds new layers that have larger pitch than parent layers,
-            the block pitch may change.
         round_up: bool
             True to round up bounding box if not quantized properly
         """
-        if grid is None:
-            grid = self.grid
+        grid = self.grid
 
         if bbox.left_unit != 0 or bbox.bottom_unit != 0:
             raise ValueError('lower-left corner of overall bounding box must be (0, 0).')
@@ -605,8 +601,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self.size = grid.get_size_tuple(top_layer_id, bbox.width_unit, bbox.height_unit,
                                         round_up=round_up, unit_mode=True)
 
-    def set_size_from_array_box(self, top_layer_id, grid=None):
-        # type: (int, Optional[RoutingGrid]) -> None
+    def set_size_from_array_box(self, top_layer_id):
+        # type: (int) -> None
         """Automatically compute the size from array_box.
 
         Assumes the array box is exactly in the center of the template.
@@ -615,13 +611,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         ----------
         top_layer_id : int
             the top level routing layer ID that array box is calculated with.
-        grid : Optional[RoutingGrid]
-            the RoutingGrid object to use to get the block pitch.
-            If a template adds new layers that have larger pitch than parent layers,
-            the block pitch may change.
         """
-        if grid is None:
-            grid = self.grid
+        grid = self.grid
 
         dx = self.array_box.left_unit
         dy = self.array_box.bottom_unit
@@ -682,20 +673,6 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """
         return {}
 
-    @classmethod
-    def is_micro(cls):
-        # type: () -> bool
-        """Returns True if this template is a micro template.
-
-        Override this method to return True if this is a micro template.
-
-        Returns
-        -------
-        is_primitive : bool
-            True if this template is a primitive template.
-        """
-        return False
-
     @abc.abstractmethod
     def draw_layout(self):
         # type: () -> None
@@ -743,8 +720,11 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """Update all instances in this template to have the correct track parity.
         """
         for inst in self._layout.inst_iter():
+            top_layer = inst.master.top_layer
+            bot_layer = self.grid.get_bot_common_layer(inst.master.grid, top_layer)
             loc = inst.location_unit
-            fp_dict = inst.master.grid.get_flip_parity_at(loc, inst.orientation, inst.master.top_layer, unit_mode=True)
+            fp_dict = self.grid.get_flip_parity_at(bot_layer, top_layer, loc,
+                                                   inst.orientation, unit_mode=True)
             inst.new_master_with(flip_parity=fp_dict)
 
     def write_summary_file(self, fname, lib_name, cell_name):
@@ -941,8 +921,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         template : TemplateBase
             the new template instance.
         """
-        if 'grid' not in kwargs:
-            kwargs['grid'] = self.grid
+        kwargs['grid'] = self.grid
         return self._temp_db.new_template(lib_name=lib_name, temp_name=temp_name,
                                           params=params,
                                           temp_cls=temp_cls,
@@ -2470,7 +2449,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         # separate wire arrays into bottom/top tracks, and compute wire/track lower/upper coordinates
         bot_warrs = [[] for _ in range(num_tracks)]
         top_warrs = [[] for _ in range(num_tracks)]
-        bot_bounds, top_bounds = [None, None], [None, None]
+        bot_bounds = [None, None]  # type: List[Union[float, int]]
+        top_bounds = [None, None]  # type: List[Union[float, int]]
         for idx, warr_list in enumerate(warr_list_list):
             # convert to WireArray list
             if isinstance(warr_list, WireArray):
@@ -2501,12 +2481,10 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                 if cur_bounds[0] is None:
                     cur_bounds[0] = w_lower - w_ext
                 else:
-                    # noinspection PyTypeChecker
                     cur_bounds[0] = min(cur_bounds[0], w_lower - w_ext)
                 if cur_bounds[1] is None:
                     cur_bounds[1] = w_upper + w_ext
                 else:
-                    # noinspection PyTypeChecker
                     cur_bounds[1] = max(cur_bounds[1], w_upper + w_ext)
 
                 # compute track lower/upper including via extension
@@ -2589,16 +2567,43 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                                 self.add_via(box, bot_lay_name, top_lay_name, bot_dir)
 
     def _merge_inst_used_tracks(self):
+        template_bot_layer = self.grid.layers[0]
         if not self._added_inst_tracks:
             self._added_inst_tracks = True
             for inst in self._layout.inst_iter():
+                top_layer = inst.master.top_layer
+                bot_layer = self.grid.get_bot_common_layer(inst.master.grid, top_layer)
                 for cidx in range(inst.nx):
                     for ridx in range(inst.ny):
-                        try:
-                            inst_used_tracks = inst.get_used_tracks(row=ridx, col=cidx)
-                            self._used_tracks.merge(inst_used_tracks, self.grid.layers)
-                        except ValueError:
-                            print('WARNING: detect tracks not on grid.  ignoring instance')
+                        # merge tracks on common layers
+                        inst_used_tracks = inst.get_used_tracks(self.grid, bot_layer, top_layer,
+                                                                row=ridx, col=cidx)
+                        self._used_tracks.merge(inst_used_tracks)
+                        # black out tracks on changed layers
+                        if bot_layer > template_bot_layer:
+                            inst_box = inst.get_bound_box_of(row=ridx, col=cidx)
+                            for lay_id in range(template_bot_layer, bot_layer):
+                                self._mark_bbox_used(lay_id, inst_box)
+
+    def _mark_bbox_used(self, layer_id, bbox):
+        if self.grid.get_direction(layer_id) == 'x':
+            lower, upper = bbox.left, bbox.right
+            tl, tu = bbox.bottom_unit, bbox.top_unit
+        else:
+            lower, upper = bbox.bottom, bbox.top
+            tl, tu = bbox.left_unit, bbox.right_unit
+
+        tr_w2 = self.grid.get_track_width(layer_id, 1, unit_mode=True) // 2
+        tl -= tr_w2
+        tu += tr_w2
+        tidx0 = self.grid.coord_to_nearest_track(layer_id, tl, half_track=True,
+                                                 mode=1, unit_mode=True)
+        tidx1 = self.grid.coord_to_nearest_track(layer_id, tu, half_track=True,
+                                                 mode=-1, unit_mode=True)
+        htr0 = int(round(tidx0 * 2 + 1))
+        htr1 = int(round(tidx1 * 2 + 1))
+        warr = WireArray(TrackID(layer_id, tidx0, num=htr1 - htr0 + 1, pitch=0.5), lower, upper)
+        self._used_tracks.add_wire_arrays(warr)
 
     def get_available_tracks(self,  # type: TemplateBase
                              layer_id,  # type: int
@@ -2651,41 +2656,3 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self.draw_vias_on_intersections(vss_warrs, top_vss)
 
         return top_vdd, top_vss
-
-
-# noinspection PyAbstractClass
-class MicroTemplate(with_metaclass(abc.ABCMeta, TemplateBase)):
-    """The base class of all micro templates.
-
-    Parameters
-    ----------
-    temp_db : TemplateDB
-            the template database.
-    lib_name : str
-        the layout library name.
-    params : Dict[str, Any]
-        the parameter values.
-    used_names : Set[str]
-        a set of already used cell names.
-    **kwargs
-        dictionary of optional parameters.  See documentation of
-        :class:`bag.layout.template.TemplateBase` for details.
-    """
-
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(MicroTemplate, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
-
-    @classmethod
-    def is_micro(cls):
-        # type: () -> bool
-        """Returns True if this template is a micro template.
-
-        Override this method to return True if this is a micro template.
-
-        Returns
-        -------
-        is_primitive : bool
-            True if this template is a primitive template.
-        """
-        return True

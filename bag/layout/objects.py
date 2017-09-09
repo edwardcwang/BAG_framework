@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 from builtins import *
 from future.utils import with_metaclass
 
-from typing import Union, List, Tuple, Optional, Dict, Any
+from typing import Union, List, Tuple, Optional, Dict, Any, TYPE_CHECKING
 
 import abc
 import numpy as np
@@ -39,8 +39,12 @@ from copy import deepcopy
 from .util import transform_table, BBox, BBoxArray, transform_point, transform_orient
 from .routing.base import Port, WireArray
 from .routing.fill import UsedTracks
+from .routing.grid import RoutingGrid
 
 import bag.io
+
+if TYPE_CHECKING:
+    from .template import TemplateBase
 
 ldim = Union[float, int]
 loc_type = Tuple[ldim, ldim]
@@ -438,12 +442,18 @@ class Instance(Arrayable):
         """
         self._master = self._master.new_template_with(**kwargs)
 
-    def get_used_tracks(self, row=0, col=0):
-        # type: (int, int) -> UsedTracks
+    def get_used_tracks(self, grid, bot_layer, top_layer, row=0, col=0):
+        # type: (RoutingGrid, int, int, int, int) -> UsedTracks
         """Return the used track object of the given instance in the array.
 
         Parameters
         ----------
+        grid : RoutingGrid
+            the parent RoutingGrid object.
+        bot_layer : int
+            the bottom layer ID, inclusive.
+        top_layer : int
+            the top layer ID, inclusive.
         row : int
             the instance row index.  Index 0 is the bottom-most row.
         col : int
@@ -456,8 +466,8 @@ class Instance(Arrayable):
         """
         dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
         inst_loc = dx + self._loc_unit[0], dy + self._loc_unit[1]
-        return self._master.get_used_tracks().transform(self._master.grid, inst_loc, self._orient,
-                                                        unit_mode=True)
+        return self._master.get_used_tracks().transform(grid, bot_layer, top_layer, inst_loc,
+                                                        self._orient, unit_mode=True)
 
     def get_rect_bbox(self, layer):
         """Returns the overall bounding box of all rectangles on the given layer.
@@ -550,6 +560,14 @@ class Instance(Arrayable):
         box_arr = BBoxArray(master_box, nx=self.nx, ny=self.ny,
                             spx=self._spx_unit, spy=self._spy_unit, unit_mode=True)
         return box_arr.get_overall_bbox().transform(self.location_unit, self.orientation, unit_mode=True)
+
+    def get_bound_box_of(self, row=0, col=0):
+        """Returns the bounding box of an instance in this mosaic."""
+        dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
+        xshift, yshift = self._loc_unit
+        xshift += dx
+        yshift += dy
+        return self._master.bound_box.transform((xshift, yshift), self.orientation, unit_mode=True)
 
     def move_by(self, dx=0, dy=0, unit_mode=False):
         # type: (Union[float, int], Union[float, int], bool) -> None
