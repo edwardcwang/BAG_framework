@@ -981,9 +981,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             spx = int(round(spx / res))
             spy = int(round(spy / res))
 
-        inst = Instance(self._lib_name, master, loc=loc, orient=orient,
-                        res=self.grid.resolution, name=inst_name,
-                        nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=True)
+        inst = Instance(self.grid, self._lib_name, master, loc=loc, orient=orient,
+                        name=inst_name, nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=True)
 
         self._layout.add_instance(inst)
         return inst
@@ -2576,8 +2575,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                 for cidx in range(inst.nx):
                     for ridx in range(inst.ny):
                         # merge tracks on common layers
-                        inst_used_tracks = inst.get_used_tracks(self.grid, bot_layer, top_layer,
-                                                                row=ridx, col=cidx)
+                        inst_used_tracks = inst.get_used_tracks(bot_layer, top_layer, row=ridx, col=cidx)
                         self._used_tracks.merge(inst_used_tracks)
                         # black out tracks on changed layers
                         if bot_layer > template_bot_layer:
