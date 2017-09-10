@@ -34,6 +34,7 @@ from builtins import *
 import bag
 from bag.layout.util import BBox
 from bag.layout.routing import TrackID
+from bag.layout.template import TemplateBase
 
 from ..analog_core import AnalogBase, AnalogBaseInfo
 
@@ -327,7 +328,7 @@ class NPassGateWClkCore(AnalogBase):
         self.add_pin('VDD', vdd_warrs, show=show_pins)
 
 
-class NPassGateWClk(AnalogBase):
+class NPassGateWClk(TemplateBase):
     """A differential NMOS passgate track-and-hold circuit with clock driver.
 
     This template is mainly used for ADC purposes.
@@ -436,7 +437,7 @@ class NPassGateWClk(AnalogBase):
         vdd_lay_id = vdd_warrs[0].layer_id
         top_layer = vdd_lay_id + 2
         height = inst.bound_box.height_unit
-        self.set_size_from_bound_box(top_layer, BBox(0, 0, tot_width * sd_pitch, height, res, unit_mode=True))
+        self.set_size_from_bound_box(top_layer, BBox(0, 0, tot_width, height, res, unit_mode=True))
 
         # fill and export supplies
         sup_width = 2
