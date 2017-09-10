@@ -229,23 +229,23 @@ class RoutingGrid(object):
         top_private_layer = self.top_private_layer
 
         # update private block pitches
-        lay_iter = (lay for lay in self.layers if lay <= top_private_layer)
-        self._update_block_pitch_helper(lay_iter)
+        lay_list = [lay for lay in self.layers if lay <= top_private_layer]
+        self._update_block_pitch_helper(lay_list)
 
         # update public block pitches
-        lay_iter = (lay for lay in self.layers if lay > top_private_layer)
-        self._update_block_pitch_helper(lay_iter)
+        lay_list = [lay for lay in self.layers if lay > top_private_layer]
+        self._update_block_pitch_helper(lay_list)
 
-    def _update_block_pitch_helper(self, lay_iter):
+    def _update_block_pitch_helper(self, lay_list):
         """helper method for updating block pitch."""
         pitch_list = []
-        for lay in lay_iter:
+        for lay in lay_list:
             cur_blk_pitch = self.get_track_pitch(lay, unit_mode=True)
             cur_dir = self.dir_tracks[lay]
             if pitch_list:
                 # the pitch of each layer = LCM of all layers below with same direction
-                bot_pitch_iter = (p for idx, p in enumerate(pitch_list) if
-                                  self.dir_tracks[self.layers[idx]] == cur_dir)
+                bot_pitch_iter = (p for play, p in zip(lay_list, pitch_list) if
+                                  self.dir_tracks[play] == cur_dir)
                 cur_blk_pitch = lcm(bot_pitch_iter, init=cur_blk_pitch)
             pitch_list.append(cur_blk_pitch)
             self.block_pitch[lay] = cur_blk_pitch
