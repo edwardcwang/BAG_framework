@@ -146,7 +146,7 @@ class AnalogBaseInfo(object):
 
     def get_total_width(self, fg_tot):
         # type: (int) -> int
-        """Returns the width of the AnalogMosBase in number of source/drain tracks.
+        """Returns the width of the AnalogMosBase in resolution units.
 
         Parameters
         ----------
@@ -160,6 +160,23 @@ class AnalogBaseInfo(object):
         """
 
         return self.get_placement_info(fg_tot).tot_width
+
+    def get_core_width(self, fg_tot):
+        # type: (int) -> int
+        """Returns the core width of the AnalogMosBase in resolution units.
+
+        Parameters
+        ----------
+        fg_tot : int
+            number of fingers.
+
+        Returns
+        -------
+        core_width : int
+            the AnalogMosBase core width in resolution units.
+        """
+
+        return self.get_placement_info(fg_tot).core_width
 
     def coord_to_col(self, coord, unit_mode=False, mode=0):
         """Convert the given X coordinate to transistor column index.
@@ -2034,18 +2051,18 @@ class SubstrateContact(TemplateBase):
         well_width = int(round(well_width / res))
 
         # get layout info, also set RoutingGrid to substrate grid.
-        layout_info = AnalogBaseInfo(self.grid, lch, 0, top_layer, sub_end_mode)
+        layout_info = AnalogBaseInfo(self.grid, lch, 0, top_layer=top_layer, end_mode=sub_end_mode)
 
         # compute template width in number of sd pitches
         # find maximum number of fingers we can draw
         bin_iter = BinaryIterator(1, None)
         while bin_iter.has_next():
             cur_fg = bin_iter.get_next()
-            cur_tot_width = layout_info.get_total_width(cur_fg)
-            if cur_tot_width == well_width:
+            cur_core_width = layout_info.get_core_width(cur_fg)
+            if cur_core_width == well_width:
                 bin_iter.save()
                 break
-            elif cur_tot_width < well_width:
+            elif cur_core_width < well_width:
                 bin_iter.save()
                 bin_iter.up()
             else:
@@ -2054,7 +2071,14 @@ class SubstrateContact(TemplateBase):
         sub_fg_tot = bin_iter.get_last_save()
         if sub_fg_tot is None:
             raise ValueError('Cannot draw substrate that fit in width: %d' % well_width)
-        sub_tot_width = layout_info.get_total_width(sub_fg_tot)
+
+        layout_info.fg_tot = sub_fg_tot
+        self.grid = layout_info.grid
+
+        place_info = layout_info.get_placement_info(sub_fg_tot)
+        edgel_x0 = place_info.edge_margins[0]
+        arr_box_x = place_info.arr_box_x
+        tot_width = place_info.tot_width
 
         # create substrate
         params = dict(
@@ -2105,34 +2129,30 @@ class SubstrateContact(TemplateBase):
         hsub = sub_master.prim_bound_box.height_unit
         hend = end_row_master.prim_bound_box.height_unit
         htot = hsub + 2 * hend
-        # find substrate Y offset to center it in the middle.
-        sub_ny = htot // htot_pitch
-        tot_ny = -(-htot // htot_pitch)
-        y0 = (tot_ny - sub_ny) // 2 * htot_pitch
         # add substrate and edge at the right locations
-        x1 = edge_master.prim_bound_box.width_unit
+        x1 = edgel_x0 + edge_master.prim_bound_box.width_unit
         x2 = x1 + sub_master.prim_bound_box.width_unit + edge_master.prim_bound_box.width_unit
-        y1 = y0 + end_edge_master.prim_bound_box.height_unit
+        y1 = end_edge_master.prim_bound_box.height_unit
         y2 = y1 + edge_master.prim_bound_box.height_unit + end_edge_master.prim_bound_box.height_unit
-        instlb = self.add_instance(end_edge_master, inst_name='XLBE', loc=(0, y0), unit_mode=True)
-        self.add_instance(edge_master, inst_name='XLE', loc=(0, y1), unit_mode=True)
-        self.add_instance(end_edge_master, inst_name='XLTE', orient='MX', loc=(0, y2), unit_mode=True)
-        self.add_instance(end_row_master, inst_name='XB', loc=(x1, y0), unit_mode=True)
+        instlb = self.add_instance(end_edge_master, inst_name='XLBE', loc=(edgel_x0, 0), unit_mode=True)
+        self.add_instance(edge_master, inst_name='XLE', loc=(edgel_x0, y1), unit_mode=True)
+        self.add_instance(end_edge_master, inst_name='XLTE', orient='MX', loc=(edgel_x0, y2), unit_mode=True)
+        self.add_instance(end_row_master, inst_name='XB', loc=(x1, 0), unit_mode=True)
         self.add_instance(sub_master, inst_name='XSUB', loc=(x1, y1), unit_mode=True)
         self.add_instance(end_row_master, inst_name='XT', orient='MX', loc=(x1, y2), unit_mode=True)
-        self.add_instance(end_edge_master, inst_name='XRBE', orient='MY', loc=(x2, y0), unit_mode=True)
+        self.add_instance(end_edge_master, inst_name='XRBE', orient='MY', loc=(x2, 0), unit_mode=True)
         self.add_instance(edge_master, inst_name='XRE', orient='MY', loc=(x2, y1), unit_mode=True)
         sub_conn = self.add_instance(conn_master, inst_name='XSUBCONN', loc=(x1, y1), unit_mode=True)
-
         instrt = self.add_instance(end_edge_master, inst_name='XRTE', orient='R180', loc=(x2, y2), unit_mode=True)
 
         # set array box and size
-        self.array_box = instlb.array_box.merge(instrt.array_box)
-        self.set_size_from_bound_box(hm_layer, BBox(0, 0, sub_tot_width, tot_ny * htot_pitch,
-                                                    res, unit_mode=True))
+        arr_box = instlb.array_box.merge(instrt.array_box)
+        self.array_box = BBox(arr_box_x[0], arr_box.bottom_unit, arr_box_x[1], arr_box.top_unit, res, unit_mode=True)
+        self.set_size_from_bound_box(top_layer, BBox(0, 0, tot_width, htot, res, unit_mode=True))
         self.add_cell_boundary(self.bound_box)
 
-        # find the first horizontal track index inside the array box
+        # find center track index
+        hm_layer = layout_info.mconn_port_layer + 1
         hm_mid = self.grid.coord_to_nearest_track(hm_layer, self.array_box.yc_unit, mode=0,
                                                   half_track=True, unit_mode=True)
         # connect to horizontal metal layer.

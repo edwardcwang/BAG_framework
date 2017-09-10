@@ -41,7 +41,7 @@ from bag.layout.template import TemplateBase
 import abc
 
 
-PlaceInfo = namedtuple('PlaceInfo', ['tot_width', 'edge_margins', 'edge_widths', 'arr_box_x', ])
+PlaceInfo = namedtuple('PlaceInfo', ['tot_width', 'core_width', 'edge_margins', 'edge_widths', 'arr_box_x', ])
 
 
 class MOSTech(with_metaclass(abc.ABCMeta, object)):
@@ -790,6 +790,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         right_margin = space - left_margin
 
         return PlaceInfo(tot_width=tot_width,
+                         core_width=core_width,
                          edge_margins=(left_margin, right_margin),
                          edge_widths=(sd_pitch * edgel_num_fg, sd_pitch * edger_num_fg),
                          arr_box_x=(arr_dxl, tot_width - arr_dxr))

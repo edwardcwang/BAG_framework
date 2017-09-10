@@ -1042,6 +1042,7 @@ class ResLadder(TemplateBase):
         top_layer, nx_arr, ny_arr = res_master.size
         w_pitch, h_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
         sub_params = dict(
+            top_layer=top_layer,
             lch=sub_lch,
             w=sub_w,
             sub_type=sub_type,
@@ -1051,24 +1052,23 @@ class ResLadder(TemplateBase):
             is_passive=True,
         )
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
-        sub_box = sub_master.bound_box
-        ny_shift = -(-sub_box.height_unit // h_pitch)
+        _, nx_sub, ny_sub = sub_master.size
 
-        # compute substrate X coordinate so substrate is on its own private horizontal pitch
-        sub_x_pitch, _ = sub_master.grid.get_size_pitch(sub_master.size[0], unit_mode=True)
-        sub_x = ((w_pitch * nx_arr - sub_box.width_unit) // 2 // sub_x_pitch) * sub_x_pitch
+        nx_shift = (nx_arr - nx_sub) // 2
 
-        bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(sub_x, 0), unit_mode=True)
-        res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0, ny_shift * h_pitch), unit_mode=True)
-        top_yo = (ny_arr + 2 * ny_shift) * h_pitch
-        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(sub_x, top_yo), orient='MX', unit_mode=True)
+        xpitch, ypitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
+        bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(nx_shift * xpitch, 0), unit_mode=True)
+        res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0, ny_sub * h_pitch), unit_mode=True)
+        top_yo = (ny_arr + 2 * ny_sub) * h_pitch
+        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(nx_shift * xpitch, top_yo),
+                                     orient='MX', unit_mode=True)
 
         # connect implant layers of resistor array and substrate contact together
         for lay in self.grid.tech_info.get_implant_layers(sub_type, res_type=res_type):
             self.add_rect(lay, self.get_rect_bbox(lay))
 
         # recompute array_box/size
-        self.size = top_layer, nx_arr, ny_arr + 2 * ny_shift
+        self.size = top_layer, nx_arr, ny_arr + 2 * ny_sub
         self.array_box = bot_inst.array_box.merge(top_inst.array_box)
         self.add_cell_boundary(self.bound_box)
 
