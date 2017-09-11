@@ -177,7 +177,8 @@ class RetimeLatchRow(StdCellBase):
 
         # connect and export clock.
         clk_layer = clkb_list[0].layer_id + 1
-        num_tracks = self.grid.get_num_tracks(self.size, clk_layer)
+        clk_pitch = self.grid.get_track_pitch(clk_layer, unit_mode=True)
+        num_tracks = self.bound_box.height_unit // clk_pitch
         clk_tidx = (num_tracks - 1) / 2
         clk_warr = self.connect_to_tracks(clkb_list, TrackID(clk_layer, clk_tidx, width=clk_width), fill_type='')
         self.add_pin('clkb', clk_warr, show=False)
@@ -547,7 +548,7 @@ class Retimer(StdCellBase):
         self.set_std_size((adc_width * num_adc, 4 * spy + cb_nrow))
         # draw boundaries
         self.draw_boundaries()
-        blk_w, blk_h = self.grid.get_size_dimension(self.size)
+        blk_h = self.bound_box.height
 
         # first stage latches, clock buffers, and fills
         ck1_list = []
