@@ -595,6 +595,10 @@ class RoutingGrid(object):
         else:
             return w_pitch * self.resolution, h_pitch * self.resolution
 
+    def size_defined(self, layer_id):
+        """Returns True if size is defined on the given layer."""
+        return layer_id >= self.top_private_layer + 2
+
     def get_size_pitch(self, layer_id, unit_mode=False):
         """Returns the horizontal/vertical pitch that defines template size.
 
@@ -612,9 +616,8 @@ class RoutingGrid(object):
         h_pitch : Union[float, int]
             the height pitch.
         """
-        top_private_layer = self.top_private_layer
-        if layer_id <= top_private_layer + 1:
-            raise ValueError('Size tuple is undefined for layer = %d <= %d' % (layer_id, top_private_layer + 1))
+        if not self.size_defined(layer_id):
+            raise ValueError('Size tuple is undefined for layer = %d' % layer_id)
 
         h_pitch = self.get_track_pitch(layer_id, unit_mode=unit_mode)
         w_pitch = self.get_track_pitch(layer_id - 1, unit_mode=unit_mode)

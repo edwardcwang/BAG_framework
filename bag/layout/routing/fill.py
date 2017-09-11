@@ -35,6 +35,7 @@ from typing import Optional, Union, List, Tuple, Iterable, Any, Dict
 import numpy as np
 
 from bag.util.interval import IntervalSet
+from bag.layout.util import BBox
 from .base import WireArray, TrackID
 from .grid import RoutingGrid
 
@@ -355,7 +356,7 @@ def get_available_tracks(grid,  # type: RoutingGrid
 
 
 def get_power_fill_tracks(grid,  # type: RoutingGrid
-                          size,  # type: Tuple[int, int, int]
+                          bnd_box,  # type: BBox
                           layer_id,  # type: int
                           track_set,  # type: TrackSet
                           sup_width,  # type: int
@@ -368,7 +369,7 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
     """Fill unused tracks with supply tracks.
     """
     # get block size and lower/upper coordinates.
-    blk_width, blk_height = grid.get_size_dimension(size, unit_mode=True)
+    blk_width, blk_height = bnd_box.width_unit, bnd_box.height_unit
     lower = edge_margin
     if grid.get_direction(layer_id) == 'x':
         upper = blk_width - edge_margin
