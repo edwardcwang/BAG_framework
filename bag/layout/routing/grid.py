@@ -1388,7 +1388,7 @@ class RoutingGrid(object):
         attrs['max_num_tr_tracks'] = self.max_num_tr_tracks.copy()
         attrs['block_pitch'] = self.block_pitch.copy()
         attrs['w_override'] = self.w_override.copy()
-        attrs['private_layers'] = self.private_layers
+        attrs['private_layers'] = list(self.private_layers)
         for lay in self.layers:
             attrs['w_override'][lay] = self.w_override[lay].copy()
 
@@ -1425,7 +1425,22 @@ class RoutingGrid(object):
         is_private : bool
             True if this is a private layer.
         """
+        if not unit_mode:
+            sp_unit = 2 * int(round(tr_space / (2 * self.resolution)))
+            w_unit = 2 * int(round(tr_width / (2 * self.resolution)))
+        else:
+            sp_unit = -(-tr_space // 2) * 2
+            w_unit = -(-tr_width // 2) * 2
         if layer_id in self.sp_tracks:
+            # double check to see if we actually need to modify layer
+            w_cur = self.w_tracks[layer_id]
+            sp_cur = self.sp_tracks[layer_id]
+            dir_cur = self.dir_tracks[layer_id]
+
+            if w_cur == w_unit and sp_cur == sp_unit and dir_cur == direction:
+                # everything is the same, just return
+                return
+
             if not override:
                 raise ValueError('Layer %d already on routing grid.' % layer_id)
         else:
@@ -1435,13 +1450,6 @@ class RoutingGrid(object):
         if is_private and layer_id not in self.private_layers:
             self.private_layers.append(layer_id)
             self.private_layers.sort()
-
-        if not unit_mode:
-            sp_unit = 2 * int(round(tr_space / (2 * self.resolution)))
-            w_unit = 2 * int(round(tr_width / (2 * self.resolution)))
-        else:
-            sp_unit = -(-tr_space // 2) * 2
-            w_unit = -(-tr_width // 2) * 2
 
         self.sp_tracks[layer_id] = sp_unit
         self.w_tracks[layer_id] = w_unit
