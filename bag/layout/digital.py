@@ -205,7 +205,12 @@ class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                               num_row * self.std_row_height + 2 * dy, self.grid.resolution)
         if top_layer < 0:
             top_layer = self.std_routing_layers[-1]
-        self.set_size_from_array_box(top_layer)
+
+        if self.grid.size_defined(top_layer):
+            self.set_size_from_array_box(top_layer)
+        else:
+            self.prim_top_layer = top_layer
+            self.prim_bound_box = self.array_box
 
     def update_routing_grid(self):
         """Register standard cell routing layers in the RoutingGrid.

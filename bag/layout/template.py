@@ -749,13 +749,13 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                     )
 
         # get size information
-        my_width, my_height = self.grid.get_size_dimension(self.size)
+        bnd_box = self.bound_box
         info = {
             lib_name: {
                 cell_name: dict(
                     pins=pin_dict,
                     xy0=[0.0, 0.0],
-                    xy1=[my_width, my_height],
+                    xy1=[bnd_box.width, bnd_box.height],
                 ),
             },
         }
@@ -1882,10 +1882,13 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             True if fill_margin is given in resolution units.
         """
 
-        blkw, blkh = self.grid.get_size_dimension(self.size, unit_mode=False)
-
+        bnd_box = self.bound_box
         tid = TrackID(layer_id, track_idx, width=width, num=num, pitch=pitch)
-        warr = WireArray(tid, 0.0, blkh)
+        if self.grid.get_direction(layer_id) == 'x':
+            upper = bnd_box.width
+        else:
+            upper = bnd_box.height
+        warr = WireArray(tid, 0.0, upper)
 
         self._used_tracks.add_wire_arrays(warr, fill_margin=fill_margin, fill_type=fill_type,
                                           unit_mode=unit_mode)
@@ -2643,7 +2646,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             edge_margin = int(round(edge_margin / res))
 
         self._merge_inst_used_tracks()
-        top_vdd, top_vss = get_power_fill_tracks(self.grid, self.size, layer_id,
+        top_vdd, top_vss = get_power_fill_tracks(self.grid, self.bound_box, layer_id,
                                                  self._used_tracks.get_tracks_info(layer_id),
                                                  sup_width, fill_margin, edge_margin,
                                                  sup_spacing=sup_spacing, debug=debug)
