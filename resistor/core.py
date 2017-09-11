@@ -120,10 +120,9 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     @property
     def res_unit_size(self):
-        # type: () -> Tuple[int, int, int]
-        """Returns the size of a unit resistor block."""
-        top_layer = self.bot_layer_id + len(self._num_tracks) - 1
-        return self.grid.get_size_tuple(top_layer, self._core_pitch[0], self._core_pitch[1], unit_mode=True)
+        # type: () -> Tuple[int, int]
+        """Returns the size of a unit resistor block in resolution units"""
+        return self._core_pitch
 
     def get_well_width(self, unit_mode=False):
         # type: (bool) -> Union[float, int]
@@ -334,8 +333,14 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # set array box and size
         self.array_box = inst_bl.array_box.merge(inst_tr.array_box)
+        bnd_box = inst_bl.bound_box.merge(inst_tr.bound_box)
         top_layer = self._hm_layer + len(min_tracks) - 1
-        self.set_size_from_array_box(top_layer)
+        if self.grid.size_defined(top_layer):
+            self.set_size_from_bound_box(top_layer, bnd_box)
+        else:
+            self.prim_top_layer = top_layer
+            self.prim_bound_box = bnd_box
+
         self.add_cell_boundary(self.bound_box)
 
         # draw device blockages
@@ -872,8 +877,7 @@ class ResLadderCore(ResArrayBase):
                    num_v_tracks - 1.5, num_v_tracks - 0.5]
 
         # get unit block size
-        unit_size = self.res_unit_size
-        blk_w, blk_h = self.grid.get_size_dimension(unit_size, unit_mode=True)
+        blk_w, blk_h = self.res_unit_size
 
         # find top X layer track index that can be connected to supply.
         hm_off, vm_off, xm_off, _ = self.get_track_offsets(0, 0)
