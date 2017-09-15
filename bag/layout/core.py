@@ -488,7 +488,6 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         """
         return 0.0, float('inf'), float('inf')
 
-    @abc.abstractmethod
     def get_res_info(self, res_type, w, l, **kwargs):
         """Returns a dictionary containing EM information of the given resistor.
 
@@ -518,7 +517,16 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
             iac_peak : float
                 The maximum allowable AC peak current, in Amperes.
         """
-        return None
+        rsq = self.get_res_rsquare(res_type)
+        res = l / w * rsq
+        idc, irms, ipeak = self.get_res_em_specs(res_type, w, l=l, **kwargs)
+
+        return dict(
+            resistance=res,
+            idc=idc,
+            iac_rms=irms,
+            iac_peak=ipeak,
+        )
 
     def get_best_via_array(self, vname, bmtype, tmtype, bot_dir, w, h):
         """Maximize the number of vias in the given area.
@@ -874,7 +882,7 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
 
         # step 1: estimate number of resistors in parallel from EM specs
         res_idc, res_irms, res_ipeak = self.get_res_em_specs(res_type, wmax, **kwargs)
-        num_par = 1
+        num_par = 1.0
         if 0.0 < res_idc < idc:
             num_par = max(num_par, -(-idc // res_idc))
         if 0.0 < res_irms < iac_rms:
@@ -1011,9 +1019,6 @@ class DummyTechInfo(TechInfo):
 
     def get_res_em_specs(self, res_type, w, l=-1, **kwargs):
         return 0.0, float('inf'), float('inf'), float('inf')
-
-    def get_res_info(self, res_type, w, l, **kwargs):
-        return None
 
 
 class BagLayout(object):
