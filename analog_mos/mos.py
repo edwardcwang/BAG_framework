@@ -204,7 +204,7 @@ class AnalogMOSExt(TemplateBase):
         """
         return dict(
             lch='channel length, in meters.',
-            w='extension width, in layout units/number of fins.',
+            w='extension width, in resolution units/number of fins.',
             fg='number of fingers.',
             top_ext_info='top extension info.',
             bot_ext_info='bottom extension info.',
