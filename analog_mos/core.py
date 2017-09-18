@@ -90,19 +90,6 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def draw_zero_end_row(cls):
-        # type: () -> bool
-        """Returns True if we should draw 0 width analog end row.
-
-        Returns
-        -------
-        draw_end : bool
-            True to draw 0 width analog end row.
-        """
-        return False
-
-    @classmethod
-    @abc.abstractmethod
     def draw_zero_extension(cls):
         # type: () -> bool
         """Returns True if we should draw 0 width extension.
