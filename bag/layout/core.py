@@ -1351,7 +1351,6 @@ class BagLayout(object):
         # if isinstance(instance.nx, float) or isinstance(instance.ny, float):
         #     raise Exception('float nx/ny')
 
-        self._is_empty = False
         self._inst_list.append(instance)
 
     def move_all_by(self, dx=0.0, dy=0.0):
@@ -1434,7 +1433,6 @@ class BagLayout(object):
             inst_info.params = params
         inst_info.update(kwargs)
 
-        self._is_empty = False
         self._inst_primitives.append(inst_info)
 
     def add_rect(self, rect):
@@ -1451,7 +1449,6 @@ class BagLayout(object):
         # if isinstance(rect.nx, float) or isinstance(rect.ny, float):
         #     raise Exception('float nx/ny')
 
-        self._is_empty = False
         self._rect_list.append(rect)
 
     def add_path(self, path):
@@ -1466,7 +1463,6 @@ class BagLayout(object):
         if self._finalized:
             raise Exception('Layout is already finalized.')
 
-        self._is_empty = False
         self._path_list.append(path)
 
     def add_blockage(self, blockage):
@@ -1481,7 +1477,6 @@ class BagLayout(object):
         if self._finalized:
             raise Exception('Layout is already finalized.')
 
-        self._is_empty = False
         self._blockage_list.append(blockage)
 
     def add_boundary(self, boundary):
@@ -1496,7 +1491,6 @@ class BagLayout(object):
         if self._finalized:
             raise Exception('Layout is already finalized.')
 
-        self._is_empty = False
         self._boundary_list.append(boundary)
 
     def add_via(self, via):
@@ -1513,7 +1507,6 @@ class BagLayout(object):
         # if isinstance(via.nx, float) or isinstance(via.ny, float):
         #     raise Exception('float nx/ny')
 
-        self._is_empty = False
         self._via_list.append(via)
 
     def add_via_primitive(self, via_type, loc, num_rows=1, num_cols=1, sp_rows=0.0, sp_cols=0.0,
@@ -1578,7 +1571,6 @@ class BagLayout(object):
                 par['arr_spx'] = arr_spx
                 par['arr_spy'] = arr_spy
 
-            self._is_empty = False
             self._via_primitives.append(par)
 
     def add_pin(self, net_name, layer, bbox, pin_name=None, label=None):
@@ -1625,7 +1617,6 @@ class BagLayout(object):
                       bbox=[[bbox.left, bbox.bottom], [bbox.right, bbox.top]],
                       make_rect=self._make_pin_rect)
 
-        self._is_empty = False
         self._used_pin_names.add(pin_name)
         self._pin_list.append(par)
 
@@ -1662,5 +1653,4 @@ class BagLayout(object):
                       bbox=[[bbox.left, bbox.bottom], [bbox.right, bbox.top]],
                       make_rect=False)
 
-        self._is_empty = False
         self._pin_list.append(par)
