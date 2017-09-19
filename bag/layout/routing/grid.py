@@ -133,15 +133,19 @@ class RoutingGrid(object):
         bot_layer : int
             the bottom common layer ID.
         """
-        bot_layer = inst_top_layer
-        while bot_layer in self.layers:
-            w_par, sp_par = self.get_track_info(bot_layer, unit_mode=True)
-            w_inst, sp_inst = inst_grid.get_track_info(bot_layer, unit_mode=True)
-            if w_par != w_inst or sp_par != sp_inst:
-                break
-            bot_layer -= 1
+        my_bot_layer = self.layers[0]
+        for bot_layer in range(inst_top_layer, my_bot_layer - 1, -1):
+            has_bot = (bot_layer in self.layers)
+            inst_has_bot = (bot_layer in inst_grid.layers)
+            if has_bot and inst_has_bot:
+                w_par, sp_par = self.get_track_info(bot_layer, unit_mode=True)
+                w_inst, sp_inst = inst_grid.get_track_info(bot_layer, unit_mode=True)
+                if w_par != w_inst or sp_par != sp_inst:
+                    return bot_layer + 1
+            elif has_bot != inst_has_bot:
+                return bot_layer + 1
 
-        return bot_layer + 1
+        return my_bot_layer
 
     def get_flip_parity_at(self, bot_layer, top_layer, loc, orient, unit_mode=False):
         # type: (int, int, Tuple[Union[int, float], Union[int, float]], str, bool) -> Dict[int, bool]
