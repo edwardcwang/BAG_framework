@@ -388,7 +388,7 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         iac_peak : float
             maximum AC peak current per via, in Amperes.
         """
-        return 0.0, float('inf'), float('inf'), float('inf')
+        return float('inf'), float('inf'), float('inf')
 
     @abc.abstractmethod
     def get_res_rsquare(self, res_type):
@@ -486,7 +486,7 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         iac_peak : float
             maximum AC peak current, in Amperes.
         """
-        return 0.0, float('inf'), float('inf')
+        return float('inf'), float('inf'), float('inf')
 
     def get_res_info(self, res_type, w, l, **kwargs):
         """Returns a dictionary containing EM information of the given resistor.
@@ -1003,7 +1003,7 @@ class DummyTechInfo(TechInfo):
 
     def get_via_em_specs(self, via_name, bm_layer, tm_layer, via_type='square',
                          bm_dim=(-1, -1), tm_dim=(-1, -1), array=False, **kwargs):
-        return 0.0, float('inf'), float('inf'), float('inf')
+        return float('inf'), float('inf'), float('inf')
 
     def get_res_rsquare(self, res_type):
         return 0.0
@@ -1018,7 +1018,7 @@ class DummyTechInfo(TechInfo):
         return 1.0
 
     def get_res_em_specs(self, res_type, w, l=-1, **kwargs):
-        return 0.0, float('inf'), float('inf'), float('inf')
+        return float('inf'), float('inf'), float('inf')
 
 
 class BagLayout(object):
