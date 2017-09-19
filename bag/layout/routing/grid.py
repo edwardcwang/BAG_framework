@@ -183,22 +183,23 @@ class RoutingGrid(object):
 
         flip_par = {}
         for lay in range(bot_layer, top_layer + 1):
-            tdir = self.dir_tracks[lay]
+            if lay in self.layers:
+                tdir = self.dir_tracks[lay]
 
-            # step 1: find the track in top level that corresponds to the track at instance origin
-            if tdir == 'y':
-                coord, scale = xo, yscale
-            else:
-                coord, scale = yo, xscale
+                # step 1: find the track in top level that corresponds to the track at instance origin
+                if tdir == 'y':
+                    coord, scale = xo, yscale
+                else:
+                    coord, scale = yo, xscale
 
-            # tr_idx = self.coord_to_nearest_track(lay, coord, half_track=True, mode=1, unit_mode=True)
-            tr_idx = self.coord_to_track(lay, coord, unit_mode=True)
-            offset_htr = int(round(tr_idx * 2 + 1))
+                # tr_idx = self.coord_to_nearest_track(lay, coord, half_track=True, mode=1, unit_mode=True)
+                tr_idx = self.coord_to_track(lay, coord, unit_mode=True)
+                offset_htr = int(round(tr_idx * 2 + 1))
 
-            cur_scale, cur_offset = self._flip_parity.get(lay, (1, 0))
-            new_scale = cur_scale * scale
-            new_offset = (cur_scale * offset_htr + cur_offset) % 4
-            flip_par[lay] = (new_scale, new_offset)
+                cur_scale, cur_offset = self._flip_parity.get(lay, (1, 0))
+                new_scale = cur_scale * scale
+                new_offset = (cur_scale * offset_htr + cur_offset) % 4
+                flip_par[lay] = (new_scale, new_offset)
 
         return flip_par
 
