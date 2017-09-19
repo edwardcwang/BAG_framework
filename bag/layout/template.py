@@ -2584,7 +2584,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                         if bot_layer > template_bot_layer:
                             inst_box = inst.get_bound_box_of(row=ridx, col=cidx)
                             for lay_id in range(template_bot_layer, bot_layer):
-                                self._mark_bbox_used(lay_id, inst_box)
+                                if lay_id in self.grid.layers:
+                                    self._mark_bbox_used(lay_id, inst_box)
 
     def _mark_bbox_used(self, layer_id, bbox):
         if self.grid.get_direction(layer_id) == 'x':
