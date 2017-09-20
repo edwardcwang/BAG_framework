@@ -677,6 +677,9 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         flatten : bool
             True to compute flattened layout.
         """
+        # finalize this template
+        self.grid.tech_info.finalize_template(self)
+
         # update track parities of all instances
         self._update_flip_parity()
 

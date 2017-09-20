@@ -183,6 +183,19 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         """
         return (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
 
+    @classmethod
+    def finalize_template(cls, template):
+        """Perform any operations necessary on the given layout template before finalizing it.
+
+        By default, nothing is done.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the template object.
+        """
+        pass
+
     @property
     def via_tech_name(self):
         """Returns the via technology library name."""
