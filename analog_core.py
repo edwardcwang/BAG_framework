@@ -1134,32 +1134,41 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # compute Y coordinate shift from adding end row
         dy = bot_end_master.array_box.height_unit
 
-        # first try: place everything, but blocks as close to the bottom as possible.
-        y_list, ext_list, tot_ntr, gtr_intv, dtr_intv = self._place_helper(fg_tot, 0, track_spec_list, master_list,
-                                                                           gds_space, hm_layer, mos_pitch,
-                                                                           tot_pitch, dy)
-        ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
-        print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
-        while ext_first < ext_last - 1:
-            # if the bottom extension width is smaller than the top extension width (and differ by more than 1),
-            # then we can potentially get a more centered placement by increasing the minimum bottom extenison width.
-            bot_ext_w = ext_first + 1
-            y_next, ext_next, tot_ntr_next, gnext, dnext = self._place_helper(fg_tot, bot_ext_w, track_spec_list,
-                                                                              master_list, gds_space, hm_layer,
-                                                                              mos_pitch, tot_pitch, dy)
-            ext_first_next, ext_last_next = ext_next[0][0], ext_next[-1][0]
-            print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first_next, ext_last_next, tot_ntr_next))
-            if tot_ntr_next > tot_ntr or abs(ext_last - ext_first) < abs(ext_last_next - ext_first_next):
-                # if either we increase the overall size of analog base, or we get a more
-                # unbalanced placement, then it's not worth it anymore.
-                print('abort')
-                break
+        # find bot_ext_w such that we place blocks as close to center as possible.
+        # use binary search to shorten search
+        tot_ntr_best = None
+        bot_ext_w_iter = BinaryIterator(0, None)
+        while bot_ext_w_iter.has_next():
+            bot_ext_w = bot_ext_w_iter.get_next()
+            tmp_result = self._place_helper(fg_tot, bot_ext_w, track_spec_list, master_list,
+                                            gds_space, hm_layer, mos_pitch, tot_pitch, dy)
+            y_list, ext_list, tot_ntr, gtr_intv, dtr_intv = tmp_result
+            ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
+            print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
+            if tot_ntr_best is None:
+                tot_ntr_best = tot_ntr
+
+            if tot_ntr > tot_ntr_best:
+                bot_ext_w_iter.down()
             else:
-                # update the optimal placement strategy.
-                y_list, ext_list, tot_ntr = y_next, ext_next, tot_ntr_next
-                ext_last, ext_first = ext_last_next, ext_first_next
-                gtr_intv, dtr_intv = gnext, dnext
-                print('pick')
+                if ext_first == ext_last:
+                    bot_ext_w_iter.save()
+                    break
+                elif ext_first < ext_last:
+                    bot_ext_w_iter.save()
+                    bot_ext_w_iter.up()
+                else:
+                    bot_ext_w_iter.down()
+
+        bot_ext_w_best = bot_ext_w_iter.get_last_save()
+        if bot_ext_w_best is None:
+            # all solution ext_last > ext_first, so just pick 0
+            bot_ext_w_best = 0
+        tmp_result = self._place_helper(fg_tot, bot_ext_w_best, track_spec_list, master_list,
+                                        gds_space, hm_layer, mos_pitch, tot_pitch, dy)
+        y_list, ext_list, tot_ntr, gtr_intv, dtr_intv = tmp_result
+        ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
+        print('final: ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
 
         # at this point we've found the optimal placement.  Place instances
         place_info = self._layout_info.get_placement_info(fg_tot)
