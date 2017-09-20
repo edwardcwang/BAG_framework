@@ -1030,17 +1030,13 @@ class BagLayout(object):
         the routing grid instance.
     use_cybagoa : bool
         True to use cybagoa package to accelerate layout.
-    pin_purpose : string
-        Default pin purpose name.  Defaults to 'pin'.
-    make_pin_rect : bool
-        True to create pin object in addition to label.  Defaults to True.
     """
 
-    def __init__(self, grid, use_cybagoa=False, pin_purpose='pin', make_pin_rect=True):
+    def __init__(self, grid, use_cybagoa=False):
         self._res = grid.resolution
         self._via_tech = grid.tech_info.via_tech_name
-        self._pin_purpose = pin_purpose
-        self._make_pin_rect = make_pin_rect
+        self._pin_purpose = 'pin'
+        self._make_pin_rect = True
         self._inst_list = []  # type: List[Instance]
         self._inst_primitives = []  # type: List[InstanceInfo]
         self._rect_list = []  # type: List[Rect]

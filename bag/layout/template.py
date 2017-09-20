@@ -82,15 +82,10 @@ class TemplateDB(object):
         True to use cybagoa module to accelerate layout.
     flatten : bool
         True to compute flattened layout.
-    pin_purpose : string
-        Default pin purpose name.  Defaults to 'pin'.
-    make_pin_rect : bool
-        True to create pin object in addition to label.  Defaults to True.
     """
 
-    def __init__(self, lib_defs, routing_grid, lib_name, name_prefix='', use_cybagoa=False,
-                 flatten=False, pin_purpose='pin', make_pin_rect=True):
-        # type: (str, RoutingGrid, str, str, bool, bool, str, bool) -> None
+    def __init__(self, lib_defs, routing_grid, lib_name, name_prefix='', use_cybagoa=False, flatten=False):
+        # type: (str, RoutingGrid, str, str, bool, bool) -> None
         self._importer = ClassImporter(lib_defs)
 
         self._grid = routing_grid
@@ -100,8 +95,6 @@ class TemplateDB(object):
         self._used_cell_names = set()  # type: Set[str]
         self._use_cybagoa = use_cybagoa and cybagoa is not None
         self._flatten = flatten
-        self._pin_purpose = pin_purpose
-        self._make_pin_rect = make_pin_rect
 
     @property
     def grid(self):
@@ -193,8 +186,6 @@ class TemplateDB(object):
             temp_cls = self.get_template_class(lib_name, temp_name)
 
         kwargs['use_cybagoa'] = self._use_cybagoa
-        kwargs['pin_purpose'] = self._pin_purpose
-        kwargs['make_pin_rect'] = self._make_pin_rect
         master = temp_cls(self, self._lib_name, params, self._used_cell_names, **kwargs)
         key = master.key
 
@@ -375,10 +366,6 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             the routing grid to use for this template.
         use_cybagoa : bool
             True to use cybagoa module to accelerate layout.
-        pin_purpose : string
-            Default pin purpose name.  Defaults to 'pin'.
-        make_pin_rect : bool
-            True to create pin object in addition to label.  Defaults to True.
 
     Attributes
     ----------
@@ -394,10 +381,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         # initialize template attributes
         self._grid = kwargs.get('grid', temp_db.grid).copy()
-        self._layout = BagLayout(self._grid,
-                                 use_cybagoa=kwargs.get('use_cybagoa', False),
-                                 pin_purpose=kwargs.get('pin_purpose', 'pin'),
-                                 make_pin_rect=kwargs.get('make_pin_rect', True))
+        self._layout = BagLayout(self._grid, use_cybagoa=kwargs.get('use_cybagoa', False),)
         self._temp_db = temp_db
         self._size = None  # type: Tuple[int, int, int]
         self.pins = {}
