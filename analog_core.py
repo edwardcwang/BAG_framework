@@ -698,16 +698,16 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 if not net_right:
                     # makes sure source net is supply if possible
                     net_left, net_right = net_right, net_left
-                self._register_dummy_info((w, self._lch, th, net_left, net_right), 1)
+                self._register_dummy_info((mos_type, w, self._lch, th, net_left, net_right), 1)
             else:
                 if net_left:
-                    self._register_dummy_info((w, self._lch, th, '', net_left), 1)
+                    self._register_dummy_info((mos_type, w, self._lch, th, '', net_left), 1)
                     tot_dum_fg -= 1
                 if net_right:
-                    self._register_dummy_info((w, self._lch, th, '', net_right), 1)
+                    self._register_dummy_info((mos_type, w, self._lch, th, '', net_right), 1)
                     tot_dum_fg -= 1
                 if tot_dum_fg > 0:
-                    self._register_dummy_info((w, self._lch, th, '', ''), tot_dum_fg)
+                    self._register_dummy_info((mos_type, w, self._lch, th, '', ''), tot_dum_fg)
 
         warr = conn_inst.get_port().get_pins(dum_layer)[0]
         res = self.grid.resolution
