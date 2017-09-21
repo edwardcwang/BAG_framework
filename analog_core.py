@@ -367,6 +367,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # layout information parameters
         self._lch = None
         self._w_list = None
+        self._th_list = None
         self._orient_list = None
         self._fg_tot = None
         self._sd_yc_list = None
@@ -383,6 +384,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._capp_intvs = None
         self._capp_wires = {-1: [], 1: []}
         self._capn_wires = {-1: [], 1: []}
+        self._n_netmap = None
+        self._p_netmap = None
+        self._dummy_tran_info = None  # type: Dict[Tuple[Any], int]
 
         # track calculation parameters
         self._ridx_lookup = None
@@ -447,6 +451,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def sd_pitch_unit(self):
         """Returns the transistor source/drain pitch."""
         return self._layout_info.sd_pitch_unit
+
+    @property
+    def sch_dum_info(self):
+        return list(self._dummy_tran_info.items())
 
     def _find_row_index(self, mos_type, row_idx):
         ridx_list = self._ridx_lookup[mos_type]
@@ -596,6 +604,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         self.connect_wires(warr_list, lower=wire_yb, upper=wire_yt)
 
+    def _register_dummy_info(self, dum_key, dum_fg):
+        """Register dummy transistor information."""
+        cur_fg = self._dummy_tran_info.get(dum_key, 0)
+        self._dummy_tran_info[dum_key] = cur_fg + dum_fg
+
     def _draw_dummy_sep_conn(self, mos_type, row_idx, start, stop, dum_htr_list):
         """Draw dummy/separator connection.
 
@@ -668,6 +681,34 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         conn_master = self.new_template(params=params, temp_cls=AnalogMOSDummy)
         conn_inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
 
+        if not self.floating_dummy:
+            # record dummy info
+            tot_dum_fg = fg
+            th = self._th_list[ridx]
+
+            # get left/right net names
+            if mos_type == 'pch':
+                net_map = self._p_netmap[row_idx]
+            else:
+                net_map = self._n_netmap[row_idx]
+            net_left = net_map[start]
+            net_right = net_map[stop]
+
+            if tot_dum_fg == 1:
+                if not net_right:
+                    # makes sure source net is supply if possible
+                    net_left, net_right = net_right, net_left
+                self._register_dummy_info((w, self._lch, th, net_left, net_right), 1)
+            else:
+                if net_left:
+                    self._register_dummy_info((w, self._lch, th, '', net_left), 1)
+                    tot_dum_fg -= 1
+                if net_right:
+                    self._register_dummy_info((w, self._lch, th, '', net_right), 1)
+                    tot_dum_fg -= 1
+                if tot_dum_fg > 0:
+                    self._register_dummy_info((w, self._lch, th, '', ''), tot_dum_fg)
+
         warr = conn_inst.get_port().get_pins(dum_layer)[0]
         res = self.grid.resolution
         yb = int(round(warr.lower / res))
@@ -690,10 +731,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         val = -1 if inner else 1
         if mos_type == 'pch':
             val *= -1
+            net_map = self._p_netmap[row_idx]
             intv_set = self._p_intvs[row_idx]
             cap_intv_set = self._capp_intvs[row_idx]
             wires_dict = self._capp_wires
         else:
+            net_map = self._n_netmap[row_idx]
             intv_set = self._n_intvs[row_idx]
             cap_intv_set = self._capn_intvs[row_idx]
             wires_dict = self._capn_wires
@@ -701,14 +744,15 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         intv = col_idx, col_idx + fg
         if not export_gate:
             # add to cap_intv_set, since we can route dummies over it
-            if intv_set.has_overlap(intv) or not cap_intv_set.add(intv, val=val):
+            if intv_set.has_overlap(intv) or not cap_intv_set.add(intv):
                 msg = 'Cannot connect %s row %d [%d, %d); some are already connected.'
                 raise ValueError(msg % (mos_type, row_idx, intv[0], intv[1]))
         else:
             # add to normal intv set.
-            if cap_intv_set.has_overlap(intv) or not intv_set.add(intv, val=val):
+            if cap_intv_set.has_overlap(intv) or not intv_set.add(intv):
                 msg = 'Cannot connect %s row %d [%d, %d); some are already connected.'
                 raise ValueError(msg % (mos_type, row_idx, intv[0], intv[1]))
+            net_map[intv[0]] = net_map[intv[1]] = ''
 
         ridx = self._ridx_lookup[mos_type][row_idx]
         orient = self._orient_list[ridx]
@@ -741,8 +785,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         else:
             return {}
 
-    def draw_mos_conn(self, mos_type, row_idx, col_idx, fg, sdir, ddir, **kwargs):
-        # type: (str, int, int, int, int, int, **kwargs) -> Dict[str, WireArray]
+    def draw_mos_conn(self, mos_type, row_idx, col_idx, fg, sdir, ddir,
+                      net_left='', net_right='', **kwargs):
+        # type: (str, int, int, int, int, int, str, str, **kwargs) -> Dict[str, WireArray]
         """Draw transistor connection.
 
         Parameters
@@ -759,6 +804,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             source connection direction.  0 for down, 1 for middle, 2 for up.
         ddir : int
             drain connection direction.  0 for down, 1 for middle, 2 for up.
+        net_left : str
+            the net name of the left-most source/drain junction.  Defaults to
+            empty string, which means the supply.
+        net_right : str
+            the net name of the right-most source/drain junction.  Defaults to
+            empty string, which means the supply.
         **kwargs :
             optional arguments for AnalogMosConn.
         Returns
@@ -776,9 +827,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # mark transistors as connected
         if mos_type == 'pch':
+            net_map = self._p_netmap[row_idx]
             intv_set = self._p_intvs[row_idx]
             cap_intv_set = self._capp_intvs[row_idx]
         else:
+            net_map = self._n_intvs[row_idx]
             intv_set = self._n_intvs[row_idx]
             cap_intv_set = self._capn_intvs[row_idx]
 
@@ -786,6 +839,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if cap_intv_set.has_overlap(intv) or not intv_set.add(intv):
             msg = 'Cannot connect %s row %d [%d, %d); some are already connected.'
             raise ValueError(msg % (mos_type, row_idx, intv[0], intv[1]))
+
+        net_map[intv[0]] = net_left
+        net_map[intv[1]] = net_right
 
         sd_pitch = self.sd_pitch_unit
         ridx = self._ridx_lookup[mos_type][row_idx]
@@ -851,6 +907,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         master_list = []
         track_spec_list = []
         w_list_final = []
+        th_list_final = []
         # make bottom substrate
         if bot_sub_w > 0:
             sub_params = dict(
@@ -866,6 +923,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self._ridx_lookup[sub_type].append(row_offset)
             row_offset += 1
             w_list_final.append(bot_sub_w)
+            th_list_final.append(th_list[0])
 
         # make transistors
         for w, th, gtr, dstr, orient, mkwargs in zip(w_list, th_list, g_tracks, ds_tracks, orientations, mos_kwargs):
@@ -884,6 +942,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             self._ridx_lookup[mos_type].append(row_offset)
             row_offset += 1
             w_list_final.append(w)
+            th_list_final.append(th)
 
         # make top substrate
         if top_sub_w > 0:
@@ -899,9 +958,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             track_spec_list.append(('MX', -1, -1))
             self._ridx_lookup[sub_type].append(row_offset)
             w_list_final.append(top_sub_w)
+            th_list_final.append(th_list[-1])
 
         mos_kwargs = [{}] + mos_kwargs + [{}]
-        return track_spec_list, master_list, mos_kwargs, w_list_final
+        return track_spec_list, master_list, mos_kwargs, w_list_final, th_list_final
 
     def _place_helper(self, fg_tot, bot_ext_w, track_spec_list, master_list, gds_space, hm_layer,
                       mos_pitch, tot_pitch, dy):
@@ -1431,6 +1491,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # initialize private attributes.
         self._lch = lch
         self._w_list = []
+        self._th_list = []
         self._fg_tot = fg_tot
         self._sd_yc_list = []
         self._mos_kwargs_list = []
@@ -1439,6 +1500,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._p_intvs = [IntervalSet() for _ in range(nump)]
         self._capn_intvs = [IntervalSet() for _ in range(numn)]
         self._capp_intvs = [IntervalSet() for _ in range(nump)]
+        self._n_netmap = [[''] * (fg_tot + 1) for _ in range(numn)]
+        self._p_netmap = [[''] * (fg_tot + 1) for _ in range(nump)]
+        self._dummy_tran_info = {}
 
         self._ridx_lookup = dict(nch=[], pch=[], ntap=[], ptap=[])
 
@@ -1465,21 +1529,24 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         right_end = (end_mode & 8) >> 3
         top_layer = self._layout_info.top_layer
         # make NMOS substrate/transistor masters.
-        tr_list, m_list, n_kwargs, nw_list = self._make_masters(fg_tot, 'nch', self._lch, ptap_w, ngr_w,
-                                                                nw_list, nth_list, ng_tracks,
-                                                                nds_tracks, n_orientations, n_kwargs, 0)
+        tmp_result = self._make_masters(fg_tot, 'nch', self._lch, ptap_w, ngr_w, nw_list, nth_list,
+                                        ng_tracks, nds_tracks, n_orientations, n_kwargs, 0)
+        tr_list, m_list, n_kwargs, nw_list, nth_list = tmp_result
         master_list.extend(m_list)
         track_spec_list.extend(tr_list)
         self._mos_kwargs_list.extend(n_kwargs)
         self._w_list.extend(nw_list)
+        self._th_list.extend(nth_list)
         # make PMOS substrate/transistor masters.
-        tr_list, m_list, p_kwargs, pw_list = self._make_masters(fg_tot, 'pch', self._lch, pgr_w, ntap_w,
-                                                                pw_list, pth_list, pg_tracks,
-                                                                pds_tracks, p_orientations, p_kwargs, len(m_list))
+        tmp_result = self._make_masters(fg_tot, 'pch', self._lch, pgr_w, ntap_w, pw_list, pth_list,
+                                        pg_tracks, pds_tracks, p_orientations, p_kwargs, len(m_list))
+        tr_list, m_list, p_kwargs, pw_list, pth_list = tmp_result
+
         master_list.extend(m_list)
         track_spec_list.extend(tr_list)
         self._mos_kwargs_list.extend(p_kwargs)
         self._w_list.extend(pw_list)
+        self._th_list.extend(pth_list)
         self._orient_list = [item[0] for item in track_spec_list]
 
         # place masters according to track specifications.  Try to center transistors
