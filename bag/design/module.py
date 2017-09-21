@@ -32,7 +32,7 @@ from builtins import *
 import os
 import abc
 from future.utils import with_metaclass
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple, Any
 
 import networkx as nx
 
@@ -302,11 +302,11 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         self.instances[inst_name] = None
         self.instance_map[inst_name] = []
 
-    def replace_instance_master(self, inst_name, lib_name, cell_name, static=False):
+    def replace_instance_master(self, inst_name, lib_name, cell_name, static=False, index=None):
         """Replace the master of the given instance.
 
-        FOr this method to work, all the pin names must be exactly the same, and
-        the symbol must also be identical.
+        NOTE: all terminal connections will be reset.  Call reconnect_instance_terminal() to modify
+        terminal connections.
 
         Parameters
         ----------
@@ -318,7 +318,15 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             the new cell name.
         static : bool
             True if we're replacing instance with a static schematic instead of a design module.
+        index : Optional[int]
+            If index is not None and the child instance has been arrayed, this is the instance array index
+            that we are replacing.
+            If index is None, the entire child instance (whether arrayed or not) will be replaced by
+            a single new instance.
         """
+        if inst_name not in self.instances:
+            raise ValueError('Cannot find instance with name: %s' % inst_name)
+
         new_module = self.database.make_design_module(lib_name, cell_name, parent=self, static=static)
         rinst = dict(name=inst_name,
                      cell_name=cell_name,
@@ -326,15 +334,16 @@ class Module(with_metaclass(abc.ABCMeta, object)):
                      term_mapping={},
                      )
 
-        self.instances[inst_name] = new_module
-        self.instance_map[inst_name] = [rinst, ]
+        # check if this is arrayed
+        if index >= 0 and isinstance(self.instances[inst_name], list):
+            self.instances[inst_name][index] = new_module
+            self.instance_map[inst_name][index] = rinst
+        else:
+            self.instances[inst_name] = new_module
+            self.instance_map[inst_name] = [rinst, ]
 
-    def reconnect_instance_terminal(self, inst_name, term_name, net_name):
+    def reconnect_instance_terminal(self, inst_name, term_name, net_name, index=None):
         """Reconnect the instance terminal to a new net.
-
-        This method is usually used for variable bus terminal.  For
-        example, A DAC with terminal code<N:0> will need to reconnent to new
-        nets if N changed.
 
         Parameters
         ----------
@@ -346,15 +355,30 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         net_name : Union[str, List[str]]
             the net to connect the instance terminal to.
             If a list is given, it is applied to each arrayed instance.
+        index : Optional[int]
+            If not None and the given instance is arrayed, will only modify terminal
+            connection for the instance at the given index.
+            If None and the given instance is arrayed, all instances in the array
+            will be reconnected.
         """
+        if index is not None:
+            if isinstance(term_name, str) and isinstance(net_name, str):
+                self.instance_map[inst_name][index]['term_mapping'][term_name] = net_name
+            else:
+                raise ValueError('If index is not None, both term_name and net_name must be string.')
+
         rinst_list = self.instance_map[inst_name]
         if not isinstance(term_name, list) and not isinstance(term_name, tuple):
+            if not isinstance(term_name, str):
+                raise ValueError('term_name = %s must be string.' % term_name)
             term_name = [term_name] * len(rinst_list)
         else:
             if len(term_name) != len(rinst_list):
                 raise ValueError('term_name length = %d != %d' % (len(term_name), len(rinst_list)))
 
         if not isinstance(net_name, list) and not isinstance(net_name, tuple):
+            if not isinstance(net_name, str):
+                raise ValueError('net_name = %s must be string.' % net_name)
             net_name = [net_name] * len(rinst_list)
         else:
             if len(net_name) != len(rinst_list):
@@ -434,6 +458,49 @@ class Module(with_metaclass(abc.ABCMeta, object)):
 
         self.instances[inst_name] = module_list
         self.instance_map[inst_name] = rinst_list
+
+    def design_dummy_transistors(self, dum_info, inst_name, vdd_name, vss_name):
+        # type: (List[Tuple[Any]], str, str, str) -> None
+        """Convenience function for generating dummy transistor schematic.
+
+        Given dummy information (computed by AnalogBase) and a BAG transistor instance,
+        this method generates dummy schematics by arraying and modifying the BAG
+        transistor instance.
+
+        Parameters
+        ----------
+        dum_info : List[Tuple[Any]]
+            the dummy information data structure.
+        inst_name : str
+            the BAG transistor instance name.
+        vdd_name : str
+            VDD net name.  Used for PMOS dummies.
+        vss_name : str
+            VSS net name.  Used for NMOS dummies.
+        """
+        if not dum_info:
+            self.delete_instance(inst_name)
+        else:
+            num_arr = len(dum_info)
+            arr_name_list = ['XDUMMY%d' % idx for idx in range(num_arr)]
+            self.array_instance(inst_name, arr_name_list)
+
+            for idx, ((mos_type, w, lch, th, s_net, d_net), fg) in enumerate(dum_info):
+                if mos_type == 'pch':
+                    cell_name = 'pmos4_standard'
+                    sup_name = vdd_name
+                else:
+                    cell_name = 'nmos4_standard'
+                    sup_name = vss_name
+                s_name = s_net if s_net else sup_name
+                d_name = d_net if d_net else sup_name
+
+                self.replace_instance_master(inst_name, 'BAG_prim', cell_name, index=idx)
+                self.reconnect_instance_terminal(inst_name, 'G', sup_name, index=idx)
+                self.reconnect_instance_terminal(inst_name, 'B', sup_name, index=idx)
+                self.reconnect_instance_terminal(inst_name, 'D', d_name, index=idx)
+                self.reconnect_instance_terminal(inst_name, 'S', s_name, index=idx)
+                self.instances[inst_name][idx].design(w=w, l=lch, nf=fg, intent=th)
 
     def get_primitives_descendants(self, cur_inst_name):
         """Internal method.  Returns a dictionary of all BAG primitive descendants of this module.
