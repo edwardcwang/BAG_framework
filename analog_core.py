@@ -96,7 +96,7 @@ class AnalogBaseInfo(object):
             top_layer = self.mconn_port_layer + 1
         self.top_layer = top_layer
         self.end_mode = end_mode
-        self.min_fg_sep = max(min_fg_sep, self._tech_cls.get_min_fg_sep(lch_unit))
+        self._min_fg_sep = max(min_fg_sep, self._tech_cls.get_min_fg_sep(lch_unit))
         self.min_fg_decap = self._tech_cls.get_min_fg_decap(lch_unit)
         self.num_fg_per_sd = self._tech_cls.get_num_fingers_per_sd(lch_unit)
         self._sd_pitch_unit = self._tech_cls.get_sd_pitch(lch_unit)
@@ -117,6 +117,17 @@ class AnalogBaseInfo(object):
     @property
     def sd_pitch_unit(self):
         return self._sd_pitch_unit
+
+    @property
+    def min_fg_sep(self):
+        return self._min_fg_sep
+
+    @min_fg_sep.setter
+    def min_fg_sep(self, new_val):
+        min_fg_sep_tech = self._tech_cls.get_min_fg_sep(self._lch_unit)
+        if new_val < min_fg_sep_tech:
+            raise ValueError('min_fg_sep = %d must be less than %d' % (new_val, min_fg_sep_tech))
+        self._min_fg_sep = new_val
 
     @property
     def fg_tot(self):
