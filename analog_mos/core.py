@@ -116,6 +116,19 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def abut_analog_mos(cls):
+        # type: () -> bool
+        """Returns True if abutting transistors in AnalogBase is allowed.
+
+        Returns
+        -------
+        abut_analog_mos : bool
+            True if abutting transistors in AnalogBase is allowed.
+        """
+        return True
+
+    @classmethod
+    @abc.abstractmethod
     def get_dum_conn_pitch(cls):
         # type: () -> int
         """Returns the minimum track pitch of dummy connections in number of tracks.

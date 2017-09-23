@@ -122,6 +122,10 @@ class AnalogBaseInfo(object):
     def min_fg_sep(self):
         return self._min_fg_sep
 
+    @property
+    def abut_analog_mos(self):
+        return self._tech_cls.abut_analog_mos()
+
     @min_fg_sep.setter
     def min_fg_sep(self, new_val):
         min_fg_sep_tech = self._tech_cls.get_min_fg_sep(self._lch_unit)
@@ -431,6 +435,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def floating_dummy(self):
         """Returns True if floating dummy connection is OK."""
         return self._tech_cls.floating_dummy()
+
+    @property
+    def abut_analog_mos(self):
+        """Returns True if abutting mos connection is OK."""
+        return self._tech_cls.abut_analog_mos()
 
     @property
     def layout_info(self):
@@ -845,6 +854,20 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             net_map = self._n_intvs[row_idx]
             intv_set = self._n_intvs[row_idx]
             cap_intv_set = self._capn_intvs[row_idx]
+
+        if not self.abut_analog_mos:
+            # check if we are abutting other transistors when we can't
+            left_check = col_idx - 1, col_idx
+            right_check = col_idx + fg, col_idx + fg + 1
+            overlap_intv = None
+            if intv_set.has_overlap(left_check):
+                overlap_intv = left_check
+            elif intv_set.has_overlap(right_check):
+                overlap_intv = right_check
+
+            if overlap_intv is not None:
+                msg = 'Cannot abut transistors in this technology.  %s row %d [%d, %d) is already used.'
+                raise ValueError(msg % (mos_type, row_idx, overlap_intv[0], overlap_intv[1]))
 
         intv = col_idx, col_idx + fg
         if cap_intv_set.has_overlap(intv) or not intv_set.add(intv):
