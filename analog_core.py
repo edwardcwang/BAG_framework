@@ -806,7 +806,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             return {}
 
     def draw_mos_conn(self, mos_type, row_idx, col_idx, fg, sdir, ddir,
-                      net_left='', net_right='', **kwargs):
+                      s_net='', d_net='', **kwargs):
         # type: (str, int, int, int, int, int, str, str, **kwargs) -> Dict[str, WireArray]
         """Draw transistor connection.
 
@@ -824,12 +824,10 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             source connection direction.  0 for down, 1 for middle, 2 for up.
         ddir : int
             drain connection direction.  0 for down, 1 for middle, 2 for up.
-        net_left : str
-            the net name of the left-most source/drain junction.  Defaults to
-            empty string, which means the supply.
-        net_right : str
-            the net name of the right-most source/drain junction.  Defaults to
-            empty string, which means the supply.
+        s_net : str
+            the source net name.  Defaults to empty string, which means the supply.
+        d_net : str
+            the drain net name.  Defaults to empty string, which means the supply.
         **kwargs :
             optional arguments for AnalogMosConn.
         Returns
@@ -874,8 +872,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             msg = 'Cannot connect %s row %d [%d, %d); some are already connected.'
             raise ValueError(msg % (mos_type, row_idx, intv[0], intv[1]))
 
-        net_map[intv[0]] = net_left
-        net_map[intv[1]] = net_right
+        net_map[intv[0]] = s_net
+        net_map[intv[1]] = s_net if fg % 2 == 0 else d_net
 
         sd_pitch = self.sd_pitch_unit
         ridx = self._ridx_lookup[mos_type][row_idx]
