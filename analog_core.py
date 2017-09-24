@@ -401,7 +401,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._capn_wires = {-1: [], 1: []}
         self._n_netmap = None
         self._p_netmap = None
-        self._dummy_tran_info = None  # type: Dict[Tuple[Any], int]
 
         # track calculation parameters
         self._ridx_lookup = None
@@ -471,10 +470,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
     def sd_pitch_unit(self):
         """Returns the transistor source/drain pitch."""
         return self._layout_info.sd_pitch_unit
-
-    @property
-    def sch_dum_info(self):
-        return list(self._dummy_tran_info.items())
 
     def _find_row_index(self, mos_type, row_idx):
         ridx_list = self._ridx_lookup[mos_type]
@@ -624,10 +619,80 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         self.connect_wires(warr_list, lower=wire_yb, upper=wire_yt)
 
-    def _register_dummy_info(self, dum_key, dum_fg):
+    @staticmethod
+    def _register_dummy_info(dum_tran_info, dum_key, dum_fg):
         """Register dummy transistor information."""
-        cur_fg = self._dummy_tran_info.get(dum_key, 0)
-        self._dummy_tran_info[dum_key] = cur_fg + dum_fg
+        cur_fg = dum_tran_info.get(dum_key, 0)
+        dum_tran_info[dum_key] = cur_fg + dum_fg
+
+    def get_sch_dummy_info(self, col_start=0, col_stop=None):
+        # type: (int, Optional[int]) -> List[Tuple[Tuple[Any], int]]
+        """Returns a list of all dummies in the given range.
+
+        Parameters
+        ----------
+        col_start : int
+            the starting column index, inclusive.
+        col_stop : Optional[int]
+            the stopping column index, exclusive.  Use None for the last column.
+        """
+        if self.floating_dummy:
+            # no dummy transistors in this technology.
+            return []
+
+        if col_stop is None:
+            col_stop = self._fg_tot
+
+        # get dummy transistor intervals
+        total_intv = (0, self._fg_tot)
+        p_intvs = [intv_set.get_complement(total_intv) for intv_set in self._p_intvs]
+        n_intvs = [intv_set.get_complement(total_intv) for intv_set in self._n_intvs]
+
+        # record dummies
+        dum_info = {}
+        for mos_type, intvs, cap_intvs in (('pch', p_intvs, self._capp_intvs), ('nch', n_intvs, self._capn_intvs)):
+            # get column to net mapping dictionary
+            if mos_type == 'pch':
+                net_map = self._p_netmap[row_idx]
+            else:
+                net_map = self._n_netmap[row_idx]
+
+            for row_idx, (intv_set, cap_intv_set) in enumerate(zip(intvs, cap_intvs)):
+                ridx = self._ridx_lookup[mos_type][row_idx]
+                w = self._w_list[ridx]
+                th = self._th_list[ridx]
+
+                # substrate decap transistors from dummies
+                temp_intv = intv_set.copy()
+                for intv in cap_intv_set:
+                    temp_intv.subtract(intv)
+
+                for start, stop in temp_intv:
+                    # limit dummies to those in range
+                    start = max(start, col_start)
+                    stop = min(stop, col_stop)
+                    tot_dum_fg = stop - start
+                    if tot_dum_fg > 0:
+                        # get left/right net names
+                        net_left = net_map.get(start, '')
+                        net_right = net_map.get(stop, '')
+
+                        if tot_dum_fg == 1:
+                            if not net_right:
+                                # makes sure source net is supply if possible
+                                net_left, net_right = net_right, net_left
+                            self._register_dummy_info(dum_info, (mos_type, w, self._lch, th, net_left, net_right), 1)
+                        else:
+                            if net_left:
+                                self._register_dummy_info(dum_info, (mos_type, w, self._lch, th, '', net_left), 1)
+                                tot_dum_fg -= 1
+                            if net_right:
+                                self._register_dummy_info(dum_info, (mos_type, w, self._lch, th, '', net_right), 1)
+                                tot_dum_fg -= 1
+                            if tot_dum_fg > 0:
+                                self._register_dummy_info(dum_info, (mos_type, w, self._lch, th, '', ''), tot_dum_fg)
+
+        return list(dum_info.items())
 
     def _draw_dummy_sep_conn(self, mos_type, row_idx, start, stop, dum_htr_list):
         """Draw dummy/separator connection.
@@ -700,34 +765,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         )
         conn_master = self.new_template(params=params, temp_cls=AnalogMOSDummy)
         conn_inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
-
-        if not self.floating_dummy:
-            # record dummy info
-            tot_dum_fg = fg
-            th = self._th_list[ridx]
-
-            # get left/right net names
-            if mos_type == 'pch':
-                net_map = self._p_netmap[row_idx]
-            else:
-                net_map = self._n_netmap[row_idx]
-            net_left = net_map[start]
-            net_right = net_map[stop]
-
-            if tot_dum_fg == 1:
-                if not net_right:
-                    # makes sure source net is supply if possible
-                    net_left, net_right = net_right, net_left
-                self._register_dummy_info((mos_type, w, self._lch, th, net_left, net_right), 1)
-            else:
-                if net_left:
-                    self._register_dummy_info((mos_type, w, self._lch, th, '', net_left), 1)
-                    tot_dum_fg -= 1
-                if net_right:
-                    self._register_dummy_info((mos_type, w, self._lch, th, '', net_right), 1)
-                    tot_dum_fg -= 1
-                if tot_dum_fg > 0:
-                    self._register_dummy_info((mos_type, w, self._lch, th, '', ''), tot_dum_fg)
 
         warr = conn_inst.get_port().get_pins(dum_layer)[0]
         res = self.grid.resolution
@@ -1534,7 +1571,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._capp_intvs = [IntervalSet() for _ in range(nump)]
         self._n_netmap = [[''] * (fg_tot + 1) for _ in range(numn)]
         self._p_netmap = [[''] * (fg_tot + 1) for _ in range(nump)]
-        self._dummy_tran_info = {}
 
         self._ridx_lookup = dict(nch=[], pch=[], ntap=[], ptap=[])
 
