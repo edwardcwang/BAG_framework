@@ -1311,14 +1311,14 @@ procedure( create_layout_helper( cv tech_file inst_list rect_list via_list pin_l
                 label_h = pin_w
             )
 
-            ; get make_pin_rect, defaults to True
-            make_pin_rect = 1
+            ; get make_pin_rect, true if both net_name and pin_name are non-empty
+            make_pin_rect = pin->net_name != "" && pin->pin_name != ""
             when( pin->make_rect != nil
                 make_pin_rect = pin->make_rect
             )
             ; printf("make_pin_rect: %A\n" make_pin_rect)
             ; create pin object only if make_pin_rect is True.
-            when( make_pin_rect != 0
+            when( make_pin_rect != 0 && make_pin_rect != nil
                 ; printf("making pin.\n")
                 dbCreatePin( dbMakeNet(cv pin->net_name) dbCreateRect(cv pin->layer pin_bb) pin->pin_name )
             )
