@@ -692,7 +692,11 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                             if tot_dum_fg > 0:
                                 self._register_dummy_info(dum_info, (mos_type, w, self._lch, th, '', ''), tot_dum_fg)
 
-        return list(dum_info.items())
+        # return final result, sort by keys so that we get a consistent output.  Good for using as identifier.
+        result = []
+        for key in sorted(dum_info.keys()):
+            result.append((key, dum_info[key]))
+        return result
 
     def _draw_dummy_sep_conn(self, mos_type, row_idx, start, stop, dum_htr_list):
         """Draw dummy/separator connection.
