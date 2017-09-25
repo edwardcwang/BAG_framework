@@ -651,13 +651,12 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # record dummies
         dum_info = {}
         for mos_type, intvs, cap_intvs in (('pch', p_intvs, self._capp_intvs), ('nch', n_intvs, self._capn_intvs)):
-            # get column to net mapping dictionary
-            if mos_type == 'pch':
-                net_map = self._p_netmap[row_idx]
-            else:
-                net_map = self._n_netmap[row_idx]
-
             for row_idx, (intv_set, cap_intv_set) in enumerate(zip(intvs, cap_intvs)):
+                if mos_type == 'pch':
+                    net_map = self._p_netmap[row_idx]
+                else:
+                    net_map = self._n_netmap[row_idx]
+
                 ridx = self._ridx_lookup[mos_type][row_idx]
                 w = self._w_list[ridx]
                 th = self._th_list[ridx]
@@ -674,8 +673,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     tot_dum_fg = stop - start
                     if tot_dum_fg > 0:
                         # get left/right net names
-                        net_left = net_map.get(start, '')
-                        net_right = net_map.get(stop, '')
+                        net_left = net_map[start]
+                        net_right = net_map[stop]
 
                         if tot_dum_fg == 1:
                             if not net_right:
@@ -890,7 +889,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             intv_set = self._p_intvs[row_idx]
             cap_intv_set = self._capp_intvs[row_idx]
         else:
-            net_map = self._n_intvs[row_idx]
+            net_map = self._n_netmap[row_idx]
             intv_set = self._n_intvs[row_idx]
             cap_intv_set = self._capn_intvs[row_idx]
 
