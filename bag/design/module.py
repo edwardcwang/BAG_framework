@@ -328,17 +328,15 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             raise ValueError('Cannot find instance with name: %s' % inst_name)
 
         new_module = self.database.make_design_module(lib_name, cell_name, parent=self, static=static)
-        rinst = dict(name=inst_name,
-                     cell_name=cell_name,
-                     params={},
-                     term_mapping={},
-                     )
 
         # check if this is arrayed
-        if index >= 0 and isinstance(self.instances[inst_name], list):
+        if index is not None and isinstance(self.instances[inst_name], list):
+            rinst_name = self.instance_map[inst_name][index]['name']
+            rinst = dict(name=rinst_name, cell_name=cell_name, params={}, term_mapping={})
             self.instances[inst_name][index] = new_module
             self.instance_map[inst_name][index] = rinst
         else:
+            rinst = dict(name=inst_name, cell_name=cell_name, params={}, term_mapping={})
             self.instances[inst_name] = new_module
             self.instance_map[inst_name] = [rinst, ]
 
@@ -362,30 +360,32 @@ class Module(with_metaclass(abc.ABCMeta, object)):
             will be reconnected.
         """
         if index is not None:
+            # only modify terminal connection for one instance in the array
             if isinstance(term_name, str) and isinstance(net_name, str):
                 self.instance_map[inst_name][index]['term_mapping'][term_name] = net_name
             else:
                 raise ValueError('If index is not None, both term_name and net_name must be string.')
-
-        rinst_list = self.instance_map[inst_name]
-        if not isinstance(term_name, list) and not isinstance(term_name, tuple):
-            if not isinstance(term_name, str):
-                raise ValueError('term_name = %s must be string.' % term_name)
-            term_name = [term_name] * len(rinst_list)
         else:
-            if len(term_name) != len(rinst_list):
-                raise ValueError('term_name length = %d != %d' % (len(term_name), len(rinst_list)))
+            # modify terminal connection for all instances in the array
+            rinst_list = self.instance_map[inst_name]
+            if not isinstance(term_name, list) and not isinstance(term_name, tuple):
+                if not isinstance(term_name, str):
+                    raise ValueError('term_name = %s must be string.' % term_name)
+                term_name = [term_name] * len(rinst_list)
+            else:
+                if len(term_name) != len(rinst_list):
+                    raise ValueError('term_name length = %d != %d' % (len(term_name), len(rinst_list)))
 
-        if not isinstance(net_name, list) and not isinstance(net_name, tuple):
-            if not isinstance(net_name, str):
-                raise ValueError('net_name = %s must be string.' % net_name)
-            net_name = [net_name] * len(rinst_list)
-        else:
-            if len(net_name) != len(rinst_list):
-                raise ValueError('net_name length = %d != %d' % (len(net_name), len(rinst_list)))
+            if not isinstance(net_name, list) and not isinstance(net_name, tuple):
+                if not isinstance(net_name, str):
+                    raise ValueError('net_name = %s must be string.' % net_name)
+                net_name = [net_name] * len(rinst_list)
+            else:
+                if len(net_name) != len(rinst_list):
+                    raise ValueError('net_name length = %d != %d' % (len(net_name), len(rinst_list)))
 
-        for rinst, tname, nname in zip(rinst_list, term_name, net_name):
-            rinst['term_mapping'][tname] = nname
+            for rinst, tname, nname in zip(rinst_list, term_name, net_name):
+                rinst['term_mapping'][tname] = nname
 
     def restore_instance(self, inst_name):
         """Restore a instance to the original template state.
