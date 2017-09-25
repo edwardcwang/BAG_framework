@@ -496,6 +496,8 @@ class TrackManager(object):
         wire_name : str
             the track type.
         """
+        if wire_name not in self._tr_widths:
+            return 1
         return self._tr_widths[wire_name].get(layer_id, 1)
 
     def get_space(self, layer_id, name_tuple, **kwargs):
