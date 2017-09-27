@@ -973,7 +973,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         if not w_list:
             # do nothing
-            return [], [], [], []
+            return [], [], [], [], []
 
         sub_type = 'ptap' if mos_type == 'nch' else 'ntap'
         master_list = []
