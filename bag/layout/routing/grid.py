@@ -314,6 +314,50 @@ class RoutingGrid(object):
             return w_unit
         return w_unit * self._resolution
 
+    def get_track_width_inverse(self, layer_id, width, mode=-1, unit_mode=False):
+        # type: (int, Union[float, int], int, bool) -> int
+        """Given track width in layout/resolution units, compute equivalent number of tracks.
+
+        This is the inverse function of get_track_width().
+
+        Parameters
+        ----------
+        layer_id : int
+            the track layer ID
+        width : Union[float, int]
+            the track width in layout or resolution units.
+        mode : int
+            If negative, the result wire will have width less than or equal to the given width.
+            If positive, the result wire will have width greater than or equal to the given width.
+        unit_mode : bool
+            True if width is specified in resolution units.
+
+        Returns
+        -------
+        width_ntr : int
+            number of tracks needed to achieve the given width.
+        """
+        if not unit_mode:
+            width = int(round(width / self.resolution))
+
+        # use binary search to find the minimum track width
+        bin_iter = BinaryIterator(1, None)
+        while bin_iter.has_next():
+            ntr = bin_iter.get_next()
+            w_test = self.get_track_width(layer_id, ntr, unit_mode=True)
+            if w_test == width:
+                return ntr
+            elif w_test < width:
+                if mode < 0:
+                    bin_iter.save()
+                bin_iter.up()
+            else:
+                if mode > 0:
+                    bin_iter.save()
+                bin_iter.down()
+
+        return bin_iter.get_last_save()
+
     def get_num_tracks(self, size, layer_id):
         # type: (Tuple[int, int, int], int) -> int
         """Returns the number of tracks on the given layer for a block with the given size.
