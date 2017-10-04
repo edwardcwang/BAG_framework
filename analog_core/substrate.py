@@ -461,6 +461,7 @@ class SubstrateRing(TemplateBase):
 
         ext_info = end2_master.get_ext_info()
         ext_params = dict(
+            sub_type=sub_type,
             height=htot - 2 * hsub,
             fg=fg_tot,
             end_ext_info=ext_info,

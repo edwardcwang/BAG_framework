@@ -404,12 +404,14 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return {}
 
     @classmethod
-    def get_sub_ring_ext_info(cls, height, fg, end_ext_info):
-        # type: (int, int, Any) -> Dict[str, Any]
+    def get_sub_ring_ext_info(cls, sub_type, height, fg, end_ext_info):
+        # type: (str, int, int, Any) -> Dict[str, Any]
         """Returns the SubstrateRing extension layout information dictionary.
 
         Parameters
         ----------
+        sub_type : str
+            the substrate type.  Either 'ptap' or 'ntap'.
         height : int
             the extension width in resolution units.
         fg : int

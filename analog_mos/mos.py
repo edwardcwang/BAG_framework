@@ -279,16 +279,18 @@ class SubRingExt(TemplateBase):
             dictionary from parameter name to description.
         """
         return dict(
+            sub_type='substrate type.  Either ptap or ntap.',
             height='extension width, in resolution units.',
             fg='number of fingers.',
             end_ext_info='substrate ring inner end row extension info.',
         )
 
     def get_layout_basename(self):
-        fmt = 'subringext_h%d_fg%d'
+        fmt = 'subringext_%s_h%d_fg%d'
+        sub_type = self.params['sub_type']
         h = self.params['height']
         fg = self.params['fg']
-        ans = fmt % (h, fg)
+        ans = fmt % (sub_type, h, fg)
         return ans
 
     def compute_unique_key(self):
@@ -296,11 +298,12 @@ class SubRingExt(TemplateBase):
         return self.to_immutable_id(key)
 
     def draw_layout(self):
+        sub_type = self.params['sub_type']
         h = self.params['height']
         fg = self.params['fg']
         end_ext_info = self.params['end_ext_info']
 
-        ext_info = self._tech_cls.get_sub_ring_ext_info(h, fg, end_ext_info)
+        ext_info = self._tech_cls.get_sub_ring_ext_info(sub_type, h, fg, end_ext_info)
         self._layout_info = ext_info['layout_info']
         self._left_edge_info = ext_info['left_edge_info']
         self._right_edge_info = ext_info['right_edge_info']
