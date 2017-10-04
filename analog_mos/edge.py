@@ -58,6 +58,10 @@ class AnalogEndRow(TemplateBase):
         return self._right_edge_info
 
     @classmethod
+    def get_default_param_values(cls):
+        return dict(is_sub_ring=False)
+
+    @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.
 
@@ -75,6 +79,7 @@ class AnalogEndRow(TemplateBase):
             threshold='transistor threshold flavor.',
             is_end='True if there are no blocks abutting the end.',
             top_layer='The top routing layer.  Used to determine vertical pitch.',
+            is_sub_ring='True if this is the end row of a substrate ring.',
         )
 
     def get_layout_basename(self):
@@ -84,9 +89,12 @@ class AnalogEndRow(TemplateBase):
         th = self.params['threshold']
         top_layer = self.params['top_layer']
         fg = self.params['fg']
+
         basename = fmt % (sub_type, lstr, th, top_layer, fg)
         if self.params['is_end']:
             basename += '_end'
+        if self.params['is_sub_ring']:
+            basename += 'is_sub_ring'
 
         return basename
 
@@ -100,13 +108,80 @@ class AnalogEndRow(TemplateBase):
         threshold = self.params['threshold']
         is_end = self.params['is_end']
         top_layer = self.params['top_layer']
+        is_sub_ring = self.params['is_sub_ring']
 
         blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
-        end_info = self._tech_cls.get_analog_end_info(lch_unit, sub_type, threshold, fg, is_end, blk_pitch)
+        end_info = self._tech_cls.get_analog_end_info(lch_unit, sub_type, threshold, fg, is_end, blk_pitch,
+                                                      is_sub_ring=is_sub_ring)
 
         self._layout_info = end_info['layout_info']
         self._left_edge_info = end_info['left_edge_info']
         self._right_edge_info = end_info['right_edge_info']
+        self._tech_cls.draw_mos(self, self._layout_info)
+
+
+class SubRingEndRow(TemplateBase):
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(SubRingEndRow, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
+        self._layout_info = None
+        self._left_edge_info = None
+        self._right_edge_info = None
+        self._ext_info = None
+
+    def get_ext_info(self):
+        return self._ext_info
+
+    def get_edge_layout_info(self):
+        return self._layout_info
+
+    def get_left_edge_info(self):
+        return self._left_edge_info
+
+    def get_right_edge_info(self):
+        return self._right_edge_info
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            fg='number of fingers.',
+            sub_type="substrate type, either 'ptap' or 'ntap'.",
+            threshold='transistor threshold flavor.',
+        )
+
+    def get_layout_basename(self):
+        fmt = '%s_subringend_%s_fg%d'
+        sub_type = self.params['sub_type']
+        th = self.params['threshold']
+        fg = self.params['fg']
+        basename = fmt % (sub_type, th, fg)
+        return basename
+
+    def compute_unique_key(self):
+        return self.get_layout_basename()
+
+    def draw_layout(self):
+        fg = self.params['fg']
+        sub_type = self.params['sub_type']
+        threshold = self.params['threshold']
+
+        end_info = self._tech_cls.get_sub_ring_end_info(sub_type, threshold, fg)
+
+        self._layout_info = end_info['layout_info']
+        self._left_edge_info = end_info['left_edge_info']
+        self._right_edge_info = end_info['right_edge_info']
+        self._ext_info = end_info['ext_info']
         self._tech_cls.draw_mos(self, self._layout_info)
 
 

@@ -37,12 +37,6 @@ from .core import MOSTech
 
 
 class AnalogSubstrateCore(TemplateBase):
-    """The abstract base class for finfet layout classes.
-
-    This class provides the draw_foundation() method, which draws the poly array
-    and implantation layers.
-    """
-
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(AnalogSubstrateCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
@@ -79,12 +73,6 @@ class AnalogSubstrateCore(TemplateBase):
 
 
 class AnalogSubstrate(TemplateBase):
-    """The abstract base class for finfet layout classes.
-
-    This class provides the draw_foundation() method, which draws the poly array
-    and implantation layers.
-    """
-
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(AnalogSubstrate, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
@@ -119,6 +107,7 @@ class AnalogSubstrate(TemplateBase):
     def get_default_param_values(cls):
         return dict(
             is_passive=False,
+            is_sub_ring=False,
         )
 
     @classmethod
@@ -137,9 +126,10 @@ class AnalogSubstrate(TemplateBase):
             w='transistor width, in meters/number of fins.',
             sub_type="substrate type, either 'ptap' or 'ntap'.",
             threshold='transistor threshold flavor.',
-            is_passive='True if this substrate is used as substrate contact for passive devices.',
-            top_layer='The top routing layer.  Used to determine vertical pitch.',
             fg='number of substrate fingers.',
+            top_layer='The top routing layer.  Used to determine vertical pitch.',
+            is_passive='True if this substrate is used as substrate contact for passive devices.',
+            is_sub_ring='True if this substrate is used in a substrate ring.',
         )
 
     def get_layout_basename(self):
@@ -155,6 +145,8 @@ class AnalogSubstrate(TemplateBase):
         basename = fmt % (sub_type, lstr, wstr, th, top_layer, fg)
         if self.params['is_passive']:
             basename += '_passive'
+        if self.params['is_sub_ring']:
+            basename += '_subring'
 
         return basename
 
@@ -170,6 +162,7 @@ class AnalogSubstrate(TemplateBase):
         threshold = self.params['threshold']
         is_passive = self.params['is_passive']
         top_layer = self.params['top_layer']
+        is_sub_ring = self.params['is_sub_ring']
 
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
@@ -178,8 +171,8 @@ class AnalogSubstrate(TemplateBase):
             blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
         else:
             blk_pitch = 1
-        info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg,
-                                                 blk_pitch=blk_pitch, is_passive=is_passive)
+        info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg, blk_pitch=blk_pitch,
+                                                 is_passive=is_passive, is_sub_ring=is_sub_ring)
         self._layout_info = info['layout_info']
         self._sd_yc = info['sd_yc']
         self._ext_top_info = info['ext_top_info']

@@ -129,6 +129,19 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_substrate_ring_lch(cls):
+        # type: () -> float
+        """Returns substrate channel length used in substrate rings.
+
+        Returns
+        -------
+        lch : float
+            Substrate channel length, in meters.
+        """
+        return 0.0
+
+    @classmethod
+    @abc.abstractmethod
     def get_dum_conn_pitch(cls):
         # type: () -> int
         """Returns the minimum track pitch of dummy connections in number of tracks.
@@ -375,7 +388,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         lch_unit : int
             the channel length in resolution units.
         w : int
-            the transistor width in number of fins/resolution units.
+            the extension width in number of fins/resolution units.
         fg : int
             total number of fingers.
         top_ext_info : Any
@@ -387,6 +400,27 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         -------
         ext_info : Dict[str, Any]
             the extension information dictionary.
+        """
+        return {}
+
+    @classmethod
+    def get_sub_ring_ext_info(cls, height, fg, end_ext_info):
+        # type: (int, int, Any) -> Dict[str, Any]
+        """Returns the SubstrateRing extension layout information dictionary.
+
+        Parameters
+        ----------
+        height : int
+            the extension width in resolution units.
+        fg : int
+            total number of fingers.
+        end_ext_info : Any
+            layout extension information about the substrate inner end row.
+
+        Returns
+        -------
+        ext_info : Dict[str, Any]
+            the substrate ring extension information dictionary.
         """
         return {}
 
@@ -421,8 +455,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return {}
 
     @classmethod
-    def get_analog_end_info(cls, lch_unit, sub_type, threshold, fg, is_end, blk_pitch):
-        # type: (int, str, str, int, bool, int) -> Dict[str, Any]
+    def get_analog_end_info(cls, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
+        # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
         """Returns the AnalogBase end row layout information dictionary.
 
         Parameters
@@ -439,11 +473,34 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             True if there are no block abutting the bottom.
         blk_pitch : int
             substrate height quantization pitch.  Defaults to 1 (no quantization).
+        **kwargs :
+            optional keyword arguments.
 
         Returns
         -------
-        sub_info : Dict[str, Any]
-            the substrate information dictionary.
+        end_info : Dict[str, Any]
+            the end row information dictionary.
+        """
+        return {}
+
+    @classmethod
+    def get_sub_ring_end_info(cls, sub_type, threshold, fg):
+        # type: (str, str, int) -> Dict[str, Any]
+        """Returns the SubstrateRing inner end row layout information dictionary.
+
+        Parameters
+        ----------
+        sub_type : str
+            the substrate type.  Either 'ptap' or 'ntap'.
+        threshold : str
+            the substrate threshold type.
+        fg : int
+            total number of fingers.
+
+        Returns
+        -------
+        end_info : Dict[str, Any]
+            the end row information dictionary.
         """
         return {}
 

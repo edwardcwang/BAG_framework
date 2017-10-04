@@ -240,3 +240,68 @@ class AnalogMOSExt(TemplateBase):
         self._left_edge_info = ext_info['left_edge_info']
         self._right_edge_info = ext_info['right_edge_info']
         self._tech_cls.draw_mos(self, self._layout_info)
+
+
+class SubRingExt(TemplateBase):
+    """The abstract base class for finfet layout classes.
+
+    This class provides the draw_foundation() method, which draws the poly array
+    and implantation layers.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(SubRingExt, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
+        self._layout_info = None
+        self._left_edge_info = None
+        self._right_edge_info = None
+
+    def get_edge_layout_info(self):
+        return self._layout_info
+
+    def get_left_edge_info(self):
+        return self._left_edge_info
+
+    def get_right_edge_info(self):
+        return self._right_edge_info
+
+    @classmethod
+    def get_params_info(cls):
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            height='extension width, in resolution units.',
+            fg='number of fingers.',
+            end_ext_info='substrate ring inner end row extension info.',
+        )
+
+    def get_layout_basename(self):
+        fmt = 'subringext_h%d_fg%d'
+        h = self.params['height']
+        fg = self.params['fg']
+        ans = fmt % (h, fg)
+        return ans
+
+    def compute_unique_key(self):
+        key = self.get_layout_basename(), self.params['end_ext_info']
+        return self.to_immutable_id(key)
+
+    def draw_layout(self):
+        h = self.params['height']
+        fg = self.params['fg']
+        end_ext_info = self.params['end_ext_info']
+
+        ext_info = self._tech_cls.get_sub_ring_ext_info(h, fg, end_ext_info)
+        self._layout_info = ext_info['layout_info']
+        self._left_edge_info = ext_info['left_edge_info']
+        self._right_edge_info = ext_info['right_edge_info']
+        self._tech_cls.draw_mos(self, self._layout_info)
