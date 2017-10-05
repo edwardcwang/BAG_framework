@@ -283,8 +283,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_edge_info(cls, lch_unit, guard_ring_nf, is_end):
-        # type: (int, int, bool) -> Dict[str, Any]
+    def get_edge_info(cls, lch_unit, guard_ring_nf, is_end, **kwargs):
+        # type: (int, int, bool, **kwargs) -> Dict[str, Any]
         """Returns a dictionary containing transistor edge layout information.
         
         The returned dictionary must have two entries
@@ -302,7 +302,9 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             guard ring width in number of fingers.
         is_end : bool
             True if there are no blocks abutting the left edge.
-        
+        **kwargs :
+            Optional edge layout parameters.
+
         Returns
         -------
         edge_info : Dict[str, Any]
@@ -784,8 +786,9 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return mos_constants['sd_pitch']
 
     @classmethod
-    def get_placement_info(cls, grid, top_layer, fg_tot, lch_unit, guard_ring_nf, left_end, right_end, is_laygo):
-        # type: (RoutingGrid, int, int, int, int, bool, bool, bool) -> PlaceInfo
+    def get_placement_info(cls, grid, top_layer, fg_tot, lch_unit, guard_ring_nf,
+                           left_end, right_end, is_laygo, **kwargs):
+        # type: (RoutingGrid, int, int, int, int, bool, bool, bool, **kwargs) -> PlaceInfo
         """Compute edge block placement information.
 
         Parameters
@@ -806,6 +809,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             True if there are no blocks abutting the right edge.
         is_laygo : bool
             True if we're getting placement information for LaygoBase.
+        kwargs :
+            Optional edge layout parameters.
 
         Returns
         -------
@@ -813,10 +818,10 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             the placement information named tuple.
         """
         sd_pitch = cls.get_sd_pitch(lch_unit)
-        edgel_info = cls.get_edge_info(lch_unit, guard_ring_nf, left_end)
+        edgel_info = cls.get_edge_info(lch_unit, guard_ring_nf, left_end, **kwargs)
         edgel_num_fg = edgel_info['edge_num_fg']
         edgel_margin = edgel_info['edge_margin']
-        edger_info = cls.get_edge_info(lch_unit, guard_ring_nf, right_end)
+        edger_info = cls.get_edge_info(lch_unit, guard_ring_nf, right_end, **kwargs)
         edger_num_fg = edger_info['edge_num_fg']
         edger_margin = edger_info['edge_margin']
 
