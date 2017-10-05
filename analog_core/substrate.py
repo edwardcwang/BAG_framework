@@ -278,6 +278,14 @@ class SubstrateRing(TemplateBase):
         return self._blk_loc
 
     @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(
+            show_pins=False,
+            dnw_mode=0,
+        )
+
+    @classmethod
     def get_params_info(cls):
         # type: () -> Dict[str, str]
         """Returns a dictionary containing parameter descriptions.
@@ -297,6 +305,7 @@ class SubstrateRing(TemplateBase):
             fg_side='number of fingers in vertical substrate ring.',
             threshold='substrate threshold flavor.',
             show_pins='True to show pin labels.',
+            dnw_mode='deep N-well mode flag.  0 to disable, 1 to enable, 2 for compact deep N-well.',
         )
 
     def draw_layout(self):
@@ -309,6 +318,7 @@ class SubstrateRing(TemplateBase):
         fg_side = self.params['fg_side']
         threshold = self.params['threshold']
         show_pins = self.params['show_pins']
+        dnw_mode = self.params['dnw_mode']
 
         sub_end_mode = 15
         lch = self._tech_cls.get_substrate_ring_lch()
@@ -320,18 +330,18 @@ class SubstrateRing(TemplateBase):
         mtop_lay = layout_info.mconn_port_layer + 1
 
         fg_tot = -(-box_w // sd_pitch)
-        place_info = layout_info.get_placement_info(fg_tot, is_sub_ring=True)
+        place_info = layout_info.get_placement_info(fg_tot, is_sub_ring=True, dnw_mode=dnw_mode)
         wtot = place_info.tot_width
         dx = place_info.edge_margins[0]
         arr_box_x = place_info.arr_box_x
-        layout_info.set_fg_tot(fg_tot, is_sub_ring=True)
+        layout_info.set_fg_tot(fg_tot, is_sub_ring=True, dnw_mode=dnw_mode)
         self.grid = layout_info.grid
 
         if top_layer < mtop_lay:
             raise ValueError('top_layer = %d must be at least %d' % (top_layer, mtop_lay))
 
         htot, master_list, edge_list = self._make_masters(top_layer, mtop_lay, lch, fg_tot, w, fg_side,
-                                                          sub_type, threshold, box_h)
+                                                          sub_type, threshold, dnw_mode, box_h)
 
         # arrange layout masters
         # first, compute edge margins so everything is quantized properly.
@@ -428,7 +438,10 @@ class SubstrateRing(TemplateBase):
             sub_wires = self.connect_to_tracks(cur_warrs, tid)
             self.add_pin(port_name, sub_wires, show=show_pins)
 
-    def _make_masters(self, top_layer, mtop_lay, lch, fg_tot, w, fg_side, sub_type, threshold, box_h):
+    def _make_masters(self, top_layer, mtop_lay, lch, fg_tot, w, fg_side, sub_type, threshold, dnw_mode, box_h):
+        options1 = dict(is_sub_ring=True, dnw_mode=dnw_mode)
+        options2 = dict(dnw_mode=dnw_mode)
+
         sub_params = dict(
             lch=lch,
             fg=fg_tot,
@@ -436,7 +449,7 @@ class SubstrateRing(TemplateBase):
             sub_type=sub_type,
             threshold=threshold,
             top_layer=mtop_lay,
-            is_sub_ring=True,
+            options=options1,
         )
         sub_master = self.new_template(params=sub_params, temp_cls=AnalogSubstrate)
 
@@ -447,7 +460,7 @@ class SubstrateRing(TemplateBase):
             threshold=threshold,
             is_end=True,
             top_layer=mtop_lay,
-            is_sub_ring=True,
+            options=options1,
         )
         end1_master = self.new_template(params=end1_params, temp_cls=AnalogEndRow)
 
@@ -456,6 +469,7 @@ class SubstrateRing(TemplateBase):
             sub_type=sub_type,
             threshold=threshold,
             end_ext_info=sub_master.get_ext_top_info(),
+            options=options2,
         )
         end2_master = self.new_template(params=end2_params, temp_cls=SubRingEndRow)
 
@@ -476,6 +490,7 @@ class SubstrateRing(TemplateBase):
             height=htot - 2 * hsub,
             fg=fg_tot,
             end_ext_info=end2_master.get_ext_info(),
+            options=options2,
         )
         ext_master = self.new_template(params=ext_params, temp_cls=SubRingExt)
 

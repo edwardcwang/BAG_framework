@@ -268,6 +268,10 @@ class SubRingExt(TemplateBase):
         return self._right_edge_info
 
     @classmethod
+    def get_default_param_values(cls):
+        return dict(options={}, )
+
+    @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.
 
@@ -283,6 +287,7 @@ class SubRingExt(TemplateBase):
             height='extension width, in resolution units.',
             fg='number of fingers.',
             end_ext_info='substrate ring inner end row extension info.',
+            options='Optional layout parameters.',
         )
 
     def get_layout_basename(self):
@@ -294,7 +299,7 @@ class SubRingExt(TemplateBase):
         return ans
 
     def compute_unique_key(self):
-        key = self.get_layout_basename(), self.params['end_ext_info']
+        key = self.get_layout_basename(), self.params['end_ext_info'], self.params['options']
         return self.to_immutable_id(key)
 
     def draw_layout(self):
@@ -302,8 +307,9 @@ class SubRingExt(TemplateBase):
         h = self.params['height']
         fg = self.params['fg']
         end_ext_info = self.params['end_ext_info']
+        options = self.params['options']
 
-        ext_info = self._tech_cls.get_sub_ring_ext_info(sub_type, h, fg, end_ext_info)
+        ext_info = self._tech_cls.get_sub_ring_ext_info(sub_type, h, fg, end_ext_info, **options)
         self._layout_info = ext_info['layout_info']
         self._left_edge_info = ext_info['left_edge_info']
         self._right_edge_info = ext_info['right_edge_info']

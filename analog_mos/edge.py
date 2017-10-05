@@ -59,7 +59,7 @@ class AnalogEndRow(TemplateBase):
 
     @classmethod
     def get_default_param_values(cls):
-        return dict(is_sub_ring=False)
+        return dict(options={})
 
     @classmethod
     def get_params_info(cls):
@@ -79,7 +79,7 @@ class AnalogEndRow(TemplateBase):
             threshold='transistor threshold flavor.',
             is_end='True if there are no blocks abutting the end.',
             top_layer='The top routing layer.  Used to determine vertical pitch.',
-            is_sub_ring='True if this is the end row of a substrate ring.',
+            options='Optional layout parameters.',
         )
 
     def get_layout_basename(self):
@@ -93,13 +93,12 @@ class AnalogEndRow(TemplateBase):
         basename = fmt % (sub_type, lstr, th, top_layer, fg)
         if self.params['is_end']:
             basename += '_end'
-        if self.params['is_sub_ring']:
-            basename += 'is_sub_ring'
 
         return basename
 
     def compute_unique_key(self):
-        return self.get_layout_basename()
+        key = self.get_layout_basename(), self.params['options']
+        return self.to_immutable_id(key)
 
     def draw_layout(self):
         lch_unit = int(round(self.params['lch'] / self.grid.layout_unit / self.grid.resolution))
@@ -108,11 +107,10 @@ class AnalogEndRow(TemplateBase):
         threshold = self.params['threshold']
         is_end = self.params['is_end']
         top_layer = self.params['top_layer']
-        is_sub_ring = self.params['is_sub_ring']
+        options = self.params['options']
 
         blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
-        end_info = self._tech_cls.get_analog_end_info(lch_unit, sub_type, threshold, fg, is_end, blk_pitch,
-                                                      is_sub_ring=is_sub_ring)
+        end_info = self._tech_cls.get_analog_end_info(lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **options)
 
         self._layout_info = end_info['layout_info']
         self._left_edge_info = end_info['left_edge_info']
@@ -144,6 +142,10 @@ class SubRingEndRow(TemplateBase):
         return self._right_edge_info
 
     @classmethod
+    def get_default_param_values(cls):
+        return dict(options={}, )
+
+    @classmethod
     def get_params_info(cls):
         """Returns a dictionary containing parameter descriptions.
 
@@ -159,6 +161,7 @@ class SubRingEndRow(TemplateBase):
             sub_type="substrate type, either 'ptap' or 'ntap'.",
             threshold='transistor threshold flavor.',
             end_ext_info='substrate ring inner end row extension info.',
+            options='Optional layout parameters.',
         )
 
     def get_layout_basename(self):
@@ -170,7 +173,7 @@ class SubRingEndRow(TemplateBase):
         return basename
 
     def compute_unique_key(self):
-        key = self.get_layout_basename(), self.params['end_ext_info']
+        key = self.get_layout_basename(), self.params['end_ext_info'], self.params['options']
         return self.to_immutable_id(key)
 
     def draw_layout(self):
@@ -178,8 +181,9 @@ class SubRingEndRow(TemplateBase):
         sub_type = self.params['sub_type']
         threshold = self.params['threshold']
         end_ext_info = self.params['end_ext_info']
+        options = self.params['options']
 
-        end_info = self._tech_cls.get_sub_ring_end_info(sub_type, threshold, fg, end_ext_info)
+        end_info = self._tech_cls.get_sub_ring_end_info(sub_type, threshold, fg, end_ext_info, **options)
 
         self._layout_info = end_info['layout_info']
         self._left_edge_info = end_info['left_edge_info']

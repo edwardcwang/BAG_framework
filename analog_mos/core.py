@@ -307,6 +307,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
             is_sub_ring : bool
                 True if this is a substrate ring edge.
+            dnw_mode : int
+                the deep N-well mode flag.  0 is no DNW, 1 is normal DNW, 2 is compact DNW.
 
         Returns
         -------
@@ -410,8 +412,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_sub_ring_ext_info(cls, sub_type, height, fg, end_ext_info):
-        # type: (str, int, int, Any) -> Dict[str, Any]
+    def get_sub_ring_ext_info(cls, sub_type, height, fg, end_ext_info, **kwargs):
+        # type: (str, int, int, Any, **kwargs) -> Dict[str, Any]
         """Returns the SubstrateRing extension layout information dictionary.
 
         Parameters
@@ -424,6 +426,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             total number of fingers.
         end_ext_info : Any
             layout extension information about the substrate inner end row.
+        **kwargs :
+            additional arguments.
 
         Returns
         -------
@@ -494,8 +498,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
-    def get_sub_ring_end_info(cls, sub_type, threshold, fg, end_ext_info):
-        # type: (str, str, int, Any) -> Dict[str, Any]
+    def get_sub_ring_end_info(cls, sub_type, threshold, fg, end_ext_info, **kwargs):
+        # type: (str, str, int, Any, **kwargs) -> Dict[str, Any]
         """Returns the SubstrateRing inner end row layout information dictionary.
 
         Parameters
@@ -508,6 +512,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             total number of fingers.
         end_ext_info : Any
             layout extension information about the substrate row.
+        **kwargs :
+            optional layout parameters.
 
         Returns
         -------
@@ -823,6 +829,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
             is_sub_ring : bool
                 True if this is a substrate ring edge.
+            dnw_mode : int
+                the deep N-well mode flag.  0 is no DNW, 1 is normal DNW, 2 is compact DNW.
 
         Returns
         -------

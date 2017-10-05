@@ -106,8 +106,7 @@ class AnalogSubstrate(TemplateBase):
     @classmethod
     def get_default_param_values(cls):
         return dict(
-            is_passive=False,
-            is_sub_ring=False,
+            options={},
         )
 
     @classmethod
@@ -128,8 +127,7 @@ class AnalogSubstrate(TemplateBase):
             threshold='transistor threshold flavor.',
             fg='number of substrate fingers.',
             top_layer='The top routing layer.  Used to determine vertical pitch.',
-            is_passive='True if this substrate is used as substrate contact for passive devices.',
-            is_sub_ring='True if this substrate is used in a substrate ring.',
+            options='Optional layout parameters.',
         )
 
     def get_layout_basename(self):
@@ -140,19 +138,16 @@ class AnalogSubstrate(TemplateBase):
         fg = self.params['fg']
         th = self.params['threshold']
         top_layer = self.params['top_layer']
+
         if top_layer is None:
             top_layer = 0
         basename = fmt % (sub_type, lstr, wstr, th, top_layer, fg)
-        if self.params['is_passive']:
-            basename += '_passive'
-        if self.params['is_sub_ring']:
-            basename += '_subring'
 
         return basename
 
     def compute_unique_key(self):
-        basename = self.get_layout_basename()
-        return basename
+        key = self.get_layout_basename(), self.params['options']
+        return self.to_immutable_id(key)
 
     def draw_layout(self):
         lch = self.params['lch']
@@ -160,9 +155,8 @@ class AnalogSubstrate(TemplateBase):
         fg = self.params['fg']
         sub_type = self.params['sub_type']
         threshold = self.params['threshold']
-        is_passive = self.params['is_passive']
         top_layer = self.params['top_layer']
-        is_sub_ring = self.params['is_sub_ring']
+        options = self.params['options']
 
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
@@ -171,8 +165,7 @@ class AnalogSubstrate(TemplateBase):
             blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
         else:
             blk_pitch = 1
-        info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg, blk_pitch=blk_pitch,
-                                                 is_passive=is_passive, is_sub_ring=is_sub_ring)
+        info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg, blk_pitch=blk_pitch, **options)
         self._layout_info = info['layout_info']
         self._sd_yc = info['sd_yc']
         self._ext_top_info = info['ext_top_info']
