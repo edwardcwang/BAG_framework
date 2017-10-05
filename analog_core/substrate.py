@@ -171,8 +171,8 @@ class SubstrateContact(TemplateBase):
             sub_type=sub_type,
             threshold=threshold,
             fg=sub_fg_tot,
-            is_passive=is_passive,
             top_layer=top_layer,
+            options=dict(is_passive=is_passive),
         )
         sub_master = self.new_template(params=params, temp_cls=AnalogSubstrate)
         edge_layout_info = sub_master.get_edge_layout_info()
@@ -282,7 +282,7 @@ class SubstrateRing(TemplateBase):
         # type: () -> Dict[str, Any]
         return dict(
             show_pins=False,
-            dnw_mode=0,
+            dnw_mode='',
         )
 
     @classmethod
@@ -305,7 +305,7 @@ class SubstrateRing(TemplateBase):
             fg_side='number of fingers in vertical substrate ring.',
             threshold='substrate threshold flavor.',
             show_pins='True to show pin labels.',
-            dnw_mode='deep N-well mode flag.  0 to disable, 1 to enable, 2 for compact deep N-well.',
+            dnw_mode='deep N-well mode string.  Empty string to disable.',
         )
 
     def draw_layout(self):

@@ -307,8 +307,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
             is_sub_ring : bool
                 True if this is a substrate ring edge.
-            dnw_mode : int
-                the deep N-well mode flag.  0 is no DNW, 1 is normal DNW, 2 is compact DNW.
+            dnw_mode : str
+                the deep N-well mode string, empty to disable.
 
         Returns
         -------
@@ -829,8 +829,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
 
             is_sub_ring : bool
                 True if this is a substrate ring edge.
-            dnw_mode : int
-                the deep N-well mode flag.  0 is no DNW, 1 is normal DNW, 2 is compact DNW.
+            dnw_mode : str
+                the deep N-well mode string, empty to disable.
 
         Returns
         -------
