@@ -421,10 +421,11 @@ class SubstrateRing(TemplateBase):
         self.array_box = BBox(arr_box_x[0], 0, arr_box_x[1], htot, res, unit_mode=True)
         self.add_cell_boundary(self.bound_box)
 
-        # add overlay DNW layer
-        for lay in self.grid.tech_info.get_dnw_layers():
-            dnw_box = self.get_rect_bbox(lay)
-            self.add_rect(lay, dnw_box)
+        if dnw_mode:
+            # add overlay DNW layer
+            for lay in self.grid.tech_info.get_dnw_layers():
+                dnw_box = self.get_rect_bbox(lay)
+                self.add_rect(lay, dnw_box)
 
         # connect to horizontal metal layer.
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
