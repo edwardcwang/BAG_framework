@@ -406,6 +406,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return {}
 
     @classmethod
+    @abc.abstractmethod
     def get_sub_ring_ext_info(cls, sub_type, height, fg, end_ext_info):
         # type: (str, int, int, Any) -> Dict[str, Any]
         """Returns the SubstrateRing extension layout information dictionary.
@@ -459,6 +460,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return {}
 
     @classmethod
+    @abc.abstractmethod
     def get_analog_end_info(cls, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
         # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
         """Returns the AnalogBase end row layout information dictionary.
@@ -476,7 +478,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         is_end : bool
             True if there are no block abutting the bottom.
         blk_pitch : int
-            substrate height quantization pitch.  Defaults to 1 (no quantization).
+            substrate height quantization pitch.
         **kwargs :
             optional keyword arguments.
 
@@ -488,6 +490,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return {}
 
     @classmethod
+    @abc.abstractmethod
     def get_sub_ring_end_info(cls, sub_type, threshold, fg, end_ext_info):
         # type: (str, str, int, Any) -> Dict[str, Any]
         """Returns the SubstrateRing inner end row layout information dictionary.
@@ -527,6 +530,7 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         adj_blk_info : Optional[Any]
             data structure storing layout information of adjacent block.
             If None, will use default settings.
+
         Returns
         -------
         outer_edge_info : Dict[str, Any]
