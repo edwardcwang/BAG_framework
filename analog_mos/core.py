@@ -488,8 +488,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         return {}
 
     @classmethod
-    def get_sub_ring_end_info(cls, sub_type, threshold, fg):
-        # type: (str, str, int) -> Dict[str, Any]
+    def get_sub_ring_end_info(cls, sub_type, threshold, fg, end_ext_info):
+        # type: (str, str, int, Any) -> Dict[str, Any]
         """Returns the SubstrateRing inner end row layout information dictionary.
 
         Parameters
@@ -500,6 +500,8 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
             the substrate threshold type.
         fg : int
             total number of fingers.
+        end_ext_info : Any
+            layout extension information about the substrate row.
 
         Returns
         -------

@@ -158,6 +158,7 @@ class SubRingEndRow(TemplateBase):
             fg='number of fingers.',
             sub_type="substrate type, either 'ptap' or 'ntap'.",
             threshold='transistor threshold flavor.',
+            end_ext_info='substrate ring inner end row extension info.',
         )
 
     def get_layout_basename(self):
@@ -169,14 +170,16 @@ class SubRingEndRow(TemplateBase):
         return basename
 
     def compute_unique_key(self):
-        return self.get_layout_basename()
+        key = self.get_layout_basename(), self.params['end_ext_info']
+        return self.to_immutable_id(key)
 
     def draw_layout(self):
         fg = self.params['fg']
         sub_type = self.params['sub_type']
         threshold = self.params['threshold']
+        end_ext_info = self.params['end_ext_info']
 
-        end_info = self._tech_cls.get_sub_ring_end_info(sub_type, threshold, fg)
+        end_info = self._tech_cls.get_sub_ring_end_info(sub_type, threshold, fg, end_ext_info)
 
         self._layout_info = end_info['layout_info']
         self._left_edge_info = end_info['left_edge_info']

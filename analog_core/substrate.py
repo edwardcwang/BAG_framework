@@ -444,6 +444,7 @@ class SubstrateRing(TemplateBase):
             fg=fg_tot,
             sub_type=sub_type,
             threshold=threshold,
+            end_ext_info=sub_master.get_ext_top_info(),
         )
         end2_master = self.new_template(params=end2_params, temp_cls=SubRingEndRow)
 
@@ -459,12 +460,11 @@ class SubstrateRing(TemplateBase):
             # make sure template has integer number of blocks from top and bottom.
             htot += blk_h
 
-        ext_info = end2_master.get_ext_info()
         ext_params = dict(
             sub_type=sub_type,
             height=htot - 2 * hsub,
             fg=fg_tot,
-            end_ext_info=ext_info,
+            end_ext_info=end2_master.get_ext_info(),
         )
         ext_master = self.new_template(params=ext_params, temp_cls=SubRingExt)
 
