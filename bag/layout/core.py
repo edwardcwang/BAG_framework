@@ -98,6 +98,24 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_dnw_margin_unit(cls, dnw_mode):
+        # type: (str) -> int
+        """Returns the required DNW margin given the DNW mode.
+
+        Parameters
+        ----------
+        dnw_mode : str
+            the DNW mode string.
+
+        Returns
+        -------
+        dnw_margin : int
+            the DNW margin in resolution units.
+        """
+        return 0
+
+    @classmethod
+    @abc.abstractmethod
     def get_dnw_layers(cls):
         # type: () -> List[Tuple[str, str]]
         """Returns a list of layers that defines DNW.
@@ -990,6 +1008,11 @@ class DummyTechInfo(TechInfo):
     def get_dnw_layers(cls):
         # type: () -> List[Tuple[str, str]]
         return []
+
+    @classmethod
+    def get_dnw_margin_unit(cls, dnw_mode):
+        # type: (str) -> int
+        return 0
 
     @classmethod
     def get_res_metal_layers(cls, layer_id):
