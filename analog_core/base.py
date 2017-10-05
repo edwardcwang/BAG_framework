@@ -73,8 +73,8 @@ class AnalogBaseInfo(object):
         number of fingers in a row.
     """
 
-    def __init__(self, grid, lch, guard_ring_nf, top_layer=None, end_mode=15, min_fg_sep=0, fg_tot=None):
-        # type: (RoutingGrid, float, int, Optional[int], int, int, Optional[int]) -> None
+    def __init__(self, grid, lch, guard_ring_nf, top_layer=None, end_mode=15, min_fg_sep=0, fg_tot=None, **kwargs):
+        # type: (RoutingGrid, float, int, Optional[int], int, int, Optional[int], **kwargs) -> None
         tech_params = grid.tech_info.tech_params
         self._tech_cls = tech_params['layout']['mos_tech_class']  # type: MOSTech
 
@@ -103,7 +103,7 @@ class AnalogBaseInfo(object):
 
         self._fg_tot = None
         self._sd_xc_unit = None
-        self.fg_tot = fg_tot
+        self.set_fg_tot(fg_tot, **kwargs)
 
     @property
     def vertical_pitch_unit(self):
@@ -137,16 +137,16 @@ class AnalogBaseInfo(object):
     def fg_tot(self):
         return self._fg_tot
 
-    @fg_tot.setter
-    def fg_tot(self, new_fg_tot):
-        self._fg_tot = new_fg_tot
+    def set_fg_tot(self, new_fg_tot, **kwargs):
         if new_fg_tot is not None:
-            place_info = self.get_placement_info(new_fg_tot)
+            self._fg_tot = new_fg_tot
+            place_info = self.get_placement_info(new_fg_tot, **kwargs)
             left_margin = place_info.edge_margins[0]
             self._sd_xc_unit = left_margin + place_info.edge_widths[0]
             self.grid.set_track_offset(self.mconn_port_layer, left_margin, unit_mode=True)
             self.grid.set_track_offset(self.dum_port_layer, left_margin, unit_mode=True)
         else:
+            self._fg_tot = None
             self._sd_xc_unit = None
 
     @property

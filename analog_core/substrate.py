@@ -156,7 +156,7 @@ class SubstrateContact(TemplateBase):
         if sub_fg_tot is None:
             raise ValueError('Cannot draw substrate that fit in width: %d' % well_width)
 
-        layout_info.fg_tot = sub_fg_tot
+        layout_info.set_fg_tot(sub_fg_tot)
         self.grid = layout_info.grid
 
         place_info = layout_info.get_placement_info(sub_fg_tot)
@@ -315,7 +315,7 @@ class SubstrateRing(TemplateBase):
 
         # create layout masters
         box_w, box_h = bound_box.width_unit, bound_box.height_unit
-        layout_info = AnalogBaseInfo(self.grid, lch, 0, top_layer=top_layer, end_mode=sub_end_mode)
+        layout_info = AnalogBaseInfo(self.grid, lch, fg_side, top_layer=top_layer, end_mode=sub_end_mode)
         sd_pitch = layout_info.sd_pitch_unit
         mtop_lay = layout_info.mconn_port_layer + 1
 
@@ -324,6 +324,8 @@ class SubstrateRing(TemplateBase):
         wtot = place_info.tot_width
         dx = place_info.edge_margins[0]
         arr_box_x = place_info.arr_box_x
+        layout_info.set_fg_tot(fg_tot, is_sub_ring=True)
+        self.grid = layout_info.grid
 
         if top_layer < mtop_lay:
             raise ValueError('top_layer = %d must be at least %d' % (top_layer, mtop_lay))
@@ -400,7 +402,12 @@ class SubstrateRing(TemplateBase):
 
         # set size and array box
         res = self.grid.resolution
-        self.set_size_from_bound_box(top_layer, BBox(0, 0, wtot, htot, res, unit_mode=True))
+        bnd_box = BBox(0, 0, wtot, htot, res, unit_mode=True)
+        if top_layer > mtop_lay:
+            self.set_size_from_bound_box(top_layer, bnd_box)
+        else:
+            self.prim_top_layer = top_layer
+            self.prim_bound_box = bnd_box
         self.array_box = BBox(arr_box_x[0], 0, arr_box_x[1], htot, res, unit_mode=True)
         self.add_cell_boundary(self.bound_box)
 
