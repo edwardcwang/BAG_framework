@@ -98,6 +98,19 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     @abc.abstractmethod
+    def get_dnw_layers(cls):
+        # type: () -> List[Tuple[str, str]]
+        """Returns a list of layers that defines DNW.
+
+        Returns
+        -------
+        lay_list : List[Tuple[str, str]]
+            list of DNW layers.
+        """
+        return []
+
+    @classmethod
+    @abc.abstractmethod
     def get_res_metal_layers(cls, layer_id):
         # type: (int) -> List[Tuple[str, str]]
         """Returns a list of layers associated with the given metal resistor.
@@ -971,6 +984,11 @@ class DummyTechInfo(TechInfo):
 
     @classmethod
     def get_implant_layers(cls, mos_type, res_type=None):
+        return []
+
+    @classmethod
+    def get_dnw_layers(cls):
+        # type: () -> List[Tuple[str, str]]
         return []
 
     @classmethod
