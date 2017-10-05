@@ -513,3 +513,135 @@ class SubstrateRing(TemplateBase):
             edge_list.append(self.new_template(params=edge_params, temp_cls=AnalogEdge))
 
         return htot, master_list, edge_list
+
+
+class DeepNWellRing(TemplateBase):
+    """A template that draws a deep N-well double ring around a template.
+
+    Parameters
+    ----------
+    temp_db : TemplateDB
+        the template database.
+    lib_name : str
+        the layout library name.
+    params : Dict[str, Any]
+        the parameter values.
+    used_names : Set[str]
+        a set of already used cell names.
+    **kwargs
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(DeepNWellRing, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self._blk_loc = None
+
+    @property
+    def blk_loc_unit(self):
+        return self._blk_loc
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(
+            show_pins=False,
+        )
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            top_layer='the top layer of the template.',
+            bound_box='bounding box of the inner template',
+            w='substrate tap width, in meters/number of fins.',
+            fg_side='number of fingers in vertical substrate ring.',
+            threshold='substrate threshold flavor.',
+            show_pins='True to show pin labels.',
+            dnw_mode='deep N-well mode string.  This determines the DNW spacing to adjacent blocks.',
+        )
+
+    def draw_layout(self):
+        # type: () -> None
+
+        top_layer = self.params['top_layer']
+        bound_box = self.params['bound_box']
+        w = self.params['w']
+        fg_side = self.params['fg_side']
+        threshold = self.params['threshold']
+        show_pins = self.params['show_pins']
+        dnw_mode = self.params['dnw_mode']
+
+        # test top_layer
+        hm_layer = self._tech_cls.get_mos_conn_layer() + 1
+        if top_layer <= hm_layer:
+            raise ValueError('top layer for DeepNWellRing must be >= %d' % (hm_layer + 1))
+
+        # make masters
+        dnw_params = dict(
+            top_layer=top_layer,
+            bound_box=bound_box,
+            sub_type='ntap',
+            w=w,
+            fg_side=fg_side,
+            threshold=threshold,
+            show_pins=False,
+            dnw_mode='compact',
+        )
+        dnw_master = self.new_template(params=dnw_params, temp_cls=SubstrateRing)
+        dnw_blk_loc = dnw_master.blk_loc_unit
+
+        sub_params = dict(
+            top_layer=top_layer,
+            bound_box=dnw_master.bound_box,
+            sub_type='ptap',
+            w=w,
+            fg_side=fg_side,
+            threshold=threshold,
+            show_pins=False,
+        )
+        sub_master = self.new_template(params=sub_params, temp_cls=SubstrateRing)
+        sub_blk_loc = sub_master.blk_loc_unit
+
+        # put masters at (0, 0)
+        sub_inst = self.add_instance(sub_master, 'XSUB')
+        dnw_inst = self.add_instance(dnw_master, 'XDNW', loc=sub_blk_loc, unit_mode=True)
+
+        # check how much to move substrate rings by to achive the DNW margin.
+        x_pitch, y_pitch = self.grid.get_block_size(top_layer, unit_mode=True)
+        dnw_margin = self.grid.tech_info.get_dnw_margin_unit(dnw_mode)
+        dnw_box = BBox.get_invalid_bbox()
+        for dnw_lay in self.grid.tech_info.get_dnw_layers():
+            dnw_box = dnw_box.merge(dnw_inst.get_rect_bbox(dnw_lay))
+
+        dx = -(-max(0, dnw_margin - dnw_box.left_unit) // x_pitch) * x_pitch
+        dy = -(-max(0, dnw_margin - dnw_box.bottom_unit) // x_pitch) * x_pitch
+        self.move_all_by(dx=dx, dy=dy, unit_mode=True)
+
+        # set size
+        res = self.grid.resolution
+        sub_w = sub_master.bound_box.width_unit
+        sub_h = sub_master.bound_box.height_unit
+        bnd_box = BBox(0, 0, sub_w + 2 * dx, sub_h + 2 * dy, res, unit_mode=True)
+        self.set_size_from_bound_box(top_layer, bnd_box)
+        self.array_box = bnd_box
+        self.add_cell_boundary(bnd_box)
+
+        # record block location
+        dnw_loc = dnw_inst.location_unit
+        self._blk_loc = dnw_loc[0] + dnw_blk_loc[0], dnw_loc[1] + dnw_blk_loc[1]
+
+        # export supplies
+        self.reexport(sub_inst.get_port('VSS'), show=show_pins)
+        self.reexport(dnw_inst.get_port('VDD'), show=show_pins)
