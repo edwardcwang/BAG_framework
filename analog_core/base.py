@@ -153,11 +153,11 @@ class AnalogBaseInfo(object):
     def sd_xc_unit(self):
         return self._sd_xc_unit
 
-    def get_placement_info(self, fg_tot):
+    def get_placement_info(self, fg_tot, **kwargs):
         left_end = (self.end_mode & 4) != 0
         right_end = (self.end_mode & 8) != 0
         return self._tech_cls.get_placement_info(self.grid, self.top_layer, fg_tot, self._lch_unit,
-                                                 self.guard_ring_nf, left_end, right_end, False)
+                                                 self.guard_ring_nf, left_end, right_end, False, **kwargs)
 
     def get_total_width(self, fg_tot):
         # type: (int) -> int

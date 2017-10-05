@@ -303,7 +303,10 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         is_end : bool
             True if there are no blocks abutting the left edge.
         **kwargs :
-            Optional edge layout parameters.
+            Optional edge layout parameters.  Currently supported parameters are:
+
+            is_sub_ring : bool
+                True if this is a substrate ring edge.
 
         Returns
         -------
@@ -816,7 +819,10 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         is_laygo : bool
             True if we're getting placement information for LaygoBase.
         kwargs :
-            Optional edge layout parameters.
+            Optional edge layout parameters.  Currently supports:
+
+            is_sub_ring : bool
+                True if this is a substrate ring edge.
 
         Returns
         -------

@@ -271,6 +271,11 @@ class SubstrateRing(TemplateBase):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(SubstrateRing, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self._blk_loc = None
+
+    @property
+    def blk_loc_unit(self):
+        return self._blk_loc
 
     @classmethod
     def get_params_info(cls):
@@ -312,8 +317,13 @@ class SubstrateRing(TemplateBase):
         box_w, box_h = bound_box.width_unit, bound_box.height_unit
         layout_info = AnalogBaseInfo(self.grid, lch, 0, top_layer=top_layer, end_mode=sub_end_mode)
         sd_pitch = layout_info.sd_pitch_unit
-        fg_tot = -(-box_w // sd_pitch)
         mtop_lay = layout_info.mconn_port_layer + 1
+
+        fg_tot = -(-box_w // sd_pitch)
+        place_info = layout_info.get_placement_info(fg_tot, is_sub_ring=True)
+        wtot = place_info.tot_width
+        dx = place_info.edge_margins[0]
+        arr_box_x = place_info.arr_box_x
 
         if top_layer < mtop_lay:
             raise ValueError('top_layer = %d must be at least %d' % (top_layer, mtop_lay))
@@ -323,7 +333,6 @@ class SubstrateRing(TemplateBase):
 
         # arrange layout masters
         # first, compute edge margins so everything is quantized properly.
-        xblk, yblk = self.grid.get_block_size(top_layer, unit_mode=True)
         m_sub, m_end1, m_end2, m_ext = master_list
         e_sub, e_end1, e_end2, e_ext = edge_list
         e1_h = m_end1.bound_box.height_unit
@@ -331,17 +340,13 @@ class SubstrateRing(TemplateBase):
         sub_h = m_sub.bound_box.height_unit
         sub_w = m_sub.bound_box.width_unit
         e_sub_w = e_sub.bound_box.width_unit
-        xext = (sub_w - box_w) // 2
-        xmargin = e_sub_w + xext
-
-        xspace = -(-xmargin // xblk) * xblk
-        dx = xspace - xmargin
 
         # add masters at correct locations
         m_list = [e_end1, m_end1, e_end1, e_sub, m_sub, e_sub, e_end2, m_end2, e_end2]
         xl_list = [dx, dx + e_sub_w, dx + e_sub_w + sub_w]
         yl_list = [0, e1_h, e1_h + sub_h]
         o_list = ['R0', 'R0', 'MY']
+        self._blk_loc = ((wtot - box_w) // 2, (htot - box_h) // 2)
 
         # substrate connection master
         conn_params = dict(
@@ -388,7 +393,6 @@ class SubstrateRing(TemplateBase):
                     m_idx += 1
 
         # add left and right edge
-        wtot = 2 * xspace + box_w
         hsub = e1_h + e2_h + sub_h
         edge_inst_list.append(self.add_instance(e_ext, inst_name='XEL', loc=(dx, hsub), unit_mode=True))
         edge_inst_list.append(self.add_instance(e_ext, inst_name='XER', loc=(wtot - dx, hsub),
@@ -397,7 +401,7 @@ class SubstrateRing(TemplateBase):
         # set size and array box
         res = self.grid.resolution
         self.set_size_from_bound_box(top_layer, BBox(0, 0, wtot, htot, res, unit_mode=True))
-        self.array_box = self.bound_box
+        self.array_box = BBox(arr_box_x[0], 0, arr_box_x[1], htot, res, unit_mode=True)
         self.add_cell_boundary(self.bound_box)
 
         # connect to horizontal metal layer.
