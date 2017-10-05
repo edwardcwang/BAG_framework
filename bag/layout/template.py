@@ -915,20 +915,22 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                                           debug=debug,
                                           **kwargs)
 
-    def move_all_by(self, dx=0.0, dy=0.0):
-        # type: (float, float) -> None
+    def move_all_by(self, dx=0.0, dy=0.0, unit_mode=False):
+        # type: (Union[float, int], Union[float, int], bool) -> None
         """Move all layout objects Except pins in this layout by the given amount.
 
         primitive pins will be moved, but pins on routing grid will not.
 
         Parameters
         ----------
-        dx : float
+        dx : Union[float, int]
             the X shift.
-        dy : float
+        dy : Union[float, int]
             the Y shift.
+        unit_mode : bool
+            true if given shift values are in resolution units.
         """
-        self._layout.move_all_by(dx=dx, dy=dy)
+        self._layout.move_all_by(dx=dx, dy=dy, unit_mode=unit_mode)
 
     def add_instance(self, master, inst_name=None, loc=(0, 0),
                      orient="R0", nx=1, ny=1, spx=0, spy=0, unit_mode=False):

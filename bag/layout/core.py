@@ -32,7 +32,7 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
-from typing import List, Iterator, Tuple, Optional
+from typing import List, Iterator, Tuple, Optional, Union
 from itertools import chain
 
 import bag
@@ -1403,16 +1403,18 @@ class BagLayout(object):
 
         self._inst_list.append(instance)
 
-    def move_all_by(self, dx=0.0, dy=0.0):
-        # type: (float, float) -> None
+    def move_all_by(self, dx=0.0, dy=0.0, unit_mode=False):
+        # type: (Union[float, int], Union[float, int], bool) -> None
         """Move all layout objects in this layout by the given amount.
 
         Parameters
         ----------
-        dx : float
+        dx : Union[float, int]
             the X shift.
-        dy : float
+        dy : Union[float, int]
             the Y shift.
+        unit_mode : bool
+            True if shift values are given in resolution units.
         """
         if self._finalized:
             raise Exception('Layout is already finalized.')
@@ -1420,7 +1422,7 @@ class BagLayout(object):
         for obj in chain(self._inst_list, self._inst_primitives, self._rect_list,
                          self._via_primitives, self._via_list, self._pin_list,
                          self._path_list, self._blockage_list, self._boundary_list):
-            obj.move_by(dx=dx, dy=dy)
+            obj.move_by(dx=dx, dy=dy, unit_mode=unit_mode)
 
     def add_instance_primitive(self, lib_name, cell_name, loc,
                                view_name='layout', inst_name=None, orient="R0",
