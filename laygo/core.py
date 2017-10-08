@@ -256,13 +256,9 @@ class LaygoBaseInfo(object):
         return self._config[item]
 
     def col_to_coord(self, col_idx, ds_type, unit_mode=False):
-        offset = self._edge_margins[0] + self._edge_widths[0] + col_idx * self._col_width
-        if ds_type == 's':
-            ans = offset
-        elif ds_type == 'd':
-            ans = offset + self._col_width // 2
-        else:
-            raise ValueError('Unrecognized ds type: %s' % ds_type)
+        ans = self._edge_margins[0] + self._edge_widths[0] + col_idx * self._col_width
+        if ds_type == 'd':
+            ans += self._col_width // 2
 
         if unit_mode:
             return ans
