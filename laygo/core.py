@@ -28,7 +28,7 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 import abc
-from typing import Dict, Any, Set, Tuple, List
+from typing import Dict, Any, Set, Tuple, List, Optional, TYPE_CHECKING
 from future.utils import with_metaclass
 
 import bisect
@@ -43,6 +43,9 @@ from bag.layout.routing import TrackID
 
 from .tech import LaygoTech
 from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow, LaygoSpace
+
+if TYPE_CHECKING:
+    from bag.layout.routing import RoutingGrid
 
 
 class LaygoIntvSet(object):
@@ -101,13 +104,38 @@ class LaygoIntvSet(object):
 
 
 class LaygoBaseInfo(object):
+    """A class that calculates informations to assist in LaygoBase layout calculations.
+
+    Parameters
+    ----------
+    grid : RoutingGrid
+        the RoutingGrid object.
+    config : Dict[str, Any]
+        the LaygoBase configuration dictionary.
+    top_layer : Optional[int]
+        the LaygoBase top layer ID.
+    guard_ring_nf : int
+        guard ring width in number of fingers.  0 to disable.
+    draw_boundaries : bool
+        True if boundary cells should be drawn around this LaygoBase.
+    end_mode : int
+        right/left/top/bottom end mode flag.  This is a 4-bit integer.  If bit 0 (LSB) is 1, then
+        we assume there are no blocks abutting the bottom.  If bit 1 is 1, we assume there are no
+        blocks abutting the top.  bit 2 and bit 3 (MSB) corresponds to left and right, respectively.
+        The default value is 15, which means we assume this AnalogBase is surrounded by empty spaces.
+    num_col : Optional[int]
+        number of columns in this LaygoBase.  This must be specified if draw_boundaries is True.
+    """
     def __init__(self, grid, config, top_layer=None, guard_ring_nf=0, draw_boundaries=False, end_mode=0, num_col=None):
+        # type: (RoutingGrid, Dict[str, Any], Optional[int], int, bool, int, Optional[int]) -> None
         self._tech_cls = grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
 
         # update routing grid
-        self._lch_unit = int(round(config['lch'] / grid.layout_unit / grid.resolution))
-        self._config = config
+        lch_unit = int(round(config['lch'] / grid.layout_unit / grid.resolution))
         self.grid = grid.copy()
+        self._lch_unit = lch_unit
+        self._config = config
+
         vm_layer = self._tech_cls.get_dig_conn_layer()
         vm_space, vm_width = self._tech_cls.get_laygo_conn_track_info(self._lch_unit)
         self.grid.add_new_layer(vm_layer, vm_space, vm_width, 'y', override=True, unit_mode=True)
@@ -124,29 +152,26 @@ class LaygoBaseInfo(object):
                 for width_ntr, w_unit in w_lookup.items():
                     self.grid.add_width_override(layer_id, width_ntr, w_unit, unit_mode=True)
 
-        # set attributes
+        # initialize parameters
         self.guard_ring_nf = guard_ring_nf
         self.top_layer = self._config['tr_layers'][-1] if top_layer is None else top_layer
         self.end_mode = end_mode
         self._col_width = self._tech_cls.get_sd_pitch(self._lch_unit) * self._tech_cls.get_laygo_unit_fg()
         self.draw_boundaries = draw_boundaries
-        self._num_col = num_col
 
-    @property
-    def num_col(self):
-        return self._num_col
-
-    @num_col.setter
-    def num_col(self, new_val):
-        self._num_col = new_val
-
-    @property
-    def unit_fg(self):
-        return self._tech_cls.get_laygo_unit_fg()
+        # set number of columns
+        self._num_col = None
+        self._edge_margins = None
+        self._edge_widths = None
+        self.set_num_col(num_col)
 
     @property
     def tech_cls(self):
         return self._tech_cls
+
+    @property
+    def unit_fg(self):
+        return self._tech_cls.get_laygo_unit_fg()
 
     @property
     def conn_layer(self):
@@ -169,12 +194,16 @@ class LaygoBaseInfo(object):
         return self._tech_cls.get_min_sub_space_columns(self._lch_unit)
 
     @property
-    def lch(self):
-        return self._lch_unit * self.grid.layout_unit * self.grid.resolution
+    def mos_pitch(self):
+        return self._tech_cls.get_mos_pitch(unit_mode=True)
 
     @property
     def lch_unit(self):
         return self._lch_unit
+
+    @property
+    def lch(self):
+        return self._lch_unit * self.grid.layout_unit * self.grid.resolution
 
     @property
     def col_width(self):
@@ -185,40 +214,49 @@ class LaygoBaseInfo(object):
         return self.grid.get_block_size(self.top_layer, unit_mode=True)[1]
 
     @property
-    def mos_pitch(self):
-        return self._tech_cls.get_mos_pitch(unit_mode=True)
+    def num_col(self):
+        return self._num_col
 
     @property
-    def left_margin(self):
-        if self.draw_boundaries:
-            if self._num_col is None:
-                raise ValueError('num_col is not defined.  Cannot compute left margin.')
-            placement_info = self.get_placement_info(self._num_col * self.unit_fg)
-            return placement_info.edge_margins[0]
-        else:
-            return 0
+    def edge_margins(self):
+        return self._edge_margins
 
     @property
-    def right_margin(self):
-        if self.draw_boundaries:
-            if self._num_col is None:
-                raise ValueError('num_col is not defined.  Cannot compute right margin.')
-            placement_info = self.get_placement_info(self._num_col * self.unit_fg)
-            return placement_info.edge_margins[1]
-        else:
-            return 0
+    def edge_widths(self):
+        return self._edge_widths
 
-    def get_placement_info(self, fg_tot, **kwargs):
+    @property
+    def tot_width(self):
+        return self._edge_margins[0] + self._edge_margins[1] + self._edge_widths[0] + self._edge_widths[1] + \
+               self._num_col * self._col_width
+
+    def get_placement_info(self, num_col):
         left_end = (self.end_mode & 4) != 0
         right_end = (self.end_mode & 8) != 0
+        fg_tot = self.unit_fg * num_col
         return self._tech_cls.get_placement_info(self.grid, self.top_layer, fg_tot, self._lch_unit,
-                                                 self.guard_ring_nf, left_end, right_end, True, **kwargs)
+                                                 self.guard_ring_nf, left_end, right_end, True)
+
+    def set_num_col(self, new_num_col):
+        if new_num_col is None:
+            self._num_col = None
+            if self.draw_boundaries:
+                self._edge_margins = None
+                self._edge_widths = None
+            else:
+                self._edge_margins = (0, 0)
+                self._edge_widths = (0, 0)
+        else:
+            self._num_col = new_num_col
+            placement_info = self.get_placement_info(new_num_col)
+            self._edge_margins = placement_info.edge_margins
+            self._edge_widths = placement_info.edge_widths
 
     def __getitem__(self, item):
         return self._config[item]
 
     def col_to_coord(self, col_idx, ds_type, unit_mode=False):
-        offset = self.left_margin + col_idx * self._col_width
+        offset = self._edge_margins[0] + self._edge_widths[0] + col_idx * self._col_width
         if ds_type == 's':
             ans = offset
         elif ds_type == 'd':
@@ -235,10 +273,10 @@ class LaygoBaseInfo(object):
             coord = int(round(coord / self.grid.resolution))
 
         col_width = self._col_width
-        if ds_type is None or ds_type == 's':
-            offset = self.left_margin
-        else:
-            offset = self.left_margin + col_width
+        offset = self._edge_margins[0] + self._edge_widths[0]
+        if ds_type == 'd':
+            offset += col_width
+
         if ds_type is None:
             k = col_width // 2
         else:
@@ -263,7 +301,7 @@ class LaygoBaseInfo(object):
             coord = int(round(coord / self.grid.resolution))
 
         k = self._col_width // 2
-        offset = self.left_margin
+        offset = self._edge_margins[0] + self._edge_widths[0]
         if (coord - offset) % k != 0:
             raise ValueError('Coordinate %d is not on pitch.' % coord)
         col_idx_half = (coord - offset) // k
@@ -426,8 +464,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if draw_boundaries and num_col is None:
             raise ValueError('Must specify total number of columns if drawing boundary.')
 
-        if num_col is not None:
-            self._laygo_info.num_col = num_col
+        self._laygo_info.set_num_col(num_col)
 
         self._num_rows = len(row_types)
         # set left and right end information list
@@ -850,6 +887,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     def set_laygo_size(self, num_col=None):
         if self._laygo_size is None:
+            # compute total number of columns
             if num_col is None:
                 if self._laygo_info.num_col is not None:
                     num_col = self._laygo_info.num_col
@@ -858,18 +896,15 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     for intv in self._used_list:
                         num_col = max(num_col, intv.get_end())
 
+            self._laygo_info.set_num_col(num_col)
             self._laygo_size = num_col, self._num_rows
 
             top_layer = self._laygo_info.top_layer
             draw_boundaries = self._laygo_info.draw_boundaries
-            col_width = self._laygo_info.col_width
-            left_margin = self._laygo_info.left_margin
-            right_margin = self._laygo_info.right_margin
 
-            width = col_width * num_col
+            width = self._laygo_info.tot_width
             height = self._row_y[-1][-1]
             if draw_boundaries:
-                width += left_margin + right_margin
                 height += self._top_end_master.bound_box.height_unit
             bound_box = BBox(0, 0, width, height, self.grid.resolution, unit_mode=True)
             self.set_size_from_bound_box(top_layer, bound_box)
@@ -884,7 +919,6 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         lch = self._laygo_info.lch
         col_width = self._laygo_info.col_width
-        left_margin = self._laygo_info.left_margin
 
         mos_type = self._row_types[row_idx]
         row_orient = self._row_orientations[row_idx]
@@ -931,7 +965,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 raise ValueError('Cannot add primitive on row %d, '
                                  'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
 
-        x0 = left_margin + col_idx * col_width
+        x0 = self._laygo_info.col_to_coord(col_idx, 's', unit_mode=True)
         if flip:
             x0 += col_width
 
@@ -1005,7 +1039,7 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         if not intv.add(inst_intv, ext_info, endl, endr):
             raise ValueError('Cannot add space on row %d, column [%d, %d)' % (row_idx, inst_intv[0], inst_intv[1]))
 
-        x0 = self._laygo_info.left_margin + col_idx * self._laygo_info.col_width
+        x0 = self._laygo_info.col_to_coord(col_idx, 's', unit_mode=True)
         y0 = row_y[1] if row_orient == 'R0' else row_y[2]
         self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=row_orient, unit_mode=True)
 

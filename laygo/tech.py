@@ -32,7 +32,7 @@ from __future__ import (absolute_import, division,
 from builtins import *
 from future.utils import with_metaclass
 
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List, TYPE_CHECKING
 
 from bag.layout.template import TemplateBase
 from bag.layout.routing import WireArray
@@ -42,6 +42,10 @@ import abc
 from ..analog_mos.core import MOSTech
 from ..analog_mos.mos import AnalogMOSExt
 from ..analog_mos.edge import AnalogEdge
+
+if TYPE_CHECKING:
+    from .base import LaygoEndRow
+    from .core import LaygoBaseInfo
 
 
 class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
@@ -370,7 +374,7 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
     @classmethod
     def draw_extensions(cls,  # type: LaygoTech
                         template,  # type: TemplateBase
-                        laygo_info,  # type: 'LaygoBaseInfo'
+                        laygo_info,  # type: LaygoBaseInfo
                         w,  # type: int
                         yext,  # type: int
                         bot_ext_list,  # type: List[Tuple[int, Any]]
@@ -401,14 +405,13 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             empty list if draw_boundaries is False.
         """
         lch = laygo_info.lch
-        left_margin = laygo_info.left_margin
         top_layer = laygo_info.top_layer
         guard_ring_nf = laygo_info.guard_ring_nf
 
         ext_groups = cls.get_row_extension_info(bot_ext_list, top_ext_list)
         num_ext = len(ext_groups)
 
-        curx = left_margin
+        curx = laygo_info.col_to_coord(0, 's', unit_mode=True)
         ext_edges = []
         for idx, (fg, bot_info, top_info) in enumerate(ext_groups):
             if w > 0 or cls.draw_zero_extension():
@@ -443,11 +446,11 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
     @classmethod
     def draw_boundaries(cls,  # type: LaygoTech
                         template,  # type: TemplateBase
-                        laygo_info,  # type: 'LaygoBaseInfo'
+                        laygo_info,  # type: LaygoBaseInfo
                         num_col,  # type: int
                         yt,  # type: int
-                        bot_end_master,  # type: 'LaygoEndRow'
-                        top_end_master,  # type: 'LaygoEndRow'
+                        bot_end_master,  # type: LaygoEndRow
+                        top_end_master,  # type: LaygoEndRow
                         edge_infos,  # type: List[Tuple[int, int, str, Dict[str, Any]]]
                         ):
         # type: (...) -> Tuple[List[WireArray], List[WireArray]]
@@ -478,25 +481,26 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
             any VSS wires in the edge block due to guard ring.
         """
         end_mode = laygo_info.end_mode
-        top_layer = laygo_info.top_layer
         guard_ring_nf = laygo_info.guard_ring_nf
         col_width = laygo_info.col_width
-        left_margin = laygo_info.left_margin
-        right_margin = laygo_info.right_margin
 
         nx = num_col
         spx = col_width
 
+        emargin_l, emargin_r = laygo_info.edge_margins
+        ewidth_l, ewidth_r = laygo_info.edge_widths
+        xoffset = emargin_l + ewidth_l
+
         # draw top and bottom end row
-        template.add_instance(bot_end_master, inst_name='XRBOT', loc=(left_margin, 0),
+        template.add_instance(bot_end_master, inst_name='XRBOT', loc=(xoffset, 0),
                               nx=nx, spx=spx, unit_mode=True)
-        template.add_instance(top_end_master, inst_name='XRBOT', loc=(left_margin, yt),
+        template.add_instance(top_end_master, inst_name='XRBOT', loc=(xoffset, yt),
                               orient='MX', nx=nx, spx=spx, unit_mode=True)
         # draw corners
         left_end = (end_mode & 4) != 0
         right_end = (end_mode & 8) != 0
         edge_inst_list = []
-        xr = left_margin + col_width * nx + right_margin
+        xr = laygo_info.tot_width
         for orient, y, master in (('R0', 0, bot_end_master), ('MX', yt, top_end_master)):
             for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
                 edge_params = dict(
