@@ -536,6 +536,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         result = self._place_rows(ybot, tot_height_pitch, row_specs)
         self._row_infos, self._ext_params, self._row_y = result
 
+        # compute laygo size if we know the number of columns
+        if num_col is not None:
+            self.set_laygo_size(num_col)
+
     def get_digital_row_info(self):
         if not self.finalized:
             raise ValueError('Can only compute digital row info if this block is finalized.')
@@ -1070,6 +1074,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 raise ValueError('laygo_size must be set before drawing boundaries.')
 
             end_mode = self._laygo_info.end_mode
+            emargin_l, emargin_r = self._laygo_info.edge_margins
+
             xr = self.bound_box.right_unit
 
             left_end = (end_mode & 4) != 0
@@ -1080,10 +1086,10 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             for y, orient, edge_params in self._ext_edge_infos:
                 tmp_copy = edge_params.copy()
                 if orient == 'R0':
-                    x = 0
+                    x = emargin_l
                     tmp_copy['is_end'] = left_end
                 else:
-                    x = xr
+                    x = xr - emargin_r
                     tmp_copy['is_end'] = right_end
                 edge_infos.append((x, y, orient, tmp_copy))
 
@@ -1091,7 +1097,8 @@ class LaygoBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             row_edge_infos = self._get_row_edge_infos()
             for ridx, (y, orient, re_params) in enumerate(row_edge_infos):
                 endl, endr = self._get_end_info_row(ridx)
-                for x, is_end, flip_lr, end_info in ((0, left_end, False, endl), (xr, right_end, True, endr)):
+                for x, is_end, flip_lr, end_info in \
+                        ((emargin_l, left_end, False, endl), (xr - emargin_r, right_end, True, endr)):
                     edge_params = re_params.copy()
                     del edge_params['row_info']
                     edge_params['is_end'] = is_end

@@ -502,7 +502,7 @@ class LaygoTech(with_metaclass(abc.ABCMeta, MOSTech)):
         edge_inst_list = []
         xr = laygo_info.tot_width
         for orient, y, master in (('R0', 0, bot_end_master), ('MX', yt, top_end_master)):
-            for x, is_end, flip_lr in ((0, left_end, False), (xr, right_end, True)):
+            for x, is_end, flip_lr in ((emargin_l, left_end, False), (xr - emargin_r, right_end, True)):
                 edge_params = dict(
                     is_end=is_end,
                     guard_ring_nf=guard_ring_nf,
