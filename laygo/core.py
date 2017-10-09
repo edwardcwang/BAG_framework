@@ -130,19 +130,31 @@ class LaygoBaseInfo(object):
         # type: (RoutingGrid, Dict[str, Any], Optional[int], int, bool, int, Optional[int]) -> None
         self._tech_cls = grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
 
+        # error checking
+        dig_top_layer = config['tr_layers'][-1]
+        if dig_top_layer != self._tech_cls.get_dig_top_layer():
+            raise ValueError('Top tr_layers must be layer %d' % self._tech_cls.get_dig_top_layer())
+
         # update routing grid
         lch_unit = int(round(config['lch'] / grid.layout_unit / grid.resolution))
         self.grid = grid.copy()
         self._lch_unit = lch_unit
         self._config = config
 
+        sd_pitch = self._tech_cls.get_sd_pitch(lch_unit)
         vm_layer = self._tech_cls.get_dig_conn_layer()
         vm_space, vm_width = self._tech_cls.get_laygo_conn_track_info(self._lch_unit)
         self.grid.add_new_layer(vm_layer, vm_space, vm_width, 'y', override=True, unit_mode=True)
         tdir = 'x'
         for lay, w, sp in zip(self._config['tr_layers'], self._config['tr_widths'], self._config['tr_spaces']):
             self.grid.add_new_layer(lay, sp, w, tdir, override=True, unit_mode=True)
-            tdir = 'x' if tdir == 'y' else 'y'
+            if tdir == 'y':
+                tdir = 'x'
+                pitch = w + sp
+                if pitch % sd_pitch != 0:
+                    raise ValueError('laygo vertical routing pitch must be multiples of %d' % sd_pitch)
+            else:
+                tdir = 'y'
         self.grid.update_block_pitch()
 
         # update routing grid width overrides
@@ -154,7 +166,7 @@ class LaygoBaseInfo(object):
 
         # initialize parameters
         self.guard_ring_nf = guard_ring_nf
-        self.top_layer = self._config['tr_layers'][-1] if top_layer is None else top_layer
+        self.top_layer = dig_top_layer + 1 if top_layer is None else top_layer
         self.end_mode = end_mode
         self._col_width = self._tech_cls.get_sd_pitch(self._lch_unit) * self._tech_cls.get_laygo_unit_fg()
         self.draw_boundaries = draw_boundaries
@@ -210,6 +222,12 @@ class LaygoBaseInfo(object):
         return self._col_width
 
     @property
+    def unit_num_col(self):
+        blk_w = self.grid.get_block_size(self._tech_cls.get_dig_top_layer(), unit_mode=True)[0]
+        col_width = self.col_width
+        return lcm([blk_w, col_width]) // col_width
+
+    @property
     def tot_height_pitch(self):
         return self.grid.get_block_size(self.top_layer, unit_mode=True)[1]
 
@@ -238,19 +256,22 @@ class LaygoBaseInfo(object):
                                                  self.guard_ring_nf, left_end, right_end, True)
 
     def set_num_col(self, new_num_col):
-        if new_num_col is None:
-            self._num_col = None
-            if self.draw_boundaries:
+        if new_num_col is not None:
+            if new_num_col % self.unit_num_col != 0:
+                raise ValueError('num_col = %d must be multiple of %d' % (new_num_col, self.unit_num_col))
+        self._num_col = new_num_col
+
+        if self.draw_boundaries:
+            if new_num_col is None:
                 self._edge_margins = None
                 self._edge_widths = None
             else:
-                self._edge_margins = (0, 0)
-                self._edge_widths = (0, 0)
+                placement_info = self.get_placement_info(new_num_col)
+                self._edge_margins = placement_info.edge_margins
+                self._edge_widths = placement_info.edge_widths
         else:
-            self._num_col = new_num_col
-            placement_info = self.get_placement_info(new_num_col)
-            self._edge_margins = placement_info.edge_margins
-            self._edge_widths = placement_info.edge_widths
+            self._edge_margins = (0, 0)
+            self._edge_widths = (0, 0)
 
     def __getitem__(self, item):
         return self._config[item]
@@ -264,17 +285,83 @@ class LaygoBaseInfo(object):
             return ans
         return ans * self.grid.resolution
 
+    def col_to_track(self, layer_id, col_idx, ds_type):
+        # error checking
+        dig_top_layer = self._tech_cls.get_dig_top_layer()
+        if layer_id > dig_top_layer:
+            raise ValueError('col_to_track() only works on layer <= %d' % dig_top_layer)
+        if self.grid.get_direction(layer_id) == 'x':
+            raise ValueError('col_to_track() only works on vertical routing layers.')
+
+        coord = self.col_to_coord(col_idx, ds_type, unit_mode=True)
+        return self.grid.coord_to_track(layer_id, coord, unit_mode=True)
+
+    def col_to_nearest_rel_track(self, layer_id, col_idx, ds_type, half_track=False, mode=0):
+        # error checking
+        dig_top_layer = self._tech_cls.get_dig_top_layer()
+        if layer_id > dig_top_layer:
+            raise ValueError('col_to_nearest_rel_track() only works on layer <= %d' % dig_top_layer)
+        if self.grid.get_direction(layer_id) == 'x':
+            raise ValueError('col_to_nearest_rel_track() only works on vertical routing layers.')
+
+        x_rel = col_idx * self._col_width
+        if ds_type == 'd':
+            x_rel += self._col_width // 2
+
+        pitch = self.grid.get_track_pitch(layer_id, unit_mode=True)
+        offset = pitch // 2
+        if half_track:
+            pitch //= 2
+
+        q, r = divmod(x_rel - offset, pitch)
+        if r == 0:
+            # exactly on track
+            if mode == -2:
+                # move to lower track
+                q -= 1
+            elif mode == 2:
+                # move to upper track
+                q += 1
+        else:
+            # not on track
+            if mode > 0 or (mode == 0 and r >= pitch / 2):
+                # round up
+                q += 1
+
+        if not half_track:
+            return q
+        elif q % 2 == 0:
+            return q // 2
+        else:
+            return q / 2
+
+    def coord_to_col(self, coord, unit_mode=False):
+        if not unit_mode:
+            coord = int(round(coord / self.grid.resolution))
+
+        k = self._col_width // 2
+        offset = self._edge_margins[0] + self._edge_widths[0]
+        if (coord - offset) % k != 0:
+            raise ValueError('Coordinate %d is not on pitch.' % coord)
+        col_idx_half = (coord - offset) // k
+
+        if col_idx_half % 2 == 0:
+            return col_idx_half // 2, 's'
+        else:
+            return (col_idx_half - 1) // 2, 'd'
+
     def coord_to_nearest_col(self, coord, ds_type=None, mode=0, unit_mode=False):
         if not unit_mode:
             coord = int(round(coord / self.grid.resolution))
 
         col_width = self._col_width
+        col_width2 = col_width // 2
         offset = self._edge_margins[0] + self._edge_widths[0]
         if ds_type == 'd':
-            offset += col_width
+            offset += col_width2
 
         if ds_type is None:
-            k = col_width // 2
+            k = col_width2
         else:
             k = col_width
 
@@ -292,15 +379,43 @@ class LaygoBaseInfo(object):
 
         return self.coord_to_col(n * k + offset, unit_mode=True)
 
-    def coord_to_col(self, coord, unit_mode=False):
-        if not unit_mode:
-            coord = int(round(coord / self.grid.resolution))
+    def rel_track_to_nearest_col(self, layer_id, rel_tid, ds_type=None, mode=0):
+        # error checking
+        dig_top_layer = self._tech_cls.get_dig_top_layer()
+        if layer_id > dig_top_layer:
+            raise ValueError('rel_track_to_nearest_col() only works on layer <= %d' % dig_top_layer)
+        if self.grid.get_direction(layer_id) == 'x':
+            raise ValueError('rel_track_to_nearest_col() only works on vertical routing layers.')
 
-        k = self._col_width // 2
-        offset = self._edge_margins[0] + self._edge_widths[0]
-        if (coord - offset) % k != 0:
-            raise ValueError('Coordinate %d is not on pitch.' % coord)
-        col_idx_half = (coord - offset) // k
+        pitch = self.grid.get_track_pitch(layer_id, unit_mode=True)
+        x_rel = pitch // 2 + int(round(rel_tid * pitch))
+
+        col_width = self.col_width
+        col_width2 = col_width // 2
+        offset = 0
+        if ds_type == 'd':
+            offset += col_width2
+
+        if ds_type is None:
+            k = col_width2
+        else:
+            k = col_width
+
+        x_rel -= offset
+        if mode == 0:
+            n = int(round(x_rel / k))
+        elif mode > 0:
+            if x_rel % k == 0 and mode == 2:
+                x_rel += 1
+            n = -(-x_rel // k)
+        else:
+            if x_rel % k == 0 and mode == -2:
+                x_rel -= 1
+            n = x_rel // k
+
+        rel_coord = n * k + offset
+        k = col_width2
+        col_idx_half = rel_coord // k
 
         if col_idx_half % 2 == 0:
             return col_idx_half // 2, 's'
