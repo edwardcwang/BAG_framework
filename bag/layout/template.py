@@ -2290,6 +2290,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         if min_len_mode is not None:
             # extend track to meet minimum length
             min_len = grid.get_min_length(tr_layer_id, track_id.width, unit_mode=True)
+            # make sure minimum length is even so that middle coordinate exists
+            min_len = -(-min_len // 2) * 2
             tr_len = track_upper - track_lower
             if min_len > tr_len:
                 ext = min_len - tr_len
