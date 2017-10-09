@@ -846,14 +846,16 @@ class MOSTech(with_metaclass(abc.ABCMeta, object)):
         edger_margin = edger_info['edge_margin']
 
         if is_laygo:
-            prim_layer = cls.get_dig_top_layer() + 1
+            top_vm_layer = cls.get_dig_top_layer()
         else:
-            prim_layer = cls.get_mos_conn_layer() + 1
+            top_vm_layer = cls.get_mos_conn_layer()
 
+        prim_layer = top_vm_layer + 1
         core_width = (edgel_num_fg + edger_num_fg + fg_tot) * sd_pitch
         if top_layer <= prim_layer:
-            blk_w = sd_pitch
-            # we can define array box
+            # use private layer for horizontal quantization so that
+            # array box can be defined.
+            blk_w = grid.get_block_size(top_vm_layer, unit_mode=True)[0]
             edgel_margin = -(-edgel_margin // blk_w) * blk_w
             edger_margin = -(-edger_margin // blk_w) * blk_w
             arr_dxl = edgel_margin
