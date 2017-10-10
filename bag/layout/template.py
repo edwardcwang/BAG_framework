@@ -2313,8 +2313,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
     def connect_with_via_stack(self,  # type: TemplateBase
                                wire_array,  # type: Union[WireArray, List[WireArray]]
-                               tr_layer,  # type: int
-                               tr_index,  # type: Union[float, int]
+                               track_id,  # type: TrackID
                                tr_w_list=None,  # type: Optional[List[int]]
                                tr_mode_list=None,  # type: Optional[List[int]]
                                min_len_mode_list=None,  # type: Optional[List[int]]
@@ -2332,16 +2331,13 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         ----------
         wire_array : Union[WireArray, List[WireArray]]
             the starting WireArray.
-        tr_layer : int
-            the final track layer ID.
-        tr_index : int
-            the final track index.
+        track_id : TrackID
+            the TrackID to connect to.
         tr_w_list : Optional[List[int]]
             the track widths to use on each layer.  If not specified, will compute automatically.
         tr_mode_list : Optional[List[int]]
             If tracks on intermediate layers do not line up nicely,
             the track mode flags determine whether to pick upper or lower tracks
-
         min_len_mode_list : Optional[List[int]]
             minimum length mode flags on each layer.
         fill_margin : Union[int, float]
@@ -2365,8 +2361,10 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         # error checking
         warr_tid = wire_array.track_id
         warr_layer = warr_tid.layer_id
-        if warr_tid.num != 1:
-            raise ValueError('connect_with_via_stack() only works on WireArray with a single wire.')
+        tr_layer = track_id.layer_id
+        tr_index = track_id.base_index
+        if warr_tid.num != 1 or track_id.num != 1:
+            raise ValueError('connect_with_via_stack() only works on WireArray and TrackID with a single wire.')
         if tr_layer == warr_layer:
             raise ValueError('Cannot connect wire to track on the same layer.')
 
@@ -2375,8 +2373,15 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         # set default values
         if tr_w_list is None:
             tr_w_list = [-1] * num_connections
+        elif len(tr_w_list) == num_connections - 1:
+            # user might be inclined to not list the last track width, as it is included in
+            # TrackID.  Allow for this exception
+            tr_w_list = tr_w_list + [-1]
         elif len(tr_w_list) != num_connections:
             raise ValueError('tr_w_list must have exactly %d elements.' % num_connections)
+        else:
+            # create a copy of the given list, as this list may be modified later.
+            tr_w_list = list(tr_w_list)
 
         if tr_mode_list is None:
             tr_mode_list = [0] * num_connections
@@ -2401,8 +2406,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             x0, y0 = (w_coord, w_mid) if w_dir == 'y' else (w_mid, w_coord)
 
         # determine track width on each layer
-        if tr_w_list[num_connections - 1] < 0:
-            tr_w_list[num_connections - 1] = 1
+        tr_w_list[num_connections - 1] = track_id.width
         if tr_layer > warr_layer:
             layer_dir = 1
             tr_w_prev = grid.get_track_width(tr_layer, tr_w_list[num_connections - 1], unit_mode=True)
