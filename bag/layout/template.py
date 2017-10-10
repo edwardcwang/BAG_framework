@@ -2311,6 +2311,135 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self._used_tracks.add_wire_arrays(result, fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
         return result
 
+    def connect_with_via_stack(self,  # type: TemplateBase
+                               wire_array,  # type: Union[WireArray, List[WireArray]]
+                               tr_layer,  # type: int
+                               tr_index,  # type: Union[float, int]
+                               tr_w_list=None,  # type: Optional[List[int]]
+                               tr_mode_list=None,  # type: Optional[List[int]]
+                               min_len_mode_list=None,  # type: Optional[List[int]]
+                               fill_margin=0,  # type: Union[int, float]
+                               fill_type='',  # type: str
+                               unit_mode=False,  # type: bool
+                               debug=False,  # type: bool
+                               ):
+        # type: (...) -> List[WireArray]
+        """Connect all given WireArrays to the given track(s).
+
+        All given wires should be on adjcent layer of the track.
+
+        Parameters
+        ----------
+        wire_array : Union[WireArray, List[WireArray]]
+            the starting WireArray.
+        tr_layer : int
+            the final track layer ID.
+        tr_index : int
+            the final track index.
+        tr_w_list : Optional[List[int]]
+            the track widths to use on each layer.  If not specified, will compute automatically.
+        tr_mode_list : Optional[List[int]]
+            If tracks on intermediate layers do not line up nicely,
+            the track mode flags determine whether to pick upper or lower tracks
+
+        min_len_mode_list : Optional[List[int]]
+            minimum length mode flags on each layer.
+        fill_margin : Union[int, float]
+            minimum margin between wires and fill.
+        fill_type : str
+            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
+        unit_mode : bool
+            True if fill_margin is given in resolution units.
+        debug : bool
+            True to print debug messages.
+
+        Returns
+        -------
+        warr_list : List[WireArray]
+            List of created WireArrays.
+        """
+        if not isinstance(wire_array, WireArray):
+            # convert to WireArray.
+            wire_array = [0]
+
+        # error checking
+        warr_tid = wire_array.track_id
+        warr_layer = warr_tid.layer_id
+        if warr_tid.num != 1:
+            raise ValueError('connect_with_via_stack() only works on WireArray with a single wire.')
+        if tr_layer == warr_layer:
+            raise ValueError('Cannot connect wire to track on the same layer.')
+
+        num_connections = abs(tr_layer - warr_layer)
+
+        # set default values
+        if tr_w_list is None:
+            tr_w_list = [-1] * num_connections
+        elif len(tr_w_list) != num_connections:
+            raise ValueError('tr_w_list must have exactly %d elements.' % num_connections)
+
+        if tr_mode_list is None:
+            tr_mode_list = [0] * num_connections
+        elif len(tr_mode_list) != num_connections:
+            raise ValueError('tr_mode_list must have exactly %d elements.' % num_connections)
+
+        if min_len_mode_list is None:
+            min_len_mode_list = [None] * num_connections
+        elif len(min_len_mode_list) != num_connections:
+            raise ValueError('min_len_mode_list must have exactly %d elements.' % num_connections)
+
+        # determine via location
+        grid = self.grid
+        w_dir = grid.get_direction(warr_layer)
+        t_dir = grid.get_direction(tr_layer)
+        w_coord = grid.track_to_coord(warr_layer, warr_tid.base_index, unit_mode=True)
+        t_coord = grid.track_to_coord(tr_layer, tr_index, unit_mode=True)
+        if w_dir != t_dir:
+            x0, y0 = (w_coord, t_coord) if w_dir == 'y' else (t_coord, w_coord)
+        else:
+            w_mid = int(round(wire_array.middle / grid.resolution))
+            x0, y0 = (w_coord, w_mid) if w_dir == 'y' else (w_mid, w_coord)
+
+        # determine track width on each layer
+        if tr_w_list[num_connections - 1] < 0:
+            tr_w_list[num_connections - 1] = 1
+        if tr_layer > warr_layer:
+            layer_dir = 1
+            tr_w_prev = grid.get_track_width(tr_layer, tr_w_list[num_connections - 1], unit_mode=True)
+            tr_w_idx_iter = range(num_connections - 2, -1, -1)
+        else:
+            layer_dir = -1
+            tr_w_prev = grid.get_track_width(warr_layer, warr_tid.width, unit_mode=True)
+            tr_w_idx_iter = range(0, num_connections - 1)
+        for idx in tr_w_idx_iter:
+            cur_layer = warr_layer + layer_dir * (idx + 1)
+            if tr_w_list[idx] < 0:
+                tr_w_list[idx] = grid.get_track_width_inverse(cur_layer, tr_w_prev, unit_mode=True)
+            tr_w_prev = grid.get_track_width(cur_layer, tr_w_list[idx], unit_mode=True)
+
+        # draw via stacks
+        results = []
+        targ_layer = warr_layer
+        for tr_w, tr_mode, min_len_mode in zip(tr_w_list, tr_mode_list, min_len_mode_list):
+            targ_layer += layer_dir
+
+            # determine track index to connect to
+            if targ_layer == tr_layer:
+                targ_index = tr_index
+            else:
+                targ_dir = grid.get_direction(targ_layer)
+                coord = x0 if targ_dir == 'y' else y0
+                targ_index = grid.coord_to_nearest_track(targ_layer, coord, half_track=True,
+                                                         mode=tr_mode, unit_mode=True)
+
+            targ_tid = TrackID(targ_layer, targ_index, width=tr_w)
+            warr = self.connect_to_tracks(wire_array, targ_tid, fill_margin=fill_margin, fill_type=fill_type,
+                                          unit_mode=unit_mode, min_len_mode=min_len_mode, debug=debug)
+            results.append(warr)
+            wire_array = warr
+
+        return results
+
     def connect_differential_tracks(self,  # type: TemplateBase
                                     pwarr_list,  # type: Union[WireArray, List[WireArray]]
                                     nwarr_list,  # type: Union[WireArray, List[WireArray]]
