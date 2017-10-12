@@ -42,7 +42,7 @@ from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.core import TechInfo
 
 from .base import ResTech, AnalogResCore, AnalogResBoundary
-from ..analog_core import SubstrateContact
+from ..analog_core.substrate import SubstrateContact
 
 
 # noinspection PyAbstractClass
@@ -581,6 +581,7 @@ class Termination(TemplateBase):
         top_layer, nx_arr, ny_arr = res_master.size
         w_pitch, h_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
         sub_params = dict(
+            top_layer=top_layer,
             lch=sub_lch,
             w=sub_w,
             sub_type=sub_type,
@@ -588,6 +589,7 @@ class Termination(TemplateBase):
             well_width=res_master.get_well_width(),
             show_pins=False,
             is_passive=True,
+            tot_width_parity=nx_arr % 2,
         )
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
         sub_box = sub_master.bound_box
@@ -1054,6 +1056,7 @@ class ResLadder(TemplateBase):
             well_width=res_master.get_well_width(),
             show_pins=False,
             is_passive=True,
+            tot_width_parity=nx_arr % 2,
         )
         sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
         _, nx_sub, ny_sub = sub_master.size

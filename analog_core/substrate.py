@@ -93,6 +93,7 @@ class SubstrateContact(TemplateBase):
             well_end_mode=0,
             show_pins=False,
             is_passive=False,
+            tot_width_parity=None,
         )
 
     @classmethod
@@ -116,6 +117,7 @@ class SubstrateContact(TemplateBase):
             well_width='Width of the well in layout units.',
             show_pins='True to show pin labels.',
             is_passive='True if this substrate is used as substrate contact for passive devices.',
+            tot_width_parity='width parity.  Used to guarantee templates will be centered.',
         )
 
     def draw_layout(self):
@@ -129,6 +131,7 @@ class SubstrateContact(TemplateBase):
         well_width = self.params['well_width']
         show_pins = self.params['show_pins']
         is_passive = self.params['is_passive']
+        tot_width_parity = self.params['tot_width_parity']
 
         sub_end_mode = 15
         res = self.grid.resolution
@@ -136,7 +139,6 @@ class SubstrateContact(TemplateBase):
 
         # get layout info, also set RoutingGrid to substrate grid.
         layout_info = AnalogBaseInfo(self.grid, lch, 0, top_layer=top_layer, end_mode=sub_end_mode)
-
         # compute template width in number of sd pitches
         # find maximum number of fingers we can draw
         bin_iter = BinaryIterator(1, None)
@@ -155,6 +157,16 @@ class SubstrateContact(TemplateBase):
         sub_fg_tot = bin_iter.get_last_save()
         if sub_fg_tot is None:
             raise ValueError('Cannot draw substrate that fit in width: %d' % well_width)
+
+        # check width parity requirement
+        if tot_width_parity is not None:
+            w_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)[0]
+            place_info = layout_info.get_placement_info(sub_fg_tot)
+            while sub_fg_tot > 0 and (place_info.tot_width // w_pitch) % 2 != tot_width_parity:
+                sub_fg_tot -= 1
+                place_info = layout_info.get_placement_info(sub_fg_tot)
+            if sub_fg_tot <= 0:
+                raise ValueError('Cannot draw substrate with width = %d, parity = %d' % (well_width, tot_width_parity))
 
         layout_info.set_fg_tot(sub_fg_tot)
         self.grid = layout_info.grid
