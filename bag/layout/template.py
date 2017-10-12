@@ -2355,8 +2355,11 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             List of created WireArrays.
         """
         if not isinstance(wire_array, WireArray):
+            # error checking
+            if len(wire_array) != 1:
+                raise ValueError('connect_with_via_stack() only works on WireArray and TrackID with a single wire.')
             # convert to WireArray.
-            wire_array = [0]
+            wire_array = wire_array[0]
 
         # error checking
         warr_tid = wire_array.track_id
