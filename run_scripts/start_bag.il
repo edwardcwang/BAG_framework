@@ -1813,7 +1813,7 @@ procedure( stdoutHandler(ipcId data)
             ipcWriteProcess(ipcId result_str)
             't
         else
-            if( data == "BAG skill server has started.  Yay!" then
+            if( data == "BAG skill server has started.  Yay!\n" then
                 bag_server_started = 1
                 printf("*INFO* BAG skill server started.\n")
             else
