@@ -110,7 +110,8 @@ def run_skill_server(args):
         sys.stderr.write(error_msg)
         sys.stderr.flush()
     else:
-        print('BAG skill server has started.  Yay!')
+        sys.stdout.write('BAG skill server has started.  Yay!\n')
+        sys.stdout.flush()
 
 
 def parse_command_line_arguments():
