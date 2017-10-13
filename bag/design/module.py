@@ -459,47 +459,60 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         self.instances[inst_name] = module_list
         self.instance_map[inst_name] = rinst_list
 
-    def design_dc_bias_sources(self, bias_dict, inst_name, is_voltage=True):
-        # type: (Dict[str, List[str]], str, bool) -> None
+    def design_dc_bias_sources(self, vbias_dict, ibias_dict, vinst_name, iinst_name, define_vdd=True):
+        # type: (Optional[Dict[str, List[str]]], Optional[Dict[str, List[str]]], str, str, bool) -> None
         """Convenience function for generating DC bias sources.
 
-        Given a dictionary of DC bias sources information, array a given DC
-        source and configure the voltage/current.
+        Given DC voltage/current bias sources information, array the given voltage/current bias sources
+        and configure the voltage/current.
+
+        Each bias dictionary is a dictionary from bias source name to a 3-element list.  The first two
+        elements are the PLUS/MINUS net names, respectively, and the third element is the DC
+        voltage/current value as a string or float. A variable name can be given to define a testbench
+        parameter.
 
         Parameters
         ----------
-        bias_dict : Dict[str, List[str]]
-            A Dictionary from source name to a 3-element list.  The first two
-            elements are the PLUS/MINUS net names, respectively, and the third
-            element is the DC voltage/current value as a string or float.
-            A variable name can be given to define a testbench parameter.
-        inst_name : str
-            name of the voltage/current source instance to array.
-        is_voltage : bool
-            True if we are arraying a voltage source.
+        vbias_dict : Optional[Dict[str, List[str]]]
+            the voltage bias dictionary.  None or empty to disable.
+        ibias_dict : Optional[Dict[str, List[str]]]
+            the current bias dictionary.  None or empty to disable.
+        vinst_name : str
+            the DC voltage source instance name.
+        iinst_name : str
+            the DC current source instance name.
+        define_vdd : bool
+            True to include a supply voltage source connected to VDD/VSS, with voltage value 'vdd'.
         """
-        if is_voltage:
-            name_template = 'V%s'
-            param_name = 'vdc'
-        else:
-            name_template = 'I%s'
-            param_name = 'idc'
+        if define_vdd:
+            vbias_dict = vbias_dict.copy()
+            # make sure VDD is always included
+            name = 'SUP'
+            counter = 1
+            while name in vbias_dict:
+                name = 'SUP%d' % counter
+                counter += 1
 
-        name_list, term_list, val_list = [], [], []
-        for name in sorted(bias_dict.keys()):
-            pname, nname, bias_val = bias_dict[name]
-            term_list.append(dict(PLUS=pname, MINUS=nname))
-            name_list.append(name_template % name)
-            if isinstance(bias_val, str):
-                val_list.append(bias_val)
-            elif isinstance(bias_val, int) or isinstance(bias_val, float):
-                val_list.append(float_to_si_string(bias_val))
-            else:
-                raise ValueError('value %s of type %s not supported' % (bias_val, type(bias_val)))
+            vbias_dict[name] = ['VDD', 'VSS', 'vdd']
 
-        self.array_instance(inst_name, name_list, term_list=term_list)
-        for inst, val in zip(self.instances[inst_name], val_list):
-            inst.parameters[param_name] = val
+        for bias_dict, name_template, param_name, inst_name in \
+                ((vbias_dict, 'V%s', 'vdc', vinst_name), (ibias_dict, 'I%s', 'idc', iinst_name)):
+            if bias_dict:
+                name_list, term_list, val_list = [], [], []
+                for name in sorted(bias_dict.keys()):
+                    pname, nname, bias_val = bias_dict[name]
+                    term_list.append(dict(PLUS=pname, MINUS=nname))
+                    name_list.append(name_template % name)
+                    if isinstance(bias_val, str):
+                        val_list.append(bias_val)
+                    elif isinstance(bias_val, int) or isinstance(bias_val, float):
+                        val_list.append(float_to_si_string(bias_val))
+                    else:
+                        raise ValueError('value %s of type %s not supported' % (bias_val, type(bias_val)))
+
+                self.array_instance(inst_name, name_list, term_list=term_list)
+                for inst, val in zip(self.instances[inst_name], val_list):
+                    inst.parameters[param_name] = val
 
     def design_dummy_transistors(self, dum_info, inst_name, vdd_name, vss_name):
         # type: (List[Tuple[Any]], str, str, str) -> None
