@@ -102,6 +102,8 @@ def run_skill_server(args):
         # signal.signal(signal.SIGTERM, exit_handler)
 
         try:
+            sys.stdout.write('BAG skill server has started.  Yay!\n')
+            sys.stdout.flush()
             server.run()
         except Exception as ex:
             error_msg = 'bag server process error:\n%s\n' % str(ex)
@@ -109,9 +111,6 @@ def run_skill_server(args):
     if error_msg:
         sys.stderr.write(error_msg)
         sys.stderr.flush()
-    else:
-        sys.stdout.write('BAG skill server has started.  Yay!\n')
-        sys.stdout.flush()
 
 
 def parse_command_line_arguments():
