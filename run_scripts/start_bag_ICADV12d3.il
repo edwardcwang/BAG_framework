@@ -1805,16 +1805,25 @@ procedure( modify_testbench(tb_lib tb_cell conf_file opt_file corner_file param_
 
 procedure( stdoutHandler(ipcId data)
     let( (result result_str)
-        printf("*INFO* Evaluate expression from BAG process: %s\n" data)
-        if( result = errsetstring(data 't) then
-            sprintf(result_str "%A\n" car(result))
+        if( bag_server_started > 0 then
+            printf("*INFO* Evaluate expression from BAG process: %s\n" data)
+            if( result = errsetstring(data 't) then
+                sprintf(result_str "%A\n" car(result))
+            else
+                sprintf(result_str "%s\n" car(nthelem(5 errset.errset)))
+            )
+            printf("*INFO* Sending result to BAG process: %s" result_str)
+            ipcWriteProcess(ipcId sprintf(nil "%d\n" strlen(result_str)))
+            ipcWriteProcess(ipcId result_str)
+            't
         else
-            sprintf(result_str "%s\n" car(nthelem(5 errset.errset)))
+            if( data == "BAG skill server has started.  Yay!" then
+                bag_server_started = 1
+                printf("*INFO* BAG skill server started.\n")
+            else
+                printf("*INFO* Waiting for BAG skill server.  Message: %s\n" data)
+            )
         )
-        printf("*INFO* Sending result to BAG process: %s" result_str)
-        ipcWriteProcess(ipcId sprintf(nil "%d\n" strlen(result_str)))
-        ipcWriteProcess(ipcId result_str)
-        't
     )
 )
 
@@ -1831,9 +1840,11 @@ procedure( exitHandler(ipcId exitId)
 )
 
 procedure( start_bag_server()
+    bag_server_started = 0
     printf("*INFO* Starting BAG server process.\n")
     ipcBeginProcess("tcsh virt_server.sh" "" 'stdoutHandler 'stderrHandler 'exitHandler "")
 )
 
-bag_proc = start_bag_server()
+bag_server_started = 0
 bag_modify_adexl_counter = 0
+bag_proc = start_bag_server()
