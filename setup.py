@@ -23,13 +23,11 @@
 ########################################################################################################################
 
 from setuptools import setup, find_packages
-import distutils.command.bdist_conda
 
 
 setup(
     name='bag',
     version='2.0',
-    distclass=distutils.command.bdist_conda.CondaDistribution,
     description='Berkeley Analog Generator',
     classifiers=[
         'Development Status :: 3 - Alpha',
@@ -47,13 +45,10 @@ setup(
         'pexpect>=4.0',
         'pyzmq>=15.2.0',
         'scipy>=0.17',
-        # for some reason bulk loading fails for 0.8.2
-        # no more rtree for now
-        # 'rtree==0.8.0',
         'matplotlib>=1.5',
-        # require typing module to enable type checking in IDE
         'openmdao',
         'future',
+        'h5py',
     ],
     package_data={
         'bag': ['virtuoso_files/*'],
