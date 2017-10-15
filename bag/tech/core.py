@@ -178,22 +178,36 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         return self._swp_var_list
 
     @abc.abstractmethod
-    def get_layout_params(self, val_list):
-        # type: (Tuple[Any, ...]) -> Dict[str, Any]
-        """Returns the layout dictionary from the given sweep parameter values."""
-        return {}
-
-    @abc.abstractmethod
-    def get_tb_sch_params(self, tb_type, val_list):
-        # type: (str, Tuple[Any, ...]) -> Dict[str, Any]
-        """Returns the testbench schematic parameters dictionary from the given sweep parameter values."""
-        return {}
-
-    @abc.abstractmethod
     def configure_tb(self, tb_type, tb, val_list):
         # type: (str, Testbench, Tuple[Any, ...]) -> None
         """Setup the testbench with the given sweep parameter values."""
         pass
+
+    def get_layout_params(self, val_list):
+        # type: (Tuple[Any, ...]) -> Dict[str, Any]
+        """Returns the layout dictionary from the given sweep parameter values."""
+        lay_params = self.specs['layout_params'].copy()
+        for var, val in zip(self.swp_var_list, val_list):
+            lay_params[var] = val
+
+        return lay_params
+
+    # noinspection PyUnusedLocal
+    def get_wrapper_params(self, impl_lib, dsn_cell_name, sch_params):
+        # type: (str, str, Dict[str, Any]) -> Dict[str, Any]
+        """Returns the schematic wrapper parameters dictionary given library/cell/Module instance."""
+        wrapper_params = self.specs['wrapper_params'].copy()
+        wrapper_params['dut_lib'] = impl_lib
+        wrapper_params['dut_cell'] = dsn_cell_name
+        return wrapper_params
+
+    def get_tb_sch_params(self, tb_type, impl_lib, dsn_cell_name, val_list):
+        # type: (str, str, str, Tuple[Any, ...]) -> Dict[str, Any]
+        """Returns the testbench schematic parameters dictionary from the given sweep parameter values."""
+        tb_params = self.specs[tb_type]['sch_params'].copy()
+        tb_params['dut_lib'] = impl_lib
+        tb_params['dut_cell'] = dsn_cell_name
+        return tb_params
 
     def get_swp_var_values(self, var):
         # type: (str) -> List[Any]
@@ -241,9 +255,9 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
         # create wrapper schematic if it exists
         if wrapper_name and wrapper_cell:
-            wrapper_params = self.specs['wrapper_params']
+            wrapper_params = self.get_wrapper_params(impl_lib, dsn_cell_name, sch_params)
             wrapper_dsn = self.prj.create_design_module(dut_lib, wrapper_cell)
-            wrapper_dsn.design(dut_lib=impl_lib, dut_cell=dsn_cell_name, **wrapper_params)
+            wrapper_dsn.design(**wrapper_params)
             wrapper_dsn.implement_design(impl_lib, top_cell_name=wrapper_name, erase=True)
 
     def create_tb_sch(self, tb_type, dsn_cell_name, tb_name, val_list):
@@ -257,14 +271,14 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         tb_lib = tb_specs['tb_lib']
         tb_cell = tb_specs['tb_cell']
 
-        tb_sch_params = self.get_tb_sch_params(tb_type, val_list)
+        tb_sch_params = self.get_tb_sch_params(tb_type, impl_lib, dsn_cell_name, val_list)
         tb_sch = self.prj.create_design_module(tb_lib, tb_cell)
-        tb_sch.design(dut_lib=impl_lib, dut_cell=dsn_cell_name, **tb_sch_params)
+        tb_sch.design(**tb_sch_params)
         tb_sch.implement_design(impl_lib, top_cell_name=tb_name, erase=True)
 
-    def create_layout(self, lay_params, cell_name, temp_db):
-        # type: (Dict[str, Any], str, TemplateDB) -> Dict[str, Any]
-        """Create the DUT layout."""
+    def create_layout(self, lay_params_list, cell_name_list, temp_db):
+        # type: (List[Dict[str, Any]], List[str], TemplateDB) -> List[Dict[str, Any]]
+        """Create multiple layouts"""
         if self.prj is None:
             raise ValueError('BagProject instance is not given.')
 
@@ -274,9 +288,13 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         lay_module = importlib.import_module(cls_package)
         temp_cls = getattr(lay_module, cls_name)
 
-        template = temp_db.new_template(params=lay_params, temp_cls=temp_cls, debug=False)
-        temp_db.batch_layout(self.prj, [template], [cell_name])
-        return template.sch_params
+        temp_list, sch_params_list = [], []
+        for lay_params in lay_params_list:
+            template = temp_db.new_template(params=lay_params, temp_cls=temp_cls, debug=False)
+            temp_list.append(template)
+            sch_params_list.append(template.sch_params)
+        temp_db.batch_layout(self.prj, temp_list, cell_name_list)
+        return sch_params_list
 
     def get_design_name(self, dsn_params):
         # type: (Dict[str, Any]) -> str
@@ -318,7 +336,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         lay_params = self.get_layout_params(val_list)
 
         temp_db = self.make_tdb()
-        sch_params = self.create_layout(lay_params, dsn_name, temp_db)
+        sch_params = self.create_layout([lay_params], [dsn_name], temp_db)[0]
 
         if gen_sch:
             self.create_dut_sch(sch_params, dsn_name)
@@ -336,15 +354,24 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
         temp_db = self.make_tdb()
 
-        # make schematic, layout, and start LVS jobs
-        dsn_info_list = []
-        job_info_list = []
+        # make layouts
+        dsn_name_list, wrap_name_list, lay_params_list, combo_list_list = [], [], [], []
         for combo_list in self.get_combinations_iter():
             dsn_name = self.get_instance_name(dsn_name_base, combo_list)
             wrapper_name = self.get_instance_name(wrapper_name_base, combo_list)
             lay_params = self.get_layout_params(combo_list)
-            print('create layout for %s' % dsn_name)
-            sch_params = self.create_layout(lay_params, dsn_name, temp_db)
+            dsn_name_list.append(dsn_name)
+            wrap_name_list.append(wrapper_name)
+            lay_params_list.append(lay_params)
+            combo_list_list.append(combo_list)
+
+        print('creating all layouts')
+        sch_params_list = self.create_layout(lay_params_list, dsn_name_list, temp_db)
+
+        dsn_info_list = []
+        job_info_list = []
+        for dsn_name, wrapper_name, sch_params, combo_list in \
+                zip(dsn_name_list, wrap_name_list, sch_params_list, combo_list_list):
             print('create schematic for %s' % dsn_name)
             self.create_dut_sch(sch_params, dsn_name, wrapper_name=wrapper_name)
 
@@ -453,7 +480,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
             if save_dir is not None:
                 try:
                     cur_results = load_sim_results(save_dir)
-                except:
+                except Exception:
                     print('Error when loading results for %s' % tb_name)
                     cur_results = None
             else:
