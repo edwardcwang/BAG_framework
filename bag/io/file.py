@@ -154,8 +154,7 @@ def write_file(fname, content, append=False, mkdir=True):
     if mkdir:
         fname = os.path.abspath(fname)
         dname = os.path.dirname(fname)
-        if not os.path.exists(dname):
-            os.makedirs(dname)
+        os.makedirs(dname, exist_ok=True)
 
     mode = 'a' if append else 'w'
     with open_file(fname, mode) as f:

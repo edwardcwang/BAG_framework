@@ -29,10 +29,13 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
+from typing import Optional, List, Tuple
+
 from .core import Waveform
 
 
-def de_bruijn(n, symbols=None, ):
+def de_bruijn(n, symbols=None):
+    # type: (int, Optional[List[float]]) -> List[float]
     """Returns a De Bruijn sequence with subsequence of length n.
 
     a De Bruijn sequence with subsequence of length n is a sequence such that
@@ -44,12 +47,12 @@ def de_bruijn(n, symbols=None, ):
     ----------
     n : int
         length of the subsequence.
-    symbols : list[flaot] or None
+    symbols : Optional[List[float]] or None
         the list of symbols.  If None, defaults to [0.0, 1.0].
 
     Returns
     -------
-    seq : list[float]
+    seq : List[float]
         the de bruijn sequence.
     """
     symbols = symbols or [0.0, 1.0]
@@ -71,6 +74,71 @@ def de_bruijn(n, symbols=None, ):
 
     db(1, 1)
     return [symbols[i] for i in sequence]
+
+
+def dig_to_pwl(values, tper, trf, td=0):
+    # type: (List[float], float, float, float, float) -> Tuple[List[float], List[float]]
+    """Convert a list of digital bits to PWL waveform.
+
+    This function supports negative delay.  However, time/value pairs for negative data
+    are truncated.
+
+    Parameters
+    ----------
+    values : List[float]
+        list of values for each bit.
+    tper : float
+        the period in seconds.
+    trf : float
+        the rise/fall time in seconds.
+    td : float
+        the delay
+
+    Returns
+    -------
+    tvec : List[float]
+        the time vector.
+    yvec : List[float]
+        the value vector.
+    """
+    y0 = values[0]
+    tcur, ycur = td, y0
+    tvec, yvec = [], []
+    for v in values:
+        if v != ycur:
+            if tcur >= 0:
+                tvec.append(tcur)
+                yvec.append(ycur)
+            elif tcur < 0 < tcur + trf:
+                # make sure time starts at 0
+                tvec.append(0)
+                yvec.append(ycur - (v - ycur) / trf * tcur)
+            ycur = v
+            if tcur + trf >= 0:
+                tvec.append(tcur + trf)
+                yvec.append(ycur)
+            elif tcur + trf < 0 < tcur + tper:
+                # make sure time starts at 0
+                tvec.append(0)
+                yvec.append(ycur)
+            tcur += tper
+        else:
+            if tcur <= 0 < tcur + tper:
+                # make sure time starts at 0
+                tvec.append(0)
+                yvec.append(ycur)
+            tcur += tper
+
+    if not tvec:
+        # only here if input is constant
+        tvec = [0, tper]
+        yvec = [y0, y0]
+    elif tvec[0] > 0:
+        # make time start at 0
+        tvec.insert(0, 0)
+        yvec.insert(0, y0)
+
+    return tvec, yvec
 
 
 def get_flop_timing(tvec, d, q, clk, ttol, data_thres=0.5,
@@ -108,13 +176,13 @@ def get_flop_timing(tvec, d, q, clk, ttol, data_thres=0.5,
 
     Parameters
     ----------
-    tvec : numpy.ndarray
+    tvec : np.ndarray
         the time data.
-    d : numpy.ndarray
+    d : np.ndarray
         the input data.
-    q : numpy.ndarray
+    q : np.ndarray
         the output data.
-    clk : numpy.ndarray
+    clk : np.ndarray
         the clock data.
     ttol : float
         time resolution.
