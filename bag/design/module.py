@@ -431,11 +431,12 @@ class Module(with_metaclass(abc.ABCMeta, object)):
         same : bool
             True if all modules in this array is identical.
         """
+        num_inst = len(inst_name_list)
         if not term_list:
-            term_list = [{}] * len(inst_name_list)
-        if len(inst_name_list) != len(term_list):
+            term_list = [{} for _ in range(num_inst)]
+        if num_inst != len(term_list):
             msg = 'len(inst_name_list) = %d != len(term_list) = %d'
-            raise ValueError(msg % (len(inst_name_list), len(term_list)))
+            raise ValueError(msg % (num_inst, len(term_list)))
 
         orig_module = self.instances[inst_name]
         lib_name, cell_name = orig_module.lib_name, orig_module.cell_name
@@ -452,7 +453,7 @@ class Module(with_metaclass(abc.ABCMeta, object)):
                 rinst_list.append(rinst)
                 module_list.append(modul)
         else:
-            module_list = [orig_module] * len(inst_name_list)
+            module_list = [orig_module] * num_inst
             rinst_list = [dict(name=iname, cell_name=cell_name, params={}, term_mapping=iterm)
                           for iname, iterm in zip(inst_name_list, term_list)]
 
@@ -513,6 +514,8 @@ class Module(with_metaclass(abc.ABCMeta, object)):
                 self.array_instance(inst_name, name_list, term_list=term_list)
                 for inst, val in zip(self.instances[inst_name], val_list):
                     inst.parameters[param_name] = val
+            else:
+                self.delete_instance(inst_name)
 
     def design_dummy_transistors(self, dum_info, inst_name, vdd_name, vss_name):
         # type: (List[Tuple[Any]], str, str, str) -> None

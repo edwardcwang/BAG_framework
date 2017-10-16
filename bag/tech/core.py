@@ -255,8 +255,9 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
         # create wrapper schematic if it exists
         if wrapper_name and wrapper_cell:
+            wrapper_lib = self.specs['wrapper_lib']
             wrapper_params = self.get_wrapper_params(impl_lib, dsn_cell_name, sch_params)
-            wrapper_dsn = self.prj.create_design_module(dut_lib, wrapper_cell)
+            wrapper_dsn = self.prj.create_design_module(wrapper_lib, wrapper_cell)
             wrapper_dsn.design(**wrapper_params)
             wrapper_dsn.implement_design(impl_lib, top_cell_name=wrapper_name, erase=True)
 
