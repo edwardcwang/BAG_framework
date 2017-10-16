@@ -421,24 +421,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
             self.save_sim_data(tb_type, sim_info_list, dsn_info_list)
             print('characterization done.')
 
-    def run_simulations(self, tb_type, overwrite=True):
-        # type: (str, bool) -> None
-        """Create the given testbench type for all DUTs and run simulations in parallel."""
-        dsn_name_base = self.specs['dsn_name_base']
-
-        dsn_info_list = []
-        sim_info_list = []
-        for val_list in self.get_combinations_iter():
-            save_data_path = self._get_data_path(tb_type, val_list)
-            if overwrite or not os.path.isfile(save_data_path):
-                dsn_name = self.get_instance_name(dsn_name_base, val_list)
-                dsn_info_list.append((dsn_name, val_list))
-                sim_info_list.append(self._run_tb_sim(tb_type, val_list))
-
-        self.save_sim_data(tb_type, sim_info_list, dsn_info_list)
-        print('simulation done.')
-
-    def _run_tb_sim(self, tb_type, val_list):
+    def setup_testbench(self, tb_type, val_list):
         # type: (str, Tuple[Any, ...]) -> Tuple[str, Testbench]
         """Create testbench of the given type and run simulation."""
         if self.prj is None:
@@ -466,7 +449,29 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         self.configure_tb(tb_type, tb, val_list)
         tb.update_testbench()
 
-        print('start simulation for %s' % tb_name)
+        return tb_name, tb
+
+    def run_simulations(self, tb_type, overwrite=True):
+        # type: (str, bool) -> None
+        """Create the given testbench type for all DUTs and run simulations in parallel."""
+        dsn_name_base = self.specs['dsn_name_base']
+
+        dsn_info_list = []
+        sim_info_list = []
+        for val_list in self.get_combinations_iter():
+            save_data_path = self._get_data_path(tb_type, val_list)
+            if overwrite or not os.path.isfile(save_data_path):
+                dsn_name = self.get_instance_name(dsn_name_base, val_list)
+                dsn_info_list.append((dsn_name, val_list))
+                sim_info_list.append(self._run_tb_sim(tb_type, val_list))
+
+        self.save_sim_data(tb_type, sim_info_list, dsn_info_list)
+        print('simulation done.')
+
+    def _run_tb_sim(self, tb_type, val_list):
+        # type: (str, Tuple[Any, ...]) -> Tuple[str, Testbench]
+        """Create testbench of the given type and run simulation."""
+        tb_name, tb = self.setup_testbench(tb_type, val_list)
         tb.run_simulation(sim_tag=tb_name, block=False)
         return tb_name, tb
 
