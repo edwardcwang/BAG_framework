@@ -31,6 +31,8 @@ from builtins import *
 
 from typing import Optional, List, Tuple
 
+import numpy as np
+
 from .core import Waveform
 
 
@@ -139,6 +141,36 @@ def dig_to_pwl(values, tper, trf, td=0):
         yvec.insert(0, y0)
 
     return tvec, yvec
+
+
+def get_crossing_index(yvec, threshold, n=0, rising=True):
+    # type: (np.array, float, int, bool) -> int
+    """Returns the first index that the given numpy array crosses the given threshold.
+
+    Parameters
+    ----------
+    yvec : np.array
+        the numpy array.
+    threshold : float
+        the crossing threshold.
+    n : int
+        returns the nth edge index, with n=0 being the first index.
+    rising : bool
+        True to return rising edge index.  False to return falling edge index.
+
+    Returns
+    -------
+    idx : int
+        the crossing edge index.
+    """
+
+    bool_vec = yvec >= threshold
+    qvec = bool_vec.astype(int)
+    dvec = np.diff(qvec)
+
+    dvec = np.maximum(dvec, 0) if rising else np.minimum(dvec, 0)
+    idx_list = dvec.nonzero()[0]
+    return idx_list[n]
 
 
 def get_flop_timing(tvec, d, q, clk, ttol, data_thres=0.5,
