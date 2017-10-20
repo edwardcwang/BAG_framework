@@ -394,9 +394,10 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
                 lvs_passed = self.prj.wait_lvs_rcx(lvs_id)
                 if not lvs_passed:
                     print('ERROR: LVS died for %s, cancelling rest of the jobs...' % dsn_name)
+                    print('LVS log file: %s' % lvs_log)
                     for cancel_idx in range(len(job_info_list)):
                         self.prj.cancel(job_info_list[cancel_idx][0])
-                    raise Exception('oops, LVS died for %s.  See LVS log file %s' % (dsn_name, lvs_log))
+                    raise Exception('oops, LVS died for %s.' % dsn_name)
                 print('%s LVS passed.  start RCX' % dsn_name)
                 rcx_id, rcx_log = self.prj.run_rcx(impl_lib, dsn_name, block=False, rcx_params=rcx_params)
                 job_info_list[idx][0] = rcx_id
@@ -412,9 +413,10 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
                 rcx_passed = self.prj.wait_lvs_rcx(rcx_id)
                 if not rcx_passed:
                     print('ERROR: RCX died for %s, cancelling rest of the jobs...' % dsn_name)
+                    print('RCX log file: %s' % rcx_log)
                     for cancel_idx in range(len(job_info_list)):
                         self.prj.cancel(job_info_list[cancel_idx][0])
-                    raise Exception('oops, RCX died for %s.  See RCX log file %s' % (dsn_name, rcx_log))
+                    raise Exception('oops, RCX died for %s.' % dsn_name)
                 print('%s RCX passed.' % dsn_name)
 
             if tb_type:

@@ -294,7 +294,9 @@ class ProcessManager(object):
         if timeout is None:
             timeout = self._cancel_timeout
 
-        future = self._future_dict[proc_id]
+        future = self._future_dict.get(proc_id, None)
+        if future is None:
+            return None
         if future.done():
             # process already done, return status.
             del self._future_dict[proc_id]
