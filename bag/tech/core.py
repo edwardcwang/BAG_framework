@@ -342,7 +342,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         if gen_sch:
             self.create_dut_sch(sch_params, dsn_name)
 
-    def create_designs(self, tb_type='', extract=True):
+    def create_designs(self, tb_type=''):
         # type: (str, bool) -> None
         """Create DUT schematics, and run LVS/RCX, then simulate testbench if a testbench type is given."""
         if self.prj is None:
@@ -350,9 +350,11 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
         impl_lib = self.specs['impl_lib']
         dsn_name_base = self.specs['dsn_name_base']
+        view_name = self.specs['view_name']
         wrapper_name_base = dsn_name_base + '_WRAPPER'
         rcx_params = self.specs.get('rcx_params', {})
 
+        extract = (view_name != 'schematic')
         temp_db = self.make_tdb()
 
         # make layouts
