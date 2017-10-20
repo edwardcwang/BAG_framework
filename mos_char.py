@@ -141,7 +141,7 @@ class Transistor(AnalogBase):
         else:
             sdir, ddir = 0, 2
 
-        mos_ports = self.draw_mos_conn(mos_type, 0, fg_dum, fg * stack, sdir, ddir, stack=stack)
+        mos_ports = self.draw_mos_conn(mos_type, 0, fg_dum, fg * stack, sdir, ddir, stack=stack, s_net='s', d_net='d')
         tr_id = self.make_track_id(mos_type, 0, 'g', sb_tr_sp + (s_tr_w - 1) / 2, width=s_tr_w)
         warr = self.connect_to_tracks(mos_ports['s'], tr_id)
         self.add_pin('s', warr, show=True)
@@ -163,8 +163,8 @@ class Transistor(AnalogBase):
             lch=lch,
             fg=fg,
             intent=intent,
-            fg_dum=fg_dum,
             stack=stack,
+            dum_info=self.get_sch_dummy_info(),
         )
 
 
