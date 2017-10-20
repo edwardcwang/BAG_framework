@@ -196,7 +196,10 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def get_wrapper_params(self, impl_lib, dsn_cell_name, sch_params):
         # type: (str, str, Dict[str, Any]) -> Dict[str, Any]
         """Returns the schematic wrapper parameters dictionary given library/cell/Module instance."""
-        wrapper_params = self.specs['wrapper_params'].copy()
+        if 'wrapper_params' in self.specs:
+            wrapper_params = self.specs['wrapper_params'].copy()
+        else:
+            wrapper_params = {}
         wrapper_params['dut_lib'] = impl_lib
         wrapper_params['dut_cell'] = dsn_cell_name
         return wrapper_params
@@ -204,7 +207,11 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def get_tb_sch_params(self, tb_type, impl_lib, dsn_cell_name, val_list):
         # type: (str, str, str, Tuple[Any, ...]) -> Dict[str, Any]
         """Returns the testbench schematic parameters dictionary from the given sweep parameter values."""
-        tb_params = self.specs[tb_type]['sch_params'].copy()
+        tb_specs = self.specs[tb_type]
+        if 'sch_params' in tb_specs:
+            tb_params = tb_specs['sch_params'].copy()
+        else:
+            tb_params = {}
         tb_params['dut_lib'] = impl_lib
         tb_params['dut_cell'] = dsn_cell_name
         return tb_params
