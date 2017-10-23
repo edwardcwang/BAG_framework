@@ -621,6 +621,8 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
 
         if not lib_name:
             lib_name = self.lib_name
+        if not lib_name:
+            raise ValueError('master library name is not specified.')
 
         content_list = [master.get_content(lib_name, self.format_cell_name) for master in info_dict.values()]
 
