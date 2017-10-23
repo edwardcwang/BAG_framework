@@ -32,7 +32,7 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
-from typing import List, Iterator, Tuple, Optional, Union
+from typing import List, Iterator, Tuple, Optional, Union, Callable, Any
 from itertools import chain
 
 import bag
@@ -1238,11 +1238,14 @@ class BagLayout(object):
         self._used_inst_names.add(inst_name)
         return content
 
-    def get_content(self, cell_name, rename_fun):
+    def get_content(self, lib_name, cell_name, rename_fun):
+        # type: (str, str, Callable[str, str]) -> Union[List[Any], Tuple[str, 'cybagoa.PyOALayout']]
         """returns a list describing geometries in this layout.
 
         Parameters
         ----------
+        lib_name : str
+            the layout library name.
         cell_name : str
             the layout top level cell name.
         rename_fun : Callable[str, str]
@@ -1250,7 +1253,7 @@ class BagLayout(object):
 
         Returns
         -------
-        content : Any
+        content : Union[List[Any], Tuple[str, 'cybagoa.PyOALayout']]
             a list describing this layout, or PyOALayout if cybagoa package is enabled.
         """
         if not self._finalized:
@@ -1260,10 +1263,11 @@ class BagLayout(object):
         (inst_list, inst_prim_list, rect_list, via_list,
          pin_list, path_list, blockage_list, boundary_list) = self._raw_content
 
-        # apply layout cell renaming on instances
+        # update library name and apply layout cell renaming on instances
         inst_tot_list = []
         for inst in inst_list:
             inst_temp = inst.copy()
+            inst_temp['lib'] = lib_name
             inst_temp['cell'] = rename_fun(inst_temp['cell'])
             inst_tot_list.append(inst_temp)
         inst_tot_list.extend(inst_prim_list)

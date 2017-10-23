@@ -249,12 +249,14 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         return ''
 
     @abc.abstractmethod
-    def get_content(self, rename_fun):
-        # type: (Callable[str, str]) -> Any
+    def get_content(self, lib_name, rename_fun):
+        # type: (str, Callable[str, str]) -> Any
         """Returns the content of this master instance.
 
         Parameters
         ----------
+        lib_name : str
+            the library to create the design masters in.
         rename_fun : Callable[str, str]
             a function that renames design masters.
 
@@ -428,7 +430,7 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
     @property
     def lib_name(self):
         # type: () -> str
-        """Returns the layout library name."""
+        """Returns the master library name."""
         return self._lib_name
 
     def format_cell_name(self, cell_name):
@@ -578,8 +580,8 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
 
         return master
 
-    def instantiate_masters(self, master_list, name_list=None, debug=False):
-        # type: (Sequence[DesignMaster], Optional[Sequence[str]], bool) -> None
+    def instantiate_masters(self, master_list, name_list=None, lib_name='', debug=False):
+        # type: (Sequence[DesignMaster], Optional[Sequence[str]], str, bool) -> None
         """create all given masters in the database.
 
         Parameters
@@ -588,6 +590,8 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
             list of masters to instantiate.
         name_list : Optional[Sequence[str]]
             list of master cell names.  If not given, default names will be used.
+        lib_name : str
+            Library to create the masters in.  If empty or None, use default library.
         debug : bool
             True to print debugging messages
         """
@@ -615,12 +619,15 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
             self._instantiate_master_helper(info_dict, master)
         end = time.time()
 
-        content_list = [master.get_content(self.format_cell_name) for master in info_dict.values()]
+        if not lib_name:
+            lib_name = self.lib_name
+
+        content_list = [master.get_content(lib_name, self.format_cell_name) for master in info_dict.values()]
 
         if debug:
             print('master content retrieval took %.4g seconds' % (end - start))
 
-        self.create_masters_in_db(self._lib_name, content_list, debug=debug)
+        self.create_masters_in_db(lib_name, content_list, debug=debug)
 
     def _instantiate_master_helper(self, info_dict, master):
         # type: (Dict[str, DesignMaster], DesignMaster) -> None
