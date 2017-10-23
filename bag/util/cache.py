@@ -605,8 +605,6 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
                     raise ValueError('master cell name = %s is already used.' % name)
                 self._rename_dict[master.cell_name] = name
 
-        print(self._rename_dict)
-
         if debug:
             print('Retrieving master contents')
 
