@@ -342,7 +342,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):
         basename : str
             the base name for this instance.
         """
-        return self.__class__.__name__
+        return self.get_layout_basename()
 
     def get_layout_basename(self):
         # type: () -> str
@@ -353,7 +353,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):
         base_name : str
             the base name of this template.
         """
-        return self.get_master_basename()
+        return self.__class__.__name__
 
     def get_content(self, rename_fun):
         # type: (Callable[str, str]) -> Union[List[Any], 'cybagoa.PyOALayout']
