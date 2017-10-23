@@ -39,7 +39,7 @@ import importlib
 import abc
 from collections import OrderedDict
 
-from typing import Sequence, Dict, Set, Any, Optional, Type
+from typing import Sequence, Dict, Set, Any, Optional, Type, Callable
 
 from ..io import readlines_iter, write_file, fix_string
 
@@ -156,23 +156,16 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         self._lib_name = lib_name
 
         # set parameters
-        params_info = self.get_params_info
+        params_info = self.get_params_info()
         default_params = self.get_default_param_values()
         self.params = {}
         if params_info is None:
             # compatibility with old schematics generators
             self._cell_name = None
-            self._prelim_key = self._to_immutable_id((self._get_qualified_name(), params))
+            self._prelim_key = self.to_immutable_id((self._get_qualified_name(), params))
             self._key = None
         else:
-            for key, desc in self.get_params_info().items():
-                if key not in params:
-                    if key not in default_params:
-                        raise ValueError('Parameter %s not specified.  Description:\n%s' % (key, desc))
-                    else:
-                        self.params[key] = default_params[key]
-                else:
-                    self.params[key] = params[key]
+            self.populate_params(params, params_info, default_params)
 
             # get unique cell name
             self._cell_name = self._get_unique_cell_name(used_names)
@@ -180,9 +173,22 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
             self._key = self._prelim_key
 
         self.children = None
+        self._finalized = False
+
+    def populate_params(self, table, params_info, default_params, **kwargs):
+        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **kwargs) -> None
+        """Fill params dictionary with values from table and default_params"""
+        for key, desc in params_info.items():
+            if key not in table:
+                if key not in default_params:
+                    raise ValueError('Parameter %s not specified.  Description:\n%s' % (key, desc))
+                else:
+                    self.params[key] = default_params[key]
+            else:
+                self.params[key] = table[key]
 
     @classmethod
-    def _to_immutable_id(cls, val):
+    def to_immutable_id(cls, val):
         # type: (Any) -> Any
         """Convert the given object to an immutable type for use as keys in dictionary.
         """
@@ -192,9 +198,9 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         if val is None or isinstance(val, int) or isinstance(val, str) or isinstance(val, float):
             return val
         elif isinstance(val, list) or isinstance(val, tuple):
-            return tuple((cls._to_immutable_id(item) for item in val))
+            return tuple((cls.to_immutable_id(item) for item in val))
         elif isinstance(val, dict):
-            return tuple(((k, cls._to_immutable_id(val[k])) for k in sorted(val.keys())))
+            return tuple(((k, cls.to_immutable_id(val[k])) for k in sorted(val.keys())))
         elif hasattr(val, 'get_immutable_key') and callable(val.get_immutable_key):
             return val.get_immutable_key()
         else:
@@ -243,16 +249,14 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         return ''
 
     @abc.abstractmethod
-    def finalize(self):
-        # type: () -> None
-        """Finalize this master instance.
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_content(self):
-        # type: () -> Any
+    def get_content(self, rename_fun):
+        # type: (Callable[str, str]) -> Any
         """Returns the content of this master instance.
+
+        Parameters
+        ----------
+        rename_fun : Callable[str, str]
+            a function that renames design masters.
 
         Returns
         -------
@@ -260,6 +264,12 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
             the master content data structure.
         """
         pass
+
+    @property
+    def master_db(self):
+        # type: () -> MasterDB
+        """Returns the database used to create design masters."""
+        return self._master_db
 
     @property
     def lib_name(self):
@@ -278,6 +288,12 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         # type: () -> Optional[Any]
         """A unique key representing this master."""
         return self._key
+
+    @property
+    def finalized(self):
+        # type: () -> bool
+        """Returns True if this DesignMaster is finalized."""
+        return self._finalized
 
     @property
     def prelim_key(self):
@@ -317,6 +333,12 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         else:
             return my_module + '.' + self.__class__.__name__
 
+    def finalize(self):
+        # type: () -> None
+        """Finalize this master instance.
+        """
+        self._finalized = True
+
     def compute_unique_key(self):
         # type: () -> Any
         """Returns a unique hashable object (usually tuple or string) that represents this instance.
@@ -326,7 +348,7 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         unique_id : Any
             a hashable unique ID representing the given parameters.
         """
-        return self._to_immutable_id((self._get_qualified_name(), self.params))
+        return self.to_immutable_id((self._get_qualified_name(), self.params))
 
 
 class MasterDB(with_metaclass(abc.ABCMeta, object)):
@@ -351,12 +373,13 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
 
         self._lib_name = lib_name
         self._name_prefix = name_prefix
-        self.name_suffix = name_suffix
+        self._name_suffix = name_suffix
 
         self._used_cell_names = set()  # type: Set[str]
-        self._importer = ClassImporter(lib_defs) if lib_defs else None
+        self._importer = ClassImporter(lib_defs) if os.path.isfile(lib_defs) else None
         self._key_lookup = {}  # type: Dict[Any, Any]
         self._master_lookup = {}  # type: Dict[Any, DesignMaster]
+        self._rename_dict = {}
 
     @abc.abstractmethod
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
@@ -387,8 +410,8 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
         return None
 
     @abc.abstractmethod
-    def create_masters_in_db(self, lib_name, content_list, rename_dict):
-        # type: (str, Sequence[Any], Dict[str, str]) -> None
+    def create_masters_in_db(self, lib_name, content_list, debug=False):
+        # type: (str, Sequence[Any], bool) -> None
         """Create the masters in the design database.
 
         Parameters
@@ -397,8 +420,8 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
             library to create the designs in.
         content_list : Sequence[Any]
             a list of the master contents.  Must be created in this order.
-        rename_dict : Dict[str, str]
-            the master cell name renaming dictionary.
+        debug : bool
+            True to print debug messages
         """
         pass
 
@@ -407,6 +430,23 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
         # type: () -> str
         """Returns the layout library name."""
         return self._lib_name
+
+    def format_cell_name(self, cell_name):
+        # type: (str) -> str
+        """Returns the formatted cell name.
+
+        Parameters
+        ----------
+        cell_name : str
+            the original cell name.
+
+        Returns
+        -------
+        final_name : str
+            the new cell name.
+        """
+        cell_name = self._rename_dict.get(cell_name, cell_name)
+        return '%s%s%s' % (self._name_prefix, cell_name, self._name_suffix)
 
     def append_library(self, lib_name, lib_path):
         # type: (str, str) -> None
@@ -557,13 +597,15 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
             if len(name_list) != len(master_list):
                 raise ValueError("Master list and name list length mismatch.")
 
-        # configure master renaming dictionary
-        rename_dict = {}  # type: Dict[str, str]
+        # configure renaming dictionary
+        self._rename_dict.clear()
         for master, name in zip(master_list, name_list):
             if name is not None and name != master.cell_name:
                 if name in self._used_cell_names:
                     raise ValueError('master cell name = %s is already used.' % name)
-                rename_dict[master.cell_name] = name
+                self._rename_dict[master.cell_name] = name
+
+        print(self._rename_dict)
 
         if debug:
             print('Retrieving master contents')
@@ -575,12 +617,12 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
             self._instantiate_master_helper(info_dict, master)
         end = time.time()
 
-        content_list = [master.get_content() for master in info_dict.values()]
+        content_list = [master.get_content(self.format_cell_name) for master in info_dict.values()]
 
         if debug:
             print('master content retrieval took %.4g seconds' % (end - start))
 
-        self.create_masters_in_db(self._lib_name, content_list, rename_dict)
+        self.create_masters_in_db(self._lib_name, content_list, debug=debug)
 
     def _instantiate_master_helper(self, info_dict, master):
         # type: (Dict[str, DesignMaster], DesignMaster) -> None

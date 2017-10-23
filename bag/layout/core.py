@@ -215,6 +215,12 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         return (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
 
     @classmethod
+    def use_flip_parity(cls):
+        # type: () -> bool
+        """Returns True if flip_parity dictionary is needed in this technology."""
+        return True
+
+    @classmethod
     def finalize_template(cls, template):
         """Perform any operations necessary on the given layout template before finalizing it.
 
@@ -1102,22 +1108,10 @@ class BagLayout(object):
         self._boundary_list = []  # type: List[Boundary]
         self._used_inst_names = set()
         self._used_pin_names = set()
-        self._content = None
+        self._raw_content = None
         self._is_empty = True
         self._finalized = False
-        self._flat_inst_list = None
-        self._flat_rect_list = None
-        self._flat_via_list = None
-        self._flat_path_list = None
-        self._flat_blockage_list = None
-        self._flat_boundary_list = None
-        if use_cybagoa and cybagoa is not None:
-            encoding = bag.io.get_encoding()
-            self._oa_layout = cybagoa.PyLayout(encoding)
-            self._flat_oa_layout = cybagoa.PyLayout(encoding)
-        else:
-            self._oa_layout = None
-            self._flat_oa_layout = None
+        self._use_cybagoa = use_cybagoa
 
     @property
     def pin_purpose(self):
@@ -1133,94 +1127,9 @@ class BagLayout(object):
         # type: () -> Iterator[Instance]
         return iter(self._inst_list)
 
-    def flatten(self):
-        self._flat_rect_list = []
-        self._flat_path_list = []
-        self._flat_blockage_list = []
-        self._flat_boundary_list = []
-        self._flat_via_list = []  # type: List[ViaInfo]
-        self._flat_inst_list = []  # type: List[InstanceInfo]
-
-        # get rectangles
-        for obj in self._rect_list:
-            if obj.valid:
-                obj_content = obj.content
-                self._flat_rect_list.append(obj_content)
-                if self._flat_oa_layout is not None:
-                    self._flat_oa_layout.add_rect(**obj_content)
-
-        for obj in self._path_list:
-            if obj.valid:
-                obj_content = obj.content
-                self._flat_path_list.append(obj_content)
-                if self._flat_oa_layout is not None:
-                    self._flat_oa_layout.add_path(**obj_content)
-
-        for obj in self._blockage_list:
-            if obj.valid:
-                obj_content = obj.content
-                self._flat_blockage_list.append(obj_content)
-                if self._flat_oa_layout is not None:
-                    self._flat_oa_layout.add_blockage(**obj_content)
-
-        for obj in self._boundary_list:
-            if obj.valid:
-                obj_content = obj.content
-                self._flat_boundary_list.append(obj_content)
-                if self._flat_oa_layout is not None:
-                    self._flat_oa_layout.add_boundary(**obj_content)
-
-        # get vias
-        for obj in self._via_list:
-            if obj.valid:
-                obj_content = obj.content
-                self._flat_via_list.append(obj_content)
-                if self._flat_oa_layout is not None:
-                    self._flat_oa_layout.add_via(**obj_content)
-
-        # get via primitives
-        self._flat_via_list.extend(self._via_primitives)
-        if self._flat_oa_layout is not None:
-            for via in self._via_primitives:
-                self._flat_oa_layout.add_via(**via)
-
-        # get instances
-        for obj in self._inst_list:
-            if obj.valid:
-                # TODO: add support for flatten blockage/boundary
-                finst_list, frect_list, fvia_list, fpath_list = obj.flatten()
-                self._flat_inst_list.extend(finst_list)
-                self._flat_rect_list.extend(frect_list)
-                self._flat_via_list.extend(fvia_list)
-                self._flat_path_list.extend(fpath_list)
-                if self._flat_oa_layout is not None:
-                    for fobj in finst_list:
-                        self._flat_oa_layout.add_inst(**fobj)
-                    for fobj in frect_list:
-                        self._flat_oa_layout.add_rect(**fobj)
-                    for fobj in fvia_list:
-                        self._flat_oa_layout.add_via(**fobj)
-                    for fobj in fpath_list:
-                        self._flat_oa_layout.add_path(**fobj)
-        # get instance primitives
-        self._flat_inst_list.extend(self._inst_primitives)
-        if self._flat_oa_layout is not None:
-            for obj in self._inst_primitives:
-                self._flat_oa_layout.add_inst(**obj)
-
-        # add pins to oa layout
-        if self._flat_oa_layout is not None:
-            for pin in self._pin_list:
-                self._flat_oa_layout.add_pin(**pin)
-
-    def finalize(self, flatten=False):
-        # type: (bool) -> None
+    def finalize(self):
+        # type: () -> None
         """Prevents any further changes to this layout.
-
-        Parameters
-        ----------
-        flatten : bool
-            True to compute flattened layout.
         """
         self._finalized = True
 
@@ -1233,32 +1142,24 @@ class BagLayout(object):
                 else:
                     obj_content = obj.content
                     rect_list.append(obj_content)
-                    if self._oa_layout is not None:
-                        self._oa_layout.add_rect(**obj_content)
 
         path_list = []
         for obj in self._path_list:
             if obj.valid:
                 obj_content = obj.content
                 path_list.append(obj_content)
-                if self._oa_layout is not None:
-                    self._oa_layout.add_path(**obj_content)
 
         blockage_list = []
         for obj in self._blockage_list:
             if obj.valid:
                 obj_content = obj.content
                 blockage_list.append(obj_content)
-                if self._oa_layout is not None:
-                    self._oa_layout.add_blockage(**obj_content)
 
         boundary_list = []
         for obj in self._boundary_list:
             if obj.valid:
                 obj_content = obj.content
                 boundary_list.append(obj_content)
-                if self._oa_layout is not None:
-                    self._oa_layout.add_boundary(**obj_content)
 
         # get vias
         via_list = []  # type: List[ViaInfo]
@@ -1266,13 +1167,9 @@ class BagLayout(object):
             if obj.valid:
                 obj_content = obj.content
                 via_list.append(obj_content)
-                if self._oa_layout is not None:
-                    self._oa_layout.add_via(**obj_content)
+
         # get via primitives
         via_list.extend(self._via_primitives)
-        if self._oa_layout is not None:
-            for via in self._via_primitives:
-                self._oa_layout.add_via(**via)
 
         # get instances
         inst_list = []  # type: List[InstanceInfo]
@@ -1280,41 +1177,26 @@ class BagLayout(object):
             if obj.valid:
                 obj_content = self._format_inst(obj)
                 inst_list.append(obj_content)
-                if self._oa_layout is not None:
-                    self._oa_layout.add_inst(**obj_content)
-        # get instance primitives
-        inst_list.extend(self._inst_primitives)
-        if self._oa_layout is not None:
-            for obj in self._inst_primitives:
-                self._oa_layout.add_inst(**obj)
-
-        # add pins to oa layout
-        if self._oa_layout is not None:
-            for pin in self._pin_list:
-                self._oa_layout.add_pin(**pin)
 
         # TODO: add blockage/boundary support
-        self._content = [inst_list,
-                         rect_list,
-                         via_list,
-                         self._pin_list,
-                         path_list,
-                         ]
-        if (not inst_list and not rect_list and not blockage_list and not boundary_list and
-                not via_list and not self._pin_list and not path_list):
+        self._raw_content = [inst_list,
+                             self._inst_primitives,
+                             rect_list,
+                             via_list,
+                             self._pin_list,
+                             path_list,
+                             blockage_list,
+                             boundary_list,
+                             ]
+
+        if (not inst_list and not self._inst_primitives and not rect_list and not blockage_list and
+                not boundary_list and not via_list and not self._pin_list and not path_list):
             self._is_empty = True
         else:
             self._is_empty = False
 
-        if flatten:
-            self.flatten()
-
-    def get_flat_geometries(self):
-        """Returns flattened geometries in this layout."""
-        # TODO: add blockage/boundary support
-        return self._flat_inst_list, self._flat_rect_list, self._flat_via_list, self._flat_path_list
-
     def get_rect_bbox(self, layer):
+        # type: (Union[str, Tuple[str, str]]) -> BBox
         """Returns the overall bounding box of all rectangles on the given layer.
 
         Note: currently this does not check primitive instances or vias.
@@ -1356,15 +1238,15 @@ class BagLayout(object):
         self._used_inst_names.add(inst_name)
         return content
 
-    def get_content(self, cell_name, flatten=False):
+    def get_content(self, cell_name, rename_fun):
         """returns a list describing geometries in this layout.
 
         Parameters
         ----------
         cell_name : str
             the layout top level cell name.
-        flatten : bool
-            True to flatten all instances
+        rename_fun : Callable[str, str]
+            the layout cell renaming function.
 
         Returns
         -------
@@ -1374,17 +1256,41 @@ class BagLayout(object):
         if not self._finalized:
             raise Exception('Layout is not finalized.')
 
-        if flatten:
-            # TODO: add blockage/boundary support
-            if self._flat_oa_layout is not None:
-                return cell_name, self._flat_oa_layout
-            return [cell_name, self._flat_inst_list, self._flat_rect_list,
-                    self._flat_via_list, self._pin_list, self._flat_path_list]
+        cell_name = rename_fun(cell_name)
+        (inst_list, inst_prim_list, rect_list, via_list,
+         pin_list, path_list, blockage_list, boundary_list) = self._raw_content
+
+        # apply layout cell renaming on instances
+        inst_tot_list = []
+        for inst in inst_list:
+            inst_temp = inst.copy()
+            inst_temp['cell'] = rename_fun(inst_temp['cell'])
+            inst_tot_list.append(inst_temp)
+        inst_tot_list.extend(inst_prim_list)
+
+        if self._use_cybagoa and cybagoa is not None:
+            encoding = bag.io.get_encoding()
+            oa_layout = cybagoa.PyLayout(encoding)
+
+            for obj in inst_tot_list:
+                oa_layout.add_inst(**obj)
+            for obj in rect_list:
+                oa_layout.add_rect(**obj)
+            for obj in via_list:
+                oa_layout.add_via(**obj)
+            for obj in pin_list:
+                oa_layout.add_pin(**obj)
+            for obj in path_list:
+                oa_layout.add_path(**obj)
+            for obj in blockage_list:
+                oa_layout.add_blockage(**obj)
+            for obj in boundary_list:
+                oa_layout.add_boundary(**obj)
+
+            return cell_name, oa_layout
         else:
-            if self._oa_layout is not None:
-                return cell_name, self._oa_layout
-            ans = [cell_name]
-            ans.extend(self._content)
+            # TODO: Add blockage/boundary support
+            ans = [cell_name, inst_tot_list, rect_list, via_list, pin_list, path_list]
             return ans
 
     def add_instance(self, instance):

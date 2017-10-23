@@ -34,21 +34,23 @@ import os
 import time
 import abc
 import copy
-from collections import OrderedDict
 from itertools import chain, islice
-from typing import Union, Dict, Any, List, Set, Type, Optional, Tuple, Iterable, TypeVar
+from typing import TYPE_CHECKING, Union, Dict, Any, List, Set, Type, Optional, Tuple, Iterable, Sequence, Callable
 import yaml
 
-from bag.core import BagProject
-from bag.util.libimport import ClassImporter
+from bag.util.cache import DesignMaster, MasterDB
 from bag.util.interval import IntervalSet
 from .core import BagLayout
 from .util import BBox, BBoxArray
-from ..io import fix_string, get_encoding, open_file
-from .routing import Port, TrackID, WireArray, RoutingGrid
+from ..io import get_encoding, open_file
+from .routing import Port, TrackID, WireArray
 from .routing.fill import UsedTracks, get_power_fill_tracks, get_available_tracks
 from .objects import Instance, Rect, Via, Path, Blockage, Boundary
 from future.utils import with_metaclass
+
+if TYPE_CHECKING:
+    from bag.core import BagProject
+    from .routing import RoutingGrid
 
 # try to import cybagoa module
 try:
@@ -56,13 +58,8 @@ try:
 except ImportError:
     cybagoa = None
 
-Layer = Union[str, Tuple[str, str]]
-ldim = Union[float, int]
 
-TempBase = TypeVar('TempBase', bound='TemplateBase')
-
-
-class TemplateDB(object):
+class TemplateDB(MasterDB):
     """A database of all templates.
 
     This class is responsible for keeping track of template libraries and
@@ -76,25 +73,114 @@ class TemplateDB(object):
         the default RoutingGrid object.
     lib_name : str
         the cadence library to put all generated templates in.
+    prj : Optional[BagProject]
+        the BagProject instance.
     name_prefix : str
-        the prefix to append to all layout names.
+        generated layout name prefix.
+    name_suffix : str
+        generated layout name suffix.
     use_cybagoa : bool
         True to use cybagoa module to accelerate layout.
     flatten : bool
         True to compute flattened layout.
     """
 
-    def __init__(self, lib_defs, routing_grid, lib_name, name_prefix='', use_cybagoa=False, flatten=False):
-        # type: (str, RoutingGrid, str, str, bool, bool) -> None
-        self._importer = ClassImporter(lib_defs)
+    def __init__(self, lib_defs, routing_grid, lib_name, prj=None, name_prefix='', name_suffix='',
+                 use_cybagoa=False, flatten=False):
+        # type: (str, RoutingGrid, str, Optional[BagProject], str, str, bool, bool) -> None
+        super(TemplateDB, self).__init__(lib_name, lib_defs=lib_defs,
+                                         name_prefix=name_prefix, name_suffix=name_suffix)
 
+        self._prj = prj
         self._grid = routing_grid
-        self._lib_name = lib_name
-        self._template_lookup = {}  # type: Dict[Any, TemplateBase]
-        self._name_prefix = name_prefix
-        self._used_cell_names = set()  # type: Set[str]
         self._use_cybagoa = use_cybagoa and cybagoa is not None
         self._flatten = flatten
+
+    def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
+        # type: (Type[DesignMaster], str, Dict[str, Any], Set[str], **kwargs) -> DesignMaster
+        """Create a new non-finalized master instance.
+
+        This instance is used to determine if we created this instance before.
+
+        Parameters
+        ----------
+        gen_cls : Type[DesignMaster]
+            the generator Python class.
+        lib_name : str
+            generated instance library name.
+        params : Dict[str, Any]
+            instance parameters dictionary.
+        used_cell_names : Set[str]
+            a set of all used cell names.
+        **kwargs
+            optional arguments for the generator.
+
+        Returns
+        -------
+        master : DesignMaster
+            the non-finalized generated instance.
+        """
+        return gen_cls(self, lib_name, params, used_cell_names, **kwargs)
+
+    def create_masters_in_db(self, lib_name, content_list, debug=False):
+        # type: (str, Sequence[Any], bool) -> None
+        """Create the masters in the design database.
+
+        Parameters
+        ----------
+        lib_name : str
+            library to create the designs in.
+        content_list : Sequence[Any]
+            a list of the master contents.  Must be created in this order.
+        debug : bool
+            True to print debug messages
+        """
+        if self._prj is None:
+            raise ValueError('BagProject is not defined.')
+
+        # create library if it does not exist
+        self._prj.create_library(self._lib_name)
+
+        if self._use_cybagoa:
+            # remove write locks from old layouts
+            cell_view_list = [(item[0], 'layout') for item in content_list]
+            self._prj.release_write_locks(self._lib_name, cell_view_list)
+
+            if debug:
+                print('Instantiating layout')
+            # create OALayouts
+            start = time.time()
+            if 'CDSLIBPATH' in os.environ:
+                cds_lib_path = os.path.join(os.environ['CDSLIBPATH'], 'cds.lib')
+            else:
+                cds_lib_path = './cds.lib'
+            with cybagoa.PyOALayoutLibrary(cds_lib_path, self._lib_name, get_encoding()) as lib:
+                lib.add_layer('prBoundary', 235)
+                lib.add_purpose('drawing1', 241)
+                lib.add_purpose('drawing2', 242)
+                lib.add_purpose('drawing3', 243)
+                lib.add_purpose('drawing4', 244)
+                lib.add_purpose('drawing5', 245)
+                lib.add_purpose('drawing6', 246)
+                lib.add_purpose('drawing7', 247)
+                lib.add_purpose('drawing8', 248)
+                lib.add_purpose('boundary', 250)
+                lib.add_purpose('pin', 251)
+
+                for cell_name, oa_layout in content_list:
+                    lib.create_layout(cell_name, 'layout', oa_layout)
+            end = time.time()
+            if debug:
+                print('layout instantiation took %.4g seconds' % (end - start))
+        else:
+            if debug:
+                print('Instantiating layout')
+            via_tech_name = self._grid.tech_info.via_tech_name
+            start = time.time()
+            self._prj.instantiate_layout(self._lib_name, 'layout', via_tech_name, content_list)
+            end = time.time()
+            if debug:
+                print('layout instantiation took %.4g seconds' % (end - start))
 
     @property
     def grid(self):
@@ -102,61 +188,8 @@ class TemplateDB(object):
         """Returns the default routing grid instance."""
         return self._grid
 
-    @property
-    def lib_name(self):
-        # type: () -> str
-        """Returns the layout library name."""
-        return self._lib_name
-
-    def append_library(self, lib_name, lib_path):
-        # type: (str, str) -> None
-        """Adds a new library to the library definition file.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the library.
-        lib_path : str
-            path to this library.
-        """
-        self._importer.append_library(lib_name, lib_path)
-
-    def get_library_path(self, lib_name):
-        # type: (str) -> Optional[str]
-        """Returns the location of the given library.
-
-        Parameters
-        ----------
-        lib_name : str
-            the library name.
-
-        Returns
-        -------
-        lib_path : Optional[str]
-            the location of the library, or None if library not defined.
-        """
-        return self._importer.get_library_path(lib_name)
-
-    def get_template_class(self, lib_name, temp_name):
-        # type: (str, str) -> Type[TempBase]
-        """Returns the Python class for the given template.
-
-        Parameters
-        ----------
-        lib_name : str
-            template library name.
-        temp_name : str
-            template name
-
-        Returns
-        -------
-        temp_cls : Type[TempBase]
-            the corresponding Python class.
-        """
-        return self._importer.get_class(lib_name, temp_name)
-
     def new_template(self, lib_name='', temp_name='', params=None, temp_cls=None, debug=False, **kwargs):
-        # type: (str, str, Optional[Dict[str, Any]], Optional[Type[TempBase]], bool, **Any) -> TempBase
+        # type: (str, str, Dict[str, Any], Type[TemplateBase], bool, **kwargs) -> TemplateBase
         """Create a new template.
 
         Parameters
@@ -165,9 +198,9 @@ class TemplateDB(object):
             template library name.
         temp_name : str
             template name
-        params : Optional[Dict[str, Any]]
+        params : Dict[str, Any]
             the parameter dictionary.
-        temp_cls : Optional[Type[TempBase]]
+        temp_cls : Type[TemplateBase]
             the template class to instantiate.
         debug : bool
             True to print debug messages.
@@ -176,34 +209,12 @@ class TemplateDB(object):
 
         Returns
         -------
-        template : TempBase
+        template : TemplateBase
             the new template instance.
         """
-        if params is None:
-            params = {}
-
-        if temp_cls is None:
-            temp_cls = self.get_template_class(lib_name, temp_name)
-
         kwargs['use_cybagoa'] = self._use_cybagoa
-        master = temp_cls(self, self._lib_name, params, self._used_cell_names, **kwargs)
-        key = master.key
-
-        if key in self._template_lookup:
-            master = self._template_lookup[key]
-            if debug:
-                print('layout cached')
-        else:
-            if debug:
-                print('Computing layout')
-            start = time.time()
-            master.draw_layout()
-            master.finalize(flatten=self._flatten)
-            end = time.time()
-            self._template_lookup[key] = master
-            self._used_cell_names.add(master.cell_name)
-            if debug:
-                print('layout computation took %.4g seconds' % (end - start))
+        master = self.new_master(lib_name=lib_name, cell_name=temp_name, params=params,
+                                 gen_cls=temp_cls, debug=debug, **kwargs)  # type: TemplateBase
 
         return master
 
@@ -239,114 +250,11 @@ class TemplateDB(object):
         debug : bool
             True to print debugging messages
         """
-        if name_list is None:
-            name_list = [None] * len(template_list)
-        else:
-            if len(name_list) != len(template_list):
-                raise ValueError("Template list and name list length mismatch.")
-
-        # error checking
-        for template, name in zip(template_list, name_list):
-            if name != template.cell_name and name in self._used_cell_names:
-                raise ValueError('top cell name = %s is already used.' % name)
-
-        if debug:
-            print('Retrieving layout info')
-
-        # use ordered dict so that children are created before parents.
-        layout_dict = OrderedDict()
-        start = time.time()
-        real_name_list = []
-        for temp, top_name in zip(template_list, name_list):
-            real_name = self._instantiate_layout_helper(layout_dict, temp, top_name)
-            real_name_list.append(real_name)
-        end = time.time()
-
-        if self._flatten:
-            layout_list = [layout_dict[name].get_layout_content(name, flatten=True)
-                           for name in real_name_list]
-        else:
-            layout_list = [master.get_layout_content(cell_name) for cell_name, master in layout_dict.items()]
-
-        if debug:
-            print('layout retrieval took %.4g seconds' % (end - start))
-
-        # create library if it does not exist
-        prj.create_library(self._lib_name)
-
-        if self._use_cybagoa:
-            # remove write locks from old layouts
-            cell_view_list = [(item[0], 'layout') for item in layout_list]
-            prj.release_write_locks(self._lib_name, cell_view_list)
-
-            if debug:
-                print('Instantiating layout')
-            # create OALayouts
-            start = time.time()
-            if 'CDSLIBPATH' in os.environ:
-                cds_lib_path = os.path.join(os.environ['CDSLIBPATH'], 'cds.lib')
-            else:
-                cds_lib_path = './cds.lib'
-            with cybagoa.PyOALayoutLibrary(cds_lib_path, self._lib_name, get_encoding()) as lib:
-                lib.add_layer('prBoundary', 235)
-                lib.add_purpose('drawing1', 241)
-                lib.add_purpose('drawing2', 242)
-                lib.add_purpose('drawing3', 243)
-                lib.add_purpose('drawing4', 244)
-                lib.add_purpose('drawing5', 245)
-                lib.add_purpose('drawing6', 246)
-                lib.add_purpose('drawing7', 247)
-                lib.add_purpose('drawing8', 248)
-                lib.add_purpose('boundary', 250)
-                lib.add_purpose('pin', 251)
-
-                for cell_name, oa_layout in layout_list:
-                    lib.create_layout(cell_name, 'layout', oa_layout)
-            end = time.time()
-            if debug:
-                print('layout instantiation took %.4g seconds' % (end - start))
-        else:
-            if debug:
-                print('Instantiating layout')
-            via_tech_name = self._grid.tech_info.via_tech_name
-            start = time.time()
-            prj.instantiate_layout(self._lib_name, 'layout', via_tech_name, layout_list)
-            end = time.time()
-            if debug:
-                print('layout instantiation took %.4g seconds' % (end - start))
-
-    def _instantiate_layout_helper(self, layout_dict, template, top_cell_name):
-        # type: (Dict[str, TemplateBase], TemplateBase, Optional[str]) -> str
-        """Helper method for batch_layout().
-
-        Parameters
-        ----------
-        layout_dict : Dict[str, TemplateBase]
-            dictionary from template cell name to TemplateBase.
-        template : TemplateBase
-            the :class:`~bag.layout.template.Template` to instantiate.
-        top_cell_name : Optional[str]
-            name of the top level cell.  If None, a default name is used.
-
-        Returns
-        -------
-        layout_name : str
-            the template cell name.
-        """
-        # get template master for all children
-        for template_key in template.children:
-            child_temp = self._template_lookup[template_key]
-            if child_temp.cell_name not in layout_dict:
-                self._instantiate_layout_helper(layout_dict, child_temp, None)
-
-        # get template master for this cell.
-        layout_name = top_cell_name or template.cell_name
-        layout_dict[layout_name] = self._template_lookup[template.key]
-
-        return layout_name
+        self._prj = prj
+        self.instantiate_masters(template_list, name_list=name_list, debug=debug)
 
 
-class TemplateBase(with_metaclass(abc.ABCMeta, object)):
+class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):
     """The base template class.
 
     Parameters
@@ -378,15 +286,13 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+
         # initialize template attributes
         self._grid = kwargs.get('grid', temp_db.grid).copy()
         self._layout = BagLayout(self._grid, use_cybagoa=kwargs.get('use_cybagoa', False),)
-        self._temp_db = temp_db
         self._size = None  # type: Tuple[int, int, int]
         self.pins = {}
-        self.children = None
-        self._lib_name = lib_name
         self._ports = {}
         self._port_params = {}
         self._array_box = None  # type: BBox
@@ -396,69 +302,119 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self._used_tracks = UsedTracks(self._grid.resolution)
         self._added_inst_tracks = False
 
-        # set parameters
-        self.params = {}
-        default_params = self.get_default_param_values()
-        # check all parameters are set
-        for key, desc in self.get_params_info().items():
-            if key not in params:
-                if key not in default_params:
-                    raise ValueError('Parameter %s not specified.  Description:\n%s' % (key, desc))
-                else:
-                    self.params[key] = default_params[key]
-            else:
-                self.params[key] = params[key]
+        super(TemplateBase, self).__init__(temp_db, lib_name, params, used_names)
+
+    @abc.abstractmethod
+    def draw_layout(self):
+        # type: () -> None
+        """Draw the layout of this template.
+
+        Override this method to create the layout.
+
+        WARNING: you should never call this method yourself.
+        """
+        pass
+
+    def populate_params(self, table, params_info, default_params, **kwargs):
+        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **kwargs) -> None
+        """Fill params dictionary with values from table and default_params"""
+        super(TemplateBase, self).populate_params(table, params_info, default_params, **kwargs)
 
         # add hidden parameters
         hidden_params = kwargs.get('hidden_params', {})
         for name, value in hidden_params.items():
-            self.params[name] = params.get(name, value)
+            self.params[name] = table.get(name, value)
 
         # always add flip_parity parameter
         if 'flip_parity' not in self.params:
-            self.params['flip_parity'] = params.get('flip_parity', None)
+            self.params['flip_parity'] = table.get('flip_parity', None)
         # update RoutingGrid
         fp_dict = self.params['flip_parity']
         if fp_dict is not None:
             self._grid.set_flip_parity(fp_dict)
 
-        # get unique cell name
-        self._cell_name = self._get_unique_cell_name(used_names)
+    def get_master_basename(self):
+        # type: () -> str
+        """Returns the base name to use for this instance.
 
-        self._key = self.compute_unique_key()
-
-    def get_used_tracks(self):
-        # type: () -> UsedTracks
-        """Returns data structure of used tracks on the given layers."""
-        return self._used_tracks
-
-    def get_rect_bbox(self, layer):
-        """Returns the overall bounding box of all rectangles on the given layer.
-
-        Note: currently this does not check primitive instances or vias.
+        Returns
+        -------
+        basename : str
+            the base name for this instance.
         """
-        return self._layout.get_rect_bbox(layer)
+        return self.__class__.__name__
 
-    def new_template_with(self, **kwargs):
-        # type: (TempBase, **Any) -> TemplateBase
-        """Create a new template with the given parameters.
+    def get_layout_basename(self):
+        # type: () -> str
+        """Returns the base name for this template.
 
-        This method will update the parameter values with the given dictionary,
-        then create a new template with those parameters and return it.
+        Returns
+        -------
+        base_name : str
+            the base name of this template.
+        """
+        return self.get_master_basename()
+
+    def get_content(self, rename_fun):
+        # type: (Callable[str, str]) -> Union[List[Any], 'cybagoa.PyOALayout']
+        """Returns the layout content of this template.
 
         Parameters
         ----------
-        **kwargs
-            a dictionary of new parameter values.
-        """
-        # get new parameter dictionary.
-        new_params = copy.deepcopy(self.params)
-        for key, val in kwargs.items():
-            if key in new_params:
-                new_params[key] = val
+        rename_fun : Callable[str, str]
+            a function that renames design masters.
 
-        return self._temp_db.new_template(params=new_params, temp_cls=self.__class__,
-                                          grid=self.grid)
+        Returns
+        -------
+        content : Union[List[Any], 'cybagoa.PyOALayout']
+            a list describing this layout, or PyOALayout if cybagoa is enabled.
+        """
+        if not self.finalized:
+            raise ValueError('This template is not finalized yet')
+        return self._layout.get_content(self.cell_name, rename_fun)
+
+    def finalize(self):
+        # type: () -> None
+        """Finalize this master instance.
+        """
+        # create layout
+        self.draw_layout()
+
+        # finalize this template
+        self.grid.tech_info.finalize_template(self)
+
+        # update track parities of all instances
+        if self.grid.tech_info.use_flip_parity():
+            self._update_flip_parity()
+
+        # update used tracks
+        self._merge_inst_used_tracks()
+
+        # construct port objects
+        for net_name, port_params in self._port_params.items():
+            pin_dict = port_params['pins']
+            if port_params['show']:
+                label = port_params['label']
+                for wire_arr_list in pin_dict.values():
+                    for wire_arr in wire_arr_list:  # type: WireArray
+                        for layer_name, bbox in wire_arr.wire_iter(self.grid):
+                            self._layout.add_pin(net_name, layer_name, bbox, label=label)
+            self._ports[net_name] = Port(net_name, pin_dict)
+
+        # finalize layout
+        self._layout.finalize()
+        # get set of children keys
+        self.children = self._layout.get_masters_set()
+
+        # call super finalize routine
+        super(TemplateBase, self).finalize()
+
+    @property
+    def template_db(self):
+        # type: () -> TemplateDB
+        """Returns the template database object"""
+        # noinspection PyTypeChecker
+        return self.master_db
 
     @property
     def is_empty(self):
@@ -467,22 +423,10 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         return self._layout.is_empty
 
     @property
-    def template_db(self):
-        # type: () -> TemplateDB
-        """Returns the template database object"""
-        return self._temp_db
-
-    @property
     def grid(self):
         # type: () -> RoutingGrid
         """Returns the RoutingGrid object"""
         return self._grid
-
-    @property
-    def finalized(self):
-        # type: () -> bool
-        """Returns True if this Template is finalized."""
-        return self._finalized
 
     @grid.setter
     def grid(self, new_grid):
@@ -546,23 +490,60 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         else:
             raise RuntimeError('Template already finalized.')
 
-    @property
-    def lib_name(self):
-        # type: () -> str
-        """The layout library name"""
-        return self._lib_name
+    def _update_flip_parity(self):
+        # type: () -> None
+        """Update all instances in this template to have the correct track parity.
+        """
+        for inst in self._layout.inst_iter():
+            top_layer = inst.master.top_layer
+            bot_layer = self.grid.get_bot_common_layer(inst.master.grid, top_layer)
+            loc = inst.location_unit
+            fp_dict = self.grid.get_flip_parity_at(bot_layer, top_layer, loc,
+                                                   inst.orientation, unit_mode=True)
+            inst.new_master_with(flip_parity=fp_dict)
 
-    @property
-    def cell_name(self):
-        # type: () -> str
-        """The layout cell name"""
-        return self._cell_name
+    def get_used_tracks(self):
+        # type: () -> UsedTracks
+        """Returns data structure of used tracks on the given layers."""
+        return self._used_tracks
 
-    @property
-    def key(self):
-        # type: () -> Any
-        """A unique key representing this template."""
-        return self._key
+    def get_rect_bbox(self, layer):
+        # type: (Union[str, Tuple[str, str]]) -> BBox
+        """Returns the overall bounding box of all rectangles on the given layer.
+
+        Note: currently this does not check primitive instances or vias.
+
+        Parameters
+        ----------
+        layer : Union[str, Tuple[str, str]]
+            the layer name.
+
+        Returns
+        -------
+        box : BBox
+            the overall bounding box of the given layer.
+        """
+        return self._layout.get_rect_bbox(layer)
+
+    def new_template_with(self, **kwargs):
+        # type: (**kwargs) -> TemplateBase
+        """Create a new template with the given parameters.
+
+        This method will update the parameter values with the given dictionary,
+        then create a new template with those parameters and return it.
+
+        Parameters
+        ----------
+        **kwargs
+            a dictionary of new parameter values.
+        """
+        # get new parameter dictionary.
+        new_params = copy.deepcopy(self.params)
+        for key, val in kwargs.items():
+            if key in new_params:
+                new_params[key] = val
+
+        return self.template_db.new_template(params=new_params, temp_cls=self.__class__, grid=self.grid)
 
     def set_size_from_bound_box(self, top_layer_id, bbox, round_up=False):
         # type: (int, BBox, bool) -> None
@@ -606,115 +587,8 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         self.size = grid.get_size_tuple(top_layer_id, 2 * dx + self.array_box.width_unit,
                                         2 * dy + self.array_box.height_unit, unit_mode=True)
 
-    @classmethod
-    def to_immutable_id(cls, val):
-        # type: (Any) -> Any
-        """Convert the given object to an immutable type for use as keys in dictionary.
-        """
-        # python 2/3 compatibility: convert raw bytes to string
-        val = fix_string(val)
-
-        if val is None or isinstance(val, int) or isinstance(val, str) or isinstance(val, float):
-            return val
-        elif isinstance(val, list) or isinstance(val, tuple):
-            return tuple((cls.to_immutable_id(item) for item in val))
-        elif isinstance(val, dict):
-            return tuple(((k, cls.to_immutable_id(val[k])) for k in sorted(val.keys())))
-        elif isinstance(val, BBox):
-            return val.get_immutable_key()
-        else:
-            raise Exception('Unrecognized value %s with type %s' % (str(val), type(val)))
-
-    @classmethod
-    @abc.abstractmethod
-    def get_params_info(cls):
-        # type: () -> Dict[str, str]
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : Dict[str, str]
-            dictionary from parameter name to description.
-        """
-        return {}
-
-    @classmethod
-    def get_default_param_values(cls):
-        # type: () -> Dict[str, Any]
-        """Returns a dictionary containing default parameter values.
-
-        Override this method to define default parameter values.  As good practice,
-        you should avoid defining default values for technology-dependent parameters
-        (such as channel length, transistor width, etc.), but only define default
-        values for technology-independent parameters (such as number of tracks).
-
-        Returns
-        -------
-        default_params : Dict[str, Any]
-            dictionary of default parameter values.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def draw_layout(self):
-        # type: () -> None
-        """Draw the layout of this template.
-
-        Override this method to create the layout.
-
-        WARNING: you should never call this method yourself.
-        """
-        pass
-
-    def finalize(self, flatten=False):
-        # type: (bool) -> None
-        """Prevents any further changes to this template.
-
-        Parameters
-        ----------
-        flatten : bool
-            True to compute flattened layout.
-        """
-        # finalize this template
-        self.grid.tech_info.finalize_template(self)
-
-        # update track parities of all instances
-        self._update_flip_parity()
-
-        # update used tracks
-        self._merge_inst_used_tracks()
-
-        # construct port objects
-        for net_name, port_params in self._port_params.items():
-            pin_dict = port_params['pins']
-            if port_params['show']:
-                label = port_params['label']
-                for wire_arr_list in pin_dict.values():
-                    for wire_arr in wire_arr_list:  # type: WireArray
-                        for layer_name, bbox in wire_arr.wire_iter(self.grid):
-                            self._layout.add_pin(net_name, layer_name, bbox, label=label)
-            self._ports[net_name] = Port(net_name, pin_dict)
-
-        # finalize layout
-        self._layout.finalize(flatten=flatten)
-        # get set of children keys
-        self.children = self._layout.get_masters_set()
-        self._finalized = True
-
-    def _update_flip_parity(self):
-        """Update all instances in this template to have the correct track parity.
-        """
-        for inst in self._layout.inst_iter():
-            top_layer = inst.master.top_layer
-            bot_layer = self.grid.get_bot_common_layer(inst.master.grid, top_layer)
-            loc = inst.location_unit
-            fp_dict = self.grid.get_flip_parity_at(bot_layer, top_layer, loc,
-                                                   inst.orientation, unit_mode=True)
-            inst.new_master_with(flip_parity=fp_dict)
-
     def write_summary_file(self, fname, lib_name, cell_name):
+        # type: (str, str, str) -> None
         """Create a summary file for this template layout."""
         # get all pin information
         pin_dict = {}
@@ -749,84 +623,6 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
         with open_file(fname, 'w') as f:
             yaml.dump(info, f)
-
-    def get_flat_geometries(self):
-        # type: () -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]
-        """Returns flattened geometries in this template."""
-        return self._layout.get_flat_geometries()
-
-    def get_layout_content(self, cell_name, flatten=False):
-        # type: (str, bool) -> Union[List[Any], 'cybagoa.PyOALayout']
-        """Returns the layout content of this template.
-
-        Parameters
-        ----------
-        cell_name : str
-            the layout top level cell name.
-        flatten : bool
-            True to flatten all children
-
-        Returns
-        -------
-        content : Union[List[Any], 'cybagoa.PyOALayout']
-            a list describing this layout, or PyOALayout if cybagoa is enabled.
-        """
-        return self._layout.get_content(cell_name, flatten=flatten)
-
-    def _get_unique_cell_name(self, used_names):
-        # type: (Set[str]) -> str
-        """Returns a unique cell name.
-
-        Parameters
-        ----------
-        used_names : Set[str]
-            a set of used names.
-
-        Returns
-        -------
-        cell_name : str
-            the unique cell name.
-        """
-        counter = 0
-        basename = self.get_layout_basename()
-        cell_name = basename
-        while cell_name in used_names:
-            counter += 1
-            cell_name = '%s_%d' % (basename, counter)
-
-        return cell_name
-
-    def _get_qualified_name(self):
-        # type: () -> str
-        """Returns the qualified name of this class."""
-        my_module = self.__class__.__module__
-        if my_module is None or my_module == str.__class__.__module__:
-            return self.__class__.__name__
-        else:
-            return my_module + '.' + self.__class__.__name__
-
-    def compute_unique_key(self):
-        # type: () -> Any
-        """Returns a unique hashable object (usually tuple or string) that represents the given parameters.
-
-        Returns
-        -------
-        unique_id : Any
-            a hashable unique ID representing the given parameters.
-        """
-
-        return self.to_immutable_id((self._get_qualified_name(), self.params))
-
-    def get_layout_basename(self):
-        # type: () -> str
-        """Returns the base name for this template.
-
-        Returns
-        -------
-        base_name : str
-            the base name of this template.
-        """
-        return self.__class__.__name__
 
     def get_pin_name(self, name):
         # type: (str) -> str
@@ -884,19 +680,15 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
         """
         return self._ports.keys()
 
-    def new_template(self, lib_name='', temp_name='', params=None, temp_cls=None, debug=False, **kwargs):
-        # type: (str, str, Optional[Dict[str, Any]], Optional[Type[TempBase]], bool, **Any) -> TempBase
+    def new_template(self, params=None, temp_cls=None, debug=False, **kwargs):
+        # type: (Dict[str, Any], Type[TemplateBase], bool, **kwargs) -> TemplateBase
         """Create a new template.
 
         Parameters
         ----------
-        lib_name : str
-            template library name.
-        temp_name : str
-            template name
-        params : Optional[Dict[str, Any]]
+        params : Dict[str, Any]
             the parameter dictionary.
-        temp_cls : Optional[Type[TempBase]]
+        temp_cls : Type[TempBase]
             the template class to instantiate.
         debug : bool
             True to print debug messages.
@@ -909,11 +701,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
             the new template instance.
         """
         kwargs['grid'] = self.grid
-        return self._temp_db.new_template(lib_name=lib_name, temp_name=temp_name,
-                                          params=params,
-                                          temp_cls=temp_cls,
-                                          debug=debug,
-                                          **kwargs)
+        return self.template_db.new_template(params=params, temp_cls=temp_cls, debug=debug, **kwargs)
 
     def move_all_by(self, dx=0.0, dy=0.0, unit_mode=False):
         # type: (Union[float, int], Union[float, int], bool) -> None
@@ -987,7 +775,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                                spx=0.0,  # type: float
                                spy=0.0,  # type: float
                                params=None,  # type: Optional[Dict[str, Any]]
-                               **kwargs  # type: Any
+                               **kwargs  # type: **kwargs
                                ):
         # type: (...) -> None
         """Adds a new (arrayed) primitive instance to layout.
@@ -1027,12 +815,12 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                                             params=params, **kwargs)
 
     def add_rect(self, layer, bbox, nx=1, ny=1, spx=0.0, spy=0.0):
-        # type: (Layer, Union[BBox, BBoxArray], int, int, float, float) -> Rect
+        # type: (Union[str, Tuple[str, str]], Union[BBox, BBoxArray], int, int, float, float) -> Rect
         """Add a new (arrayed) rectangle.
 
         Parameters
         ----------
-        layer: Layer
+        layer: Union[str, Tuple[str, str]]
             the layer name, or the (layer, purpose) pair.
         bbox : Union[BBox, BBoxArray]
             the rectangle bounding box.  If BBoxArray is given, its arraying parameters will be used instead.
@@ -1289,17 +1077,17 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
 
     def add_via(self, bbox, bot_layer, top_layer, bot_dir,
                 nx=1, ny=1, spx=0.0, spy=0.0):
-        # type: (BBox, Layer, Layer, str, int, int, float, float) -> Via
+        # type: (BBox, Union[str, Tuple[str, str]], Union[str, Tuple[str, str]], str, int, int, float, float) -> Via
         """Adds a (arrayed) via object to the layout.
 
         Parameters
         ----------
         bbox : BBox
             the via bounding box, not including extensions.
-        bot_layer : Layer
+        bot_layer : Union[str, Tuple[str, str]]
             the bottom layer name, or a tuple of layer name and purpose name.
             If purpose name not given, defaults to 'drawing'.
-        top_layer : Layer
+        top_layer : Union[str, Tuple[str, str]]
             the top layer name, or a tuple of layer name and purpose name.
             If purpose name not given, defaults to 'drawing'.
         bot_dir : str
@@ -1598,7 +1386,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, object)):
                     num_layer,  # type: int
                     port_widths=1,  # type: Union[int, List[int], Dict[int, int]
                     port_parity=None,  # type: Optional[Dict[int, Tuple[int, int]]]
-                    fill_margin=0,  # type: ldim
+                    fill_margin=0,  # type: Union[float, int]
                     fill_type='',  # type: str
                     unit_mode=False,  # type: bool
                     array=False,  # type: bool
