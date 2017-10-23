@@ -235,8 +235,8 @@ class TemplateDB(MasterDB):
         """
         self.batch_layout(prj, [template], [top_cell_name], debug=debug)
 
-    def batch_layout(self, prj, template_list, name_list=None, debug=False):
-        # type: (BagProject, List[TemplateBase], Optional[List[str]], bool) -> None
+    def batch_layout(self, prj, template_list, name_list=None, lib_name='', debug=False):
+        # type: (BagProject, List[TemplateBase], Optional[List[str]], str, bool) -> None
         """Instantiate all given templates.
 
         Parameters
@@ -247,11 +247,13 @@ class TemplateDB(MasterDB):
             list of templates to instantiate.
         name_list : Optional[List[str]]
             list of template layout names.  If not given, default names will be used.
+        lib_name : str
+            Library to create the masters in.  If empty or None, use default library.
         debug : bool
             True to print debugging messages
         """
         self._prj = prj
-        self.instantiate_masters(template_list, name_list=name_list, debug=debug)
+        self.instantiate_masters(template_list, name_list=name_list, lib_name=lib_name, debug=debug)
 
 
 class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):
@@ -355,23 +357,25 @@ class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):
         """
         return self.__class__.__name__
 
-    def get_content(self, rename_fun):
-        # type: (Callable[str, str]) -> Union[List[Any], 'cybagoa.PyOALayout']
-        """Returns the layout content of this template.
+    def get_content(self, lib_name, rename_fun):
+        # type: (Callable[str, str]) -> Union[List[Any], Tuple[str, 'cybagoa.PyOALayout']]
+        """Returns the content of this master instance.
 
         Parameters
         ----------
+        lib_name : str
+            the library to create the design masters in.
         rename_fun : Callable[str, str]
             a function that renames design masters.
 
         Returns
         -------
-        content : Union[List[Any], 'cybagoa.PyOALayout']
+        content : Union[List[Any], Tuple[str, 'cybagoa.PyOALayout']]
             a list describing this layout, or PyOALayout if cybagoa is enabled.
         """
         if not self.finalized:
             raise ValueError('This template is not finalized yet')
-        return self._layout.get_content(self.cell_name, rename_fun)
+        return self._layout.get_content(lib_name, self.cell_name, rename_fun)
 
     def finalize(self):
         # type: () -> None
