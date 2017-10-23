@@ -36,7 +36,7 @@ import abc
 import numpy as np
 from copy import deepcopy
 
-from .util import transform_table, BBox, BBoxArray, transform_point, transform_orient
+from .util import transform_table, BBox, BBoxArray, transform_point
 from .routing.base import Port, WireArray
 from .routing.fill import UsedTracks
 from .routing.grid import RoutingGrid
@@ -660,111 +660,6 @@ class Instance(Arrayable):
         dx, dy = self.location_unit
         return self._parent_grid.transform_track(layer_id, track_idx, dx=dx, dy=dy,
                                                  orient=self.orientation, unit_mode=True)
-
-    def flatten(self):
-        """Flatten this instance and return the geometries.
-
-        Returns
-        -------
-        inst_list :
-            list of primitive instances.
-        rect_list :
-            list of rectangles
-        via_list :
-            list of vias.
-        path_list :
-            list of paths
-        """
-        flat_inst_list, flat_rect_list, flat_via_list, flat_path_list = self.master.get_flat_geometries()
-
-        # add transformed/arrayed rectangles
-        inst_list = []
-        my_loc_unit = self._loc_unit
-        my_spx_unit = self.spx_unit
-        my_spy_unit = self.spy_unit
-        my_nx = self.nx
-        my_ny = self.ny
-        my_orient = self._orient
-        res = self.resolution
-        for obj in flat_inst_list:
-            nx = obj['num_cols']
-            ny = obj['num_rows']
-            spx = abs(obj['sp_cols'])  # TODO: figure out how to work around this hack
-            spy = abs(obj['sp_rows'])  # TODO: figure out how to work around this hack
-            xc, yc = obj['loc']
-            # use BBoxArray to calculate new inst arrays
-            barr = BBoxArray(BBox(xc - 1, yc - 1, xc + 1, yc + 1, res), nx=nx, ny=ny,
-                             spx=spx, spy=spy)
-            barr = barr.transform(loc=my_loc_unit, orient=my_orient, unit_mode=True)
-            bcol = barr.arrayed_copies(nx=my_nx, ny=my_ny, spx=my_spx_unit, spy=my_spy_unit, unit_mode=True)
-            # calculate new instance orientation
-            norient = transform_orient(obj['orient'], my_orient)
-            for box_arr in bcol:
-                # add arrayed copies of instances.
-                new_obj = obj.copy()
-                new_obj['orient'] = norient
-                new_obj['loc'] = box_arr.base.xc, box_arr.base.yc
-                new_obj['num_cols'] = box_arr.nx
-                new_obj['num_rows'] = box_arr.ny
-                new_obj['sp_cols'] = box_arr.spx
-                new_obj['sp_rows'] = box_arr.spy
-                inst_list.append(new_obj)
-
-        # add transformed/arrayed rectangles
-        rect_list = []
-        for rect in flat_rect_list:
-            # construct bbox array
-            (xl, yb), (xr, yt) = rect['bbox']
-            if 'arr_nx' in rect:
-                nx = rect['arr_nx']
-                ny = rect['arr_ny']
-                spx = rect['arr_spx']
-                spy = rect['arr_spy']
-            else:
-                nx = ny = 1
-                spx = spy = 0.0
-            barr = BBoxArray(BBox(xl, yb, xr, yt, res), nx=nx, ny=ny, spx=spx, spy=spy)
-            # transform and array bbox array
-            barr = barr.transform(loc=my_loc_unit, orient=my_orient, unit_mode=True)
-            bcol = barr.arrayed_copies(nx=my_nx, ny=my_ny, spx=my_spx_unit, spy=my_spy_unit, unit_mode=True)
-            rect_list.extend((Rect(rect['layer'], box_arr).content for box_arr in bcol))
-
-        # add transformed paths
-        # TODO: figure out how to transform path dictionary
-        # path_list = [path.transform(loc=my_loc_unit, orient=my_orient, unit_mode=True, copy=True)
-        #              for path in flat_path_list]
-        path_list = []
-
-        # add transformed/arrayed vias
-        via_list = []
-        for via in flat_via_list:
-            # assume no 90-degree-ish turns; num rows and num cols stay the same.
-            norient = transform_orient(via['orient'], my_orient)
-            if 'arr_nx' in via:
-                nx = via['arr_nx']
-                ny = via['arr_ny']
-                spx = via['arr_spx']
-                spy = via['arr_spy']
-            else:
-                nx = ny = 1
-                spx = spy = 0.0
-            via_x, via_y = via['loc']
-            # use BBoxArray to calculate new via arrays
-            barr = BBoxArray(BBox(via_x - 1, via_y - 1, via_x + 1, via_y + 1, res), nx=nx, ny=ny, spx=spx,
-                             spy=spy)
-            barr = barr.transform(loc=my_loc_unit, orient=my_orient, unit_mode=True)
-            bcol = barr.arrayed_copies(nx=my_nx, ny=my_ny, spx=my_spx_unit, spy=my_spy_unit, unit_mode=True)
-            for box_arr in bcol:
-                new_via = via.copy()
-                new_via['orient'] = norient
-                new_via['loc'] = box_arr.base.xc, box_arr.base.yc
-                new_via['arr_nx'] = box_arr.nx
-                new_via['arr_ny'] = box_arr.ny
-                new_via['arr_spx'] = box_arr.spx
-                new_via['arr_spy'] = box_arr.spy
-                via_list.append(new_via)
-
-        return inst_list, rect_list, via_list, path_list
 
     def get_port(self, name='', row=0, col=0):
         # type: (Optional[str], int, int) -> Port

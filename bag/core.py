@@ -680,7 +680,7 @@ class BagProject(object):
             layout view name.
         via_tech : string
             via technology name.
-        layout_list : list[any]
+        layout_list : Sequence[Any]
             a list of layouts to create
         """
         if self.impl_db is None:
