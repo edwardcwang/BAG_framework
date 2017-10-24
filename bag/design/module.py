@@ -63,14 +63,17 @@ class ModuleDB(MasterDB):
         generated layout name prefix.
     name_suffix : str
         generated layout name suffix.
+    lib_path : str
+        path to create generated library in.
     """
-    def __init__(self, lib_defs, tech_info, sch_exc_libs, prj=None, name_prefix='', name_suffix=''):
+    def __init__(self, lib_defs, tech_info, sch_exc_libs, prj=None, name_prefix='', name_suffix='', lib_path=''):
         # type: (str, TechInfo, List[str], Optional[BagProject], str, str) -> None
         super(ModuleDB, self).__init__('', lib_defs=lib_defs, name_prefix=name_prefix, name_suffix=name_suffix)
 
         self._prj = prj
         self._tech_info = tech_info
         self._exc_libs = set(sch_exc_libs)
+        self.lib_path = lib_path
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
         # type: (Type[Module], str, Dict[str, Any], Set[str], **kwargs) -> Module
@@ -97,10 +100,9 @@ class ModuleDB(MasterDB):
             the non-finalized generated instance.
         """
         kwargs = kwargs.copy()
-        kwargs['prj'] = self._prj
         kwargs['lib_name'] = lib_name
         kwargs['params'] = params
-        kwargs['used_cell_names'] = used_cell_names
+        kwargs['used_names'] = used_cell_names
         return gen_cls(self, **kwargs)
 
     def create_masters_in_db(self, lib_name, content_list, debug=False):
@@ -119,14 +121,29 @@ class ModuleDB(MasterDB):
         if self._prj is None:
             raise ValueError('BagProject is not defined.')
 
-        # TODO: add real implementation
-        raise ValueError('Not implemented yet')
+        self._prj.implement_design(lib_name, content_list, lib_path=self.lib_path)
 
     @property
     def tech_info(self):
         # type: () -> TechInfo
         """the :class:`~bag.layout.core.TechInfo` instance."""
         return self._tech_info
+
+    def is_lib_excluded(self, lib_name):
+        # type: (str) -> bool
+        """Returns true if the given schematic library does not contain generators.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name
+
+        Returns
+        -------
+        is_excluded : bool
+            True if given library is excluded.
+        """
+        return lib_name in self._exc_libs
 
 
 class SchInstance(object):
@@ -188,11 +205,17 @@ class SchInstance(object):
     def should_delete(self):
         # type: () -> bool
         """Returns true if this instance should be deleted."""
-        return self._master.should_delete_instance()
+        return self._master is not None and self._master.should_delete_instance()
 
     @property
     def master_cell_name(self):
-        return self._master.cell_name
+        # type: () -> str
+        return self.cell_name if self._master is None else self._master.cell_name
+
+    @property
+    def master_key(self):
+        # type: () -> Any
+        return self._master.key
 
     def design_specs(self, **kwargs):
         # type: (**kwargs) -> None
@@ -211,6 +234,43 @@ class SchInstance(object):
                                            params=params, design_fun=design_fun)  # type: Module
         if self._master.is_primitive():
             self.parameters.update(self._master.get_schematic_parameters())
+
+    def implement_design(self, lib_name, top_cell_name='', prefix='', suffix='', **kwargs):
+        # type: (str, str, str, str, **kwargs) -> None
+        """Implement this design module in the given library.
+
+        If the given library already exists, this method will not delete or override
+        any pre-existing cells in that library.
+
+        If you use this method, you do not need to call update_structure(),
+        as this method calls it for you.
+
+        This method only works if BagProject is given.
+
+        Parameters
+        ----------
+        lib_name : str
+            name of the new library to put the generated schematics.
+        top_cell_name : str
+            the cell name of the top level design.
+        prefix : str
+            prefix to add to cell names.
+        suffix : str
+            suffix to add to cell names.
+        **kwargs :
+            additional arguments.
+        """
+        if 'erase' in kwargs:
+            print('DEPRECATED WARNING: erase is no longer supported in implement_design() and has no effect')
+
+        if not top_cell_name:
+            top_cell_name = self.cell_name
+
+        if 'lib_path' in kwargs:
+            self._db.lib_path = kwargs['lib_path']
+        self._db.cell_prefix = prefix
+        self._db.cell_suffix = suffix
+        self._db.instantiate_masters([self._master], [top_cell_name], lib_name=lib_name)
 
 
 class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
@@ -261,7 +321,8 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
         for inst_name, inst_attr in self.sch_info['instances'].items():
             lib_name = inst_attr['lib_name']
             cell_name = inst_attr['cell_name']
-            self.instances[inst_name] = SchInstance(database, lib_name, cell_name, inst_name, static=False)
+            static = database.is_lib_excluded(lib_name)
+            self.instances[inst_name] = SchInstance(database, lib_name, cell_name, inst_name, static=static)
 
         # fill in pin map
         for pin in self.sch_info['pins']:
@@ -305,6 +366,17 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
             self.params.update(self.parameters)
             self.update_master_info()
 
+        self.children = set()
+        for inst_list in self.instances.values():
+
+            if isinstance(inst_list, SchInstance):
+                if not inst_list.is_primitive:
+                    self.children.add(inst_list.master_key)
+            else:
+                for inst in inst_list:
+                    if not inst.is_primitive:
+                        self.children.add(inst.master_key)
+
         # call super finalize routine
         super(Module, self).finalize()
 
@@ -332,14 +404,14 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
         return self._orig_cell_name
 
     def get_content(self, lib_name, rename_fun):
-        # type: (str, Callable[str, str]) -> Optional[Tuple[Any,...]]
+        # type: (str, Callable[[str], str]) -> Optional[Tuple[Any,...]]
         """Returns the content of this master instance.
 
         Parameters
         ----------
         lib_name : str
             the library to create the design masters in.
-        rename_fun : Callable[str, str]
+        rename_fun : Callable[[str], str]
             a function that renames design masters.
 
         Returns
@@ -375,10 +447,16 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
     @property
     def cell_name(self):
         # type: () -> str
-        """The master cell name"""
+        """The master cell name."""
         if self.is_primitive():
             return self.get_cell_name_from_parameters()
         return super(Module, self).cell_name
+
+    @property
+    def orig_cell_name(self):
+        # type: () -> str
+        """The original schematic template cell name."""
+        return self._orig_cell_name
 
     def is_primitive(self):
         # type: () -> bool
@@ -576,7 +654,7 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
                     raise ValueError('net_name length = %d != %d' % (len(net_name), num_insts))
 
             for inst, tname, nname in zip(cur_inst_list, term_name, net_name):
-                inst.term_mapping[term_name] = net_name
+                inst.term_mapping[tname] = nname
 
     def array_instance(self, inst_name, inst_name_list, term_list=None, same=False):
         # type: (str, List[str], Optional[List[Dict[str, str]]], bool) -> None
@@ -723,42 +801,6 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
                 self.reconnect_instance_terminal(inst_name, 'S', s_name, index=idx)
                 self.instances[inst_name][idx].design(w=w, l=lch, nf=fg, intent=th)
 
-    def implement_design(self, lib_name, top_cell_name='', prefix='', suffix='', **kwargs):
-        # type: (str, str, str, str, **kwargs) -> None
-        """Implement this design module in the given library.
-
-        If the given library already exists, this method will not delete or override
-        any pre-existing cells in that library.
-
-        If you use this method, you do not need to call update_structure(),
-        as this method calls it for you.
-
-        This method only works if BagProject is given.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the new library to put the generated schematics.
-        top_cell_name : str
-            the cell name of the top level design.
-        prefix : str
-            prefix to add to cell names.
-        suffix : str
-            suffix to add to cell names.
-        **kwargs :
-            additional arguments.
-        """
-        # TODO: figure out lib_path
-        if 'erase' in kwargs:
-            print('DEPRECATED WARNING: erase is no longer supported in implement_design() and has no effect')
-
-        if not top_cell_name:
-            top_cell_name = self.cell_name
-
-        self.master_db.cell_prefix = prefix
-        self.master_db.cell_suffix = suffix
-        self.master_db.instantiate_masters([self], [top_cell_name], lib_name=lib_name)
-
 
 class MosModuleBase(Module):
     """The base design class for the bag primitive transistor.
@@ -800,8 +842,8 @@ class MosModuleBase(Module):
 
     def get_cell_name_from_parameters(self):
         # type: () -> str
-        mos_type = self.cell_name.split('_')[0]
-        return '%s_%s' % (mos_type, self.parameters['intent'])
+        mos_type = self.orig_cell_name.split('_')[0]
+        return '%s_%s' % (mos_type, self.params['intent'])
 
     def is_primitive(self):
         # type: () -> bool
@@ -848,7 +890,7 @@ class ResPhysicalModuleBase(Module):
 
     def get_cell_name_from_parameters(self):
         # type: () -> str
-        return 'res_%s' % self.parameters['intent']
+        return 'res_%s' % self.params['intent']
 
     def is_primitive(self):
         # type: () -> bool
