@@ -154,6 +154,7 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         # type: (MasterDB, str, Dict[str, Any], Set[str]) -> None
         self._master_db = master_db
         self._lib_name = lib_name
+        self._used_names = used_names
 
         # set parameters
         params_info = self.get_params_info()
@@ -161,19 +162,22 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         self.params = {}
         if params_info is None:
             # compatibility with old schematics generators
-            self._cell_name = None
+            self.params.update(params)
             self._prelim_key = self.to_immutable_id((self._get_qualified_name(), params))
+            self._cell_name = None
             self._key = None
         else:
             self.populate_params(params, params_info, default_params)
-
             # get unique cell name
-            self._cell_name = self._get_unique_cell_name(used_names)
             self._prelim_key = self.compute_unique_key()
-            self._key = self._prelim_key
+            self.update_master_info()
 
         self.children = None
         self._finalized = False
+
+    def update_master_info(self):
+        self._cell_name = self._get_unique_cell_name(self._used_names)
+        self._key = self.compute_unique_key()
 
     def populate_params(self, table, params_info, default_params, **kwargs):
         # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **kwargs) -> None
@@ -265,7 +269,7 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         content : Any
             the master content data structure.
         """
-        pass
+        return None
 
     @property
     def master_db(self):
@@ -432,6 +436,30 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
         # type: () -> str
         """Returns the master library name."""
         return self._lib_name
+
+    @property
+    def cell_prefix(self):
+        # type: () -> str
+        """Returns the cell name prefix."""
+        return self._name_prefix
+
+    @cell_prefix.setter
+    def cell_prefix(self, new_val):
+        # type: (str) -> None
+        """Change the cell name prefix."""
+        self._name_prefix = new_val
+
+    @property
+    def cell_suffix(self):
+        # type: () -> str
+        """Returns the cell name suffix."""
+        return self._name_suffix
+
+    @cell_suffix.setter
+    def cell_suffix(self, new_val):
+        # type: (str) -> None
+        """Change the cell name suffix."""
+        self._name_suffix = new_val
 
     def format_cell_name(self, cell_name):
         # type: (str) -> str

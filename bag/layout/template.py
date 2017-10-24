@@ -97,7 +97,7 @@ class TemplateDB(MasterDB):
         self._flatten = flatten
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[DesignMaster], str, Dict[str, Any], Set[str], **kwargs) -> DesignMaster
+        # type: (Type[TemplateBase], str, Dict[str, Any], Set[str], **kwargs) -> TemplateBase
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.
@@ -300,7 +300,6 @@ class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):
         self._array_box = None  # type: BBox
         self.prim_top_layer = None
         self.prim_bound_box = None
-        self._finalized = False
         self._used_tracks = UsedTracks(self._grid.resolution)
         self._added_inst_tracks = False
 
