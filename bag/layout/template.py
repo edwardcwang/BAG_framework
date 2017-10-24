@@ -35,7 +35,8 @@ import time
 import abc
 import copy
 from itertools import chain, islice
-from typing import TYPE_CHECKING, Union, Dict, Any, List, Set, Type, Optional, Tuple, Iterable, Sequence, Callable
+from typing import TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, \
+    Optional, Tuple, Iterable, Sequence, Callable
 import yaml
 
 from bag.util.cache import DesignMaster, MasterDB
@@ -57,6 +58,8 @@ try:
     import cybagoa
 except ImportError:
     cybagoa = None
+
+TemplateType = TypeVar('TemplateType', bound='TemplateBase')
 
 
 class TemplateDB(MasterDB):
@@ -97,14 +100,14 @@ class TemplateDB(MasterDB):
         self._flatten = flatten
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[TemplateBase], str, Dict[str, Any], Set[str], **kwargs) -> TemplateBase
+        # type: (Type[TemplateType], str, Dict[str, Any], Set[str], **kwargs) -> TemplateType
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.
 
         Parameters
         ----------
-        gen_cls : Type[DesignMaster]
+        gen_cls : Type[TemplateType]
             the generator Python class.
         lib_name : str
             generated instance library name.
@@ -117,9 +120,10 @@ class TemplateDB(MasterDB):
 
         Returns
         -------
-        master : DesignMaster
+        master : TemplateType
             the non-finalized generated instance.
         """
+        # noinspection PyCallingNonCallable
         return gen_cls(self, lib_name, params, used_cell_names, **kwargs)
 
     def create_masters_in_db(self, lib_name, content_list, debug=False):
@@ -189,7 +193,7 @@ class TemplateDB(MasterDB):
         return self._grid
 
     def new_template(self, lib_name='', temp_name='', params=None, temp_cls=None, debug=False, **kwargs):
-        # type: (str, str, Dict[str, Any], Type[TemplateBase], bool, **kwargs) -> TemplateBase
+        # type: (str, str, Dict[str, Any], Type[TemplateType], bool, **kwargs) -> TemplateType
         """Create a new template.
 
         Parameters
@@ -200,7 +204,7 @@ class TemplateDB(MasterDB):
             template name
         params : Dict[str, Any]
             the parameter dictionary.
-        temp_cls : Type[TemplateBase]
+        temp_cls : Type[TemplateType]
             the template class to instantiate.
         debug : bool
             True to print debug messages.
@@ -209,12 +213,12 @@ class TemplateDB(MasterDB):
 
         Returns
         -------
-        template : TemplateBase
+        template : TemplateType
             the new template instance.
         """
         kwargs['use_cybagoa'] = self._use_cybagoa
         master = self.new_master(lib_name=lib_name, cell_name=temp_name, params=params,
-                                 gen_cls=temp_cls, debug=debug, **kwargs)  # type: TemplateBase
+                                 gen_cls=temp_cls, debug=debug, **kwargs)
 
         return master
 
@@ -357,14 +361,14 @@ class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):
         return self.__class__.__name__
 
     def get_content(self, lib_name, rename_fun):
-        # type: (Callable[str, str]) -> Union[List[Any], Tuple[str, 'cybagoa.PyOALayout']]
+        # type: (str, Callable[[str], str]) -> Union[List[Any], Tuple[str, 'cybagoa.PyOALayout']]
         """Returns the content of this master instance.
 
         Parameters
         ----------
         lib_name : str
             the library to create the design masters in.
-        rename_fun : Callable[str, str]
+        rename_fun : Callable[[str], str]
             a function that renames design masters.
 
         Returns
@@ -684,14 +688,14 @@ class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):
         return self._ports.keys()
 
     def new_template(self, params=None, temp_cls=None, debug=False, **kwargs):
-        # type: (Dict[str, Any], Type[TemplateBase], bool, **kwargs) -> TemplateBase
+        # type: (Dict[str, Any], Type[TemplateType], bool, **kwargs) -> TemplateType
         """Create a new template.
 
         Parameters
         ----------
         params : Dict[str, Any]
             the parameter dictionary.
-        temp_cls : Type[TempBase]
+        temp_cls : Type[TemplateType]
             the template class to instantiate.
         debug : bool
             True to print debug messages.
@@ -700,7 +704,7 @@ class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):
 
         Returns
         -------
-        template : TemplateBase
+        template : TemplateType
             the new template instance.
         """
         kwargs['grid'] = self.grid

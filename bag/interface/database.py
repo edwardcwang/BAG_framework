@@ -36,7 +36,6 @@ from typing import List, Dict, Tuple, Optional, Union
 
 from jinja2 import Template
 import yaml
-import networkx as nx
 from future.utils import with_metaclass
 
 import bag.io
@@ -59,25 +58,23 @@ def dict_to_item_list(table):
     return [[key, table[key]] for key in sorted(table.keys())]
 
 
-def format_inst_map(inst_map, concrete_lib_name):
+def format_inst_map(inst_map):
     """Given instance map from DesignModule, format it for database changes.
 
     Parameters
     ----------
-    inst_map : dict[str, any]
+    inst_map : Dict[str, Any]
         the instance map created by DesignModule.
-    concrete_lib_name : str
-        name of the concrete schematic library.
 
     Returns
     -------
-    ans : list[(str, any)]
+    ans : List[(str, Any)]
         the database change instance map.
     """
     ans = []
     for old_inst_name, rinst_list in inst_map.items():
         new_rinst_list = [dict(name=rinst['name'],
-                               lib_name=rinst['lib_name'] or concrete_lib_name,
+                               lib_name=rinst['lib_name'],
                                cell_name=rinst['cell_name'],
                                params=dict_to_item_list(rinst['params']),
                                term_mapping=dict_to_item_list(rinst['term_mapping']),
@@ -152,11 +149,12 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
         self.tmp_dir = bag.io.make_temp_dir('dbTmp', parent_dir=tmp_dir)
         self.db_config = db_config
         self.exc_libs = set(db_config['schematic']['exclude_libraries'])
+        # noinspection PyBroadException
         try:
             check_kwargs = self.db_config['checker'].copy()
             check_kwargs['tmp_dir'] = self.tmp_dir
             self.checker = make_checker(**check_kwargs)
-        except:
+        except Exception:
             stack_trace = traceback.format_exc()
             print('*WARNING* error creating Checker:\n%s' % stack_trace)
             print('*WARNING* LVS/RCX will be disabled.')
@@ -582,7 +580,7 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
         ----------
         lib_name : str
             name of the library.
-        dsn_db : :class:`bag.design.Database`
+        dsn_db : ModuleDB
             the design database object.
         new_lib_path: str
             location to import new libraries to.
@@ -637,45 +635,33 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
                 self._import_design(inst_lib_name, inst_cell_name, imported_cells, dsn_db,
                                     new_lib_path)
 
-    def implement_design(self, lib_name, dsn_module, lib_path=''):
+    def implement_design(self, lib_name, content_list, lib_path=''):
         """Implement the given design.
 
         Parameters
         ----------
         lib_name : str
             name of the new library to put the concrete schematics.
-        dsn_module : :class:`bag.design.Module`
-            the design module to create schematics for.
+        content_list : Sequence[Any]
+            list of schematics to create.
         lib_path : str
             the path to create the library in.  If empty, use default location.
         """
-        hierarchy_graph = dsn_module.hierarchy_graph
+        template_list, change_list = [], []
+        for content in content_list:
+            if content is not None:
+                master_lib, master_cell, impl_cell, pin_map, inst_map, new_pins = content
 
-        # sort the netlist graph in reverse order.
-        nodes = nx.topological_sort(hierarchy_graph, reverse=True)
+                # add to template list
+                template_list.append([master_lib, master_cell, impl_cell])
 
-        # create template_list and change_list
-        template_list = []
-        change_list = []
-        for n in nodes:
-            master_lib = n.get_lib_name()
-            master_cell = n.get_cell_name()
-            attrs = hierarchy_graph.node[n]
-            concrete_cell_name = attrs['concrete_cell_name']
-            pin_map = attrs['pin_map']
-            inst_map = attrs['inst_map']
-            new_pins = attrs['new_pins']
-
-            # add to template list
-            template_list.append([master_lib, master_cell, concrete_cell_name])
-
-            # construct change object
-            change = dict(
-                name=concrete_cell_name,
-                pin_map=dict_to_item_list(pin_map),
-                inst_list=format_inst_map(inst_map, lib_name),
-                new_pins=new_pins,
-            )
-            change_list.append(change)
+                # construct change object
+                change = dict(
+                    name=impl_cell,
+                    pin_map=dict_to_item_list(pin_map),
+                    inst_list=format_inst_map(inst_map),
+                    new_pins=new_pins,
+                )
+                change_list.append(change)
 
         self.create_implementation(lib_name, template_list, change_list, lib_path=lib_path)
