@@ -35,7 +35,7 @@ from future.utils import with_metaclass
 from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Type, Set, Sequence, Callable
 
 from bag import float_to_si_string
-from bag.io import read_yaml, fix_string
+from bag.io import read_yaml
 from bag.util.cache import DesignMaster, MasterDB
 
 if TYPE_CHECKING:
@@ -119,6 +119,7 @@ class ModuleDB(MasterDB):
         if self._prj is None:
             raise ValueError('BagProject is not defined.')
 
+        # TODO: add real implementation
         raise ValueError('Not implemented yet')
 
     @property
@@ -147,8 +148,8 @@ class SchInstance(object):
     def __init__(self, database, lib_name, cell_name, inst_name, static=False):
         # type: (MasterDB, str, str, str, bool) -> None
         self._db = database
-        self._inst_name = inst_name
         self._master = None
+        self.inst_name = inst_name
         self.lib_name = lib_name
         self.cell_name = cell_name
         self.static = static
@@ -177,51 +178,39 @@ class SchInstance(object):
         self.parameters.clear()
         self.term_mapping.clear()
 
+    @property
+    def is_primitive(self):
+        # type: () -> bool
+        """Returns true if this is an instance of a primitive master."""
+        return self.static or self._master.is_primitive()
+
+    @property
+    def should_delete(self):
+        # type: () -> bool
+        """Returns true if this instance should be deleted."""
+        return self._master.should_delete_instance()
+
+    @property
+    def master_cell_name(self):
+        return self._master.cell_name
+
     def design_specs(self, **kwargs):
-        self.design(**kwargs)
+        # type: (**kwargs) -> None
+        """Update the instance master."""
+        self._update_master(kwargs, 'design_specs')
 
     def design(self, **kwargs):
-        pass
+        # type: (**kwargs) -> None
+        """Update the instance master."""
+        self._update_master(kwargs, 'design')
 
-
-class ModuleID(object):
-    """A class that uniquely identifies a module.
-
-    This class is used to identify a unique module instance.
-
-    Parameters
-    ----------
-    lib_name : str
-        the module library.
-    cell_name : str
-        the module cell.
-    iden_str : str
-        the module identification string.
-    """
-
-    def __init__(self, lib_name, cell_name, iden_str):
-        self.lib_name = lib_name
-        self.cell_name = cell_name
-        self.iden_str = iden_str
-
-    def __hash__(self):
-        ans = 17
-        ans = ans * 31 + hash(self.lib_name)
-        ans = ans * 31 + hash(self.cell_name)
-        return ans * 31 + hash(self.iden_str)
-
-    def __eq__(self, other):
-        return (self.lib_name == getattr(other, 'lib_name', None) and
-                self.cell_name == getattr(other, 'cell_name', None) and
-                self.iden_str == getattr(other, 'iden_str', None))
-
-    def get_lib_name(self):
-        """Returns the master template library name"""
-        return self.lib_name
-
-    def get_cell_name(self):
-        """Returns the master template cell name"""
-        return self.cell_name
+    def _update_master(self, params, design_fun):
+        # type: (Dict[str, Any], str) -> None
+        """Create a new master."""
+        self._master = self._db.new_master(self.lib_name, self.cell_name,
+                                           params=params, design_fun=design_fun)  # type: Module
+        if self._master.is_primitive():
+            self.parameters.update(self._master.get_schematic_parameters())
 
 
 class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
@@ -234,11 +223,9 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
     database : ModuleDB
         the design database object.
     yaml_fname : str
-        the netlist information file name.  If this is a generic module, this should be None.
-    parent : None
-        deprecated parameter.  Not used.
-    prj : Optional[BagProject]
-        the BagProject instance.  Used to implement design.
+        the netlist information file name.
+    **kwargs :
+        additional arguments
 
     Attributes
     ----------
@@ -249,7 +236,7 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
     """
 
     # noinspection PyUnusedLocal
-    def __init__(self, database, yaml_fname, parent=None, prj=None, **kwargs):
+    def __init__(self, database, yaml_fname, **kwargs):
         # type: (ModuleDB, str, None, Optional[BagProject], **kwargs) -> None
 
         lib_name = kwargs['lib_name']
@@ -257,7 +244,6 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
         used_names = kwargs['used_names']
         design_fun = kwargs['design_fun']
 
-        self.prj = prj
         self.tech_info = database.tech_info
         self.instances = {}
         self.pin_map = {}
@@ -346,7 +332,7 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
         return self._orig_cell_name
 
     def get_content(self, lib_name, rename_fun):
-        # type: (str, Callable[str, str]) -> Any
+        # type: (str, Callable[str, str]) -> Optional[Tuple[Any,...]]
         """Returns the content of this master instance.
 
         Parameters
@@ -358,10 +344,41 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
 
         Returns
         -------
-        content : Any
+        content : Optional[Tuple[Any,...]]
             the master content data structure.
         """
-        return None
+        if self.is_primitive():
+            return None
+
+        # populate instance transform mapping dictionary
+        inst_map = {}
+        for inst_name, inst_list in self.instances.items():
+            if isinstance(inst_list, SchInstance):
+                inst_list = [inst_list]
+
+            info_list = []
+            for inst in inst_list:
+                if not inst.should_delete:
+                    cur_lib = inst.lib_name if inst.is_primitive else lib_name
+                    info_list.append(dict(
+                        name=inst.inst_name,
+                        lib_name=cur_lib,
+                        cell_name=inst.master_cell_name,
+                        params=inst.parameters,
+                        term_mapping=inst.term_mapping,
+                    ))
+            inst_map[inst_name] = info_list
+
+        return (self._orig_lib_name, self._orig_cell_name, self.cell_name,
+                self.pin_map, inst_map, self.new_pins)
+
+    @property
+    def cell_name(self):
+        # type: () -> str
+        """The master cell name"""
+        if self.is_primitive():
+            return self.get_cell_name_from_parameters()
+        return super(Module, self).cell_name
 
     def is_primitive(self):
         # type: () -> bool
@@ -392,6 +409,37 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
             True if parent should delete this instance.
         """
         return False
+
+    def get_schematic_parameters(self):
+        # type: () -> Dict[str, str]
+        """Returns the schematic parameter dictionary of this instance.
+
+        NOTE: This method is only used by BAG primitives, as they are
+        implemented with parameterized cells in the CAD database.  Custom
+        subclasses should not override this method.
+
+        Returns
+        -------
+        params : Dict[str, str]
+            the schematic parameter dictionary.
+        """
+        return {}
+
+    def get_cell_name_from_parameters(self):
+        """Returns new cell name based on parameters.
+
+        NOTE: This method is only used by BAG primitives.  This method
+        enables a BAG primitive to change the cell master based on
+        design parameters (e.g. change transistor instance based on the
+        intent parameter).  Custom subclasses should not override this
+        method.
+
+        Returns
+        -------
+        cell : str
+            the cell name based on parameters.
+        """
+        return super(Module, self).cell_name
 
     def rename_pin(self, old_pin, new_pin):
         # type: (str, str) -> None
@@ -675,96 +723,8 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
                 self.reconnect_instance_terminal(inst_name, 'S', s_name, index=idx)
                 self.instances[inst_name][idx].design(w=w, l=lch, nf=fg, intent=th)
 
-    def get_primitives_descendants(self, cur_inst_name):
-        """Internal method.  Returns a dictionary of all BAG primitive descendants of this module.
-
-        Parameters
-        ----------
-        cur_inst_name : string
-            name of the current module instance.
-
-        Returns
-        -------
-        prim_dict : dict[str, :class:`bag.design.Module`]
-            a dictionary from primitive's absolute path name to the corresponding Module.
-        """
-        prim_dict = {}
-        for inst_name, rinst_list in self.instance_map.items():
-            module_list = self.instances[inst_name]
-            if not isinstance(module_list, list):
-                module_list = [module_list]
-
-            for modul, rinst in zip(module_list, rinst_list):
-                name = '%s.%s' % (cur_inst_name, rinst['name'])
-                if modul.is_primitive():
-                    prim_dict[name] = modul
-                else:
-                    sub_dict = modul.get_primitives_descendants(name)
-                    prim_dict.update(sub_dict)
-        return prim_dict
-
-    def update_bag_primitives(self):
-        """Internal method.
-
-        Update schematic parameters and cell name for bag primitives.
-        As a side effect, also check that every declared parameters are set.
-
-        """
-        for param, val in self.parameters.items():
-            if val is None:
-                raise Exception('Parameter %s unset.' % param)
-
-        for key, rinst_list in self.instance_map.items():
-            module_list = self.instances[key]
-            if not isinstance(module_list, list):
-                module_list = [module_list]
-
-            # Traverse list backward so we can remove instances
-            for idx in range(len(rinst_list) - 1, -1, -1):
-                rinst = rinst_list[idx]
-                modul = module_list[idx]
-                modul.update_bag_primitives()
-                if modul.should_delete_instance():
-                    # check if we need to delete this instance based on its parameters
-                    del rinst_list[idx]
-                else:
-                    # update parameter/cell name information.
-                    rinst['params'] = modul.get_schematic_parameters()
-                    rinst['cell_name'] = modul.get_cell_name_from_parameters()
-
-    def update_structure(self, lib_name, top_cell_name='', prefix='', suffix='', used_names=None):
-        """Update the generated schematic structure.
-
-        This function should be called after :func:`.design` to prepare this design module
-        for implementation.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the new library to put the generated schematics.
-        top_cell_name : str
-            the cell name of the top level design.
-        prefix : str
-            prefix to add to cell names.
-        suffix : str
-            suffix to add to cell names.
-        used_names : set[str] or None
-            if given, all names in this set will not be used.
-        """
-        # Error checking: update can only be called on top level.
-        if self.parent is not None:
-            raise Exception('Can only call update_structure() on top level Module.')
-
-        # update bag primitives
-        self.update_bag_primitives()
-
-        # Create the instance hierarchy graph
-        self.hierarchy_graph = nx.MultiDiGraph()
-        used_concrete_names = used_names or set()
-        self.populate_hierarchy_graph(lib_name, self.hierarchy_graph, used_concrete_names,
-                                      top_cell_name, prefix, suffix, 'XTOP')
-
-    def implement_design(self, lib_name, top_cell_name='', prefix='', suffix='', lib_path='', erase=False):
+    def implement_design(self, lib_name, top_cell_name='', prefix='', suffix='', **kwargs):
+        # type: (str, str, str, str, **kwargs) -> None
         """Implement this design module in the given library.
 
         If the given library already exists, this method will not delete or override
@@ -785,109 +745,19 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
             prefix to add to cell names.
         suffix : str
             suffix to add to cell names.
-        lib_path : str
-            the path to create the library in.  If empty, use default location.
-        erase : bool
-            True to erase old cellviews.
+        **kwargs :
+            additional arguments.
         """
-        if not self.prj:
-            raise Exception('BagProject is not given.')
+        # TODO: figure out lib_path
+        if 'erase' in kwargs:
+            print('DEPRECATED WARNING: erase is no longer supported in implement_design() and has no effect')
 
-        if not erase:
-            used_names = set(self.prj.get_cells_in_library(lib_name))
-        else:
-            used_names = set()
-        self.update_structure(lib_name, top_cell_name=top_cell_name, prefix=prefix,
-                              suffix=suffix, used_names=used_names)
+        if not top_cell_name:
+            top_cell_name = self.cell_name
 
-        self.prj.implement_design(lib_name, self, lib_path=lib_path)
-
-    def populate_hierarchy_graph(self, lib_name, hier_graph, used_concrete_names,
-                                 cur_cell_name, prefix, suffix, inst_identifier):
-        """Internal method.  Populate the instance hierarchy graph.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the new library to put the generated schematics.
-        hier_graph : :class:`networkx.MultiDiGraph`
-            a multi-edge directed graph representing physical design hierarchy.
-        used_concrete_names : set[str]
-            a set of used concrete schematic cell names.
-        cur_cell_name : str
-            the cell name of the current design.
-        prefix : str
-            prefix to add to cell names.
-        suffix : str
-            suffix to add to cell names.
-        inst_identifier : str
-            instance identifier string
-
-        Returns
-        -------
-        cell_id : :class:`bag.design.module.ModuleID`
-            the PyNetlistCell representing this module.
-        """
-        if self.is_primitive():
-            self._generated_lib_name = self.lib_name
-            self._generated_cell_name = self.get_cell_name_from_parameters()
-            return None
-
-        if not cur_cell_name:
-            cur_cell_name = self._cell_name
-
-        cell_id = ModuleID(self.lib_name, self.cell_name, self.get_iden_str())
-        if cell_id not in hier_graph:
-            # find new unsed name
-            new_concrete_cell_name = prefix + cur_cell_name + suffix
-            if new_concrete_cell_name in used_concrete_names:
-                new_concrete_cell_name = '%s%s_%s%s' % (prefix, cur_cell_name, inst_identifier, suffix)
-            counter = 0
-            while new_concrete_cell_name in used_concrete_names:
-                counter += 1
-                new_concrete_cell_name = '%s%s_%s_%d%s' % (prefix, cur_cell_name, inst_identifier, counter, suffix)
-
-            # update hierarchy graph and set generated lib/cell name
-            self._generated_lib_name = lib_name
-            self._generated_cell_name = new_concrete_cell_name
-
-            used_concrete_names.add(new_concrete_cell_name)
-            hier_graph.add_node(cell_id, concrete_cell_name=new_concrete_cell_name,
-                                pin_map=self.pin_map, new_pins=self.new_pins)
-
-            concrete_inst_map = {}
-            for inst_name, rinst_list in sorted(self.instance_map.items()):
-                module_list = self.instances[inst_name]
-                if not isinstance(module_list, list):
-                    module_list = [module_list]
-
-                child_inst_id = '%s_%s' % (inst_identifier, inst_name)
-                concrete_rinst_list = []
-                for modul, rinst in zip(module_list, rinst_list):
-                    child_cell_name = modul.cell_name
-                    child_id = modul.populate_hierarchy_graph(lib_name, hier_graph, used_concrete_names,
-                                                              child_cell_name, prefix, suffix, child_inst_id)
-                    if not modul.is_primitive():
-                        hier_graph.add_edge(cell_id, child_id)
-                        concrete_lib_name = None
-                        concrete_cell_name = hier_graph.node[child_id]['concrete_cell_name']
-                    else:
-                        # bag primitive
-                        concrete_lib_name = modul.lib_name
-                        concrete_cell_name = rinst['cell_name']
-                    concrete_rinst = dict(
-                        name=rinst['name'],
-                        lib_name=concrete_lib_name,
-                        cell_name=concrete_cell_name,
-                        params=rinst['params'],
-                        term_mapping=rinst['term_mapping'],
-                    )
-                    concrete_rinst_list.append(concrete_rinst)
-                concrete_inst_map[inst_name] = concrete_rinst_list
-
-            hier_graph.node[cell_id]['inst_map'] = concrete_inst_map
-
-        return cell_id
+        self.master_db.cell_prefix = prefix
+        self.master_db.cell_suffix = suffix
+        self.master_db.instantiate_masters([self], [top_cell_name], lib_name=lib_name)
 
 
 class MosModuleBase(Module):
@@ -895,345 +765,98 @@ class MosModuleBase(Module):
 
     Parameters
     ----------
-    database : :class:`bag.design.Database`
+    database : ModuleDB
         the design database object.
     yaml_file : str
         the netlist information file name.
-    parent : :class:`bag.design.Module`
-        the parent of this design module.  None if this is the top level design.
-    prj : :class:`bag.BagProject` or None
-        the BagProject instance.  Used to implement design.
+    **kwargs :
+        additional arguments
     """
 
-    def __init__(self, database, yaml_file, parent=None, prj=None, **kwargs):
-        Module.__init__(self, database, yaml_file, parent=parent, prj=prj, **kwargs)
-        self.parameters['w'] = None
-        self.parameters['l'] = None
-        self.parameters['nf'] = None
-        self.parameters['intent'] = None
+    def __init__(self, database, yaml_file, **kwargs):
+        Module.__init__(self, database, yaml_file, **kwargs)
 
-    def get_iden_str(self):
-        """Internal Method.  Returns a string that uniquely identifies this module.
-
-        BAG primitives should override this method to return a string based on its parameters.
-
-        Returns
-        -------
-        iden_str : str
-            an identification string for this module.
-        """
-        # check all parameters are set.
-        for key, val in self.parameters.items():
-            if val is None:
-                raise Exception('Parameter %s unset' % key)
-
-        w_str = self.parameters['w']
-        l_str = self.parameters['l']
-        nf = self.parameters['nf']
-        intent = self.parameters['intent']
-
-        return '%s__%s(%s,%s,%d,%s)' % (self.lib_name, self.cell_name, w_str, l_str, nf, intent)
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        return dict(
+            w='transistor width, in meters or number of fins.',
+            l='transistor length, in meters.',
+            nf='transistor number of fingers.',
+            intent='transistor threshold flavor.',
+        )
 
     def design(self, w=1e-6, l=60e-9, nf=1, intent='standard'):
-        """Create a transistor with the given parameters.
-
-        Parameters
-        ----------
-        w : float or int
-            the width/number of fins of this transsitor.
-        l : float
-            the channel length of this transistor.
-        nf : int
-            number of fingers of this transistor.
-        intent : str
-            the design intent of this transistor.  In other words,
-            the threshold voltage flavor.
-        """
-        w_res = self.tech_info.tech_params['mos']['width_resolution']
-        l_res = self.tech_info.tech_params['mos']['length_resolution']
-        self.parameters['w'] = float_to_si_string(round(w / w_res) * w_res)
-        self.parameters['l'] = float_to_si_string(round(l / l_res) * l_res)
-        self.parameters['nf'] = nf
-        self.parameters['intent'] = intent
+        pass
 
     def get_schematic_parameters(self):
-        """Returns the schematic parameter dictionary of this instance.
-
-        NOTE: This method is only used by BAG primitives, as they are
-        implemented with parameterized cells in the CAD database.  Custom
-        subclasses should not override this method.
-
-        Returns
-        -------
-        params : dict[str, str]
-            the schematic parameter dictionary.
-        """
-        return {'w': self.parameters['w'],
-                'l': self.parameters['l'],
-                'nf': '%d' % self.parameters['nf'],
+        # type: () -> Dict[str, str]
+        w_res = self.tech_info.tech_params['mos']['width_resolution']
+        l_res = self.tech_info.tech_params['mos']['length_resolution']
+        return {'w': float_to_si_string(round(self.params['w'] / w_res) * w_res),
+                'l': float_to_si_string(round(self.params['l'] / l_res) * l_res),
+                'nf': '%d' % self.params['nf'],
                 }
 
     def get_cell_name_from_parameters(self):
-        """Returns new cell name based on parameters.
-
-        NOTE: This method is only used by BAG primitives.  This method
-        enables a BAG primitive to change the cell master based on
-        design parameters (e.g. change transistor instance based on the
-        intent parameter).  Custom subclasses should not override this
-        method.
-
-        Returns
-        -------
-        cell : str
-            the cell name based on parameters.
-        """
+        # type: () -> str
         mos_type = self.cell_name.split('_')[0]
         return '%s_%s' % (mos_type, self.parameters['intent'])
 
     def is_primitive(self):
-        """Returns True if this Module represents a BAG primitive.
-
-        NOTE: This method is only used by BAG primitives.  This method prevents
-        BAG primitives from being copied during design implementation.  Custom
-        subclasses should not override this method.
-
-        Returns
-        -------
-        is_primitive : bool
-            True if this Module represents a BAG primitive.
-        """
+        # type: () -> bool
         return True
 
     def should_delete_instance(self):
-        """Returns True if this instance should be deleted based on its parameters.
-
-        This method is mainly used to delete 0 finger or 0 width transistors.  However,
-        You can override this method if there exists parameter settings which corresponds
-        to an empty schematic.
-
-        Returns
-        -------
-        delete : bool
-            True if parent should delete this instance.
-        """
-        return self.parameters['nf'] == 0 or self.parameters['w'] == 0
-
-
-class GenericModule(Module):
-    """A generic module.  Used to represent schematic instances that aren't imported into Python.
-
-    Schematic parameters can be set by modifying the self.parameters dictionary.
-
-    Parameters
-    ----------
-    database : :class:`bag.design.Database`
-        the design database object.
-    lib_name : str
-        the library name.
-    cell_name : str
-        the cell name.
-    parent : :class:`bag.design.Module`
-        the parent of this design module.  None if this is the top level design.
-    prj : :class:`bag.BagProject` or None
-        the BagProject instance.  Used to implement design.
-    **kwargs :
-        additional arguments.
-    """
-
-    def __init__(self, database, lib_name, cell_name, parent=None, prj=None, **kwargs):
-        Module.__init__(self, database, None, parent=parent, prj=prj, lib_name=lib_name, cell_name=cell_name, **kwargs)
-
-    def is_primitive(self):
-        return True
-
-    def design(self):
-        pass
-
-    def get_schematic_parameters(self):
-        return self.parameters.copy()
-
-
-class ResIdealModuleBase(Module):
-    """The base design class for an ideal resistor.
-
-    Parameters
-    ----------
-    database : :class:`bag.design.Database`
-        the design database object.
-    yaml_file : str
-        the netlist information file name.
-    parent : :class:`bag.design.Module`
-        the parent of this design module.  None if this is the top level design.
-    prj : :class:`bag.BagProject` or None
-        the BagProject instance.  Used to implement design.
-    """
-
-    def __init__(self, database, yaml_file, parent=None, prj=None, **kwargs):
-        Module.__init__(self, database, yaml_file, parent=parent, prj=prj, **kwargs)
-        self.parameters['res'] = None
-
-    def get_iden_str(self):
-        """Internal Method.  Returns a string that uniquely identifies this module.
-
-        BAG primitives should override this method to return a string based on its parameters.
-
-        Returns
-        -------
-        iden_str : str
-            an identification string for this module.
-        """
-        # check all parameters are set.
-        for key, val in self.parameters.items():
-            if val is None:
-                raise Exception('Parameter %s unset' % key)
-
-        res_str = self.parameters['res']
-
-        return '%s__%s(%s)' % (self.lib_name, self.cell_name, res_str)
-
-    def design(self, res=1e3):
-        """Create an ideal resistor.
-
-        Parameters
-        ----------
-        res : float
-            the resistance, in Ohms.
-        """
-        self.parameters['res'] = float_to_si_string(res)
-
-    def get_schematic_parameters(self):
-        """Returns the schematic parameter dictionary of this instance.
-
-        NOTE: This method is only used by BAG primitives, as they are
-        implemented with parameterized cells in the CAD database.  Custom
-        subclasses should not override this method.
-
-        Returns
-        -------
-        params : dict[str, str]
-            the schematic parameter dictionary.
-        """
-        return {'res': self.parameters['res'],
-                }
-
-    def is_primitive(self):
-        """Returns True if this Module represents a BAG primitive.
-
-        NOTE: This method is only used by BAG primitives.  This method prevents
-        BAG primitives from being copied during design implementation.  Custom
-        subclasses should not override this method.
-
-        Returns
-        -------
-        is_primitive : bool
-            True if this Module represents a BAG primitive.
-        """
-        return True
+        # type: () -> bool
+        return self.params['nf'] == 0 or self.params['w'] == 0 or self.params['l'] == 0
 
 
 class ResPhysicalModuleBase(Module):
-    """The base design class for a real resistor parameterized by width and length.
+    """The base design class for a real resistor parametrized by width and length.
 
     Parameters
     ----------
-    database : :class:`bag.design.Database`
+    database : ModuleDB
         the design database object.
     yaml_file : str
         the netlist information file name.
-    parent : :class:`bag.design.Module`
-        the parent of this design module.  None if this is the top level design.
-    prj : :class:`bag.BagProject` or None
-        the BagProject instance.  Used to implement design.
+    **kwargs :
+        additional arguments
     """
 
-    def __init__(self, database, yaml_file, parent=None, prj=None, **kwargs):
-        Module.__init__(self, database, yaml_file, parent=parent, prj=prj, **kwargs)
-        self.parameters['w'] = None
-        self.parameters['l'] = None
-        self.parameters['intent'] = None
+    def __init__(self, database, yaml_file, **kwargs):
+        Module.__init__(self, database, yaml_file, **kwargs)
 
-    def get_iden_str(self):
-        """Internal Method.  Returns a string that uniquely identifies this module.
-
-        BAG primitives should override this method to return a string based on its parameters.
-
-        Returns
-        -------
-        iden_str : str
-            an identification string for this module.
-        """
-        # check all parameters are set.
-        for key, val in self.parameters.items():
-            if val is None:
-                raise Exception('Parameter %s unset' % key)
-
-        w_str = self.parameters['w']
-        l_str = self.parameters['l']
-        intent = self.parameters['intent']
-
-        return '%s__%s(%s,%s,%s)' % (self.lib_name, self.cell_name, w_str, l_str, intent)
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        return dict(
+            w='resistor width, in meters.',
+            l='resistor length, in meters.',
+            intent='resistor flavor.',
+        )
 
     def design(self, w=1e-6, l=1e-6, intent='standard'):
-        """Create a physical resistor.
-
-        Parameters
-        ----------
-        w : float
-            width of the resistor, in meters.
-        l : float
-            length of the resistor, in meters.
-        intent : str
-            the resistor design intent, i.e. the type of resistor to use.
-        """
-        self.parameters['w'] = float_to_si_string(w)
-        self.parameters['l'] = float_to_si_string(l)
-        self.parameters['intent'] = intent
+        pass
 
     def get_schematic_parameters(self):
-        """Returns the schematic parameter dictionary of this instance.
-
-        NOTE: This method is only used by BAG primitives, as they are
-        implemented with parameterized cells in the CAD database.  Custom
-        subclasses should not override this method.
-
-        Returns
-        -------
-        params : dict[str, str]
-            the schematic parameter dictionary.
-        """
-        return {'w': self.parameters['w'],
-                'l': self.parameters['l'],
+        # type: () -> Dict[str, str]
+        return {'w': float_to_si_string(self.params['w']),
+                'l': float_to_si_string(self.params['l']),
                 }
 
     def get_cell_name_from_parameters(self):
-        """Returns new cell name based on parameters.
-
-        NOTE: This method is only used by BAG primitives.  This method
-        enables a BAG primitive to change the cell master based on
-        design parameters (e.g. change transistor instance based on the
-        intent parameter).  Custom subclasses should not override this
-        method.
-
-        Returns
-        -------
-        cell : str
-            the cell name based on parameters.
-        """
+        # type: () -> str
         return 'res_%s' % self.parameters['intent']
 
     def is_primitive(self):
-        """Returns True if this Module represents a BAG primitive.
-
-        NOTE: This method is only used by BAG primitives.  This method prevents
-        BAG primitives from being copied during design implementation.  Custom
-        subclasses should not override this method.
-
-        Returns
-        -------
-        is_primitive : bool
-            True if this Module represents a BAG primitive.
-        """
+        # type: () -> bool
         return True
+
+    def should_delete_instance(self):
+        # type: () -> bool
+        return self.params['w'] == 0 or self.params['l'] == 0
 
 
 class ResMetalModule(Module):
@@ -1241,22 +864,25 @@ class ResMetalModule(Module):
 
     Parameters
     ----------
-    database : :class:`bag.design.Database`
+    database : ModuleDB
         the design database object.
     yaml_file : str
         the netlist information file name.
-    parent : :class:`bag.design.Module`
-        the parent of this design module.  None if this is the top level design.
-    prj : :class:`bag.BagProject` or None
-        the BagProject instance.  Used to implement design.
+    **kwargs :
+        additional arguments
     """
 
-    param_list = ['w', 'l', 'layer']
+    def __init__(self, database, yaml_file, **kwargs):
+        Module.__init__(self, database, yaml_file, **kwargs)
 
-    def __init__(self, database, yaml_file, parent=None, prj=None, **kwargs):
-        Module.__init__(self, database, yaml_file, parent=parent, prj=prj, **kwargs)
-        for par in self.param_list:
-            self.parameters[par] = None
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        return dict(
+            w='resistor width, in meters.',
+            l='resistor length, in meters.',
+            layer='the metal layer ID.',
+        )
 
     def design(self, w=1e-6, l=1e-6, layer=1):
         """Create a metal resistor.
@@ -1270,12 +896,6 @@ class ResMetalModule(Module):
         layer : int
             the metal layer ID.
         """
-        local_dict = locals()
-        for name in self.param_list:
-            if name not in local_dict:
-                raise ValueError('Parameter %s not specified.' % name)
-            self.parameters[name] = local_dict[name]
-
         # get technology parameters
         tech_dict = self.tech_info.tech_params['res_metal']
         lib_name = tech_dict['lib_name']
@@ -1298,81 +918,3 @@ class ResMetalModule(Module):
                 raise ValueError('unsupported type: %s' % type(val))
 
             self.instances['R0'].parameters[key] = val
-
-
-class CapIdealModuleBase(Module):
-    """The base design class for an ideal capacitor.
-
-    Parameters
-    ----------
-    database : :class:`bag.design.Database`
-        the design database object.
-    yaml_file : str
-        the netlist information file name.
-    parent : :class:`bag.design.Module`
-        the parent of this design module.  None if this is the top level design.
-    prj : :class:`bag.BagProject` or None
-        the BagProject instance.  Used to implement design.
-    """
-
-    def __init__(self, database, yaml_file, parent=None, prj=None, **kwargs):
-        Module.__init__(self, database, yaml_file, parent=parent, prj=prj, **kwargs)
-        self.parameters['cap'] = None
-
-    def get_iden_str(self):
-        """Internal Method.  Returns a string that uniquely identifies this module.
-
-        BAG primitives should override this method to return a string based on its parameters.
-
-        Returns
-        -------
-        iden_str : str
-            an identification string for this module.
-        """
-        # check all parameters are set.
-        for key, val in self.parameters.items():
-            if val is None:
-                raise Exception('Parameter %s unset' % key)
-
-        cap_str = self.parameters['cap']
-
-        return '%s__%s(%s)' % (self.lib_name, self.cell_name, cap_str)
-
-    def design(self, cap=1e-12):
-        """Create an ideal capacitor.
-
-        Parameters
-        ----------
-        cap : float
-            the capacitance, in Farads.
-        """
-        self.parameters['cap'] = float_to_si_string(cap)
-
-    def get_schematic_parameters(self):
-        """Returns the schematic parameter dictionary of this instance.
-
-        NOTE: This method is only used by BAG primitives, as they are
-        implemented with parameterized cells in the CAD database.  Custom
-        subclasses should not override this method.
-
-        Returns
-        -------
-        params : dict[str, str]
-            the schematic parameter dictionary.
-        """
-        return {'cap': self.parameters['cap'],
-                }
-
-    def is_primitive(self):
-        """Returns True if this Module represents a BAG primitive.
-
-        NOTE: This method is only used by BAG primitives.  This method prevents
-        BAG primitives from being copied during design implementation.  Custom
-        subclasses should not override this method.
-
-        Returns
-        -------
-        is_primitive : bool
-            True if this Module represents a BAG primitive.
-        """
-        return True
