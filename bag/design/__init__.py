@@ -29,13 +29,6 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-from .database import Database
-from .module import Module
-from .module import MosModuleBase
-from .module import ResIdealModuleBase
-from .module import ResPhysicalModuleBase
-from .module import CapIdealModuleBase
-from .module import ResMetalModule
+from .module import Module, ModuleDB, SchInstance, MosModuleBase, ResPhysicalModuleBase, ResMetalModule
 
-__all__ = ['Database', 'Module', 'MosModuleBase', 'ResIdealModuleBase',
-           'ResPhysicalModuleBase', 'CapIdealModuleBase', 'ResMetalModule']
+__all__ = ['Module', 'ModuleDB', 'SchInstance', 'MosModuleBase', 'ResPhysicalModuleBase', 'ResMetalModule']
