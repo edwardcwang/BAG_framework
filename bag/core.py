@@ -472,7 +472,7 @@ class BagProject(object):
 
         # create design module database.
         sch_exc_libs = self.bag_config['database']['schematic']['exclude_libraries']
-        self.dsn_db = design.Database(self.bag_config['lib_defs'], self.tech_info, sch_exc_libs)
+        self.dsn_db = design.ModuleDB(self.bag_config['lib_defs'], self.tech_info, sch_exc_libs, prj=self)
 
         if port is not None:
             # make DbAccess instance.
@@ -547,6 +547,7 @@ class BagProject(object):
 
         return self.impl_db.create_library(lib_name, lib_path=lib_path)
 
+    # noinspection PyUnusedLocal
     def create_design_module(self, lib_name, cell_name, **kwargs):
         """Create a new top level design module for the given schematic template
 
@@ -556,32 +557,32 @@ class BagProject(object):
             the library name.
         cell_name : str
             the cell name.
-        kwargs : dict[str, any]
+        **kwargs
             optional parameters.
 
         Returns
         -------
-        dsn : :class:`bag.design.Module`
-            the DesignModule correspodning to the design template.
+        dsn : SchInstance
+            a configurable schematic instance of the given schematic generator.
         """
-        return self.dsn_db.make_design_module(lib_name, cell_name, parent=None, prj=self, **kwargs)
+        return design.SchInstance(self.dsn_db, lib_name, cell_name, 'XTOP', static=False)
 
-    def implement_design(self, lib_name, design_module, lib_path=''):
+    def implement_design(self, lib_name, content_list, lib_path=''):
         """Implement the given design.
 
         Parameters
         ----------
         lib_name : str
             name of the new library to put the concrete schematics.
-        design_module : bag.Design.module.Module
-            the design module to create schematics for.
+        content_list : Sequence[Any]
+            list of schematics to create.
         lib_path : str
             the path to create the library in.  If empty, use default location.
         """
         if self.impl_db is None:
             raise Exception('BAG Server is not set up.')
 
-        self.impl_db.implement_design(lib_name, design_module, lib_path=lib_path)
+        self.impl_db.implement_design(lib_name, content_list, lib_path=lib_path)
 
     def configure_testbench(self, tb_lib, tb_cell):
         """Update testbench state for the given testbench.

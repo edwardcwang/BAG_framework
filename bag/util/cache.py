@@ -39,7 +39,7 @@ import importlib
 import abc
 from collections import OrderedDict
 
-from typing import Sequence, Dict, Set, Any, Optional, Type, Callable
+from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable
 
 from ..io import readlines_iter, write_file, fix_string
 
@@ -254,14 +254,14 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
 
     @abc.abstractmethod
     def get_content(self, lib_name, rename_fun):
-        # type: (str, Callable[str, str]) -> Any
+        # type: (str, Callable[[str], str]) -> Any
         """Returns the content of this master instance.
 
         Parameters
         ----------
         lib_name : str
             the library to create the design masters in.
-        rename_fun : Callable[str, str]
+        rename_fun : Callable[[str], str]
             a function that renames design masters.
 
         Returns
@@ -357,6 +357,9 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         return self.to_immutable_id((self._get_qualified_name(), self.params))
 
 
+MasterType = TypeVar('MasterType', bound=DesignMaster)
+
+
 class MasterDB(with_metaclass(abc.ABCMeta, object)):
     """A database of existing design masters.
 
@@ -389,14 +392,14 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
 
     @abc.abstractmethod
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[DesignMaster], str, Dict[str, Any], Set[str], **kwargs) -> DesignMaster
+        # type: (Type[MasterType], str, Dict[str, Any], Set[str], **kwargs) -> MasterType
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.
 
         Parameters
         ----------
-        gen_cls : Type[DesignMaster]
+        gen_cls : Type[MasterType]
             the generator Python class.
         lib_name : str
             generated instance library name.
@@ -409,11 +412,10 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
 
         Returns
         -------
-        master : DesignMaster
+        master : MasterType
             the non-finalized generated instance.
         """
-        # noinspection PyTypeChecker
-        return None
+        raise NotImplementedError('not implemented')
 
     @abc.abstractmethod
     def create_masters_in_db(self, lib_name, content_list, debug=False):
@@ -535,7 +537,7 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
         return self._importer.get_class(lib_name, cell_name)
 
     def new_master(self, lib_name='', cell_name='', params=None, gen_cls=None, debug=False, **kwargs):
-        # type: (str, str, Optional[Dict[str, Any]], Optional[Type[DesignMaster]], bool, **kwargs) -> DesignMaster
+        # type: (str, str, Optional[Dict[str, Any]], Optional[Type[MasterType]], bool, **kwargs) -> MasterType
         """Create a generator instance.
 
         Parameters
@@ -546,7 +548,7 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
             generator name
         params : Optional[Dict[str, Any]]
             the parameter dictionary.
-        gen_cls : Optional[Type[DesignMaster]]
+        gen_cls : Optional[Type[MasterType]]
             the generator class to instantiate.  Overrides lib_name and cell_name.
         debug : bool
             True to print debug messages.
@@ -555,7 +557,7 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
 
         Returns
         -------
-        master : DesignMaster
+        master : MasterType
             the generator instance.
         """
         if params is None:
