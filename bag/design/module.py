@@ -165,10 +165,20 @@ class SchInstance(object):
         If given, initialize instance terminal connections to this dictionary.
     master : Optional[Module]
         If given, set the master of this instance.
+    parameters : Optional[Dict[str, Any]]
+        If given, set the instance parameters to this dictionary.
     """
-    def __init__(self, database, gen_lib_name, gen_cell_name, inst_name,
-                 static=False, connections=None, master=None):
-        # type: (MasterDB, str, str, str, bool, Optional[Dict[str, str]], Optional[Module]) -> None
+    def __init__(self,
+                 database,  # type: MasterDB
+                 gen_lib_name,  # type: str
+                 gen_cell_name,  # type: str
+                 inst_name,  # type: str
+                 static=False,  # type: bool
+                 connections=None,  # type: Optional[Dict[str, str]]
+                 master=None,  # type: Optional[Module]
+                 parameters=None,  # type: Optional[Dict[str, Any]]
+                 ):
+        # type: (...) -> None
         self._db = database
         self._master = master
         self._name = inst_name
@@ -176,7 +186,7 @@ class SchInstance(object):
         self._gen_cell_name = gen_cell_name
         self._static = static
         self._term_mapping = {} if connections is None else connections
-        self.parameters = {}
+        self.parameters = {} if parameters is None else parameters
 
     def change_generator(self, gen_lib_name, gen_cell_name, static=False):
         # type: (str, str, bool) -> None
@@ -251,8 +261,11 @@ class SchInstance(object):
         sch_inst : SchInstance
             a copy of this SchInstance, with connections potentially updated.
         """
+        if connections is None:
+            connections = self._term_mapping.copy()
         return SchInstance(self._db, self._gen_lib_name, self._gen_cell_name, inst_name,
-                           static=self._static, connections=connections, master=self._master)
+                           static=self._static, connections=connections, master=self._master,
+                           parameters=self.parameters.copy())
 
     def get_master_lib_name(self, impl_lib):
         # type: (str) -> str
@@ -270,21 +283,30 @@ class SchInstance(object):
         """
         return self._gen_lib_name if self.is_primitive else impl_lib
 
-    def design_specs(self, **kwargs):
-        # type: (**kwargs) -> None
+    def design_specs(self, *args, **kwargs):
+        # type: (*args, **kwargs) -> None
         """Update the instance master."""
-        self._update_master(kwargs, 'design_specs')
+        self._update_master('design_specs', args, kwargs)
 
-    def design(self, **kwargs):
-        # type: (**kwargs) -> None
+    def design(self, *args, **kwargs):
+        # type: (*args, **kwargs) -> None
         """Update the instance master."""
-        self._update_master(kwargs, 'design')
+        self._update_master('design', args, kwargs)
 
-    def _update_master(self, params, design_fun):
-        # type: (Dict[str, Any], str) -> None
+    def _update_master(self, design_fun, args, kwargs):
+        # type: (str, Tuple[Any, ...], Dict[str, Any]) -> None
         """Create a new master."""
+        if args:
+            key = 'args'
+            idx = 1
+            while key in kwargs:
+                key = 'args_%d' % idx
+                idx += 1
+            kwargs[key] = args
+        else:
+            key = None
         self._master = self._db.new_master(self._gen_lib_name, self._gen_cell_name,
-                                           params=params, design_fun=design_fun)  # type: Module
+                                           params=kwargs, design_args=key, design_fun=design_fun)  # type: Module
         if self._master.is_primitive():
             self.parameters.update(self._master.get_schematic_parameters())
 
@@ -325,6 +347,14 @@ class SchInstance(object):
         self._db.cell_suffix = suffix
         self._db.instantiate_masters([self._master], [top_cell_name], lib_name=lib_name)
 
+    def get_layout_params(self, **kwargs):
+        # type: (**kwargs) -> Dict[str, Any]
+        """Backwards compatibility function."""
+        if hasattr(self._master, 'get_layout_params'):
+            return getattr(self._master, 'get_layout_params')(**kwargs)
+        else:
+            return kwargs
+
 
 class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
     """The base class of all schematic generators.  This represents a schematic master.
@@ -356,6 +386,7 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
         params = kwargs['params']
         used_names = kwargs['used_names']
         design_fun = kwargs['design_fun']
+        design_args = kwargs['design_args']
 
         self.tech_info = database.tech_info
         self.instances = {}
@@ -369,6 +400,7 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
         self._orig_lib_name = self.sch_info['lib_name']
         self._orig_cell_name = self.sch_info['cell_name']
         self._design_fun = design_fun
+        self._design_args = design_args
 
         # create initial instances and populate instance map
         for inst_name, inst_attr in self.sch_info['instances'].items():
@@ -411,7 +443,11 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
         """
         # invoke design function
         fun = getattr(self, self._design_fun)
-        fun(**self.params)
+        if self._design_args:
+            args = self.params.pop(self._design_args)
+            fun(*args, **self.params)
+        else:
+            fun(**self.params)
 
         # backwards compatibility
         if self.key is None:
