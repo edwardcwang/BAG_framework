@@ -264,7 +264,7 @@ class SchInstance(object):
             print('DEPRECATED WARNING: erase is no longer supported in implement_design() and has no effect')
 
         if not top_cell_name:
-            top_cell_name = self.cell_name
+            top_cell_name = self.master_cell_name
 
         if 'lib_path' in kwargs:
             self._db.lib_path = kwargs['lib_path']
@@ -435,13 +435,13 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
                     info_list.append(dict(
                         name=inst.inst_name,
                         lib_name=cur_lib,
-                        cell_name=inst.master_cell_name,
+                        cell_name=rename_fun(inst.master_cell_name),
                         params=inst.parameters,
                         term_mapping=inst.term_mapping,
                     ))
             inst_map[inst_name] = info_list
 
-        return (self._orig_lib_name, self._orig_cell_name, self.cell_name,
+        return (self._orig_lib_name, self._orig_cell_name, rename_fun(self.cell_name),
                 self.pin_map, inst_map, self.new_pins)
 
     @property
