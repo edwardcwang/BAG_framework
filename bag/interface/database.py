@@ -32,7 +32,7 @@ from builtins import *
 import os
 import abc
 import traceback
-from typing import List, Dict, Tuple, Optional, Union
+from typing import List, Dict, Tuple, Optional, Union, Sequence
 
 from jinja2 import Template
 import yaml
@@ -299,7 +299,7 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
 
     @abc.abstractmethod
     def update_testbench(self, lib, cell, parameters, sim_envs, config_rules, env_parameters):
-        # type: (str, str, Dict[str, str], List[str], List[List[str]], List[List[Tuple[str, str]]]) -> None
+        # type: (str, str, Dict[str, str], Sequence[str], List[List[str]], List[List[Tuple[str, str]]]) -> None
         """Update the given testbench configuration.
 
         Parameters
@@ -310,7 +310,7 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
             testbench cell.
         parameters : Dict[str, str]
             testbench parameters.
-        sim_envs : List[str]
+        sim_envs : Sequence[str]
             list of enabled simulation environments.
         config_rules : List[List[str]]
             config view mapping rules, list of (lib, cell, view) rules.
