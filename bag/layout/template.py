@@ -239,25 +239,35 @@ class TemplateDB(MasterDB):
         """
         self.batch_layout(prj, [template], [top_cell_name], debug=debug)
 
-    def batch_layout(self, prj, template_list, name_list=None, lib_name='', debug=False):
-        # type: (BagProject, List[TemplateBase], Optional[List[str]], str, bool) -> None
+    def batch_layout(self,
+                     prj,  # type: BagProject
+                     template_list,  # type: Sequence[TemplateBase]
+                     name_list=None,  # type: Optional[Sequence[Optional[str]]]
+                     lib_name='',  # type: str
+                     debug=False,  # type: bool
+                     rename_dict=None,  # type: Optional[Dict[str, str]]
+                     ):
+        # type: (...) -> None
         """Instantiate all given templates.
 
         Parameters
         ----------
         prj : BagProject
             the :class:`~bag.BagProject` instance used to create layout.
-        template_list : List[TemplateBase]
+        template_list : Sequence[TemplateBase]
             list of templates to instantiate.
-        name_list : Optional[List[str]]
+        name_list : Optional[Sequence[Optional[str]]]
             list of template layout names.  If not given, default names will be used.
         lib_name : str
             Library to create the masters in.  If empty or None, use default library.
         debug : bool
             True to print debugging messages
+        rename_dict : Optional[Dict[str, str]]
+            optional master cell renaming dictionary.
         """
         self._prj = prj
-        self.instantiate_masters(template_list, name_list=name_list, lib_name=lib_name, debug=debug)
+        self.instantiate_masters(template_list, name_list=name_list, lib_name=lib_name,
+                                 debug=debug, rename_dict=rename_dict)
 
 
 class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):

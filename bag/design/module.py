@@ -121,7 +121,7 @@ class ModuleDB(MasterDB):
         if self._prj is None:
             raise ValueError('BagProject is not defined.')
 
-        self._prj.implement_design(lib_name, content_list, lib_path=self.lib_path)
+        self._prj.instantiate_schematic(lib_name, content_list, lib_path=self.lib_path)
 
     @property
     def tech_info(self):
@@ -235,6 +235,11 @@ class SchInstance(object):
         return self._master is not None and self._master.should_delete_instance()
 
     @property
+    def master(self):
+        # type: () -> Optional[Module]
+        return self._master
+
+    @property
     def master_cell_name(self):
         # type: () -> str
         """Returns the schematic master cell name."""
@@ -338,14 +343,18 @@ class SchInstance(object):
         if 'erase' in kwargs:
             print('DEPRECATED WARNING: erase is no longer supported in implement_design() and has no effect')
 
+        debug = kwargs.get('debug', False)
+        rename_dict = kwargs.get('rename_dict', None)
+
         if not top_cell_name:
-            top_cell_name = self.master_cell_name
+            top_cell_name = None
 
         if 'lib_path' in kwargs:
             self._db.lib_path = kwargs['lib_path']
         self._db.cell_prefix = prefix
         self._db.cell_suffix = suffix
-        self._db.instantiate_masters([self._master], [top_cell_name], lib_name=lib_name)
+        self._db.instantiate_masters([self._master], [top_cell_name], lib_name=lib_name,
+                                     debug=debug, rename_dict=rename_dict)
 
     def get_layout_params(self, **kwargs):
         # type: (**kwargs) -> Dict[str, Any]
