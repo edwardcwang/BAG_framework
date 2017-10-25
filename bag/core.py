@@ -37,13 +37,12 @@ from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, Union, Type, Calla
 # noinspection PyPackageRequirements
 import yaml
 
-from . import interface
-from . import design
+from .interface import ZMQDealer
+from .design import ModuleDB, SchInstance
 from .layout.core import DummyTechInfo
 from .io import read_file, sim_data
 
 if TYPE_CHECKING:
-    from .design.module import SchInstance
     from .interface.simulator import SimAccess
     from .interface.database import DbAccess
 
@@ -493,11 +492,11 @@ class BagProject(object):
 
         # create design module database.
         sch_exc_libs = self.bag_config['database']['schematic']['exclude_libraries']
-        self.dsn_db = design.ModuleDB(self.bag_config['lib_defs'], self.tech_info, sch_exc_libs, prj=self)
+        self.dsn_db = ModuleDB(self.bag_config['lib_defs'], self.tech_info, sch_exc_libs, prj=self)
 
         if port is not None:
             # make DbAccess instance.
-            dealer = interface.ZMQDealer(port, **dealer_kwargs)
+            dealer = ZMQDealer(port, **dealer_kwargs)
             db_cls = _import_class_from_str(self.bag_config['database']['class'])
             self.impl_db = db_cls(dealer, bag_tmp_dir, self.bag_config['database'])
         else:
@@ -592,16 +591,18 @@ class BagProject(object):
         dsn : SchInstance
             a configurable schematic instance of the given schematic generator.
         """
-        return design.SchInstance(self.dsn_db, lib_name, cell_name, 'XTOP', static=False)
+        return SchInstance(self.dsn_db, lib_name, cell_name, 'XTOP', static=False)
 
-    def implement_design(self, lib_name, content_list, lib_path=''):
+    def instantiate_schematic(self, lib_name, content_list, lib_path=''):
         # type: (str, Sequence[Any], str) -> None
-        """Implement the given design.
+        """Create the given schematic contents in CAD database.
+
+        NOTE: this is BAG's internal method.  TO create schematics, call batch_schematic() instead.
 
         Parameters
         ----------
         lib_name : str
-            name of the new library to put the concrete schematics.
+            name of the new library to put the schematic instances.
         content_list : Sequence[Any]
             list of schematics to create.
         lib_path : str
@@ -610,7 +611,43 @@ class BagProject(object):
         if self.impl_db is None:
             raise Exception('BAG Server is not set up.')
 
-        self.impl_db.implement_design(lib_name, content_list, lib_path=lib_path)
+        self.impl_db.instantiate_schematic(lib_name, content_list, lib_path=lib_path)
+
+    def batch_schematic(self,  # type: BagProject
+                        lib_name,  # type: str
+                        sch_inst_list,  # type: Sequence[SchInstance]
+                        name_list=None,  # type: Optional[Sequence[Optional[str]]]
+                        prefix='',  # type: str
+                        suffix='',  # type: str
+                        debug=False,  # type: bool
+                        rename_dict=None,  # type: Optional[Dict[str, str]]
+                        ):
+        # type: (...) -> None
+        """create all the given schematics in CAD database.
+
+        Parameters
+        ----------
+        lib_name : str
+            name of the new library to put the schematic instances.
+        sch_inst_list : Sequence[SchInstance]
+            list of SchInstance objects.
+        name_list : Optional[Sequence[Optional[str]]]
+            list of master cell names.  If not given, default names will be used.
+        prefix : str
+            prefix to add to cell names.
+        suffix : str
+            suffix to add to cell names.
+        debug : bool
+            True to print debugging messages
+        rename_dict : Optional[Dict[str, str]]
+            optional master cell renaming dictionary.
+        """
+        master_list = [inst.master for inst in sch_inst_list]
+
+        self.dsn_db.cell_prefix = prefix
+        self.dsn_db.cell_suffix = suffix
+        self.dsn_db.instantiate_masters(master_list, name_list=name_list, lib_name=lib_name,
+                                        debug=debug, rename_dict=rename_dict)
 
     def configure_testbench(self, tb_lib, tb_cell):
         # type: (str, str) -> Testbench

@@ -635,8 +635,8 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
                 self._import_design(inst_lib_name, inst_cell_name, imported_cells, dsn_db,
                                     new_lib_path)
 
-    def implement_design(self, lib_name, content_list, lib_path=''):
-        """Implement the given design.
+    def instantiate_schematic(self, lib_name, content_list, lib_path=''):
+        """Create the given schematics in CAD database.
 
         Parameters
         ----------
