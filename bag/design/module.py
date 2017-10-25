@@ -153,27 +153,32 @@ class SchInstance(object):
     ----------
     database : ModuleDB
         the schematic generator database.
-    lib_name : str
-        the instance master library name.
-    cell_name : str
-        the instance master cell name.
+    gen_lib_name : str
+        the schematic generator library name.
+    gen_cell_name : str
+        the schematic generator cell name.
     inst_name : str
         name of this instance.
     static : bool
-        True if the instance master is static.
+        True if the schematic generator is static.
+    connections : Optional[Dict[str, str]]
+        If given, initialize instance terminal connections to this dictionary.
+    master : Optional[Module]
+        If given, set the master of this instance.
     """
-    def __init__(self, database, lib_name, cell_name, inst_name, static=False):
-        # type: (MasterDB, str, str, str, bool) -> None
+    def __init__(self, database, gen_lib_name, gen_cell_name, inst_name,
+                 static=False, connections=None, master=None):
+        # type: (MasterDB, str, str, str, bool, Optional[Dict[str, str]], Optional[Module]) -> None
         self._db = database
-        self._master = None
-        self.inst_name = inst_name
-        self.lib_name = lib_name
-        self.cell_name = cell_name
-        self.static = static
-        self.term_mapping = {}
+        self._master = master
+        self._name = inst_name
+        self._gen_lib_name = gen_lib_name
+        self._gen_cell_name = gen_cell_name
+        self._static = static
+        self._term_mapping = {} if connections is None else connections
         self.parameters = {}
 
-    def change_master(self, lib_name, cell_name, static=False):
+    def change_generator(self, gen_lib_name, gen_cell_name, static=False):
         # type: (str, str, bool) -> None
         """Change the master associated with this instance.
 
@@ -181,25 +186,37 @@ class SchInstance(object):
 
         Parameters
         ----------
-        lib_name : str
-            the new master library name.
-        cell_name : str
-            the new master cell name.
+        gen_lib_name : str
+            the new schematic generator library name.
+        gen_cell_name : str
+            the new schematic generator cell name.
         static : bool
-            True if the instance master is static.
+            True if the schematic generator is static.
         """
         self._master = None
-        self.lib_name = lib_name
-        self.cell_name = cell_name
-        self.static = static
+        self._gen_lib_name = gen_lib_name
+        self._gen_cell_name = gen_cell_name
+        self._static = static
         self.parameters.clear()
-        self.term_mapping.clear()
+        self._term_mapping.clear()
+
+    @property
+    def name(self):
+        # type: () -> str
+        """Returns the instance name."""
+        return self._name
+
+    @property
+    def connections(self):
+        # type: () -> Dict[str, str]
+        """Returns the instance terminals connection dictionary."""
+        return self._term_mapping
 
     @property
     def is_primitive(self):
         # type: () -> bool
-        """Returns true if this is an instance of a primitive master."""
-        return self.static or self._master.is_primitive()
+        """Returns true if this is an instance of a primitive schematic generator."""
+        return self._static or self._master.is_primitive()
 
     @property
     def should_delete(self):
@@ -210,12 +227,48 @@ class SchInstance(object):
     @property
     def master_cell_name(self):
         # type: () -> str
-        return self.cell_name if self._master is None else self._master.cell_name
+        """Returns the schematic master cell name."""
+        return self._gen_cell_name if self._master is None else self._master.cell_name
 
     @property
     def master_key(self):
         # type: () -> Any
         return self._master.key
+
+    def copy(self, inst_name, connections=None):
+        # type: (str, Optional[Dict[str, str]]) -> SchInstance
+        """Returns a copy of this SchInstance.
+
+        Parameters
+        ----------
+        inst_name : str
+            the new instance name.
+        connections : Optional[Dict[str, str]]
+            If given, will set the connections of this instance to this dictionary.
+
+        Returns
+        -------
+        sch_inst : SchInstance
+            a copy of this SchInstance, with connections potentially updated.
+        """
+        return SchInstance(self._db, self._gen_lib_name, self._gen_cell_name, inst_name,
+                           static=self._static, connections=connections, master=self._master)
+
+    def get_master_lib_name(self, impl_lib):
+        # type: (str) -> str
+        """Returns the schematic master library name.
+
+        Parameters
+        ----------
+        impl_lib : str
+            library where schematic masters will be created.
+
+        Returns
+        -------
+        master_lib : str
+            the schematic master library name.
+        """
+        return self._gen_lib_name if self.is_primitive else impl_lib
 
     def design_specs(self, **kwargs):
         # type: (**kwargs) -> None
@@ -230,7 +283,7 @@ class SchInstance(object):
     def _update_master(self, params, design_fun):
         # type: (Dict[str, Any], str) -> None
         """Create a new master."""
-        self._master = self._db.new_master(self.lib_name, self.cell_name,
+        self._master = self._db.new_master(self._gen_lib_name, self._gen_cell_name,
                                            params=params, design_fun=design_fun)  # type: Module
         if self._master.is_primitive():
             self.parameters.update(self._master.get_schematic_parameters())
@@ -431,13 +484,13 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
             info_list = []
             for inst in inst_list:
                 if not inst.should_delete:
-                    cur_lib = inst.lib_name if inst.is_primitive else lib_name
+                    cur_lib = inst.get_master_lib_name(lib_name)
                     info_list.append(dict(
-                        name=inst.inst_name,
+                        name=inst.name,
                         lib_name=cur_lib,
                         cell_name=rename_fun(inst.master_cell_name),
                         params=inst.parameters,
-                        term_mapping=inst.term_mapping,
+                        term_mapping=inst.connections,
                     ))
             inst_map[inst_name] = info_list
 
@@ -601,7 +654,7 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
 
         # check if this is arrayed
         if index is not None and isinstance(self.instances[inst_name], list):
-            self.instances[inst_name][index].change_master(lib_name, cell_name, static=static)
+            self.instances[inst_name][index].change_generator(lib_name, cell_name, static=static)
         else:
             self.instances[inst_name] = SchInstance(self.master_db, lib_name, cell_name, inst_name, static=static)
 
@@ -627,7 +680,7 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
         if index is not None:
             # only modify terminal connection for one instance in the array
             if isinstance(term_name, str) and isinstance(net_name, str):
-                self.instances[inst_name][index].term_mapping[term_name] = net_name
+                self.instances[inst_name][index].connections[term_name] = net_name
             else:
                 raise ValueError('If index is not None, both term_name and net_name must be string.')
         else:
@@ -654,10 +707,10 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
                     raise ValueError('net_name length = %d != %d' % (len(net_name), num_insts))
 
             for inst, tname, nname in zip(cur_inst_list, term_name, net_name):
-                inst.term_mapping[tname] = nname
+                inst.connections[tname] = nname
 
-    def array_instance(self, inst_name, inst_name_list, term_list=None, same=False):
-        # type: (str, List[str], Optional[List[Dict[str, str]]], bool) -> None
+    def array_instance(self, inst_name, inst_name_list, term_list=None):
+        # type: (str, List[str], Optional[List[Dict[str, str]]]) -> None
         """Replace the given instance by an array of instances.
 
         This method will replace self.instances[inst_name] by a list of
@@ -675,31 +728,20 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
             them to.  Only terminal connections different than the parent instance
             should be listed here.
             If None, assume terminal connections are not changed.
-        same : bool
-            Deprecated feature.  No longer supported.
         """
-        if same:
-            raise ValueError('same flag no longer supported.  See developer.')
-
         num_inst = len(inst_name_list)
         if not term_list:
-            term_list = [{} for _ in range(num_inst)]
+            term_list = [None] * num_inst
         if num_inst != len(term_list):
             msg = 'len(inst_name_list) = %d != len(term_list) = %d'
             raise ValueError(msg % (num_inst, len(term_list)))
 
         orig_inst = self.instances[inst_name]
         if not isinstance(orig_inst, SchInstance):
-            orig_inst = orig_inst[0]
+            raise ValueError('Instance %s is already arrayed.' % inst_name)
 
-        lib_name, cell_name, static = orig_inst.lib_name, orig_inst.cell_name, orig_inst.static
-        new_inst_list = []
-        for iname, iterm in zip(inst_name_list, term_list):
-            cur_inst = SchInstance(self.master_db, lib_name, cell_name, iname, static=static)
-            cur_inst.term_mapping.update(iterm)
-            new_inst_list.append(cur_inst)
-
-        self.instances[inst_name] = new_inst_list
+        self.instances[inst_name] = [orig_inst.copy(iname, connections=iterm)
+                                     for iname, iterm in zip(inst_name_list, term_list)]
 
     def design_dc_bias_sources(self, vbias_dict, ibias_dict, vinst_name, iinst_name, define_vdd=True):
         # type: (Optional[Dict[str, List[str]]], Optional[Dict[str, List[str]]], str, str, bool) -> None
