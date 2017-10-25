@@ -32,7 +32,7 @@ from builtins import *
 import os
 import string
 import importlib
-from typing import List, Optional, Union
+from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, Union, Type, Callable, Sequence
 
 # noinspection PyPackageRequirements
 import yaml
@@ -42,8 +42,14 @@ from . import design
 from .layout.core import DummyTechInfo
 from .io import read_file, sim_data
 
+if TYPE_CHECKING:
+    from .design.module import SchInstance
+    from .interface.simulator import SimAccess
+    from .interface.database import DbAccess
+
 
 def _parse_yaml_file(fname):
+    # type: (str) -> Dict[str, Any]
     """Parse YAML file with environment variable substitution.
 
     Parameters
@@ -53,7 +59,7 @@ def _parse_yaml_file(fname):
 
     Returns
     -------
-    table : dict[string, any]
+    table : Dict[str, Any]
         the yaml file as a dictionary.
     """
     content = read_file(fname)
@@ -63,6 +69,7 @@ def _parse_yaml_file(fname):
 
 
 def _get_port_number(port_file):
+    # type: (str) -> Tuple[Optional[int], str]
     """Read the port number from the given port file.
 
     Parameters
@@ -72,7 +79,7 @@ def _get_port_number(port_file):
 
     Returns
     -------
-    port : int or None
+    port : Optional[int]
         the port number if reading is successful.
     msg : str
         Empty string on success, the error message on failure.
@@ -95,6 +102,7 @@ def _get_port_number(port_file):
 
 
 def _import_class_from_str(class_str):
+    # type: (str) -> Type
     """Given a Python class string, convert it to the Python class.
 
     Parameters
@@ -128,15 +136,16 @@ class Testbench(object):
         testbench library.
     cell : str
         testbench cell.
-    parameters : dict[str, str]
+    parameters : Dict[str, str]
         the simulation parameter dictionary.  The values are string representation
         of actual parameter values.
-    env_list : list[str]
+    env_list : Sequence[str]
         list of defined simulation environments.
-    default_envs : list[str]
+    default_envs : Sequence[str]
         the selected simulation environments.
-    outputs : dict[str, str]
+    outputs : Dict[str, str]
         default output expressions
+
     Attributes
     ----------
     lib : str
@@ -148,6 +157,7 @@ class Testbench(object):
     """
 
     def __init__(self, sim, db, lib, cell, parameters, env_list, default_envs, outputs):
+        # type: (SimAccess, DbAccess, str, str, Dict[str, str], Sequence[str], Sequence[str], Dict[str, str]) -> None
         """Create a new testbench instance.
         """
         self.sim = sim
@@ -164,14 +174,17 @@ class Testbench(object):
         self.sim_id = None
 
     def get_defined_simulation_environments(self):
+        # type: () -> Sequence[str]
         """Return a list of defined simulation environments"""
         return self.env_list
 
     def get_current_simulation_environments(self):
+        # type: () -> Sequence[str]
         """Returns a list of simulation environments this testbench will simulate."""
         return self.sim_envs
 
     def add_output(self, var, expr):
+        # type: (str, str) -> None
         """Add an output expression to be recorded and exported back to python.
 
         Parameters
@@ -186,13 +199,14 @@ class Testbench(object):
         self.outputs[var] = expr
 
     def set_parameter(self, name, val, precision=6):
+        # type: (str, Union[int, float], int) -> None
         """Sets the value of the given simulation parameter.
 
         Parameters
         ----------
         name : str
             parameter name.
-        val : int or float
+        val : Union[int, float]
             parameter value
         precision : int
             the parameter value will be rounded to this precision.
@@ -201,14 +215,14 @@ class Testbench(object):
         self.parameters[name] = self.sim.format_parameter_value(param_config, precision)
 
     def set_env_parameter(self, name, val_list, precision=6):
-        # type: (str, List[float], int) -> None
+        # type: (str, Sequence[float], int) -> None
         """Configure the given parameter to have different value across simulation environments.
 
         Parameters
         ----------
         name : str
             the parameter name.
-        val_list : List[float]
+        val_list : Sequence[float]
             the parameter values for each simulation environment.  the order of the simulation
             environments can be found in self.sim_envs
         precision : int
@@ -233,6 +247,7 @@ class Testbench(object):
         self.parameters[name] = default_val
 
     def set_sweep_parameter(self, name, precision=6, **kwargs):
+        # type: (str, int, **kwargs) -> None
         """Set to sweep the given parameter.
 
         To set the sweep values directly:
@@ -275,6 +290,7 @@ class Testbench(object):
         self.parameters[name] = self.sim.format_parameter_value(param_config, precision)
 
     def set_simulation_environments(self, env_list):
+        # type: (Sequence[str]) -> None
         """Enable the given list of simulation environments.
 
         If more than one simulation environment is specified, then a sweep
@@ -282,11 +298,12 @@ class Testbench(object):
 
         Parameters
         ----------
-        env_list : list[str]
+        env_list : Sequence[str]
         """
         self.sim_envs = env_list
 
     def set_simulation_view(self, lib_name, cell_name, sim_view):
+        # type: (str, str, str) -> None
         """Set the simulation view of the given design.
 
         For simulation, each design may have multiple views, such as schematic,
@@ -307,6 +324,7 @@ class Testbench(object):
         self.config_rules[key] = sim_view
 
     def update_testbench(self):
+        # type: () -> None
         """Commit the testbench changes to the CAD database.
         """
         config_list = []
@@ -323,24 +341,25 @@ class Testbench(object):
                                  env_params)
 
     def run_simulation(self, precision=6, sim_tag=None, block=True, callback=None):
+        # type: (int, Optional[str], bool, Optional[Callable[[str, Optional[int]], None]]) -> Optional[str]
         """Run simulation.
 
         Parameters
         ----------
         precision : int
             the floating point number precision.
-        sim_tag : str or None
+        sim_tag : Optional[str]
             optional description for this simulation run.
         block : bool
             If True, wait for the simulation to finish.  Otherwise, return
             a simulation ID you can use to query simulation status later.
-        callback : callable or None
+        callback : Optional[Callable[[str, Optional[int]], None]]
             If given, this function will be called with the save directory
             and process return code when the simulation finished.
 
         Returns
         -------
-        value : str or None
+        value : Optional[str]
             Either the save directory path or the simulation ID.  If simulation
             is cancelled, return None.
         """
@@ -387,6 +406,7 @@ class Testbench(object):
         return save_dir
 
     def load_sim_results(self, hist_name, precision=6, block=True, callback=None):
+        # type: (str, int, bool, Optional[Callable[[str, Optional[int]], None]]) -> Optional[str]
         """Load previous simulation data.
 
         Parameters
@@ -398,13 +418,13 @@ class Testbench(object):
         block : bool
             If True, wait for the process to finish.  Otherwise, return
             a process ID you can use to query process status later.
-        callback : callable or None
+        callback : Optional[Callable[[str, Optional[int]], None]]
             If given, this function will be called with the save directory
             and process return code when the process finished.
 
         Returns
         -------
-        value : str or None
+        value : Optional[str]
             Either the save directory path or the simulation ID.  If simulation
             is cancelled, return None.
         """
@@ -424,7 +444,7 @@ class BagProject(object):
 
     Parameters
     ----------
-    bag_config_path : str or None
+    bag_config_path : Optional[str]
         the bag configuration file path.  If None, will attempt to read from
         environment variable BAG_CONFIG_PATH.
     port : Optional[int]
@@ -432,13 +452,14 @@ class BagProject(object):
 
     Attributes
     ----------
-    bag_config : dict[string, any]
+    bag_config : Dict[str, Any]
         the BAG configuration parameters dictionary.
     tech_info : bag.layout.core.TechInfo
         the BAG process technology class.
     """
 
     def __init__(self, bag_config_path=None, port=None):
+        # type: (Optional[str], Optional[int]) -> None
         if bag_config_path is None:
             if 'BAG_CONFIG_PATH' not in os.environ:
                 raise Exception('BAG_CONFIG_PATH not defined.')
@@ -487,18 +508,21 @@ class BagProject(object):
         self.sim = sim_cls(bag_tmp_dir, self.bag_config['simulation'])
 
     def close_bag_server(self):
+        # type: () -> None
         """Close the BAG database server."""
         if self.impl_db is not None:
             self.impl_db.close()
             self.impl_db = None
 
     def close_sim_server(self):
+        # type: () -> None
         """Close the BAG simulation server."""
         if self.sim is not None:
             self.sim.close()
             self.sim = None
 
     def import_design_library(self, lib_name):
+        # type: (str) -> None
         """Import all design templates in the given library from CAD database.
 
         Parameters
@@ -513,6 +537,7 @@ class BagProject(object):
         self.impl_db.import_design_library(lib_name, self.dsn_db, new_lib_path)
 
     def get_cells_in_library(self, lib_name):
+        # type: (str) -> Sequence[str]
         """Get a list of cells in the given library.
 
         Returns an empty list if the given library does not exist.
@@ -524,7 +549,7 @@ class BagProject(object):
 
         Returns
         -------
-        cell_list : list[str]
+        cell_list : Sequence[str]
             a list of cells in the library
         """
         if self.impl_db is None:
@@ -533,13 +558,14 @@ class BagProject(object):
         return self.impl_db.get_cells_in_library(lib_name)
 
     def create_library(self, lib_name, lib_path=''):
+        # type: (str, str) -> None
         """Create a new library if one does not exist yet.
 
         Parameters
         ----------
-        lib_name : string
+        lib_name : str
             the library name.
-        lib_path : string
+        lib_path : str
             directory to create the library in.  If Empty, use default location.
         """
         if self.impl_db is None:
@@ -549,6 +575,7 @@ class BagProject(object):
 
     # noinspection PyUnusedLocal
     def create_design_module(self, lib_name, cell_name, **kwargs):
+        # type: (str, str, **kwargs) -> SchInstance
         """Create a new top level design module for the given schematic template
 
         Parameters
@@ -568,6 +595,7 @@ class BagProject(object):
         return design.SchInstance(self.dsn_db, lib_name, cell_name, 'XTOP', static=False)
 
     def implement_design(self, lib_name, content_list, lib_path=''):
+        # type: (str, Sequence[Any], str) -> None
         """Implement the given design.
 
         Parameters
@@ -585,6 +613,7 @@ class BagProject(object):
         self.impl_db.implement_design(lib_name, content_list, lib_path=lib_path)
 
     def configure_testbench(self, tb_lib, tb_cell):
+        # type: (str, str) -> Testbench
         """Update testbench state for the given testbench.
 
         This method fill in process-specific information for the given testbench, then returns
@@ -611,6 +640,7 @@ class BagProject(object):
         return Testbench(self.sim, self.impl_db, tb_lib, tb_cell, params, clist, [c], outputs)
 
     def load_testbench(self, tb_lib, tb_cell):
+        # type: (str, str) -> Testbench
         """Loads a testbench from the database.
 
         Parameters
@@ -634,6 +664,7 @@ class BagProject(object):
         return Testbench(self.sim, self.impl_db, tb_lib, tb_cell, params, all_envs, cur_envs, outputs)
 
     def load_sim_results(self, lib, cell, hist_name, outputs, precision=6):
+        # type: (str, str, str, Sequence[str], int) -> Dict[str, Any]
         """Load previous simulation data."""
         save_dir = self.sim.load_sim_results(lib, cell, hist_name, outputs,
                                              precision=precision)
@@ -644,6 +675,7 @@ class BagProject(object):
 
     def instantiate_layout_pcell(self, lib_name, cell_name, inst_lib, inst_cell, params,
                                  pin_mapping=None, view_name='layout'):
+        # type: (str, str, str, str, Dict[str, Any], Optional[Dict[str, str]], str) -> None
         """Create a layout cell with a single pcell instance.
 
         Parameters
@@ -656,9 +688,9 @@ class BagProject(object):
             pcell library name.
         inst_cell : str
             pcell cell name.
-        params : dict[str, any]
+        params : Dict[str, Any]
             the parameter dictionary.
-        pin_mapping: dict[str, str]
+        pin_mapping: Optional[Dict[str, str]]
             the pin renaming dictionary.
         view_name : str
             layout view name, default is "layout".
@@ -671,15 +703,16 @@ class BagProject(object):
                                               inst_lib, inst_cell, params, pin_mapping)
 
     def instantiate_layout(self, lib_name, view_name, via_tech, layout_list):
+        # type: (str, str, str, Sequence[Any]) -> None
         """Create a batch of layouts.
 
         Parameters
         ----------
-        lib_name : string
+        lib_name : str
             layout library name.
-        view_name : string
+        view_name : str
             layout view name.
-        via_tech : string
+        via_tech : str
             via technology name.
         layout_list : Sequence[Any]
             a list of layouts to create
@@ -690,13 +723,14 @@ class BagProject(object):
         self.impl_db.instantiate_layout(lib_name, view_name, via_tech, layout_list)
 
     def release_write_locks(self, lib_name, cell_view_list):
+        # type: (str, Sequence[Tuple[str, str]]) -> None
         """Release write locks from all the given cells.
 
         Parameters
         ----------
-        lib_name : string
+        lib_name : str
             the library name.
-        cell_view_list : List[(string, string)]
+        cell_view_list : Sequence[Tuple[str, str]]
             list of cell/view name tuples.
         """
         if self.impl_db is None:
@@ -704,9 +738,16 @@ class BagProject(object):
 
         self.impl_db.release_write_locks(lib_name, cell_view_list)
 
-    def run_lvs(self, lib_name, cell_name, sch_view='schematic',
-                lay_view='layout', lvs_params=None,
-                block=True, callback=None):
+    def run_lvs(self,
+                lib_name,  # type: str
+                cell_name,  # type: str
+                sch_view='schematic',  # type: str
+                lay_view='layout',  # type: str
+                lvs_params=None,  # type: Optional[Dict[str, Any]]
+                block=True,  # type: bool
+                callback=None,  # type: Optional[Callable[[bool, Optional[int]], None]]
+                ):
+        # type: (...) -> Tuple[Union[bool, str], str]
         """Run LVS on the given cell.
 
         Parameters
@@ -719,18 +760,18 @@ class BagProject(object):
             schematic view name.  Default is 'schematic'.
         lay_view : str
             layout view name.  Default is 'layout'.
-        lvs_params : dict[str, any] or None
+        lvs_params : Optional[Dict[str, Any]]
             override LVS parameter values.
         block : bool
             If True, wait for LVS to finish.  Otherwise, return
             a ID you can use to query LVS status later.
-        callback : callable or None
+        callback : Optional[Callable[[bool, Optional[int]], None]]
             If given, this function will be called with the LVS success flag
             and process return code when LVS finished.
 
         Returns
         -------
-        value : bool or string
+        value : Union[bool, str]
             If block is True, returns the LVS success flag.  Otherwise,
             return a LVS ID you can use to query LVS status later.
         log_fname : str
@@ -743,9 +784,17 @@ class BagProject(object):
         return self.impl_db.run_lvs(lib_name, cell_name, sch_view, lay_view, lvs_params,
                                     block=block, callback=callback)
 
-    def run_rcx(self, lib_name, cell_name, sch_view='schematic',
-                lay_view='layout', rcx_params=None,
-                block=True, callback=None, create_schematic=True):
+    def run_rcx(self,
+                lib_name,  # type: str
+                cell_name,  # type: str
+                sch_view='schematic',  # type: str
+                lay_view='layout',  # type: str
+                rcx_params=None,  # type: Optional[Dict[str, Any]]
+                block=True,  # type: bool
+                callback=None,  # type: Optional[Callable[[bool, Optional[int]], None]]
+                create_schematic=True,  # type: bool
+                ):
+        # type: (...) -> Tuple[Union[bool, str], str]
         """Run RCX on the given cell.
 
         The behavior and the first return value of this method depends on the
@@ -774,12 +823,12 @@ class BagProject(object):
             schematic view name.  Default is 'schematic'.
         lay_view : str
             layout view name.  Default is 'layout'.
-        rcx_params : dict[str, any] or None
+        rcx_params : Optional[Dict[str, Any]]
             override RCX parameter values.
         block : bool
             If True, wait for RCX to finish.  Otherwise, return
             a ID you can use to query RCX status later.
-        callback : callable or None
+        callback : Optional[Callable[[bool, Optional[int]], None]]
             If given, this function will be called with the RCX netlist filename
             and process return code when RCX finished.
         create_schematic : bool
@@ -788,7 +837,7 @@ class BagProject(object):
 
         Returns
         -------
-        value : bool or string
+        value : Union[bool, str]
             The return value, as described.
         log_fname : str
             name of the RCX log file.
@@ -846,7 +895,7 @@ class BagProject(object):
         ----------
         job_id : str
             the process ID to cancel.
-        timeout : float or None
+        timeout : Optional[float]
             number of seconds to wait for cancellation.  If None, use default
             timeout.
 
