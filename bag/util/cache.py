@@ -42,6 +42,57 @@ from collections import OrderedDict
 from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable
 
 from ..io import readlines_iter, write_file, fix_string
+from .search import BinaryIterator
+
+
+def _get_unique_name(basename, *args):
+    # type: (str, *args) -> str
+    """Returns a unique name that's not used yet.
+
+    This method appends an index to the given basename.  Binary
+    search is used to achieve logarithmic run time.
+
+    Parameters
+    ----------
+    basename : str
+        the base name.
+    *args :
+        a list of containers of used names.
+
+    Returns
+    -------
+    new_name : str
+        the unique name.
+    """
+    new_name = basename
+    exist = False
+    for used_names in args:
+        if new_name in used_names:
+            # the original name just works
+            exist = True
+            break
+
+    if not exist:
+        return new_name
+
+    bin_iter = BinaryIterator(1, None)
+    while bin_iter.has_next():
+        cur_name = '%s_%d' % (basename, bin_iter.get_next())
+
+        exist = False
+        for used_names in args:
+            if cur_name in used_names:
+                # the original name just works
+                exist = True
+                break
+
+        if exist:
+            bin_iter.up()
+        else:
+            bin_iter.save()
+            bin_iter.down()
+
+    return '%s_%d' % (basename, bin_iter.get_last_save())
 
 
 class ClassImporter(object):
@@ -176,7 +227,7 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         self._finalized = False
 
     def update_master_info(self):
-        self._cell_name = self._get_unique_cell_name(self._used_names)
+        self._cell_name = _get_unique_name(self.get_master_basename(), self._used_names)
         self._key = self.compute_unique_key()
 
     def populate_params(self, table, params_info, default_params, **kwargs):
@@ -306,29 +357,6 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
         # type: () -> Any
         """Returns a preliminary unique key.  For compatibility purposes with old schematic generators."""
         return self._prelim_key
-
-    def _get_unique_cell_name(self, used_names):
-        # type: (Set[str]) -> str
-        """Returns a unique cell name.
-
-        Parameters
-        ----------
-        used_names : Set[str]
-            a set of used names.
-
-        Returns
-        -------
-        cell_name : str
-            the unique cell name.
-        """
-        counter = 0
-        basename = self.get_master_basename()
-        cell_name = basename
-        while cell_name in used_names:
-            counter += 1
-            cell_name = '%s_%d' % (basename, counter)
-
-        return cell_name
 
     def _get_qualified_name(self):
         # type: () -> str
@@ -610,34 +638,60 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
 
         return master
 
-    def instantiate_masters(self, master_list, name_list=None, lib_name='', debug=False):
-        # type: (Sequence[DesignMaster], Optional[Sequence[str]], str, bool) -> None
+    def instantiate_masters(self,
+                            master_list,  # type: Sequence[DesignMaster]
+                            name_list=None,  # type: Optional[Sequence[Optional[str]]]
+                            lib_name='',  # type: str
+                            debug=False,  # type: bool
+                            rename_dict=None,  # type: Optional[Dict[str, str]]
+                            ):
+        # type: (...) -> None
         """create all given masters in the database.
 
         Parameters
         ----------
         master_list : Sequence[DesignMaster]
             list of masters to instantiate.
-        name_list : Optional[Sequence[str]]
+        name_list : Optional[Sequence[Optional[str]]]
             list of master cell names.  If not given, default names will be used.
         lib_name : str
             Library to create the masters in.  If empty or None, use default library.
         debug : bool
             True to print debugging messages
+        rename_dict : Optional[Dict[str, str]]
+            optional master cell renaming dictionary.
         """
         if name_list is None:
-            name_list = [None] * len(master_list)
+            name_list = [None] * len(master_list)  # type: Sequence[Optional[str]]
         else:
             if len(name_list) != len(master_list):
                 raise ValueError("Master list and name list length mismatch.")
 
-        # configure renaming dictionary
-        self._rename_dict.clear()
+        # configure renaming dictionary.  Verify that renaming dictionary is one-to-one.
+        rename = self._rename_dict
+        rename.clear()
+        reverse_rename = {}
+        if rename_dict:
+            for key, val in rename_dict.items():
+                if key != val:
+                    if val in reverse_rename:
+                        raise ValueError('Both %s and %s are renamed to %s' % (key, reverse_rename[val], val))
+                    rename[key] = val
+                    reverse_rename[val] = key
+
         for master, name in zip(master_list, name_list):
             if name is not None and name != master.cell_name:
+                cur_name = master.cell_name
+                if name in reverse_rename:
+                    raise ValueError('Both %s and %s are renamed to %s' % (cur_name, reverse_rename[name], name))
+                rename[cur_name] = name
+                reverse_rename[name] = cur_name
+
                 if name in self._used_cell_names:
-                    raise ValueError('master cell name = %s is already used.' % name)
-                self._rename_dict[master.cell_name] = name
+                    # name is an already used name, so we need to rename it to something else
+                    name2 = _get_unique_name(name, self._used_cell_names, reverse_rename)
+                    rename[name] = name2
+                    reverse_rename[name2] = name
 
         if debug:
             print('Retrieving master contents')
