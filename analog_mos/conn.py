@@ -369,14 +369,15 @@ class AnalogSubstrateConn(TemplateBase):
 
     def compute_unique_key(self):
         basename = self.get_layout_basename()
+        layout_info = self.params['layout_info']
+        dummy_only = self.params['dummy_only']
         port_tracks = tuple(int(2 * v) for v in self.params['port_tracks'])
         dum_tracks = tuple(int(2 * v) for v in self.params['dum_tracks'])
-        flip_parity = self.grid.get_flip_parity()
-        layout_info = self.params['layout_info']
         is_laygo = self.params['is_laygo']
         is_guardring = self.params['is_guardring']
+        flip_parity = self.grid.get_flip_parity()
         return self.to_immutable_id((basename, port_tracks, dum_tracks, layout_info, flip_parity,
-                                     is_laygo, is_guardring))
+                                     is_laygo, is_guardring, dummy_only))
 
     def draw_layout(self):
         layout_info = self.params['layout_info']
