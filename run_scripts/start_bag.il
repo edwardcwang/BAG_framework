@@ -111,6 +111,20 @@ procedure( get_cells_in_library_file( lib_name fname "tt" )
     )
 )
 
+; Returns the directory corresponding to the given library.
+procedure( get_lib_directory(lib_name "t")
+    let( ( lib_obj ans )
+        if( lib_obj = ddGetObj(lib_name nil nil nil nil "r") then
+            ans = lib_obj~>readPath
+            ddReleaseObj(lib_obj)
+        else
+            ; library does not exist, return empty list
+            ans = ""
+        )
+        ans
+    )
+)
+
 ; Parse the netlist of the given cellview.
 ; Works on schematic and veriloga.
 procedure( parse_cad_sch(lib_name cell_name file_name "ttt")

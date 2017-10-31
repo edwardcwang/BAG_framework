@@ -31,9 +31,10 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 import os
-import yaml
+import shutil
 from typing import List, Dict, Optional, Any, Tuple, Union
 
+import yaml
 from jinja2 import Template
 
 import bag.io
@@ -731,26 +732,64 @@ class SkillInterface(DbAccess):
         **kwargs
             additional implementation-dependent arguments.
         """
-        calview_config = self.db_config['calibreview']
-        cell_map = calview_config['cell_map']
-        sch_view = sch_view or calview_config['view_name']
+        calview_config = self.db_config.get('calibreview', None)
+        use_calibreview = self.db_config.get('use_calibreview', True)
+        if calview_config is not None and use_calibreview:
+            # create calibre view from extraction netlist
+            cell_map = calview_config['cell_map']
+            sch_view = sch_view or calview_config['view_name']
 
-        # create calibre view config file
-        content = Template(calibre_tmp).render(netlist_file=netlist,
-                                               lib_name=lib_name,
-                                               cell_name=cell_name,
-                                               calibre_cellmap=cell_map,
-                                               view_name=sch_view)
-        with bag.io.open_temp(prefix='calview', dir=self.tmp_dir, delete=False) as f:
-            fname = f.name
-            f.write(content)
+            # create calibre view config file
+            content = Template(calibre_tmp).render(netlist_file=netlist,
+                                                   lib_name=lib_name,
+                                                   cell_name=cell_name,
+                                                   calibre_cellmap=cell_map,
+                                                   view_name=sch_view)
+            with bag.io.open_temp(prefix='calview', dir=self.tmp_dir, delete=False) as f:
+                fname = f.name
+                f.write(content)
 
-        # delete old calibre view
-        cmd = 'delete_cellview( "%s" "%s" "%s" )' % (lib_name, cell_name, sch_view)
-        self._eval_skill(cmd)
-        # make extracted schematic
-        cmd = 'mgc_rve_load_setup_file( "%s" )' % fname
-        self._eval_skill(cmd)
+            # delete old calibre view
+            cmd = 'delete_cellview( "%s" "%s" "%s" )' % (lib_name, cell_name, sch_view)
+            self._eval_skill(cmd)
+            # make extracted schematic
+            cmd = 'mgc_rve_load_setup_file( "%s" )' % fname
+            self._eval_skill(cmd)
+        else:
+            # get netlists to copy
+            netlist_dir = os.path.dirname(netlist)
+            netlist_files = self.checker.get_rcx_netlists(lib_name, cell_name)
+            if not netlist_files:
+                # some error checking.  Shouldn't be needed but just in case
+                raise ValueError('RCX did not generate any netlists')
+
+            # copy netlists to a "netlist" subfolder in the CAD database
+            cell_dir = self.get_cell_directory(lib_name, cell_name)
+            targ_dir = os.path.join(cell_dir, 'netlist')
+            os.makedirs(targ_dir, exist_ok=True)
+            for fname in netlist_files:
+                shutil.copy(os.path.join(netlist_dir, fname), targ_dir)
+
+    def get_cell_directory(self, lib_name, cell_name):
+        # type: (str, str) -> str
+        """Returns the directory name of the given cell.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+
+        Returns
+        -------
+        cell_dir : str
+            path to the cell directory.
+        """
+        lib_dir = self._eval_skill('get_lib_directory( "%s" )' % lib_name)
+        if not lib_dir:
+            raise ValueError('Library %s not found.' % lib_name)
+        return os.path.join(lib_dir, cell_name)
 
     def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
         # type: (str, str, str, **kwargs) -> None
