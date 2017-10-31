@@ -29,7 +29,7 @@ procedure( parse_data_from_file( fname "t" )
 
 ; recursive helper for parse_data_from_file
 procedure( parse_data_from_file_helper( p )
-    let( (line item ans finish key tmp)
+    let( (line item ans finish key)
         gets( line p )
         ; remove newline
         line = substring(line 1 strlen(line) - 1)
@@ -458,6 +458,7 @@ procedure( get_unique_term_name( cvid name_base "gt")
         new_term_name
     )
 )
+
 ; helper method to open pin master
 procedure( open_pin_master(cvid pin_cv_info)
     let( (pin_master mpin_lib mpin_cell mpin_view)
@@ -471,7 +472,6 @@ procedure( open_pin_master(cvid pin_cv_info)
         pin_master
     )
 )
-
 
 ; update pins of a schematic
 ; cvid is the opened cellview id of the schematic.  It must be in append mode.
@@ -643,16 +643,16 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
           modified_pins)
 
         snap_dist = schGetEnv("schSnapSpacing")
-        unless( cvid = dbOpenCellViewByType(lib_name cell_name "symbol" nil "a")
-            dbClose(pin_master)
-            error("Cannot open cellview %s__%s (symbol)." lib_name cell_name)
-        )
         modified_pins = nil
         mpin_lib = car(sympin)
         mpin_cell = cadr(sympin)
         mpin_view = caddr(sympin)
         unless( pin_master = dbOpenCellViewByType(mpin_lib mpin_cell mpin_view nil "r")
             error("Cannot open symbol pin cellview %s__%s (%s)." mpin_lib mpin_cell mpin_view)
+        )
+        unless( cvid = dbOpenCellViewByType(lib_name cell_name "symbol" nil "a")
+            dbClose(pin_master)
+            error("Cannot open cellview %s__%s (symbol)." lib_name cell_name)
         )
 
         ; get new pin locations before any pin addition/substraction.
@@ -669,11 +669,13 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
                 ; printf("%s %s\n" cur_term_name new_term_name)
                 unless( term = dbFindTermByName(cvid cur_term_name)
                     dbClose(pin_master)
+                    dbReopen(cvid, "r")
                     dbClose(cvid)
                     error( "Terminal %s not found." cur_term_name )
                 )
                 when( term~>pinCount != 1
                     dbClose(pin_master)
+                    dbReopen(cvid, "r")
                     dbClose(cvid)
                     error( "Terminal %s does not have exactly one pin." cur_term_name)
                 )
@@ -742,6 +744,7 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
                 ; verify that this pin does not exist yet
                 when(dbFindTermByName(cvid npin_name)
                     dbClose(pin_master)
+                    dbReopen(cvid, "r")
                     dbClose(cvid)
                     error( "Terminal %s already exists" npin_name)
                 )
@@ -779,6 +782,7 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
             cell_obj = ddGetObj(lib_name cell_name nil nil nil "r")
             unless( bc = cdfGetBaseCellCDF(cell_obj)
                 ddReleaseObj(cell_obj)
+                dbReopen(cvid, "r")
                 dbClose(cvid)
                 error("Cannot find CDF parameters for %s__%s." lib_name cell_name)
             )
@@ -787,17 +791,18 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
             )
             unless( cdfSaveCDF(bc)
                 ddReleaseObj(cell_obj)
+                dbReopen(cvid, "r")
                 dbClose(cvid)
                 error("Cannot save termOrder CDF for %s__%s." lib_name cell_name)
             )
             ddReleaseObj(cell_obj)
-            ; opening schematic will open all symbols inside that schematic.
-            ; as the result, dbClose may not close this symbol view.  To get rid
-            ; of edit lock, we use dbReopen so even if dbClose fails the edit lock
-            ; will be gone.
-            dbReopen(cvid, "r")
-            dbClose(cvid)
         )
+        ; opening schematic will open all symbols inside that schematic.
+        ; as the result, dbClose may not close this symbol view.  To get rid
+        ; of edit lock, we use dbReopen so even if dbClose fails the edit lock
+        ; will be gone.
+        dbReopen(cvid, "r")
+        dbClose(cvid)
     )
 )
 
@@ -940,7 +945,6 @@ procedure( modify_instance_terminal(sch inst wire_list net_map term_mapping "ggl
     )
 )
 
-
 ; Perform check-and-save on the given schematic database object, then close it.
 procedure( check_and_save_schematic(sch "g")
     let( (errs)
@@ -1074,7 +1078,6 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
         )
     )
 )
-
 
 ; given a copied template cell, modify it to a concrete schematic.
 procedure( convert_template_cells(lib_name cell_name pin_map new_pins inst_list sympin ipin opin iopin simulators)

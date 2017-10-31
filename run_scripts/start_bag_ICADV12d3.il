@@ -473,7 +473,6 @@ procedure( open_pin_master(cvid pin_cv_info)
     )
 )
 
-
 ; update pins of a schematic
 ; cvid is the opened cellview id of the schematic.  It must be in append mode.
 ; pin_map is a list of two-element lists of old pin names and new pin names, respectively.
@@ -582,7 +581,7 @@ procedure( update_schematic_pin(cvid pin_map new_pins ipin opin iopin "glllll")
                 schCreatePin(cvid pin_master npin_name npin_type nil pin_location "R0")
             )
         )
-        
+
         dbClose(ipin_master)
         dbClose(opin_master)
         dbClose(iopin_master)
@@ -749,7 +748,7 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
                     dbClose(cvid)
                     error( "Terminal %s already exists" npin_name)
                 )
-                
+
                 ; update pin order
                 new_port_order = tconc(new_port_order npin_name)
 
@@ -768,7 +767,7 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
                 schCreateSymbolLabel(cvid label_location "pin label" npin_name label_rel_location
                                      "R0" "stick" snap_dist "normalLabel")
                 schCreateSymbolPin(cvid pin_master npin_name npin_type label_location "R0")
-            )   
+            )
         )
 
         dbClose(pin_master)
@@ -887,7 +886,7 @@ procedure( get_instance_terminal_wires(sch inst "gg")
 ; if wire_list is empty, then that means no wires are connected to terminals.
 ; this function will attach labels directly to each terminal.  The labels are
 ; determined first from term_mapping, then from net_map
-; 
+;
 ; sch is the schematic database object.  Must be opened in append/write mode.
 ; inst is the instance object to modify.
 ; term_mapping is a list of key-value pairs, where keys are old net names,
@@ -1671,7 +1670,7 @@ procedure( instantiate_testbench(tb_cell targ_lib
         ; session_name = "modify_adexl"
         session_name = sprintf(nil "modify_adexl_%d" bag_modify_adexl_counter)
         bag_modify_adexl_counter = bag_modify_adexl_counter + 1
-        
+
         session_sdb = open_adexl_session(targ_lib tb_cell "adexl" session_name "a")
         session = car(session_sdb)
         sdb = cadr(session_sdb)
