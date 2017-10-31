@@ -30,7 +30,7 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 import os
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 from jinja2 import Template
 
@@ -101,6 +101,28 @@ class Calibre(Checker):
         self.xact_rules = xact_rules
         self.source_added_file = source_added_file
         self.rcx_mode = rcx_mode
+
+    def get_rcx_netlists(self, lib_name, cell_name):
+        # type: (str, str) -> List[str]
+        """Returns a list of generated extraction netlist file names.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell_name
+
+        Returns
+        -------
+        netlists : List[str]
+            a list of generated extraction netlist file names.  The first index is the main netlist.
+        """
+        # PVS generate schematic cellviews directly.
+        return ['%s.pex.netlist' % cell_name,
+                '%s.pex.netlist.pex' % cell_name,
+                '%s.pex.netlist.%s.pxi' % (cell_name, cell_name),
+                ]
 
     def modify_lvs_runset(self, lib_name, cell_name, lay_view, gds_file, netlist,
                           lvs_params):

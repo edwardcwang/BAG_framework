@@ -29,7 +29,7 @@ procedure( parse_data_from_file( fname "t" )
 
 ; recursive helper for parse_data_from_file
 procedure( parse_data_from_file_helper( p )
-    let( (line item ans finish key tmp)
+    let( (line item ans finish key)
         gets( line p )
         ; remove newline
         line = substring(line 1 strlen(line) - 1)
@@ -108,6 +108,20 @@ procedure( get_cells_in_library_file( lib_name fname "tt" )
             fprintf(p "%s\n" cell)
         )
         close(p)
+    )
+)
+
+; Returns the directory corresponding to the given library.
+procedure( get_lib_directory(lib_name "t")
+    let( ( lib_obj ans )
+        if( lib_obj = ddGetObj(lib_name nil nil nil nil "r") then
+            ans = lib_obj~>readPath
+            ddReleaseObj(lib_obj)
+        else
+            ; library does not exist, return empty list
+            ans = ""
+        )
+        ans
     )
 )
 
@@ -444,6 +458,7 @@ procedure( get_unique_term_name( cvid name_base "gt")
         new_term_name
     )
 )
+
 ; helper method to open pin master
 procedure( open_pin_master(cvid pin_cv_info)
     let( (pin_master mpin_lib mpin_cell mpin_view)
@@ -457,7 +472,6 @@ procedure( open_pin_master(cvid pin_cv_info)
         pin_master
     )
 )
-
 
 ; update pins of a schematic
 ; cvid is the opened cellview id of the schematic.  It must be in append mode.
@@ -629,16 +643,16 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
           modified_pins)
 
         snap_dist = schGetEnv("schSnapSpacing")
-        unless( cvid = dbOpenCellViewByType(lib_name cell_name "symbol" nil "a")
-            dbClose(pin_master)
-            error("Cannot open cellview %s__%s (symbol)." lib_name cell_name)
-        )
         modified_pins = nil
         mpin_lib = car(sympin)
         mpin_cell = cadr(sympin)
         mpin_view = caddr(sympin)
         unless( pin_master = dbOpenCellViewByType(mpin_lib mpin_cell mpin_view nil "r")
             error("Cannot open symbol pin cellview %s__%s (%s)." mpin_lib mpin_cell mpin_view)
+        )
+        unless( cvid = dbOpenCellViewByType(lib_name cell_name "symbol" nil "a")
+            dbClose(pin_master)
+            error("Cannot open cellview %s__%s (symbol)." lib_name cell_name)
         )
 
         ; get new pin locations before any pin addition/substraction.
@@ -655,11 +669,13 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
                 ; printf("%s %s\n" cur_term_name new_term_name)
                 unless( term = dbFindTermByName(cvid cur_term_name)
                     dbClose(pin_master)
+                    dbReopen(cvid, "r")
                     dbClose(cvid)
                     error( "Terminal %s not found." cur_term_name )
                 )
                 when( term~>pinCount != 1
                     dbClose(pin_master)
+                    dbReopen(cvid, "r")
                     dbClose(cvid)
                     error( "Terminal %s does not have exactly one pin." cur_term_name)
                 )
@@ -728,6 +744,7 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
                 ; verify that this pin does not exist yet
                 when(dbFindTermByName(cvid npin_name)
                     dbClose(pin_master)
+                    dbReopen(cvid, "r")
                     dbClose(cvid)
                     error( "Terminal %s already exists" npin_name)
                 )
@@ -765,6 +782,7 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
             cell_obj = ddGetObj(lib_name cell_name nil nil nil "r")
             unless( bc = cdfGetBaseCellCDF(cell_obj)
                 ddReleaseObj(cell_obj)
+                dbReopen(cvid, "r")
                 dbClose(cvid)
                 error("Cannot find CDF parameters for %s__%s." lib_name cell_name)
             )
@@ -773,17 +791,18 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
             )
             unless( cdfSaveCDF(bc)
                 ddReleaseObj(cell_obj)
+                dbReopen(cvid, "r")
                 dbClose(cvid)
                 error("Cannot save termOrder CDF for %s__%s." lib_name cell_name)
             )
             ddReleaseObj(cell_obj)
-            ; opening schematic will open all symbols inside that schematic.
-            ; as the result, dbClose may not close this symbol view.  To get rid
-            ; of edit lock, we use dbReopen so even if dbClose fails the edit lock
-            ; will be gone.
-            dbReopen(cvid, "r")
-            dbClose(cvid)
         )
+        ; opening schematic will open all symbols inside that schematic.
+        ; as the result, dbClose may not close this symbol view.  To get rid
+        ; of edit lock, we use dbReopen so even if dbClose fails the edit lock
+        ; will be gone.
+        dbReopen(cvid, "r")
+        dbClose(cvid)
     )
 )
 
@@ -926,7 +945,6 @@ procedure( modify_instance_terminal(sch inst wire_list net_map term_mapping "ggl
     )
 )
 
-
 ; Perform check-and-save on the given schematic database object, then close it.
 procedure( check_and_save_schematic(sch "g")
     let( (errs)
@@ -1060,7 +1078,6 @@ procedure( modify_schematic_content(sch_cv inst_list "gl")
         )
     )
 )
-
 
 ; given a copied template cell, modify it to a concrete schematic.
 procedure( convert_template_cells(lib_name cell_name pin_map new_pins inst_list sympin ipin opin iopin simulators)
@@ -1530,16 +1547,23 @@ procedure( create_config_view(lib_name cell_name view_name libs views stops "ttt
 ; conf_list : a list of (<lib>, <cell>, <view>) configurations.  Where each entry
 ;             means that view <view> should be used for the cell <cell> in library <lib>.
 procedure( edit_config_view(lib_name cell_name view_name conf_list "tttl")
-    let( (conf lib cell view conf_bag)
+    let( (conf lib cell view conf_bag netlist_list)
         unless( conf = hdbOpen(lib_name cell_name view_name "a")
             error("Cannot open config view %s__%s (%s)." lib_name cell_name view_name)
         )
+        netlist_list = '()
         foreach( cell_config conf_list
             lib = car(cell_config)
             cell = cadr(cell_config)
             view = caddr(cell_config)
-            hdbSetObjBindRule(conf list(list(lib cell nil nil))
-                              list('hdbcBindingRule list(nil nil view)))
+            if( view == "netlist" then
+                ; set to use extracted netlist
+                netlist_list = cons(list(lib cell) netlist_list)
+            else
+                ; set to use extracted cellview
+                hdbSetObjBindRule(conf list(list(lib cell nil nil))
+                                  list('hdbcBindingRule list(nil nil view)))
+            )
         )
         hdbSaveAs(conf lib_name cell_name view_name)
 
@@ -1547,6 +1571,31 @@ procedure( edit_config_view(lib_name cell_name view_name conf_list "tttl")
         conf_bag = hdbCreateConfigBag()
         hdbAddConfigToBag(conf_bag conf)
         hdbCloseConfigsInBag(conf_bag)
+
+        ; update netlist source files
+        edit_config_source_files(lib_name cell_name view_name netlist_list)
+    )
+)
+
+; HACKERMAN FUNCTION:
+; so as usual, cadence is so terrible they don't have skill API to set source files.
+; instead, spice/spectre source files are defined in a secret ASCII prop.cfg file.
+; this hacky method will create the right prop.cfg file for you.
+procedure( edit_config_source_files(lib_name cell_name view_name netlist_list "tttl")
+    let( (p lib_dir cell_lib_dir)
+        lib_dir = get_lib_directory(lib_name)
+        p = outfile( sprintf(nil "%s/%s/%s/%s" lib_dir cell_name view_name "prop.cfg") "w" )
+        ; common header
+        fprintf( p "file-format-id 1.1;\ndefault\n{\n}\n" )
+        foreach( lib_cell netlist_list
+            lib = car(lib_cell)
+            cell = cadr(lib_cell)
+            cell_lib_dir = get_lib_directory(lib)
+            fprintf( p "cell %s.%s\n{\n" lib cell )
+            fprintf( p "    non-inherited string prop sourcefile = \"%s/%s/netlist/netlist\";\n}\n"
+                     cell_lib_dir cell )
+        )
+        close(p)
     )
 )
 
