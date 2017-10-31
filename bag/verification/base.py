@@ -31,7 +31,7 @@ from builtins import *
 from future.utils import with_metaclass
 
 import abc
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 
 class Checker(with_metaclass(abc.ABCMeta, object)):
@@ -121,6 +121,25 @@ class Checker(with_metaclass(abc.ABCMeta, object)):
             name of the RCX log file.
         """
         return None
+
+    @abc.abstractmethod
+    def get_rcx_netlists(self, lib_name, cell_name):
+        # type: (str, str) -> List[str]
+        """Returns a list of generated extraction netlist file names.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell_name
+
+        Returns
+        -------
+        netlists : List[str]
+            a list of generated extraction netlist file names.  The first index is the main netlist.
+        """
+        return []
 
     @abc.abstractmethod
     def wait_lvs_rcx(self, job_id, timeout=None, cancel_timeout=10.0):

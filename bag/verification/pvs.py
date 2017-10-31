@@ -32,7 +32,7 @@ from builtins import *
 import os
 import yaml
 import time
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 from .base import Checker
 from ..io import read_file, write_file, open_temp, readlines_iter, fix_string
@@ -112,6 +112,25 @@ class PVS(Checker):
         self.lvs_rule_file = lvs_rule_file
         self.rcx_runset = rcx_runset
         self.source_added_file = source_added_file
+
+    def get_rcx_netlists(self, lib_name, cell_name):
+        # type: (str, str) -> List[str]
+        """Returns a list of generated extraction netlist file names.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell_name
+
+        Returns
+        -------
+        netlists : List[str]
+            a list of generated extraction netlist file names.  The first index is the main netlist.
+        """
+        # PVS generate schematic cellviews directly.
+        return []
 
     def modify_lvs_runset(self, cell_name, lvs_params):
         """Modify the given LVS runset file.
