@@ -770,6 +770,14 @@ class SkillInterface(DbAccess):
             for fname in netlist_files:
                 shutil.copy(os.path.join(netlist_dir, fname), targ_dir)
 
+            # create symbolic link as aliases
+            symlink = os.path.join(targ_dir, 'netlist')
+            try:
+                os.remove(symlink)
+            except FileNotFoundError:
+                pass
+            os.symlink(netlist_files[0], symlink)
+
     def get_cell_directory(self, lib_name, cell_name):
         # type: (str, str) -> str
         """Returns the directory name of the given cell.

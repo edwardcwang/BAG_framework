@@ -1548,16 +1548,23 @@ procedure( create_config_view(lib_name cell_name view_name libs views stops "ttt
 ; conf_list : a list of (<lib>, <cell>, <view>) configurations.  Where each entry
 ;             means that view <view> should be used for the cell <cell> in library <lib>.
 procedure( edit_config_view(lib_name cell_name view_name conf_list "tttl")
-    let( (conf lib cell view conf_bag)
+    let( (conf lib cell view conf_bag netlist_list)
         unless( conf = hdbOpen(lib_name cell_name view_name "a")
             error("Cannot open config view %s__%s (%s)." lib_name cell_name view_name)
         )
+        netlist_list = '()
         foreach( cell_config conf_list
             lib = car(cell_config)
             cell = cadr(cell_config)
             view = caddr(cell_config)
-            hdbSetObjBindRule(conf list(list(lib cell nil nil))
-                              list('hdbcBindingRule list(nil nil view)))
+            if( view == "netlist" then
+                ; set to use extracted netlist
+                netlist_list = cons(list(lib cell) netlist_list)
+            else
+                ; set to use extracted cellview
+                hdbSetObjBindRule(conf list(list(lib cell nil nil))
+                                  list('hdbcBindingRule list(nil nil view)))
+            )
         )
         hdbSaveAs(conf lib_name cell_name view_name)
 
@@ -1565,6 +1572,31 @@ procedure( edit_config_view(lib_name cell_name view_name conf_list "tttl")
         conf_bag = hdbCreateConfigBag()
         hdbAddConfigToBag(conf_bag conf)
         hdbCloseConfigsInBag(conf_bag)
+
+        ; update netlist source files
+        edit_config_source_files(lib_name cell_name view_name netlist_list)
+    )
+)
+
+; HACKERMAN FUNCTION:
+; so as usual, cadence is so terrible they don't have skill API to set source files.
+; instead, spice/spectre source files are defined in a secret ASCII prop.cfg file.
+; this hacky method will create the right prop.cfg file for you.
+procedure( edit_config_source_files(lib_name cell_name view_name netlist_list "tttl")
+    let( (p lib_dir cell_lib_dir)
+        lib_dir = get_lib_directory(lib_name)
+        p = outfile( sprintf(nil "%s/%s/%s/%s" lib_dir cell_name view_name "prop.cfg") "w" )
+        ; common header
+        fprintf( p "file-format-id 1.1;\ndefault\n{\n}\n" )
+        foreach( lib_cell netlist_list
+            lib = car(lib_cell)
+            cell = cadr(lib_cell)
+            cell_lib_dir = get_lib_directory(lib)
+            fprintf( p "cell %s.%s\n{\n" lib cell )
+            fprintf( p "    non-inherited string prop sourcefile = \"%s/%s/netlist/netlist\";\n}\n"
+                     cell_lib_dir cell )
+        )
+        close(p)
     )
 )
 
