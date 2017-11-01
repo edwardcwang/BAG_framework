@@ -45,6 +45,7 @@ from .io import read_file, sim_data
 if TYPE_CHECKING:
     from .interface.simulator import SimAccess
     from .interface.database import DbAccess
+    from .layout.core import TechInfo
 
 
 def _parse_yaml_file(fname):
@@ -435,6 +436,27 @@ class Testbench(object):
         return retval
 
 
+def create_tech_info(bag_config_path=None):
+    # type: (Optional[str]) -> TechInfo
+    """Create TechInfo object."""
+    if bag_config_path is None:
+        if 'BAG_CONFIG_PATH' not in os.environ:
+            raise Exception('BAG_CONFIG_PATH not defined.')
+        bag_config_path = os.environ['BAG_CONFIG_PATH']
+
+    bag_config = _parse_yaml_file(bag_config_path)
+    tech_params = _parse_yaml_file(bag_config['tech_config_path'])
+    if 'class' in tech_params:
+        tech_cls = _import_class_from_str(tech_params['class'])
+        tech_info = tech_cls(tech_params)
+    else:
+        # just make a default tech_info object as place holder.
+        print('*WARNING*: No TechInfo class defined.  Using a dummy version.')
+        tech_info = DummyTechInfo(tech_params)
+
+    return tech_info
+
+
 class BagProject(object):
     """The main bag controller class.
 
@@ -481,14 +503,7 @@ class BagProject(object):
         del dealer_kwargs['port_file']
 
         # create TechInfo instance
-        tech_params = _parse_yaml_file(self.bag_config['tech_config_path'])
-        if 'class' in tech_params:
-            tech_cls = _import_class_from_str(tech_params['class'])
-            self.tech_info = tech_cls(tech_params)
-        else:
-            # just make a default tech_info object as place holder.
-            print('*WARNING*: No TechInfo class defined.  Using a dummy version.')
-            self.tech_info = DummyTechInfo(tech_params)
+        self.tech_info = create_tech_info(bag_config_path=bag_config_path)
 
         # create design module database.
         sch_exc_libs = self.bag_config['database']['schematic']['exclude_libraries']
