@@ -31,7 +31,7 @@ from __future__ import (absolute_import, division,
 from builtins import *
 
 from collections import namedtuple
-from typing import Optional, Callable
+from typing import Optional, Callable, Any
 
 MinCostResult = namedtuple('MinCostResult', ['x', 'xmax', 'vmax', 'nfev'])
 
@@ -76,6 +76,7 @@ class BinaryIterator(object):
             self._current = self._low
 
         self._save_marker = None
+        self._save_info = None
 
     def has_next(self):
         # type: () -> bool
@@ -111,12 +112,23 @@ class BinaryIterator(object):
         """Save the current index"""
         self._save_marker = self._current
 
+    def save_info(self, info):
+        # type: (Any) -> None
+        """Save current information."""
+        self.save()
+        self._save_info = info
+
     def get_last_save(self):
         # type: () -> Optional[int]
         """Returns the last saved index."""
         if self._save_marker is None:
             return None
         return self._save_marker * self._step + self._offset
+
+    def get_last_save_info(self):
+        # type: () -> Any
+        """Return last save information."""
+        return self._save_info
 
 
 class FloatBinaryIterator(object):
@@ -154,6 +166,7 @@ class FloatBinaryIterator(object):
             self._current = 0
 
         self._save_marker = None
+        self._save_info = None
 
     def has_next(self):
         # type: () -> bool
@@ -189,12 +202,23 @@ class FloatBinaryIterator(object):
         """Save the current index"""
         self._save_marker = self._current
 
+    def save_info(self, info):
+        # type: (Any) -> None
+        """Save current information."""
+        self.save()
+        self._save_info = info
+
     def get_last_save(self):
         # type: () -> Optional[float]
         """Returns the last saved index."""
         if self._save_marker is None:
             return None
         return self._save_marker + self._offset
+
+    def get_last_save_info(self):
+        # type: () -> Any
+        """Return last save information."""
+        return self._save_info
 
 
 def minimize_cost_binary(f, vmin, start=0, stop=None, step=1, save=None, nfev=0):
