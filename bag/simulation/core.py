@@ -32,7 +32,7 @@ import abc
 import importlib
 import itertools
 import os
-from typing import TYPE_CHECKING, Optional, Dict, Any, Tuple, List, Iterable, Sequence
+from typing import TYPE_CHECKING, Optional, Dict, Any, Tuple, List, Iterable, Sequence, Callable
 
 import yaml
 
@@ -44,53 +44,183 @@ if TYPE_CHECKING:
     from bag.core import BagProject, Testbench
 
 
+class TestbenchManager(with_metaclass(abc.ABCMeta, object)):
+    """A class that manages testbench generation, setup, simulation, and data post-processing.
+
+    Parameters
+    ----------
+    prj : Optional[BagProject]
+        The BagProject instance.
+    data_fname : str
+        Simulation data file name.
+    impl_lib : str
+        implementation library name.
+    dsn_name : str
+        DUT cell name.
+    tb_name : str
+        testbench cell name.
+    specs : Dict[str, Any]
+        the testbench specification dictionary.
+    """
+    def __init__(self, prj, data_fname, impl_lib, dsn_name, tb_name, specs):
+        # type: (Optional[BagProject], str, str, str, str, Dict[str, Any]) -> None
+        self.prj = prj
+        self.data_fname = os.path.abspath(data_fname)
+        self.impl_lib = impl_lib
+        self.dsn_name = dsn_name
+        self.tb_name = tb_name
+        self.specs = specs
+        self._tb = None  # type: Optional[Testbench]
+
+    @abc.abstractmethod
+    def configure_testbench(self, tb):
+        # type: (Testbench) -> None
+        """Configure the testbench simulation state.
+
+        Parameters
+        ----------
+        tb : Testbench
+            the testbench object.
+        """
+        pass
+
+    def _create_tb_schematic(self, setup_fun=None):
+        # type: (Optional[Callable[[Dict[str, Any]], None]]) -> None
+        """Creates the testbench schematic.
+
+        Parameters
+        ----------
+        setup_fun : Optional[Callable[[Dict[str, Any]], None]]
+            an optional function that modifies the testbench schematic parameters.
+        """
+        if self.prj is None:
+            raise ValueError('BagProject instance is not given.')
+
+        tb_lib = self.specs['tb_lib']
+        tb_cell = self.specs['tb_cell']
+        if 'sch_params' in self.specs:
+            tb_params = self.specs['sch_params'].copy()
+        else:
+            tb_params = {}
+
+        tb_params['dut_lib'] = self.impl_lib
+        tb_params['dut_cell'] = self.dsn_name
+        if setup_fun is not None:
+            setup_fun(tb_params)
+
+        tb_sch = self.prj.create_design_module(tb_lib, tb_cell)
+        tb_sch.design(**tb_params)
+        tb_sch.implement_design(self.impl_lib, top_cell_name=self.tb_name, erase=True)
+
+    def _setup_testbench(self, setup_fun=None):
+        # type: (Optional[Callable[[Testbench], None]]) -> Testbench
+        """Setup simulation state of the testbench.
+
+        Parameters
+        ----------
+        setup_fun : Optional[Callable[[Testbench], None]]
+            an optional function that modifies testbench simulation setup.
+        """
+        if self.prj is None:
+            raise ValueError('BagProject instance is not given.')
+
+        tb = self.prj.configure_testbench(self.impl_lib, self.tb_name)
+        self.configure_testbench(tb)
+        setup_fun(tb)
+        tb.update_testbench()
+        return tb
+
+    def run_simulation(self,  # type: TestbenchManager
+                       tb_sch_fun=None,  # type: Optional[Callable[[Dict[str, Any]], None]]
+                       tb_setup_fun=None,  # type: Optional[Callable[[Testbench], None]]
+                       ):
+        # type: (...) -> None
+        """Create testbench, setup simulation, then start simulation
+
+        Parameters
+        ----------
+        tb_sch_fun : Optional[Callable[[Dict[str, Any]], None]]
+            an optional function that modifies the testbench schematic parameters.
+        tb_setup_fun : Optional[Callable[[Testbench], None]]
+            an optional function that modifies testbench simulation setup.
+
+        Returns
+        -------
+        tag_name : str
+            the simulation tag name.
+        tb : Testbench
+            the simulation Testbench object.
+        """
+        if self._tb is not None:
+            raise ValueError('A simulation may already be running.')
+
+        self._create_tb_schematic(setup_fun=tb_sch_fun)
+        self._tb = self._setup_testbench(setup_fun=tb_setup_fun)
+        self._tb.run_simulation(sim_tag=self.tb_name, block=False)
+
+    def _record_results(self, data):
+        # type: (Dict[str, Any]) -> None
+        """Record simulation results to file."""
+        os.makedirs(os.path.dirname(self.data_fname), exist_ok=True)
+        save_sim_results(data, self.data_fname)
+
+    def wait(self, **kwargs):
+        # type: (**kwargs) -> Dict[str, Any]
+        """Wait for testbench simulation to finish, then return the results.
+
+        Parameters
+        ----------
+        **kwargs
+            Optional arguments for wait() method of Testbench.
+
+        Returns
+        -------
+        results : Dict[str, Any]
+            Simulation results dictionary.
+
+        """
+        if self._tb is None:
+            raise ValueError('No simulation is running')
+
+        save_dir = self._tb.wait(**kwargs)
+        if save_dir is not None:
+            # noinspection PyBroadException
+            try:
+                cur_results = load_sim_results(save_dir)
+            except Exception:
+                print('Error when loading results for %s' % self.tb_name)
+                cur_results = None
+        else:
+            cur_results = None
+
+        self._record_results(cur_results)
+        return cur_results
+
+    def load_sim_results(self):
+        # type: () -> Dict[str, Any]
+        """Load previously saved simulation results.
+
+        Returns
+        -------
+        results : Dict[str, Any]
+            the simulation results dictionary.
+        """
+        return load_sim_file(self.data_fname)
+
+
 class SimulationManager(with_metaclass(abc.ABCMeta, object)):
-    """A class that provide simple methods for running simulations.
+    """A class that manages instantiating design instances and running simulations.
 
-    This class allows you to run simulations with schematic parameter sweeps.
-
-    For now, this class will overwrite existing data, so please backup if you need to.
+    This class provides various methods to allow you to sweep design parameters
+    and generate multiple instances at once.  It also provides methods for running
+    simulations and helps you interface with TestbenchManager instances.
 
     Parameters
     ----------
     prj : Optional[BagProject]
         The BagProject instance.
     spec_file : str
-        the specification file name or the data directory.  The specification file
-        contains the following entries:
-
-        impl_lib :
-            the implementation library name.
-        dut_lib :
-            the DUT schematic library name.
-        dut_cell :
-            the DUT schematic cell name.
-        layout_package :
-            the XBase layout package name.
-        layout_class :
-            the XBase layout class name.
-        sweep_params :
-            a dictionary of schematic parameters to sweep and their values.
-        dsn_name_base :
-            base cell name for generated DUT instances.
-        sim_envs :
-            list of simulation environment names.
-        routing_grid :
-            the Layout RoutingGrid specification.
-        rcx_params :
-            RCX parameters dictionary.  Optional.
-        root_dir :
-            directory to save all simulation results in.
-
-        <tb_type> :
-            parameters for testbench <tb_type>.  Contains the following entries:
-
-            tb_lib :
-                testbench library name.
-            tb_cell :
-                testbench cell name.
-            tb_name_base :
-                base cell name for generated testbench schematics.
+        the specification file name or the data directory.
     """
 
     def __init__(self, prj, spec_file):
@@ -119,7 +249,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
             yaml.dump(self._specs, f)
 
     @classmethod
-    def load_simulation_state(cls, prj, root_dir):
+    def load_state(cls, prj, root_dir):
         # type: (BagProject, str) -> SimulationManager
         """Create the SimulationManager instance corresponding to data in the given directory."""
         return cls(prj, root_dir)
@@ -129,6 +259,12 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         # type: (str, str) -> str
         """Returns the wrapper cell name corresponding to the given DUT."""
         return '%s_%s' % (dut_name, wrapper_name)
+
+    @classmethod
+    def _get_testbench_name(cls, dut_name, tb_type):
+        # type: (str, str) -> str
+        """Returns the testbench cell name corresponding to the given DUT."""
+        return '%s_%s' % (dut_name, tb_type)
 
     @property
     def specs(self):
@@ -367,129 +503,3 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
                 print('%s RCX passed.' % dsn_name)
 
         print('design generation done.')
-
-    def get_tb_sch_params(self, tb_type, impl_lib, dsn_cell_name, val_list):
-        # type: (str, str, str, Tuple[Any, ...]) -> Dict[str, Any]
-        """Returns the testbench schematic parameters dictionary from the given sweep parameter values."""
-        tb_specs = self.specs[tb_type]
-        if 'sch_params' in tb_specs:
-            tb_params = tb_specs['sch_params'].copy()
-        else:
-            tb_params = {}
-        tb_params['dut_lib'] = impl_lib
-        tb_params['dut_cell'] = dsn_cell_name
-        return tb_params
-
-    def create_tb_sch(self, tb_type, dsn_cell_name, tb_name, val_list):
-        # type: (str, str, str, Tuple[Any, ...]) -> None
-        """Create a new testbench schematic of the given type with the given DUT and testbench cell name."""
-        if self.prj is None:
-            raise ValueError('BagProject instance is not given.')
-
-        impl_lib = self.specs['impl_lib']
-        tb_specs = self.specs[tb_type]
-        tb_lib = tb_specs['tb_lib']
-        tb_cell = tb_specs['tb_cell']
-
-        tb_sch_params = self.get_tb_sch_params(tb_type, impl_lib, dsn_cell_name, val_list)
-        tb_sch = self.prj.create_design_module(tb_lib, tb_cell)
-        tb_sch.design(**tb_sch_params)
-        tb_sch.implement_design(impl_lib, top_cell_name=tb_name, erase=True)
-
-    def setup_testbench(self, tb_type, val_list):
-        # type: (str, Tuple[Any, ...]) -> Tuple[str, Testbench]
-        """Create testbench of the given type and run simulation."""
-        if self.prj is None:
-            raise ValueError('BagProject instance is not given.')
-
-        impl_lib = self.specs['impl_lib']
-        tb_specs = self.specs[tb_type]
-        dsn_name_base = self.specs['dsn_name_base']
-        wrapper_cell = self.specs.get('wrapper_cell', '')
-
-        if wrapper_cell:
-            wrapper_name_base = dsn_name_base + '_WRAPPER'
-            dut_name = self.get_instance_name(wrapper_name_base, val_list)
-        else:
-            dut_name = self.get_instance_name(dsn_name_base, val_list)
-
-        tb_name_base = tb_specs['tb_name_base']
-
-        tb_name = self.get_instance_name(tb_name_base, val_list)
-        print('create testbench %s' % tb_name)
-        self.create_tb_sch(tb_type, dut_name, tb_name, val_list)
-
-        tb = self.prj.configure_testbench(impl_lib, tb_name)
-
-        self.configure_tb(tb_type, tb, val_list)
-        tb.update_testbench()
-
-        return tb_name, tb
-
-    def run_simulations(self, tb_type, overwrite=True):
-        # type: (str, bool) -> None
-        """Create the given testbench type for all DUTs and run simulations in parallel."""
-        dsn_name_base = self.specs['dsn_name_base']
-
-        dsn_info_list = []
-        sim_info_list = []
-        for val_list in self.get_combinations_iter():
-            save_data_path = self._get_data_path(tb_type, val_list)
-            if overwrite or not os.path.isfile(save_data_path):
-                dsn_name = self.get_instance_name(dsn_name_base, val_list)
-                dsn_info_list.append((dsn_name, val_list))
-                sim_info_list.append(self._run_tb_sim(tb_type, val_list))
-
-        self.save_sim_data(tb_type, sim_info_list, dsn_info_list)
-        print('simulation done.')
-
-    def _run_tb_sim(self, tb_type, val_list):
-        # type: (str, Tuple[Any, ...]) -> Tuple[str, Testbench]
-        """Create testbench of the given type and run simulation."""
-        tb_name, tb = self.setup_testbench(tb_type, val_list)
-        tb.run_simulation(sim_tag=tb_name, block=False)
-        return tb_name, tb
-
-    def save_sim_data(self, tb_type, sim_info_list, dsn_info_list):
-        # type: (str, List[Tuple[str, Testbench]], List[Tuple[str, Tuple[Any, ...]]]) -> None
-        """Save the simulation results to HDF5 files."""
-        for (tb_name, tb), (_, val_list) in zip(sim_info_list, dsn_info_list):
-            print('wait for %s simulation to finish' % tb_name)
-            save_dir = tb.wait()
-            print('%s simulation done.' % tb_name)
-            if save_dir is not None:
-                # noinspection PyBroadException
-                try:
-                    cur_results = load_sim_results(save_dir)
-                except Exception:
-                    print('Error when loading results for %s' % tb_name)
-                    cur_results = None
-            else:
-                cur_results = None
-
-            if cur_results is not None:
-                self.record_results(cur_results, tb_type, val_list)
-
-    def _get_data_path(self, tb_type, val_list):
-        # type: (str, Tuple[Any, ...]) -> str
-        """Returns the save file name."""
-        root_dir = self.specs['root_dir']
-        tb_specs = self.specs[tb_type]
-
-        tb_name_base = tb_specs['tb_name_base']
-        tb_name = self.get_instance_name(tb_name_base, val_list)
-        results_dir = os.path.join(root_dir, tb_type)
-
-        return os.path.join(results_dir, '%s.hdf5' % tb_name)
-
-    def record_results(self, data, tb_type, val_list):
-        # type: (Dict[str, Any], str, Tuple[Any, ...]) -> None
-        """Record simulation results to file."""
-        save_data_path = self._get_data_path(tb_type, val_list)
-        os.makedirs(os.path.dirname(save_data_path), exist_ok=True)
-        save_sim_results(data, save_data_path)
-
-    def get_sim_results(self, tb_type, val_list):
-        # type: (str, Tuple[Any, ...]) -> Dict[str, Any]
-        """Return simulation results corresponding to the given schematic parameters."""
-        return load_sim_file(self._get_data_path(tb_type, val_list))
