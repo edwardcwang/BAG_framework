@@ -405,6 +405,35 @@ class Testbench(object):
 
         return save_dir
 
+    def cancel(self, timeout=None):
+        # type: (Optional[float]) -> Optional[str]
+        """Cancels any running simulations.
+
+        If the process haven't started, this method prevents it from started.
+        Otherwise, we first send a SIGTERM signal to kill the process.  If
+        after ``timeout`` seconds the process is still alive, we will send a
+        SIGKILL signal.  If after another ``timeout`` seconds the process is
+        still alive, an Exception will be raised.
+
+        Parameters
+        ----------
+        timeout : Optional[float]
+            number of seconds to wait for cancellation.  If None, use default
+            timeout.
+
+        Returns
+        -------
+        save_dir : Optional[str]
+            save directory if the simulation finishes in time. Otherwise,
+            return None.
+        """
+        if self.sim_id is None:
+            return None
+
+        result = self.sim.cancel(self.sim_id, timeout=timeout)
+        self.sim_id = None
+        return result
+
     def load_sim_results(self, hist_name, precision=6, block=True, callback=None):
         # type: (str, int, bool, Optional[Callable[[str, Optional[int]], None]]) -> Optional[str]
         """Load previous simulation data.
