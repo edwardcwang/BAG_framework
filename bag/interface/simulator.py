@@ -155,8 +155,13 @@ class SimAccess(with_metaclass(abc.ABCMeta, object)):
             the simulation ID to cancel.
         timeout : float
             number of seconds to wait for cancellation.
+
+        Returns
+        -------
+        result : Optional[Any]
+            output if process finished in time, None if successfully cancelled.
         """
-        pass
+        return None
 
     @abc.abstractmethod
     def done(self, sim_id):
@@ -296,8 +301,13 @@ class SimProcessManager(with_metaclass(abc.ABCMeta, SimAccess)):
         timeout : float or None
             number of seconds to wait for cancellation. If None, use default
             value.
+
+        Returns
+        -------
+        result : Optional[Any]
+            output if process finished in time, None if successfully cancelled.
         """
-        self._manager.cancel(sim_id, timeout=timeout)
+        return self._manager.cancel(sim_id, timeout=timeout)
 
     def done(self, sim_id):
         """Returns True if the given simulation finished or is cancelled successfully.
