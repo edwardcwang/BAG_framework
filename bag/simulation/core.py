@@ -84,14 +84,33 @@ class TestbenchManager(with_metaclass(abc.ABCMeta, object)):
         """
         pass
 
-    def _create_tb_schematic(self, setup_fun=None):
-        # type: (Optional[Callable[[Dict[str, Any]], None]]) -> None
+    @abc.abstractmethod
+    def get_performance_summary(self, results):
+        # type: (Dict[str, Any]) -> Dict[str, Any]
+        """Compute a performance summary dictionary from simulation results.
+
+        Parameters
+        ----------
+        results : Dict[str, Any]
+            simulation results.
+
+        Returns
+        -------
+        summary : Dict[str, Any]
+            performance summary dictionary.
+        """
+        return {}
+
+    def _create_tb_schematic(self, setup_fun=None, **kwargs):
+        # type: (Optional[Callable], **kwargs) -> None
         """Creates the testbench schematic.
 
         Parameters
         ----------
-        setup_fun : Optional[Callable[[Dict[str, Any]], None]]
+        setup_fun : Optional[Callable]
             an optional function that modifies the testbench schematic parameters.
+        **kwargs :
+            keyword arguments for setup_fun.
         """
         if self.prj is None:
             raise ValueError('BagProject instance is not given.')
@@ -106,43 +125,48 @@ class TestbenchManager(with_metaclass(abc.ABCMeta, object)):
         tb_params['dut_lib'] = self.impl_lib
         tb_params['dut_cell'] = self.dsn_name
         if setup_fun is not None:
-            setup_fun(tb_params)
+            setup_fun(tb_params, **kwargs)
 
         tb_sch = self.prj.create_design_module(tb_lib, tb_cell)
         tb_sch.design(**tb_params)
         tb_sch.implement_design(self.impl_lib, top_cell_name=self.tb_name, erase=True)
 
-    def _setup_testbench(self, setup_fun=None):
-        # type: (Optional[Callable[[Testbench], None]]) -> Testbench
+    def _setup_testbench(self, setup_fun=None, **kwargs):
+        # type: (Optional[Callable]) -> Testbench
         """Setup simulation state of the testbench.
 
         Parameters
         ----------
-        setup_fun : Optional[Callable[[Testbench], None]]
+        setup_fun : Optional[Callable]
             an optional function that modifies testbench simulation setup.
+        **kwargs :
+            keyword arguments for setup_fun
         """
         if self.prj is None:
             raise ValueError('BagProject instance is not given.')
 
         tb = self.prj.configure_testbench(self.impl_lib, self.tb_name)
         self.configure_testbench(tb)
-        setup_fun(tb)
+        setup_fun(tb, **kwargs)
         tb.update_testbench()
         return tb
 
     def run_simulation(self,  # type: TestbenchManager
-                       tb_sch_fun=None,  # type: Optional[Callable[[Dict[str, Any]], None]]
-                       tb_setup_fun=None,  # type: Optional[Callable[[Testbench], None]]
+                       tb_sch_fun=None,  # type: Optional[Callable]
+                       tb_setup_fun=None,  # type: Optional[Callable]
+                       **kwargs
                        ):
         # type: (...) -> None
         """Create testbench, setup simulation, then start simulation
 
         Parameters
         ----------
-        tb_sch_fun : Optional[Callable[[Dict[str, Any]], None]]
+        tb_sch_fun : Optional[Callable]
             an optional function that modifies the testbench schematic parameters.
-        tb_setup_fun : Optional[Callable[[Testbench], None]]
+        tb_setup_fun : Optional[Callable]
             an optional function that modifies testbench simulation setup.
+        **kwargs :
+            keyword arguments for given functions.
 
         Returns
         -------
@@ -154,8 +178,8 @@ class TestbenchManager(with_metaclass(abc.ABCMeta, object)):
         if self._tb is not None:
             raise ValueError('A simulation may already be running.')
 
-        self._create_tb_schematic(setup_fun=tb_sch_fun)
-        self._tb = self._setup_testbench(setup_fun=tb_setup_fun)
+        self._create_tb_schematic(setup_fun=tb_sch_fun, kwargs=kwargs)
+        self._tb = self._setup_testbench(setup_fun=tb_setup_fun, kwargs=kwargs)
         self._tb.run_simulation(sim_tag=self.tb_name, block=False)
 
     def _record_results(self, data):
@@ -177,7 +201,6 @@ class TestbenchManager(with_metaclass(abc.ABCMeta, object)):
         -------
         results : Dict[str, Any]
             Simulation results dictionary.
-
         """
         if self._tb is None:
             raise ValueError('No simulation is running')
@@ -208,7 +231,7 @@ class TestbenchManager(with_metaclass(abc.ABCMeta, object)):
         return load_sim_file(self.data_fname)
 
 
-class SimulationManager(with_metaclass(abc.ABCMeta, object)):
+class DesignManager(object):
     """A class that manages instantiating design instances and running simulations.
 
     This class provides various methods to allow you to sweep design parameters
@@ -250,21 +273,34 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
     @classmethod
     def load_state(cls, prj, root_dir):
-        # type: (BagProject, str) -> SimulationManager
-        """Create the SimulationManager instance corresponding to data in the given directory."""
+        # type: (BagProject, str) -> DesignManager
+        """Create the DesignManager instance corresponding to data in the given directory."""
         return cls(prj, root_dir)
 
     @classmethod
-    def _get_wrapper_name(cls, dut_name, wrapper_name):
+    def get_testbench_name(cls, dsn_name, tb_type):
         # type: (str, str) -> str
-        """Returns the wrapper cell name corresponding to the given DUT."""
-        return '%s_%s' % (dut_name, wrapper_name)
+        """Returns the testbench cell name.
+
+        Parameters
+        ----------
+        dsn_name : str
+            design cell name.
+        tb_type : str
+            testbench type.
+
+        Returns
+        -------
+        tb_name : str
+            testbench cell name
+        """
+        return '%s_TB_%s' % (dsn_name, tb_type)
 
     @classmethod
-    def _get_testbench_name(cls, dut_name, tb_type):
+    def get_wrapper_name(cls, dut_name, wrapper_name):
         # type: (str, str) -> str
-        """Returns the testbench cell name corresponding to the given DUT."""
-        return '%s_%s' % (dut_name, tb_type)
+        """Returns the wrapper cell name corresponding to the given DUT."""
+        return '%s_WRAPPER_%s' % (dut_name, wrapper_name)
 
     @property
     def specs(self):
@@ -276,6 +312,47 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def swp_var_list(self):
         # type: () -> Tuple[str, ...]
         return self._swp_var_list
+
+    def modify_tb_schematic(self, tb_type, tb_sch_params):
+        # type: (str, Dict[str, Any]) -> None
+        """Perform any modifications necessary on the testbench schematic parameters.
+
+        Parameters
+        ----------
+        tb_type : str
+            the testbench type.
+        tb_sch_params : Dict[str, Any]
+            the testbench schematic parameters dictionary.
+        """
+        pass
+
+    def modify_tb_setup(self, tb_type, tb):
+        # type: (str, Testbench) -> None
+        """Perform any modifications necessary on the testbench simulation setup.
+
+        Parameters
+        ----------
+        tb_type : str
+            the testbench type.
+        tb : Testbench
+            the Testbench instance.
+        """
+        pass
+
+    def post_simulation_procedure(self, tb_type, tb_manager, results):
+        # type: (str, TestbenchManager, Dict[str, Any]) -> None
+        """Perform any task necessary after the given simulation finished.
+
+        Parameters
+        ----------
+        tb_type : str
+            the testbench type;
+        tb_manager : TestbenchManager
+            the TestbenchManager instance.
+        results : Dict[str, Any]
+            the simulation results.
+        """
+        pass
 
     def get_swp_var_values(self, var):
         # type: (str) -> List[Any]
@@ -362,7 +439,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
                     dsn = self.prj.create_design_module(wrapper_lib, wrapper_cell)
                     dsn.design(**wrapper_params)
                     inst_list.append(dsn)
-                    inst_list.append(self._get_wrapper_name(cur_name, wrapper_name))
+                    inst_list.append(self.get_wrapper_name(cur_name, wrapper_name))
 
         self.prj.batch_schematic(impl_lib, inst_list, name_list=name_list)
 
@@ -389,10 +466,10 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
     def get_design_name(self, dsn_params):
         # type: (Dict[str, Any]) -> str
         """Returns the name of the design with the given parameters."""
-        dsn_name_base = self.specs['dsn_name_base']
+        dsn_basename = self.specs['dsn_basename']
         try:
             combo_list = [dsn_params[key] for key in self.swp_var_list]
-            return self.get_instance_name(dsn_name_base, combo_list)
+            return self.get_instance_name(dsn_basename, combo_list)
         except KeyError:
             for key in self.swp_var_list:
                 if key not in dsn_params:
@@ -415,12 +492,30 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
 
         return name_base + suffix
 
+    def get_data_file_name(self, dsn_name, tb_type):
+        # type: (str, str) -> str
+        """Returns the simulation data file name.
+
+        Parameters
+        ----------
+        dsn_name : str
+            design cell name.
+        tb_type : str
+            testbench type.
+
+        Returns
+        -------
+        data_fname : str
+            simulation data file name.
+        """
+        return os.path.join(self.specs['root_dir'], dsn_name, '%s.hdf5' % tb_type)
+
     def test_layout(self, gen_sch=True):
         # type: (bool) -> None
         """Create a test schematic and layout for debugging purposes"""
 
         sweep_params = self.specs['sweep_params']
-        dsn_name = self.specs['dsn_name_base'] + '_TEST'
+        dsn_name = self.specs['dsn_basename'] + '_TEST'
 
         val_list = tuple((sweep_params[key][0] for key in self.swp_var_list))
         lay_params = self.get_layout_params(val_list)
@@ -442,7 +537,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
             raise ValueError('BagProject instance is not given.')
 
         impl_lib = self.specs['impl_lib']
-        dsn_name_base = self.specs['dsn_name_base']
+        dsn_basename = self.specs['dsn_basename']
         view_name = self.specs['view_name']
         rcx_params = self.specs.get('rcx_params', {})
 
@@ -452,7 +547,7 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
         # make layouts
         dsn_name_list, lay_params_list, combo_list_list = [], [], []
         for combo_list in self.get_combinations_iter():
-            dsn_name = self.get_instance_name(dsn_name_base, combo_list)
+            dsn_name = self.get_instance_name(dsn_basename, combo_list)
             lay_params = self.get_layout_params(combo_list)
             dsn_name_list.append(dsn_name)
             lay_params_list.append(lay_params)
@@ -503,3 +598,111 @@ class SimulationManager(with_metaclass(abc.ABCMeta, object)):
                 print('%s RCX passed.' % dsn_name)
 
         print('design generation done.')
+
+    def create_tb_manager(self, dsn_name, tb_type):
+        # type: (str, str) -> TestbenchManager
+        """Create the TestbenchManager object for the given design and testbench type.
+
+        Parameters
+        ----------
+        dsn_name : str
+            the design cell name.
+        tb_type : str
+            the testbench type.
+
+        Returns
+        -------
+        tb_manager : TestbenchManager
+            the TestbenchManager instance.
+        """
+        impl_lib = self.specs['impl_lib']
+        tb_specs = self.specs['testbench'][tb_type]
+
+        cls_package = tb_specs['package']
+        cls_name = tb_specs['class']
+        tb_module = importlib.import_module(cls_package)
+        tb_cls = getattr(tb_module, cls_name)
+
+        data_fname = self.get_data_file_name(dsn_name, tb_type)
+        tb_name = self.get_testbench_name(dsn_name, tb_type)
+        tb_manager = tb_cls(self.prj, data_fname, impl_lib, dsn_name, tb_name, tb_specs)
+
+        return tb_manager
+
+    def run_simulations(self, tb_list, **kwargs):
+        # type: (Sequence[str], **kwargs) -> Dict[str, Dict[str, Dict[str, Any]]]
+        """Run given simulations on all designs.
+
+        Parameters
+        ----------
+        tb_list : Sequence[str]
+            list of simulations to run, in that order.
+        **kwargs
+            Optional arguments for wait() method of Testbench.
+
+        Returns
+        -------
+        results : Dict[str, Dict[str, Dict[str, Any]]]
+            A nested dictionary from design name and testbench type to
+            performance summary dictionaries.  None results mean a
+            simulation error occurred.
+        """
+        dsn_basename = self.specs['dsn_basename']
+        dsn_name_list = [self.get_instance_name(dsn_basename, combo_list)
+                         for combo_list in self.get_combinations_iter()]
+
+        results = {dsn_name: {} for dsn_name in dsn_name_list}
+
+        tb_type = tb_list[0]
+        tb_manager_list = []
+        for dsn_name in dsn_name_list:
+            tb_manager = self.create_tb_manager(dsn_name, tb_type)
+            tb_manager.run_simulation(tb_sch_fun=self.modify_tb_schematic,
+                                      tb_setup_fun=self.modify_tb_setup,
+                                      tb_type=tb_type)
+            tb_manager_list.append(tb_manager)
+
+        err_msg = 'Simulation Error for design %s, testbench %s.  Abort further simulations for this design'
+
+        for next_tb_type in itertools.islice(tb_list, 1, None):
+            next_tb_manager_list = []
+            for dsn_name, tb_manager in zip(dsn_name_list, tb_manager_list):
+                if tb_manager is None:
+                    next_tb_manager = None
+                    summary = None
+                else:
+                    sim_results = tb_manager.wait(**kwargs)
+                    if sim_results is None:
+                        print(err_msg % (dsn_name, tb_type))
+                        next_tb_manager = None
+                        summary = None
+                    else:
+                        self.post_simulation_procedure(tb_type, tb_manager, sim_results)
+                        summary = tb_manager.get_performance_summary(sim_results)
+
+                        next_tb_manager = self.create_tb_manager(dsn_name, next_tb_type)
+                        next_tb_manager.run_simulation(tb_sch_fun=self.modify_tb_schematic,
+                                                       tb_setup_fun=self.modify_tb_setup,
+                                                       tb_type=next_tb_type)
+
+                results[dsn_name][tb_type] = summary
+                next_tb_manager_list.append(next_tb_manager)
+
+            tb_manager_list = next_tb_manager_list
+            tb_type = next_tb_type
+
+        for dsn_name, tb_manager in zip(dsn_name_list, tb_manager_list):
+            if tb_manager is None:
+                summary = None
+            else:
+                sim_results = tb_manager.wait(**kwargs)
+                if sim_results is None:
+                    print(err_msg % (dsn_name, tb_type))
+                    summary = None
+                else:
+                    self.post_simulation_procedure(tb_type, tb_manager, sim_results)
+                    summary = tb_manager.get_performance_summary(sim_results)
+
+            results[dsn_name][tb_type] = summary
+
+        return results
