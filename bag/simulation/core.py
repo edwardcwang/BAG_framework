@@ -51,129 +51,150 @@ class TestbenchManager(with_metaclass(abc.ABCMeta, object)):
     ----------
     prj : Optional[BagProject]
         The BagProject instance.
-    data_fname : str
-        Simulation data file name.
+    data_dir : str
+        Simulation data directory.
+    name : str
+        test setup name.
     impl_lib : str
         implementation library name.
     dsn_name : str
         DUT cell name.
-    tb_name : str
-        testbench cell name.
     specs : Dict[str, Any]
         the testbench specification dictionary.
     """
-    def __init__(self, prj, data_fname, impl_lib, dsn_name, tb_name, specs):
+    def __init__(self, prj, data_dir, name, impl_lib, dsn_name, specs):
         # type: (Optional[BagProject], str, str, str, str, Dict[str, Any]) -> None
         self.prj = prj
-        self.data_fname = os.path.abspath(data_fname)
+        self.data_dir = os.path.abspath(data_dir)
         self.impl_lib = impl_lib
         self.dsn_name = dsn_name
-        self.tb_name = tb_name
+        self.name = name
         self.specs = specs
-        self._tb = None  # type: Optional[Testbench]
 
     @abc.abstractmethod
-    def configure_testbench(self, tb):
-        # type: (Testbench) -> None
-        """Configure the testbench simulation state.
+    def configure_testbench(self, tb_type, tb):
+        # type: (str, Testbench) -> None
+        """Configures the testbench simulation setup.
 
         Parameters
         ----------
+        tb_type : str
+            the testbench type.
         tb : Testbench
-            the testbench object.
+            the Testbench instance.
         """
         pass
 
     @abc.abstractmethod
-    def get_performance_summary(self, results):
-        # type: (Dict[str, Any]) -> Dict[str, Any]
-        """Compute a performance summary dictionary from simulation results.
+    def process_output(self, tb_type, results):
+        # type: (str, Dict[str, Any]) -> Any
+        """Process the simulation data of the given testbench.
 
         Parameters
         ----------
+        tb_type : str
+            the testbench type.
         results : Dict[str, Any]
-            simulation results.
+            the simulation data.
 
         Returns
         -------
-        summary : Dict[str, Any]
-            performance summary dictionary.
+        summary : Any
+            a summary of performance results.  If you did not override
+            verify_design(), this should be a dictionary.  Otherwise,
+            this can be whatever you want.
         """
-        return {}
+        return None
 
-    def _create_tb_schematic(self, setup_fun=None, **kwargs):
-        # type: (Optional[Callable], **kwargs) -> None
+    def modify_tb_schematic(self, tb_type, tb_sch_params):
+        # type: (str, Dict[str, Any]) -> None
+        """Perform any modifications necessary on the testbench schematic parameters.
+
+        Parameters
+        ----------
+        tb_type : str
+            the testbench type.
+        tb_sch_params : Dict[str, Any]
+            the testbench schematic parameters dictionary.
+        """
+        pass
+
+    def get_testbench_name(self, tb_type):
+        # type: (str) -> str
+        """Returns the testbench cell name.
+
+        Parameters
+        ----------
+        tb_type : str
+            testbench type.
+
+        Returns
+        -------
+        tb_name : str
+            testbench cell name
+        """
+        return '%s_TB_%s' % (self.name, tb_type)
+
+    def create_tb_schematic(self, tb_type):
+        # type: (str) -> None
         """Creates the testbench schematic.
 
         Parameters
         ----------
-        setup_fun : Optional[Callable]
-            an optional function that modifies the testbench schematic parameters.
-        **kwargs :
-            keyword arguments for setup_fun.
+        tb_type : str
+            the testbench to create.
         """
         if self.prj is None:
-            raise ValueError('BagProject instance is not given.')
+            raise ValueError('BagProject instance is not specified.')
 
-        tb_lib = self.specs['tb_lib']
-        tb_cell = self.specs['tb_cell']
-        if 'sch_params' in self.specs:
-            tb_params = self.specs['sch_params'].copy()
+        tb_specs = self.specs['testbenches'][tb_type]
+        tb_lib = tb_specs['tb_lib']
+        tb_cell = tb_specs['tb_cell']
+        tb_name = self.get_testbench_name(tb_type)
+        if 'sch_params' in tb_specs:
+            tb_params = tb_specs['sch_params'].copy()
         else:
             tb_params = {}
 
         tb_params['dut_lib'] = self.impl_lib
         tb_params['dut_cell'] = self.dsn_name
-        if setup_fun is not None:
-            setup_fun(tb_params, **kwargs)
+        self.modify_tb_schematic(tb_type, tb_params)
 
         tb_sch = self.prj.create_design_module(tb_lib, tb_cell)
         tb_sch.design(**tb_params)
-        tb_sch.implement_design(self.impl_lib, top_cell_name=self.tb_name, erase=True)
+        tb_sch.implement_design(self.impl_lib, top_cell_name=tb_name)
 
-    def _setup_testbench(self, setup_fun=None, **kwargs):
-        # type: (Optional[Callable]) -> Testbench
+    def setup_testbench(self, tb_type):
+        # type: (str) -> Testbench
         """Setup simulation state of the testbench.
 
         Parameters
         ----------
-        setup_fun : Optional[Callable]
-            an optional function that modifies testbench simulation setup.
-        **kwargs :
-            keyword arguments for setup_fun
+        tb_type : str
+            the testbench type.
+
+        Returns
+        -------
+        tb : Testbench
+            the Testbench instance.
         """
         if self.prj is None:
             raise ValueError('BagProject instance is not given.')
 
-        tb = self.prj.configure_testbench(self.impl_lib, self.tb_name)
-        self.configure_testbench(tb)
-        setup_fun(tb, **kwargs)
+        tb_name = self.get_testbench_name(tb_type)
+        tb = self.prj.configure_testbench(self.impl_lib, tb_name)
+        self.configure_testbench(tb_type, tb)
         tb.update_testbench()
         return tb
 
-    def run_simulation(self,  # type: TestbenchManager
-                       tb_sch_fun=None,  # type: Optional[Callable]
-                       tb_setup_fun=None,  # type: Optional[Callable]
-                       **kwargs
-                       ):
+    def verify_design(self):
         # type: (...) -> None
-        """Create testbench, setup simulation, then start simulation
-
-        Parameters
-        ----------
-        tb_sch_fun : Optional[Callable]
-            an optional function that modifies the testbench schematic parameters.
-        tb_setup_fun : Optional[Callable]
-            an optional function that modifies testbench simulation setup.
-        **kwargs :
-            keyword arguments for given functions.
+        """Performs the verification flow.
 
         Returns
         -------
-        tag_name : str
-            the simulation tag name.
-        tb : Testbench
-            the simulation Testbench object.
+        summary : Dict[str, Any]
+            the performance summary.
         """
         if self._tb is not None:
             raise ValueError('A simulation may already be running.')
