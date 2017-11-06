@@ -31,7 +31,7 @@ import subprocess
 import multiprocessing
 from concurrent.futures import CancelledError
 
-from typing import TYPE_CHECKING, Optional, Sequence, Dict, Union
+from typing import TYPE_CHECKING, Optional, Sequence, Dict, Union, Tuple
 
 if TYPE_CHECKING:
     from asyncio.subprocess import Process
@@ -65,6 +65,9 @@ def batch_task(coro_list):
         results = None
 
     return results
+
+
+ProcInfo = Tuple[Union[str, Sequence[str]], str, Optional[Dict[str, str]], Optional[str]]
 
 
 class SubProcessManager(object):
@@ -120,8 +123,8 @@ class SubProcessManager(object):
                 except ProcessLookupError:
                     pass
 
-    async def async_new_subprocess(self, args, log, append=False, env=None, cwd=None):
-        # type: (Union[str, Sequence[str]], str, bool, Optional[Dict[str, str]], Optional[str]) -> Optional[int]
+    async def async_new_subprocess(self, args, log, env=None, cwd=None):
+        # type: (Union[str, Sequence[str]], str, Optional[Dict[str, str]], Optional[str]) -> Optional[int]
         """A asyncio coroutine which starts a subprocess.
 
         If this coroutine is cancelled, it will shut down the subprocess gracefully using SIGTERM/SIGKILL,
@@ -133,8 +136,6 @@ class SubProcessManager(object):
             command to run, as string or sequence of strings.
         log : str
             the log file name.
-        append : bool
-            True to append to any existing log file instead of replacing it.
         env : Optional[Dict[str, str]]
             an optional dictionary of environment variables.  None to inherit from parent.
         cwd : Optional[str]
@@ -156,37 +157,30 @@ class SubProcessManager(object):
             proc = None
             try:
                 proc = await asyncio.create_subprocess_exec(args, stdout=log, stderr=subprocess.STDOUT,
-                                                            env=env, cwd=cwd, append=append)
+                                                            env=env, cwd=cwd, append=False)
                 retcode = await proc.wait()
                 return retcode
             except CancelledError as err:
                 await self._kill_subprocess(proc)
                 raise err
 
-    def batch_subprocess(self,
-                         args_list,  # type: Sequence[Union[str, Sequence[str]]]
-                         log_list,  # type: Sequence[str]
-                         append_list=None,  # type: Optional[Sequence[bool]]
-                         env_list=None,  # type: Optional[Sequence[Dict[str, str]]
-                         cwd_list=None,  # type: Optional[Sequence[str]]
-                         ):
-        # type: (...) -> Optional[Sequence[Union[int, Exception]]]
+    def batch_subprocess(self, proc_info_list):
+        # type: (Sequence[ProcInfo]) -> Optional[Sequence[Union[int, Exception]]]
         """Run all given subprocesses in parallel.
 
         Parameters
         ----------
-        args_list : Sequence[Union[str, Sequence[str]]]
-            list of commands to run, as string or list of string arguments.  See
-            Python subprocess module documentation.
-        log_list : Sequence[str]
-            list of log file names.  stdout and stderr are written to these files.
-        append_list : Optional[Sequence[bool]]
-            list of boolean flags indicating whether to append (instead of overwrite)
-            to log files.
-        env_list : Optional[Sequence[Dict[str, str]]
-            list of environment variable dictionaries.
-        cwd_list : Optional[Sequence[str]]
-            list of working directories for each process.
+        proc_info_list : Sequence[ProcInfo]
+            a list of process informations.  Each element is a tuple of:
+
+            args : Union[str, Sequence[str]]
+                command to run, as string or list of string arguments.
+            log : str
+                log file name.
+            env : Optional[Dict[str, str]]
+                environment variable dictionary.  None to inherit from parent.
+            cwd : Optional[str]
+                working directory path.  None to inherit from parent.
 
         Returns
         -------
@@ -194,27 +188,10 @@ class SubProcessManager(object):
             if user cancelled the subprocesses, None is returned.  Otherwise, a list of
             subprocess return codes or exceptions are returned.
         """
-        num_proc = len(args_list)
+        num_proc = len(proc_info_list)
         if num_proc == 0:
             return []
 
-        # error checking
-        if len(log_list) != num_proc:
-            raise ValueError('log_list length != %d' % num_proc)
-        if append_list is None:
-            append_list = [False] * num_proc
-        elif len(append_list) != num_proc:
-            raise ValueError('append_list length != %d' % num_proc)
-        if env_list is None:
-            env_list = [None] * num_proc
-        elif len(env_list) != num_proc:
-            raise ValueError('env_list length != %d' % num_proc)
-        if cwd_list is None:
-            cwd_list = [None] * num_proc
-        elif len(cwd_list) != num_proc:
-            raise ValueError('cwd_list length != %d' % num_proc)
-
-        coro_list = [self.async_new_subprocess(args, log, append, env, cwd) for args, log, append, env, cwd in
-                     zip(args_list, log_list, append_list, env_list, cwd_list)]
+        coro_list = [self.async_new_subprocess(args, log, env, cwd) for args, log, env, cwd in proc_info_list]
 
         return batch_task(coro_list)
