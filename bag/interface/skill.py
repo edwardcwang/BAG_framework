@@ -32,7 +32,7 @@ from builtins import *
 
 import os
 import shutil
-from typing import List, Dict, Optional, Any, Tuple, Union
+from typing import List, Dict, Optional, Any, Tuple
 
 import yaml
 from jinja2 import Template
@@ -494,8 +494,7 @@ class SkillInterface(DbAccess):
         in_files = {'cell_view_list': cell_view_list}
         return self._eval_skill(cmd, input_files=in_files)
 
-    def run_lvs(self, lib_name, cell_name, sch_view, lay_view, lvs_params,
-                block=True, callback=None):
+    def run_lvs(self, lib_name, cell_name, sch_view, lay_view, lvs_params):
         """Run LVS on the given cell.
 
         Parameters
@@ -510,46 +509,34 @@ class SkillInterface(DbAccess):
             layout view name.  Default is 'layout'.
         lvs_params : dict[str, any]
             override LVS parameter values.
-        block : bool
-            If True, wait for LVS to finish.  Otherwise, return
-            a ID you can use to query LVS status later.
-        callback : callable or None
-            If given, this function will be called with the LVS success flag
-            and process return code when LVS finished.
 
         Returns
         -------
-        value : bool or string
-            If block is True, returns the LVS success flag.  Otherwise,
-            return a LVS ID you can use to query LVS status later.
+        value : bool
+            True if LVS succeeds
         log_fname : str
             name of the LVS log file.
         """
         if self.checker is None:
             raise Exception('LVS/RCX is disabled.')
 
-        return self.checker.run_lvs(lib_name, cell_name, sch_view, lay_view, lvs_params,
-                                    block=block, callback=callback)
+        return self.checker.run_lvs(lib_name, cell_name, sch_view, lay_view, lvs_params)
 
     def run_rcx(self, lib_name, cell_name, sch_view, lay_view, rcx_params,
-                block=True, callback=None, create_schematic=True):
+                create_schematic=True):
         """Run RCX on the given cell.
 
         The behavior and the first return value of this method depends on the
         input arguments.  The second return argument will always be the RCX
         log file name.
 
-        If block is True and create_schematic is True, this method will run RCX,
-        then if it succeeds, create a schematic of the extracted netlist in the
-        database.  It then returns a boolean value which will be True if
-        RCX succeeds.
+        If create_schematic is True, this method will run RCX, then if it succeeds,
+        create a schematic of the extracted netlist in the database.  It then returns
+        a boolean value which will be True if RCX succeeds.
 
-        If block is True and create_schematic is False, this method will run
-        RCX, then return a string which is the extracted netlist filename.
-        If RCX failed, None will be returned instead.
-
-        If block is False, this method will submit a RCX job and return a string
-        RCX ID which you can use to query RCX status later.
+        If create_schematic is False, this method will run RCX, then return a string
+        which is the extracted netlist filename. If RCX failed, None will be returned
+        instead.
 
         Parameters
         ----------
@@ -561,21 +548,15 @@ class SkillInterface(DbAccess):
             schematic view name.  Default is 'schematic'.
         lay_view : str
             layout view name.  Default is 'layout'.
-        rcx_params : dict[str, any]
+        rcx_params : Optional[Dict[str, Any]]
             override RCX parameter values.
-        block : bool
-            If True, wait for RCX to finish.  Otherwise, return
-            a ID you can use to query RCX status later.
-        callback : callable or None
-            If given, this function will be called with the RCX netlist filename
-            and process return code when RCX finished.
         create_schematic : bool
             True to automatically create extracted schematic in database if RCX
             is successful and it is supported.
 
         Returns
         -------
-        value : bool or string
+        value : Union[bool, str]
             The return value, as described.
         log_fname : str
             name of the RCX log file.
@@ -583,134 +564,17 @@ class SkillInterface(DbAccess):
         if self.checker is None:
             raise Exception('LVS/RCX is disabled.')
 
-        value, log_fname = self.checker.run_rcx(lib_name, cell_name, sch_view, lay_view, rcx_params,
-                                                block=block, callback=callback)
-        if block:
-            if create_schematic:
-                if value is None:
-                    return False, log_fname
-                if value:
-                    # create schematic only if netlist name is not empty.
-                    self.create_schematic_from_netlist(value, lib_name, cell_name)
-                return True, log_fname
-            else:
-                return value, log_fname
-        else:
-            self._rcx_jobs[value] = dict(create_schematic=create_schematic,
-                                         lib_name=lib_name, cell_name=cell_name)
+        netlist, log_fname = self.checker.run_rcx(lib_name, cell_name, sch_view, lay_view, rcx_params)
 
-            return value, log_fname
-
-    def wait_lvs_rcx(self, job_id, timeout=None, cancel_timeout=10.0):
-        # type: (str, Optional[float], float) -> Optional[Union[bool, str]]
-        """Wait for the given LVS/RCX job to finish, then return the result.
-
-        If ``timeout`` is None, waits indefinitely.  Otherwise, if after
-        ``timeout`` seconds the simulation is still running, a
-        :class:`concurrent.futures.TimeoutError` will be raised.
-        However, it is safe to catch this error and call wait again.
-
-        If Ctrl-C is pressed before the job is finished or before timeout
-        is reached, the job will be cancelled.
-
-        Parameters
-        ----------
-        job_id : str
-            the job ID.
-        timeout : float or None
-            number of seconds to wait.  If None, waits indefinitely.
-        cancel_timeout : float
-            number of seconds to wait for job cancellation.
-
-        Returns
-        -------
-        result : Optional[Union[bool, str]]
-            the job result.  None if the job is cancelled.
-        """
-        if self.checker is None:
-            raise Exception('LVS/RCX is disabled.')
-
-        result = self.checker.wait_lvs_rcx(job_id, timeout=timeout, cancel_timeout=cancel_timeout)
-        rcx_job_params = self._rcx_jobs.pop(job_id, None)
-        if rcx_job_params is None:
-            return result
-
-        # If RCX job, we may need to create schematic from netlist.
-        if rcx_job_params['create_schematic']:
-            if result is None:
-                return False
-            if result:
-                lib_name = rcx_job_params['lib_name']
-                cell_name = rcx_job_params['cell_name']
+        if create_schematic:
+            if netlist is None:
+                return False, log_fname
+            if netlist:
                 # create schematic only if netlist name is not empty.
-                self.create_schematic_from_netlist(result, lib_name, cell_name)
-            return True
+                self.create_schematic_from_netlist(netlist, lib_name, cell_name)
+            return True, log_fname
         else:
-            return result
-
-    def cancel(self, job_id, timeout=None):
-        # type: (str, Optional[float]) -> Optional[Union[bool, str]]
-        """Cancel the given LVS/RCX job.
-
-        If the process haven't started, this method prevents it from started.
-        Otherwise, we first send a SIGTERM signal to kill the process.  If
-        after ``timeout`` seconds the process is still alive, we will send a
-        SIGKILL signal.  If after another ``timeout`` seconds the process is
-        still alive, an Exception will be raised.
-
-        Parameters
-        ----------
-        job_id : str
-            the process ID to cancel.
-        timeout : float or None
-            number of seconds to wait for cancellation.  If None, use default
-            timeout.
-
-        Returns
-        -------
-        output : Optional[Union[bool, str]]
-            output of the job if it successfully terminates.
-            Otherwise, return None.
-        """
-        if self.checker is None:
-            raise Exception('LVS/RCX is disabled.')
-
-        result = self.checker.cancel(job_id, timeout=timeout)
-        rcx_job_params = self._rcx_jobs.pop(job_id, None)
-        if rcx_job_params is None:
-            return result
-
-        # If RCX job, we may need to create schematic from netlist.
-        if rcx_job_params['create_schematic']:
-            if result is None:
-                return False
-            if result:
-                lib_name = rcx_job_params['lib_name']
-                cell_name = rcx_job_params['cell_name']
-                # create schematic only if netlist name is not empty.
-                self.create_schematic_from_netlist(result, lib_name, cell_name)
-            return True
-        else:
-            return result
-
-    def done(self, proc_id):
-        # type: (str) -> bool
-        """Returns True if the given process finished or is cancelled successfully.
-
-        Parameters
-        ----------
-        proc_id : str
-            the process ID.
-
-        Returns
-        -------
-        done : bool
-            True if the process is cancelled or completed.
-        """
-        if self.checker is None:
-            raise Exception('LVS/RCX is disabled.')
-
-        return self.checker.done(proc_id)
+            return netlist, log_fname
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
