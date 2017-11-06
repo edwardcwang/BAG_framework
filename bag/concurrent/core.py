@@ -31,7 +31,7 @@ import subprocess
 import multiprocessing
 from concurrent.futures import CancelledError
 
-from typing import TYPE_CHECKING, Optional, Sequence, Dict, Union, Tuple
+from typing import TYPE_CHECKING, Optional, Sequence, Dict, Union, Tuple, Callable, Any
 
 if TYPE_CHECKING:
     from asyncio.subprocess import Process
@@ -68,6 +68,8 @@ def batch_task(coro_list):
 
 
 ProcInfo = Tuple[Union[str, Sequence[str]], str, Optional[Dict[str, str]], Optional[str]]
+FlowInfo = Tuple[Union[str, Sequence[str]], str, Optional[Dict[str, str]], Optional[str],
+                 Callable[[Optional[int], str], Any]]
 
 
 class SubProcessManager(object):
@@ -125,7 +127,7 @@ class SubProcessManager(object):
 
     async def async_new_subprocess(self, args, log, env=None, cwd=None):
         # type: (Union[str, Sequence[str]], str, Optional[Dict[str, str]], Optional[str]) -> Optional[int]
-        """A asyncio coroutine which starts a subprocess.
+        """A coroutine which starts a subprocess.
 
         If this coroutine is cancelled, it will shut down the subprocess gracefully using SIGTERM/SIGKILL,
         then raise CancelledError.
@@ -164,6 +166,63 @@ class SubProcessManager(object):
                 await self._kill_subprocess(proc)
                 raise err
 
+    async def async_new_subprocess_flow(self, proc_info_list):
+        # type: (Sequence[FlowInfo]) -> Any
+        """A coroutine which runs a series of subprocesses.
+
+        If this coroutine is cancelled, it will shut down the current subprocess gracefully using SIGTERM/SIGKILL,
+        then raise CancelledError.
+
+        Parameters
+        ----------
+        proc_info_list : Sequence[FlowInfo]
+            a list of processes to execute in series.  Each element is a tuple of:
+
+            args : Union[str, Sequence[str]]
+                command to run, as string or list of string arguments.
+            log : str
+                log file name.
+            env : Optional[Dict[str, str]]
+                environment variable dictionary.  None to inherit from parent.
+            cwd : Optional[str]
+                working directory path.  None to inherit from parent.
+            vfun : Sequence[Callable[[Optional[int], str], Any]]
+                a function to validate if it is ok to execute the next process.  The output of the
+                last function is returned.  The first argument is the return code, the second argument is
+                the log file name.
+
+        Returns
+        -------
+        result : Any
+            the return value of the last validate function.  None if validate function returns False.
+        """
+        num_proc = len(proc_info_list)
+        if num_proc == 0:
+            return None
+
+        async with self._semaphore:
+            for idx, (args, log, env, cwd, vfun) in enumerate(proc_info_list):
+                # get log file name, make directory if necessary
+                log = os.path.abspath(log)
+                if os.path.isdir(log):
+                    raise ValueError('log file %s is a directory.' % log)
+                os.makedirs(os.path.dirname(log), exist_ok=True)
+
+                proc, retcode = None, None
+                try:
+                    proc = await asyncio.create_subprocess_exec(args, stdout=log, stderr=subprocess.STDOUT,
+                                                                env=env, cwd=cwd, append=False)
+                    retcode = await proc.wait()
+                except CancelledError as err:
+                    await self._kill_subprocess(proc)
+                    raise err
+
+                fun_output = vfun(retcode, log)
+                if idx == num_proc - 1:
+                    return fun_output
+                elif not fun_output:
+                    return None
+
     def batch_subprocess(self, proc_info_list):
         # type: (Sequence[ProcInfo]) -> Optional[Sequence[Union[int, Exception]]]
         """Run all given subprocesses in parallel.
@@ -171,7 +230,7 @@ class SubProcessManager(object):
         Parameters
         ----------
         proc_info_list : Sequence[ProcInfo]
-            a list of process informations.  Each element is a tuple of:
+            a list of process information.  Each element is a tuple of:
 
             args : Union[str, Sequence[str]]
                 command to run, as string or list of string arguments.
@@ -193,5 +252,41 @@ class SubProcessManager(object):
             return []
 
         coro_list = [self.async_new_subprocess(args, log, env, cwd) for args, log, env, cwd in proc_info_list]
+
+        return batch_task(coro_list)
+
+    def batch_subprocess_flow(self, proc_info_list):
+        # type: (Sequence[Sequence[FlowInfo]]) -> Optional[Sequence[Union[int, Exception]]]
+        """Run all given subprocesses flow in parallel.
+
+        Parameters
+        ----------
+        proc_info_list : Sequence[Sequence[FlowInfo]
+            a list of process flow information.  Each element is a sequence of tuples of:
+
+            args : Union[str, Sequence[str]]
+                command to run, as string or list of string arguments.
+            log : str
+                log file name.
+            env : Optional[Dict[str, str]]
+                environment variable dictionary.  None to inherit from parent.
+            cwd : Optional[str]
+                working directory path.  None to inherit from parent.
+            vfun : Sequence[Callable[[Optional[int], str], Any]]
+                a function to validate if it is ok to execute the next process.  The output of the
+                last function is returned.  The first argument is the return code, the second argument is
+                the log file name.
+
+        Returns
+        -------
+        results : Optional[Sequence[Any]]
+            if user cancelled the subprocess flows, None is returned.  Otherwise, a list of
+            flow return values or exceptions are returned.
+        """
+        num_proc = len(proc_info_list)
+        if num_proc == 0:
+            return []
+
+        coro_list = [self.async_new_subprocess_flow(flow_info) for flow_info in proc_info_list]
 
         return batch_task(coro_list)

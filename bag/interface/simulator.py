@@ -220,8 +220,7 @@ class SimAccess(metaclass=abc.ABCMeta, object):
         value : Optional[str]
             the save directory path.  If simulation is cancelled, return None.
         """
-        result = self.batch_simulation([tb_lib], [tb_cell], [outputs], precision=precision,
-                                       sim_tags=[sim_tag])
+        result = self.batch_simulation([(tb_lib, tb_cell, outputs, sim_tag)], precision=precision)
         if result is None:
             return None
         return result[0]
@@ -248,7 +247,7 @@ class SimAccess(metaclass=abc.ABCMeta, object):
         value : Optional[str]
             the save directory path.  If result loading is cancelled, return None.
         """
-        result = self.batch_load_results([lib], [cell], [hist_name], [outputs], precision=precision)
+        result = self.batch_load_results([(lib, cell, hist_name, outputs)], precision=precision)
         if result is None:
             return None
         return result[0]
@@ -276,7 +275,6 @@ class SimProcessManager(metaclass=abc.ABCMeta, SimAccess):
             cancel_timeout /= 1e3
         self._manager = SubProcessManager(max_workers=sim_config.get('max_workers', None),
                                           cancel_timeout=cancel_timeout)
-        self._save_dirs = {}
 
     @abc.abstractmethod
     def setup_sim_process(self, lib, cell, outputs, precision, sim_tag):
