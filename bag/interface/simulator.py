@@ -91,28 +91,25 @@ class SimAccess(metaclass=abc.ABCMeta, object):
         return ""
 
     @abc.abstractmethod
-    def batch_simulation(self,
-                         lib_list,  # type: Sequence[str]
-                         cell_list,  # type: Sequence[str]
-                         outputs_list,  # type: Sequence[Dict[str, str]]
-                         precision=6,  # type: int
-                         sim_tags=None,  # type: Optional[Sequence[Optional[str]]]
-                         ):
-        # type: (...) -> Optional[Sequence[str]]
+    def batch_simulation(self, sim_info_list, precision=6):
+        # type: (Sequence[Tuple[str, str, Dict[str, str], Optional[str]]], int) -> Optional[Sequence[str]]
         """Simulate all the given testbenches in parallel.
 
         Parameters
         ----------
-        lib_list : Sequence[str]
-            list of testbench library names.
-        cell_list : Sequence[str]
-            list of testbench cell names.
-        outputs_list : Sequence[Dict[str, str]]
-            list of variable-to-expression dictionaries for each testbench.
+        sim_info_list : Sequence[Tuple[str, str, Dict[str, str], Optional[str]]]
+            list of simulation informations.  Each element is a tuple of:
+
+            lib_name : str
+                testbench library name.
+            cell_name : str
+                testbench cell name.
+            outputs : Dict[str, str]
+                variable-to-expression dictionaries
+            sim_tag : Optional[str]
+                tag describing this simulation run.
         precision : int
             precision of floating point results.
-        sim_tags : Optional[Sequence[Optional[str]]]
-            list of tags describing each simulation run.
 
         Returns
         -------
@@ -123,26 +120,23 @@ class SimAccess(metaclass=abc.ABCMeta, object):
         pass
 
     @abc.abstractmethod
-    def batch_load_results(self,
-                           lib_list,  # type: Sequence[str]
-                           cell_list,  # type: Sequence[str]
-                           hist_name_list,  # type: Sequence[str]
-                           outputs_list,  # type: Sequence[Dict[str, str]]
-                           precision=6,  # type: int
-                           ):
-        # type: (...) -> Optional[Sequence[str]]
-        """Simulate all the given testbenches in parallel.
+    def batch_load_results(self, sim_info_list, precision=6):
+        # type: (Sequence[Tuple[str, str, str, Dict[str, str]]], int) -> Optional[Sequence[str]]
+        """load previous simulation results of all the given testbenches in parallel.
 
         Parameters
         ----------
-        lib_list : Sequence[str]
-            list of testbench library names.
-        cell_list : Sequence[str]
-            list of testbench cell names.
-        hist_name_list : Sequence[str]
-            list of simulation history names.
-        outputs_list : Sequence[Dict[str, str]]
-            list of variable-to-expression dictionaries for each testbench.
+        sim_info_list : Sequence[Tuple[str, str, str, Dict[str, str]]]
+            list of simulation informations.  Each element is a tuple of:
+
+            lib_name : str
+                testbench library name.
+            cell_name : str
+                testbench cell name.
+            hist_name : str
+                simulation history name.
+            outputs : Dict[str, str]
+                variable-to-expression dictionaries
         precision : int
             precision of floating point results.
 
@@ -350,29 +344,11 @@ class SimProcessManager(metaclass=abc.ABCMeta, SimAccess):
         """
         return '', '', None, None, ''
 
-    def batch_simulation(self,  # type: SimProcessManager
-                         lib_list,  # type: Sequence[str]
-                         cell_list,  # type: Sequence[str]
-                         outputs_list,  # type: Sequence[Dict[str, str]]
-                         precision=6,  # type: int
-                         sim_tags=None,  # type: Optional[Sequence[Optional[str]]]
-                         ):
-        # type: (...) -> Optional[Sequence[str]]
-
-        num_proc = len(lib_list)
-
-        # error checking
-        if len(cell_list) != num_proc:
-            raise ValueError('cell_list length != %d' % num_proc)
-        if len(outputs_list) != num_proc:
-            raise ValueError('outputs_list length != %d' % num_proc)
-        if sim_tags is None:
-            sim_tags = [None] * num_proc
-        elif len(sim_tags) != num_proc:
-            raise ValueError('sim_tags length != %d' % num_proc)
+    def batch_simulation(self, sim_info_list, precision=6):
+        # type: (Sequence[Tuple[str, str, Dict[str, str], Optional[str]]], int) -> Optional[Sequence[str]]
 
         proc_info_list, save_dir_list = [], []
-        for lib, cell, outputs, sim_tag in zip(lib_list, cell_list, outputs_list, sim_tags):
+        for lib, cell, outputs, sim_tag in sim_info_list:
             args, log, env, cwd, save_dir = self.setup_sim_process(lib, cell, outputs, precision, sim_tag)
             proc_info_list.append((args, log, env, cwd))
             save_dir_list.append(save_dir)
@@ -383,27 +359,11 @@ class SimProcessManager(metaclass=abc.ABCMeta, SimAccess):
 
         return save_dir_list
 
-    def batch_load_results(self,
-                           lib_list,  # type: Sequence[str]
-                           cell_list,  # type: Sequence[str]
-                           hist_name_list,  # type: Sequence[str]
-                           outputs_list,  # type: Sequence[Dict[str, str]]
-                           precision=6,  # type: int
-                           ):
-        # type: (...) -> Optional[Sequence[str]]
-
-        num_proc = len(lib_list)
-
-        # error checking
-        if len(cell_list) != num_proc:
-            raise ValueError('cell_list length != %d' % num_proc)
-        if len(outputs_list) != num_proc:
-            raise ValueError('outputs_list length != %d' % num_proc)
-        if len(hist_name_list) != num_proc:
-            raise ValueError('hist_name_list length != %d' % num_proc)
+    def batch_load_results(self, sim_info_list, precision=6):
+        # type: (Sequence[Tuple[str, str, str, Dict[str, str]]], int) -> Optional[Sequence[str]]
 
         proc_info_list, save_dir_list = [], []
-        for lib, cell, hist_name, outputs in zip(lib_list, cell_list, hist_name_list, outputs_list):
+        for lib, cell, hist_name, outputs in sim_info_list:
             args, log, env, cwd, save_dir = self.setup_load_process(lib, cell, hist_name, outputs, precision)
             proc_info_list.append((args, log, env, cwd))
             save_dir_list.append(save_dir)
