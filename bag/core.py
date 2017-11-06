@@ -171,7 +171,6 @@ class Testbench(object):
         self.config_rules = {}
         self.outputs = outputs
         self.save_dir = None
-        self.sim_id = None
 
     def get_defined_simulation_environments(self):
         # type: () -> Sequence[str]
@@ -340,8 +339,8 @@ class Testbench(object):
         self.db.update_testbench(self.lib, self.cell, self.parameters, self.sim_envs, config_list,
                                  env_params)
 
-    def run_simulation(self, precision=6, sim_tag=None, block=True, callback=None):
-        # type: (int, Optional[str], bool, Optional[Callable[[str, Optional[int]], None]]) -> Optional[str]
+    def run_simulation(self, precision=6, sim_tag=None):
+        # type: (int, Optional[str]) -> Optional[str]
         """Run simulation.
 
         Parameters
@@ -350,92 +349,18 @@ class Testbench(object):
             the floating point number precision.
         sim_tag : Optional[str]
             optional description for this simulation run.
-        block : bool
-            If True, wait for the simulation to finish.  Otherwise, return
-            a simulation ID you can use to query simulation status later.
-        callback : Optional[Callable[[str, Optional[int]], None]]
-            If given, this function will be called with the save directory
-            and process return code when the simulation finished.
 
         Returns
         -------
         value : Optional[str]
-            Either the save directory path or the simulation ID.  If simulation
-            is cancelled, return None.
+            the save directory path.  If simulation is cancelled, return None.
         """
-        if self.sim_id is not None:
-            raise ValueError('An simulation is currently running with this testbench.')
-
-        retval = self.sim.run_simulation(self.lib, self.cell, self.outputs,
-                                         precision=precision, sim_tag=sim_tag,
-                                         block=block, callback=callback)
-        if block:
-            self.save_dir = retval
-        else:
-            self.sim_id = retval
-
-        return retval
-
-    def wait(self, timeout=None, cancel_timeout=10.0):
-        # type: (Optional[float], float) -> Optional[str]
-        """Wait for the simulation to finish, then return the results.
-
-        Parameters
-        ----------
-        timeout : Optional[float]
-            number of seconds to wait.  If None, waits indefinitely.
-        cancel_timeout : float
-            number of seconds to wait for simulation cancellation.
-
-        Returns
-        -------
-        save_dir : Optional[str]
-            the save directory.  None if the simulation is cancelled.
-        """
-        if self.sim_id is None:
-            raise ValueError('No simulation is associated with this testbench.')
-
-        save_dir, retcode = self.sim.wait(self.sim_id, timeout=timeout, cancel_timeout=cancel_timeout)
-        if retcode is not None:
-            self.save_dir = save_dir
-        else:
-            save_dir = None
-
-        self.sim_id = None
-
+        save_dir = self.sim.run_simulation(self.lib, self.cell, self.outputs, precision=precision, sim_tag=sim_tag)
+        self.save_dir = save_dir
         return save_dir
 
-    def cancel(self, timeout=None):
-        # type: (Optional[float]) -> Optional[str]
-        """Cancels any running simulations.
-
-        If the process haven't started, this method prevents it from started.
-        Otherwise, we first send a SIGTERM signal to kill the process.  If
-        after ``timeout`` seconds the process is still alive, we will send a
-        SIGKILL signal.  If after another ``timeout`` seconds the process is
-        still alive, an Exception will be raised.
-
-        Parameters
-        ----------
-        timeout : Optional[float]
-            number of seconds to wait for cancellation.  If None, use default
-            timeout.
-
-        Returns
-        -------
-        save_dir : Optional[str]
-            save directory if the simulation finishes in time. Otherwise,
-            return None.
-        """
-        if self.sim_id is None:
-            return None
-
-        result = self.sim.cancel(self.sim_id, timeout=timeout)
-        self.sim_id = None
-        return result
-
-    def load_sim_results(self, hist_name, precision=6, block=True, callback=None):
-        # type: (str, int, bool, Optional[Callable[[str, Optional[int]], None]]) -> Optional[str]
+    def load_sim_results(self, hist_name, precision=6):
+        # type: (str, int) -> Optional[str]
         """Load previous simulation data.
 
         Parameters
@@ -444,25 +369,53 @@ class Testbench(object):
             the simulation history name.
         precision : int
             the floating point number precision.
-        block : bool
-            If True, wait for the process to finish.  Otherwise, return
-            a process ID you can use to query process status later.
-        callback : Optional[Callable[[str, Optional[int]], None]]
-            If given, this function will be called with the save directory
-            and process return code when the process finished.
 
         Returns
         -------
         value : Optional[str]
-            Either the save directory path or the simulation ID.  If simulation
-            is cancelled, return None.
+            the save directory path.  If result loading is cancelled, return None.
         """
-        retval = self.sim.load_sim_results(self.lib, self.cell, hist_name, self.outputs,
-                                           precision=precision, block=block, callback=callback)
-        if block:
-            self.save_dir = retval
+        save_dir = self.sim.load_sim_results(self.lib, self.cell, hist_name, self.outputs, precision=precision)
+        self.save_dir = save_dir
+        return save_dir
 
-        return retval
+    async def async_run_simulation(self, precision=6, sim_tag=None):
+        # type: (int, Optional[str]) -> str
+        """A coroutine that runs the simulation.
+
+        Parameters
+        ----------
+        precision : int
+            the floating point number precision.
+        sim_tag : Optional[str]
+            optional description for this simulation run.
+
+        Returns
+        -------
+        value : str
+            the save directory path.
+        """
+        return await self.sim.async_run_simulation(self.lib, self.cell, self.outputs,
+                                                   precision=precision, sim_tag=sim_tag)
+
+    async def async_load_results(self, hist_name, precision=6):
+        # type: (str, int) -> str
+        """A coroutine that loads previous simulation data.
+
+        Parameters
+        ----------
+        hist_name : str
+            the simulation history name.
+        precision : int
+            the floating point number precision.
+
+        Returns
+        -------
+        value : str
+            the save directory path.
+        """
+        return await self.sim.async_load_results(self.lib, self.cell, hist_name, self.outputs,
+                                                 precision=precision)
 
 
 def create_tech_info(bag_config_path=None):

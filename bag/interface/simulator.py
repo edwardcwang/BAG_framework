@@ -27,190 +27,34 @@
 This module defines SimAccess, which provides methods to run simulations
 and retrieve results.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
+
+from typing import Dict, Optional, Sequence, Any, Tuple, Union
 
 import abc
-from future.utils import with_metaclass
 
 from ..io import make_temp_dir
-from ..io.process import ProcessManager
+from ..concurrent.core import SubProcessManager
 
 
-class SimAccess(with_metaclass(abc.ABCMeta, object)):
+class SimAccess(metaclass=abc.ABCMeta, object):
     """A class that interacts with a simulator.
 
     Parameters
     ----------
-    tmp_dir : string
+    tmp_dir : str
         temporary file directory for SimAccess.
-    sim_config : dict[string, Any]
+    sim_config : Dict[str, Any]
         the simulation configuration dictionary.
     """
 
     def __init__(self, tmp_dir, sim_config):
+        # type: (str, Dict[str, Any]) -> None
         self.sim_config = sim_config
         self.tmp_dir = make_temp_dir('simTmp', parent_dir=tmp_dir)
 
     @abc.abstractmethod
-    def run_simulation(self, tb_lib, tb_cell, outputs, precision=6, sim_tag=None,
-                       block=True, callback=None):
-        """Simulate the given testbench.
-
-        If block is True, returns the save directory.  Otherwise, returns a simulation
-        ID that can be used to query simulation status.
-
-        In blocking mode, you can press Ctrl-C to cancel the simulation.
-
-        Parameters
-        ----------
-        tb_lib : string
-            testbench library name.
-        tb_cell : string
-            testbench cell name.
-        outputs : dict[string, string]
-            the variable-to-expression dictionary.
-        precision : int
-            precision of floating point results.
-        sim_tag : string or None
-            a descriptive tag describing this simulation run.
-        block : bool
-            If True, wait for the simulation to finish.  Otherwise, return
-            a simulation ID you can use to query simulation status later.
-        callback : callable or None
-            If given, this function will be called with the save directory
-            and process return code when the simulation finished.
-
-        Returns
-        -------
-        value : str or None
-            Either the save directory path or the simulation ID.  If simulation
-            is cancelled, return None.
-        """
-        pass
-
-    @abc.abstractmethod
-    def load_sim_results(self, lib, cell, hist_name, outputs, precision=6,
-                         block=True, callback=None):
-        """Load previous simulation results.
-
-        If block is True, returns the save directory.  Otherwise, returns a simulation
-        ID that can be used to query process status.
-
-        In blocking mode, you can press Ctrl-C to cancel the loading process.
-
-        Parameters
-        ----------
-        lib : str
-            testbench library name.
-        cell : str
-            testbench cell name.
-        hist_name : str
-            simulation history name.
-        outputs : dict[str, str]
-            the variable-to-expression dictionary.
-        precision : int
-            precision of floating point results.
-        block : bool
-            If True, wait for the process to finish.  Otherwise, return
-            a process ID you can use to query process status later.
-        callback : callable or None
-            If given, this function will be called with the save directory
-            and process return code when the process finished.
-
-        Returns
-        -------
-        value : str or None
-            Either the save directory path or the simulation ID.  If simulation
-            is cancelled, return None.
-        """
-        pass
-
-    @abc.abstractmethod
-    def close(self, timeout=10.0):
-        """Terminate the simulator gracefully.
-
-        Parameters
-        ----------
-        timeout : float
-            time to wait in seconds for each simulation process to terminate.
-        """
-        pass
-
-    @abc.abstractmethod
-    def cancel(self, sim_id, timeout=10.0):
-        """Cancel the given simulation.
-
-        If the process haven't started, this method prevents it from started.
-        Otherwise, we first send a SIGTERM signal to kill the process.  If
-        after ``timeout`` seconds the process is still alive, we will send a
-        SIGKILL signal.  If after another ``timeout`` seconds the process is
-        still alive, an Exception will be raised.
-
-        Parameters
-        ----------
-        sim_id : string
-            the simulation ID to cancel.
-        timeout : float
-            number of seconds to wait for cancellation.
-
-        Returns
-        -------
-        result : Optional[Any]
-            output if process finished in time, None if successfully cancelled.
-        """
-        return None
-
-    @abc.abstractmethod
-    def done(self, sim_id):
-        """Returns True if the given simulation finished or is cancelled successfully.
-
-        Parameters
-        ----------
-        sim_id : string
-            ID of the simulation to query.
-
-        Returns
-        -------
-        done : bool
-            True if the simulation completed, or if simulation is cancelled.
-        """
-        return False
-
-    @abc.abstractmethod
-    def wait(self, sim_id, timeout=None, cancel_timeout=10.0):
-        """Wait for the given simulation to finish, then return its results directory.
-
-        If ``timeout`` is None, waits indefinitely.  Otherwise, if after
-        ``timeout`` seconds the simulation is still running, a
-        :class:`concurrent.futures.TimeoutError` will be raised.
-        However, it is safe to catch this error and call wait again.
-
-        If Ctrl-C is pressed before simulation finish or before timeout
-        is reached, the simulation will be cancelled.
-
-        Parameters
-        ----------
-        sim_id : string
-            the simulation ID.
-        timeout : float or None
-            number of seconds to wait.  If None, waits indefinitely.
-        cancel_timeout : float
-            number of seconds to wait for simulation cancellation.
-
-        Returns
-        -------
-        save_dir : str
-            the save directory.
-        retcode : int or None
-            return code of the simulation, None if it is cancelled.
-        """
-        return None
-
-    @abc.abstractmethod
     def format_parameter_value(self, param_config, precision):
+        # type: (Dict[str, Any], int) -> str
         """Format the given parameter value as a string.
 
         To support both single value parameter and parameter sweeps, each parameter value is represented
@@ -219,7 +63,7 @@ class SimAccess(with_metaclass(abc.ABCMeta, object)):
 
         Parameters
         ----------
-        param_config: dict[str, Any]
+        param_config: Dict[str, Any]
             a dictionary that describes this parameter value.
 
             4 formats are supported.  This is best explained by example.
@@ -246,186 +90,340 @@ class SimAccess(with_metaclass(abc.ABCMeta, object)):
         """
         return ""
 
+    @abc.abstractmethod
+    def batch_simulation(self,
+                         lib_list,  # type: Sequence[str]
+                         cell_list,  # type: Sequence[str]
+                         outputs_list,  # type: Sequence[Dict[str, str]]
+                         precision=6,  # type: int
+                         sim_tags=None,  # type: Optional[Sequence[Optional[str]]]
+                         ):
+        # type: (...) -> Optional[Sequence[str]]
+        """Simulate all the given testbenches in parallel.
 
-# noinspection PyAbstractClass
-class SimProcessManager(with_metaclass(abc.ABCMeta, SimAccess)):
-    """An implementation of :class:`SimAccess` using :class:`bag.io.process.ProcessManager`.
+        Parameters
+        ----------
+        lib_list : Sequence[str]
+            list of testbench library names.
+        cell_list : Sequence[str]
+            list of testbench cell names.
+        outputs_list : Sequence[Dict[str, str]]
+            list of variable-to-expression dictionaries for each testbench.
+        precision : int
+            precision of floating point results.
+        sim_tags : Optional[Sequence[Optional[str]]]
+            list of tags describing each simulation run.
+
+        Returns
+        -------
+        value : Optional[Sequence[str]]
+            If simulations are cancelled, return None.  Otherwise, return
+            a list of save directory paths.
+        """
+        pass
+
+    @abc.abstractmethod
+    def batch_load_results(self,
+                           lib_list,  # type: Sequence[str]
+                           cell_list,  # type: Sequence[str]
+                           hist_name_list,  # type: Sequence[str]
+                           outputs_list,  # type: Sequence[Dict[str, str]]
+                           precision=6,  # type: int
+                           ):
+        # type: (...) -> Optional[Sequence[str]]
+        """Simulate all the given testbenches in parallel.
+
+        Parameters
+        ----------
+        lib_list : Sequence[str]
+            list of testbench library names.
+        cell_list : Sequence[str]
+            list of testbench cell names.
+        hist_name_list : Sequence[str]
+            list of simulation history names.
+        outputs_list : Sequence[Dict[str, str]]
+            list of variable-to-expression dictionaries for each testbench.
+        precision : int
+            precision of floating point results.
+
+        Returns
+        -------
+        value : Optional[Sequence[str]]
+            If result loading is cancelled, return None.  Otherwise, return
+            a list of save directory paths.
+        """
+        pass
+
+    @abc.abstractmethod
+    async def async_run_simulation(self, tb_lib, tb_cell, outputs, precision=6, sim_tag=None):
+        # type: (str, str, Dict[str, str], int, Optional[str]) -> str
+        """A coroutine for simulation a testbench.
+
+        Parameters
+        ----------
+        tb_lib : str
+            testbench library name.
+        tb_cell : str
+            testbench cell name.
+        outputs : Dict[str, str]
+            the variable-to-expression dictionary.
+        precision : int
+            precision of floating point results.
+        sim_tag : Optional[str]
+            a descriptive tag describing this simulation run.
+
+        Returns
+        -------
+        value : str
+            the save directory path.
+        """
+        pass
+
+    @abc.abstractmethod
+    async def async_load_results(self, lib, cell, hist_name, outputs, precision=6):
+        # type: (str, str, str, Dict[str, str], int) -> str
+        """A coroutine for loading simulation results.
+
+        Parameters
+        ----------
+        lib : str
+            testbench library name.
+        cell : str
+            testbench cell name.
+        hist_name : str
+            simulation history name.
+        outputs : Dict[str, str]
+            the variable-to-expression dictionary.
+        precision : int
+            precision of floating point results.
+
+        Returns
+        -------
+        value : str
+            the save directory path.
+        """
+        pass
+
+    def run_simulation(self, tb_lib, tb_cell, outputs, precision=6, sim_tag=None):
+        # type: (str, str, Dict[str, str], int, Optional[str]) -> Optional[str]
+        """Simulate the given testbench.
+
+        Parameters
+        ----------
+        tb_lib : str
+            testbench library name.
+        tb_cell : str
+            testbench cell name.
+        outputs : Dict[str, str]
+            the variable-to-expression dictionary.
+        precision : int
+            precision of floating point results.
+        sim_tag : Optional[str]
+            a descriptive tag describing this simulation run.
+
+        Returns
+        -------
+        value : Optional[str]
+            the save directory path.  If simulation is cancelled, return None.
+        """
+        result = self.batch_simulation([tb_lib], [tb_cell], [outputs], precision=precision,
+                                       sim_tags=[sim_tag])
+        if result is None:
+            return None
+        return result[0]
+
+    def load_sim_results(self, lib, cell, hist_name, outputs, precision=6):
+        # type: (str, str, str, Dict[str, str], int) -> Optional[str]
+        """Load previous simulation results.
+
+        Parameters
+        ----------
+        lib : str
+            testbench library name.
+        cell : str
+            testbench cell name.
+        hist_name : str
+            simulation history name.
+        outputs : Dict[str, str]
+            the variable-to-expression dictionary.
+        precision : int
+            precision of floating point results.
+
+        Returns
+        -------
+        value : Optional[str]
+            the save directory path.  If result loading is cancelled, return None.
+        """
+        result = self.batch_load_results([lib], [cell], [hist_name], [outputs], precision=precision)
+        if result is None:
+            return None
+        return result[0]
+
+
+ProcInfo = Tuple[Union[str, Sequence[str]], str, Optional[Dict[str, str]], Optional[str], str]
+
+
+class SimProcessManager(metaclass=abc.ABCMeta, SimAccess):
+    """An implementation of :class:`SimAccess` using :class:`SubProcessManager`.
 
     Parameters
     ----------
-    tmp_dir : string
+    tmp_dir : str
         temporary file directory for SimAccess.
-    sim_config : dict[string, Any]
+    sim_config : Dict[str, Any]
         the simulation configuration dictionary.
     """
 
     def __init__(self, tmp_dir, sim_config):
+        # type: (str, Dict[str, Any]) -> None
         SimAccess.__init__(self, tmp_dir, sim_config)
         cancel_timeout = sim_config.get('cancel_timeout_ms', None)
         if cancel_timeout is not None:
             cancel_timeout /= 1e3
-        self._manager = ProcessManager(max_workers=sim_config.get('max_workers', None),
-                                       cancel_timeout=cancel_timeout)
+        self._manager = SubProcessManager(max_workers=sim_config.get('max_workers', None),
+                                          cancel_timeout=cancel_timeout)
         self._save_dirs = {}
-        self._cancel_timeout = sim_config.get('cancel_timeout_ms', 1e4) / 1e3
-        self._vproc = None
-        self._run_viewer = sim_config.get('show_log_viewer', False)
 
-    def close(self, timeout=10.0):
-        """Terminate the simulator gracefully.
-
-        Parameters
-        ----------
-        timeout : float
-            time to wait in seconds for each simulation process to terminate.
-        """
-        if self._vproc is not None:
-            from ..io import gui
-            gui.close(self._vproc)
-            self._vproc = None
-        self._manager.close(timeout=timeout)
-
-    def cancel(self, sim_id, timeout=None):
-        """Cancel the given simulation.
-
-        If the process haven't started, this method prevents it from started.
-        Otherwise, we first send a SIGTERM signal to kill the process.  If
-        after ``timeout`` seconds the process is still alive, we will send a
-        SIGKILL signal.  If after another ``timeout`` seconds the process is
-        still alive, an Exception will be raised.
+    @abc.abstractmethod
+    def setup_sim_process(self, lib, cell, outputs, precision, sim_tag):
+        # type: (str, str, Dict[str, str], int, Optional[str]) -> ProcInfo
+        """This method performs any setup necessary to configure a simulation process.
 
         Parameters
         ----------
-        sim_id : string
-            the simulation ID to cancel.
-        timeout : float or None
-            number of seconds to wait for cancellation. If None, use default
-            value.
+        lib : str
+            testbench library name.
+        cell : str
+            testbench cell name.
+        outputs : Dict[str, str]
+            the variable-to-expression dictionary.
+        precision : int
+            precision of floating point results.
+        sim_tag : Optional[str]
+            a descriptive tag describing this simulation run.
 
         Returns
         -------
-        result : Optional[Any]
-            output if process finished in time, None if successfully cancelled.
-        """
-        return self._manager.cancel(sim_id, timeout=timeout)
-
-    def done(self, sim_id):
-        """Returns True if the given simulation finished or is cancelled successfully.
-
-        Parameters
-        ----------
-        sim_id : string
-            the simulation ID.
-
-        Returns
-        -------
-        done : bool
-            True if the simulation is cancelled or completed.
-        """
-        return self._manager.done(sim_id)
-
-    def wait(self, sim_id, timeout=None, cancel_timeout=None):
-        """Wait for the given simulation to finish, then return its results directory.
-
-        If ``timeout`` is None, waits indefinitely.  Otherwise, if after
-        ``timeout`` seconds the simulation is still running, a
-        :class:`concurrent.futures.TimeoutError` will be raised.
-        However, it is safe to catch this error and call wait again.
-
-        If Ctrl-C is pressed before simulation finish or before timeout
-        is reached, the simulation will be cancelled.
-
-        Parameters
-        ----------
-        sim_id : string
-            the simulation ID.
-        timeout : float or None
-            number of seconds to wait.  If None, waits indefinitely.
-        cancel_timeout : float or None
-            number of seconds to wait for simulation cancellation.
-            If None, use default settings.
-        Returns
-        -------
+        args : Union[str, Sequence[str]]
+            command to run, as string or list of string arguments.
+        log : str
+            log file name.
+        env : Optional[Dict[str, str]]
+            environment variable dictionary.  None to inherit from parent.
+        cwd : Optional[str]
+            working directory path.  None to inherit from parent.
         save_dir : str
-            the save directory.
-        retcode : int or None
-            return code of the simulation, None if it is cancelled.
+            save directory path.
         """
-        retcode = self._manager.wait(sim_id, timeout=timeout, cancel_timeout=cancel_timeout)
-        return self._save_dirs[sim_id], retcode
+        return '', '', None, None, ''
 
-    def add_log(self, tag, fname):
-        """Adds the given log file to log viewer.
+    @abc.abstractmethod
+    def setup_load_process(self, lib, cell, hist_name, outputs, precision):
+        # type: (str, str, str, Dict[str, str], int) -> ProcInfo
+        """This method performs any setup necessary to configure a result loading process.
 
         Parameters
         ----------
-        tag : string
-            a description of this log file.
-        fname : string
-            the log file name.
-        """
-        if self._run_viewer:
-            from ..io import gui
-
-            if self._vproc is None:
-                self._vproc = gui.start_viewer()
-
-            if not gui.add_log(self._vproc, tag, fname):
-                self._vproc = None
-
-    def remove_log(self, tag):
-        """Remove the given log file from log viewer.
-
-        Parameters
-        ----------
-        tag : string
-            a description of this log file.
-        """
-        from ..io import gui
-
-        if not gui.remove_log(self._vproc, tag):
-            self._vproc = None
-
-    def new_sim_process(self, args, save_dir, basename=None, logfile=None, append=False,
-                        env=None, cwd=None, callback=None):
-        """Put a new simulation process in queue.
-
-        This is just a wrapper around :class:`~bag.io.process.ProcessManager`'s
-        corresponding method.
-
-        Parameters
-        ----------
-        args : string or list[string]
-            the command to run as a string or list of string arguments.  See
-            Python subprocess documentation.  list of string format is preferred.
-        save_dir : string
-            the simulation results directory.
-        basename : string or None
-            If given, this will be used as the basis for generating the unique
-            process ID.
-        logfile : string or None
-            If given, stdout and stderr will be written to this file.  Otherwise,
-            they will be redirected to `os.devnull`.
-        append : bool
-            True to append to ``logfile`` instead of overwritng it.
-        env : dict[string, string] or None
-            If given, environment variables of the process will be set according
-            to this dictionary.
-        cwd : string or None
-            current working directory of the process.
-        callback : callable
-            If given, this function will automatically be executed when the
-            process finished.  This function should take a single argument,
-            which is a Future object that returns the return code of the
-            process.
+        lib : str
+            testbench library name.
+        cell : str
+            testbench cell name.
+        hist_name : str
+            simulation history name.
+        outputs : Dict[str, str]
+            the variable-to-expression dictionary.
+        precision : int
+            precision of floating point results.
 
         Returns
         -------
-        proc_id : string
-            a unique string representing this process.  Can be used later
-            to query process status or cancel process.
+        args : Union[str, Sequence[str]]
+            command to run, as string or list of string arguments.
+        log : str
+            log file name.
+        env : Optional[Dict[str, str]]
+            environment variable dictionary.  None to inherit from parent.
+        cwd : Optional[str]
+            working directory path.  None to inherit from parent.
+        save_dir : str
+            save directory path.
         """
-        sim_id = self._manager.new_process(args, basename=basename, logfile=logfile,
-                                           append=append, env=env, cwd=cwd, callback=callback)
-        self._save_dirs[sim_id] = save_dir
-        return sim_id
+        return '', '', None, None, ''
+
+    def batch_simulation(self,  # type: SimProcessManager
+                         lib_list,  # type: Sequence[str]
+                         cell_list,  # type: Sequence[str]
+                         outputs_list,  # type: Sequence[Dict[str, str]]
+                         precision=6,  # type: int
+                         sim_tags=None,  # type: Optional[Sequence[Optional[str]]]
+                         ):
+        # type: (...) -> Optional[Sequence[str]]
+
+        num_proc = len(lib_list)
+
+        # error checking
+        if len(cell_list) != num_proc:
+            raise ValueError('cell_list length != %d' % num_proc)
+        if len(outputs_list) != num_proc:
+            raise ValueError('outputs_list length != %d' % num_proc)
+        if sim_tags is None:
+            sim_tags = [None] * num_proc
+        elif len(sim_tags) != num_proc:
+            raise ValueError('sim_tags length != %d' % num_proc)
+
+        proc_info_list, save_dir_list = [], []
+        for lib, cell, outputs, sim_tag in zip(lib_list, cell_list, outputs_list, sim_tags):
+            args, log, env, cwd, save_dir = self.setup_sim_process(lib, cell, outputs, precision, sim_tag)
+            proc_info_list.append((args, log, env, cwd))
+            save_dir_list.append(save_dir)
+
+        retcode_list = self._manager.batch_subprocess(proc_info_list)
+        if retcode_list is None:
+            return None
+
+        return save_dir_list
+
+    def batch_load_results(self,
+                           lib_list,  # type: Sequence[str]
+                           cell_list,  # type: Sequence[str]
+                           hist_name_list,  # type: Sequence[str]
+                           outputs_list,  # type: Sequence[Dict[str, str]]
+                           precision=6,  # type: int
+                           ):
+        # type: (...) -> Optional[Sequence[str]]
+
+        num_proc = len(lib_list)
+
+        # error checking
+        if len(cell_list) != num_proc:
+            raise ValueError('cell_list length != %d' % num_proc)
+        if len(outputs_list) != num_proc:
+            raise ValueError('outputs_list length != %d' % num_proc)
+        if len(hist_name_list) != num_proc:
+            raise ValueError('hist_name_list length != %d' % num_proc)
+
+        proc_info_list, save_dir_list = [], []
+        for lib, cell, hist_name, outputs in zip(lib_list, cell_list, hist_name_list, outputs_list):
+            args, log, env, cwd, save_dir = self.setup_load_process(lib, cell, hist_name, outputs, precision)
+            proc_info_list.append((args, log, env, cwd))
+            save_dir_list.append(save_dir)
+
+        retcode_list = self._manager.batch_subprocess(proc_info_list)
+        if retcode_list is None:
+            return None
+
+        return save_dir_list
+
+    async def async_run_simulation(self, tb_lib, tb_cell, outputs, precision=6, sim_tag=None):
+        # type: (str, str, Dict[str, str], int, Optional[str]) -> str
+        args, log, env, cwd, save_dir = self.setup_sim_process(tb_lib, tb_cell, outputs, precision, sim_tag)
+
+        await self._manager.async_new_subprocess(args, log, env=env, cwd=cwd)
+        return save_dir
+
+    async def async_load_results(self, lib, cell, hist_name, outputs, precision=6):
+        # type: (str, str, str, Dict[str, str], int) -> str
+        args, log, env, cwd, save_dir = self.setup_load_process(lib, cell, hist_name, outputs, precision)
+
+        await self._manager.async_new_subprocess(args, log, env=env, cwd=cwd)
+        return save_dir
