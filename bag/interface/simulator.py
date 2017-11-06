@@ -98,7 +98,7 @@ class SimAccess(metaclass=abc.ABCMeta, object):
         Parameters
         ----------
         sim_info_list : Sequence[Tuple[str, str, Dict[str, str], Optional[str]]]
-            list of simulation informations.  Each element is a tuple of:
+            list of simulation information.  Each element is a tuple of:
 
             lib_name : str
                 testbench library name.
@@ -127,7 +127,7 @@ class SimAccess(metaclass=abc.ABCMeta, object):
         Parameters
         ----------
         sim_info_list : Sequence[Tuple[str, str, str, Dict[str, str]]]
-            list of simulation informations.  Each element is a tuple of:
+            list of result loading information.  Each element is a tuple of:
 
             lib_name : str
                 testbench library name.
