@@ -49,6 +49,7 @@ class SubProcessManager(object):
         Number of seconds to wait for a process to terminate once SIGTERM or
         SIGKILL is issued.  Defaults to 10 seconds.
     """
+
     def __init__(self, max_workers=None, cancel_timeout=10.0):
         # type: (Optional[int], Optional[float]) -> None
         if max_workers is None:
@@ -61,12 +62,12 @@ class SubProcessManager(object):
         self._semaphore = asyncio.Semaphore(max_workers)
 
     def batch_subprocess(self,
-                      args_list,  # type: Sequence[Union[str, Sequence[str]]]
-                      log_list,  # type: Sequence[str]
-                      append_list=None,  # type: Optional[Sequence[bool]]
-                      env_list=None,  # type: Optional[Sequence[Dict[str, str]]
-                      cwd_list=None,  # type: Optional[Sequence[str]]
-                      ):
+                         args_list,  # type: Sequence[Union[str, Sequence[str]]]
+                         log_list,  # type: Sequence[str]
+                         append_list=None,  # type: Optional[Sequence[bool]]
+                         env_list=None,  # type: Optional[Sequence[Dict[str, str]]
+                         cwd_list=None,  # type: Optional[Sequence[str]]
+                         ):
         # type: (...) -> Optional[Sequence[Optional[int]]]
         """Run all given subprocesses in parallel.
 
