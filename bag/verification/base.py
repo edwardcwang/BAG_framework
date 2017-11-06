@@ -23,104 +23,27 @@
 ########################################################################################################################
 
 """This module defines Checker, an abstract base class that handles LVS/RCX."""
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-
-from future.utils import with_metaclass
 
 import abc
-from typing import Optional, Union, List
+from typing import TYPE_CHECKING, List, Dict, Any, Tuple, Sequence, Optional
+
+from ..concurrent.core import SubProcessManager
+
+if TYPE_CHECKING:
+    from ..concurrent.core import FlowInfo, ProcInfo
 
 
-class Checker(with_metaclass(abc.ABCMeta, object)):
+class Checker(metaclass=abc.ABCMeta, object):
     """A class that handles LVS/RCX.
 
     Parameters
     ----------
-    tmp_dir : string
+    tmp_dir : str
         temporary directory to save files in.
     """
     def __init__(self, tmp_dir):
+        # type: (str) -> None
         self.tmp_dir = tmp_dir
-
-    @abc.abstractmethod
-    def run_lvs(self, lib_name, cell_name, sch_view, lay_view, lvs_params,
-                block=True, callback=None):
-        """Run LVS on the given cell.
-
-        Parameters
-        ----------
-        lib_name : str
-            library name.
-        cell_name : str
-            cell_name
-        sch_view : str
-            schematic view name.  Default is 'schematic'.
-        lay_view : str
-            layout view name.  Default is 'layout'.
-        lvs_params : dict[str, any]
-            override LVS parameter values.
-        block : bool
-            If True, wait for LVS to finish.  Otherwise, return
-            a ID you can use to query LVS status later.
-        callback : callable or None
-            If given, this function will be called with the LVS success flag
-            and process return code when LVS finished.
-
-        Returns
-        -------
-        value : bool or string
-            If block is True, returns the LVS success flag.  Otherwise,
-            return a LVS ID you can use to query LVS status later.
-        log_fname : str
-            name of the LVS log file.
-        """
-        return False
-
-    @abc.abstractmethod
-    def run_rcx(self, lib_name, cell_name, sch_view, lay_view, rcx_params,
-                block=True, callback=None):
-        """Run RCX on the given cell.
-
-        The behavior and the first return value of this method depends on the
-        input arguments.  The second return argument will always be the RCX
-        log file name.
-
-        If block is True this method will run RCX and return the extracted
-        netlist filename.  If RCX fails, None will returned instead.
-
-        If block is False, this method will submit a RCX job and return a string
-        RCX ID which you can use to query RCX status later.
-
-        Parameters
-        ----------
-        lib_name : str
-            library name.
-        cell_name : str
-            cell_name
-        sch_view : str
-            schematic view name.  Default is 'schematic'.
-        lay_view : str
-            layout view name.  Default is 'layout'.
-        rcx_params : dict[str, any]
-            override RCX parameter values.
-        block : bool
-            If True, wait for RCX to finish.  Otherwise, return
-            a ID you can use to query RCX status later.
-        callback : callable or None
-            If given, this function will be called with the RCX netlist filename
-            and log file name when RCX finished.
-
-        Returns
-        -------
-        value : string
-            If blocking, the netlist file name.  If not blocking, the RCX ID.
-        log_fname : str
-            name of the RCX log file.
-        """
-        return None
 
     @abc.abstractmethod
     def get_rcx_netlists(self, lib_name, cell_name):
@@ -142,74 +65,546 @@ class Checker(with_metaclass(abc.ABCMeta, object)):
         return []
 
     @abc.abstractmethod
-    def wait_lvs_rcx(self, job_id, timeout=None, cancel_timeout=10.0):
-        # type: (str, Optional[float], float) -> Optional[Union[bool, str]]
-        """Wait for the given LVS/RCX job to finish, then return the result.
-
-        If ``timeout`` is None, waits indefinitely.  Otherwise, if after
-        ``timeout`` seconds the simulation is still running, a
-        :class:`concurrent.futures.TimeoutError` will be raised.
-        However, it is safe to catch this error and call wait again.
-
-        If Ctrl-C is pressed before the job is finished or before timeout
-        is reached, the job will be cancelled.
+    def batch_lvs(self, info_list):
+        # type: (Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]) -> Optional[Sequence[Tuple[bool, str]]]
+        """Run LVS on all given cells.
 
         Parameters
         ----------
-        job_id : str
-            the job ID.
-        timeout : float or None
-            number of seconds to wait.  If None, waits indefinitely.
-        cancel_timeout : float
-            number of seconds to wait for job cancellation.
+        info_list:
+            list of LVS information.  Each element is a tuple of:
+
+            lib_name : str
+                library name.
+            cell_name : str
+                cell name.
+            sch_view : str
+                schematic view name.
+            lay_view : str
+                layout view name.
+            params : Optional[Dict[str, Any]]
+                optional LVS parameter values.
 
         Returns
         -------
-        result : Optional[Union[bool, str]]
-            the job result.  None if the job is cancelled.
+        results : Optional[Sequence[Tuple[bool, str]]]
+            If LVS is cancelled, return None.  Otherwise, this is a
+            list of (lvs_success, lvs_log) tuples.
         """
         return None
 
     @abc.abstractmethod
-    def cancel(self, job_id, timeout=None):
-        # type: (str, Optional[float]) -> Optional[Union[bool, str]]
-        """Cancel the given LVS/RCX job.
-
-        If the process haven't started, this method prevents it from started.
-        Otherwise, we first send a SIGTERM signal to kill the process.  If
-        after ``timeout`` seconds the process is still alive, we will send a
-        SIGKILL signal.  If after another ``timeout`` seconds the process is
-        still alive, an Exception will be raised.
+    def batch_rcx(self, info_list,  # type: Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]
+                  ):
+        # type: (...) -> Optional[Sequence[Tuple[Optional[str], str]]]
+        """Run RCX on all given cells.
 
         Parameters
         ----------
-        job_id : str
-            the process ID to cancel.
-        timeout : float or None
-            number of seconds to wait for cancellation.  If None, use default
-            timeout.
+        info_list:
+            list of RCX information.  Each element is a tuple of:
+
+            lib_name : str
+                library name.
+            cell_name : str
+                cell name.
+            sch_view : str
+                schematic view name.
+            lay_view : str
+                layout view name.
+            params : Optional[Dict[str, Any]]
+                optional RCX parameter values.
 
         Returns
         -------
-        output : Optional[Union[bool, str]]
-            output of the job if it successfully terminates.
-            Otherwise, return None.
+        results : Optional[Sequence[Tuple[Optional[str], str]]]
+            If RCX is cancelled, return None.  Otherwise, this is a
+            list of (rcx_netlist, rcx_log) tuples.
         """
         return None
 
     @abc.abstractmethod
-    def done(self, proc_id):
-        # type: (str) -> bool
-        """Returns True if the given process finished or is cancelled successfully.
+    def batch_export_layout(self, info_list):
+        # type: (Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]) -> Optional[Sequence[str]]
+        """Export layout of all given cells
 
         Parameters
         ----------
-        proc_id : str
-            the process ID.
+        info_list:
+            list of cell information.  Each element is a tuple of:
+
+            lib_name : str
+                library name.
+            cell_name : str
+                cell name.
+            view_name : str
+                layout view name.
+            out_file : str
+                layout output file name.
+            params : Optional[Dict[str, Any]]
+                optional export parameter values.
 
         Returns
         -------
-        done : bool
-            True if the process is cancelled or completed.
+        results : Optional[Sequence[str]]
+            If task is cancelled, return None.  Otherwise, this is a
+            list of log file names.
         """
-        return True
+        return None
+
+    @abc.abstractmethod
+    def batch_export_schematic(self, info_list):
+        # type: (Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]) -> Optional[Sequence[str]]
+        """Export schematic of all given cells
+
+        Parameters
+        ----------
+        info_list:
+            list of cell information.  Each element is a tuple of:
+
+            lib_name : str
+                library name.
+            cell_name : str
+                cell name.
+            view_name : str
+                schematic view name.
+            out_file : str
+                layout output file name.
+            params : Optional[Dict[str, Any]]
+                optional export parameter values.
+
+        Returns
+        -------
+        results : Optional[Sequence[str]]
+            If task is cancelled, return None.  Otherwise, this is a
+            list of log file names.
+        """
+        return None
+
+    @abc.abstractmethod
+    async def async_run_lvs(self, lib_name, cell_name, sch_view, lay_view, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[bool, str]
+        """A coroutine for running LVS.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        sch_view : str
+            schematic view name.
+        lay_view : str
+            layout view name.
+        params : Optional[Dict[str, Any]]
+            optional LVS parameter values.
+
+        Returns
+        -------
+        success : bool
+            True if LVS succeeds.
+        log_fname : str
+            LVS log file name.
+        """
+        return False, ''
+
+    @abc.abstractmethod
+    async def async_run_rcx(self, lib_name, cell_name, sch_view, lay_view, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[Optional[str], str]
+        """A coroutine for running RCX.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        sch_view : str
+            schematic view name.
+        lay_view : str
+            layout view name.
+        params : Optional[Dict[str, Any]]
+            optional RCX parameter values.
+
+        Returns
+        -------
+        netlist : Optional[str]
+            The RCX netlist file name.  None if RCX failed, empty if no extracted netlist is generated
+        log_fname : str
+            RCX log file name.
+        """
+        return '', ''
+
+    @abc.abstractmethod
+    async def async_export_layout(self, lib_name, cell_name, view_name, out_file, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
+        """A coroutine for exporting layout.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        view_name : str
+            layout view name.
+        out_file : str
+            output file name.
+        params : Optional[Dict[str, Any]]
+            optional export parameter values.
+
+        Returns
+        -------
+        log_fname : str
+            log file name.
+        """
+        return ''
+
+    @abc.abstractmethod
+    async def async_export_schematic(self, lib_name, cell_name, view_name, out_file, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
+        """A coroutine for exporting schematic.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        view_name : str
+            schematic view name.
+        out_file : str
+            output file name.
+        params : Optional[Dict[str, Any]]
+            optional export parameter values.
+
+        Returns
+        -------
+        log_fname : str
+            log file name.
+        """
+        return ''
+
+    def run_lvs(self, lib_name, cell_name, sch_view, lay_view, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[bool, str]
+        """Run LVS on the given cell.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        sch_view : str
+            schematic view name.
+        lay_view : str
+            layout view name.
+        params : Optional[Dict[str, Any]]
+            optional LVS parameter values.
+
+        Returns
+        -------
+        success : bool
+            True if LVS succeeds.
+        log_fname : str
+            LVS log file name.
+        """
+        result = self.batch_lvs([(lib_name, cell_name, sch_view, lay_view, params)])
+        if result is None:
+            return False, ''
+        return result[0]
+
+    def run_rcx(self, lib_name, cell_name, sch_view, lay_view, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[Optional[str], str]
+        """Run RCX on the given cell.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        sch_view : str
+            schematic view name.
+        lay_view : str
+            layout view name.
+        params : Optional[Dict[str, Any]]
+            optional RCX parameter values.
+
+        Returns
+        -------
+        netlist : str
+            The RCX netlist file name.  None if RCX failed, empty if no extracted netlist is generated
+        log_fname : str
+            RCX log file name.
+        """
+        result = self.batch_rcx([(lib_name, cell_name, sch_view, lay_view, params)])
+        if result is None:
+            return '', ''
+        return result[0]
+
+    def export_layout(self, lib_name, cell_name, view_name, out_file, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
+        """export layout.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        view_name : str
+            layout view name.
+        out_file : str
+            output file name.
+        params : Optional[Dict[str, Any]]
+            optional export parameter values.
+
+        Returns
+        -------
+        log_fname : str
+            log file name.  Empty if task cancelled.
+        """
+        result = self.batch_export_layout([(lib_name, cell_name, view_name, out_file, params)])
+        if result is None:
+            return ''
+        return result[0]
+
+    def export_schematic(self, lib_name, cell_name, view_name, out_file, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
+        """export schematic.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        view_name : str
+            schematic view name.
+        out_file : str
+            output file name.
+        params : Optional[Dict[str, Any]]
+            optional export parameter values.
+
+        Returns
+        -------
+        log_fname : str
+            log file name.  Empty if task cancelled.
+        """
+        result = self.batch_export_schematic([(lib_name, cell_name, view_name, out_file, params)])
+        if result is None:
+            return ''
+        return result[0]
+
+
+class SubProcessChecker(metaclass=abc.ABCMeta, Checker):
+    """An implementation of :class:`Checker` using :class:`SubProcessManager`.
+
+    Parameters
+    ----------
+    tmp_dir : str
+        temporary file directory.
+    max_workers : int
+        maximum number of parallel processes.
+    cancel_timeout : float
+        timeout for cancelling a subprocess.
+    """
+
+    def __init__(self, tmp_dir, max_workers, cancel_timeout):
+        # type: (str) -> None
+        Checker.__init__(self, tmp_dir)
+        self._manager = SubProcessManager(max_workers=max_workers, cancel_timeout=cancel_timeout)
+
+    @abc.abstractmethod
+    def setup_lvs_flow(self, lib_name, cell_name, sch_view, lay_view, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
+        """This method performs any setup necessary to configure a LVS subprocess flow.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        sch_view : str
+            schematic view name.
+        lay_view : str
+            layout view name.
+        params : Optional[Dict[str, Any]]
+            optional LVS parameter values.
+
+        Returns
+        -------
+        flow_info : Sequence[FlowInfo]
+            the LVS flow information list.  Each element is a tuple of:
+
+            args : Union[str, Sequence[str]]
+                command to run, as string or list of string arguments.
+            log : str
+                log file name.
+            env : Optional[Dict[str, str]]
+                environment variable dictionary.  None to inherit from parent.
+            cwd : Optional[str]
+                working directory path.  None to inherit from parent.
+            vfun : Sequence[Callable[[Optional[int], str], Any]]
+                a function to validate if it is ok to execute the next process.  The output of the
+                last function is returned.  The first argument is the return code, the second argument is
+                the log file name.
+        """
+        return []
+
+    @abc.abstractmethod
+    def setup_rcx_flow(self, lib_name, cell_name, sch_view, lay_view, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
+        """This method performs any setup necessary to configure a RCX subprocess flow.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        sch_view : str
+            schematic view name.
+        lay_view : str
+            layout view name.
+        params : Optional[Dict[str, Any]]
+            optional RCX parameter values.
+
+        Returns
+        -------
+        flow_info : Sequence[FlowInfo]
+            the RCX flow information list.  Each element is a tuple of:
+
+            args : Union[str, Sequence[str]]
+                command to run, as string or list of string arguments.
+            log : str
+                log file name.
+            env : Optional[Dict[str, str]]
+                environment variable dictionary.  None to inherit from parent.
+            cwd : Optional[str]
+                working directory path.  None to inherit from parent.
+            vfun : Sequence[Callable[[Optional[int], str], Any]]
+                a function to validate if it is ok to execute the next process.  The output of the
+                last function is returned.  The first argument is the return code, the second argument is
+                the log file name.
+        """
+        return []
+
+    @abc.abstractmethod
+    def setup_export_layout(self, lib_name, cell_name, view_name, out_file, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> ProcInfo
+        """This method performs any setup necessary to export layout.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        view_name : str
+            layout view name.
+        out_file : str
+            output file name.
+        params : Optional[Dict[str, Any]]
+            optional export parameter values.
+
+        Returns
+        -------
+        args : Union[str, Sequence[str]]
+            command to run, as string or list of string arguments.
+        log : str
+            log file name.
+        env : Optional[Dict[str, str]]
+            environment variable dictionary.  None to inherit from parent.
+        cwd : Optional[str]
+            working directory path.  None to inherit from parent.
+        """
+        return '', '', None, None
+
+    @abc.abstractmethod
+    def setup_export_schematic(self, lib_name, cell_name, view_name, out_file, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> ProcInfo
+        """This method performs any setup necessary to export schematic.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        view_name : str
+            layout view name.
+        out_file : str
+            output file name.
+        params : Optional[Dict[str, Any]]
+            optional export parameter values.
+
+        Returns
+        -------
+        args : Union[str, Sequence[str]]
+            command to run, as string or list of string arguments.
+        log : str
+            log file name.
+        env : Optional[Dict[str, str]]
+            environment variable dictionary.  None to inherit from parent.
+        cwd : Optional[str]
+            working directory path.  None to inherit from parent.
+        """
+        return '', '', None, None
+
+    def batch_lvs(self, info_list):
+        # type: (Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]) -> Optional[Sequence[Tuple[bool, str]]]
+
+        proc_info_list = [self.setup_lvs_flow(*args) for args in info_list]
+        return self._manager.batch_subprocess_flow(proc_info_list)
+
+    def batch_rcx(self, info_list,  # type: Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]
+                  ):
+        # type: (...) -> Optional[Sequence[Tuple[Optional[str], str]]]
+
+        proc_info_list = [self.setup_rcx_flow(*args) for args in info_list]
+        return self._manager.batch_subprocess_flow(proc_info_list)
+
+    def batch_export_layout(self, info_list):
+        # type: (Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]) -> Optional[Sequence[str]]
+
+        proc_info_list = [self.setup_export_layout(*args) for args in info_list]
+        results = self._manager.batch_subprocess(proc_info_list)
+        if results is None:
+            return None
+        else:
+            return [proc_info[1] for proc_info in proc_info_list]
+
+    def batch_export_schematic(self, info_list):
+        # type: (Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]) -> Optional[Sequence[str]]
+
+        proc_info_list = [self.setup_export_schematic(*args) for args in info_list]
+        results = self._manager.batch_subprocess(proc_info_list)
+        if results is None:
+            return None
+        else:
+            return [proc_info[1] for proc_info in proc_info_list]
+
+    async def async_run_lvs(self, lib_name, cell_name, sch_view, lay_view, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[bool, str]
+        flow_info = self.setup_lvs_flow(lib_name, cell_name, sch_view, lay_view, params)
+        return await self._manager.async_new_subprocess_flow(flow_info)
+
+    async def async_run_rcx(self, lib_name, cell_name, sch_view, lay_view, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[str, str]
+        flow_info = self.setup_rcx_flow(lib_name, cell_name, sch_view, lay_view, params)
+        return await self._manager.async_new_subprocess_flow(flow_info)
+
+    async def async_export_layout(self, lib_name, cell_name, view_name, out_file, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
+        proc_info = self.setup_export_layout(lib_name, cell_name, view_name, out_file, params)
+        await self._manager.async_new_subprocess(*proc_info)
+        return proc_info[1]
+
+    async def async_export_schematic(self, lib_name, cell_name, view_name, out_file, params):
+        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
+        proc_info = self.setup_export_schematic(lib_name, cell_name, view_name, out_file, params)
+        await self._manager.async_new_subprocess(*proc_info)
+        return proc_info[1]

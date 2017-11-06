@@ -32,7 +32,7 @@ from builtins import *
 import os
 import string
 import importlib
-from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, Union, Type, Callable, Sequence
+from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, Union, Type, Sequence
 
 # noinspection PyPackageRequirements
 import yaml
@@ -778,10 +778,8 @@ class BagProject(object):
                 sch_view='schematic',  # type: str
                 lay_view='layout',  # type: str
                 lvs_params=None,  # type: Optional[Dict[str, Any]]
-                block=True,  # type: bool
-                callback=None,  # type: Optional[Callable[[bool, Optional[int]], None]]
                 ):
-        # type: (...) -> Tuple[Union[bool, str], str]
+        # type: (...) -> Tuple[bool, str]
         """Run LVS on the given cell.
 
         Parameters
@@ -796,18 +794,11 @@ class BagProject(object):
             layout view name.  Default is 'layout'.
         lvs_params : Optional[Dict[str, Any]]
             override LVS parameter values.
-        block : bool
-            If True, wait for LVS to finish.  Otherwise, return
-            a ID you can use to query LVS status later.
-        callback : Optional[Callable[[bool, Optional[int]], None]]
-            If given, this function will be called with the LVS success flag
-            and process return code when LVS finished.
 
         Returns
         -------
-        value : Union[bool, str]
-            If block is True, returns the LVS success flag.  Otherwise,
-            return a LVS ID you can use to query LVS status later.
+        value : bool
+            True if LVS passes
         log_fname : str
             name of the LVS log file.
         """
@@ -815,8 +806,7 @@ class BagProject(object):
             raise Exception('BAG Server is not set up.')
 
         lvs_params = lvs_params or {}
-        return self.impl_db.run_lvs(lib_name, cell_name, sch_view, lay_view, lvs_params,
-                                    block=block, callback=callback)
+        return self.impl_db.run_lvs(lib_name, cell_name, sch_view, lay_view, lvs_params)
 
     def run_rcx(self,
                 lib_name,  # type: str
@@ -824,8 +814,6 @@ class BagProject(object):
                 sch_view='schematic',  # type: str
                 lay_view='layout',  # type: str
                 rcx_params=None,  # type: Optional[Dict[str, Any]]
-                block=True,  # type: bool
-                callback=None,  # type: Optional[Callable[[bool, Optional[int]], None]]
                 create_schematic=True,  # type: bool
                 ):
         # type: (...) -> Tuple[Union[bool, str], str]
@@ -835,17 +823,13 @@ class BagProject(object):
         input arguments.  The second return argument will always be the RCX
         log file name.
 
-        If block is True and create_schematic is True, this method will run RCX,
-        then if it succeeds, create a schematic of the extracted netlist in the
-        database.  It then returns a boolean value which will be True if
-        RCX succeeds.
+        If create_schematic is True, this method will run RCX, then if it succeeds,
+        create a schematic of the extracted netlist in the database.  It then returns
+        a boolean value which will be True if RCX succeeds.
 
-        If block is True and create_schematic is False, this method will run
-        RCX, then return a string which is the extracted netlist filename.
-        If RCX failed, None will be returned instead.
-
-        If block is False, this method will submit a RCX job and return a string
-        RCX ID which you can use to query RCX status later.
+        If create_schematic is False, this method will run RCX, then return a string
+        which is the extracted netlist filename. If RCX failed, None will be returned
+        instead.
 
         Parameters
         ----------
@@ -859,12 +843,6 @@ class BagProject(object):
             layout view name.  Default is 'layout'.
         rcx_params : Optional[Dict[str, Any]]
             override RCX parameter values.
-        block : bool
-            If True, wait for RCX to finish.  Otherwise, return
-            a ID you can use to query RCX status later.
-        callback : Optional[Callable[[bool, Optional[int]], None]]
-            If given, this function will be called with the RCX netlist filename
-            and process return code when RCX finished.
         create_schematic : bool
             True to automatically create extracted schematic in database if RCX
             is successful and it is supported.
@@ -881,87 +859,7 @@ class BagProject(object):
 
         rcx_params = rcx_params or {}
         return self.impl_db.run_rcx(lib_name, cell_name, sch_view, lay_view, rcx_params,
-                                    block=block, callback=callback,
                                     create_schematic=create_schematic)
-
-    def wait_lvs_rcx(self, job_id, timeout=None, cancel_timeout=10.0):
-        # type: (str, Optional[float], float) -> Optional[Union[bool, str]]
-        """Wait for the given LVS/RCX job to finish, then return the result.
-
-        If ``timeout`` is None, waits indefinitely.  Otherwise, if after
-        ``timeout`` seconds the simulation is still running, a
-        :class:`concurrent.futures.TimeoutError` will be raised.
-        However, it is safe to catch this error and call wait again.
-
-        If Ctrl-C is pressed before the job is finished or before timeout
-        is reached, the job will be cancelled.
-
-        Parameters
-        ----------
-        job_id : str
-            the job ID.
-        timeout : float or None
-            number of seconds to wait.  If None, waits indefinitely.
-        cancel_timeout : float
-            number of seconds to wait for job cancellation.
-
-        Returns
-        -------
-        result : Optional[Union[bool, str]]
-            the job result.  None if the job is cancelled.
-        """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
-        return self.impl_db.wait_lvs_rcx(job_id, timeout=timeout, cancel_timeout=cancel_timeout)
-
-    def cancel(self, job_id, timeout=None):
-        # type: (str, Optional[float]) -> Optional[Union[bool, str]]
-        """Cancel the given LVS/RCX job.
-
-        If the process haven't started, this method prevents it from started.
-        Otherwise, we first send a SIGTERM signal to kill the process.  If
-        after ``timeout`` seconds the process is still alive, we will send a
-        SIGKILL signal.  If after another ``timeout`` seconds the process is
-        still alive, an Exception will be raised.
-
-        Parameters
-        ----------
-        job_id : str
-            the process ID to cancel.
-        timeout : Optional[float]
-            number of seconds to wait for cancellation.  If None, use default
-            timeout.
-
-        Returns
-        -------
-        output : Optional[Union[bool, str]]
-            output of the job if it successfully terminates.
-            Otherwise, return None.
-        """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
-        return self.impl_db.cancel(job_id, timeout=timeout)
-
-    def done(self, job_id):
-        # type: (str) -> bool
-        """Returns True if the given process finished or is cancelled successfully.
-
-        Parameters
-        ----------
-        job_id : str
-            the process ID.
-
-        Returns
-        -------
-        done : bool
-            True if the process is cancelled or completed.
-        """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
-        return self.impl_db.done(job_id)
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
