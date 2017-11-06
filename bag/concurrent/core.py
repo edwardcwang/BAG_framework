@@ -37,8 +37,38 @@ if TYPE_CHECKING:
     from asyncio.subprocess import Process
 
 
+def batch_task(coro_list):
+    """Execute a list of coroutines or futures concurrently.
+
+    User may press Ctrl-C to cancel all given tasks.
+
+    Parameters
+    ----------
+    coro_list :
+        a list of coroutines or futures to run concurrently.
+
+    Returns
+    -------
+    results :
+        a list of return values or raised exceptions of given tasks.
+    """
+    top_future = asyncio.gather(*coro_list, return_exceptions=True)
+
+    loop = asyncio.get_event_loop()
+    try:
+        print('Running tasks, Press Ctrl-C to cancel.')
+        results = loop.run_until_complete(top_future)
+    except KeyboardInterrupt:
+        print('Ctrl-C detected, Cancelling tasks.')
+        top_future.cancel()
+        loop.run_forever()
+        results = None
+
+    return results
+
+
 class SubProcessManager(object):
-    """A class to run one or more subprocesses in parallel.
+    """A class that provides convenient methods to run multiple subprocesses in parallel using asyncio.
 
     Parameters
     ----------
@@ -58,8 +88,80 @@ class SubProcessManager(object):
             cancel_timeout = 10.0
 
         self._cancel_timeout = cancel_timeout
-        self._loop = None
         self._semaphore = asyncio.Semaphore(max_workers)
+
+    async def _kill_subprocess(self, proc):
+        # type: (Optional[Process]) -> None
+        """Helper method; send SIGTERM/SIGKILL to a subprocess.
+
+        This method first sends SIGTERM to the subprocess.  If the process hasn't terminated
+        after a given timeout, it sends SIGKILL.
+
+        Parameter
+        ---------
+        proc : Optional[Process]
+            the process to attempt to terminate.  If None, this method does nothing.
+        """
+        if proc is not None:
+            if proc.returncode is None:
+                try:
+                    proc.terminate()
+                    try:
+                        await asyncio.shield(asyncio.wait_for(proc.wait(), self._cancel_timeout))
+                    except CancelledError:
+                        pass
+
+                    if proc.returncode is None:
+                        proc.kill()
+                        try:
+                            await asyncio.shield(asyncio.wait_for(proc.wait(), self._cancel_timeout))
+                        except CancelledError:
+                            pass
+                except ProcessLookupError:
+                    pass
+
+    async def async_new_subprocess(self, args, log, append=False, env=None, cwd=None):
+        # type: (Union[str, Sequence[str]], str, bool, Optional[Dict[str, str]], Optional[str]) -> Optional[int]
+        """A asyncio coroutine which starts a subprocess.
+
+        If this coroutine is cancelled, it will shut down the subprocess gracefully using SIGTERM/SIGKILL,
+        then raise CancelledError.
+
+        Parameters
+        ----------
+        args : Union[str, Sequence[str]]
+            command to run, as string or sequence of strings.
+        log : str
+            the log file name.
+        append : bool
+            True to append to any existing log file instead of replacing it.
+        env : Optional[Dict[str, str]]
+            an optional dictionary of environment variables.  None to inherit from parent.
+        cwd : Optional[str]
+            the working directory.  None to inherit from parent.
+
+        Returns
+        -------
+        retcode : Optional[int]
+            the return code of the subprocess.
+        """
+
+        # get log file name, make directory if necessary
+        log = os.path.abspath(log)
+        if os.path.isdir(log):
+            raise ValueError('log file %s is a directory.' % log)
+        os.makedirs(os.path.dirname(log), exist_ok=True)
+
+        async with self._semaphore:
+            proc = None
+            try:
+                proc = await asyncio.create_subprocess_exec(args, stdout=log, stderr=subprocess.STDOUT,
+                                                            env=env, cwd=cwd, append=append)
+                retcode = await proc.wait()
+                return retcode
+            except CancelledError as err:
+                await self._kill_subprocess(proc)
+                raise err
 
     def batch_subprocess(self,
                          args_list,  # type: Sequence[Union[str, Sequence[str]]]
@@ -68,7 +170,7 @@ class SubProcessManager(object):
                          env_list=None,  # type: Optional[Sequence[Dict[str, str]]
                          cwd_list=None,  # type: Optional[Sequence[str]]
                          ):
-        # type: (...) -> Optional[Sequence[Optional[int]]]
+        # type: (...) -> Optional[Sequence[Union[int, Exception]]]
         """Run all given subprocesses in parallel.
 
         Parameters
@@ -88,10 +190,9 @@ class SubProcessManager(object):
 
         Returns
         -------
-        results : Optional[Sequence[Optional[int]]]
+        results : Optional[Sequence[Union[int, Exception]]]
             if user cancelled the subprocesses, None is returned.  Otherwise, a list of
-            subprocess return codes are returned.  However, if an exception is raised in
-            the subprocess, the corresponding entry will be None instead of the resturn code.
+            subprocess return codes or exceptions are returned.
         """
         num_proc = len(args_list)
         if num_proc == 0:
@@ -113,64 +214,7 @@ class SubProcessManager(object):
         elif len(cwd_list) != num_proc:
             raise ValueError('cwd_list length != %d' % num_proc)
 
-        self._loop = asyncio.get_event_loop()
         coro_list = [self.async_new_subprocess(args, log, append, env, cwd) for args, log, append, env, cwd in
                      zip(args_list, log_list, append_list, env_list, cwd_list)]
-        top_future = asyncio.gather(*coro_list, return_exceptions=True)
 
-        try:
-            print('Running subprocesses, Press Ctrl-C to cancel.')
-            results = self._loop.run_until_complete(top_future)
-        except KeyboardInterrupt:
-            print('Ctrl-C detected, Cancelling subprocesses.')
-            top_future.cancel()
-            self._loop.run_forever()
-            results = None
-        finally:
-            self._loop = None
-
-        if results is None:
-            return None
-        return [i if isinstance(i, int) else None for i in results]
-
-    async def _kill_proc(self, proc):
-        # type: (Optional[Process]) -> None
-        """Send SIGTERM/SIGKILL to a subprocess."""
-        if proc is not None:
-            if proc.returncode is None:
-                try:
-                    proc.terminate()
-                    try:
-                        await asyncio.shield(asyncio.wait_for(proc.wait(), self._cancel_timeout))
-                    except CancelledError:
-                        pass
-
-                    if proc.returncode is None:
-                        proc.kill()
-                        try:
-                            await asyncio.shield(asyncio.wait_for(proc.wait(), self._cancel_timeout))
-                        except CancelledError:
-                            pass
-                except ProcessLookupError:
-                    pass
-
-    async def async_new_subprocess(self, args, log, append, env, cwd):
-        # type: (Union[str, Sequence[str]], str, bool, Optional[Dict[str, str]], Optional[str]) -> Optional[int]
-        """Start a subprocess.  Returns the return code of the subprocess."""
-
-        # get log file name, make directory if necessary
-        log = os.path.abspath(log)
-        if os.path.isdir(log):
-            raise ValueError('log file %s is a directory.' % log)
-        os.makedirs(os.path.dirname(log), exist_ok=True)
-
-        async with self._semaphore:
-            proc = None
-            try:
-                proc = await asyncio.create_subprocess_exec(args, stdout=log, stderr=subprocess.STDOUT,
-                                                            env=env, cwd=cwd, append=append)
-                retcode = await proc.wait()
-                return retcode
-            except CancelledError as err:
-                await self._kill_proc(proc)
-                raise err
+        return batch_task(coro_list)
