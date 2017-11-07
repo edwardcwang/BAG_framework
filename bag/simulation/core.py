@@ -32,12 +32,12 @@ import abc
 import importlib
 import itertools
 import os
-from typing import TYPE_CHECKING, Optional, Dict, Any, Tuple, List, Iterable, Sequence, Callable
+from typing import TYPE_CHECKING, Optional, Dict, Any, Tuple, List, Iterable, Sequence
 
 import yaml
 
 from bag import float_to_si_string
-from bag.io import read_yaml, open_file, load_sim_results, save_sim_results, load_sim_file
+from bag.io import read_yaml, open_file, load_sim_results, save_sim_results
 from bag.layout import RoutingGrid, TemplateDB
 
 if TYPE_CHECKING:
@@ -56,8 +56,6 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
 
     Parameters
     ----------
-    prj : Optional[BagProject]
-        The BagProject instance.
     data_dir : str
         Simulation data directory.
     meas_name : str
@@ -69,98 +67,142 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
     specs : Dict[str, Any]
         the measurement specification dictionary.
     """
-    def __init__(self, prj, data_dir, meas_name, impl_lib, dsn_name, specs):
-        # type: (Optional[BagProject], str, str, str, str, Dict[str, Any]) -> None
-        self.prj = prj
+    def __init__(self, data_dir, meas_name, impl_lib, dsn_name, specs):
+        # type: (str, str, str, str, Dict[str, Any]) -> None
         self.data_dir = os.path.abspath(data_dir)
         self.impl_lib = impl_lib
         self.dsn_name = dsn_name
         self.meas_name = meas_name
         self.specs = specs
 
-    async def async_measure_performance(self):
-        pass
-
     @abc.abstractmethod
-    def configure_testbench(self, tb_type, tb):
-        # type: (str, Testbench) -> None
-        """Configures the testbench simulation setup.
+    def get_testbench_info(self, state, prev_output):
+        # type: (str, Optional[Dict[str, Any]]) -> Tuple[str, str, Optional[Dict[str, Any]]]
+        """Get information about the next testbench.
 
         Parameters
         ----------
-        tb_type : str
-            the testbench type.
-        tb : Testbench
-            the Testbench instance.
-        """
-        pass
-
-    @abc.abstractmethod
-    def process_output(self, tb_type, results):
-        # type: (str, Dict[str, Any]) -> Any
-        """Process the simulation data of the given testbench.
-
-        Parameters
-        ----------
-        tb_type : str
-            the testbench type.
-        results : Dict[str, Any]
-            the simulation data.
-
-        Returns
-        -------
-        summary : Any
-            a summary of performance results.  If you did not override
-            verify_design(), this should be a dictionary.  Otherwise,
-            this can be whatever you want.
-        """
-        return None
-
-    def modify_tb_schematic(self, tb_type, tb_sch_params):
-        # type: (str, Dict[str, Any]) -> None
-        """Perform any modifications necessary on the testbench schematic parameters.
-
-        Parameters
-        ----------
-        tb_type : str
-            the testbench type.
-        tb_sch_params : Dict[str, Any]
-            the testbench schematic parameters dictionary.
-        """
-        pass
-
-    def get_testbench_name(self, tb_type):
-        # type: (str) -> str
-        """Returns the testbench cell name.
-
-        Parameters
-        ----------
-        tb_type : str
-            testbench type.
+        state : str
+            the current FSM state.
+        prev_output : Optional[Dict[str, Any]]
+            the previous post-processing output.
 
         Returns
         -------
         tb_name : str
-            testbench cell name
+            cell name of the next testbench.
+        tb_type : str
+            the next testbench type.
+        sch_params : Optional[Dict[str, Any]]
+            the next testbench schematic parameters.  If we are reusing an existing
+            testbench, this should be None.
         """
-        return '%s_TB_%s' % (self.name, tb_type)
+        return '', '', None
 
-    def create_tb_schematic(self, tb_type):
-        # type: (str) -> None
-        """Creates the testbench schematic.
+    @abc.abstractmethod
+    def setup_testbench(self, state, tb):
+        # type: (str, Testbench) -> None
+        """Configure the simulation state of the given testbench.
+
+        No need to call update_testbench(); it is called for you.
+
+        Parameters
+        ----------
+        state : str
+            the current FSM state.
+        tb : Testbench
+            the simulation Testbench instance.
+        """
+        pass
+
+    @abc.abstractmethod
+    def process_output(self, state, data):
+        # type: (str, Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]
+        """Process simulation output data.
+
+        Parameters
+        ----------
+        state : str
+            the current FSM state
+        data : Dict[str, Any]
+            simulation data dictionary.
+
+        Returns
+        -------
+        done : bool
+            True if this measurement is finished.
+        next_state : str
+            the next FSM state.
+        output : Dict[str, Any]
+            a dictionary containing post-processed data.
+        """
+        return False, '', {}
+
+    async def async_measure_performance(self, prj):
+        # type: (BagProject) -> Dict[str, Any]
+        """A coroutine that performs measurement.
+
+        The measurement is done like a FSM.  On each iteration, depending on the current
+        state, it creates a new testbench (or reuse an existing one) and simulate it.
+        It then post-process the simulation data to determine the next FSM state, or
+        if the measurement is done.
+
+        Parameters
+        ----------
+        prj : BagProject
+            the BagProject instance.
+
+        Returns
+        -------
+        output : Dict[str, Any]
+            the last dictionary returned by process_output().
+        """
+        cur_state = 'init'
+        prev_output = None
+        done = False
+
+        while not done:
+            # create and setup testbench
+            tb_name, tb_type, tb_sch_params = self.get_testbench_info(cur_state, prev_output)
+            if tb_sch_params is None:
+                tb = prj.load_testbench(self.impl_lib, tb_name)
+            else:
+                tb = self._create_tb_schematic(prj, tb_name, tb_type, tb_sch_params)
+            self.setup_testbench(cur_state, tb)
+            tb.update_testbench()
+
+            # run simulation and save raw result
+            save_dir = await tb.async_run_simulation(sim_tag=cur_state)
+            cur_results = load_sim_results(save_dir)
+            root_dir = os.path.join(self.data_dir, tb_name)
+            os.makedirs(root_dir, exist_ok=True)
+            save_sim_results(cur_results, os.path.join(root_dir, '%s.hdf5' % cur_state))
+
+            # process and save simulation data
+            done, cur_state, prev_output = self.process_output(cur_state, cur_results)
+            with open_file(os.path.join(root_dir, '%s.yaml' % cur_state), 'w') as f:
+                yaml.dump(prev_output, f)
+
+        return prev_output
+
+    def get_default_tb_sch_params(self, tb_type):
+        # type: (str) -> Dict[str, Any]
+        """Helper method to return a default testbench schematic parameters dictionary.
+
+        This method loads default values from specification file, the fill in dut_lib
+        and dut_cell for you.
 
         Parameters
         ----------
         tb_type : str
-            the testbench to create.
-        """
-        if self.prj is None:
-            raise ValueError('BagProject instance is not specified.')
+            the testbench type.
 
+        Returns
+        -------
+        sch_params : Dict[str, Any]
+            the default schematic parameters dictionary.
+        """
         tb_specs = self.specs['testbenches'][tb_type]
-        tb_lib = tb_specs['tb_lib']
-        tb_cell = tb_specs['tb_cell']
-        tb_name = self.get_testbench_name(tb_type)
         if 'sch_params' in tb_specs:
             tb_params = tb_specs['sch_params'].copy()
         else:
@@ -168,85 +210,37 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
 
         tb_params['dut_lib'] = self.impl_lib
         tb_params['dut_cell'] = self.dsn_name
-        self.modify_tb_schematic(tb_type, tb_params)
+        return tb_params
 
-        tb_sch = self.prj.create_design_module(tb_lib, tb_cell)
-        tb_sch.design(**tb_params)
-        tb_sch.implement_design(self.impl_lib, top_cell_name=tb_name)
+    def _create_tb_schematic(self, prj, tb_name, tb_type, tb_sch_params):
+        # type: (BagProject, str, str, Dict[str, Any]) -> Testbench
+        """Helper method to create a testbench schematic.
 
-    def setup_testbench(self, tb_type):
-        # type: (str) -> Testbench
-        """Setup simulation state of the testbench.
-
-        Parameters
+        Parmaeters
         ----------
+        prj : BagProject
+            the BagProject instance.
+        tb_name : str
+            the testbench cell name.
         tb_type : str
             the testbench type.
+        tb_sch_params : Dict[str, Any]
+            the testbench schematic parameters dictionary.
 
         Returns
         -------
         tb : Testbench
-            the Testbench instance.
+            the simulation Testbench instance.
         """
-        if self.prj is None:
-            raise ValueError('BagProject instance is not given.')
+        tb_specs = self.specs['testbenches'][tb_type]
+        tb_lib = tb_specs['tb_lib']
+        tb_cell = tb_specs['tb_cell']
 
-        tb_name = self.get_testbench_name(tb_type)
-        tb = self.prj.configure_testbench(self.impl_lib, tb_name)
-        self.configure_testbench(tb_type, tb)
-        tb.update_testbench()
-        return tb
+        tb_sch = prj.create_design_module(tb_lib, tb_cell)
+        tb_sch.design(**tb_sch_params)
+        tb_sch.implement_design(self.impl_lib, top_cell_name=tb_name)
 
-    def verify_design(self):
-        # type: (...) -> None
-        """Performs the verification flow.
-
-        Returns
-        -------
-        summary : Dict[str, Any]
-            the performance summary.
-        """
-        if self._tb is not None:
-            raise ValueError('A simulation may already be running.')
-
-        self._create_tb_schematic(setup_fun=tb_sch_fun, kwargs=kwargs)
-        self._tb = self._setup_testbench(setup_fun=tb_setup_fun, kwargs=kwargs)
-        self._tb.run_simulation(sim_tag=self.tb_name, block=False)
-
-    def _record_results(self, data):
-        # type: (Dict[str, Any]) -> None
-        """Record simulation results to file."""
-        os.makedirs(os.path.dirname(self.data_fname), exist_ok=True)
-        save_sim_results(data, self.data_fname)
-
-    def _get_results_from_save_dir(self, save_dir):
-        # type: (Optional[str]) -> Optional[Dict[str, Any]]
-        """Get simulation results from testbench save directory."""
-        if save_dir is not None:
-            # noinspection PyBroadException
-            try:
-                cur_results = load_sim_results(save_dir)
-            except Exception:
-                print('Error when loading results for %s' % self.tb_name)
-                cur_results = None
-        else:
-            cur_results = None
-
-        if cur_results is not None:
-            self._record_results(cur_results)
-
-        return cur_results
-
-    def load_sim_results(self):
-        # type: () -> Dict[str, Any]
-        """Load previously saved simulation results.
-
-        Returns
-        -------
-        results : Dict[str, Any]
-            the simulation results dictionary.
-        """
-        return load_sim_file(self.data_fname)
+        return prj.configure_testbench(tb_lib, tb_cell)
 
 
 class DesignManager(object):
