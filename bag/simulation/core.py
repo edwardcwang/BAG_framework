@@ -62,16 +62,13 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
         measurement setup name.
     impl_lib : str
         implementation library name.
-    dsn_name : str
-        DUT cell name.
     specs : Dict[str, Any]
         the measurement specification dictionary.
     """
-    def __init__(self, data_dir, meas_name, impl_lib, dsn_name, specs):
-        # type: (str, str, str, str, Dict[str, Any]) -> None
+    def __init__(self, data_dir, meas_name, impl_lib, specs):
+        # type: (str, str, str, Dict[str, Any]) -> None
         self.data_dir = os.path.abspath(data_dir)
         self.impl_lib = impl_lib
-        self.dsn_name = dsn_name
         self.meas_name = meas_name
         self.specs = specs
 
@@ -90,10 +87,11 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
         Returns
         -------
         tb_name : str
-            cell name of the next testbench.
+            cell name of the next testbench.  Should incorporate self.meas_name to avoid
+            collision with testbench for other designs.
         tb_type : str
             the next testbench type.
-        sch_params : Optional[Dict[str, Any]]
+        tb_params : Optional[Dict[str, Any]]
             the next testbench schematic parameters.  If we are reusing an existing
             testbench, this should be None.
         """
@@ -185,8 +183,8 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
 
         return prev_output
 
-    def get_default_tb_sch_params(self, tb_type):
-        # type: (str) -> Dict[str, Any]
+    def get_default_tb_sch_params(self, tb_type, wrapper_name):
+        # type: (str, str) -> Dict[str, Any]
         """Helper method to return a default testbench schematic parameters dictionary.
 
         This method loads default values from specification file, the fill in dut_lib
@@ -196,6 +194,8 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
         ----------
         tb_type : str
             the testbench type.
+        wrapper_name : str
+            the DUT wrapper cell name.
 
         Returns
         -------
@@ -209,7 +209,7 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
             tb_params = {}
 
         tb_params['dut_lib'] = self.impl_lib
-        tb_params['dut_cell'] = self.dsn_name
+        tb_params['dut_cell'] = wrapper_name
         return tb_params
 
     def _create_tb_schematic(self, prj, tb_name, tb_type, tb_sch_params):
@@ -283,6 +283,61 @@ class DesignManager(object):
         with open_file(save_spec_file, 'w') as f:
             yaml.dump(self._specs, f)
 
+    async def extract_design(self, lib_name, dsn_name, rcx_params):
+        # type: (str, str, Optional[Dict[str, Any]]) -> None
+        """A coroutine that runs LVS/RCX on a given design.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        dsn_name : str
+            design cell name.
+        rcx_params : Optional[Dict[str, Any]]
+            extraction parameters dictionary.
+        """
+        lvs_passed, lvs_log = await self.prj.async_run_lvs(lib_name, dsn_name)
+        if not lvs_passed:
+            raise ValueError('LVS failed for %s.  Log file: %s' % (dsn_name, lvs_log))
+
+        rcx_passed, rcx_log = await self.prj.async_run_rcx(lib_name, dsn_name, rcx_params=rcx_params)
+        if not rcx_passed:
+            raise ValueError('RCX failed for %s.  Log file: %s' % (dsn_name, rcx_log))
+
+    async def verify_design(self, lib_name, dsn_name):
+        # type: (str, str) -> Dict[str, Any]
+        """Run all measurements on the given design.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        dsn_name : str
+            design cell name.
+
+        Returns
+        -------
+        summary : Dict[str, Any]
+            final measurement results summary.
+        """
+        meas_list = self.specs['measurements']
+        root_dir = os.path.join(self.specs['root_dir'], dsn_name)
+
+        result_summary = {}
+        for meas_specs in meas_list:
+            meas_type = meas_specs['meas_type']
+            out_fname = meas_specs['out_fname']
+            meas_name = self.get_measurement_name(dsn_name, meas_type)
+            data_dir = os.path.join(root_dir, meas_name)
+            meas_manager = MeasurementManager(data_dir, meas_name, lib_name, meas_specs)
+            meas_results = await meas_manager.async_measure_performance(self.prj)
+
+            with open_file(os.path.join(root_dir, out_fname), 'w') as f:
+                yaml.dump(meas_results, f)
+            result_summary[meas_type] = meas_results
+
+        return result_summary
+
     @classmethod
     def load_state(cls, prj, root_dir):
         # type: (BagProject, str) -> DesignManager
@@ -290,23 +345,23 @@ class DesignManager(object):
         return cls(prj, root_dir)
 
     @classmethod
-    def get_testbench_name(cls, dsn_name, tb_type):
+    def get_measurement_name(cls, dsn_name, meas_type):
         # type: (str, str) -> str
-        """Returns the testbench cell name.
+        """Returns the measurement name.
 
         Parameters
         ----------
         dsn_name : str
             design cell name.
-        tb_type : str
-            testbench type.
+        meas_type : str
+            measurement type.
 
         Returns
         -------
-        tb_name : str
-            testbench cell name
+        meas_name : str
+            measurement name
         """
-        return '%s_TB_%s' % (dsn_name, tb_type)
+        return '%s_MEAS_%s' % (dsn_name, meas_type)
 
     @classmethod
     def get_wrapper_name(cls, dut_name, wrapper_name):
@@ -324,47 +379,6 @@ class DesignManager(object):
     def swp_var_list(self):
         # type: () -> Tuple[str, ...]
         return self._swp_var_list
-
-    def modify_tb_schematic(self, tb_type, tb_sch_params):
-        # type: (str, Dict[str, Any]) -> None
-        """Perform any modifications necessary on the testbench schematic parameters.
-
-        Parameters
-        ----------
-        tb_type : str
-            the testbench type.
-        tb_sch_params : Dict[str, Any]
-            the testbench schematic parameters dictionary.
-        """
-        pass
-
-    def modify_tb_setup(self, tb_type, tb):
-        # type: (str, Testbench) -> None
-        """Perform any modifications necessary on the testbench simulation setup.
-
-        Parameters
-        ----------
-        tb_type : str
-            the testbench type.
-        tb : Testbench
-            the Testbench instance.
-        """
-        pass
-
-    def post_simulation_procedure(self, tb_type, tb_manager, results):
-        # type: (str, TestbenchManager, Dict[str, Any]) -> None
-        """Perform any task necessary after the given simulation finished.
-
-        Parameters
-        ----------
-        tb_type : str
-            the testbench type;
-        tb_manager : TestbenchManager
-            the TestbenchManager instance.
-        results : Dict[str, Any]
-            the simulation results.
-        """
-        pass
 
     def get_swp_var_values(self, var):
         # type: (str) -> List[Any]
@@ -451,7 +465,7 @@ class DesignManager(object):
                     dsn = self.prj.create_design_module(wrapper_lib, wrapper_cell)
                     dsn.design(**wrapper_params)
                     inst_list.append(dsn)
-                    inst_list.append(self.get_wrapper_name(cur_name, wrapper_name))
+                    name_list.append(self.get_wrapper_name(cur_name, wrapper_name))
 
         self.prj.batch_schematic(impl_lib, inst_list, name_list=name_list)
 
@@ -474,53 +488,6 @@ class DesignManager(object):
             sch_params_list.append(template.sch_params)
         temp_db.batch_layout(self.prj, temp_list, cell_name_list)
         return sch_params_list
-
-    def get_design_name(self, dsn_params):
-        # type: (Dict[str, Any]) -> str
-        """Returns the name of the design with the given parameters."""
-        dsn_basename = self.specs['dsn_basename']
-        try:
-            combo_list = [dsn_params[key] for key in self.swp_var_list]
-            return self.get_instance_name(dsn_basename, combo_list)
-        except KeyError:
-            for key in self.swp_var_list:
-                if key not in dsn_params:
-                    raise ValueError('Unspecified design parameter: %s' % key)
-            raise ValueError('something is wrong...')
-
-    def get_instance_name(self, name_base, combo_list):
-        # type: (str, Sequence[Any, ...]) -> str
-        """Generate cell names based on sweep parameter values."""
-        suffix = ''
-        for var, val in zip(self.swp_var_list, combo_list):
-            if isinstance(val, str):
-                suffix += '_%s_%s' % (var, val)
-            elif isinstance(val, int):
-                suffix += '_%s_%d' % (var, val)
-            elif isinstance(val, float):
-                suffix += '_%s_%s' % (var, float_to_si_string(val))
-            else:
-                raise ValueError('Unsupported parameter type: %s' % (type(val)))
-
-        return name_base + suffix
-
-    def get_data_file_name(self, dsn_name, tb_type):
-        # type: (str, str) -> str
-        """Returns the simulation data file name.
-
-        Parameters
-        ----------
-        dsn_name : str
-            design cell name.
-        tb_type : str
-            testbench type.
-
-        Returns
-        -------
-        data_fname : str
-            simulation data file name.
-        """
-        return os.path.join(self.specs['root_dir'], dsn_name, '%s.hdf5' % tb_type)
 
     def test_layout(self, gen_sch=True):
         # type: (bool) -> None
@@ -548,12 +515,8 @@ class DesignManager(object):
         if self.prj is None:
             raise ValueError('BagProject instance is not given.')
 
-        impl_lib = self.specs['impl_lib']
         dsn_basename = self.specs['dsn_basename']
-        view_name = self.specs['view_name']
-        rcx_params = self.specs.get('rcx_params', {})
 
-        extract = (view_name != 'schematic')
         temp_db = self.make_tdb()
 
         # make layouts
@@ -570,151 +533,20 @@ class DesignManager(object):
         print('creating all schematics')
         self.create_dut_schematics(sch_params_list, dsn_name_list, gen_wrappers=True)
 
-        if extract:
-            job_info_list = []
-            for dsn_name, sch_params, combo_list in zip(dsn_name_list, sch_params_list, combo_list_list):
-                print('start lvs job for %s' % dsn_name)
-                lvs_id, lvs_log = self.prj.run_lvs(impl_lib, dsn_name, block=False)
-                job_info_list.append([lvs_id, lvs_log])
-
-            num_dsns = len(dsn_name_list)
-            # start RCX jobs
-            for idx in range(num_dsns):
-                lvs_id, lvs_log = job_info_list[idx]
-                dsn_name = dsn_name_list[idx]
-                print('wait for %s LVS to finish' % dsn_name)
-                lvs_passed = self.prj.wait_lvs_rcx(lvs_id)
-                if not lvs_passed:
-                    print('ERROR: LVS died for %s, cancelling rest of the jobs...' % dsn_name)
-                    print('LVS log file: %s' % lvs_log)
-                    for cancel_idx in range(len(job_info_list)):
-                        self.prj.cancel(job_info_list[cancel_idx][0])
-                    raise Exception('oops, LVS died for %s.' % dsn_name)
-                print('%s LVS passed.  start RCX' % dsn_name)
-                rcx_id, rcx_log = self.prj.run_rcx(impl_lib, dsn_name, block=False, rcx_params=rcx_params)
-                job_info_list[idx][0] = rcx_id
-                job_info_list[idx][1] = rcx_log
-
-            # finish RCX jobs.
-            for idx in range(num_dsns):
-                dsn_name = dsn_name_list[idx]
-                rcx_id, rcx_log = job_info_list[idx]
-                print('wait for %s RCX to finish' % dsn_name)
-                rcx_passed = self.prj.wait_lvs_rcx(rcx_id)
-                if not rcx_passed:
-                    print('ERROR: RCX died for %s, cancelling rest of the jobs...' % dsn_name)
-                    print('RCX log file: %s' % rcx_log)
-                    for cancel_idx in range(len(job_info_list)):
-                        self.prj.cancel(job_info_list[cancel_idx][0])
-                    raise Exception('oops, RCX died for %s.' % dsn_name)
-                print('%s RCX passed.' % dsn_name)
-
         print('design generation done.')
 
-    def create_tb_manager(self, dsn_name, tb_type):
-        # type: (str, str) -> TestbenchManager
-        """Create the TestbenchManager object for the given design and testbench type.
-
-        Parameters
-        ----------
-        dsn_name : str
-            the design cell name.
-        tb_type : str
-            the testbench type.
-
-        Returns
-        -------
-        tb_manager : TestbenchManager
-            the TestbenchManager instance.
-        """
-        impl_lib = self.specs['impl_lib']
-        tb_specs = self.specs['testbench'][tb_type]
-
-        cls_package = tb_specs['package']
-        cls_name = tb_specs['class']
-        tb_module = importlib.import_module(cls_package)
-        tb_cls = getattr(tb_module, cls_name)
-
-        data_fname = self.get_data_file_name(dsn_name, tb_type)
-        tb_name = self.get_testbench_name(dsn_name, tb_type)
-        tb_manager = tb_cls(self.prj, data_fname, impl_lib, dsn_name, tb_name, tb_specs)
-
-        return tb_manager
-
-    def run_simulations(self, tb_list, **kwargs):
-        # type: (Sequence[str], **kwargs) -> Dict[str, Dict[str, Dict[str, Any]]]
-        """Run given simulations on all designs.
-
-        Parameters
-        ----------
-        tb_list : Sequence[str]
-            list of simulations to run, in that order.
-        **kwargs
-            Optional arguments for wait() method of Testbench.
-
-        Returns
-        -------
-        results : Dict[str, Dict[str, Dict[str, Any]]]
-            A nested dictionary from design name and testbench type to
-            performance summary dictionaries.  None results mean a
-            simulation error occurred.
-        """
-        dsn_basename = self.specs['dsn_basename']
-        dsn_name_list = [self.get_instance_name(dsn_basename, combo_list)
-                         for combo_list in self.get_combinations_iter()]
-
-        results = {dsn_name: {} for dsn_name in dsn_name_list}
-
-        tb_type = tb_list[0]
-        tb_manager_list = []
-        for dsn_name in dsn_name_list:
-            tb_manager = self.create_tb_manager(dsn_name, tb_type)
-            tb_manager.run_simulation(tb_sch_fun=self.modify_tb_schematic,
-                                      tb_setup_fun=self.modify_tb_setup,
-                                      tb_type=tb_type)
-            tb_manager_list.append(tb_manager)
-
-        err_msg = 'Simulation Error for design %s, testbench %s.  Abort further simulations for this design'
-
-        for next_tb_type in itertools.islice(tb_list, 1, None):
-            next_tb_manager_list = []
-            for dsn_name, tb_manager in zip(dsn_name_list, tb_manager_list):
-                if tb_manager is None:
-                    next_tb_manager = None
-                    summary = None
-                else:
-                    sim_results = tb_manager.wait(**kwargs)
-                    if sim_results is None:
-                        print(err_msg % (dsn_name, tb_type))
-                        next_tb_manager = None
-                        summary = None
-                    else:
-                        self.post_simulation_procedure(tb_type, tb_manager, sim_results)
-                        summary = tb_manager.get_performance_summary(sim_results)
-
-                        next_tb_manager = self.create_tb_manager(dsn_name, next_tb_type)
-                        next_tb_manager.run_simulation(tb_sch_fun=self.modify_tb_schematic,
-                                                       tb_setup_fun=self.modify_tb_setup,
-                                                       tb_type=next_tb_type)
-
-                results[dsn_name][tb_type] = summary
-                next_tb_manager_list.append(next_tb_manager)
-
-            tb_manager_list = next_tb_manager_list
-            tb_type = next_tb_type
-
-        for dsn_name, tb_manager in zip(dsn_name_list, tb_manager_list):
-            if tb_manager is None:
-                summary = None
+    def get_instance_name(self, name_base, combo_list):
+        # type: (str, Sequence[Any, ...]) -> str
+        """Generate cell names based on sweep parameter values."""
+        suffix = ''
+        for var, val in zip(self.swp_var_list, combo_list):
+            if isinstance(val, str):
+                suffix += '_%s_%s' % (var, val)
+            elif isinstance(val, int):
+                suffix += '_%s_%d' % (var, val)
+            elif isinstance(val, float):
+                suffix += '_%s_%s' % (var, float_to_si_string(val))
             else:
-                sim_results = tb_manager.wait(**kwargs)
-                if sim_results is None:
-                    print(err_msg % (dsn_name, tb_type))
-                    summary = None
-                else:
-                    self.post_simulation_procedure(tb_type, tb_manager, sim_results)
-                    summary = tb_manager.get_performance_summary(sim_results)
+                raise ValueError('Unsupported parameter type: %s' % (type(val)))
 
-            results[dsn_name][tb_type] = summary
-
-        return results
+        return name_base + suffix
