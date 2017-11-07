@@ -44,8 +44,15 @@ if TYPE_CHECKING:
     from bag.core import BagProject, Testbench
 
 
-class TestbenchManager(with_metaclass(abc.ABCMeta, object)):
-    """A class that manages testbench generation, setup, simulation, and data post-processing.
+class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
+    """A class that handles circuit performance measurement.
+
+    This class handles all the steps needed to measure a specific performance
+    metric of the device-under-test.  This may involve creating and simulating
+    multiple different testbenches, where configuration of successive testbenches
+    depends on previous simulation results. This class reduces the potentially
+    complex measurement tasks into a few simple abstract methods that designers
+    simply have to implement.
 
     Parameters
     ----------
@@ -53,23 +60,26 @@ class TestbenchManager(with_metaclass(abc.ABCMeta, object)):
         The BagProject instance.
     data_dir : str
         Simulation data directory.
-    name : str
-        test setup name.
+    meas_name : str
+        measurement setup name.
     impl_lib : str
         implementation library name.
     dsn_name : str
         DUT cell name.
     specs : Dict[str, Any]
-        the testbench specification dictionary.
+        the measurement specification dictionary.
     """
-    def __init__(self, prj, data_dir, name, impl_lib, dsn_name, specs):
+    def __init__(self, prj, data_dir, meas_name, impl_lib, dsn_name, specs):
         # type: (Optional[BagProject], str, str, str, str, Dict[str, Any]) -> None
         self.prj = prj
         self.data_dir = os.path.abspath(data_dir)
         self.impl_lib = impl_lib
         self.dsn_name = dsn_name
-        self.name = name
+        self.meas_name = meas_name
         self.specs = specs
+
+    async def async_measure_performance(self):
+        pass
 
     @abc.abstractmethod
     def configure_testbench(self, tb_type, tb):
@@ -226,56 +236,6 @@ class TestbenchManager(with_metaclass(abc.ABCMeta, object)):
             self._record_results(cur_results)
 
         return cur_results
-
-    def wait(self, **kwargs):
-        # type: (**kwargs) -> Dict[str, Any]
-        """Wait for testbench simulation to finish, then return the results.
-
-        Parameters
-        ----------
-        **kwargs
-            Optional arguments for wait() method of Testbench.
-
-        Returns
-        -------
-        results : Dict[str, Any]
-            Simulation results dictionary.
-        """
-        if self._tb is None:
-            raise ValueError('No simulation is running')
-
-        save_dir = self._tb.wait(**kwargs)
-        self._tb = None
-        return self._get_results_from_save_dir(save_dir)
-
-    def cancel(self, timeout=None):
-        # type: (Optional[float]) -> Optional[str]
-        """Cancels any running simulations.
-
-        If the process haven't started, this method prevents it from started.
-        Otherwise, we first send a SIGTERM signal to kill the process.  If
-        after ``timeout`` seconds the process is still alive, we will send a
-        SIGKILL signal.  If after another ``timeout`` seconds the process is
-        still alive, an Exception will be raised.
-
-        Parameters
-        ----------
-        timeout : Optional[float]
-            number of seconds to wait for cancellation.  If None, use default
-            timeout.
-
-        Returns
-        -------
-        save_dir : Optional[str]
-            save directory if the simulation finishes in time. Otherwise,
-            return None.
-        """
-        if self._tb is None:
-            return None
-
-        save_dir = self._tb.cancel(timeout=timeout)
-        self._tb = None
-        return self._get_results_from_save_dir(save_dir)
 
     def load_sim_results(self):
         # type: () -> Dict[str, Any]
