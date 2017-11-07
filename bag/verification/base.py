@@ -66,7 +66,7 @@ class Checker(metaclass=abc.ABCMeta, object):
 
     @abc.abstractmethod
     def batch_lvs(self, info_list):
-        # type: (Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]) -> Optional[Sequence[Tuple[bool, str]]]
+        # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[Tuple[bool, str]]]
         """Run LVS on all given cells.
 
         Parameters
@@ -79,9 +79,9 @@ class Checker(metaclass=abc.ABCMeta, object):
             cell_name : str
                 cell name.
             sch_view : str
-                schematic view name.
+                schematic view name.  Optional.
             lay_view : str
-                layout view name.
+                layout view name.  Optional.
             params : Optional[Dict[str, Any]]
                 optional LVS parameter values.
 
@@ -94,7 +94,7 @@ class Checker(metaclass=abc.ABCMeta, object):
         return None
 
     @abc.abstractmethod
-    def batch_rcx(self, info_list,  # type: Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]
+    def batch_rcx(self, info_list,  # type: Sequence[Tuple[Any, ...]]
                   ):
         # type: (...) -> Optional[Sequence[Tuple[Optional[str], str]]]
         """Run RCX on all given cells.
@@ -109,9 +109,9 @@ class Checker(metaclass=abc.ABCMeta, object):
             cell_name : str
                 cell name.
             sch_view : str
-                schematic view name.
+                schematic view name.  Optional.
             lay_view : str
-                layout view name.
+                layout view name.  Optional.
             params : Optional[Dict[str, Any]]
                 optional RCX parameter values.
 
@@ -125,7 +125,7 @@ class Checker(metaclass=abc.ABCMeta, object):
 
     @abc.abstractmethod
     def batch_export_layout(self, info_list):
-        # type: (Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]) -> Optional[Sequence[str]]
+        # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[str]]
         """Export layout of all given cells
 
         Parameters
@@ -137,10 +137,10 @@ class Checker(metaclass=abc.ABCMeta, object):
                 library name.
             cell_name : str
                 cell name.
-            view_name : str
-                layout view name.
             out_file : str
                 layout output file name.
+            view_name : str
+                layout view name.  Optional.
             params : Optional[Dict[str, Any]]
                 optional export parameter values.
 
@@ -154,7 +154,7 @@ class Checker(metaclass=abc.ABCMeta, object):
 
     @abc.abstractmethod
     def batch_export_schematic(self, info_list):
-        # type: (Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]) -> Optional[Sequence[str]]
+        # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[str]]
         """Export schematic of all given cells
 
         Parameters
@@ -166,10 +166,10 @@ class Checker(metaclass=abc.ABCMeta, object):
                 library name.
             cell_name : str
                 cell name.
-            view_name : str
-                schematic view name.
             out_file : str
                 layout output file name.
+            view_name : str
+                schematic view name.  Optional.
             params : Optional[Dict[str, Any]]
                 optional export parameter values.
 
@@ -182,7 +182,7 @@ class Checker(metaclass=abc.ABCMeta, object):
         return None
 
     @abc.abstractmethod
-    async def async_run_lvs(self, lib_name, cell_name, sch_view, lay_view, params):
+    async def async_run_lvs(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[bool, str]
         """A coroutine for running LVS.
 
@@ -193,9 +193,9 @@ class Checker(metaclass=abc.ABCMeta, object):
         cell_name : str
             cell name.
         sch_view : str
-            schematic view name.
+            schematic view name.  Optional.
         lay_view : str
-            layout view name.
+            layout view name.  Optional.
         params : Optional[Dict[str, Any]]
             optional LVS parameter values.
 
@@ -209,7 +209,7 @@ class Checker(metaclass=abc.ABCMeta, object):
         return False, ''
 
     @abc.abstractmethod
-    async def async_run_rcx(self, lib_name, cell_name, sch_view, lay_view, params):
+    async def async_run_rcx(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[Optional[str], str]
         """A coroutine for running RCX.
 
@@ -220,9 +220,9 @@ class Checker(metaclass=abc.ABCMeta, object):
         cell_name : str
             cell name.
         sch_view : str
-            schematic view name.
+            schematic view name.  Optional.
         lay_view : str
-            layout view name.
+            layout view name.  Optional.
         params : Optional[Dict[str, Any]]
             optional RCX parameter values.
 
@@ -236,7 +236,7 @@ class Checker(metaclass=abc.ABCMeta, object):
         return '', ''
 
     @abc.abstractmethod
-    async def async_export_layout(self, lib_name, cell_name, view_name, out_file, params):
+    async def async_export_layout(self, lib_name, cell_name, out_file, view_name='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
         """A coroutine for exporting layout.
 
@@ -261,7 +261,7 @@ class Checker(metaclass=abc.ABCMeta, object):
         return ''
 
     @abc.abstractmethod
-    async def async_export_schematic(self, lib_name, cell_name, view_name, out_file, params):
+    async def async_export_schematic(self, lib_name, cell_name, out_file, view_name='schematic', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
         """A coroutine for exporting schematic.
 
@@ -285,7 +285,7 @@ class Checker(metaclass=abc.ABCMeta, object):
         """
         return ''
 
-    def run_lvs(self, lib_name, cell_name, sch_view, lay_view, params):
+    def run_lvs(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[bool, str]
         """Run LVS on the given cell.
 
@@ -314,7 +314,7 @@ class Checker(metaclass=abc.ABCMeta, object):
             return False, ''
         return result[0]
 
-    def run_rcx(self, lib_name, cell_name, sch_view, lay_view, params):
+    def run_rcx(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[Optional[str], str]
         """Run RCX on the given cell.
 
@@ -343,7 +343,7 @@ class Checker(metaclass=abc.ABCMeta, object):
             return '', ''
         return result[0]
 
-    def export_layout(self, lib_name, cell_name, view_name, out_file, params):
+    def export_layout(self, lib_name, cell_name, out_file, view_name='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
         """export layout.
 
@@ -353,10 +353,10 @@ class Checker(metaclass=abc.ABCMeta, object):
             library name.
         cell_name : str
             cell name.
-        view_name : str
-            layout view name.
         out_file : str
             output file name.
+        view_name : str
+            layout view name.
         params : Optional[Dict[str, Any]]
             optional export parameter values.
 
@@ -365,12 +365,12 @@ class Checker(metaclass=abc.ABCMeta, object):
         log_fname : str
             log file name.  Empty if task cancelled.
         """
-        result = self.batch_export_layout([(lib_name, cell_name, view_name, out_file, params)])
+        result = self.batch_export_layout([(lib_name, cell_name, out_file, view_name, params)])
         if result is None:
             return ''
         return result[0]
 
-    def export_schematic(self, lib_name, cell_name, view_name, out_file, params):
+    def export_schematic(self, lib_name, cell_name, out_file, view_name='schematic', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
         """export schematic.
 
@@ -380,10 +380,10 @@ class Checker(metaclass=abc.ABCMeta, object):
             library name.
         cell_name : str
             cell name.
-        view_name : str
-            schematic view name.
         out_file : str
             output file name.
+        view_name : str
+            schematic view name.
         params : Optional[Dict[str, Any]]
             optional export parameter values.
 
@@ -392,7 +392,7 @@ class Checker(metaclass=abc.ABCMeta, object):
         log_fname : str
             log file name.  Empty if task cancelled.
         """
-        result = self.batch_export_schematic([(lib_name, cell_name, view_name, out_file, params)])
+        result = self.batch_export_schematic([(lib_name, cell_name, out_file, view_name, params)])
         if result is None:
             return ''
         return result[0]
@@ -417,7 +417,7 @@ class SubProcessChecker(metaclass=abc.ABCMeta, Checker):
         self._manager = SubProcessManager(max_workers=max_workers, cancel_timeout=cancel_timeout)
 
     @abc.abstractmethod
-    def setup_lvs_flow(self, lib_name, cell_name, sch_view, lay_view, params):
+    def setup_lvs_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
         """This method performs any setup necessary to configure a LVS subprocess flow.
 
@@ -455,7 +455,7 @@ class SubProcessChecker(metaclass=abc.ABCMeta, Checker):
         return []
 
     @abc.abstractmethod
-    def setup_rcx_flow(self, lib_name, cell_name, sch_view, lay_view, params):
+    def setup_rcx_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
         """This method performs any setup necessary to configure a RCX subprocess flow.
 
@@ -493,7 +493,7 @@ class SubProcessChecker(metaclass=abc.ABCMeta, Checker):
         return []
 
     @abc.abstractmethod
-    def setup_export_layout(self, lib_name, cell_name, view_name, out_file, params):
+    def setup_export_layout(self, lib_name, cell_name, out_file, view_name='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> ProcInfo
         """This method performs any setup necessary to export layout.
 
@@ -503,10 +503,10 @@ class SubProcessChecker(metaclass=abc.ABCMeta, Checker):
             library name.
         cell_name : str
             cell name.
-        view_name : str
-            layout view name.
         out_file : str
             output file name.
+        view_name : str
+            layout view name.
         params : Optional[Dict[str, Any]]
             optional export parameter values.
 
@@ -524,7 +524,7 @@ class SubProcessChecker(metaclass=abc.ABCMeta, Checker):
         return '', '', None, None
 
     @abc.abstractmethod
-    def setup_export_schematic(self, lib_name, cell_name, view_name, out_file, params):
+    def setup_export_schematic(self, lib_name, cell_name, out_file, view_name='schematic', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> ProcInfo
         """This method performs any setup necessary to export schematic.
 
@@ -534,10 +534,10 @@ class SubProcessChecker(metaclass=abc.ABCMeta, Checker):
             library name.
         cell_name : str
             cell name.
-        view_name : str
-            layout view name.
         out_file : str
             output file name.
+        view_name : str
+            layout view name.
         params : Optional[Dict[str, Any]]
             optional export parameter values.
 
@@ -555,20 +555,19 @@ class SubProcessChecker(metaclass=abc.ABCMeta, Checker):
         return '', '', None, None
 
     def batch_lvs(self, info_list):
-        # type: (Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]) -> Optional[Sequence[Tuple[bool, str]]]
+        # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[Tuple[bool, str]]]
 
         proc_info_list = [self.setup_lvs_flow(*args) for args in info_list]
         return self._manager.batch_subprocess_flow(proc_info_list)
 
-    def batch_rcx(self, info_list,  # type: Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]
-                  ):
-        # type: (...) -> Optional[Sequence[Tuple[Optional[str], str]]]
+    def batch_rcx(self, info_list):
+        # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[Tuple[Optional[str], str]]]
 
         proc_info_list = [self.setup_rcx_flow(*args) for args in info_list]
         return self._manager.batch_subprocess_flow(proc_info_list)
 
     def batch_export_layout(self, info_list):
-        # type: (Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]) -> Optional[Sequence[str]]
+        # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[str]]
 
         proc_info_list = [self.setup_export_layout(*args) for args in info_list]
         results = self._manager.batch_subprocess(proc_info_list)
@@ -578,7 +577,7 @@ class SubProcessChecker(metaclass=abc.ABCMeta, Checker):
             return [proc_info[1] for proc_info in proc_info_list]
 
     def batch_export_schematic(self, info_list):
-        # type: (Sequence[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]) -> Optional[Sequence[str]]
+        # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[str]]
 
         proc_info_list = [self.setup_export_schematic(*args) for args in info_list]
         results = self._manager.batch_subprocess(proc_info_list)
@@ -587,24 +586,24 @@ class SubProcessChecker(metaclass=abc.ABCMeta, Checker):
         else:
             return [proc_info[1] for proc_info in proc_info_list]
 
-    async def async_run_lvs(self, lib_name, cell_name, sch_view, lay_view, params):
+    async def async_run_lvs(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[bool, str]
         flow_info = self.setup_lvs_flow(lib_name, cell_name, sch_view, lay_view, params)
         return await self._manager.async_new_subprocess_flow(flow_info)
 
-    async def async_run_rcx(self, lib_name, cell_name, sch_view, lay_view, params):
+    async def async_run_rcx(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[str, str]
         flow_info = self.setup_rcx_flow(lib_name, cell_name, sch_view, lay_view, params)
         return await self._manager.async_new_subprocess_flow(flow_info)
 
-    async def async_export_layout(self, lib_name, cell_name, view_name, out_file, params):
+    async def async_export_layout(self, lib_name, cell_name, out_file, view_name='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
-        proc_info = self.setup_export_layout(lib_name, cell_name, view_name, out_file, params)
+        proc_info = self.setup_export_layout(lib_name, cell_name, out_file, view_name, params)
         await self._manager.async_new_subprocess(*proc_info)
         return proc_info[1]
 
-    async def async_export_schematic(self, lib_name, cell_name, view_name, out_file, params):
+    async def async_export_schematic(self, lib_name, cell_name, out_file, view_name='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
-        proc_info = self.setup_export_schematic(lib_name, cell_name, view_name, out_file, params)
+        proc_info = self.setup_export_schematic(lib_name, cell_name, out_file, view_name, params)
         await self._manager.async_new_subprocess(*proc_info)
         return proc_info[1]

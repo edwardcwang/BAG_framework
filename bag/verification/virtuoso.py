@@ -62,7 +62,7 @@ class VirtuosoChecker(metaclass=abc.ABCMeta, SubProcessChecker):
         SubProcessChecker.__init__(self, tmp_dir, max_workers, cancel_timeout)
         self._source_added_file = source_added_file
 
-    def setup_export_layout(self, lib_name, cell_name, view_name, out_file, params):
+    def setup_export_layout(self, lib_name, cell_name, out_file, view_name='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> ProcInfo
         out_file = os.path.abspath(out_file)
 
@@ -89,7 +89,7 @@ class VirtuosoChecker(metaclass=abc.ABCMeta, SubProcessChecker):
 
         return cmd, log_file, None, None
 
-    def setup_export_schematic(self, lib_name, cell_name, view_name, out_file, params):
+    def setup_export_schematic(self, lib_name, cell_name, out_file, view_name='schematic', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> ProcInfo
         out_file = os.path.abspath(out_file)
 
