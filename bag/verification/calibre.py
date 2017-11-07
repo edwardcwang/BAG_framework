@@ -139,7 +139,7 @@ class Calibre(VirtuosoChecker):
                 '%s.pex.netlist.%s.pxi' % (cell_name, cell_name),
                 ]
 
-    def setup_lvs_flow(self, lib_name, cell_name, sch_view, lay_view, params):
+    def setup_lvs_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
 
         run_dir = os.path.join(self.lvs_run_dir, lib_name, cell_name)
@@ -175,7 +175,7 @@ class Calibre(VirtuosoChecker):
 
         return flow_list
 
-    def setup_rcx_flow(self, lib_name, cell_name, sch_view, lay_view, params):
+    def setup_rcx_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
 
         # update default RCX parameters.
