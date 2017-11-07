@@ -91,64 +91,6 @@ class SimAccess(metaclass=abc.ABCMeta, object):
         return ""
 
     @abc.abstractmethod
-    def batch_simulation(self, sim_info_list, precision=6):
-        # type: (Sequence[Tuple[str, str, Dict[str, str], Optional[str]]], int) -> Optional[Sequence[str]]
-        """Simulate all the given testbenches in parallel.
-
-        Parameters
-        ----------
-        sim_info_list : Sequence[Tuple[str, str, Dict[str, str], Optional[str]]]
-            list of simulation information.  Each element is a tuple of:
-
-            lib_name : str
-                testbench library name.
-            cell_name : str
-                testbench cell name.
-            outputs : Dict[str, str]
-                variable-to-expression dictionaries
-            sim_tag : Optional[str]
-                tag describing this simulation run.
-        precision : int
-            precision of floating point results.
-
-        Returns
-        -------
-        value : Optional[Sequence[str]]
-            If simulations are cancelled, return None.  Otherwise, return
-            a list of save directory paths.
-        """
-        pass
-
-    @abc.abstractmethod
-    def batch_load_results(self, sim_info_list, precision=6):
-        # type: (Sequence[Tuple[str, str, str, Dict[str, str]]], int) -> Optional[Sequence[str]]
-        """load previous simulation results of all the given testbenches in parallel.
-
-        Parameters
-        ----------
-        sim_info_list : Sequence[Tuple[str, str, str, Dict[str, str]]]
-            list of result loading information.  Each element is a tuple of:
-
-            lib_name : str
-                testbench library name.
-            cell_name : str
-                testbench cell name.
-            hist_name : str
-                simulation history name.
-            outputs : Dict[str, str]
-                variable-to-expression dictionaries
-        precision : int
-            precision of floating point results.
-
-        Returns
-        -------
-        value : Optional[Sequence[str]]
-            If result loading is cancelled, return None.  Otherwise, return
-            a list of save directory paths.
-        """
-        pass
-
-    @abc.abstractmethod
     async def async_run_simulation(self, tb_lib, tb_cell, outputs, precision=6, sim_tag=None):
         # type: (str, str, Dict[str, str], int, Optional[str]) -> str
         """A coroutine for simulation a testbench.
@@ -197,60 +139,6 @@ class SimAccess(metaclass=abc.ABCMeta, object):
             the save directory path.
         """
         pass
-
-    def run_simulation(self, tb_lib, tb_cell, outputs, precision=6, sim_tag=None):
-        # type: (str, str, Dict[str, str], int, Optional[str]) -> Optional[str]
-        """Simulate the given testbench.
-
-        Parameters
-        ----------
-        tb_lib : str
-            testbench library name.
-        tb_cell : str
-            testbench cell name.
-        outputs : Dict[str, str]
-            the variable-to-expression dictionary.
-        precision : int
-            precision of floating point results.
-        sim_tag : Optional[str]
-            a descriptive tag describing this simulation run.
-
-        Returns
-        -------
-        value : Optional[str]
-            the save directory path.  If simulation is cancelled, return None.
-        """
-        result = self.batch_simulation([(tb_lib, tb_cell, outputs, sim_tag)], precision=precision)
-        if result is None:
-            return None
-        return result[0]
-
-    def load_sim_results(self, lib, cell, hist_name, outputs, precision=6):
-        # type: (str, str, str, Dict[str, str], int) -> Optional[str]
-        """Load previous simulation results.
-
-        Parameters
-        ----------
-        lib : str
-            testbench library name.
-        cell : str
-            testbench cell name.
-        hist_name : str
-            simulation history name.
-        outputs : Dict[str, str]
-            the variable-to-expression dictionary.
-        precision : int
-            precision of floating point results.
-
-        Returns
-        -------
-        value : Optional[str]
-            the save directory path.  If result loading is cancelled, return None.
-        """
-        result = self.batch_load_results([(lib, cell, hist_name, outputs)], precision=precision)
-        if result is None:
-            return None
-        return result[0]
 
 
 ProcInfo = Tuple[Union[str, Sequence[str]], str, Optional[Dict[str, str]], Optional[str], str]
@@ -341,36 +229,6 @@ class SimProcessManager(metaclass=abc.ABCMeta, SimAccess):
             save directory path.
         """
         return '', '', None, None, ''
-
-    def batch_simulation(self, sim_info_list, precision=6):
-        # type: (Sequence[Tuple[str, str, Dict[str, str], Optional[str]]], int) -> Optional[Sequence[str]]
-
-        proc_info_list, save_dir_list = [], []
-        for lib, cell, outputs, sim_tag in sim_info_list:
-            args, log, env, cwd, save_dir = self.setup_sim_process(lib, cell, outputs, precision, sim_tag)
-            proc_info_list.append((args, log, env, cwd))
-            save_dir_list.append(save_dir)
-
-        retcode_list = self._manager.batch_subprocess(proc_info_list)
-        if retcode_list is None:
-            return None
-
-        return save_dir_list
-
-    def batch_load_results(self, sim_info_list, precision=6):
-        # type: (Sequence[Tuple[str, str, str, Dict[str, str]]], int) -> Optional[Sequence[str]]
-
-        proc_info_list, save_dir_list = [], []
-        for lib, cell, hist_name, outputs in sim_info_list:
-            args, log, env, cwd, save_dir = self.setup_load_process(lib, cell, hist_name, outputs, precision)
-            proc_info_list.append((args, log, env, cwd))
-            save_dir_list.append(save_dir)
-
-        retcode_list = self._manager.batch_subprocess(proc_info_list)
-        if retcode_list is None:
-            return None
-
-        return save_dir_list
 
     async def async_run_simulation(self, tb_lib, tb_cell, outputs, precision=6, sim_tag=None):
         # type: (str, str, Dict[str, str], int, Optional[str]) -> str
