@@ -41,6 +41,7 @@ from .interface import ZMQDealer
 from .design import ModuleDB, SchInstance
 from .layout.core import DummyTechInfo
 from .io import read_file, sim_data
+from .concurrent.core import batch_async_task
 
 if TYPE_CHECKING:
     from .interface.simulator import SimAccess
@@ -798,14 +799,18 @@ class BagProject(object):
         if self.impl_db is None:
             raise Exception('BAG Server is not set up.')
 
-        return self.impl_db.run_lvs(lib_name, cell_name, **kwargs)
+        coro = self.impl_db.async_run_lvs(lib_name, cell_name, **kwargs)
+        results = batch_async_task([coro])
+        if results is None or isinstance(results[0], Exception):
+            return False, ''
+        return results[0]
 
     def run_rcx(self,  # type: BagProject
                 lib_name,  # type: str
                 cell_name,  # type: str
                 **kwargs  # type: **kwargs
                 ):
-        # type: (...) -> Tuple[Union[bool, str], str]
+        # type: (...) -> Tuple[Union[bool, Optional[str]], str]
         """Run RCX on the given cell.
 
         The behavior and the first return value of this method depends on the
@@ -840,7 +845,16 @@ class BagProject(object):
         if self.impl_db is None:
             raise Exception('BAG Server is not set up.')
 
-        return self.impl_db.run_rcx(lib_name, cell_name, **kwargs)
+        create_schematic = kwargs.get('create_schematic', True)
+
+        coro = self.impl_db.async_run_rcx(lib_name, cell_name, **kwargs)
+        results = batch_async_task([coro])
+        if results is None or isinstance(results[0], Exception):
+            if create_schematic:
+                return False, ''
+            else:
+                return None, ''
+        return results[0]
 
     def export_layout(self, lib_name, cell_name, out_file, **kwargs):
         # type: (str, str, str, **kwargs) -> str
@@ -865,84 +879,11 @@ class BagProject(object):
         if self.impl_db is None:
             raise Exception('BAG Server is not set up.')
 
-        return self.impl_db.export_layout(lib_name, cell_name, out_file, **kwargs)
-
-    def batch_lvs(self, info_list):
-        # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[Tuple[bool, str]]]
-        """Run LVS on all given cells.
-
-        Parameters
-        ----------
-        info_list:
-            list of LVS information.  Each element is a tuple of:
-
-            lib_name : str
-                library name.
-            cell_name : str
-                cell name.
-            sch_view : str
-                schematic view name.  Optional.
-            lay_view : str
-                layout view name.  Optional.
-            params : Optional[Dict[str, Any]]
-                optional LVS parameter values.
-
-        Returns
-        -------
-        results : Optional[Sequence[Tuple[bool, str]]]
-            If LVS is cancelled, return None.  Otherwise, this is a
-            list of (lvs_success, lvs_log) tuples.
-        """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
-        return self.impl_db.batch_lvs(info_list)
-
-    def batch_rcx(self, info_list, create_schematic):
-        # type: (Sequence[Tuple[Any, ...]], bool) -> Optional[Sequence[Tuple[Optional[str], str]]]
-        """Run RCX on all given cells.
-
-        The behavior and the first return value of this method depends on the
-        input arguments.  The second return argument will always be the RCX
-        log file name.
-
-        If create_schematic is True, this method will run RCX, then if it succeeds,
-        create a schematic of the extracted netlist in the database.  It then returns
-        a boolean value which will be True if RCX succeeds.
-
-        If create_schematic is False, this method will run RCX, then return a string
-        which is the extracted netlist filename. If RCX failed, None will be returned
-        instead.
-
-        Parameters
-        ----------
-        info_list:
-            list of RCX information.  Each element is a tuple of:
-
-            lib_name : str
-                library name.
-            cell_name : str
-                cell name.
-            sch_view : str
-                schematic view name.  Optional.
-            lay_view : str
-                layout view name.  Optional.
-            params : Optional[Dict[str, Any]]
-                optional RCX parameter values.
-        create_schematic : bool
-            True to automatically create extracted schematic in database if RCX
-            is successful and it is supported.
-
-        Returns
-        -------
-        results : Optional[Sequence[Tuple[Union[bool, str], str]]]
-            If RCX is cancelled, return None.  Otherwise, this is a
-            list of (rcx_netlist, rcx_log) tuples.
-        """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
-        return self.impl_db.batch_rcx(info_list, create_schematic)
+        coro = self.impl_db.async_export_layout(lib_name, cell_name, out_file, **kwargs)
+        results = batch_async_task([coro])
+        if results is None or isinstance(results[0], Exception):
+            return ''
+        return results[0]
 
     def batch_export_layout(self, info_list):
         # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[str]]
@@ -973,7 +914,79 @@ class BagProject(object):
         if self.impl_db is None:
             raise Exception('BAG Server is not set up.')
 
-        return self.impl_db.batch_export_layout(info_list)
+        coro_list = [self.impl_db.async_export_layout(*info) for info in info_list]
+        temp_results = batch_async_task(coro_list)
+        if temp_results is None:
+            return None
+        return ['' if isinstance(val, Exception) else val for val in temp_results]
+
+    async def async_run_lvs(self, lib_name, cell_name, **kwargs):
+        # type: (str, str, **kwargs) -> Tuple[bool, str]
+        """A coroutine for running LVS.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell_name
+        **kwargs :
+            optional keyword arguments.  See Checker class for details.
+            LVS parameters should be specified as lvs_params.
+
+        Returns
+        -------
+        value : bool
+            True if LVS succeeds
+        log_fname : str
+            name of the LVS log file.
+        """
+        if self.impl_db is None:
+            raise Exception('BAG Server is not set up.')
+
+        return await self.impl_db.async_run_lvs(lib_name, cell_name, **kwargs)
+
+    async def async_run_rcx(self,  # type: BagProject
+                            lib_name,  # type: str
+                            cell_name,  # type: str
+                            **kwargs  # type: **kwargs
+                            ):
+        # type: (...) -> Tuple[Union[bool, Optional[str]], str]
+        """Run RCX on the given cell.
+
+        The behavior and the first return value of this method depends on the
+        input arguments.  The second return argument will always be the RCX
+        log file name.
+
+        If create_schematic is True, this method will run RCX, then if it succeeds,
+        create a schematic of the extracted netlist in the database.  It then returns
+        a boolean value which will be True if RCX succeeds.
+
+        If create_schematic is False, this method will run RCX, then return a string
+        which is the extracted netlist filename. If RCX failed, None will be returned
+        instead.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell_name
+            override RCX parameter values.
+        **kwargs :
+            optional keyword arguments.  See DbAccess class for details.
+
+        Returns
+        -------
+        value : Union[bool, str]
+            The return value, as described.
+        log_fname : str
+            name of the RCX log file.
+        """
+        if self.impl_db is None:
+            raise Exception('BAG Server is not set up.')
+
+        return await self.impl_db.async_run_rcx(lib_name, cell_name, **kwargs)
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
