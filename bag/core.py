@@ -495,13 +495,13 @@ class BagProject(object):
             # make DbAccess instance.
             dealer = ZMQDealer(port, **dealer_kwargs)
             db_cls = _import_class_from_str(self.bag_config['database']['class'])
-            self.impl_db = db_cls(dealer, bag_tmp_dir, self.bag_config['database'])
+            self.impl_db = db_cls(dealer, bag_tmp_dir, self.bag_config['database'])  # type: Optional[DbAccess]
         else:
-            self.impl_db = None
+            self.impl_db = None  # type: Optional[DbAccess]
 
         # make SimAccess instance.
         sim_cls = _import_class_from_str(self.bag_config['simulation']['class'])
-        self.sim = sim_cls(bag_tmp_dir, self.bag_config['simulation'])
+        self.sim = sim_cls(bag_tmp_dir, self.bag_config['simulation'])  # type: SimAccess
 
     def close_bag_server(self):
         # type: () -> None
@@ -698,10 +698,9 @@ class BagProject(object):
         return Testbench(self.sim, self.impl_db, tb_lib, tb_cell, params, all_envs, cur_envs, outputs)
 
     def load_sim_results(self, lib, cell, hist_name, outputs, precision=6):
-        # type: (str, str, str, Sequence[str], int) -> Dict[str, Any]
+        # type: (str, str, str, Dict[str, str], int) -> Dict[str, Any]
         """Load previous simulation data."""
-        save_dir = self.sim.load_sim_results(lib, cell, hist_name, outputs,
-                                             precision=precision)
+        save_dir = self.sim.load_sim_results(lib, cell, hist_name, outputs, precision=precision)
 
         import bag.data
         results = bag.data.load_sim_results(save_dir)
@@ -772,12 +771,10 @@ class BagProject(object):
 
         self.impl_db.release_write_locks(lib_name, cell_view_list)
 
-    def run_lvs(self,
+    def run_lvs(self,  # type: BagProject
                 lib_name,  # type: str
                 cell_name,  # type: str
-                sch_view='schematic',  # type: str
-                lay_view='layout',  # type: str
-                lvs_params=None,  # type: Optional[Dict[str, Any]]
+                **kwargs  # type: **kwargs
                 ):
         # type: (...) -> Tuple[bool, str]
         """Run LVS on the given cell.
@@ -788,33 +785,25 @@ class BagProject(object):
             library name.
         cell_name : str
             cell_name
-        sch_view : str
-            schematic view name.  Default is 'schematic'.
-        lay_view : str
-            layout view name.  Default is 'layout'.
-        lvs_params : Optional[Dict[str, Any]]
-            override LVS parameter values.
+        **kwargs :
+            optional keyword arguments.  See DbAccess class for details.
 
         Returns
         -------
         value : bool
-            True if LVS passes
+            True if LVS succeeds
         log_fname : str
             name of the LVS log file.
         """
         if self.impl_db is None:
             raise Exception('BAG Server is not set up.')
 
-        lvs_params = lvs_params or {}
-        return self.impl_db.run_lvs(lib_name, cell_name, sch_view, lay_view, lvs_params)
+        return self.impl_db.run_lvs(lib_name, cell_name, **kwargs)
 
-    def run_rcx(self,
+    def run_rcx(self,  # type: BagProject
                 lib_name,  # type: str
                 cell_name,  # type: str
-                sch_view='schematic',  # type: str
-                lay_view='layout',  # type: str
-                rcx_params=None,  # type: Optional[Dict[str, Any]]
-                create_schematic=True,  # type: bool
+                **kwargs  # type: **kwargs
                 ):
         # type: (...) -> Tuple[Union[bool, str], str]
         """Run RCX on the given cell.
@@ -837,15 +826,9 @@ class BagProject(object):
             library name.
         cell_name : str
             cell_name
-        sch_view : str
-            schematic view name.  Default is 'schematic'.
-        lay_view : str
-            layout view name.  Default is 'layout'.
-        rcx_params : Optional[Dict[str, Any]]
             override RCX parameter values.
-        create_schematic : bool
-            True to automatically create extracted schematic in database if RCX
-            is successful and it is supported.
+        **kwargs :
+            optional keyword arguments.  See DbAccess class for details.
 
         Returns
         -------
@@ -857,9 +840,140 @@ class BagProject(object):
         if self.impl_db is None:
             raise Exception('BAG Server is not set up.')
 
-        rcx_params = rcx_params or {}
-        return self.impl_db.run_rcx(lib_name, cell_name, sch_view, lay_view, rcx_params,
-                                    create_schematic=create_schematic)
+        return self.impl_db.run_rcx(lib_name, cell_name, **kwargs)
+
+    def export_layout(self, lib_name, cell_name, out_file, **kwargs):
+        # type: (str, str, str, **kwargs) -> str
+        """export layout.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        out_file : str
+            output file name.
+        **kwargs :
+            optional keyword arguments.  See Checker class for details.
+
+        Returns
+        -------
+        log_fname : str
+            log file name.  Empty if task cancelled.
+        """
+        if self.impl_db is None:
+            raise Exception('BAG Server is not set up.')
+
+        return self.impl_db.export_layout(lib_name, cell_name, out_file, **kwargs)
+
+    def batch_lvs(self, info_list):
+        # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[Tuple[bool, str]]]
+        """Run LVS on all given cells.
+
+        Parameters
+        ----------
+        info_list:
+            list of LVS information.  Each element is a tuple of:
+
+            lib_name : str
+                library name.
+            cell_name : str
+                cell name.
+            sch_view : str
+                schematic view name.  Optional.
+            lay_view : str
+                layout view name.  Optional.
+            params : Optional[Dict[str, Any]]
+                optional LVS parameter values.
+
+        Returns
+        -------
+        results : Optional[Sequence[Tuple[bool, str]]]
+            If LVS is cancelled, return None.  Otherwise, this is a
+            list of (lvs_success, lvs_log) tuples.
+        """
+        if self.impl_db is None:
+            raise Exception('BAG Server is not set up.')
+
+        return self.impl_db.batch_lvs(info_list)
+
+    def batch_rcx(self, info_list, create_schematic):
+        # type: (Sequence[Tuple[Any, ...]], bool) -> Optional[Sequence[Tuple[Optional[str], str]]]
+        """Run RCX on all given cells.
+
+        The behavior and the first return value of this method depends on the
+        input arguments.  The second return argument will always be the RCX
+        log file name.
+
+        If create_schematic is True, this method will run RCX, then if it succeeds,
+        create a schematic of the extracted netlist in the database.  It then returns
+        a boolean value which will be True if RCX succeeds.
+
+        If create_schematic is False, this method will run RCX, then return a string
+        which is the extracted netlist filename. If RCX failed, None will be returned
+        instead.
+
+        Parameters
+        ----------
+        info_list:
+            list of RCX information.  Each element is a tuple of:
+
+            lib_name : str
+                library name.
+            cell_name : str
+                cell name.
+            sch_view : str
+                schematic view name.  Optional.
+            lay_view : str
+                layout view name.  Optional.
+            params : Optional[Dict[str, Any]]
+                optional RCX parameter values.
+        create_schematic : bool
+            True to automatically create extracted schematic in database if RCX
+            is successful and it is supported.
+
+        Returns
+        -------
+        results : Optional[Sequence[Tuple[Union[bool, str], str]]]
+            If RCX is cancelled, return None.  Otherwise, this is a
+            list of (rcx_netlist, rcx_log) tuples.
+        """
+        if self.impl_db is None:
+            raise Exception('BAG Server is not set up.')
+
+        return self.impl_db.batch_rcx(info_list, create_schematic)
+
+    def batch_export_layout(self, info_list):
+        # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[str]]
+        """Export layout of all given cells
+
+        Parameters
+        ----------
+        info_list:
+            list of cell information.  Each element is a tuple of:
+
+            lib_name : str
+                library name.
+            cell_name : str
+                cell name.
+            out_file : str
+                layout output file name.
+            view_name : str
+                layout view name.  Optional.
+            params : Optional[Dict[str, Any]]
+                optional export parameter values.
+
+        Returns
+        -------
+        results : Optional[Sequence[str]]
+            If task is cancelled, return None.  Otherwise, this is a
+            list of log file names.
+        """
+        if self.impl_db is None:
+            raise Exception('BAG Server is not set up.')
+
+        return self.impl_db.batch_export_layout(info_list)
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
