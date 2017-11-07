@@ -39,6 +39,7 @@ import yaml
 from bag import float_to_si_string
 from bag.io import read_yaml, open_file, load_sim_results, save_sim_results
 from bag.layout import RoutingGrid, TemplateDB
+from bag.concurrent.core import batch_async_task
 
 if TYPE_CHECKING:
     from bag.core import BagProject, Testbench
@@ -64,13 +65,16 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
         implementation library name.
     specs : Dict[str, Any]
         the measurement specification dictionary.
+    wrapper_lookup : Dict[str, str]
+        the DUT wrapper cell name lookup table.
     """
-    def __init__(self, data_dir, meas_name, impl_lib, specs):
-        # type: (str, str, str, Dict[str, Any]) -> None
+    def __init__(self, data_dir, meas_name, impl_lib, specs, wrapper_lookup):
+        # type: (str, str, str, Dict[str, Any], Dict[str, str]) -> None
         self.data_dir = os.path.abspath(data_dir)
         self.impl_lib = impl_lib
         self.meas_name = meas_name
         self.specs = specs
+        self.wrapper_lookup = wrapper_lookup
 
     @abc.abstractmethod
     def get_testbench_info(self, state, prev_output):
@@ -183,7 +187,7 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
 
         return prev_output
 
-    def get_default_tb_sch_params(self, tb_type, wrapper_name):
+    def get_default_tb_sch_params(self, tb_type, wrapper_type):
         # type: (str, str) -> Dict[str, Any]
         """Helper method to return a default testbench schematic parameters dictionary.
 
@@ -194,8 +198,8 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
         ----------
         tb_type : str
             the testbench type.
-        wrapper_name : str
-            the DUT wrapper cell name.
+        wrapper_type : str
+            the DUT wrapper type.
 
         Returns
         -------
@@ -209,7 +213,7 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
             tb_params = {}
 
         tb_params['dut_lib'] = self.impl_lib
-        tb_params['dut_cell'] = wrapper_name
+        tb_params['dut_cell'] = self.wrapper_lookup[wrapper_type]
         return tb_params
 
     def _create_tb_schematic(self, prj, tb_name, tb_type, tb_sch_params):
@@ -283,61 +287,6 @@ class DesignManager(object):
         with open_file(save_spec_file, 'w') as f:
             yaml.dump(self._specs, f)
 
-    async def extract_design(self, lib_name, dsn_name, rcx_params):
-        # type: (str, str, Optional[Dict[str, Any]]) -> None
-        """A coroutine that runs LVS/RCX on a given design.
-
-        Parameters
-        ----------
-        lib_name : str
-            library name.
-        dsn_name : str
-            design cell name.
-        rcx_params : Optional[Dict[str, Any]]
-            extraction parameters dictionary.
-        """
-        lvs_passed, lvs_log = await self.prj.async_run_lvs(lib_name, dsn_name)
-        if not lvs_passed:
-            raise ValueError('LVS failed for %s.  Log file: %s' % (dsn_name, lvs_log))
-
-        rcx_passed, rcx_log = await self.prj.async_run_rcx(lib_name, dsn_name, rcx_params=rcx_params)
-        if not rcx_passed:
-            raise ValueError('RCX failed for %s.  Log file: %s' % (dsn_name, rcx_log))
-
-    async def verify_design(self, lib_name, dsn_name):
-        # type: (str, str) -> Dict[str, Any]
-        """Run all measurements on the given design.
-
-        Parameters
-        ----------
-        lib_name : str
-            library name.
-        dsn_name : str
-            design cell name.
-
-        Returns
-        -------
-        summary : Dict[str, Any]
-            final measurement results summary.
-        """
-        meas_list = self.specs['measurements']
-        root_dir = os.path.join(self.specs['root_dir'], dsn_name)
-
-        result_summary = {}
-        for meas_specs in meas_list:
-            meas_type = meas_specs['meas_type']
-            out_fname = meas_specs['out_fname']
-            meas_name = self.get_measurement_name(dsn_name, meas_type)
-            data_dir = os.path.join(root_dir, meas_name)
-            meas_manager = MeasurementManager(data_dir, meas_name, lib_name, meas_specs)
-            meas_results = await meas_manager.async_measure_performance(self.prj)
-
-            with open_file(os.path.join(root_dir, out_fname), 'w') as f:
-                yaml.dump(meas_results, f)
-            result_summary[meas_type] = meas_results
-
-        return result_summary
-
     @classmethod
     def load_state(cls, prj, root_dir):
         # type: (BagProject, str) -> DesignManager
@@ -379,6 +328,136 @@ class DesignManager(object):
     def swp_var_list(self):
         # type: () -> Tuple[str, ...]
         return self._swp_var_list
+
+    async def extract_design(self, lib_name, dsn_name, rcx_params):
+        # type: (str, str, Optional[Dict[str, Any]]) -> None
+        """A coroutine that runs LVS/RCX on a given design.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        dsn_name : str
+            design cell name.
+        rcx_params : Optional[Dict[str, Any]]
+            extraction parameters dictionary.
+        """
+        lvs_passed, lvs_log = await self.prj.async_run_lvs(lib_name, dsn_name)
+        if not lvs_passed:
+            raise ValueError('LVS failed for %s.  Log file: %s' % (dsn_name, lvs_log))
+
+        rcx_passed, rcx_log = await self.prj.async_run_rcx(lib_name, dsn_name, rcx_params=rcx_params)
+        if not rcx_passed:
+            raise ValueError('RCX failed for %s.  Log file: %s' % (dsn_name, rcx_log))
+
+    async def verify_design(self, lib_name, dsn_name):
+        # type: (str, str) -> None
+        """Run all measurements on the given design.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        dsn_name : str
+            design cell name.
+        """
+        meas_list = self.specs['measurements']
+        summary_fname = self.specs['summary_fname']
+        root_dir = os.path.join(self.specs['root_dir'], dsn_name)
+        wrapper_list = self.specs['dut_wrappers']
+        wrapper_lookup = {}
+        for wrapper_config in wrapper_list:
+            wrapper_type = wrapper_config['name']
+            wrapper_lookup[wrapper_type] = self.get_wrapper_name(dsn_name, wrapper_type)
+
+        result_summary = {}
+        for meas_specs in meas_list:
+            meas_type = meas_specs['meas_type']
+            out_fname = meas_specs['out_fname']
+            meas_name = self.get_measurement_name(dsn_name, meas_type)
+            data_dir = os.path.join(root_dir, meas_name)
+            meas_manager = MeasurementManager(data_dir, meas_name, lib_name, meas_specs, wrapper_lookup)
+            meas_results = await meas_manager.async_measure_performance(self.prj)
+
+            with open_file(os.path.join(root_dir, out_fname), 'w') as f:
+                yaml.dump(meas_results, f)
+            result_summary[meas_type] = meas_results
+
+        with open_file(os.path.join(root_dir, summary_fname), 'w') as f:
+            yaml.dump(result_summary, f)
+
+    async def main_task(self, lib_name, dsn_name, rcx_params, extract=True, measure=True):
+        # type: (str, str, Optional[Dict[str, Any]], bool, bool) -> None
+        """The main coroutine."""
+        if extract:
+            await self.extract_design(lib_name, dsn_name, rcx_params)
+        if measure:
+            await self.verify_design(lib_name, dsn_name)
+
+    def characterize_designs(self, generate=True, measure=True):
+        # type: (bool, bool) -> None
+        if generate:
+            extract = self.specs['view_name'] != 'schematic'
+            self.create_designs()
+        else:
+            extract = False
+
+        dsn_basename = self.specs['dsn_basename']
+        rcx_params = self.specs.get('rcx_params', None)
+        impl_lib = self.specs['impl_lib']
+        dsn_name_list = [self.get_instance_name(dsn_basename, combo_list)
+                         for combo_list in self.get_combinations_iter()]
+
+        coro_list = [self.main_task(impl_lib, dsn_name, rcx_params, extract=extract, measure=measure)
+                     for dsn_name in dsn_name_list]
+
+        batch_async_task(coro_list)
+
+    def test_layout(self, gen_sch=True):
+        # type: (bool) -> None
+        """Create a test schematic and layout for debugging purposes"""
+
+        sweep_params = self.specs['sweep_params']
+        dsn_name = self.specs['dsn_basename'] + '_TEST'
+
+        val_list = tuple((sweep_params[key][0] for key in self.swp_var_list))
+        lay_params = self.get_layout_params(val_list)
+
+        temp_db = self.make_tdb()
+        print('create test layout')
+        sch_params_list = self.create_dut_layouts([lay_params], [dsn_name], temp_db)
+
+        if gen_sch:
+            print('create test schematic')
+            self.create_dut_schematics(sch_params_list, [dsn_name], gen_wrappers=False)
+        print('done')
+
+    def create_designs(self):
+        # type: () -> None
+        """Create DUT schematics/layouts.
+        """
+        if self.prj is None:
+            raise ValueError('BagProject instance is not given.')
+
+        dsn_basename = self.specs['dsn_basename']
+
+        temp_db = self.make_tdb()
+
+        # make layouts
+        dsn_name_list, lay_params_list, combo_list_list = [], [], []
+        for combo_list in self.get_combinations_iter():
+            dsn_name = self.get_instance_name(dsn_basename, combo_list)
+            lay_params = self.get_layout_params(combo_list)
+            dsn_name_list.append(dsn_name)
+            lay_params_list.append(lay_params)
+            combo_list_list.append(combo_list)
+
+        print('creating all layouts')
+        sch_params_list = self.create_dut_layouts(lay_params_list, dsn_name_list, temp_db)
+        print('creating all schematics')
+        self.create_dut_schematics(sch_params_list, dsn_name_list, gen_wrappers=True)
+
+        print('design generation done.')
 
     def get_swp_var_values(self, var):
         # type: (str) -> List[Any]
@@ -446,7 +525,7 @@ class DesignManager(object):
         dut_lib = self.specs['dut_lib']
         dut_cell = self.specs['dut_cell']
         impl_lib = self.specs['impl_lib']
-        wrapper_list = self.specs.get('dut_wrappers', [])
+        wrapper_list = self.specs['dut_wrappers']
 
         inst_list, name_list = [], []
         for sch_params, cur_name in zip(sch_params_list, cell_name_list):
@@ -488,52 +567,6 @@ class DesignManager(object):
             sch_params_list.append(template.sch_params)
         temp_db.batch_layout(self.prj, temp_list, cell_name_list)
         return sch_params_list
-
-    def test_layout(self, gen_sch=True):
-        # type: (bool) -> None
-        """Create a test schematic and layout for debugging purposes"""
-
-        sweep_params = self.specs['sweep_params']
-        dsn_name = self.specs['dsn_basename'] + '_TEST'
-
-        val_list = tuple((sweep_params[key][0] for key in self.swp_var_list))
-        lay_params = self.get_layout_params(val_list)
-
-        temp_db = self.make_tdb()
-        print('create test layout')
-        sch_params_list = self.create_dut_layouts([lay_params], [dsn_name], temp_db)
-
-        if gen_sch:
-            print('create test schematic')
-            self.create_dut_schematics(sch_params_list, [dsn_name], gen_wrappers=False)
-        print('done')
-
-    def create_designs(self):
-        # type: () -> None
-        """Create DUT schematics/layouts, run LVS/RCX if necessary.
-        """
-        if self.prj is None:
-            raise ValueError('BagProject instance is not given.')
-
-        dsn_basename = self.specs['dsn_basename']
-
-        temp_db = self.make_tdb()
-
-        # make layouts
-        dsn_name_list, lay_params_list, combo_list_list = [], [], []
-        for combo_list in self.get_combinations_iter():
-            dsn_name = self.get_instance_name(dsn_basename, combo_list)
-            lay_params = self.get_layout_params(combo_list)
-            dsn_name_list.append(dsn_name)
-            lay_params_list.append(lay_params)
-            combo_list_list.append(combo_list)
-
-        print('creating all layouts')
-        sch_params_list = self.create_dut_layouts(lay_params_list, dsn_name_list, temp_db)
-        print('creating all schematics')
-        self.create_dut_schematics(sch_params_list, dsn_name_list, gen_wrappers=True)
-
-        print('design generation done.')
 
     def get_instance_name(self, name_base, combo_list):
         # type: (str, Sequence[Any, ...]) -> str
