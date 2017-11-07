@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from asyncio.subprocess import Process
 
 
-def batch_task(coro_list):
+def batch_async_task(coro_list):
     """Execute a list of coroutines or futures concurrently.
 
     User may press Ctrl-C to cancel all given tasks.
@@ -253,7 +253,7 @@ class SubProcessManager(object):
 
         coro_list = [self.async_new_subprocess(args, log, env, cwd) for args, log, env, cwd in proc_info_list]
 
-        return batch_task(coro_list)
+        return batch_async_task(coro_list)
 
     def batch_subprocess_flow(self, proc_info_list):
         # type: (Sequence[Sequence[FlowInfo]]) -> Optional[Sequence[Union[int, Exception]]]
@@ -289,4 +289,4 @@ class SubProcessManager(object):
 
         coro_list = [self.async_new_subprocess_flow(flow_info) for flow_info in proc_info_list]
 
-        return batch_task(coro_list)
+        return batch_async_task(coro_list)
