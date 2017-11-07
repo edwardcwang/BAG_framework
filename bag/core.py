@@ -356,9 +356,9 @@ class Testbench(object):
         value : Optional[str]
             the save directory path.  If simulation is cancelled, return None.
         """
-        save_dir = self.sim.run_simulation(self.lib, self.cell, self.outputs, precision=precision, sim_tag=sim_tag)
-        self.save_dir = save_dir
-        return save_dir
+        coro = self.async_run_simulation(precision=precision, sim_tag=sim_tag)
+        batch_async_task([coro])
+        return self.save_dir
 
     def load_sim_results(self, hist_name, precision=6):
         # type: (str, int) -> Optional[str]
@@ -376,9 +376,9 @@ class Testbench(object):
         value : Optional[str]
             the save directory path.  If result loading is cancelled, return None.
         """
-        save_dir = self.sim.load_sim_results(self.lib, self.cell, hist_name, self.outputs, precision=precision)
-        self.save_dir = save_dir
-        return save_dir
+        coro = self.async_load_results(hist_name, precision=precision)
+        batch_async_task([coro])
+        return self.save_dir
 
     async def async_run_simulation(self, precision=6, sim_tag=None):
         # type: (int, Optional[str]) -> str
@@ -396,8 +396,10 @@ class Testbench(object):
         value : str
             the save directory path.
         """
-        return await self.sim.async_run_simulation(self.lib, self.cell, self.outputs,
-                                                   precision=precision, sim_tag=sim_tag)
+        self.save_dir = None
+        self.save_dir = await self.sim.async_run_simulation(self.lib, self.cell, self.outputs,
+                                                            precision=precision, sim_tag=sim_tag)
+        return self.save_dir
 
     async def async_load_results(self, hist_name, precision=6):
         # type: (str, int) -> str
@@ -415,8 +417,10 @@ class Testbench(object):
         value : str
             the save directory path.
         """
-        return await self.sim.async_load_results(self.lib, self.cell, hist_name, self.outputs,
-                                                 precision=precision)
+        self.save_dir = None
+        self.save_dir = await self.sim.async_load_results(self.lib, self.cell, hist_name, self.outputs,
+                                                          precision=precision)
+        return self.save_dir
 
 
 def create_tech_info(bag_config_path=None):
@@ -697,15 +701,6 @@ class BagProject(object):
 
         cur_envs, all_envs, params, outputs = self.impl_db.get_testbench_info(tb_lib, tb_cell)
         return Testbench(self.sim, self.impl_db, tb_lib, tb_cell, params, all_envs, cur_envs, outputs)
-
-    def load_sim_results(self, lib, cell, hist_name, outputs, precision=6):
-        # type: (str, str, str, Dict[str, str], int) -> Dict[str, Any]
-        """Load previous simulation data."""
-        save_dir = self.sim.load_sim_results(lib, cell, hist_name, outputs, precision=precision)
-
-        import bag.data
-        results = bag.data.load_sim_results(save_dir)
-        return results
 
     def instantiate_layout_pcell(self, lib_name, cell_name, inst_lib, inst_cell, params,
                                  pin_mapping=None, view_name='layout'):
