@@ -32,7 +32,7 @@ from builtins import *
 import os
 import abc
 import traceback
-from typing import List, Dict, Tuple, Optional, Sequence
+from typing import TYPE_CHECKING, List, Dict, Tuple, Optional, Sequence, Any, Union
 
 from jinja2 import Template
 import yaml
@@ -40,6 +40,9 @@ from future.utils import with_metaclass
 
 import bag.io
 from ..verification import make_checker
+
+if TYPE_CHECKING:
+    from ..verification import Checker
 
 
 def dict_to_item_list(table):
@@ -153,12 +156,12 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
         try:
             check_kwargs = self.db_config['checker'].copy()
             check_kwargs['tmp_dir'] = self.tmp_dir
-            self.checker = make_checker(**check_kwargs)
+            self.checker = make_checker(**check_kwargs)  # type: Optional[Checker]
         except Exception:
             stack_trace = traceback.format_exc()
             print('*WARNING* error creating Checker:\n%s' % stack_trace)
             print('*WARNING* LVS/RCX will be disabled.')
-            self.checker = None
+            self.checker = None  # type: Optional[Checker]
 
         # set default lib path
         lib_path_fallback = os.path.abspath('.')
@@ -345,6 +348,7 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
 
     @abc.abstractmethod
     def instantiate_layout(self, lib_name, view_name, via_tech, layout_list):
+        # type: (str, str, str, Sequence[Any]) -> None
         """Create a batch of layouts.
 
         Parameters
@@ -355,7 +359,7 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
             layout view name.
         via_tech : str
             via technology library name.
-        layout_list : list[any]
+        layout_list : Sequence[Any]
             a list of layouts to create
         """
         pass
@@ -372,74 +376,6 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
             list of cell/view name tuples.
         """
         pass
-
-    @abc.abstractmethod
-    def run_lvs(self, lib_name, cell_name, sch_view, lay_view, lvs_params):
-        """Run LVS on the given cell.
-
-        Parameters
-        ----------
-        lib_name : str
-            library name.
-        cell_name : str
-            cell_name
-        sch_view : str
-            schematic view name.  Default is 'schematic'.
-        lay_view : str
-            layout view name.  Default is 'layout'.
-        lvs_params : dict[str, any]
-            override LVS parameter values.
-
-        Returns
-        -------
-        value : bool
-            True if LVS succeeds
-        log_fname : str
-            name of the LVS log file.
-        """
-        return False
-
-    @abc.abstractmethod
-    def run_rcx(self, lib_name, cell_name, sch_view, lay_view, rcx_params,
-                create_schematic=True):
-        """Run RCX on the given cell.
-
-        The behavior and the first return value of this method depends on the
-        input arguments.  The second return argument will always be the RCX
-        log file name.
-
-        If create_schematic is True, this method will run RCX, then if it succeeds,
-        create a schematic of the extracted netlist in the database.  It then returns
-        a boolean value which will be True if RCX succeeds.
-
-        If create_schematic is False, this method will run RCX, then return a string
-        which is the extracted netlist filename. If RCX failed, None will be returned
-        instead.
-
-        Parameters
-        ----------
-        lib_name : str
-            library name.
-        cell_name : str
-            cell_name
-        sch_view : str
-            schematic view name.  Default is 'schematic'.
-        lay_view : str
-            layout view name.  Default is 'layout'.
-        rcx_params : Optional[Dict[str, Any]]
-            override RCX parameter values.
-        create_schematic : bool
-            True to automatically create extracted schematic in database if RCX
-            is successful and it is supported.
-
-        Returns
-        -------
-        value : Union[bool, str]
-            The return value, as described.
-        log_fname : str
-            name of the RCX log file.
-        """
-        return False
 
     @abc.abstractmethod
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
@@ -481,6 +417,239 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
             additional implementation-dependent arguments.
         """
         pass
+
+    def _process_rcx_output(self, netlist, log_fname, lib_name, cell_name, create_schematic):
+        if create_schematic:
+            if netlist is None:
+                return False, log_fname
+            if netlist:
+                # create schematic only if netlist name is not empty.
+                self.create_schematic_from_netlist(netlist, lib_name, cell_name)
+            return True, log_fname
+        else:
+            return netlist, log_fname
+
+    def run_lvs(self,  # type: DbAccess
+                lib_name,  # type: str
+                cell_name,  # type: str
+                **kwargs  # type: **kwargs
+                ):
+        # type: (...) -> Tuple[bool, str]
+        """Run LVS on the given cell.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell_name
+        **kwargs :
+            optional keyword arguments.  See Checker class for details.
+            LVS parameters should be specified as lvs_params.
+
+        Returns
+        -------
+        value : bool
+            True if LVS succeeds
+        log_fname : str
+            name of the LVS log file.
+        """
+        if self.checker is None:
+            raise Exception('LVS/RCX is disabled.')
+
+        kwargs['params'] = kwargs.pop('lvs_params', None)
+        return self.checker.run_lvs(lib_name, cell_name, **kwargs)
+
+    def run_rcx(self,  # type: DbAccess
+                lib_name,  # type: str
+                cell_name,  # type: str
+                create_schematic=True,  # type: bool
+                **kwargs  # type: **kwargs
+                ):
+        # type: (...) -> Tuple[Union[bool, str], str]
+        """Run RCX on the given cell.
+
+        The behavior and the first return value of this method depends on the
+        input arguments.  The second return argument will always be the RCX
+        log file name.
+
+        If create_schematic is True, this method will run RCX, then if it succeeds,
+        create a schematic of the extracted netlist in the database.  It then returns
+        a boolean value which will be True if RCX succeeds.
+
+        If create_schematic is False, this method will run RCX, then return a string
+        which is the extracted netlist filename. If RCX failed, None will be returned
+        instead.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell_name
+            override RCX parameter values.
+        create_schematic : bool
+            True to automatically create extracted schematic in database if RCX
+            is successful and it is supported.
+        **kwargs :
+            optional keyword arguments.  See Checker class for details.
+            RCX parameters should be specified as rcx_params.
+
+        Returns
+        -------
+        value : Union[bool, str]
+            The return value, as described.
+        log_fname : str
+            name of the RCX log file.
+        """
+        if self.checker is None:
+            raise Exception('LVS/RCX is disabled.')
+
+        kwargs['params'] = kwargs.pop('rcx_params', None)
+        netlist, log_fname = self.checker.run_rcx(lib_name, cell_name, **kwargs)
+
+        return self._process_rcx_output(netlist, log_fname, lib_name, cell_name, create_schematic)
+
+    def export_layout(self, lib_name, cell_name, out_file, **kwargs):
+        # type: (str, str, str, **kwargs) -> str
+        """export layout.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        out_file : str
+            output file name.
+        **kwargs :
+            optional keyword arguments.  See Checker class for details.
+
+        Returns
+        -------
+        log_fname : str
+            log file name.  Empty if task cancelled.
+        """
+        if self.checker is None:
+            raise Exception('layout export is disabled.')
+
+        return self.checker.export_layout(lib_name, cell_name, out_file, **kwargs)
+
+    def batch_lvs(self, info_list):
+        # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[Tuple[bool, str]]]
+        """Run LVS on all given cells.
+
+        Parameters
+        ----------
+        info_list:
+            list of LVS information.  Each element is a tuple of:
+
+            lib_name : str
+                library name.
+            cell_name : str
+                cell name.
+            sch_view : str
+                schematic view name.  Optional.
+            lay_view : str
+                layout view name.  Optional.
+            params : Optional[Dict[str, Any]]
+                optional LVS parameter values.
+
+        Returns
+        -------
+        results : Optional[Sequence[Tuple[bool, str]]]
+            If LVS is cancelled, return None.  Otherwise, this is a
+            list of (lvs_success, lvs_log) tuples.
+        """
+        if self.checker is None:
+            raise Exception('LVS/RCX is disabled.')
+
+        return self.checker.batch_lvs(info_list)
+
+    def batch_rcx(self, info_list, create_schematic):
+        # type: (Sequence[Tuple[Any, ...]], bool) -> Optional[Sequence[Tuple[Optional[str], str]]]
+        """Run RCX on all given cells.
+
+        The behavior and the first return value of this method depends on the
+        input arguments.  The second return argument will always be the RCX
+        log file name.
+
+        If create_schematic is True, this method will run RCX, then if it succeeds,
+        create a schematic of the extracted netlist in the database.  It then returns
+        a boolean value which will be True if RCX succeeds.
+
+        If create_schematic is False, this method will run RCX, then return a string
+        which is the extracted netlist filename. If RCX failed, None will be returned
+        instead.
+
+        Parameters
+        ----------
+        info_list:
+            list of RCX information.  Each element is a tuple of:
+
+            lib_name : str
+                library name.
+            cell_name : str
+                cell name.
+            sch_view : str
+                schematic view name.  Optional.
+            lay_view : str
+                layout view name.  Optional.
+            params : Optional[Dict[str, Any]]
+                optional RCX parameter values.
+        create_schematic : bool
+            True to automatically create extracted schematic in database if RCX
+            is successful and it is supported.
+
+        Returns
+        -------
+        results : Optional[Sequence[Tuple[Union[bool, str], str]]]
+            If RCX is cancelled, return None.  Otherwise, this is a
+            list of (rcx_netlist, rcx_log) tuples.
+        """
+        if self.checker is None:
+            raise Exception('LVS/RCX is disabled.')
+
+        results = self.checker.batch_rcx(info_list)
+        if results is None:
+            return None
+
+        ans = []
+        for (netlist, log_fname), info in zip(results, info_list):
+            lib_name, cell_name = info[:2]
+            ans.append(self._process_rcx_output(netlist, log_fname, lib_name, cell_name, create_schematic))
+        return ans
+
+    def batch_export_layout(self, info_list):
+        # type: (Sequence[Tuple[Any, ...]]) -> Optional[Sequence[str]]
+        """Export layout of all given cells
+
+        Parameters
+        ----------
+        info_list:
+            list of cell information.  Each element is a tuple of:
+
+            lib_name : str
+                library name.
+            cell_name : str
+                cell name.
+            out_file : str
+                layout output file name.
+            view_name : str
+                layout view name.  Optional.
+            params : Optional[Dict[str, Any]]
+                optional export parameter values.
+
+        Returns
+        -------
+        results : Optional[Sequence[str]]
+            If task is cancelled, return None.  Otherwise, this is a
+            list of log file names.
+        """
+        if self.checker is None:
+            raise Exception('layout export is disabled.')
+
+        return self.checker.batch_export_layout(info_list)
 
     def import_design_library(self, lib_name, dsn_db, new_lib_path):
         """Import all design templates in the given library from CAD database.
