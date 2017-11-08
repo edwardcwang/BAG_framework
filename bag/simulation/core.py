@@ -69,15 +69,18 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
         the DUT wrapper cell name lookup table.
     sim_view_list : Sequence[Tuple[str, str]]
         simulation view list
+    env_list : Sequence[str]
+        simulation environments list.
     """
-    def __init__(self, data_dir, meas_name, impl_lib, specs, wrapper_lookup, sim_view_list):
-        # type: (str, str, str, Dict[str, Any], Dict[str, str], Sequence[Tuple[str, str]]) -> None
+    def __init__(self, data_dir, meas_name, impl_lib, specs, wrapper_lookup, sim_view_list, env_list):
+        # type: (str, str, str, Dict[str, Any], Dict[str, str], Sequence[Tuple[str, str]], Sequence[str]) -> None
         self.data_dir = os.path.abspath(data_dir)
         self.impl_lib = impl_lib
         self.meas_name = meas_name
         self.specs = specs
         self.wrapper_lookup = wrapper_lookup
         self.sim_view_list = sim_view_list
+        self.env_list = env_list
 
         os.makedirs(self.data_dir, exist_ok=True)
 
@@ -185,7 +188,6 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
         cur_state = self.get_initial_state()
         prev_output = None
         done = False
-        env_list = self.specs['env_list']
 
         while not done:
             # create and setup testbench
@@ -195,7 +197,7 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
             else:
                 tb = self._create_tb_schematic(prj, tb_name, tb_type, tb_sch_params)
             self.setup_testbench(cur_state, tb, tb_specs)
-            tb.set_simulation_environments(env_list)
+            tb.set_simulation_environments(self.env_list)
             for cell_name, view_name in self.sim_view_list:
                 tb.set_simulation_view(self.impl_lib, cell_name, view_name)
             tb.update_testbench()
@@ -396,7 +398,9 @@ class DesignManager(object):
         summary_fname = self.specs['summary_fname']
         root_dir = os.path.join(self.specs['root_dir'], dsn_name)
         view_name = self.specs['view_name']
+        env_list = self.specs['env_list']
         wrapper_list = self.specs['dut_wrappers']
+
         wrapper_lookup = {'': dsn_name}
         for wrapper_config in wrapper_list:
             wrapper_type = wrapper_config['name']
@@ -405,11 +409,17 @@ class DesignManager(object):
         result_summary = {}
         for meas_specs in meas_list:
             meas_type = meas_specs['meas_type']
+            meas_package = meas_specs['meas_package']
+            meas_cls_name = meas_specs['meas_class']
             out_fname = meas_specs['out_fname']
             meas_name = self.get_measurement_name(dsn_name, meas_type)
             data_dir = os.path.join(root_dir, meas_name)
-            meas_manager = MeasurementManager(data_dir, meas_name, lib_name, meas_specs,
-                                              wrapper_lookup, [(dsn_name, view_name)])
+
+            lay_module = importlib.import_module(meas_package)
+            meas_cls = getattr(lay_module, meas_cls_name)
+
+            meas_manager = meas_cls(data_dir, meas_name, lib_name, meas_specs,
+                                    wrapper_lookup, [(dsn_name, view_name)], env_list)
             meas_results = await meas_manager.async_measure_performance(self.prj)
 
             with open_file(os.path.join(root_dir, out_fname), 'w') as f:
