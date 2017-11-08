@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Optional, Dict, Any, Tuple, List, Iterable, Se
 import yaml
 
 from bag import float_to_si_string
-from bag.io import read_yaml, open_file, load_sim_results, save_sim_results
+from bag.io import read_yaml, open_file, load_sim_results, save_sim_results, load_sim_file
 from bag.layout import RoutingGrid, TemplateDB
 from bag.concurrent.core import batch_async_task
 
@@ -160,8 +160,8 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
         """Returns a default testbench name given testbench type."""
         return '%s_TB_%s' % (self.meas_name, tb_type)
 
-    async def async_measure_performance(self, prj):
-        # type: (BagProject) -> Dict[str, Any]
+    async def async_measure_performance(self, prj, load_from_file=False):
+        # type: (BagProject, bool) -> Dict[str, Any]
         """A coroutine that performs measurement.
 
         The measurement is done like a FSM.  On each iteration, depending on the current
@@ -173,6 +173,8 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
         ----------
         prj : BagProject
             the BagProject instance.
+        load_from_file : bool
+            If True, then load existing simulation data instead of running actual simulation.
 
         Returns
         -------
@@ -186,26 +188,31 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
         while not done:
             # create and setup testbench
             tb_name, tb_type, tb_specs, tb_sch_params = self.get_testbench_info(cur_state, prev_output)
-            if tb_sch_params is None:
-                print('Measurement %s in state %s, loading testbench %s' % (self.meas_name, cur_state, tb_name))
-                tb = prj.load_testbench(self.impl_lib, tb_name)
+            raw_data_fname = os.path.join(self.data_dir, '%s.hdf5' % cur_state)
+            if load_from_file:
+                print('Measurement %s in state %s, load sim data from file.' % (self.meas_name, cur_state))
+                cur_results = load_sim_file(raw_data_fname)
             else:
-                print('Measurement %s in state %s, creating testbench %s' % (self.meas_name, cur_state, tb_name))
-                tb = self._create_tb_schematic(prj, tb_name, tb_type, tb_sch_params)
+                if tb_sch_params is None:
+                    print('Measurement %s in state %s, loading testbench %s' % (self.meas_name, cur_state, tb_name))
+                    tb = prj.load_testbench(self.impl_lib, tb_name)
+                else:
+                    print('Measurement %s in state %s, creating testbench %s' % (self.meas_name, cur_state, tb_name))
+                    tb = self._create_tb_schematic(prj, tb_name, tb_type, tb_sch_params)
 
-            print('Measurement %s in state %s, configuring testbench %s' % (self.meas_name, cur_state, tb_name))
-            self.setup_testbench(cur_state, tb, tb_specs)
-            tb.set_simulation_environments(self.env_list)
-            for cell_name, view_name in self.sim_view_list:
-                tb.set_simulation_view(self.impl_lib, cell_name, view_name)
-            tb.update_testbench()
+                print('Measurement %s in state %s, configuring testbench %s' % (self.meas_name, cur_state, tb_name))
+                self.setup_testbench(cur_state, tb, tb_specs)
+                tb.set_simulation_environments(self.env_list)
+                for cell_name, view_name in self.sim_view_list:
+                    tb.set_simulation_view(self.impl_lib, cell_name, view_name)
+                tb.update_testbench()
 
-            # run simulation and save raw result
-            print('Measurement %s in state %s, simulating %s' % (self.meas_name, cur_state, tb_name))
-            save_dir = await tb.async_run_simulation(sim_tag=cur_state)
-            print('Measurement %s in state %s, finish simulating %s' % (self.meas_name, cur_state, tb_name))
-            cur_results = load_sim_results(save_dir)
-            save_sim_results(cur_results, os.path.join(self.data_dir, '%s.hdf5' % cur_state))
+                # run simulation and save raw result
+                print('Measurement %s in state %s, simulating %s' % (self.meas_name, cur_state, tb_name))
+                save_dir = await tb.async_run_simulation(sim_tag=cur_state)
+                print('Measurement %s in state %s, finish simulating %s' % (self.meas_name, cur_state, tb_name))
+                cur_results = load_sim_results(save_dir)
+                save_sim_results(cur_results, raw_data_fname)
 
             # process and save simulation data
             print('Measurement %s in state %s, processing data from %s' % (self.meas_name, cur_state, tb_name))
@@ -390,8 +397,8 @@ class DesignManager(object):
         if not rcx_passed:
             raise ValueError('RCX failed for %s.  Log file: %s' % (dsn_name, rcx_log))
 
-    async def verify_design(self, lib_name, dsn_name):
-        # type: (str, str) -> None
+    async def verify_design(self, lib_name, dsn_name, load_from_file=False):
+        # type: (str, str, bool) -> None
         """Run all measurements on the given design.
 
         Parameters
@@ -400,6 +407,8 @@ class DesignManager(object):
             library name.
         dsn_name : str
             design cell name.
+        load_from_file : bool
+            If True, then load existing simulation data instead of running actual simulation.
         """
         meas_list = self.specs['measurements']
         summary_fname = self.specs['summary_fname']
@@ -428,7 +437,7 @@ class DesignManager(object):
             meas_manager = meas_cls(data_dir, meas_name, lib_name, meas_specs,
                                     wrapper_lookup, [(dsn_name, view_name)], env_list)
             print('Performing measurement %s on %s' % (meas_name, dsn_name))
-            meas_results = await meas_manager.async_measure_performance(self.prj)
+            meas_results = await meas_manager.async_measure_performance(self.prj, load_from_file=load_from_file)
             print('Measurement %s finished on %s' % (meas_name, dsn_name))
 
             with open_file(os.path.join(root_dir, out_fname), 'w') as f:
@@ -438,16 +447,28 @@ class DesignManager(object):
         with open_file(os.path.join(root_dir, summary_fname), 'w') as f:
             yaml.dump(result_summary, f)
 
-    async def main_task(self, lib_name, dsn_name, rcx_params, extract=True, measure=True):
-        # type: (str, str, Optional[Dict[str, Any]], bool, bool) -> None
+    async def main_task(self, lib_name, dsn_name, rcx_params, extract=True, measure=True, load_from_file=False):
+        # type: (str, str, Optional[Dict[str, Any]], bool, bool, bool) -> None
         """The main coroutine."""
         if extract:
             await self.extract_design(lib_name, dsn_name, rcx_params)
         if measure:
-            await self.verify_design(lib_name, dsn_name)
+            await self.verify_design(lib_name, dsn_name, load_from_file=load_from_file)
 
-    def characterize_designs(self, generate=True, measure=True):
-        # type: (bool, bool) -> None
+    def characterize_designs(self, generate=True, measure=True, load_from_file=False):
+        # type: (bool, bool, bool) -> None
+        """Sweep all designs and characterize them.
+
+        Parameters
+        ----------
+        generate : bool
+            If True, create schematic/layout and run LVS/RCX.
+        measure : bool
+            If True, run all measurements.
+        load_from_file : bool
+            If True, measurements will load existing simulation data
+            instead of running simulations.
+        """
         if generate:
             extract = self.specs['view_name'] != 'schematic'
             self.create_designs()
@@ -460,7 +481,8 @@ class DesignManager(object):
         dsn_name_list = [self.get_instance_name(dsn_basename, combo_list)
                          for combo_list in self.get_combinations_iter()]
 
-        coro_list = [self.main_task(impl_lib, dsn_name, rcx_params, extract=extract, measure=measure)
+        coro_list = [self.main_task(impl_lib, dsn_name, rcx_params, extract=extract,
+                                    measure=measure, load_from_file=load_from_file)
                      for dsn_name in dsn_name_list]
 
         results = batch_async_task(coro_list)
