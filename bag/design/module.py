@@ -813,25 +813,21 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
         define_vdd : bool
             True to include a supply voltage source connected to VDD/VSS, with voltage value 'vdd'.
         """
-        if define_vdd:
+        if define_vdd and 'SUP' not in vbias_dict:
             vbias_dict = vbias_dict.copy()
-            # make sure VDD is always included
-            name = 'SUP'
-            counter = 1
-            while name in vbias_dict:
-                name = 'SUP%d' % counter
-                counter += 1
-
-            vbias_dict[name] = ['VDD', 'VSS', 'vdd']
+            vbias_dict['SUP'] = ['VDD', 'VSS', 'vdd']
 
         for bias_dict, name_template, param_name, inst_name in \
                 ((vbias_dict, 'V%s', 'vdc', vinst_name), (ibias_dict, 'I%s', 'idc', iinst_name)):
             if bias_dict:
-                name_list, term_list, val_list = [], [], []
+                name_list, term_list, val_list, param_dict_list = [], [], [], []
                 for name in sorted(bias_dict.keys()):
-                    pname, nname, bias_val = bias_dict[name]
+                    value_tuple = bias_dict[name]
+                    pname, nname, bias_val = value_tuple[:3]
+                    param_dict = value_tuple[3] if len(value_tuple) > 3 else None
                     term_list.append(dict(PLUS=pname, MINUS=nname))
                     name_list.append(name_template % name)
+                    param_dict_list.append(param_dict)
                     if isinstance(bias_val, str):
                         val_list.append(bias_val)
                     elif isinstance(bias_val, int) or isinstance(bias_val, float):
@@ -840,8 +836,18 @@ class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
                         raise ValueError('value %s of type %s not supported' % (bias_val, type(bias_val)))
 
                 self.array_instance(inst_name, name_list, term_list=term_list)
-                for inst, val in zip(self.instances[inst_name], val_list):
+                for inst, val, param_dict in zip(self.instances[inst_name], val_list, param_dict_list):
                     inst.parameters[param_name] = val
+                    if param_dict is not None:
+                        for k, v in param_dict.items():
+                            if isinstance(v, str):
+                                pass
+                            elif isinstance(v, int) or isinstance(v, float):
+                                v = float_to_si_string(v)
+                            else:
+                                raise ValueError('value %s of type %s not supported' % (v, type(v)))
+
+                            inst.parameters[k] = v
             else:
                 self.delete_instance(inst_name)
 
