@@ -429,7 +429,7 @@ class DesignManager(object):
             meas_cls_name = meas_specs['meas_class']
             out_fname = meas_specs['out_fname']
             meas_name = self.get_measurement_name(dsn_name, meas_type)
-            data_dir = os.path.join(root_dir, meas_name)
+            data_dir = self.get_measurement_directory(dsn_name, meas_type)
 
             lay_module = importlib.import_module(meas_package)
             meas_cls = getattr(lay_module, meas_cls_name)
@@ -475,10 +475,9 @@ class DesignManager(object):
         else:
             extract = False
 
-        dsn_basename = self.specs['dsn_basename']
         rcx_params = self.specs.get('rcx_params', None)
         impl_lib = self.specs['impl_lib']
-        dsn_name_list = [self.get_instance_name(dsn_basename, combo_list)
+        dsn_name_list = [self.get_design_name(combo_list)
                          for combo_list in self.get_combinations_iter()]
 
         coro_list = [self.main_task(impl_lib, dsn_name, rcx_params, extract=extract,
@@ -517,14 +516,12 @@ class DesignManager(object):
         if self.prj is None:
             raise ValueError('BagProject instance is not given.')
 
-        dsn_basename = self.specs['dsn_basename']
-
         temp_db = self.make_tdb()
 
         # make layouts
         dsn_name_list, lay_params_list, combo_list_list = [], [], []
         for combo_list in self.get_combinations_iter():
-            dsn_name = self.get_instance_name(dsn_basename, combo_list)
+            dsn_name = self.get_design_name(combo_list)
             lay_params = self.get_layout_params(combo_list)
             dsn_name_list.append(dsn_name)
             lay_params_list.append(lay_params)
@@ -565,6 +562,21 @@ class DesignManager(object):
 
         swp_par_dict = self.specs['sweep_params']
         return itertools.product(*(swp_par_dict[var] for var in self.swp_var_list))
+
+    def get_dsn_name_iter(self):
+        # type: () -> Iterable[str]
+        """Returns an iterator over design names.
+
+        Returns
+        -------
+        dsn_name_iter : Iterable[str]
+            an iterator of design names.
+        """
+        return (self.get_design_name(combo_list) for combo_list in self.get_combinations_iter())
+
+    def get_measurement_directory(self, dsn_name, meas_type):
+        meas_name = self.get_measurement_name(dsn_name, meas_type)
+        return os.path.join(self.specs['root_dir'], dsn_name, meas_name)
 
     def make_tdb(self):
         # type: () -> TemplateDB
@@ -646,9 +658,11 @@ class DesignManager(object):
         temp_db.batch_layout(self.prj, temp_list, cell_name_list)
         return sch_params_list
 
-    def get_instance_name(self, name_base, combo_list):
-        # type: (str, Sequence[Any, ...]) -> str
+    def get_design_name(self, combo_list):
+        # type: (Sequence[Any, ...]) -> str
         """Generate cell names based on sweep parameter values."""
+
+        name_base = self.specs['dsn_basename']
         suffix = ''
         for var, val in zip(self.swp_var_list, combo_list):
             if isinstance(val, str):
