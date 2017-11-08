@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from ..concurrent.core import FlowInfo, ProcInfo
 
 
-class Checker(metaclass=abc.ABCMeta, object):
+class Checker(object, metaclass=abc.ABCMeta):
     """A class that handles LVS/RCX.
 
     Parameters
@@ -169,7 +169,7 @@ class Checker(metaclass=abc.ABCMeta, object):
         return ''
 
 
-class SubProcessChecker(metaclass=abc.ABCMeta, Checker):
+class SubProcessChecker(Checker, metaclass=abc.ABCMeta):
     """An implementation of :class:`Checker` using :class:`SubProcessManager`.
 
     Parameters

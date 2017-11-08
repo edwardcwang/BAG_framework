@@ -22,12 +22,6 @@
 #
 ########################################################################################################################
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-from future.utils import with_metaclass
-
 import abc
 import importlib
 import itertools
@@ -45,7 +39,7 @@ if TYPE_CHECKING:
     from bag.core import BagProject, Testbench
 
 
-class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
+class MeasurementManager(object, metaclass=abc.ABCMeta):
     """A class that handles circuit performance measurement.
 
     This class handles all the steps needed to measure a specific performance

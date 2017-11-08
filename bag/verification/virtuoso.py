@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from .base import ProcInfo
 
 
-class VirtuosoChecker(metaclass=abc.ABCMeta, SubProcessChecker):
+class VirtuosoChecker(SubProcessChecker, metaclass=abc.ABCMeta):
     """the base Checker class for Virtuoso.
 
     This class implement layout/schematic export procedures.
