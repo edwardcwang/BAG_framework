@@ -36,7 +36,7 @@ from ..io import make_temp_dir
 from ..concurrent.core import SubProcessManager
 
 
-class SimAccess(metaclass=abc.ABCMeta, object):
+class SimAccess(object, metaclass=abc.ABCMeta):
     """A class that interacts with a simulator.
 
     Parameters
@@ -144,7 +144,7 @@ class SimAccess(metaclass=abc.ABCMeta, object):
 ProcInfo = Tuple[Union[str, Sequence[str]], str, Optional[Dict[str, str]], Optional[str], str]
 
 
-class SimProcessManager(metaclass=abc.ABCMeta, SimAccess):
+class SimProcessManager(SimAccess, metaclass=abc.ABCMeta):
     """An implementation of :class:`SimAccess` using :class:`SubProcessManager`.
 
     Parameters
