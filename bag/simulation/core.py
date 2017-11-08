@@ -67,18 +67,29 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
         the measurement specification dictionary.
     wrapper_lookup : Dict[str, str]
         the DUT wrapper cell name lookup table.
+    sim_view_list : Sequence[Tuple[str, str]]
+        simulation view list
     """
-    def __init__(self, data_dir, meas_name, impl_lib, specs, wrapper_lookup):
-        # type: (str, str, str, Dict[str, Any], Dict[str, str]) -> None
+    def __init__(self, data_dir, meas_name, impl_lib, specs, wrapper_lookup, sim_view_list):
+        # type: (str, str, str, Dict[str, Any], Dict[str, str], Sequence[Tuple[str, str]]) -> None
         self.data_dir = os.path.abspath(data_dir)
         self.impl_lib = impl_lib
         self.meas_name = meas_name
         self.specs = specs
         self.wrapper_lookup = wrapper_lookup
+        self.sim_view_list = sim_view_list
+
+        os.makedirs(self.data_dir, exist_ok=True)
+
+    @abc.abstractmethod
+    def get_initial_state(self):
+        # type: () -> str
+        """Returns the initial FSM state."""
+        return ''
 
     @abc.abstractmethod
     def get_testbench_info(self, state, prev_output):
-        # type: (str, Optional[Dict[str, Any]]) -> Tuple[str, str, Optional[Dict[str, Any]]]
+        # type: (str, Optional[Dict[str, Any]]) -> Tuple[str, str, Dict[str, Any], Optional[Dict[str, Any]]]
         """Get information about the next testbench.
 
         Parameters
@@ -95,18 +106,21 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
             collision with testbench for other designs.
         tb_type : str
             the next testbench type.
+        tb_specs : Dict[str, Any]
+            the testbench specs.
         tb_params : Optional[Dict[str, Any]]
             the next testbench schematic parameters.  If we are reusing an existing
             testbench, this should be None.
         """
-        return '', '', None
+        return '', '', {}, None
 
     @abc.abstractmethod
-    def setup_testbench(self, state, tb):
-        # type: (str, Testbench) -> None
+    def setup_testbench(self, state, tb, tb_specs):
+        # type: (str, Testbench, Dict[str, Any]) -> None
         """Configure the simulation state of the given testbench.
 
-        No need to call update_testbench(); it is called for you.
+        No need to call update_testbench(), set_simulation_environments(), and
+        set_simulation_view().  These are called for you.
 
         Parameters
         ----------
@@ -114,12 +128,14 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
             the current FSM state.
         tb : Testbench
             the simulation Testbench instance.
+        tb_specs : Dict[str, Any]
+            the testbench specs.
         """
         pass
 
     @abc.abstractmethod
-    def process_output(self, state, data):
-        # type: (str, Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]
+    def process_output(self, state, data, tb_specs):
+        # type: (str, Dict[str, Any], Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]
         """Process simulation output data.
 
         Parameters
@@ -128,6 +144,8 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
             the current FSM state
         data : Dict[str, Any]
             simulation data dictionary.
+        tb_specs : Dict[str, Any]
+            the testbench specs.
 
         Returns
         -------
@@ -139,6 +157,11 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
             a dictionary containing post-processed data.
         """
         return False, '', {}
+
+    def get_testbench_name(self, tb_type):
+        # type: (str) -> str
+        """Returns a default testbench name given testbench type."""
+        return '%s_TB_%s' % (self.meas_name, tb_type)
 
     async def async_measure_performance(self, prj):
         # type: (BagProject) -> Dict[str, Any]
@@ -159,33 +182,41 @@ class MeasurementManager(with_metaclass(abc.ABCMeta, object)):
         output : Dict[str, Any]
             the last dictionary returned by process_output().
         """
-        cur_state = 'init'
+        cur_state = self.get_initial_state()
         prev_output = None
         done = False
+        env_list = self.specs['env_list']
 
         while not done:
             # create and setup testbench
-            tb_name, tb_type, tb_sch_params = self.get_testbench_info(cur_state, prev_output)
+            tb_name, tb_type, tb_specs, tb_sch_params = self.get_testbench_info(cur_state, prev_output)
             if tb_sch_params is None:
                 tb = prj.load_testbench(self.impl_lib, tb_name)
             else:
                 tb = self._create_tb_schematic(prj, tb_name, tb_type, tb_sch_params)
-            self.setup_testbench(cur_state, tb)
+            self.setup_testbench(cur_state, tb, tb_specs)
+            tb.set_simulation_environments(env_list)
+            for cell_name, view_name in self.sim_view_list:
+                tb.set_simulation_view(self.impl_lib, cell_name, view_name)
             tb.update_testbench()
 
             # run simulation and save raw result
             save_dir = await tb.async_run_simulation(sim_tag=cur_state)
             cur_results = load_sim_results(save_dir)
-            root_dir = os.path.join(self.data_dir, tb_name)
-            os.makedirs(root_dir, exist_ok=True)
-            save_sim_results(cur_results, os.path.join(root_dir, '%s.hdf5' % cur_state))
+            save_sim_results(cur_results, os.path.join(self.data_dir, '%s.hdf5' % cur_state))
 
             # process and save simulation data
-            done, cur_state, prev_output = self.process_output(cur_state, cur_results)
-            with open_file(os.path.join(root_dir, '%s.yaml' % cur_state), 'w') as f:
+            done, cur_state, prev_output = self.process_output(cur_state, cur_results, tb_specs)
+            with open_file(os.path.join(self.data_dir, '%s.yaml' % cur_state), 'w') as f:
                 yaml.dump(prev_output, f)
 
         return prev_output
+
+    def get_state_output(self, state):
+        # type: (str) -> Dict[str, Any]
+        """Get the post-processed output of the given state."""
+        with open_file(os.path.join(self.data_dir, '%s.yaml' % state), 'r') as f:
+            return yaml.load(f)
 
     def get_default_tb_sch_params(self, tb_type, wrapper_type):
         # type: (str, str) -> Dict[str, Any]
@@ -364,8 +395,9 @@ class DesignManager(object):
         meas_list = self.specs['measurements']
         summary_fname = self.specs['summary_fname']
         root_dir = os.path.join(self.specs['root_dir'], dsn_name)
+        view_name = self.specs['view_name']
         wrapper_list = self.specs['dut_wrappers']
-        wrapper_lookup = {}
+        wrapper_lookup = {'': dsn_name}
         for wrapper_config in wrapper_list:
             wrapper_type = wrapper_config['name']
             wrapper_lookup[wrapper_type] = self.get_wrapper_name(dsn_name, wrapper_type)
@@ -376,7 +408,8 @@ class DesignManager(object):
             out_fname = meas_specs['out_fname']
             meas_name = self.get_measurement_name(dsn_name, meas_type)
             data_dir = os.path.join(root_dir, meas_name)
-            meas_manager = MeasurementManager(data_dir, meas_name, lib_name, meas_specs, wrapper_lookup)
+            meas_manager = MeasurementManager(data_dir, meas_name, lib_name, meas_specs,
+                                              wrapper_lookup, [(dsn_name, view_name)])
             meas_results = await meas_manager.async_measure_performance(self.prj)
 
             with open_file(os.path.join(root_dir, out_fname), 'w') as f:
