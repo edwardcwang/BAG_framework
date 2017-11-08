@@ -187,9 +187,13 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
             # create and setup testbench
             tb_name, tb_type, tb_specs, tb_sch_params = self.get_testbench_info(cur_state, prev_output)
             if tb_sch_params is None:
+                print('Measurement %s in state %s, loading testbench %s' % (self.meas_name, cur_state, tb_name))
                 tb = prj.load_testbench(self.impl_lib, tb_name)
             else:
+                print('Measurement %s in state %s, creating testbench %s' % (self.meas_name, cur_state, tb_name))
                 tb = self._create_tb_schematic(prj, tb_name, tb_type, tb_sch_params)
+
+            print('Measurement %s in state %s, configuring testbench %s' % (self.meas_name, cur_state, tb_name))
             self.setup_testbench(cur_state, tb, tb_specs)
             tb.set_simulation_environments(self.env_list)
             for cell_name, view_name in self.sim_view_list:
@@ -197,14 +201,19 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
             tb.update_testbench()
 
             # run simulation and save raw result
+            print('Measurement %s in state %s, simulating %s' % (self.meas_name, cur_state, tb_name))
             save_dir = await tb.async_run_simulation(sim_tag=cur_state)
+            print('Measurement %s in state %s, finish simulating %s' % (self.meas_name, cur_state, tb_name))
             cur_results = load_sim_results(save_dir)
             save_sim_results(cur_results, os.path.join(self.data_dir, '%s.hdf5' % cur_state))
 
             # process and save simulation data
-            done, cur_state, prev_output = self.process_output(cur_state, cur_results, tb_specs)
+            print('Measurement %s in state %s, processing data from %s' % (self.meas_name, cur_state, tb_name))
+            done, next_state, prev_output = self.process_output(cur_state, cur_results, tb_specs)
             with open_file(os.path.join(self.data_dir, '%s.yaml' % cur_state), 'w') as f:
                 yaml.dump(prev_output, f)
+
+            cur_state = next_state
 
         return prev_output
 
@@ -271,7 +280,7 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
         tb_sch.design(**tb_sch_params)
         tb_sch.implement_design(self.impl_lib, top_cell_name=tb_name)
 
-        return prj.configure_testbench(tb_lib, tb_cell)
+        return prj.configure_testbench(self.impl_lib, tb_name)
 
 
 class DesignManager(object):
@@ -369,11 +378,15 @@ class DesignManager(object):
         rcx_params : Optional[Dict[str, Any]]
             extraction parameters dictionary.
         """
+        print('Running LVS on %s' % dsn_name)
         lvs_passed, lvs_log = await self.prj.async_run_lvs(lib_name, dsn_name)
+        print('LVS passed on %s' % dsn_name)
         if not lvs_passed:
             raise ValueError('LVS failed for %s.  Log file: %s' % (dsn_name, lvs_log))
 
+        print('Running RCX on %s' % dsn_name)
         rcx_passed, rcx_log = await self.prj.async_run_rcx(lib_name, dsn_name, rcx_params=rcx_params)
+        print('RCX passed on %s' % dsn_name)
         if not rcx_passed:
             raise ValueError('RCX failed for %s.  Log file: %s' % (dsn_name, rcx_log))
 
@@ -414,7 +427,9 @@ class DesignManager(object):
 
             meas_manager = meas_cls(data_dir, meas_name, lib_name, meas_specs,
                                     wrapper_lookup, [(dsn_name, view_name)], env_list)
+            print('Performing measurement %s on %s' % (meas_name, dsn_name))
             meas_results = await meas_manager.async_measure_performance(self.prj)
+            print('Measurement %s finished on %s' % (meas_name, dsn_name))
 
             with open_file(os.path.join(root_dir, out_fname), 'w') as f:
                 yaml.dump(meas_results, f)
@@ -448,7 +463,11 @@ class DesignManager(object):
         coro_list = [self.main_task(impl_lib, dsn_name, rcx_params, extract=extract, measure=measure)
                      for dsn_name in dsn_name_list]
 
-        batch_async_task(coro_list)
+        results = batch_async_task(coro_list)
+        if results is not None:
+            for val in results:
+                if isinstance(val, Exception):
+                    raise val
 
     def test_layout(self, gen_sch=True):
         # type: (bool) -> None
