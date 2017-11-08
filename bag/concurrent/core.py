@@ -148,6 +148,8 @@ class SubProcessManager(object):
         retcode : Optional[int]
             the return code of the subprocess.
         """
+        if isinstance(args, str):
+            args = [args]
 
         # get log file name, make directory if necessary
         log = os.path.abspath(log)
@@ -157,14 +159,17 @@ class SubProcessManager(object):
 
         async with self._semaphore:
             proc = None
-            try:
-                proc = await asyncio.create_subprocess_exec(args, stdout=log, stderr=subprocess.STDOUT,
-                                                            env=env, cwd=cwd, append=False)
-                retcode = await proc.wait()
-                return retcode
-            except CancelledError as err:
-                await self._kill_subprocess(proc)
-                raise err
+            with open(log, 'w') as logf:
+                logf.write('command: %s\n' % (' '.join(args)))
+                logf.flush()
+                try:
+                    proc = await asyncio.create_subprocess_exec(*args, stdout=logf, stderr=subprocess.STDOUT,
+                                                                env=env, cwd=cwd)
+                    retcode = await proc.wait()
+                    return retcode
+                except CancelledError as err:
+                    await self._kill_subprocess(proc)
+                    raise err
 
     async def async_new_subprocess_flow(self, proc_info_list):
         # type: (Sequence[FlowInfo]) -> Any
@@ -202,6 +207,9 @@ class SubProcessManager(object):
 
         async with self._semaphore:
             for idx, (args, log, env, cwd, vfun) in enumerate(proc_info_list):
+                if isinstance(args, str):
+                    args = [args]
+
                 # get log file name, make directory if necessary
                 log = os.path.abspath(log)
                 if os.path.isdir(log):
@@ -209,13 +217,16 @@ class SubProcessManager(object):
                 os.makedirs(os.path.dirname(log), exist_ok=True)
 
                 proc, retcode = None, None
-                try:
-                    proc = await asyncio.create_subprocess_exec(args, stdout=log, stderr=subprocess.STDOUT,
-                                                                env=env, cwd=cwd, append=False)
-                    retcode = await proc.wait()
-                except CancelledError as err:
-                    await self._kill_subprocess(proc)
-                    raise err
+                with open(log, 'w') as logf:
+                    logf.write('command: %s\n' % (' '.join(args)))
+                    logf.flush()
+                    try:
+                        proc = await asyncio.create_subprocess_exec(*args, stdout=logf, stderr=subprocess.STDOUT,
+                                                                    env=env, cwd=cwd)
+                        retcode = await proc.wait()
+                    except CancelledError as err:
+                        await self._kill_subprocess(proc)
+                        raise err
 
                 fun_output = vfun(retcode, log)
                 if idx == num_proc - 1:

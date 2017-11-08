@@ -149,9 +149,9 @@ class Calibre(VirtuosoChecker):
 
         # add schematic/layout export to flow
         flow_list = []
-        cmd, log, env, cwd = self.setup_export_layout(lib_name, cell_name, lay_view, lay_file, None)
+        cmd, log, env, cwd = self.setup_export_layout(lib_name, cell_name, lay_file, lay_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
-        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_view, sch_file, None)
+        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
 
         lvs_params_actual = self.default_lvs_params.copy()
@@ -191,9 +191,9 @@ class Calibre(VirtuosoChecker):
             log_file = logf.name
 
         flow_list = []
-        cmd, log, env, cwd = self.setup_export_layout(lib_name, cell_name, lay_view, lay_file, None)
+        cmd, log, env, cwd = self.setup_export_layout(lib_name, cell_name, lay_file, lay_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
-        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_view, sch_file, None)
+        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
 
         if self.rcx_mode == 'pex':
