@@ -784,7 +784,7 @@ procedure( update_symbol_pin(lib_name cell_name pin_map new_pins sympin simulato
                 ddReleaseObj(cell_obj)
                 dbReopen(cvid, "r")
                 dbClose(cvid)
-                error("Cannot find CDF parameters for %s__%s." lib_name cell_name)
+                error("Cannot find CDF parameters for %s__%s.  Delete generated cell and try again" lib_name cell_name)
             )
             foreach( simu simulators
                 get(bc->simInfo simu)->termOrder = new_port_order
