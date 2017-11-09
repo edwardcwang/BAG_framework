@@ -219,8 +219,8 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
         return tb_name, tb_type, tb_specs, tb_params
 
     @abc.abstractmethod
-    def process_output(self, state, data, tb_specs):
-        # type: (str, Dict[str, Any], Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]
+    def process_output(self, state, data, tb_manager):
+        # type: (str, Dict[str, Any], TestbenchManager) -> Tuple[bool, str, Dict[str, Any]]
         """Process simulation output data.
 
         Parameters
@@ -229,8 +229,8 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
             the current FSM state
         data : Dict[str, Any]
             simulation data dictionary.
-        tb_specs : Dict[str, Any]
-            the testbench specs.
+        tb_manager : TestbenchManager
+            the testbench manager object.
 
         Returns
         -------
@@ -276,25 +276,25 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
         while not done:
             # create and setup testbench
             tb_name, tb_type, tb_specs, tb_sch_params = self.get_testbench_info(cur_state, prev_output)
+
+            tb_package = tb_specs['tb_package']
+            tb_cls_name = tb_specs['tb_class']
+            tb_module = importlib.import_module(tb_package)
+            tb_cls = getattr(tb_module, tb_cls_name)
             raw_data_fname = os.path.join(self.data_dir, '%s.hdf5' % cur_state)
+
+            tb_manager = tb_cls(raw_data_fname, tb_name, self.impl_lib, tb_specs,
+                                self.sim_view_list, self.env_list)
+
             if load_from_file:
                 print('Measurement %s in state %s, load sim data from file.' % (self.meas_name, cur_state))
                 cur_results = load_sim_file(raw_data_fname)
             else:
-
-                tb_package = tb_specs['tb_package']
-                tb_cls_name = tb_specs['tb_class']
-                tb_module = importlib.import_module(tb_package)
-                tb_cls = getattr(tb_module, tb_cls_name)
-
-                tb_manager = tb_cls(raw_data_fname, tb_name, self.impl_lib, tb_specs,
-                                    self.sim_view_list, self.env_list)
-
                 cur_results = await tb_manager.setup_and_simulate(prj, tb_sch_params)
 
             # process and save simulation data
             print('Measurement %s in state %s, processing data from %s' % (self.meas_name, cur_state, tb_name))
-            done, next_state, prev_output = self.process_output(cur_state, cur_results, tb_specs)
+            done, next_state, prev_output = self.process_output(cur_state, cur_results, tb_manager)
             with open_file(os.path.join(self.data_dir, '%s.yaml' % cur_state), 'w') as f:
                 yaml.dump(prev_output, f)
 
