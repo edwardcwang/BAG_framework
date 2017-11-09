@@ -39,6 +39,106 @@ if TYPE_CHECKING:
     from bag.core import BagProject, Testbench
 
 
+class TestbenchManager(object, metaclass=abc.ABCMeta):
+    """A class that creates and setups up a testbench for simulation, then save the result.
+
+    This class is used by MeasurementManager to run simulations.
+
+    Parameters
+    ----------
+    data_fname : str
+        Simulation data file name.
+    tb_name : str
+        testbench name.
+    impl_lib : str
+        implementation library name.
+    specs : Dict[str, Any]
+        testbench specs.
+    sim_view_list : Sequence[Tuple[str, str]]
+        simulation view list
+    env_list : Sequence[str]
+        simulation environments list.
+    """
+    def __init__(self,
+                 data_fname,  # type: str
+                 tb_name,  # type: str
+                 impl_lib,  # type: str
+                 specs,  # type: Dict[str, Any]
+                 sim_view_list,  # type: Sequence[Tuple[str, str]]
+                 env_list,  # type: Sequence[str]
+                 ):
+        # type: (...) -> None
+        self.data_fname = os.path.abspath(data_fname)
+        self.tb_name = tb_name
+        self.impl_lib = impl_lib
+        self.specs = specs
+        self.sim_view_list = sim_view_list
+        self.env_list = env_list
+
+    @abc.abstractmethod
+    def setup_testbench(self, tb):
+        # type: (Testbench) -> None
+        """Configure the simulation state of the given testbench.
+
+        No need to call update_testbench(), set_simulation_environments(), and
+        set_simulation_view().  These are called for you.
+
+        Parameters
+        ----------
+        tb : Testbench
+            the simulation Testbench instance.
+        """
+        pass
+
+    async def setup_and_simulate(self, prj, sch_params):
+        # type: (BagProject, Dict[str, Any]) -> Dict[str, Any]
+        if sch_params is None:
+            print('loading testbench %s' % self.tb_name)
+            tb = prj.load_testbench(self.impl_lib, self.tb_name)
+        else:
+            print('Creating testbench %s' % self.tb_name)
+            tb = self._create_tb_schematic(prj, sch_params)
+
+        print('Configuring testbench %s' % self.tb_name)
+        self.setup_testbench(tb)
+        tb.set_simulation_environments(self.env_list)
+        for cell_name, view_name in self.sim_view_list:
+            tb.set_simulation_view(self.impl_lib, cell_name, view_name)
+        tb.update_testbench()
+
+        # run simulation and save/return raw result
+        print('Simulating %s' % self.tb_name)
+        save_dir = await tb.async_run_simulation()
+        print('Finished simulating %s' % self.tb_name)
+        results = load_sim_results(save_dir)
+        save_sim_results(results, self.data_fname)
+        return results
+
+    def _create_tb_schematic(self, prj, sch_params):
+        # type: (BagProject, Dict[str, Any]) -> Testbench
+        """Helper method to create a testbench schematic.
+
+        Parmaeters
+        ----------
+        prj : BagProject
+            the BagProject instance.
+        sch_params : Dict[str, Any]
+            the testbench schematic parameters dictionary.
+
+        Returns
+        -------
+        tb : Testbench
+            the simulation Testbench instance.
+        """
+        tb_lib = self.specs['tb_lib']
+        tb_cell = self.specs['tb_cell']
+        tb_sch = prj.create_design_module(tb_lib, tb_cell)
+        tb_sch.design(**sch_params)
+        tb_sch.implement_design(self.impl_lib, top_cell_name=self.tb_name)
+
+        return prj.configure_testbench(self.impl_lib, self.tb_name)
+
+
 class MeasurementManager(object, metaclass=abc.ABCMeta):
     """A class that handles circuit performance measurement.
 
@@ -84,10 +184,12 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
         """Returns the initial FSM state."""
         return ''
 
-    @abc.abstractmethod
+    # noinspection PyUnusedLocal
     def get_testbench_info(self, state, prev_output):
         # type: (str, Optional[Dict[str, Any]]) -> Tuple[str, str, Dict[str, Any], Optional[Dict[str, Any]]]
         """Get information about the next testbench.
+
+        Override this method to perform more complex operations.
 
         Parameters
         ----------
@@ -103,32 +205,18 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
             collision with testbench for other designs.
         tb_type : str
             the next testbench type.
-        tb_specs : Dict[str, Any]
-            the testbench specs.
+        tb_specs : str
+            the testbench specification dictionary.
         tb_params : Optional[Dict[str, Any]]
             the next testbench schematic parameters.  If we are reusing an existing
             testbench, this should be None.
         """
-        return '', '', {}, None
+        tb_type = state
+        tb_name = self.get_testbench_name(tb_type)
+        tb_specs = self.get_testbench_specs(tb_type).copy()
+        tb_params = self.get_default_tb_sch_params(tb_type)
 
-    @abc.abstractmethod
-    def setup_testbench(self, state, tb, tb_specs):
-        # type: (str, Testbench, Dict[str, Any]) -> None
-        """Configure the simulation state of the given testbench.
-
-        No need to call update_testbench(), set_simulation_environments(), and
-        set_simulation_view().  These are called for you.
-
-        Parameters
-        ----------
-        state : str
-            the current FSM state.
-        tb : Testbench
-            the simulation Testbench instance.
-        tb_specs : Dict[str, Any]
-            the testbench specs.
-        """
-        pass
+        return tb_name, tb_type, tb_specs, tb_params
 
     @abc.abstractmethod
     def process_output(self, state, data, tb_specs):
@@ -193,26 +281,16 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
                 print('Measurement %s in state %s, load sim data from file.' % (self.meas_name, cur_state))
                 cur_results = load_sim_file(raw_data_fname)
             else:
-                if tb_sch_params is None:
-                    print('Measurement %s in state %s, loading testbench %s' % (self.meas_name, cur_state, tb_name))
-                    tb = prj.load_testbench(self.impl_lib, tb_name)
-                else:
-                    print('Measurement %s in state %s, creating testbench %s' % (self.meas_name, cur_state, tb_name))
-                    tb = self._create_tb_schematic(prj, tb_name, tb_type, tb_sch_params)
 
-                print('Measurement %s in state %s, configuring testbench %s' % (self.meas_name, cur_state, tb_name))
-                self.setup_testbench(cur_state, tb, tb_specs)
-                tb.set_simulation_environments(self.env_list)
-                for cell_name, view_name in self.sim_view_list:
-                    tb.set_simulation_view(self.impl_lib, cell_name, view_name)
-                tb.update_testbench()
+                tb_package = tb_specs['tb_package']
+                tb_cls_name = tb_specs['tb_class']
+                tb_module = importlib.import_module(tb_package)
+                tb_cls = getattr(tb_module, tb_cls_name)
 
-                # run simulation and save raw result
-                print('Measurement %s in state %s, simulating %s' % (self.meas_name, cur_state, tb_name))
-                save_dir = await tb.async_run_simulation(sim_tag=cur_state)
-                print('Measurement %s in state %s, finish simulating %s' % (self.meas_name, cur_state, tb_name))
-                cur_results = load_sim_results(save_dir)
-                save_sim_results(cur_results, raw_data_fname)
+                tb_manager = tb_cls(raw_data_fname, tb_name, self.impl_lib, tb_specs,
+                                    self.sim_view_list, self.env_list)
+
+                cur_results = await tb_manager.setup_and_simulate(prj, tb_sch_params)
 
             # process and save simulation data
             print('Measurement %s in state %s, processing data from %s' % (self.meas_name, cur_state, tb_name))
@@ -230,8 +308,13 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
         with open_file(os.path.join(self.data_dir, '%s.yaml' % state), 'r') as f:
             return yaml.load(f)
 
-    def get_default_tb_sch_params(self, tb_type, wrapper_type):
-        # type: (str, str) -> Dict[str, Any]
+    def get_testbench_specs(self, tb_type):
+        # type: (str) -> Dict[str, Any]
+        """Helper method to get testbench specifications."""
+        return self.specs['testbenches'][tb_type]
+
+    def get_default_tb_sch_params(self, tb_type):
+        # type: (str) -> Dict[str, Any]
         """Helper method to return a default testbench schematic parameters dictionary.
 
         This method loads default values from specification file, the fill in dut_lib
@@ -241,15 +324,15 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
         ----------
         tb_type : str
             the testbench type.
-        wrapper_type : str
-            the DUT wrapper type.
 
         Returns
         -------
         sch_params : Dict[str, Any]
             the default schematic parameters dictionary.
         """
-        tb_specs = self.specs['testbenches'][tb_type]
+        tb_specs = self.get_testbench_specs(tb_type)
+        wrapper_type = tb_specs['wrapper_type']
+
         if 'sch_params' in tb_specs:
             tb_params = tb_specs['sch_params'].copy()
         else:
@@ -258,36 +341,6 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
         tb_params['dut_lib'] = self.impl_lib
         tb_params['dut_cell'] = self.wrapper_lookup[wrapper_type]
         return tb_params
-
-    def _create_tb_schematic(self, prj, tb_name, tb_type, tb_sch_params):
-        # type: (BagProject, str, str, Dict[str, Any]) -> Testbench
-        """Helper method to create a testbench schematic.
-
-        Parmaeters
-        ----------
-        prj : BagProject
-            the BagProject instance.
-        tb_name : str
-            the testbench cell name.
-        tb_type : str
-            the testbench type.
-        tb_sch_params : Dict[str, Any]
-            the testbench schematic parameters dictionary.
-
-        Returns
-        -------
-        tb : Testbench
-            the simulation Testbench instance.
-        """
-        tb_specs = self.specs['testbenches'][tb_type]
-        tb_lib = tb_specs['tb_lib']
-        tb_cell = tb_specs['tb_cell']
-
-        tb_sch = prj.create_design_module(tb_lib, tb_cell)
-        tb_sch.design(**tb_sch_params)
-        tb_sch.implement_design(self.impl_lib, top_cell_name=tb_name)
-
-        return prj.configure_testbench(self.impl_lib, tb_name)
 
 
 class DesignManager(object):
@@ -431,8 +484,8 @@ class DesignManager(object):
             meas_name = self.get_measurement_name(dsn_name, meas_type)
             data_dir = self.get_measurement_directory(dsn_name, meas_type)
 
-            lay_module = importlib.import_module(meas_package)
-            meas_cls = getattr(lay_module, meas_cls_name)
+            meas_module = importlib.import_module(meas_package)
+            meas_cls = getattr(meas_module, meas_cls_name)
 
             meas_manager = meas_cls(data_dir, meas_name, lib_name, meas_specs,
                                     wrapper_lookup, [(dsn_name, view_name)], env_list)
