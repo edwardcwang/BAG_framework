@@ -100,8 +100,8 @@ class TestbenchManager(object, metaclass=abc.ABCMeta):
             tb = self._create_tb_schematic(prj, sch_params)
 
         print('Configuring testbench %s' % self.tb_name)
-        self.setup_testbench(tb)
         tb.set_simulation_environments(self.env_list)
+        self.setup_testbench(tb)
         for cell_name, view_name in self.sim_view_list:
             tb.set_simulation_view(self.impl_lib, cell_name, view_name)
         tb.update_testbench()
