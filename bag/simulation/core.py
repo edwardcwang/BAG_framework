@@ -36,6 +36,7 @@ from bag.layout import RoutingGrid, TemplateDB
 from bag.concurrent.core import batch_async_task
 
 if TYPE_CHECKING:
+    import numpy as np
     from bag.core import BagProject, Testbench
 
 
@@ -113,6 +114,40 @@ class TestbenchManager(object, metaclass=abc.ABCMeta):
         results = load_sim_results(save_dir)
         save_sim_results(results, self.data_fname)
         return results
+
+    @classmethod
+    def record_array(cls, output_dict, data_dict, arr, arr_name, sweep_params):
+        # type: (Dict[str, Any], Dict[str, Any], np.ndarray, str, List[str]) -> None
+        """Add the given numpy array into BAG's data structure dictionary.
+
+        This method adds the given numpy array to output_dict, and make sure
+        sweep parameter information are treated properly.
+
+        Parameters
+        ----------
+        output_dict : Dict[str, Any]
+            the output dictionary.
+        data_dict : Dict[str, Any]
+            the raw simulation data dictionary.
+        arr : np.ndarray
+            the numpy array to record.
+        arr_name : str
+            name of the given numpy array.
+        sweep_params : List[str]
+            a list of sweep parameters for thhe given array.
+        """
+        if 'sweep_params' in output_dict:
+            swp_info = output_dict['sweep_params']
+        else:
+            swp_info = {}
+            output_dict['sweep_params'] = swp_info
+
+        # record sweep parameters information
+        for var in sweep_params:
+            if var not in output_dict:
+                output_dict[var] = data_dict[var]
+        swp_info[arr_name] = sweep_params
+        output_dict[arr_name] = arr
 
     def _create_tb_schematic(self, prj, sch_params):
         # type: (BagProject, Dict[str, Any]) -> Testbench
