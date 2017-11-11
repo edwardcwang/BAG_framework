@@ -78,6 +78,13 @@ class BinaryIterator(object):
         self._save_marker = None
         self._save_info = None
 
+    def set_current(self, val):
+        # type: (int) -> None
+        """Set the value of the current marker."""
+        if (val - self._offset) % self._step != 0:
+            raise ValueError('value %d is not multiple of step size.' % val)
+        self._current = (val - self._offset) // self._step
+
     def has_next(self):
         # type: () -> bool
         """returns True if this iterator is not finished yet."""
@@ -274,7 +281,7 @@ def minimize_cost_binary(f, vmin, start=0, stop=None, step=1, save=None, nfev=0)
 
 
 def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
-    # type: (Callable[[int], float], float, int) -> MinCostResult
+    # type: (Callable[[int], float], float, int, int, int) -> MinCostResult
     """Minimize cost given minimum output constraint using golden section/binary search.
 
     Given discrete function f that monotonically increases then monotonically decreases,
@@ -371,3 +378,158 @@ def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
                     fib2, fib1, fib0 = fib1, fib0, cur_idx
                 else:
                     fib2, fib1, fib0 = fib1, fib0, fib1 + fib0
+
+
+def minimize_cost_binary_float(f, vmin, start, stop, tol=1e-8, save=None, nfev=0):
+    # type: (Callable[[float], float], float, float, float, float, float, int) -> MinCostResult
+    """Minimize cost given minimum output constraint using binary search.
+
+    Given discrete function f and an interval, find minimum input x such that f(x) >= vmin using binary search.
+
+    This algorithm only works if f is monotonically increasing, or if f monontonically increases
+    then monontonically decreases, and f(stop) >= vmin.
+
+    Parameters
+    ----------
+    f : Callable[[int], float]
+        a function that takes a single integer and output a scalar value.  Must monotonically
+        increase then monotonically decrease.
+    vmin : float
+        the minimum output value.
+    start : float
+        the input lower bound.
+    stop : float
+        the input upper bound.
+    tol : float
+        output tolerance.
+    save : Optional[float]
+        If not none, this value will be returned if no solution is found.
+    nfev : int
+        number of function calls already made.
+
+    Returns
+    -------
+    result : MinCostResult
+        the MinCostResult named tuple, with attributes:
+
+        x : Optional[float]
+            the minimum x such that f(x) >= vmin.  If no such x exists, this will be None.
+        nfev : int
+            total number of function calls made.
+
+    """
+    bin_iter = FloatBinaryIterator(start, stop, tol=tol)
+    while bin_iter.has_next():
+        x_cur = bin_iter.get_next()
+        v_cur = f(x_cur)
+        nfev += 1
+
+        if v_cur >= vmin:
+            save = x_cur
+            bin_iter.down()
+        else:
+            bin_iter.up()
+    return MinCostResult(x=save, xmax=None, vmax=None, nfev=nfev)
+
+
+def minimize_cost_golden_float(f, vmin, start, stop, tol=1e-8, maxiter=1000):
+    # type: (Callable[[float], float], float, float, float, float, int) -> MinCostResult
+    """Minimize cost given minimum output constraint using golden section/binary search.
+
+    Given discrete function f that monotonically increases then monotonically decreases,
+    find the minimum integer x such that f(x) >= vmin.
+
+    This method uses Fibonacci search to find the upper bound of x.  If the upper bound
+    is found, a binary search is performed in the interval to find the solution.  If
+    vmin is close to the maximum of f, a golden section search is performed to attempt
+    to find x.
+
+    Parameters
+    ----------
+    f : Callable[[int], float]
+        a function that takes a single integer and output a scalar value.  Must monotonically
+        increase then monotonically decrease.
+    vmin : float
+        the minimum output value.
+    start : float
+        the input lower bound.
+    stop : float
+        the input upper bound.
+    tol : float
+        the solution tolerance.
+    maxiter : int
+        maximum number of iterations to perform.
+
+    Returns
+    -------
+    result : MinCostResult
+        the MinCostResult named tuple, with attributes:
+
+        x : Optional[int]
+            the minimum integer such that f(x) >= vmin.  If no such x exists, this will be None.
+        xmax : Optional[int]
+            the value at which f achieves its maximum.  This is set only if x is None
+        vmax : Optional[float]
+            the maximum value of f.  This is set only if x is None.
+        nfev : int
+            total number of function calls made.
+    """
+
+    fa = f(start)
+    if fa >= vmin:
+        # solution found at start
+        return MinCostResult(x=start, xmax=None, vmax=None, nfev=1)
+    fb = f(stop)
+    if fb >= vmin:
+        # found upper bound, use binary search to find answer
+        return minimize_cost_binary_float(f, vmin, start, stop, tol=tol, save=stop, nfev=2)
+
+    # solution is somewhere in middle
+    gr = (5**0.5 + 1) / 2
+    delta = (stop - start) / gr
+    c = stop - delta
+    d = start + delta
+    fc = f(c)
+    if fc >= vmin:
+        # found upper bound, use binary search to find answer
+        return minimize_cost_binary_float(f, vmin, start, c, tol=tol, save=stop, nfev=3)
+    fd = f(d)
+    if fd >= vmin:
+        # found upper bound, use binary search to find answer
+        return minimize_cost_binary_float(f, vmin, start, c, tol=tol, save=stop, nfev=4)
+    if fc > fd:
+        a, b, d = start, d, c
+        c = b - (b - a) / gr
+        fb, fc, fd = fd, None, fc
+    else:
+        a, b, c = c, stop, d
+        d = a + (b - a) / gr
+        fa, fc, fd = fc, fd, None
+
+    nfev = 4
+    while abs(b - a) > tol and nfev < maxiter:
+        if fc is None:
+            fc = f(c)
+        else:
+            fd = f(d)
+        nfev += 1
+        if fc > fd:
+            if fc >= vmin:
+                return minimize_cost_binary_float(f, vmin, a, c, tol=tol, save=stop, nfev=nfev)
+            b, d = d, c
+            c = b - (b - a) / gr
+            fb, fc, fd = fd, None, fc
+        else:
+            if fd >= vmin:
+                return minimize_cost_binary_float(f, vmin, a, d, tol=tol, save=stop, nfev=nfev)
+            a, c = c, d
+            d = a + (b - a) / gr
+            fa, fc, fd = fc, fd, None
+
+    test = (a + b) / 2
+    vmax = f(test)
+    nfev += 1
+    if vmax >= vmin:
+        return MinCostResult(x=test, xmax=test, vmax=vmax, nfev=nfev)
+    else:
+        return MinCostResult(x=None, xmax=test, vmax=vmax, nfev=nfev)
