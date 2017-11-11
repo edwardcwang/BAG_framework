@@ -228,8 +228,11 @@ def save_sim_results(results, fname, compression='gzip'):
     with h5py.File(fname, 'w') as f:
         for name, swp_vars in sweep_info.items():
             # store data
-            data = results[name]
-            dset = f.create_dataset(name, data=data, compression=compression)
+            data = np.asarray(results[name])
+            if not data.shape:
+                dset = f.create_dataset(name, data=data)
+            else:
+                dset = f.create_dataset(name, data=data, compression=compression)
             # h5py workaround: need to explicitly store unicode
             dset.attrs['sweep_params'] = [swp.encode(encoding=bag_encoding, errors=bag_codec_error)
                                           for swp in swp_vars]
