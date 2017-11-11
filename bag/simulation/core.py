@@ -578,6 +578,26 @@ class DesignManager(object):
                 if isinstance(val, Exception):
                     raise val
 
+    def get_result(self, dsn_name):
+        # type: (str) -> Dict[str, Any]
+        """Returns the measurement result summary dictionary.
+
+        Parameters
+        ----------
+        dsn_name : str
+            the design name.
+
+        Returns
+        -------
+        result : Dict[str, Any]
+            the result dictionary.
+        """
+        fname = os.path.join(self.specs['root_dir'], dsn_name, self.specs['summary_fname'])
+        with open_file(fname, 'r') as f:
+            summary = yaml.load(f)
+
+        return summary
+
     def test_layout(self, gen_sch=True):
         # type: (bool) -> None
         """Create a test schematic and layout for debugging purposes"""
