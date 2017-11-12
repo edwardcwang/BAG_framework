@@ -373,7 +373,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(AnalogBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
         tech_params = self.grid.tech_info.tech_params
         self._tech_cls = tech_params['layout']['mos_tech_class']  # type: MOSTech
@@ -1040,7 +1040,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         # based on line-end spacing, find the number of horizontal tracks
         # needed between routing tracks of adjacent blocks.
-        hm_sep = self.grid.get_line_end_space_tracks(hm_layer - 1, hm_layer, 1)
+        vm_le_sp = self.grid.get_line_end_space(hm_layer - 1, 1, unit_mode=True)
         via_ext = self.grid.get_via_extensions(hm_layer - 1, 1, 1, unit_mode=True)[0]
         hm_w = self.grid.get_track_width(hm_layer, 1, unit_mode=True)
         conn_delta = via_ext + hm_w // 2
@@ -1070,9 +1070,9 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     yarr_bot = y_cur
                     yarr_top = y_cur + cur_master.array_box.height_unit
                 tr_next = self.grid.find_next_track(hm_layer, yarr_bot, half_track=True, mode=2, unit_mode=True)
-                tr_tmp = self.grid.find_next_track(hm_layer, yarr_top, half_track=True, mode=-2, unit_mode=True)
-                tr_tmp += 1
-                cur_ntr_test = int(2 * (tr_tmp - tr_next))
+                tr_next_clean = self.grid.find_next_track(hm_layer, yarr_top, half_track=True, mode=-2,
+                                                          unit_mode=True) + 1
+                cur_ntr_test = int(2 * (tr_next_clean - tr_next))
                 if cur_ntr_test % 2 == 1:
                     # if not symmetric, R0 substrate supply track is rounded to bottom, MX substrate supply
                     # track is rounded to top.
@@ -1080,7 +1080,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                         tr_next += 0.5
                 cur_ntr = cur_ntr_test // 2
                 dtr_intv.append((tr_next, tr_next + cur_ntr))
-                gtr_intv.append((tr_tmp, tr_tmp))
+                gtr_intv.append((tr_next_clean, tr_next_clean))
                 cur_top_ntr = cur_ntr
             else:
                 # transistor.  find first unused track.
@@ -1088,58 +1088,67 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                     # drain/source tracks on top.  find bottom drain/source track (take gds_space into account).
                     g_conn_yb, g_conn_yt = cur_master.get_g_conn_y()
                     d_conn_yb, d_conn_yt = cur_master.get_d_conn_y()
+                    g_conn_yb += y_cur
                     g_conn_yt += y_cur
                     d_conn_yb += y_cur
                     d_conn_yt += y_cur
+                    # top gate track
                     tr_g_top = self.grid.coord_to_nearest_track(hm_layer, g_conn_yt - conn_delta, half_track=True,
                                                                 mode=-1, unit_mode=True)
-                    tr_ds_bot = self.grid.coord_to_nearest_track(hm_layer, d_conn_yb + conn_delta, half_track=True,
-                                                                 mode=1, unit_mode=True)
-                    tr_ds_bot = max(tr_ds_bot, tr_g_top + gds_space + 1)
-                    tr_ds_top = tr_ds_bot + cur_nds - 1
-                    tr_ds_top2 = self.grid.coord_to_nearest_track(hm_layer, d_conn_yt - conn_delta, half_track=True,
-                                                                  mode=1, unit_mode=True)
-                    if tr_ds_top2 >= tr_ds_top:
-                        # if we have more intrinsic number of tracks than the number of tracks user specified,
-                        # then mos_conn_layer line-end spacing DRC rule is embedded in extension height constraint,
-                        # and we don't need to account for it here.
-                        # this also opens the possibility to draw very compact layout if the user knows they can
-                        # disable line-end spacing DRC check.
-                        tr_tmp = tr_ds_top + 1
-                    else:
-                        tr_tmp = tr_ds_top + 1 + hm_sep
-                    gtr_intv.append((tr_g_top + 1 - cur_ng, tr_g_top + 1))
+                    # bottom gate track
+                    tr_g_bot = min(self.grid.coord_to_nearest_track(hm_layer, g_conn_yb + conn_delta, half_track=True,
+                                                                    mode=1, unit_mode=True),
+                                   tr_g_top + 1 - cur_ng)
+                    # bottom ds track
+                    tr_ds_bot = max(self.grid.coord_to_nearest_track(hm_layer, d_conn_yb + conn_delta, half_track=True,
+                                                                     mode=1, unit_mode=True),
+                                    tr_g_top + 1 + gds_space)
+                    # top ds track
+                    tr_ds_top = max(self.grid.coord_to_nearest_track(hm_layer, d_conn_yt - conn_delta, half_track=True,
+                                                                     mode=-1, unit_mode=True),
+                                    tr_ds_bot + cur_nds - 1)
+                    # compute lowest DRC clean track upper row can use
+                    tr_ds_top_y = self.grid.track_to_coord(hm_layer, tr_ds_top, unit_mode=True)
+                    tr_next_clean_y = max(tr_ds_top_y + 2 * conn_delta + vm_le_sp,
+                                          d_conn_yt + vm_le_sp + conn_delta)
+                    tr_next_clean = self.grid.coord_to_nearest_track(hm_layer, tr_next_clean_y, half_track=True,
+                                                                     mode=1, unit_mode=True)
+                    gtr_intv.append((tr_g_bot, tr_g_top + 1))
                     dtr_intv.append((tr_ds_bot, tr_ds_top + 1))
-                    cur_top_ntr = cur_nds
+                    cur_top_ntr = tr_ds_top + 1 - tr_ds_bot
                 else:
                     # gate tracks on top
                     g_conn_yb, g_conn_yt = cur_master.get_g_conn_y()
                     d_conn_yb, d_conn_yt = cur_master.get_d_conn_y()
                     g_conn_yt = y_top_cur - g_conn_yt
                     g_conn_yb = y_top_cur - g_conn_yb
+                    d_conn_yt = y_top_cur - d_conn_yt
                     d_conn_yb = y_top_cur - d_conn_yb
+                    # top ds track
                     tr_ds_top = self.grid.coord_to_nearest_track(hm_layer, d_conn_yb - conn_delta, half_track=True,
                                                                  mode=-1, unit_mode=True)
+                    # bottom ds track
+                    tr_ds_bot = min(self.grid.coord_to_nearest_track(hm_layer, d_conn_yt + conn_delta, half_track=True,
+                                                                     mode=1, unit_mode=True),
+                                    tr_ds_top + 1 - cur_nds)
+                    # bot g track
                     tr_g_bot = self.grid.coord_to_nearest_track(hm_layer, g_conn_yt + conn_delta, half_track=True,
                                                                 mode=1, unit_mode=True)
-                    tr_ds_top = min(tr_ds_top, tr_g_bot - 1 - gds_space)
-                    tr_g_top = tr_g_bot + cur_ng - 1
-                    tr_g_top2 = self.grid.coord_to_nearest_track(hm_layer, g_conn_yb - conn_delta, half_track=True,
-                                                                 mode=1, unit_mode=True)
-                    if tr_g_top2 >= tr_g_top:
-                        # if we have more intrinsic number of tracks than the number of tracks user specified,
-                        # then mos_conn_layer line-end spacing DRC rule is embedded in extension height constraint,
-                        # and we don't need to account for it here.
-                        # this also opens the possibility to draw very compact layout if the user knows they can
-                        # disable line-end spacing DRC check.
-                        tr_tmp = tr_g_top + 1
-                    else:
-                        tr_tmp = tr_g_top + 1 + hm_sep
-                    dtr_intv.append((tr_ds_top + 1 - cur_nds, tr_ds_top + 1))
+                    # top g track
+                    tr_g_top = max(self.grid.coord_to_nearest_track(hm_layer, g_conn_yb - conn_delta, half_track=True,
+                                                                    mode=-1, unit_mode=True),
+                                   tr_g_bot + cur_ng - 1)
+                    # compute lowest DRC clean track upper row can use
+                    tr_g_top_y = self.grid.track_to_coord(hm_layer, tr_g_top, unit_mode=True)
+                    tr_next_clean_y = max(tr_g_top_y + 2 * conn_delta + vm_le_sp,
+                                          g_conn_yb + vm_le_sp + conn_delta)
+                    tr_next_clean = self.grid.coord_to_nearest_track(hm_layer, tr_next_clean_y, half_track=True,
+                                                                     mode=1, unit_mode=True)
+                    dtr_intv.append((tr_ds_bot, tr_ds_top + 1))
                     gtr_intv.append((tr_g_bot, tr_g_top + 1))
-                    cur_top_ntr = cur_ng
+                    cur_top_ntr = tr_g_top + 1 - tr_g_bot
 
-            tr_next = tr_tmp
+            tr_next = tr_next_clean
 
             if cur_top_ntr > 0:
                 # step 2.5: find minimum Y coordinate of next block based on track information.
@@ -1237,6 +1246,8 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         Placement strategy: make overall block match mos_pitch and horizontal track pitch, try to
         center everything between the top and bottom substrates.
         """
+        import pprint
+        pprint.pprint(track_spec_list)
         # find total pitch of the analog base.
         dum_layer = self.dum_conn_layer
         mconn_layer = self.mos_conn_layer
