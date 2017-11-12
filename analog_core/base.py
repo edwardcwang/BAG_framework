@@ -1246,8 +1246,6 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         Placement strategy: make overall block match mos_pitch and horizontal track pitch, try to
         center everything between the top and bottom substrates.
         """
-        import pprint
-        pprint.pprint(track_spec_list)
         # find total pitch of the analog base.
         dum_layer = self.dum_conn_layer
         mconn_layer = self.mos_conn_layer
