@@ -677,12 +677,11 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
                 else:
                     sp_combo = [sp]
 
-                mdim_list = [None, None]
                 for spx, spy in sp_combo:
                     # get via array bounding box
                     w_arr = nx * (spx + dim[0]) - spx
                     h_arr = ny * (spy + dim[1]) - spy
-
+                    mdim_list = [None, None]
                     # check if at least one enclosure rule is satisfied for both top and bottom layer
                     for idx, (mdir, tot_enc_list, arr_enc, arr_test) in \
                             enumerate([(bot_dir, encb, arr_encb, arr_testb), (top_dir, enct, arr_enct, arr_testt)]):
@@ -713,7 +712,6 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
 
                         if min_ext_dim is None:
                             # all enclosure rule failed.  Exit.
-                            mdim_list[0] = mdim_list[1] = None
                             break
                         else:
                             # record metal dimension.
@@ -728,6 +726,9 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
                         opt_adim = (w_arr, h_arr)
                         opt_sp = (spx, spy)
                         break
+
+                if opt_nxy is not None:
+                    break
 
             if opt_nxy is not None:
                 opt_num = weight * opt_nxy[0] * opt_nxy[1]
