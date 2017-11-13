@@ -634,20 +634,26 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         for vtype, weight in [('square', 1), ('vrect', 2), ('hrect', 2)]:
             try:
                 # get space and enclosure rules for top and bottom layer
-                sp, sp2, sp3, dim, encb, arr_encb, arr_testb = self.get_via_drc_info(vname, vtype, bmtype, bw, True)
-                _, _, _, _, enct, arr_enct, arr_testt = self.get_via_drc_info(vname, vtype, tmtype, tw, False)
+                bot_drc_info = self.get_via_drc_info(vname, vtype, bmtype, bw, True)
+                top_drc_info = self.get_via_drc_info(vname, vtype, tmtype, tw, False)
+                sp, sp2_list, sp3_list, dim, encb, arr_encb, arr_testb = bot_drc_info
+                _, _, _, _, enct, arr_enct, arr_testt = top_drc_info
                 # print _get_via_params(vname, vtype, bmtype, bw)
                 # print _get_via_params(vname, vtype, tmtype, tw)
             except ValueError:
                 continue
 
             # compute maximum possible nx and ny
-            if sp2 is None:
-                sp2 = sp
-            if sp3 is None:
-                sp3 = sp2
-            spx_min = min(sp[0], sp2[0], sp3[0])
-            spy_min = min(sp[1], sp2[1], sp3[1])
+            if sp2_list is None:
+                sp2_list = [sp]
+            if sp3_list is None:
+                sp3_list = sp2_list
+            spx_min, spy_min = sp
+            for high_sp_list in (sp2_list, sp3_list):
+                for high_spx, high_spy in high_sp_list:
+                    spx_min = min(spx_min, high_spx)
+                    spy_min = min(spy_min, high_spy)
+
             nx_max = (w + spx_min) // (dim[0] + spx_min)
             ny_max = (h + spy_min) // (dim[1] + spy_min)
 
@@ -665,61 +671,63 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
             for num, nx, ny in nxy_list:
                 # check if we need to use sp3
                 if nx == 2 and ny == 2:
-                    spx, spy = sp2
+                    sp_combo = sp2_list
                 elif nx > 1 and ny > 1:
-                    spx, spy = sp3
+                    sp_combo = sp3_list
                 else:
-                    spx, spy = sp
-
-                # get via array bounding box
-                w_arr = nx * (spx + dim[0]) - spx
-                h_arr = ny * (spy + dim[1]) - spy
+                    sp_combo = [sp]
 
                 mdim_list = [None, None]
-                # check if at least one enclosure rule is satisfied for both top and bottom layer
-                for idx, (mdir, tot_enc_list, arr_enc, arr_test) in enumerate([(bot_dir, encb, arr_encb, arr_testb),
-                                                                               (top_dir, enct, arr_enct, arr_testt)]):
-                    # check if array enclosure rule applies
-                    if arr_test is not None and arr_test(ny, nx):
-                        tot_enc_list = tot_enc_list + arr_enc
+                for spx, spy in sp_combo:
+                    # get via array bounding box
+                    w_arr = nx * (spx + dim[0]) - spx
+                    h_arr = ny * (spy + dim[1]) - spy
 
-                    if mdir == 'y':
-                        enc_idx = 0
-                        enc_dim = w_arr
-                        ext_dim = h_arr
-                        dim_lim = w
-                        max_ext_dim = h
-                    else:
-                        enc_idx = 1
-                        enc_dim = h_arr
-                        ext_dim = w_arr
-                        dim_lim = h
-                        max_ext_dim = w
+                    # check if at least one enclosure rule is satisfied for both top and bottom layer
+                    for idx, (mdir, tot_enc_list, arr_enc, arr_test) in \
+                            enumerate([(bot_dir, encb, arr_encb, arr_testb), (top_dir, enct, arr_enct, arr_testt)]):
+                        # check if array enclosure rule applies
+                        if arr_test is not None and arr_test(ny, nx):
+                            tot_enc_list = tot_enc_list + arr_enc
 
-                    min_ext_dim = None
-                    for enc in tot_enc_list:
-                        if enc[enc_idx] * 2 + enc_dim <= dim_lim:
-                            # enclosure rule passed.  Find minimum other dimension
-                            cur_ext_dim = ext_dim + 2 * enc[1 - enc_idx]
-                            if min_ext_dim is None or min_ext_dim > cur_ext_dim:
-                                min_ext_dim = cur_ext_dim
+                        if mdir == 'y':
+                            enc_idx = 0
+                            enc_dim = w_arr
+                            ext_dim = h_arr
+                            dim_lim = w
+                            max_ext_dim = h
+                        else:
+                            enc_idx = 1
+                            enc_dim = h_arr
+                            ext_dim = w_arr
+                            dim_lim = h
+                            max_ext_dim = w
 
-                    if min_ext_dim is None:
-                        # all enclosure rule failed.  Exit.
+                        min_ext_dim = None
+                        for enc in tot_enc_list:
+                            if enc[enc_idx] * 2 + enc_dim <= dim_lim:
+                                # enclosure rule passed.  Find minimum other dimension
+                                cur_ext_dim = ext_dim + 2 * enc[1 - enc_idx]
+                                if min_ext_dim is None or min_ext_dim > cur_ext_dim:
+                                    min_ext_dim = cur_ext_dim
+
+                        if min_ext_dim is None:
+                            # all enclosure rule failed.  Exit.
+                            mdim_list[0] = mdim_list[1] = None
+                            break
+                        else:
+                            # record metal dimension.
+                            min_ext_dim = max(min_ext_dim, max_ext_dim)
+                            mdim_list[idx] = [min_ext_dim, min_ext_dim]
+                            mdim_list[idx][enc_idx] = dim_lim
+
+                    if mdim_list[0] is not None and mdim_list[1] is not None:
+                        # passed
+                        opt_mdim_list = mdim_list
+                        opt_nxy = (nx, ny)
+                        opt_adim = (w_arr, h_arr)
+                        opt_sp = (spx, spy)
                         break
-                    else:
-                        # record metal dimension.
-                        min_ext_dim = max(min_ext_dim, max_ext_dim)
-                        mdim_list[idx] = [min_ext_dim, min_ext_dim]
-                        mdim_list[idx][enc_idx] = dim_lim
-
-                if mdim_list[0] is not None and mdim_list[1] is not None:
-                    # passed
-                    opt_mdim_list = mdim_list
-                    opt_nxy = (nx, ny)
-                    opt_adim = (w_arr, h_arr)
-                    opt_sp = (spx, spy)
-                    break
 
             if opt_nxy is not None:
                 opt_num = weight * opt_nxy[0] * opt_nxy[1]
@@ -1039,7 +1047,7 @@ class DummyTechInfo(TechInfo):
 
     @classmethod
     def get_via_drc_info(cls, vname, vtype, mtype, mw_unit, is_bot):
-        return (0, 0), (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
+        return (0, 0), [(0, 0)], [(0, 0)], (0, 0), [(0, 0)], None, None
 
     def get_min_space(self, layer_type, width, unit_mode=False, same_color=False):
         return 0
