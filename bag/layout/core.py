@@ -634,18 +634,20 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         for vtype, weight in [('square', 1), ('vrect', 2), ('hrect', 2)]:
             try:
                 # get space and enclosure rules for top and bottom layer
-                sp, sp3, dim, encb, arr_encb, arr_testb = self.get_via_drc_info(vname, vtype, bmtype, bw, True)
-                _, _, _, enct, arr_enct, arr_testt = self.get_via_drc_info(vname, vtype, tmtype, tw, False)
+                sp, sp2, sp3, dim, encb, arr_encb, arr_testb = self.get_via_drc_info(vname, vtype, bmtype, bw, True)
+                _, _, _, _, enct, arr_enct, arr_testt = self.get_via_drc_info(vname, vtype, tmtype, tw, False)
                 # print _get_via_params(vname, vtype, bmtype, bw)
                 # print _get_via_params(vname, vtype, tmtype, tw)
             except ValueError:
                 continue
 
             # compute maximum possible nx and ny
-            spx_min, spy_min = sp
-            if sp3 is not None:
-                spx_min = min(sp[0], sp3[0])
-                spy_min = min(sp[1], sp3[1])
+            if sp2 is None:
+                sp2 = sp
+            if sp3 is None:
+                sp3 = sp2
+            spx_min = min(sp[0], sp2[0], sp3[0])
+            spy_min = min(sp[1], sp2[1], sp3[1])
             nx_max = (w + spx_min) // (dim[0] + spx_min)
             ny_max = (h + spy_min) // (dim[1] + spy_min)
 
@@ -662,7 +664,9 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
             opt_sp = None
             for num, nx, ny in nxy_list:
                 # check if we need to use sp3
-                if sp3 is not None and nx > 1 and ny > 1 and max(nx, ny) > 2:
+                if nx == 2 and ny == 2:
+                    spx, spy = sp2
+                elif nx > 1 and ny > 1:
                     spx, spy = sp3
                 else:
                     spx, spy = sp
@@ -1035,7 +1039,7 @@ class DummyTechInfo(TechInfo):
 
     @classmethod
     def get_via_drc_info(cls, vname, vtype, mtype, mw_unit, is_bot):
-        return (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
+        return (0, 0), (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
 
     def get_min_space(self, layer_type, width, unit_mode=False, same_color=False):
         return 0
