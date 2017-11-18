@@ -947,7 +947,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 for key in conn_inst.port_names_iter()}
 
     def _make_masters(self, fg_tot, mos_type, lch, bot_sub_w, top_sub_w, w_list, th_list,
-                      g_tracks, ds_tracks, orientations, mos_kwargs, row_offset):
+                      g_tracks, ds_tracks, orientations, mos_kwargs, row_offset, guard_ring_nf):
 
         # error checking + set default values.
         num_tran = len(w_list)
@@ -989,6 +989,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 sub_type=sub_type,
                 threshold=th_list[0],
                 top_layer=None,
+                options=dict(guard_ring_nf=guard_ring_nf),
             )
             master_list.append(self.new_template(params=sub_params, temp_cls=AnalogSubstrate))
             track_spec_list.append(('R0', -1, -1))
@@ -1025,6 +1026,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                 sub_type=sub_type,
                 threshold=th_list[-1],
                 top_layer=None,
+                options=dict(guard_ring_nf=guard_ring_nf),
             )
             master_list.append(self.new_template(params=sub_params, temp_cls=AnalogSubstrate))
             track_spec_list.append(('MX', -1, -1))
@@ -1613,7 +1615,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         top_layer = self._layout_info.top_layer
         # make NMOS substrate/transistor masters.
         tmp_result = self._make_masters(fg_tot, 'nch', self._lch, ptap_w, ngr_w, nw_list, nth_list,
-                                        ng_tracks, nds_tracks, n_orientations, n_kwargs, 0)
+                                        ng_tracks, nds_tracks, n_orientations, n_kwargs, 0, guard_ring_nf)
         tr_list, m_list, n_kwargs, nw_list, nth_list = tmp_result
         master_list.extend(m_list)
         track_spec_list.extend(tr_list)
@@ -1622,7 +1624,7 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         self._th_list.extend(nth_list)
         # make PMOS substrate/transistor masters.
         tmp_result = self._make_masters(fg_tot, 'pch', self._lch, pgr_w, ntap_w, pw_list, pth_list,
-                                        pg_tracks, pds_tracks, p_orientations, p_kwargs, len(m_list))
+                                        pg_tracks, pds_tracks, p_orientations, p_kwargs, len(m_list), guard_ring_nf)
         tr_list, m_list, p_kwargs, pw_list, pth_list = tmp_result
 
         master_list.extend(m_list)
