@@ -769,10 +769,13 @@ class AnalogBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         conn_master = self.new_template(params=params, temp_cls=AnalogMOSDummy)
         conn_inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
 
-        warr = conn_inst.get_port().get_pins(dum_layer)[0]
-        res = self.grid.resolution
-        yb = int(round(warr.lower / res))
-        yt = int(round(warr.upper / res))
+        if dum_tr_list:
+            warr = conn_inst.get_port().get_pins(dum_layer)[0]
+            res = self.grid.resolution
+            yb = int(round(warr.lower / res))
+            yt = int(round(warr.upper / res))
+        else:
+            yb = yt = yc
         return used_htr, yb, yt
 
     def mos_conn_track_used(self, tidx, margin=0):
