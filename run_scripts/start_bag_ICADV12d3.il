@@ -1887,7 +1887,7 @@ procedure( exitHandler(ipcId exitId)
 procedure( start_bag_server()
     bag_server_started = 0
     printf("*INFO* Starting BAG server process.\n")
-    ipcBeginProcess("tcsh virt_server.sh" "" 'stdoutHandler 'stderrHandler 'exitHandler "")
+    ipcBeginProcess("bash virt_server.sh" "" 'stdoutHandler 'stderrHandler 'exitHandler "")
 )
 
 bag_server_started = 0

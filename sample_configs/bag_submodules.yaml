@@ -2,7 +2,5 @@
 bag_testbenches_ec:
   # the git repository URL
   url: 'git@github.com:ucb-art/bag_testbenches_ec'
-  # a list of all schematic libraries in this submodule
-  libs: ['bag_testbenches_ec']
   # optional.  Directory of schematic generators.  Defaults to 'BagModules'
   lib_path: 'BagModules'
