@@ -835,7 +835,14 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
 
 def _fill_symmetric_interval(tot_area, sp, same_sp, blk0, blk1, k, m, mid_blk_len, mid_sp_len,
                              fill_on_edge, cyclic, offset=0, invert=False):
-    """Helper function, construct interval list."""
+    """Helper function, construct interval list.
+
+    m = number of half fill blocks.
+    blk1 = length of left-most fill block.
+    blk0 = the second possible fill block length.
+    k = number of half fill blocks with length = blk1.
+    mid_blk_len = if > 0, length of middle fill block.  This is either blk0 or blk1.
+    """
     ans = []
     if cyclic:
         if fill_on_edge:
