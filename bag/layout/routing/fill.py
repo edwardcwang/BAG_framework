@@ -35,6 +35,7 @@ from typing import Optional, Union, List, Tuple, Iterable, Any, Dict
 import numpy as np
 
 from bag.util.interval import IntervalSet
+from bag.util.search import BinaryIterator
 from bag.layout.util import BBox
 from .base import WireArray, TrackID
 from .grid import RoutingGrid
@@ -611,19 +612,25 @@ def fill_symmetric_max_info(area, n_min, n_max, sp_min, cyclic=False):
         # special case: we can fill the entire block
         return _fill_symmetric_info(area, 1, 0, inc_sp=True, fill_on_edge=True, cyclic=False), False
     # step 1: find maximum block size and minimum number of blocks we can put in the given area
-    num_blk_min = num_sp_min = 0
-    blk_len_max = n_max
-    for blk_len_max in range(n_max, n_min - 1, -1):
+    blk_len_max_iter = BinaryIterator(n_min, n_max + 1)
+    while blk_len_max_iter.has_next():
+        blk_len_max = blk_len_max_iter.get_next()
         if cyclic:
             num_blk_min = area // (blk_len_max + sp_min)
             num_sp_min = num_blk_min
         else:
             num_blk_min = (area + sp_min) // (blk_len_max + sp_min)
             num_sp_min = num_blk_min - 1
-        if num_blk_min > 0 and num_sp_min > 0:
-            break
 
-    if num_blk_min <= 0 or num_sp_min <= 0:
+        if num_blk_min > 0 and num_sp_min > 0:
+            blk_len_max_iter.save_info((num_blk_min, num_sp_min))
+            blk_len_max_iter.up()
+        else:
+            blk_len_max_iter.down()
+
+    blk_len_max = blk_len_max_iter.get_last_save()
+    num_blk_min, num_sp_min = blk_len_max_iter.get_last_save_info()
+    if blk_len_max is None:
         # special case: we cannot draw any fill at all
         return _fill_symmetric_info(area, 0, area, inc_sp=True, fill_on_edge=False, cyclic=False), False
 
