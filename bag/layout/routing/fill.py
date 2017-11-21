@@ -661,9 +661,8 @@ def fill_symmetric_max(area, n_min, n_max, sp_min, offset=0, cyclic=False):
                                   fill_on_edge=not cyclic, cyclic=cyclic)[0]
 
 
-def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, invert=False,
-                           fill_on_edge=True, cyclic=False):
-    # type: (int, int, int, int, bool, bool, bool, bool) -> Tuple[List[Tuple[int, int]], bool]
+def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=True, cyclic=False):
+    # type: (int, int, int, bool, bool, bool) -> Tuple[Any, ...]
     """Helper method for all fill symmetric methods.
 
     This method fills an area with given number of fill blocks such that the space between
@@ -690,8 +689,6 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
         every block to be the same as given space, and the middle space will need to
         increment/decrement by 1.  If inc_sp is True, we will increase the middle space
         length by 1.  Otherwise, we will decrease it by 1.
-    invert : bool
-        If True, we return space intervals instead of fill intervals.
     fill_on_edge : bool
         If True, we put fill blocks on area boundary.  Otherwise, we put space block on
         area boundary.
@@ -749,6 +746,7 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
             mid_sp_len += adj_sp_sgn
             num_blk1 += -adj_sp_sgn
             same_sp = False
+            fill_area += -adj_sp_sgn
     else:
         # we have odd number of fill blocks, so we have a fill block in the middle
         mid_blk_len = blk_len
@@ -780,6 +778,60 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
         else:
             blk1, blk0 = blk_len, blk_len + 1
             k = num_small
+
+    return fill_area, same_sp, blk0, blk1, k, m, mid_blk_len, mid_sp_len
+
+
+def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, invert=False,
+                           fill_on_edge=True, cyclic=False):
+    # type: (int, int, int, int, bool, bool, bool, bool) -> Tuple[List[Tuple[int, int]], bool]
+    """Helper method for all fill symmetric methods.
+
+    This method fills an area with given number of fill blocks such that the space between
+    blocks is equal to the given space.  Other fill_symmetric methods basically transpose
+    the constraints into this problem, with the proper options.
+
+    The solution has the following properties:
+
+    1. it is symmetric about the center.
+    2. it is as uniform as possible.
+    3. it uses at most 2 values of fill lengths, and they differ by 1.
+    4. it uses at most 2 values of space lengths, controlled by sp and inc_sp parameters.
+
+    Parameters
+    ----------
+    tot_area : int
+        the fill area length.
+    num_blk_tot : int
+        total number of fill blocks to use.
+    sp : int
+        space between blocks.
+    offset : int
+        the starting coordinate of the area interval.
+    inc_sp : bool
+        when num_blk_tot is 1 or even, it may not be possible to keep the space between
+        every block to be the same as given space, and the middle space will need to
+        increment/decrement by 1.  If inc_sp is True, we will increase the middle space
+        length by 1.  Otherwise, we will decrease it by 1.
+    invert : bool
+        If True, we return space intervals instead of fill intervals.
+    fill_on_edge : bool
+        If True, we put fill blocks on area boundary.  Otherwise, we put space block on
+        area boundary.
+    cyclic : bool
+        If True, we assume we're filling in a cyclic area (it wraps around).
+
+    Returns
+    -------
+    ans : List[(int, int)]
+        list of fill or space intervals.
+    same_sp : bool
+        True if all space between blocks are equal to the given spacing, False otherwise.
+    """
+    fill_info = _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=inc_sp,
+                                     fill_on_edge=fill_on_edge, cyclic=cyclic)
+
+    _, same_sp, blk0, blk1, k, m, mid_blk_len, mid_sp_len = fill_info
 
     # now compute fill intervals
     # add the first half of fill
