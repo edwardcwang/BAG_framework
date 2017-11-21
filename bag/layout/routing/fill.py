@@ -609,9 +609,6 @@ def fill_symmetric_max_info(area, n_min, n_max, sp_min, cyclic=False):
         # TODO: support n_min == n_max?
         raise ValueError('min fill length = %d >= %d = max fill length' % (n_min, n_max))
 
-    if n_min <= area <= n_max and not cyclic:
-        # special case: we can fill the entire block
-        return _fill_symmetric_info(area, 1, 0, inc_sp=True, fill_on_edge=True, cyclic=False), False
     # step 1: find maximum block size and minimum number of blocks we can put in the given area
     blk_len_max_iter = BinaryIterator(n_min, n_max + 1)
     while blk_len_max_iter.has_next():
@@ -623,24 +620,27 @@ def fill_symmetric_max_info(area, n_min, n_max, sp_min, cyclic=False):
             num_blk_min = (area + sp_min) // (blk_len_max + sp_min)
             num_sp_min = num_blk_min - 1
 
-        if num_blk_min > 0 and num_sp_min > 0:
+        if num_blk_min > 0 and (not cyclic or num_sp_min > 0):
             blk_len_max_iter.save_info((num_blk_min, num_sp_min))
             blk_len_max_iter.up()
         else:
             blk_len_max_iter.down()
 
     blk_len_max = blk_len_max_iter.get_last_save()
-    num_blk_min, num_sp_min = blk_len_max_iter.get_last_save_info()
     if blk_len_max is None:
         # special case: we cannot draw any fill at all
         return _fill_symmetric_info(area, 0, area, inc_sp=True, fill_on_edge=False, cyclic=False), False
+    num_blk_min, num_sp_min = blk_len_max_iter.get_last_save_info()
 
     # step 2: compute the amount of space if we use minimum number of blocks
     min_space_with_max_blk = area - num_blk_min * blk_len_max
     # step 3: determine number of blocks to use
-    # If we use (num_blk_min + 1) or more blocks, we will have a space
-    # area of at least (num_sp_min + 1) * sp.
-    if min_space_with_max_blk <= (num_sp_min + 1) * sp_min:
+    # step 3A: check if we can and should use num_blk_min fill blocks.
+    # first, we can use num_blk_min fill blocks if 1) we have at least 1 space
+    # 2) if not, we can just fill entire area
+    # second, we should use num_blk_min fill blocks if this means we have less space
+    # compared to using (num_blk_min + 1) fill blocks.
+    if (num_sp_min > 0 or blk_len_max == area) and min_space_with_max_blk <= (num_sp_min + 1) * sp_min:
         # If we're here, we can achieve the minimum amount of space by using all large blocks,
         # now we just need to place the blocks in a symmetric way.
 
