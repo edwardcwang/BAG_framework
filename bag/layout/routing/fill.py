@@ -848,7 +848,7 @@ def _fill_symmetric_interval(tot_area, sp, same_sp, blk0, blk1, k, m, mid_blk_le
     prev_sum = 1
     for _ in range(m):
         # determine current fill length from cumulative modding result
-        if cur_sum < prev_sum:
+        if cur_sum <= prev_sum:
             cur_len = blk1
         else:
             cur_len = blk0
