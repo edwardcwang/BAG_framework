@@ -50,6 +50,7 @@ class TrackSet(object):
     init_tracks : Optional[Dict[int, IntervalSet]]
         Dictionary of initial tracks.
     """
+
     def __init__(self, min_length=0, init_tracks=None):
         # type: (float, Optional[Dict[int, IntervalSet]]) -> None
         if init_tracks is None:
@@ -718,64 +719,10 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
     fill_area = tot_area - num_sp_tot * sp
 
     # handle special cases
-    if num_sp_tot == 0:
-        if sp == 0:
-            # fill entire space
-            return [(offset, offset + tot_area)], True
-        else:
-            raise ValueError('Cannot draw 0 spaces blocks with nonzero spacing.')
+    if num_sp_tot == 0 and sp != 0:
+        raise ValueError('Cannot draw 0 spaces blocks with nonzero spacing.')
 
     same_sp = True
-    # handle small area special cases
-    if num_blk_tot == 1:
-        blk_len = fill_area
-        if blk_len <= 0:
-            raise ValueError('Cannot fill with block less <= 0.')
-        if invert:
-            # record space
-            if cyclic:
-                if fill_on_edge:
-                    # center space block in middle
-                    if blk_len % 2 == 1:
-                        blk_len += -adj_sp_sgn
-                        same_sp = False
-                    l2 = blk_len // 2
-                    return [(offset + l2, offset + tot_area - l2)], same_sp
-                else:
-                    # center space block on middle of both edges
-                    sp = tot_area - blk_len
-                    if sp % 2 == 1:
-                        sp += adj_sp_sgn
-                        same_sp = False
-                    sp2 = sp // 2
-                    return [(offset - sp2, offset + sp2), (offset + tot_area - sp2, offset + tot_area + sp2)], same_sp
-            else:
-                # fill_on_edge must be False, we cannot have 0 space blocks.
-                # space block at both edges
-                sp = tot_area - blk_len
-                if sp % 2 == 1:
-                    sp += adj_sp_sgn
-                    same_sp = False
-                sp2 = sp // 2
-                return [(offset, offset + sp2), (offset + tot_area - sp2, offset + tot_area)], same_sp
-        else:
-            # record fill
-            if cyclic and fill_on_edge:
-                # center fill block on middle of both edges
-                if blk_len % 2 == 1:
-                    blk_len += -adj_sp_sgn
-                    same_sp = False
-                l2 = blk_len // 2
-                return [(offset - l2, offset + l2), (offset + tot_area - l2, offset + tot_area + l2)], same_sp
-            else:
-                # center fill block in area
-                sp = tot_area - blk_len
-                if sp % 2 == 1:
-                    sp += adj_sp_sgn
-                    same_sp = False
-                sp2 = sp // 2
-                return [(offset + sp2, offset + tot_area - sp2)], same_sp
-
     # we don't know if we have a block in the middle or space in the middle yet, set to -1 first.
     mid_blk_len = mid_sp_len = -1
 
@@ -783,6 +730,11 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
     blk_len, num_blk1 = divmod(fill_area, num_blk_tot)
     if blk_len <= 0:
         raise ValueError('Cannot fill with block less <= 0.')
+
+    if cyclic and fill_on_edge:
+        # if cyclic and fill on edge, then logically speaking we have one more block,
+        # because the two fill blocks on the boundaries counts twice.
+        num_blk_tot += 1
 
     # now we have num_blk_tot blocks with length blk0.  We have num_blk1 fill units
     # remaining that we need to distribute to the fill blocks
