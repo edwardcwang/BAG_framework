@@ -605,9 +605,9 @@ def fill_symmetric_max_info(area, n_min, n_max, sp_min, cyclic=False):
         filling an area that is arrayed.  In cyclic fill mode, space blocks abut both area
         boundaries.
     """
-    if n_min >= n_max:
-        # TODO: support n_min == n_max?
-        raise ValueError('min fill length = %d >= %d = max fill length' % (n_min, n_max))
+    # error checking
+    if n_min > n_max:
+        raise ValueError('n_min = %d > %d = n_max' % (n_min, n_max))
 
     # step 1: find maximum block size and minimum number of blocks we can put in the given area
     blk_len_max_iter = BinaryIterator(n_min, n_max + 1)
@@ -647,8 +647,16 @@ def fill_symmetric_max_info(area, n_min, n_max, sp_min, cyclic=False):
         # since all blocks has width blk_len_max, we will try to distribute empty space
         # between blocks evenly symmetrically.
         inc_sp = blk_len_max < n_max
-        return _fill_symmetric_info(area, num_sp_min, blk_len_max, inc_sp=inc_sp,
-                                    fill_on_edge=cyclic, cyclic=cyclic), True
+        info = _fill_symmetric_info(area, num_sp_min, blk_len_max, inc_sp=inc_sp,
+                                    fill_on_edge=cyclic, cyclic=cyclic)
+        same_sp = info[1][2]
+        if n_min == n_max and not same_sp:
+            # we get here only if number of fill blocks is odd, and
+            # the middle fill block is forced to have length n_min - 1.
+            # in this case, we need to remove one fill block
+            info = _fill_symmetric_info(area, num_sp_min - 1, blk_len_max, inc_sp=inc_sp,
+                                        fill_on_edge=cyclic, cyclic=cyclic)
+        return info, True
 
     # If we're here, we need to use num_blk_min + 1 number of fill blocks, and we can achieve
     # a minimum space of (num_sp_min + 1) * sp.  Now we need to determine the size of each fill block
