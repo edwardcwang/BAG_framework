@@ -500,9 +500,10 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
 
 def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
     # type: (int, int, int, int, int) -> List[Tuple[int, int]]
-    """Fill the given 1-D area while trying to maintain constant space between fill.
+    """Fill the given 1-D area given maximum space spec alone.
 
-    Compute fill location such that the given area is filled with the following properties:
+    The method draws the minimum number of fill blocks needed to satisfy maximum spacing spec.
+    The given area is filled with the following properties:
 
     1. all spaces are as close to the given space as possible (differ by at most 1), without exceeding it.
     2. the filled area is as uniform as possible.
@@ -552,7 +553,7 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
     if blk_len >= n_min:
         # we can draw fill using num_fill fill blocks.
         return _fill_symmetric_helper(area, num_fill, sp_max, offset=offset, inc_sp=False,
-                                      invert=False, fill_on_edge=False)[0]
+                                      invert=False, fill_on_edge=False, cyclic=False)[0]
 
     # trying to draw num_fill fill blocks with sp_max between them results in fill blocks
     # that are too small.  This means we need to reduce the space between fill blocks.
@@ -562,11 +563,11 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
         # if everything divides evenly or we can use two different fill lengths,
         # then we're done.
         return _fill_symmetric_helper(area, num_fill, sp_max, offset=offset, inc_sp=False,
-                                      invert=False, fill_on_edge=False)[0]
+                                      invert=False, fill_on_edge=False, cyclic=False)[0]
     # If we're here, then we must use only one fill length
     # fill by inverting fill/space to try to get only one fill length
     sol, same_sp = _fill_symmetric_helper(area, num_fill + 1, n_max, offset=offset, inc_sp=False,
-                                          invert=True, fill_on_edge=True)
+                                          invert=True, fill_on_edge=True, cyclic=False)
     if same_sp:
         # we manage to fill using only one fill length
         return sol
@@ -574,7 +575,7 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
     # If we're here, that means num_fill + 1 is even.  So using num_fill + 2 will
     # guarantee solution.
     return _fill_symmetric_helper(area, num_fill + 2, n_max, offset=offset, inc_sp=False,
-                                  invert=True, fill_on_edge=True)[0]
+                                  invert=True, fill_on_edge=True, cyclic=False)[0]
 
 
 def fill_symmetric_max_info(area, n_min, n_max, sp_min, cyclic=False):
