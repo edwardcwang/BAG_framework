@@ -88,7 +88,8 @@ def test_fill_symmetric_non_cyclic():
             tot_intv = offset, offset + area
             for nfill in range(1, area - sp + 1):
                 nsp = nfill - 1 if foe else nfill + 1
-                if nfill + nsp * sp - 1 > area or ((nfill % 2 == 1 or inc_sp) and nfill + nsp * sp > area) or \
+                min_footprint = nfill * 1 + nsp * sp - 1
+                if min_footprint > area or ((nfill % 2 == 1 or inc_sp) and min_footprint + 1 > area) or \
                         (foe and nfill == 1 and sp != 0):
                     # test exception when drawing with no solution
                     # we have no solution when:
@@ -101,19 +102,20 @@ def test_fill_symmetric_non_cyclic():
                     with pytest.raises(ValueError):
                         fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
                                               invert=False, fill_on_edge=foe, cyclic=False)
-                        print(nfill, nsp, sp, area)
                     with pytest.raises(ValueError):
                         fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
                                               invert=True, fill_on_edge=foe, cyclic=False)
                 else:
+                    # get fill and space list
                     fill_list, num_diff_sp1 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
                                                                     invert=False, fill_on_edge=foe, cyclic=False)
                     space_list, num_diff_sp2 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
                                                                      invert=True, fill_on_edge=foe, cyclic=False)
+
                     check_props(fill_list, space_list, num_diff_sp1, num_diff_sp2, nfill, tot_intv, inc_sp, sp,
                                 1, 1, nfill, foe, tot_intv[0], tot_intv[1], 2)
 
-"""
+
 def test_fill_symmetric_cyclic_edge_fill():
     # test fill symmetric for cyclic, fill on edge
     sp_list = [3, 4, 5]
@@ -123,22 +125,41 @@ def test_fill_symmetric_cyclic_edge_fill():
     for sp, inc_sp, offset in product(sp_list, inc_sp_list, offset_list):
         for area in range(sp + 1, area_max + 1):
             tot_intv = offset, offset + area
-            for n in range(1, area - sp + 1):
-                # get fill and space list
-                fill_list, num_diff_sp1 = fill_symmetric_helper(area, n, sp, offset=offset, inc_sp=inc_sp,
-                                                                invert=False, fill_on_edge=True, cyclic=True)
-                space_list, num_diff_sp2 = fill_symmetric_helper(area, n, sp, offset=offset, inc_sp=inc_sp,
-                                                                 invert=True, fill_on_edge=True, cyclic=True)
+            for nfill in range(1, area - sp + 1):
+                nsp = nfill
+                min_footprint = nfill * 1 + 1 + nsp * sp - 1
+                if min_footprint > area or ((nfill % 2 == 0 or inc_sp) and min_footprint + 1 > area):
+                    # test exception when drawing with no solution
+                    # we have no solution when:
+                    # 1) minimum possible footprint = nfill * 1 + 1 + nsp * sp - 1 > area
+                    #    The minimum possible footprint is achieved when you have space in middle, and you can
+                    #    decrement it by 1 (hence the -1).  Note that the edge fill must be even, hence the extra + 1.
+                    # 2) If we have odd fill, or we cannot decrease spacing, then minimum footprint is incremented
+                    #    by 1.
+                    with pytest.raises(ValueError):
+                        fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                              invert=False, fill_on_edge=True, cyclic=True)
+                        print(nfill, nsp, sp, area)
+                    with pytest.raises(ValueError):
+                        fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                              invert=True, fill_on_edge=True, cyclic=True)
+                else:
+                    # get fill and space list
+                    fill_list, num_diff_sp1 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                                                    invert=False, fill_on_edge=True, cyclic=True)
+                    space_list, num_diff_sp2 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                                                     invert=True, fill_on_edge=True, cyclic=True)
 
-                # test boundary fills centers on edge
-                sintv, eintv = fill_list[0], fill_list[-1]
-                assert (sintv[1] + sintv[0]) % 2 == 0 and (eintv[1] + eintv[0]) % 2 == 0
-                assert (sintv[1] + sintv[0]) // 2 == tot_intv[0] and (eintv[1] + eintv[0]) // 2 == tot_intv[1]
-                # test other properties
-                check_props(fill_list, space_list, num_diff_sp1, num_diff_sp2, n, tot_intv, inc_sp, sp,
-                            0, 1, n + 1, True, sintv[0], eintv[1], 3)
+                    # test boundary fills centers on edge
+                    sintv, eintv = fill_list[0], fill_list[-1]
+                    assert (sintv[1] + sintv[0]) % 2 == 0 and (eintv[1] + eintv[0]) % 2 == 0
+                    assert (sintv[1] + sintv[0]) // 2 == tot_intv[0] and (eintv[1] + eintv[0]) // 2 == tot_intv[1]
+                    # test other properties
+                    check_props(fill_list, space_list, num_diff_sp1, num_diff_sp2, nfill, tot_intv, inc_sp, sp,
+                                0, 1, nfill + 1, True, sintv[0], eintv[1], 3)
 
 
+"""
 def test_fill_symmetric_cyclic_edge_space():
     # test fill symmetric for cyclic, space on edge
     sp_list = [3, 4, 5]
