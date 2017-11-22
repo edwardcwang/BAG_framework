@@ -823,6 +823,10 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
             elif num_blk1 < 0:
                 blk_len -= 1
                 num_blk1 += num_blk_tot
+        if num_blk1 % 2 == 1:
+            # the only way we get here is if cyclic and fill_on_edge is True.
+            # in this case, we need to add one to fill unit to account for edge fill double counting.
+            num_blk1 += 1
 
         # get number of half fill intervals
         m = num_blk_interval // 2
@@ -843,10 +847,18 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
                     mid_blk_len += 1
                     num_blk1 -= 1
                     if num_blk1 < 0:
+                        # we get here only if num_blk1 == 0.  This means middle blk
+                        # borrow one unit from edge block.  So we set num_blk1 to
+                        # num_blk_tot - 2 to make sure rest of the blocks are one
+                        # larger than edge block.
                         blk_len -= 1
-                # at this point num_blk1 is odd.  We need to add one because rest of
-                # the code assumes num_blk1 is even.
-                num_blk1 += 1
+                        num_blk1 = num_blk_tot - 2
+                    else:
+                        # Add one to account for edge fill double counting.
+                        num_blk1 += 1
+                else:
+                    # Add one to account for edge fill double counting.
+                    num_blk1 += 1
         elif num_blk1 % 2 == 1:
             # assign one fill unit to middle block
             mid_blk_len += 1
