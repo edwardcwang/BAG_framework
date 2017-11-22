@@ -49,6 +49,7 @@ setup(
         'openmdao',
         'future',
         'h5py',
+        'pytest',
     ],
     package_data={
         'bag': ['virtuoso_files/*'],
