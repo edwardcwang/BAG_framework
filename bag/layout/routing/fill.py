@@ -972,6 +972,8 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
 def _get_min_max_blk_len(fill_info):
     """Helper method to get minimum/maximum fill lengths used."""
     blk0, blk1, blkm = fill_info[1][4], fill_info[1][5], fill_info[1][8]
+    if blkm < 0:
+        blkm = blk0
     return min(blk0, blk1, blkm), max(blk0, blk1, blkm)
 
 
