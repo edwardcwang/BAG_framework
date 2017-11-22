@@ -710,18 +710,11 @@ def fill_symmetric_max(area, n_min, n_max, sp_min, offset=0, cyclic=False):
 
 def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=True, cyclic=False):
     # type: (int, int, int, bool, bool, bool) -> Tuple[int, Tuple[Any, ...]]
-    """Helper method for all fill symmetric methods.
+    """Calculate symmetric fill information.
 
-    This method fills an area with given number of fill blocks such that the space between
-    blocks is equal to the given space.  Other fill_symmetric methods basically transpose
-    the constraints into this problem, with the proper options.
-
-    The solution has the following properties:
-
-    1. it is symmetric about the center.
-    2. it is as uniform as possible.
-    3. it uses at most 2 values of fill lengths, and they differ by 1.
-    4. it uses at most 2 values of space lengths, controlled by sp and inc_sp parameters.
+    This method computes fill information without generating fill interval list.  This makes
+    it fast to explore various fill settings.  See fill_symmetric_helper() to see a description
+    of the fill algorithm.
 
     Parameters
     ----------
@@ -730,12 +723,10 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
     num_blk_tot : int
         total number of fill blocks to use.
     sp : int
-        space between blocks.
+        space between blocks.  We will try our best to keep this spacing constant.
     inc_sp : bool
-        when num_blk_tot is 1 or even, it may not be possible to keep the space between
-        every block to be the same as given space, and the middle space will need to
-        increment/decrement by 1.  If inc_sp is True, we will increase the middle space
-        length by 1.  Otherwise, we will decrease it by 1.
+        If True, then we use sp + 1 if necessary.  Otherwise, we use sp - 1
+        if necessary.
     fill_on_edge : bool
         If True, we put fill blocks on area boundary.  Otherwise, we put space block on
         area boundary.
@@ -895,7 +886,7 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
 
 def _fill_symmetric_interval(tot_area, sp, num_diff_sp, sp_edge, blk0, blk1, k, m, mid_blk_len, mid_sp_len,
                              fill_on_edge, cyclic, offset=0, invert=False):
-    """Helper function, construct interval list.
+    """Helper function, construct interval list from output of _fill_symmetric_info().
 
     num_diff_sp = number of space blocks that has length different than sp
     sp_edge = if cyclic and not fill on edge, the edge space length.
@@ -992,8 +983,22 @@ def fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inve
 
     1. it is symmetric about the center.
     2. it is as uniform as possible.
-    3. it uses at most 2 values of fill lengths, and they differ by 1.
-    4. it uses at most 2 values of space lengths, controlled by sp and inc_sp parameters.
+    3. it uses at most 3 consecutive values of fill lengths.
+    4. it uses at most 2 consecutive values of space lengths.  If inc_sp is True,
+       we use sp and sp + 1.  If inc_sp is False, we use sp - 1 and sp.  In addition,
+       at most two space blocks have length different than sp.
+
+    Here are all the scenarios that affect the number of different fill/space lengths:
+
+    1. All spaces will be equal to sp under the following condition:
+       i. cyclic is False, and num_blk_tot is odd.
+       ii. cyclic is True, fill_on_edge is True, and num_blk_tot is even.
+       iii. cyclic is True, fill_on_edge is False, sp is even, and num_blk_tot is odd.
+    2. The only case where at most 2 space blocks have length different than sp is
+       when cyclic is True, fill_on_edge is False, sp is odd, and num_blk_tot is even.
+    3. In all other cases, at most 1 space block have legnth different than sp.
+    4, The only case where at most 3 fill lengths are used is when cyclic is True,
+       fill_on_edge is True, and num_blk_tot is even,
 
     Parameters
     ----------
@@ -1002,14 +1007,12 @@ def fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inve
     num_blk_tot : int
         total number of fill blocks to use.
     sp : int
-        space between blocks.
+        space between blocks.  We will try our best to keep this spacing constant.
     offset : int
         the starting coordinate of the area interval.
     inc_sp : bool
-        when num_blk_tot is 1 or even, it may not be possible to keep the space between
-        every block to be the same as given space, and the middle space will need to
-        increment/decrement by 1.  If inc_sp is True, we will increase the middle space
-        length by 1.  Otherwise, we will decrease it by 1.
+        If True, then we use sp + 1 if necessary.  Otherwise, we use sp - 1
+        if necessary.
     invert : bool
         If True, we return space intervals instead of fill intervals.
     fill_on_edge : bool
@@ -1023,9 +1026,8 @@ def fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inve
     ans : List[(int, int)]
         list of fill or space intervals.
     num_diff_sp : int
-        number of space intervals with length different than sp.  If cyclic and not fill_on_edge,
-        then this is at most 2 (edge space and middle space).  Otherwise, this is at most 1
-        (middle space).
+        number of space intervals with length different than sp.  This is an integer
+        between 0 and 2.
     """
     fill_info = _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=inc_sp,
                                      fill_on_edge=fill_on_edge, cyclic=cyclic)
