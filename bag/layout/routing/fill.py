@@ -568,9 +568,9 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
                                      invert=False, fill_on_edge=False, cyclic=False)[0]
     # If we're here, then we must use only one fill length
     # fill by inverting fill/space to try to get only one fill length
-    sol, same_sp = fill_symmetric_helper(area, num_fill + 1, n_max, offset=offset, inc_sp=False,
-                                         invert=True, fill_on_edge=True, cyclic=False)
-    if same_sp:
+    sol, num_diff_sp = fill_symmetric_helper(area, num_fill + 1, n_max, offset=offset, inc_sp=False,
+                                             invert=True, fill_on_edge=True, cyclic=False)
+    if num_diff_sp == 0:
         # we manage to fill using only one fill length
         return sol
 
