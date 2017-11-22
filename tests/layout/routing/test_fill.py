@@ -139,7 +139,6 @@ def test_fill_symmetric_cyclic_edge_fill():
                     with pytest.raises(ValueError):
                         fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
                                               invert=False, fill_on_edge=True, cyclic=True)
-                        print(nfill, nsp, sp, area)
                     with pytest.raises(ValueError):
                         fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
                                               invert=True, fill_on_edge=True, cyclic=True)
@@ -149,7 +148,6 @@ def test_fill_symmetric_cyclic_edge_fill():
                                                                     invert=False, fill_on_edge=True, cyclic=True)
                     space_list, num_diff_sp2 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
                                                                      invert=True, fill_on_edge=True, cyclic=True)
-
                     # test boundary fills centers on edge
                     sintv, eintv = fill_list[0], fill_list[-1]
                     assert (sintv[1] + sintv[0]) % 2 == 0 and (eintv[1] + eintv[0]) % 2 == 0
