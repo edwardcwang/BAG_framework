@@ -665,8 +665,10 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
     nfill_opt = min_result.x
     if nfill_opt is None:
         nfill_opt = min_result.xmax
-    return _fill_symmetric_max_num_info(area, nfill_opt, n_min, n_max, sp_min,
-                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
+    info, invert = _fill_symmetric_max_num_info(area, nfill_opt, n_min, n_max, sp_min,
+                                                fill_on_edge=fill_on_edge, cyclic=cyclic)
+    fill_area = area - info[0] if invert else info[0]
+    return (fill_area, nfill_opt, info[1]), invert
 
 
 def fill_symmetric_max_density(area, targ_area, n_min, n_max, sp_min, offset=0,
@@ -710,11 +712,9 @@ def fill_symmetric_max_density(area, targ_area, n_min, n_max, sp_min, offset=0,
     fill_area : int
         total filled area.  May or may not meet minimum density requirement.
     """
-    (fill_area, args), invert = fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
-                                                                sp_max=sp_max, fill_on_edge=fill_on_edge, cyclic=cyclic)
-    if invert:
-        fill_area = area - fill_area
-    return _fill_symmetric_interval(*args, offset=offset, invert=invert)[0], fill_area
+    (fill_area, _, args), invert = fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
+                                                                   sp_max=sp_max, fill_on_edge=fill_on_edge, cyclic=cyclic)
+    return fill_symmetric_interval(*args, offset=offset, invert=invert)[0], fill_area
 
 
 def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_edge=True, cyclic=False):
@@ -974,8 +974,8 @@ def _get_min_max_blk_len(fill_info):
     return min(blk0, blk1, blkm), max(blk0, blk1, blkm)
 
 
-def _fill_symmetric_interval(tot_area, sp, num_diff_sp, sp_edge, blk0, blk1, k, m, mid_blk_len, mid_sp_len,
-                             fill_on_edge, cyclic, offset=0, invert=False):
+def fill_symmetric_interval(tot_area, sp, num_diff_sp, sp_edge, blk0, blk1, k, m, mid_blk_len, mid_sp_len,
+                            fill_on_edge, cyclic, offset=0, invert=False):
     """Helper function, construct interval list from output of _fill_symmetric_info().
 
     num_diff_sp = number of space blocks that has length different than sp
@@ -1126,4 +1126,4 @@ def fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inve
                                      fill_on_edge=fill_on_edge, cyclic=cyclic)
 
     _, args = fill_info
-    return _fill_symmetric_interval(*args, offset=offset, invert=invert)
+    return fill_symmetric_interval(*args, offset=offset, invert=invert)
