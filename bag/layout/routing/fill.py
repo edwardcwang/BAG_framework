@@ -749,11 +749,19 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
     args : Tuple[Any, ...]
         input arguments to _fill_symmetric_interval()
     """
-    if num_blk_tot == 0:
-        # special case, no fill at all
-        return 0, (tot_area, tot_area, True, 0, 0, 0, 0, -1, tot_area, False, False)
+    # error checking
+    if num_blk_tot < 0:
+        raise ValueError('num_blk_tot = %d < 0' % num_blk_tot)
 
     adj_sp_sgn = 1 if inc_sp else -1
+    if num_blk_tot == 0:
+        # special case, no fill at all
+        if sp == tot_area:
+            return 0, (tot_area, tot_area, 0, 0, 0, 0, 0, -1, tot_area, False, False)
+        elif sp == tot_area - adj_sp_sgn:
+            return 0, (tot_area, tot_area, 1, 0, 0, 0, 0, -1, tot_area, False, False)
+        else:
+            raise ValueError('Cannot draw 0 fill with given spec')
 
     # determine the number of space blocks
     if cyclic:
@@ -761,60 +769,99 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
     else:
         if fill_on_edge:
             num_sp_tot = num_blk_tot - 1
+            if num_sp_tot == 0 and sp != 0:
+                raise ValueError('Cannot draw 0 spaces blocks with nonzero spacing.')
         else:
             num_sp_tot = num_blk_tot + 1
 
+    # compute total fill area
     fill_area = tot_area - num_sp_tot * sp
 
-    # handle special cases
-    if num_sp_tot == 0 and sp != 0:
-        raise ValueError('Cannot draw 0 spaces blocks with nonzero spacing.')
-
-    same_sp = True
-    # we don't know if we have a block in the middle or space in the middle yet, set to -1 first.
-    mid_blk_len = mid_sp_len = -1
-
-    # find minimum block length
+    # find minimum fill length
     blk_len, num_blk1 = divmod(fill_area, num_blk_tot)
+    # find number of fill intervals
+    if cyclic and fill_on_edge:
+        # if cyclic and fill on edge, number of intervals = number of blocks + 1,
+        # because the interval on the edge double counts.
+        num_blk_interval = num_blk_tot + 1
+    else:
+        num_blk_interval = num_blk_tot
+
+    # find space length on edge, if applicable
+    num_diff_sp = 0
+    sp_edge = sp
+    if cyclic and not fill_on_edge and sp_edge % 2 == 1:
+        # edge space must be even.  To fix, we convert space to fill
+        num_diff_sp += 1
+        sp_edge += adj_sp_sgn
+        num_blk1 += -adj_sp_sgn
+        fill_area += -adj_sp_sgn
+        if num_blk1 == num_blk_tot:
+            blk_len += 1
+            num_blk1 = 0
+        elif num_blk1 < 0:
+            blk_len -= 1
+            num_blk1 += num_blk_tot
+
+    mid_blk_len = mid_sp_len = -1
+    # now we have num_blk_tot blocks with length blk0.  We have num_blk1 fill units
+    # remaining that we need to distribute to the fill blocks
+    if num_blk_interval % 2 == 0:
+        # we have even number of fill intervals, so we have a space block in the middle
+        mid_sp_len = sp
+        # test condition for cyclic and fill_on_edge is different than other cases
+        test_val = num_blk1 + blk_len if cyclic and fill_on_edge else num_blk1
+        if test_val % 2 == 1:
+            # we cannot distribute remaining fill units evenly, have to convert to space
+            num_diff_sp += 1
+            mid_sp_len += adj_sp_sgn
+            num_blk1 += -adj_sp_sgn
+            fill_area += -adj_sp_sgn
+            if num_blk1 == num_blk_tot:
+                blk_len += 1
+                num_blk1 = 0
+            elif num_blk1 < 0:
+                blk_len -= 1
+                num_blk1 += num_blk_tot
+
+        # get number of half fill intervals
+        m = num_blk_interval // 2
+    else:
+        # we have odd number of fill intervals, so we have a fill block in the middle
+        mid_blk_len = blk_len
+        if cyclic and fill_on_edge:
+            # special handling for this case, because edge fill block must be even
+            if blk_len % 2 == 0 and num_blk1 % 2 == 1:
+                # assign one fill unit to middle block
+                mid_blk_len += 1
+                num_blk1 -= 1
+            elif blk_len % 2 == 1:
+                # edge fill block is odd; we need odd number of fill units so we can
+                # correct this.
+                if num_blk1 % 2 == 0:
+                    # we increment middle fill block to get odd number of fill units
+                    mid_blk_len += 1
+                    num_blk1 -= 1
+                    if num_blk1 < 0:
+                        blk_len -= 1
+                # at this point num_blk1 is odd.  We need to add one because rest of
+                # the code assumes num_blk1 is even.
+                num_blk1 += 1
+        elif num_blk1 % 2 == 1:
+            # assign one fill unit to middle block
+            mid_blk_len += 1
+            num_blk1 -= 1
+
+        m = (num_blk_interval - 1) // 2
+
     if blk_len <= 0:
         raise ValueError('Cannot fill with block less <= 0.')
 
-    if cyclic and fill_on_edge:
-        # if cyclic and fill on edge, then logically speaking we have one more block,
-        # because the two fill blocks on the boundaries counts twice.
-        num_blk_tot += 1
-
-    # now we have num_blk_tot blocks with length blk0.  We have num_blk1 fill units
-    # remaining that we need to distribute to the fill blocks
-    if num_blk_tot % 2 == 0:
-        # we have even number of fill blocks, so we have a space block in the middle
-        mid_sp_len = sp
-        if num_blk1 % 2 == 1:
-            # we need to distribute odd number of fill units to even number of fill blocks,
-            # which is impossible to do so symmetrically.
-            # To solve this, we adjust the length of the middle space block by 1, so we
-            # have even number of fill units to fill in even number of blocks.
-            mid_sp_len += adj_sp_sgn
-            num_blk1 += -adj_sp_sgn
-            same_sp = False
-            fill_area += -adj_sp_sgn
-    else:
-        # we have odd number of fill blocks, so we have a fill block in the middle
-        mid_blk_len = blk_len
-        if num_blk1 % 2 == 1:
-            # we need to distrbute odd number of fill units to odd number of fill blocks,
-            # so one fill unit goes to the middle
-            mid_blk_len += 1
-
     # now we need to distribute the fill units evenly.  We do so using cumulative modding
     num_large = num_blk1 // 2
-    num_small = (num_blk_tot - num_blk1) // 2
-    m = num_large + num_small
-    if cyclic and not fill_on_edge and sp % 2 == 1:
-        # cyclic and space is on edge works only if space length is even
-        raise ValueError('Cannot fill cyclic area with odd space on edge.')
-    elif cyclic and fill_on_edge:
-        # if cyclic and fill is on the edge, we need to make sure the first block is even length
+    num_small = m - num_large
+    if cyclic and fill_on_edge:
+        # if cyclic and fill is on the edge, we need to make sure left-most block is even length
         if blk_len % 2 == 0:
             blk1, blk0 = blk_len, blk_len + 1
             k = num_small
@@ -822,7 +869,7 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
             blk0, blk1 = blk_len, blk_len + 1
             k = num_large
     else:
-        # determine the first block size so we get even distribution
+        # make left-most fill interval be the most frequenct fill length
         if num_large >= num_small:
             blk0, blk1 = blk_len, blk_len + 1
             k = num_large
@@ -830,13 +877,16 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
             blk1, blk0 = blk_len, blk_len + 1
             k = num_small
 
-    return fill_area, (tot_area, sp, same_sp, blk0, blk1, k, m, mid_blk_len, mid_sp_len, fill_on_edge, cyclic)
+    return fill_area, (tot_area, sp, num_diff_sp, sp_edge, blk0, blk1, k, m,
+                       mid_blk_len, mid_sp_len, fill_on_edge, cyclic)
 
 
-def _fill_symmetric_interval(tot_area, sp, same_sp, blk0, blk1, k, m, mid_blk_len, mid_sp_len,
+def _fill_symmetric_interval(tot_area, sp, num_diff_sp, sp_edge, blk0, blk1, k, m, mid_blk_len, mid_sp_len,
                              fill_on_edge, cyclic, offset=0, invert=False):
     """Helper function, construct interval list.
 
+    num_diff_sp = number of space blocks that has length different than sp
+    sp_edge = if cyclic and not fill on edge, the edge space length.
     m = number of half fill blocks.
     blk1 = length of left-most fill block.
     blk0 = the second possible fill block length.
@@ -848,31 +898,32 @@ def _fill_symmetric_interval(tot_area, sp, same_sp, blk0, blk1, k, m, mid_blk_le
         if fill_on_edge:
             marker = offset - blk1 // 2
         else:
-            marker = offset - sp // 2
+            marker = offset - sp_edge // 2
     else:
         marker = offset
     cur_sum = 0
     prev_sum = 1
-    for _ in range(m):
+    for fill_idx in range(m):
         # determine current fill length from cumulative modding result
         if cur_sum <= prev_sum:
             cur_len = blk1
         else:
             cur_len = blk0
 
+        cur_sp = sp_edge if fill_idx == 0 else sp
         # record fill/space interval
         if invert:
             if fill_on_edge:
-                ans.append((marker + cur_len, marker + sp + cur_len))
+                ans.append((marker + cur_len, marker + cur_sp + cur_len))
             else:
-                ans.append((marker, marker + sp))
+                ans.append((marker, marker + cur_sp))
         else:
             if fill_on_edge:
                 ans.append((marker, marker + cur_len))
             else:
-                ans.append((marker + sp, marker + sp + cur_len))
+                ans.append((marker + cur_sp, marker + cur_sp + cur_len))
 
-        marker += cur_len + sp
+        marker += cur_len + cur_sp
         prev_sum = cur_sum
         cur_sum = (cur_sum + k) % m
 
@@ -882,7 +933,8 @@ def _fill_symmetric_interval(tot_area, sp, same_sp, blk0, blk1, k, m, mid_blk_le
         if invert:
             if not fill_on_edge:
                 # we have one more space block before reaching middle block
-                ans.append((marker, marker + sp))
+                cur_sp = sp_edge if m == 0 else sp
+                ans.append((marker, marker + cur_sp))
             half_len = len(ans)
         else:
             # we don't want to replicate middle fill, so get half length now
@@ -890,7 +942,8 @@ def _fill_symmetric_interval(tot_area, sp, same_sp, blk0, blk1, k, m, mid_blk_le
             if fill_on_edge:
                 ans.append((marker, marker + mid_blk_len))
             else:
-                ans.append((marker + sp, marker + sp + mid_blk_len))
+                cur_sp = sp_edge if m == 0 else sp
+                ans.append((marker + cur_sp, marker + cur_sp + mid_blk_len))
     else:
         # space in middle
         if invert:
@@ -911,12 +964,12 @@ def _fill_symmetric_interval(tot_area, sp, same_sp, blk0, blk1, k, m, mid_blk_le
         start, stop = ans[idx]
         ans.append((shift - stop, shift - start))
 
-    return ans, same_sp
+    return ans, num_diff_sp
 
 
 def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, invert=False,
                            fill_on_edge=True, cyclic=False):
-    # type: (int, int, int, int, bool, bool, bool, bool) -> Tuple[List[Tuple[int, int]], bool]
+    # type: (int, int, int, int, bool, bool, bool, bool) -> Tuple[List[Tuple[int, int]], int]
     """Helper method for all fill symmetric methods.
 
     This method fills an area with given number of fill blocks such that the space between
@@ -957,8 +1010,10 @@ def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inv
     -------
     ans : List[(int, int)]
         list of fill or space intervals.
-    same_sp : bool
-        True if all space between blocks are equal to the given spacing, False otherwise.
+    num_diff_sp : int
+        number of space intervals with length different than sp.  If cyclic and not fill_on_edge,
+        then this is at most 2 (edge space and middle space).  Otherwise, this is at most 1
+        (middle space).
     """
     fill_info = _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=inc_sp,
                                      fill_on_edge=fill_on_edge, cyclic=cyclic)
