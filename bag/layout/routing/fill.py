@@ -552,8 +552,8 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
     blk_len = (area - (num_fill + 1) * sp_max) // num_fill
     if blk_len >= n_min:
         # we can draw fill using num_fill fill blocks.
-        return _fill_symmetric_helper(area, num_fill, sp_max, offset=offset, inc_sp=False,
-                                      invert=False, fill_on_edge=False, cyclic=False)[0]
+        return fill_symmetric_helper(area, num_fill, sp_max, offset=offset, inc_sp=False,
+                                     invert=False, fill_on_edge=False, cyclic=False)[0]
 
     # trying to draw num_fill fill blocks with sp_max between them results in fill blocks
     # that are too small.  This means we need to reduce the space between fill blocks.
@@ -562,20 +562,20 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
     if n_max > n_min or remainder == 0:
         # if everything divides evenly or we can use two different fill lengths,
         # then we're done.
-        return _fill_symmetric_helper(area, num_fill, sp_max, offset=offset, inc_sp=False,
-                                      invert=False, fill_on_edge=False, cyclic=False)[0]
+        return fill_symmetric_helper(area, num_fill, sp_max, offset=offset, inc_sp=False,
+                                     invert=False, fill_on_edge=False, cyclic=False)[0]
     # If we're here, then we must use only one fill length
     # fill by inverting fill/space to try to get only one fill length
-    sol, same_sp = _fill_symmetric_helper(area, num_fill + 1, n_max, offset=offset, inc_sp=False,
-                                          invert=True, fill_on_edge=True, cyclic=False)
+    sol, same_sp = fill_symmetric_helper(area, num_fill + 1, n_max, offset=offset, inc_sp=False,
+                                         invert=True, fill_on_edge=True, cyclic=False)
     if same_sp:
         # we manage to fill using only one fill length
         return sol
 
     # If we're here, that means num_fill + 1 is even.  So using num_fill + 2 will
     # guarantee solution.
-    return _fill_symmetric_helper(area, num_fill + 2, n_max, offset=offset, inc_sp=False,
-                                  invert=True, fill_on_edge=True, cyclic=False)[0]
+    return fill_symmetric_helper(area, num_fill + 2, n_max, offset=offset, inc_sp=False,
+                                 invert=True, fill_on_edge=True, cyclic=False)[0]
 
 
 def fill_symmetric_max_info(area, n_min, n_max, sp_min, cyclic=False):
@@ -967,8 +967,8 @@ def _fill_symmetric_interval(tot_area, sp, num_diff_sp, sp_edge, blk0, blk1, k, 
     return ans, num_diff_sp
 
 
-def _fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, invert=False,
-                           fill_on_edge=True, cyclic=False):
+def fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, invert=False,
+                          fill_on_edge=True, cyclic=False):
     # type: (int, int, int, int, bool, bool, bool, bool) -> Tuple[List[Tuple[int, int]], int]
     """Helper method for all fill symmetric methods.
 
