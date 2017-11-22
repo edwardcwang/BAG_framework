@@ -281,7 +281,7 @@ def minimize_cost_binary(f, vmin, start=0, stop=None, step=1, save=None, nfev=0)
 
 
 def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
-    # type: (Callable[[int], float], float, int, int, int) -> MinCostResult
+    # type: (Callable[[int], float], float, int, int, Optional[int]) -> MinCostResult
     """Minimize cost given minimum output constraint using golden section/binary search.
 
     Given discrete function f that monotonically increases then monotonically decreases,
@@ -303,8 +303,8 @@ def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
         the input lower bound.  We will for x in the range [offset, infinity).
     step : int
         the input step.  function will only be evaulated at the points offset + step * N
-    maxiter : int
-        maximum number of iterations to perform.
+    maxiter : Optional[int]
+        maximum number of iterations to perform.  If None, will run indefinitely.
 
     Returns
     -------
@@ -324,7 +324,7 @@ def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
     cur_idx = 0
     nfev = 0
     xmax = vmax = v_prev = None
-    while nfev < maxiter:
+    while maxiter is None or nfev < maxiter:
         v_cur = f(step * fib0 + offset)
         nfev += 1
 
@@ -378,6 +378,8 @@ def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
                     fib2, fib1, fib0 = fib1, fib0, cur_idx
                 else:
                     fib2, fib1, fib0 = fib1, fib0, fib1 + fib0
+
+    raise ValueError('Maximum number of iteration achieved')
 
 
 def minimize_cost_binary_float(f, vmin, start, stop, tol=1e-8, save=None, nfev=0):

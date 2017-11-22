@@ -30,12 +30,14 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
+import math
+
 from typing import Optional, Union, List, Tuple, Iterable, Any, Dict
 
 import numpy as np
 
 from bag.util.interval import IntervalSet
-from bag.util.search import BinaryIterator
+from bag.util.search import minimize_cost_golden
 from bag.layout.util import BBox
 from .base import WireArray, TrackID
 from .grid import RoutingGrid
@@ -578,22 +580,25 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
                                  invert=True, fill_on_edge=True, cyclic=False)[0]
 
 
-def fill_symmetric_max_info(area, n_min, n_max, sp_min, fill_on_edge=True, cyclic=False):
-    # type: (int, int, int, int, bool, bool) -> Tuple[Any, ...]
-    """Fill the given 1-D area as much as possible, given minimum space constraint.
+def fill_symmetric_min_density_info(area, min_density, n_min, n_max, sp_min, fill_on_edge=True, cyclic=False):
+    # type: (int, float, int, int, int, bool, bool) -> Tuple[Tuple[Any, ...], bool]
+    """Fill the given 1-D area as much as possible.
 
     Compute fill location such that the given area is filled with the following properties:
 
     1. the area is as uniform as possible.
     2. the area is symmetric with respect to the center
-    3. the area is filled as much as possible.
+    3. all fill blocks have lengths between n_min and n_max.
+    4. all fill blocks are at least sp_min apart.
 
     Parameters
     ----------
     area : int
         total number of space we need to fill.
+    min_density : float
+        target minimum fill density, a float between 0.0 and 1.0.  If not achievable, will do the best that we can.
     n_min : int
-        minimum length of the fill block.  Must be less than n_max.
+        minimum length of the fill block.  Must be less than or equal to n_max.
     n_max : int
         maximum length of the fill block.
     sp_min : int
@@ -603,109 +608,151 @@ def fill_symmetric_max_info(area, n_min, n_max, sp_min, fill_on_edge=True, cycli
         area boundary.
     cyclic : bool
         If True, we assume we're filling in a cyclic area (it wraps around).
+
+    Returns
+    -------
+    info : Tuple[Any, ...]
+        the fill information tuple.
+    invert : bool
+        True if space/fill is inverted.
     """
-    # error checking
-    if n_min > n_max:
-        raise ValueError('n_min = %d > %d = n_max' % (n_min, n_max))
-
-    # step 1: find maximum block size and minimum number of blocks we can put in the given area
-    blk_len_max_iter = BinaryIterator(n_min, n_max + 1)
-    sp_delta = -1 if fill_on_edge else 1
-    while blk_len_max_iter.has_next():
-        blk_len_max = blk_len_max_iter.get_next()
-        if cyclic:
-            num_blk_min = area // (blk_len_max + sp_min)
-            num_sp_min = num_blk_min
+    # fill area first monotonically increases with number of fill blocks, then monotonically
+    # decreases (as we start adding more space than fill).  Therefore, a golden section search
+    # can be done on the number of fill blocks to determine the optimum.
+    def golden_fun(nfill):
+        try:
+            info, invert = _fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
+                                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
+        except ValueError:
+            return 0
+        if invert:
+            return area - info[0]
         else:
-            num_blk_min = (area - sp_delta * sp_min) // (blk_len_max + sp_min)
-            num_sp_min = num_blk_min + sp_delta
+            return info[0]
 
-        if num_blk_min > 0 and (not cyclic or num_sp_min > 0):
-            blk_len_max_iter.save_info((num_blk_min, num_sp_min))
-            blk_len_max_iter.up()
-        else:
-            blk_len_max_iter.down()
-
-    blk_len_max = blk_len_max_iter.get_last_save()
-    if blk_len_max is None:
-        # special case: we cannot draw any fill at all
-        return _fill_symmetric_info(area, 0, area, inc_sp=True, fill_on_edge=False, cyclic=False), False
-    num_blk_min, num_sp_min = blk_len_max_iter.get_last_save_info()
-
-    # step 2: compute the amount of space if we use minimum number of blocks
-    min_space_with_max_blk = area - num_blk_min * blk_len_max
-    # step 3: determine number of blocks to use
-    # step 3A: check if we can and should use num_blk_min fill blocks.
-    # first, we can use num_blk_min fill blocks if 1) we have at least 1 space
-    # 2) if not, we can just fill entire area
-    # second, we should use num_blk_min fill blocks if this means we have less space
-    # compared to using (num_blk_min + 1) fill blocks.
-    if (num_sp_min > 0 or blk_len_max == area) and min_space_with_max_blk <= (num_sp_min + 1) * sp_min:
-        # If we're here, we can achieve the minimum amount of space by using all large blocks,
-        # now we just need to place the blocks in a symmetric way.
-
-        # since all blocks has width blk_len_max, we will try to distribute empty space
-        # between blocks evenly symmetrically.
-        inc_sp = blk_len_max < n_max
-        info = _fill_symmetric_info(area, num_sp_min, blk_len_max, inc_sp=inc_sp,
-                                    fill_on_edge=cyclic, cyclic=cyclic)
-        same_sp = info[1][2]
-        if n_min == n_max and not same_sp:
-            # we get here only if number of fill blocks is odd, and
-            # the middle fill block is forced to have length n_min - 1.
-            # in this case, we need to remove one fill block
-            info = _fill_symmetric_info(area, num_sp_min - 1, blk_len_max, inc_sp=inc_sp,
-                                        fill_on_edge=cyclic, cyclic=cyclic)
-        return info, True
-
-    # If we're here, we need to use num_blk_min + 1 number of fill blocks, and we can achieve
-    # a minimum space of (num_sp_min + 1) * sp.  Now we need to determine the size of each fill block
-    # and place them symmetrically.
-    min_blk_len = (area - (num_sp_min + 1) * sp_min) // (num_blk_min + 1)
-    if min_blk_len < n_min:
-        # TODO: deal with this later
-        raise ValueError("No fill solution found")
-
-    return _fill_symmetric_info(area, num_blk_min + 1, sp_min, inc_sp=True,
-                                fill_on_edge=not cyclic, cyclic=cyclic), False
+    area_targ = int(math.ceil(area * min_density))
+    min_result = minimize_cost_golden(golden_fun, area_targ, offset=1, maxiter=None)
+    nfill_opt = min_result.x
+    if nfill_opt is None:
+        nfill_opt = min_result.xmax
+    return _fill_symmetric_max_num_info(area, nfill_opt, n_min, n_max, sp_min,
+                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
 
 
-def fill_symmetric_max(area, n_min, n_max, sp_min, offset=0, cyclic=False):
-    # type: (int, int, int, int, int, bool) -> List[Tuple[int, int]]
-    """Fill the given 1-D area as much as possible, given minimum space constraint.
+def fill_symmetric_min_density(area, min_density, n_min, n_max, sp_min, offset=0, fill_on_edge=True, cyclic=False):
+    # type: (int, float, int, int, int, bool, bool) -> List[Tuple[int, int]]
+    """Fill the given 1-D area as much as possible.
 
     Compute fill location such that the given area is filled with the following properties:
 
     1. the area is as uniform as possible.
     2. the area is symmetric with respect to the center
-    3. the area is filled as much as possible.
-
-    fill is drawn such that fill blocks abut both area boundaries.
+    3. all fill blocks have lengths between n_min and n_max.
+    4. all fill blocks are at least sp_min apart.
 
     Parameters
     ----------
     area : int
         total number of space we need to fill.
+    min_density : float
+        target minimum fill density, a float between 0.0 and 1.0.  If not achievable, will do the best that we can.
     n_min : int
-        minimum length of the fill block.  Must be less than n_max.
+        minimum length of the fill block.  Must be less than or equal to n_max.
     n_max : int
         maximum length of the fill block.
     sp_min : int
         minimum space between each fill block.
     offset : int
-        the area starting coordinate.
+        the starting coordinate of the total interval.
+    fill_on_edge : bool
+        If True, we put fill blocks on area boundary.  Otherwise, we put space block on
+        area boundary.
     cyclic : bool
-        True if the given area actually wraps around.  This is usually the case if you are
-        filling an area that is arrayed.  In cyclic fill mode, space blocks abut both area
-        boundaries.
+        If True, we assume we're filling in a cyclic area (it wraps around).
 
     Returns
     -------
     fill_interval : List[Tuple[int, int]]
         a list of [start, stop) intervals that needs to be filled.
     """
-    (_, args), invert = fill_symmetric_max_info(area, n_min, n_max, sp_min, cyclic=cyclic)
+    (_, args), invert = fill_symmetric_min_density_info(area, min_density, n_min, n_max, sp_min,
+                                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
     return _fill_symmetric_interval(*args, offset=offset, invert=invert)[0]
+
+
+def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_edge=True, cyclic=False):
+    # type: (int, int, int, int, int, bool, bool) -> Tuple[Tuple[Any, ...], bool]
+    """Fill the given 1-D area as much as possible with given number of fill blocks.
+
+    Compute fill location such that the given area is filled with the following properties:
+
+    1. the area is as uniform as possible.
+    2. the area is symmetric with respect to the center
+    3. the area is filled with exactly nfill blocks, with lengths between n_min and n_max.
+    4. all fill blocks are at least sp_min apart.
+
+    Parameters
+    ----------
+    tot_area : int
+        total number of space we need to fill.
+    nfill : int
+        number of fill blocks to draw.
+    n_min : int
+        minimum length of the fill block.  Must be less than or equal to n_max.
+    n_max : int
+        maximum length of the fill block.
+    sp_min : int
+        minimum space between each fill block.
+    fill_on_edge : bool
+        If True, we put fill blocks on area boundary.  Otherwise, we put space block on
+        area boundary.
+    cyclic : bool
+        If True, we assume we're filling in a cyclic area (it wraps around).
+
+    Returns
+    -------
+    info : Tuple[Any, ...]
+        the fill information tuple.
+    invert : bool
+        True if space/fill is inverted.
+    """
+    # error checking
+    if nfill < 0:
+        raise ValueError('nfill = %d < 0' % nfill)
+    if n_min > n_max:
+        raise ValueError('n_min = %d > %d = n_max' % (n_min, n_max))
+    if n_min <= 0:
+        raise ValueError('n_min = %d <= 0' % n_min)
+
+    if nfill == 0:
+        # no fill at all
+        return _fill_symmetric_info(tot_area, 0, tot_area, inc_sp=False, fill_on_edge=False, cyclic=False), False
+
+    # check no solution
+    sp_delta = 0 if cyclic else (-1 if fill_on_edge else 1)
+    nsp = nfill + sp_delta
+    if n_min * nfill + nsp * sp_min > tot_area:
+        raise ValueError('Cannot draw %d fill blocks with n_min = %d' % (nfill, n_min))
+
+    # first, try drawing nfill blocks without block length constraint.
+    # may throw exception if no solution
+    info = _fill_symmetric_info(tot_area, nfill, sp_min, inc_sp=True, fill_on_edge=fill_on_edge, cyclic=cyclic)
+    bmin, bmax = _get_min_max_blk_len(info)
+    if bmin < n_min:
+        # could get here if cyclic = True, fill_on_edge = True, n_min is odd
+        # in this case actually no solution
+        raise ValueError('Cannot draw %d fill blocks with n_min = %d' % (nfill, n_min))
+    if bmax <= n_max:
+        # we satisfy block length constraint, just return
+        return info, False
+
+    # we broke maximum block length constraint, so we flip space and fill to have better control on fill length
+    info = _fill_symmetric_info(tot_area, nsp, n_max, inc_sp=False, fill_on_edge=not fill_on_edge, cyclic=cyclic)
+    num_diff_sp = info[1][2]
+    if num_diff_sp > 0 and n_min == n_max:
+        # no solution with same fill length, but we must have same fill length everywhere.
+        raise ValueError('Cannot draw %d fill blocks with n_min = n_max = %d' % (nfill, n_min))
+    return info, True
 
 
 def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=True, cyclic=False):
@@ -856,7 +903,7 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
         m = (num_blk_interval - 1) // 2
 
     if blk_len <= 0:
-        raise ValueError('Cannot fill with block less <= 0.')
+        raise ValueError('Cannot fill with block length <= 0.')
 
     # now we need to distribute the fill units evenly.  We do so using cumulative modding
     num_large = num_blk1 // 2
@@ -880,6 +927,12 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
 
     return fill_area, (tot_area, sp, num_diff_sp, sp_edge, blk0, blk1, k, m,
                        mid_blk_len, mid_sp_len, fill_on_edge, cyclic)
+
+
+def _get_min_max_blk_len(fill_info):
+    """Helper method to get minimum/maximum fill lengths used."""
+    blk0, blk1, blkm = fill_info[1][4], fill_info[1][5], fill_info[1][8]
+    return min(blk0, blk1, blkm), max(blk0, blk1, blkm)
 
 
 def _fill_symmetric_interval(tot_area, sp, num_diff_sp, sp_edge, blk0, blk1, k, m, mid_blk_len, mid_sp_len,
@@ -992,6 +1045,9 @@ def fill_symmetric_helper(tot_area, num_blk_tot, sp, offset=0, inc_sp=True, inve
        i. cyclic is False, and num_blk_tot is odd.
        ii. cyclic is True, fill_on_edge is True, and num_blk_tot is even.
        iii. cyclic is True, fill_on_edge is False, sp is even, and num_blk_tot is odd.
+
+       In particular, this means if you must have the same space between fill blocks, you
+       can change num_blk_tot by 1.
     2. The only case where at most 2 space blocks have length different than sp is
        when cyclic is True, fill_on_edge is False, sp is odd, and num_blk_tot is even.
     3. In all other cases, at most 1 space block have legnth different than sp.
