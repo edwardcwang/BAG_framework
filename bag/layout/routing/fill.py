@@ -578,6 +578,90 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
                                  invert=True, fill_on_edge=True, cyclic=False)[0]
 
 
+def fill_symmetric_min_density_info(area, targ_area, n_min, n_max, sp_min,
+                                    sp_max=None, fill_on_edge=True, cyclic=False):
+    # type: (int, int, int, int, int, Optional[int], bool, bool) -> Tuple[Tuple[Any, ...], bool]
+    """Fill the given 1-D area as little as possible.
+
+    Compute fill location such that the given area is filled with the following properties:
+
+    1. the area is as uniform as possible.
+    2. the area is symmetric with respect to the center
+    3. all fill blocks have lengths between n_min and n_max.
+    4. all fill blocks are at least sp_min apart.
+
+    Parameters
+    ----------
+    area : int
+        total number of space we need to fill.
+    targ_area : int
+        target minimum fill area.  If not achievable, will do the best that we can.
+    n_min : int
+        minimum length of the fill block.  Must be less than or equal to n_max.
+    n_max : int
+        maximum length of the fill block.
+    sp_min : int
+        minimum space between each fill block.
+    sp_max : Optional[int]
+        if given, make sure space between blocks does not exceed this value.  Must be greater than sp_min
+    fill_on_edge : bool
+        If True, we put fill blocks on area boundary.  Otherwise, we put space block on
+        area boundary.
+    cyclic : bool
+        If True, we assume we're filling in a cyclic area (it wraps around).
+
+    Returns
+    -------
+    info : Tuple[Any, ...]
+        the fill information tuple.
+    invert : bool
+        True if space/fill is inverted.
+    """
+    # first, fill as much as possible
+    max_result = fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
+                                                 sp_max=sp_max, fill_on_edge=fill_on_edge,
+                                                 cyclic=cyclic)
+
+    fill_area, nfill_opt = max_result[0][:2]
+    if fill_area < targ_area:
+        # we cannot meet area spec; return max result
+        return max_result
+
+    # now, reduce fill by doing binary search on n_max
+    n_max_iter = BinaryIterator(n_min, n_max)
+    while n_max_iter.has_next():
+        n_max_cur = n_max_iter.get_next()
+        try:
+            info, invert = _fill_symmetric_max_num_info(area, nfill_opt, n_min, n_max_cur, sp_min,
+                                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
+            fill_area_cur = area - info[0] if invert else info[0]
+            if invert:
+                _, sp_cur = _get_min_max_blk_len(info)
+            else:
+                sp_cur = sp_min if info[1][2] == 0 else sp_min + 1
+            if sp_cur > sp_max or fill_area_cur < targ_area:
+                # reduce n_max too much
+                n_max_iter.up()
+            else:
+                # both specs passed
+                n_max_iter.save_info((info, invert))
+                n_max_iter.down()
+
+        except ValueError:
+            # get here if n_min == n_max and there's no solution.
+            n_max_iter.up()
+
+    last_save = n_max_iter.get_last_save_info()
+    if last_save is None:
+        # no solution, return max result
+        return max_result
+
+    # return new minimum solution
+    info, invert = last_save
+    fill_area = area - info[0] if invert else info[0]
+    return (fill_area, nfill_opt, info[1]), invert
+
+
 def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
                                     sp_max=None, fill_on_edge=True, cyclic=False):
     # type: (int, int, int, int, int, Optional[int], bool, bool) -> Tuple[Tuple[Any, ...], bool]
@@ -617,6 +701,7 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
     invert : bool
         True if space/fill is inverted.
     """
+
     # fill area first monotonically increases with number of fill blocks, then monotonically
     # decreases (as we start adding more space than fill).  Therefore, a golden section search
     # can be done on the number of fill blocks to determine the optimum.
@@ -712,8 +797,9 @@ def fill_symmetric_max_density(area, targ_area, n_min, n_max, sp_min, offset=0,
     fill_area : int
         total filled area.  May or may not meet minimum density requirement.
     """
-    (fill_area, _, args), invert = fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
-                                                                   sp_max=sp_max, fill_on_edge=fill_on_edge, cyclic=cyclic)
+    max_result = fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
+                                                 sp_max=sp_max, fill_on_edge=fill_on_edge, cyclic=cyclic)
+    (fill_area, _, args), invert = max_result
     return fill_symmetric_interval(*args, offset=offset, invert=invert)[0], fill_area
 
 
