@@ -728,7 +728,7 @@ def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_
 
     1. the area is as uniform as possible.
     2. the area is symmetric with respect to the center
-    3. the area is filled with exactly nfill blocks, with lengths between n_min and n_max.
+    3. the area is filled as much as possible with exactly nfill blocks, with lengths between n_min and n_max.
     4. all fill blocks are at least sp_min apart.
 
     Parameters
