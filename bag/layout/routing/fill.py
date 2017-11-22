@@ -640,7 +640,7 @@ def fill_symmetric_min_density_info(area, min_density, n_min, n_max, sp_min, fil
 
 
 def fill_symmetric_min_density(area, min_density, n_min, n_max, sp_min, offset=0, fill_on_edge=True, cyclic=False):
-    # type: (int, float, int, int, int, bool, bool) -> List[Tuple[int, int]]
+    # type: (int, float, int, int, int, bool, bool) -> Tuple[List[Tuple[int, int]], int]
     """Fill the given 1-D area as much as possible.
 
     Compute fill location such that the given area is filled with the following properties:
@@ -674,10 +674,14 @@ def fill_symmetric_min_density(area, min_density, n_min, n_max, sp_min, offset=0
     -------
     fill_interval : List[Tuple[int, int]]
         a list of [start, stop) intervals that needs to be filled.
+    fill_area : int
+        total filled area.  May or may not meet minimum density requirement.
     """
-    (_, args), invert = fill_symmetric_min_density_info(area, min_density, n_min, n_max, sp_min,
-                                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
-    return _fill_symmetric_interval(*args, offset=offset, invert=invert)[0]
+    (fill_area, args), invert = fill_symmetric_min_density_info(area, min_density, n_min, n_max, sp_min,
+                                                                fill_on_edge=fill_on_edge, cyclic=cyclic)
+    if invert:
+        fill_area = area - fill_area
+    return _fill_symmetric_interval(*args, offset=offset, invert=invert)[0], fill_area
 
 
 def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_edge=True, cyclic=False):
