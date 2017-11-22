@@ -578,8 +578,8 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
                                  invert=True, fill_on_edge=True, cyclic=False)[0]
 
 
-def fill_symmetric_max_info(area, n_min, n_max, sp_min, cyclic=False):
-    # type: (int, int, int, int, bool) -> Tuple[Any, ...]
+def fill_symmetric_max_info(area, n_min, n_max, sp_min, fill_on_edge=True, cyclic=False):
+    # type: (int, int, int, int, bool, bool) -> Tuple[Any, ...]
     """Fill the given 1-D area as much as possible, given minimum space constraint.
 
     Compute fill location such that the given area is filled with the following properties:
@@ -587,8 +587,6 @@ def fill_symmetric_max_info(area, n_min, n_max, sp_min, cyclic=False):
     1. the area is as uniform as possible.
     2. the area is symmetric with respect to the center
     3. the area is filled as much as possible.
-
-    fill is drawn such that fill blocks abut both area boundaries.
 
     Parameters
     ----------
@@ -600,10 +598,11 @@ def fill_symmetric_max_info(area, n_min, n_max, sp_min, cyclic=False):
         maximum length of the fill block.
     sp_min : int
         minimum space between each fill block.
+    fill_on_edge : bool
+        If True, we put fill blocks on area boundary.  Otherwise, we put space block on
+        area boundary.
     cyclic : bool
-        True if the given area actually wraps around.  This is usually the case if you are
-        filling an area that is arrayed.  In cyclic fill mode, space blocks abut both area
-        boundaries.
+        If True, we assume we're filling in a cyclic area (it wraps around).
     """
     # error checking
     if n_min > n_max:
@@ -611,14 +610,15 @@ def fill_symmetric_max_info(area, n_min, n_max, sp_min, cyclic=False):
 
     # step 1: find maximum block size and minimum number of blocks we can put in the given area
     blk_len_max_iter = BinaryIterator(n_min, n_max + 1)
+    sp_delta = -1 if fill_on_edge else 1
     while blk_len_max_iter.has_next():
         blk_len_max = blk_len_max_iter.get_next()
         if cyclic:
             num_blk_min = area // (blk_len_max + sp_min)
             num_sp_min = num_blk_min
         else:
-            num_blk_min = (area + sp_min) // (blk_len_max + sp_min)
-            num_sp_min = num_blk_min - 1
+            num_blk_min = (area - sp_delta * sp_min) // (blk_len_max + sp_min)
+            num_sp_min = num_blk_min + sp_delta
 
         if num_blk_min > 0 and (not cyclic or num_sp_min > 0):
             blk_len_max_iter.save_info((num_blk_min, num_sp_min))
@@ -760,8 +760,6 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
     else:
         if fill_on_edge:
             num_sp_tot = num_blk_tot - 1
-            if num_sp_tot == 0 and sp != 0:
-                raise ValueError('Cannot draw 0 spaces blocks with nonzero spacing.')
         else:
             num_sp_tot = num_blk_tot + 1
 
