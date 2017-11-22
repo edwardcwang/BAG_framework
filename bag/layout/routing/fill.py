@@ -37,7 +37,7 @@ from typing import Optional, Union, List, Tuple, Iterable, Any, Dict
 import numpy as np
 
 from bag.util.interval import IntervalSet
-from bag.util.search import minimize_cost_golden
+from bag.util.search import BinaryIterator, minimize_cost_golden
 from bag.layout.util import BBox
 from .base import WireArray, TrackID
 from .grid import RoutingGrid
@@ -580,8 +580,9 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
                                  invert=True, fill_on_edge=True, cyclic=False)[0]
 
 
-def fill_symmetric_min_density_info(area, min_density, n_min, n_max, sp_min, fill_on_edge=True, cyclic=False):
-    # type: (int, float, int, int, int, bool, bool) -> Tuple[Tuple[Any, ...], bool]
+def fill_symmetric_min_density_info(area, min_density, n_min, n_max, sp_min,
+                                    sp_max=None, fill_on_edge=True, cyclic=False):
+    # type: (int, float, int, int, int, Optional[int], bool, bool) -> Tuple[Tuple[Any, ...], bool]
     """Fill the given 1-D area as much as possible.
 
     Compute fill location such that the given area is filled with the following properties:
@@ -603,6 +604,8 @@ def fill_symmetric_min_density_info(area, min_density, n_min, n_max, sp_min, fil
         maximum length of the fill block.
     sp_min : int
         minimum space between each fill block.
+    sp_max : Optional[int]
+        if given, make sure space between blocks does not exceed this value.  Must be greater than sp_min
     fill_on_edge : bool
         If True, we put fill blocks on area boundary.  Otherwise, we put space block on
         area boundary.
@@ -621,17 +624,47 @@ def fill_symmetric_min_density_info(area, min_density, n_min, n_max, sp_min, fil
     # can be done on the number of fill blocks to determine the optimum.
     def golden_fun(nfill):
         try:
-            info, invert = _fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
-                                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
+            info2, invert2 = _fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
+                                                          fill_on_edge=fill_on_edge, cyclic=cyclic)
         except ValueError:
             return 0
-        if invert:
-            return area - info[0]
+        if invert2:
+            return area - info2[0]
         else:
-            return info[0]
+            return info2[0]
+
+    if sp_max is None:
+        # no limit on nfill
+        nfill_min = 1
+    else:
+        if sp_max <= sp_min:
+            raise ValueError('Cannot have sp_max = %d <= %d = sp_min' % (sp_max, sp_min))
+        # find minimum nfill that meets sp_max spec
+        min_iter = BinaryIterator(1, None)
+        while min_iter.has_next():
+            nfill_cur = min_iter.get_next()
+            try:
+                info, invert = _fill_symmetric_max_num_info(area, nfill_cur, n_min, n_max, sp_min,
+                                                            fill_on_edge=fill_on_edge, cyclic=cyclic)
+                if invert:
+                    _, sp_cur = _get_min_max_blk_len(info)
+                else:
+                    sp_cur = sp_min if info[1][2] == 0 else sp_min + 1
+            except ValueError:
+                sp_cur = sp_max + 1
+
+            if sp_cur > sp_max:
+                min_iter.up()
+            else:
+                min_iter.save()
+                min_iter.down()
+
+        nfill_min = min_iter.get_last_save()
+        if nfill_min is None:
+            raise ValueError('No solution for sp_max = %d' % sp_max)
 
     area_targ = int(math.ceil(area * min_density))
-    min_result = minimize_cost_golden(golden_fun, area_targ, offset=1, maxiter=None)
+    min_result = minimize_cost_golden(golden_fun, area_targ, offset=nfill_min, maxiter=None)
     nfill_opt = min_result.x
     if nfill_opt is None:
         nfill_opt = min_result.xmax
@@ -639,8 +672,9 @@ def fill_symmetric_min_density_info(area, min_density, n_min, n_max, sp_min, fil
                                         fill_on_edge=fill_on_edge, cyclic=cyclic)
 
 
-def fill_symmetric_min_density(area, min_density, n_min, n_max, sp_min, offset=0, fill_on_edge=True, cyclic=False):
-    # type: (int, float, int, int, int, bool, bool) -> Tuple[List[Tuple[int, int]], int]
+def fill_symmetric_min_density(area, min_density, n_min, n_max, sp_min, offset=0,
+                               sp_max=None, fill_on_edge=True, cyclic=False):
+    # type: (int, float, int, int, int, Optional[int], bool, bool) -> Tuple[List[Tuple[int, int]], int]
     """Fill the given 1-D area as much as possible.
 
     Compute fill location such that the given area is filled with the following properties:
@@ -664,6 +698,8 @@ def fill_symmetric_min_density(area, min_density, n_min, n_max, sp_min, offset=0
         minimum space between each fill block.
     offset : int
         the starting coordinate of the total interval.
+    sp_max : Optional[int]
+        if given, make sure space between blocks does not exceed this value.  Must be greater than sp_min
     fill_on_edge : bool
         If True, we put fill blocks on area boundary.  Otherwise, we put space block on
         area boundary.
@@ -678,7 +714,7 @@ def fill_symmetric_min_density(area, min_density, n_min, n_max, sp_min, offset=0
         total filled area.  May or may not meet minimum density requirement.
     """
     (fill_area, args), invert = fill_symmetric_min_density_info(area, min_density, n_min, n_max, sp_min,
-                                                                fill_on_edge=fill_on_edge, cyclic=cyclic)
+                                                                sp_max=sp_max, fill_on_edge=fill_on_edge, cyclic=cyclic)
     if invert:
         fill_area = area - fill_area
     return _fill_symmetric_interval(*args, offset=offset, invert=invert)[0], fill_area
