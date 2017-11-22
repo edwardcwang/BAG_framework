@@ -30,8 +30,6 @@ from __future__ import (absolute_import, division,
 # noinspection PyUnresolvedReferences,PyCompatibility
 from builtins import *
 
-import math
-
 from typing import Optional, Union, List, Tuple, Iterable, Any, Dict
 
 import numpy as np
@@ -580,9 +578,9 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
                                  invert=True, fill_on_edge=True, cyclic=False)[0]
 
 
-def fill_symmetric_max_density_info(area, min_density, n_min, n_max, sp_min,
+def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
                                     sp_max=None, fill_on_edge=True, cyclic=False):
-    # type: (int, float, int, int, int, Optional[int], bool, bool) -> Tuple[Tuple[Any, ...], bool]
+    # type: (int, int, int, int, int, Optional[int], bool, bool) -> Tuple[Tuple[Any, ...], bool]
     """Fill the given 1-D area as much as possible.
 
     Compute fill location such that the given area is filled with the following properties:
@@ -596,8 +594,8 @@ def fill_symmetric_max_density_info(area, min_density, n_min, n_max, sp_min,
     ----------
     area : int
         total number of space we need to fill.
-    min_density : float
-        target minimum fill density, a float between 0.0 and 1.0.  If not achievable, will do the best that we can.
+    targ_area : int
+        target minimum fill area.  If not achievable, will do the best that we can.
     n_min : int
         minimum length of the fill block.  Must be less than or equal to n_max.
     n_max : int
@@ -663,8 +661,7 @@ def fill_symmetric_max_density_info(area, min_density, n_min, n_max, sp_min,
         if nfill_min is None:
             raise ValueError('No solution for sp_max = %d' % sp_max)
 
-    area_targ = int(math.ceil(area * min_density))
-    min_result = minimize_cost_golden(golden_fun, area_targ, offset=nfill_min, maxiter=None)
+    min_result = minimize_cost_golden(golden_fun, targ_area, offset=nfill_min, maxiter=None)
     nfill_opt = min_result.x
     if nfill_opt is None:
         nfill_opt = min_result.xmax
@@ -672,9 +669,9 @@ def fill_symmetric_max_density_info(area, min_density, n_min, n_max, sp_min,
                                         fill_on_edge=fill_on_edge, cyclic=cyclic)
 
 
-def fill_symmetric_max_density(area, min_density, n_min, n_max, sp_min, offset=0,
+def fill_symmetric_max_density(area, targ_area, n_min, n_max, sp_min, offset=0,
                                sp_max=None, fill_on_edge=True, cyclic=False):
-    # type: (int, float, int, int, int, int, Optional[int], bool, bool) -> Tuple[List[Tuple[int, int]], int]
+    # type: (int, int, int, int, int, int, Optional[int], bool, bool) -> Tuple[List[Tuple[int, int]], int]
     """Fill the given 1-D area as much as possible.
 
     Compute fill location such that the given area is filled with the following properties:
@@ -688,8 +685,8 @@ def fill_symmetric_max_density(area, min_density, n_min, n_max, sp_min, offset=0
     ----------
     area : int
         total number of space we need to fill.
-    min_density : float
-        target minimum fill density, a float between 0.0 and 1.0.  If not achievable, will do the best that we can.
+    targ_area : int
+        target minimum fill area.  If not achievable, will do the best that we can.
     n_min : int
         minimum length of the fill block.  Must be less than or equal to n_max.
     n_max : int
@@ -713,7 +710,7 @@ def fill_symmetric_max_density(area, min_density, n_min, n_max, sp_min, offset=0
     fill_area : int
         total filled area.  May or may not meet minimum density requirement.
     """
-    (fill_area, args), invert = fill_symmetric_max_density_info(area, min_density, n_min, n_max, sp_min,
+    (fill_area, args), invert = fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
                                                                 sp_max=sp_max, fill_on_edge=fill_on_edge, cyclic=cyclic)
     if invert:
         fill_area = area - fill_area
