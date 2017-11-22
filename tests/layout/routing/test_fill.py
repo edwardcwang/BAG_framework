@@ -6,13 +6,16 @@ from bag.layout.routing.fill import fill_symmetric_helper
 
 
 def check_disjoint_union(outer_list, inner_list, start, stop):
-    sintv, eintv = outer_list[0], outer_list[-1]
-    # test outer list covers more range than inner list
-    assert sintv[0] <= inner_list[0][0] and eintv[1] >= inner_list[-1][1]
-    # test outer list touches both boundaries
-    assert sintv[0] == start and eintv[1] == stop
     # test outer list has 1 more element than inner list
     assert len(outer_list) == len(inner_list) + 1
+
+    sintv, eintv = outer_list[0], outer_list[-1]
+    if inner_list:
+        # test outer list covers more range than inner list
+        assert sintv[0] <= inner_list[0][0] and eintv[1] >= inner_list[-1][1]
+    # test outer list touches both boundaries
+    assert sintv[0] == start and eintv[1] == stop
+
     # test intervals are disjoint and union is equal to given interval
     for idx in range(len(outer_list)):
         intv1 = outer_list[idx]
@@ -54,26 +57,30 @@ def check_props(fill_list, space_list, num_diff_sp1, num_diff_sp2, n, tot_intv, 
     # check symmetry
     check_symmetric(fill_list, tot_intv[0], tot_intv[1])
     check_symmetric(space_list, tot_intv[0], tot_intv[1])
-    # check only two lengths, and they differ by 1
+    # check fill has only two lengths, and they differ by 1
     len_list = sorted(set((b - a) for a, b in fill_list))
     assert len(len_list) <= n_flen_max
     assert (len_list[-1] - len_list[0]) <= n_flen_max - 1
-    len_list = sorted(set((b - a) for a, b in space_list))
-    assert len(len_list) <= (2 if num_diff_sp1 > 0 else 1)
-    assert (len_list[-1] - len_list[0]) <= 1
-    # check that space is the right values
-    if len(len_list) == 1:
-        # if only one space, check that it is sp + inc only if num_diff_sp > 0
-        if num_diff_sp1 > 0:
-            sp_correct = sp + 1 if inc_sp else sp - 1
+
+    if space_list:
+        # check space has only two lengths, and they differ by 1
+        len_list = sorted(set((b - a) for a, b in space_list))
+        assert len(len_list) <= (2 if num_diff_sp1 > 0 else 1)
+        assert (len_list[-1] - len_list[0]) <= 1
+        # check that space is the right values
+        if len(len_list) == 1:
+            # if only one space, check that it is sp + inc only if num_diff_sp > 0
+            if num_diff_sp1 > 0:
+                sp_correct = sp + 1 if inc_sp else sp - 1
+            else:
+                sp_correct = sp
+            assert len_list[0] == sp_correct
         else:
-            sp_correct = sp
-        assert len_list[0] == sp_correct
-    else:
-        if inc_sp:
-            assert len_list[0] == sp
-        else:
-            assert len_list[-1] == sp
+            # check it has space sp and sp + inc_sp
+            if inc_sp:
+                assert len_list[0] == sp
+            else:
+                assert len_list[-1] == sp
 
 
 def test_fill_symmetric_non_cyclic():
@@ -95,11 +102,9 @@ def test_fill_symmetric_non_cyclic():
                 else:
                     # if we have even fill and we can decrease space, then we can decrease middle space by 1
                     min_footprint = nfill * 1 + nsp * sp - 1
-                if min_footprint > area or (foe and nfill == 1 and sp != 0):
+                if min_footprint > area:
                     # test exception when drawing with no solution
-                    # we have no solution when:
-                    # 1) minimum possible footprint > area
-                    # 2) fill is abutting edge, we only can have 1 fill, and we need non-zero spacing.
+                    # we have no solution when minimum possible footprint > area
                     with pytest.raises(ValueError):
                         fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
                                               invert=False, fill_on_edge=foe, cyclic=False)
