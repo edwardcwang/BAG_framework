@@ -639,13 +639,13 @@ def fill_symmetric_min_density_info(area, targ_area, n_min, n_max, sp_min,
                 _, sp_cur = _get_min_max_blk_len(info)
             else:
                 sp_cur = sp_min if info[1][2] == 0 else sp_min + 1
-            if sp_cur > sp_max or fill_area_cur < targ_area:
-                # reduce n_max too much
-                n_max_iter.up()
-            else:
+            if fill_area_cur >= targ_area and (sp_max is None or sp_cur <= sp_max):
                 # both specs passed
                 n_max_iter.save_info((info, invert))
                 n_max_iter.down()
+            else:
+                # reduce n_max too much
+                n_max_iter.up()
 
         except ValueError:
             # get here if n_min == n_max and there's no solution.
