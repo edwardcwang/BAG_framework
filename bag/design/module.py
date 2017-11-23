@@ -1036,11 +1036,15 @@ class ResMetalModule(Module):
         lib_name = tech_dict['lib_name']
         l_name = tech_dict['l_name']
         w_name = tech_dict['w_name']
+        layer_name = tech_dict.get('layer_name', None)
         cell_name = tech_dict['cell_table'][layer]
 
-        self.replace_instance_master('R0', lib_name, cell_name, static=True)
+        if layer_name is None:
+            # replace resistor cellview
+            self.replace_instance_master('R0', lib_name, cell_name, static=True)
+        else:
+            self.instances['R0'].parameters[layer_name] = cell_name
         self.instances['R0'].parameters[l_name] = float_to_si_string(l, precision=6)
-        self.instances['R0'].parameters[w_name] = float_to_si_string(w, precision=6)
         self.instances['R0'].parameters[w_name] = float_to_si_string(w, precision=6)
         for key, val in tech_dict['others'].items():
             if isinstance(val, float):
