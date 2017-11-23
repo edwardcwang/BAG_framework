@@ -703,8 +703,16 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
     """
 
     # min area test
+    nfill_min = 1
     try:
-        _fill_symmetric_max_num_info(area, 1, n_min, n_max, sp_min, fill_on_edge=fill_on_edge, cyclic=cyclic)
+        try:
+            _fill_symmetric_max_num_info(area, nfill_min, n_min, n_max, sp_min,
+                                         fill_on_edge=fill_on_edge, cyclic=cyclic)
+        except NoFillAbutEdgeError:
+            # we need at least 2 fiils
+            nfill_min = 2
+            _fill_symmetric_max_num_info(area, nfill_min, n_min, n_max, sp_min,
+                                         fill_on_edge=fill_on_edge, cyclic=cyclic)
     except InsufficientAreaError:
         # cannot fill at all
         info, invert = _fill_symmetric_max_num_info(area, 0, n_min, n_max, sp_min,
@@ -725,10 +733,7 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
         else:
             return info2[0]
 
-    if sp_max is None:
-        # no limit on nfill
-        nfill_min = 1
-    else:
+    if sp_max is not None:
         if sp_max <= sp_min:
             raise ValueError('Cannot have sp_max = %d <= %d = sp_min' % (sp_max, sp_min))
         # find minimum nfill that meets sp_max spec
@@ -745,7 +750,7 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
             except ValueError:
                 return -sp_max - 1
 
-        min_result = minimize_cost_golden(golden_fun2, -sp_max, offset=1, maxiter=None)
+        min_result = minimize_cost_golden(golden_fun2, -sp_max, offset=nfill_min, maxiter=None)
         nfill_min = min_result.x
         if nfill_min is None:
             # should never get here...
@@ -813,6 +818,10 @@ class InsufficientAreaError(ValueError):
 
 
 class FillTooSmallError(ValueError):
+    pass
+
+
+class NoFillAbutEdgeError(ValueError):
     pass
 
 
@@ -891,6 +900,10 @@ def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_
         return info, False
 
     # we broke maximum block length constraint, so we flip space and fill to have better control on fill length
+    if nsp == 0 and n_max != tot_area and n_max - 1 != tot_area:
+        # we get here only if nfill = 1 and fill_on_edge is True.  In this case there's no way to draw
+        # only one fill and abut both edges
+        raise NoFillAbutEdgeError('Cannot draw only one fill abutting both edges.')
     info = _fill_symmetric_info(tot_area, nsp, n_max, inc_sp=False, fill_on_edge=not fill_on_edge, cyclic=cyclic)
     num_diff_sp = info[1][2]
     if num_diff_sp > 0 and n_min == n_max:
