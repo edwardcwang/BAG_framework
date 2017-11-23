@@ -623,8 +623,8 @@ def fill_symmetric_min_density_info(area, targ_area, n_min, n_max, sp_min,
                                                  cyclic=cyclic)
 
     fill_area, nfill_opt = max_result[0][:2]
-    if fill_area < targ_area:
-        # we cannot meet area spec; return max result
+    if fill_area <= targ_area:
+        # we cannot/barely meet area spec; return max result
         return max_result
 
     # now, reduce fill by doing binary search on n_max
@@ -702,6 +702,15 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
         True if space/fill is inverted.
     """
 
+    # min area test
+    try:
+        _fill_symmetric_max_num_info(area, 1, n_min, n_max, sp_min, fill_on_edge=fill_on_edge, cyclic=cyclic)
+    except InsufficientAreaError:
+        # cannot fill at all
+        info, invert = _fill_symmetric_max_num_info(area, 0, n_min, n_max, sp_min,
+                                                    fill_on_edge=fill_on_edge, cyclic=cyclic)
+        return (0, 0, info[1]), invert
+
     # fill area first monotonically increases with number of fill blocks, then monotonically
     # decreases (as we start adding more space than fill).  Therefore, a golden section search
     # can be done on the number of fill blocks to determine the optimum.
@@ -723,27 +732,23 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
         if sp_max <= sp_min:
             raise ValueError('Cannot have sp_max = %d <= %d = sp_min' % (sp_max, sp_min))
         # find minimum nfill that meets sp_max spec
-        min_iter = BinaryIterator(1, None)
-        while min_iter.has_next():
-            nfill_cur = min_iter.get_next()
+
+        def golden_fun2(nfill):
             try:
-                info, invert = _fill_symmetric_max_num_info(area, nfill_cur, n_min, n_max, sp_min,
-                                                            fill_on_edge=fill_on_edge, cyclic=cyclic)
-                if invert:
-                    _, sp_cur = _get_min_max_blk_len(info)
+                info2, invert2 = _fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
+                                                              fill_on_edge=fill_on_edge, cyclic=cyclic)
+                if invert2:
+                    _, sp_cur = _get_min_max_blk_len(info2)
                 else:
-                    sp_cur = sp_min if info[1][2] == 0 else sp_min + 1
+                    sp_cur = sp_min if info2[1][2] == 0 else sp_min + 1
+                return -sp_cur
             except ValueError:
-                sp_cur = sp_max + 1
+                return -sp_max - 1
 
-            if sp_cur > sp_max:
-                min_iter.up()
-            else:
-                min_iter.save()
-                min_iter.down()
-
-        nfill_min = min_iter.get_last_save()
+        min_result = minimize_cost_golden(golden_fun2, -sp_max, offset=1, maxiter=None)
+        nfill_min = min_result.x
         if nfill_min is None:
+            # should never get here...
             raise ValueError('No solution for sp_max = %d' % sp_max)
 
     min_result = minimize_cost_golden(golden_fun, targ_area, offset=nfill_min, maxiter=None)
@@ -803,6 +808,22 @@ def fill_symmetric_max_density(area, targ_area, n_min, n_max, sp_min, offset=0,
     return fill_symmetric_interval(*args, offset=offset, invert=invert)[0], fill_area
 
 
+class InsufficientAreaError(ValueError):
+    pass
+
+
+class FillTooSmallError(ValueError):
+    pass
+
+
+class NoFillChoiceError(ValueError):
+    pass
+
+
+class EmptyRegionError(ValueError):
+    pass
+
+
 def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_edge=True, cyclic=False):
     # type: (int, int, int, int, int, bool, bool) -> Tuple[Tuple[Any, ...], bool]
     """Fill the given 1-D area as much as possible with given number of fill blocks.
@@ -855,7 +876,7 @@ def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_
     sp_delta = 0 if cyclic else (-1 if fill_on_edge else 1)
     nsp = nfill + sp_delta
     if n_min * nfill + nsp * sp_min > tot_area:
-        raise ValueError('Cannot draw %d fill blocks with n_min = %d' % (nfill, n_min))
+        raise InsufficientAreaError('Cannot draw %d fill blocks with n_min = %d' % (nfill, n_min))
 
     # first, try drawing nfill blocks without block length constraint.
     # may throw exception if no solution
@@ -864,7 +885,7 @@ def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_
     if bmin < n_min:
         # could get here if cyclic = True, fill_on_edge = True, n_min is odd
         # in this case actually no solution
-        raise ValueError('Cannot draw %d fill blocks with n_min = %d' % (nfill, n_min))
+        raise FillTooSmallError('Cannot draw %d fill blocks with n_min = %d' % (nfill, n_min))
     if bmax <= n_max:
         # we satisfy block length constraint, just return
         return info, False
@@ -874,7 +895,7 @@ def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_
     num_diff_sp = info[1][2]
     if num_diff_sp > 0 and n_min == n_max:
         # no solution with same fill length, but we must have same fill length everywhere.
-        raise ValueError('Cannot draw %d fill blocks with n_min = n_max = %d' % (nfill, n_min))
+        raise NoFillChoiceError('Cannot draw %d fill blocks with n_min = n_max = %d' % (nfill, n_min))
     return info, True
 
 
@@ -918,11 +939,11 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
     if num_blk_tot == 0:
         # special case, no fill at all
         if sp == tot_area:
-            return 0, (tot_area, tot_area, 0, 0, 0, 0, 0, -1, tot_area, False, False)
+            return 0, (tot_area, tot_area, 0, tot_area, 0, 0, 0, 0, -1, tot_area, False, False)
         elif sp == tot_area - adj_sp_sgn:
-            return 0, (tot_area, tot_area, 1, 0, 0, 0, 0, -1, tot_area, False, False)
+            return 0, (tot_area, tot_area, 1, tot_area, 0, 0, 0, 0, -1, tot_area, False, False)
         else:
-            raise ValueError('Cannot draw 0 fill with given spec')
+            raise EmptyRegionError('Cannot have empty region = %d with sp = %d' % (tot_area, sp))
 
     # determine the number of space blocks
     if cyclic:
@@ -1026,7 +1047,7 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
         m = (num_blk_interval - 1) // 2
 
     if blk_len <= 0:
-        raise ValueError('Cannot fill with block length <= 0.')
+        raise InsufficientAreaError('Insufficent area; cannot draw fill with length <= 0.')
 
     # now we need to distribute the fill units evenly.  We do so using cumulative modding
     num_large = num_blk1 // 2
