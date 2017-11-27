@@ -69,6 +69,23 @@ def _parse_yaml_file(fname):
     return yaml.load(content)
 
 
+def _get_config_file_abspath(fname):
+    """Get absolute path of configuration file using BAG_WORK_DIR environment variable."""
+    fname = os.path.basename(fname)
+    if 'BAG_WORK_DIR' not in os.environ:
+        raise ValueError('Environment variable BAG_WORK_DIR not defined')
+
+    work_dir = os.environ['BAG_WORK_DIR']
+    if not os.path.isdir(work_dir):
+        raise ValueError('$BAG_WORK_DIR = %s is not a directory' % work_dir)
+
+    # read port number
+    fname = os.path.join(work_dir, fname)
+    if not os.path.isfile(fname):
+        raise ValueError('Cannot find file: %s' % fname)
+    return fname
+
+
 def _get_port_number(port_file):
     # type: (str) -> Tuple[Optional[int], str]
     """Read the port number from the given port file.
@@ -85,18 +102,10 @@ def _get_port_number(port_file):
     msg : str
         Empty string on success, the error message on failure.
     """
-    port_file = os.path.basename(port_file)
-    if 'BAG_WORK_DIR' not in os.environ:
-        return None, 'Environment variable BAG_WORK_DIR not defined'
-
-    work_dir = os.environ['BAG_WORK_DIR']
-    if not os.path.isdir(work_dir):
-        return None, '$BAG_WORK_DIR = %s is not a directory' % work_dir
-
-    # read port number
-    port_file = os.path.join(work_dir, port_file)
-    if not os.path.isfile(port_file):
-        return None, 'Cannot find port file.'
+    try:
+        port_file = _get_config_file_abspath(port_file)
+    except ValueError as err:
+        return None, str(err)
 
     port = int(read_file(port_file))
     return port, ''
@@ -493,8 +502,12 @@ class BagProject(object):
         self.tech_info = create_tech_info(bag_config_path=bag_config_path)
 
         # create design module database.
+        try:
+            lib_defs_file = _get_config_file_abspath(self.bag_config['lib_defs'])
+        except ValueError:
+            lib_defs_file = ''
         sch_exc_libs = self.bag_config['database']['schematic']['exclude_libraries']
-        self.dsn_db = ModuleDB(self.bag_config['lib_defs'], self.tech_info, sch_exc_libs, prj=self)
+        self.dsn_db = ModuleDB(lib_defs_file, self.tech_info, sch_exc_libs, prj=self)
 
         if port is not None:
             # make DbAccess instance.
