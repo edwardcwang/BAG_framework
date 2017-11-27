@@ -87,7 +87,7 @@ class VirtuosoChecker(SubProcessChecker, metaclass=abc.ABCMeta):
         # run strmOut
         cmd = ['strmout', '-templateFile', config_fname]
 
-        return cmd, log_file, None, None
+        return cmd, log_file, None, os.environ['BAG_WORK_DIR']
 
     def setup_export_schematic(self, lib_name, cell_name, out_file, view_name='schematic', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> ProcInfo
@@ -113,4 +113,4 @@ class VirtuosoChecker(SubProcessChecker, metaclass=abc.ABCMeta):
         # run command
         cmd = ['si', run_dir, '-batch', '-command', 'netlist']
 
-        return cmd, log_file, None, None
+        return cmd, log_file, None, os.environ['BAG_WORK_DIR']

@@ -116,7 +116,7 @@ class OceanInterface(SimProcessManager):
         sim_kwargs = self.sim_config['kwargs']
         ocn_cmd = sim_kwargs['command']
         env = sim_kwargs.get('env', None)
-        cwd = sim_kwargs.get('cwd', None)
+        cwd = sim_kwargs.get('cwd', os.environ['BAG_WORK_DIR'])
         sim_cmd = [ocn_cmd, '-nograph', '-replay', script_fname, '-log', log_fname]
 
         # create empty log file to make sure it exists.

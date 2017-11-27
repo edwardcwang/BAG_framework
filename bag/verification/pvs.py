@@ -207,7 +207,7 @@ class PVS(VirtuosoChecker):
 
         # NOTE: qrc needs to be run in the current working directory (virtuoso directory), because it needs to
         # access cds.lib
-        return [(cmd, log_file, None, None, rcx_passed)]
+        return [(cmd, log_file, None, os.environ['BAG_WORK_DIR'], rcx_passed)]
 
     def modify_lvs_runset(self, cell_name, lvs_params):
         """Modify the given LVS runset file.
