@@ -116,8 +116,12 @@ class OceanInterface(SimProcessManager):
         sim_kwargs = self.sim_config['kwargs']
         ocn_cmd = sim_kwargs['command']
         env = sim_kwargs.get('env', None)
-        cwd = sim_kwargs.get('cwd', os.environ['BAG_WORK_DIR'])
+        cwd = sim_kwargs.get('cwd', None)
         sim_cmd = [ocn_cmd, '-nograph', '-replay', script_fname, '-log', log_fname]
+
+        if cwd is None:
+            # set working directory to BAG_WORK_DIR if None
+            cwd = os.environ['BAG_WORK_DIR']
 
         # create empty log file to make sure it exists.
         return sim_cmd, log_fname, env, cwd, save_dir
