@@ -616,7 +616,9 @@ class BagProject(object):
         """Create a new schematic instance
 
         This method is the schematic equivalent of TemplateDB's new_template() method.
-
+        By default, we assume the design() function is used to set the schematic parameters.
+        If you use another function (such as design_specs()), then you should specify
+        an optional parameter design_fun equal to the name of that function.
 
         Parameters
         ----------
