@@ -611,7 +611,7 @@ class BagProject(object):
         """
         return SchInstance(self.dsn_db, lib_name, cell_name, 'XTOP', static=False)
 
-    def new_schematic_instance(self, lib_name='', sch_name='', params=None, sch_cls=None, debug=False, **kwargs):
+    def new_schematic_instance(self, lib_name='', cell_name='', params=None, sch_cls=None, debug=False, **kwargs):
         # type: (str, str, Dict[str, Any], Type[ModuleType], bool, **kwargs) -> SchInstance
         """Create a new schematic instance
 
@@ -624,7 +624,7 @@ class BagProject(object):
         ----------
         lib_name : str
             schematic library name.
-        sch_name : str
+        cell_name : str
             schematic name
         params : Dict[str, Any]
             the parameter dictionary.
@@ -641,10 +641,10 @@ class BagProject(object):
             a schematic instance of the given schematic generator.
         """
         design_fun = kwargs.get('design_fun', 'design')
-        master = self.dsn_db.new_master(lib_name, sch_name, gen_cls=sch_cls, params=params,
+        master = self.dsn_db.new_master(lib_name, cell_name, gen_cls=sch_cls, params=params,
                                         debug=debug, design_args=None, design_fun=design_fun)
 
-        return SchInstance(self.dsn_db, lib_name, sch_name, 'XTOP', static=False,
+        return SchInstance(self.dsn_db, lib_name, cell_name, 'XTOP', static=False,
                            master=master)
 
     def instantiate_schematic(self, lib_name, content_list, lib_path=''):
