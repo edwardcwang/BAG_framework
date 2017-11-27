@@ -32,7 +32,7 @@ from builtins import *
 import os
 import string
 import importlib
-from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, Union, Type, Sequence
+from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, Union, Type, Sequence, TypeVar
 
 # noinspection PyPackageRequirements
 import yaml
@@ -47,6 +47,9 @@ if TYPE_CHECKING:
     from .interface.simulator import SimAccess
     from .interface.database import DbAccess
     from .layout.core import TechInfo
+    from .design.module import Module
+
+    ModuleType = TypeVar('ModuleType', bound=Module)
 
 
 def _parse_yaml_file(fname):
@@ -607,6 +610,40 @@ class BagProject(object):
             a configurable schematic instance of the given schematic generator.
         """
         return SchInstance(self.dsn_db, lib_name, cell_name, 'XTOP', static=False)
+
+    def new_schematic_instance(self, lib_name='', sch_name='', params=None, sch_cls=None, debug=False, **kwargs):
+        # type: (str, str, Dict[str, Any], Type[ModuleType], bool, **kwargs) -> SchInstance
+        """Create a new schematic instance
+
+        This method is the schematic equivalent of TemplateDB's new_template() method.
+
+
+        Parameters
+        ----------
+        lib_name : str
+            schematic library name.
+        sch_name : str
+            schematic name
+        params : Dict[str, Any]
+            the parameter dictionary.
+        sch_cls : Type[TemplateType]
+            the schematic generator class to instantiate.
+        debug : bool
+            True to print debug messages.
+        **kwargs
+            optional parameters.
+
+        Returns
+        -------
+        dsn : SchInstance
+            a schematic instance of the given schematic generator.
+        """
+        design_fun = kwargs.get('design_fun', 'design')
+        master = self.dsn_db.new_master(lib_name, sch_name, gen_cls=sch_cls, params=params,
+                                        debug=debug, design_args=None, design_fun=design_fun)
+
+        return SchInstance(self.dsn_db, lib_name, sch_name, 'XTOP', static=False,
+                           master=master)
 
     def instantiate_schematic(self, lib_name, content_list, lib_path=''):
         # type: (str, Sequence[Any], str) -> None
