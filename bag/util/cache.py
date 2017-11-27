@@ -418,6 +418,12 @@ class MasterDB(with_metaclass(abc.ABCMeta, object)):
         self._master_lookup = {}  # type: Dict[Any, DesignMaster]
         self._rename_dict = {}
 
+    def clear(self):
+        """Clear all existing schematic masters."""
+        self._key_lookup.clear()
+        self._master_lookup.clear()
+        self._rename_dict.clear()
+
     @abc.abstractmethod
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
         # type: (Type[MasterType], str, Dict[str, Any], Set[str], **kwargs) -> MasterType

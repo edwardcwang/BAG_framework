@@ -647,6 +647,11 @@ class BagProject(object):
         return SchInstance(self.dsn_db, lib_name, cell_name, 'XTOP', static=False,
                            master=master)
 
+    def clear_schematic_database(self):
+        # type: () -> None
+        """Reset schematic database."""
+        self.dsn_db.clear()
+
     def instantiate_schematic(self, lib_name, content_list, lib_path=''):
         # type: (str, Sequence[Any], str) -> None
         """Create the given schematic contents in CAD database.
