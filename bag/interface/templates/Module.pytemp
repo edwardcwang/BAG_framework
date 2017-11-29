@@ -22,13 +22,9 @@
 #
 ########################################################################################################################
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-
 import os
 import pkg_resources
+from typing import Dict
 
 from bag.design import Module
 
@@ -43,12 +39,21 @@ class {{ lib_name }}__{{ cell_name }}(Module):
     Fill in high level description here.
     """
 
-    param_list = []
-
     def __init__(self, bag_config, parent=None, prj=None, **kwargs):
         Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
-        for par in self.param_list:
-            self.parameters[par] = None
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Optional[Dict[str, str]]
+            dictionary from parameter names to descriptions.
+        """
+        return dict(
+        )
 
     def design(self):
         """To be overridden by subclasses to design this module.
@@ -66,8 +71,4 @@ class {{ lib_name }}__{{ cell_name }}(Module):
         restore_instance()
         array_instance()
         """
-        local_dict = locals()
-        for name in self.param_list:
-            if name not in local_dict:
-                raise ValueError('Parameter %s not specified.' % name)
-            self.parameters[name] = local_dict[name]
+        pass
