@@ -1175,6 +1175,70 @@ procedure( create_layout_with_pcell(lib_name cell_name view_name inst_lib inst_c
     )
 )
 
+; helper for creating a path segment
+procedure( create_path_seg_helper(cv lay p0 p1 width start_s end_s)
+    let( (diag_ext info_list bext eext)
+        if( and(car(p0) != car(p1) cadr(p0) != cadr(p1)) then
+            diag_ext = width / 2
+            width = width * sqrt(2)
+        else
+            diag_ext = width * sqrt(2) / 2
+        )
+
+        bext = width/2
+        eext = width/2
+        if( start_s == "round" then
+            start_s = "custom"
+        else
+            when( start_s == "truncate"
+                bext = 0
+            )
+        )
+        if( end_s == "round" then
+            end_s = "custom"
+        else
+            when( end_s == "truncate"
+                eext = 0
+            )
+        )
+        info_list = list(bext eext list(diag_ext diag_ext width/2 diag_ext diag_ext width/2))
+        dbCreatePathSeg(cv lay p0 p1 width start_s end_s info_list)
+    )
+)
+
+
+; helper for creating a path
+procedure( create_path_helper( cv path )
+    let( (lay width points estyle jstyle p0 p1 plen idx start_s end_s)
+        lay = path->layer
+        width = path->width
+        points = path->points
+        estyle = path->end_style
+        jstyle = path->join_style
+        p0 = nil
+        plen = length(points)
+        idx = 0
+        foreach( cur_point points
+            p1 = cur_point
+            when( idx > 0
+                if( idx == 1 then
+                    start_s = estyle
+                else
+                    start_s = jstyle
+                )
+                if( idx == plen - 1 then
+                    end_s = estyle
+                else
+                    end_s = jstyle
+                )
+                create_path_seg_helper(cv lay p0 p1 width start_s end_s)
+            )
+            p0 = p1
+            idx = idx + 1
+        )
+    )
+)
+
 
 ; helper for creating a single layout view
 procedure( create_layout_helper( cv tech_file inst_list rect_list via_list pin_list path_list "gglllll" )
@@ -1254,7 +1318,7 @@ procedure( create_layout_helper( cv tech_file inst_list rect_list via_list pin_l
 
         ; create paths
         foreach( path path_list
-            warn("path creation not implemented yet.  Skipping.")
+            create_path_helper(cv path)
         )
 
         ; create vias
