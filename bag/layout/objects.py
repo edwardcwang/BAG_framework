@@ -24,12 +24,6 @@
 
 """This module defines various layout objects one can add and manipulate in a template.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-from future.utils import with_metaclass
-
 from typing import Union, List, Tuple, Optional, Dict, Any, TYPE_CHECKING
 
 import abc
@@ -50,7 +44,7 @@ ldim = Union[float, int]
 loc_type = Tuple[ldim, ldim]
 
 
-class Figure(with_metaclass(abc.ABCMeta, object)):
+class Figure(object, metaclass=abc.ABCMeta):
     """Base class of all layout objects.
 
     Parameters
@@ -117,7 +111,7 @@ class Figure(with_metaclass(abc.ABCMeta, object)):
 
 
 # noinspection PyAbstractClass
-class Arrayable(with_metaclass(abc.ABCMeta, Figure)):
+class Arrayable(Figure, metaclass=abc.ABCMeta):
     """A layout object with arraying support.
 
     Also handles destroy support.
@@ -1492,12 +1486,16 @@ class Via(Arrayable):
         arraying parameter.  Column pitch.
     spy : float
         arraying parameter.  Row pitch.
+    extend : bool
+        True if via extension can be drawn outside of bounding box.
+    top_dir : Optional[str]
+        top layer extension direction.  Can force to extend in same direction as bottom.
     unit_mode : bool
         True if array pitches are given in resolution units.
     """
 
     def __init__(self, tech, bbox, bot_layer, top_layer, bot_dir,
-                 nx=1, ny=1, spx=0.0, spy=0.0, unit_mode=False):
+                 nx=1, ny=1, spx=0.0, spy=0.0, extend=True, top_dir=None, unit_mode=False):
         if isinstance(bbox, BBoxArray):
             self._bbox = bbox.base
             Arrayable.__init__(self, tech.resolution, nx=bbox.nx, ny=bbox.ny,
@@ -1521,14 +1519,16 @@ class Via(Arrayable):
         self._bot_layer = bot_layer[0], bot_layer[1]
         self._top_layer = bot_layer[0], bot_layer[1]
         self._bot_dir = bot_dir
-        self._info = self._tech.get_via_info(self._bbox, bot_layer, top_layer, bot_dir)
+        self._top_dir = top_dir
+        self._extend = extend
+        self._info = self._tech.get_via_info(self._bbox, bot_layer, top_layer, bot_dir, top_dir=top_dir, extend=extend)
         if self._info is None:
             raise ValueError('Cannot make via with bounding box %s' % self._bbox)
 
     def _update(self):
         """Update via parameters."""
         self._info = self._tech.get_via_info(self.bbox, self.bot_layer, self.top_layer,
-                                             self.bottom_direction)
+                                             self.bottom_direction, top_dir=self.top_direction, extend=self.extend)
 
     @property
     def top_box(self):
@@ -1563,6 +1563,29 @@ class Via(Arrayable):
         self.check_destroyed()
         self._bot_dir = new_bot_dir
         self._update()
+
+    @property
+    def top_direction(self):
+        """the bottom via extension direction."""
+        if not self._top_dir:
+            return 'x' if self._bot_dir == 'y' else 'y'
+        return self._top_dir
+
+    @top_direction.setter
+    def top_direction(self, new_top_dir):
+        """Sets the bottom via extension direction."""
+        self.check_destroyed()
+        self._top_dir = new_top_dir
+        self._update()
+
+    @property
+    def extend(self):
+        """True if via extension can grow beyond bounding box."""
+        return self._extend
+
+    @extend.setter
+    def extend(self, new_val):
+        self._extend = new_val
 
     @property
     def bbox(self):

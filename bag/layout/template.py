@@ -25,11 +25,6 @@
 
 """This module defines layout template classes.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-
 import os
 import time
 import abc
@@ -47,7 +42,6 @@ from ..io import get_encoding, open_file
 from .routing import Port, TrackID, WireArray
 from .routing.fill import UsedTracks, get_power_fill_tracks, get_available_tracks
 from .objects import Instance, Rect, Via, Path, Blockage, Boundary
-from future.utils import with_metaclass
 
 if TYPE_CHECKING:
     from bag.core import BagProject
@@ -270,7 +264,7 @@ class TemplateDB(MasterDB):
                                  debug=debug, rename_dict=rename_dict)
 
 
-class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):
+class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     """The base template class.
 
     Parameters
@@ -1092,9 +1086,20 @@ class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):
             else:
                 port_pins[layer_id].append(wire_arr)
 
-    def add_via(self, bbox, bot_layer, top_layer, bot_dir,
-                nx=1, ny=1, spx=0.0, spy=0.0):
-        # type: (BBox, Union[str, Tuple[str, str]], Union[str, Tuple[str, str]], str, int, int, float, float) -> Via
+    def add_via(self,  # type: TemplateBase
+                bbox,  # type: BBox
+                bot_layer,  # type: Union[str, Tuple[str, str]]
+                top_layer,  # type: Union[str, Tuple[str, str]]
+                bot_dir,  # type: str
+                nx=1,  # type: int
+                ny=1,  # type: int
+                spx=0.0,  # type: Union[float, int]
+                spy=0.0,  # type: Union[float, int]
+                extend=True,  # type: bool
+                top_dir=None,  # type: Optional[str]
+                unit_mode=False,  # type: bool
+                ):
+        # type: (...) -> Via
         """Adds a (arrayed) via object to the layout.
 
         Parameters
@@ -1113,18 +1118,23 @@ class TemplateBase(with_metaclass(abc.ABCMeta, DesignMaster)):
             number of columns.
         ny : int
             number of rows.
-        spx : float
+        spx : Union[float, int]
             column pitch.
-        spy : float
+        spy : Union[float, int]
             row pitch.
-
+        extend : bool
+            True if via extension can be drawn outside of the box.
+        top_dir : Optional[str]
+            top layer extension direction.  Can force to extend in same direction as bottom.
+        unit_mode : bool
+            True if spx/spy are specified in resolution units.
         Returns
         -------
         via : Via
             the created via object.
         """
         via = Via(self.grid.tech_info, bbox, bot_layer, top_layer, bot_dir,
-                  nx=nx, ny=ny, spx=spx, spy=spy)
+                  nx=nx, ny=ny, spx=spx, spy=spy, extend=extend, top_dir=top_dir, unit_mode=unit_mode)
         self._layout.add_via(via)
 
         return via

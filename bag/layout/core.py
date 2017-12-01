@@ -24,13 +24,6 @@
 
 """This module defines the base template class.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-
-from future.utils import with_metaclass
-
 import abc
 from typing import List, Iterator, Tuple, Optional, Union, Callable, Any
 from itertools import chain
@@ -49,7 +42,7 @@ except ImportError:
     cybagoa = None
 
 
-class TechInfo(with_metaclass(abc.ABCMeta, object)):
+class TechInfo(object, metaclass=abc.ABCMeta):
     """A base class that create vias.
 
     This class provides the API for making vias.  Each process should subclass this class and
@@ -59,6 +52,8 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
     ----------
     res : float
         the grid resolution of this technology.
+    layout_unit : float
+        the layout unit, in meters.
     via_tech : string
         the via technology library name.  This is usually the PDK library name.
     process_params : dict[str, any]
@@ -404,19 +399,26 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         return float('inf'), float('inf'), float('inf')
 
     @abc.abstractmethod
-    def get_via_em_specs(self, via_name, bm_layer, tm_layer, via_type='square',
-                         bm_dim=(-1, -1), tm_dim=(-1, -1), array=False, **kwargs):
+    def get_via_em_specs(self, via_name,  # type: str
+                         bm_layer,  # type: str
+                         tm_layer,  # type: str
+                         via_type='square',  # type: str
+                         bm_dim=(-1, -1),  # type: Tuple[float, float]
+                         tm_dim=(-1, -1),  # type: Tuple[float, float]
+                         array=False,  # type: bool
+                         **kwargs):
+        # type: (...) -> Tuple[float ,float, float]
         """Returns a tuple of EM current/resistance specs of the given via.
 
         Parameters
         ----------
-        via_name : string
+        via_name : str
             the via type name.
         bm_layer : str
             the bottom layer name.
-        tm_layer : string
+        tm_layer : str
             the top layer name.
-        via_type : string
+        via_type : str
             the via type, square/vrect/hrect/etc.
         bm_dim : Tuple[float, float]
             bottom layer metal width/length in layout units.  If negative,
@@ -578,29 +580,33 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
             iac_peak=ipeak,
         )
 
-    def get_best_via_array(self, vname, bmtype, tmtype, bot_dir, w, h):
+    def get_best_via_array(self, vname, bmtype, tmtype, bot_dir, top_dir, w, h, extend):
         """Maximize the number of vias in the given area.
 
         Parameters
         ----------
-        vname : string
+        vname : str
             the via type name.
-        bmtype : string
+        bmtype : str
             the bottom metal type name.
-        tmtype : string
+        tmtype : str
             the top metal type name.
-        bot_dir : string
+        bot_dir : str
             the bottom wire direction.  Either 'x' or 'y'.
+        top_dir : str
+            the top wire direction.  Either 'x' or 'y'.
         w : float
             width of the via array bounding box, in layout units.
         h : float
             height of the via array bounding box, in layout units.
+        extend : bool
+            True if via can extend beyond bounding box.
 
         Returns
         -------
         best_nxy : Tuple[int, int]
             optimal number of vias per row/column.
-        best_mdim_list : list[Tuple[int, int]]
+        best_mdim_list : List[Tuple[int, int]]
             a list of bottom/top layer width/height, in resolution units.
         vtype : str
             the via type to draw, square/hrect/vrect/etc.
@@ -616,13 +622,13 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         h = int(round(h / res))
 
         if bot_dir == 'x':
-            top_dir = 'y'
-            bw = h
-            tw = w
+            bb, be = h, w
         else:
-            top_dir = 'x'
-            bw = w
-            tw = h
+            bb, be = w, h
+        if top_dir == 'x':
+            tb, te = h, w
+        else:
+            tb, te = w, h
 
         best_num = None
         best_nxy = [-1, -1]
@@ -634,8 +640,8 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         for vtype, weight in [('square', 1), ('vrect', 2), ('hrect', 2)]:
             try:
                 # get space and enclosure rules for top and bottom layer
-                bot_drc_info = self.get_via_drc_info(vname, vtype, bmtype, bw, True)
-                top_drc_info = self.get_via_drc_info(vname, vtype, tmtype, tw, False)
+                bot_drc_info = self.get_via_drc_info(vname, vtype, bmtype, bb, True)
+                top_drc_info = self.get_via_drc_info(vname, vtype, tmtype, tb, False)
                 sp, sp2_list, sp3_list, dim, encb, arr_encb, arr_testb = bot_drc_info
                 _, _, _, _, enct, arr_enct, arr_testt = top_drc_info
                 # print _get_via_params(vname, vtype, bmtype, bw)
@@ -704,9 +710,10 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
 
                         min_ext_dim = None
                         for enc in tot_enc_list:
-                            if enc[enc_idx] * 2 + enc_dim <= dim_lim:
+                            cur_ext_dim = ext_dim + 2 * enc[1 - enc_idx]
+                            if enc[enc_idx] * 2 + enc_dim <= dim_lim and \
+                                    (extend or cur_ext_dim <= max_ext_dim):
                                 # enclosure rule passed.  Find minimum other dimension
-                                cur_ext_dim = ext_dim + 2 * enc[1 - enc_idx]
                                 if min_ext_dim is None or min_ext_dim > cur_ext_dim:
                                     min_ext_dim = cur_ext_dim
 
@@ -779,20 +786,21 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         """
         return '%s_%s' % (top_layer, bot_layer)
 
-    def get_via_info(self, bbox, bot_layer, top_layer, bot_dir, bot_len=-1, top_len=-1, **kwargs):
+    def get_via_info(self, bbox, bot_layer, top_layer, bot_dir, bot_len=-1, top_len=-1,
+                     extend=True, top_dir=None, **kwargs):
         """Create a via on the routing grid given the bounding box.
 
         Parameters
         ----------
         bbox : bag.layout.util.BBox
             the bounding box of the via.
-        bot_layer : string or (string, string)
+        bot_layer : Union[str, Tuple[str, str]]
             the bottom layer name, or a tuple of layer name and purpose name.
             If purpose name not given, defaults to 'drawing'.
-        top_layer : string or (string, string)
+        top_layer : Union[str, Tuple[str, str]]
             the top layer name, or a tuple of layer name and purpose name.
             If purpose name not given, defaults to 'drawing'.
-        bot_dir : string
+        bot_dir : str
             the bottom layer extension direction.  Either 'x' or 'y'
         bot_len : float
             length of bottom wire connected to this Via, in layout units.
@@ -800,6 +808,10 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         top_len : float
             length of top wire connected to this Via, in layout units.
             Used for length enhancement EM calculation.
+        extend : bool
+            True if via extension can be drawn outside of bounding box.
+        top_dir : Optional[str]
+            top layer extension direction.  Can force to extend in same direction as bottom.
         **kwargs :
             optional parameters for EM rule calculations, such as nominal temperature,
             AC rms delta-T, etc.
@@ -838,7 +850,10 @@ class TechInfo(with_metaclass(abc.ABCMeta, object)):
         tmtype = self.get_layer_type(top_layer)
         vname = self.get_via_name(bot_id)
 
-        via_result = self.get_best_via_array(vname, bmtype, tmtype, bot_dir, bbox.width, bbox.height)
+        if not top_dir:
+            top_dir = 'x' if bot_dir == 'y' else 'x'
+
+        via_result = self.get_best_via_array(vname, bmtype, tmtype, bot_dir, top_dir, bbox.width, bbox.height, extend)
         if via_result is None:
             # no solution found
             return None
@@ -1252,7 +1267,7 @@ class BagLayout(object):
         return content
 
     def get_content(self, lib_name, cell_name, rename_fun):
-        # type: (str, str, Callable[str, str]) -> Union[List[Any], Tuple[str, 'cybagoa.PyOALayout']]
+        # type: (str, str, Callable[[str], str]) -> Union[List[Any], Tuple[str, 'cybagoa.PyOALayout']]
         """returns a list describing geometries in this layout.
 
         Parameters
