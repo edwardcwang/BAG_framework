@@ -435,6 +435,11 @@ class BBox(object):
                     self._right_unit + dx, self._top_unit + dy,
                     self._res, unit_mode=True)
 
+    def flip_xy(self):
+        # type: () -> BBox
+        """Returns a new BBox with X and Y coordinate swapped."""
+        return BBox(self._bot_unit, self._left_unit, self._top_unit, self._right_unit, self._res, unit_mode=True)
+
     def with_interval(self, direction, lower, upper, unit_mode=False):
         if not unit_mode:
             lower = int(round(lower / self._res))
