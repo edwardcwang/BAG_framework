@@ -216,8 +216,8 @@ class TemplateDB(MasterDB):
 
         return master
 
-    def instantiate_layout(self, prj, template, top_cell_name=None, debug=False):
-        # type: (BagProject, TemplateBase, Optional[str], bool, bool) -> None
+    def instantiate_layout(self, prj, template, top_cell_name=None, debug=False, rename_dict=None):
+        # type: (BagProject, TemplateBase, Optional[str], bool, Optional[Dict[str, str]]) -> None
         """Instantiate the layout of the given :class:`~bag.layout.template.TemplateBase`.
 
         Parameters
@@ -230,8 +230,10 @@ class TemplateDB(MasterDB):
             name of the top level cell.  If None, a default name is used.
         debug : bool
             True to print debugging messages
+        rename_dict : Optional[Dict[str, str]]
+            optional master cell renaming dictionary.
         """
-        self.batch_layout(prj, [template], [top_cell_name], debug=debug)
+        self.batch_layout(prj, [template], [top_cell_name], debug=debug, rename_dict=rename_dict)
 
     def batch_layout(self,
                      prj,  # type: BagProject
