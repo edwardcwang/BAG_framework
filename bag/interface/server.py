@@ -43,10 +43,6 @@ Then, virtuoso will print out exactly that many bytes of data, followed by
 a newline (to flush the standard input).  This script handles that protcol
 and will strip the newline before sending result back to client.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 import os
 import traceback

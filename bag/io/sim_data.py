@@ -28,11 +28,6 @@ Note : when reading data files, we use Numpy to handle the encodings,
 so BAG encoding settings will not apply.
 """
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-
 import os
 import glob
 

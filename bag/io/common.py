@@ -27,11 +27,6 @@
 In particular, this module keeps track of BAG's system-wide encoding/decoding settings.
 """
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-
 # default BAG file encoding.
 bag_encoding = 'utf-8'
 # default codec error policy

@@ -24,10 +24,6 @@
 
 """This module defines classes for computing DC operating point.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 from typing import Union, Dict
 

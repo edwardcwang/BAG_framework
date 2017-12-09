@@ -24,10 +24,6 @@
 
 """This module defines various interpolation classes.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 from typing import List, Tuple, Union, Sequence
 

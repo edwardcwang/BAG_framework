@@ -23,10 +23,6 @@
 ########################################################################################################################
 
 """This module defines various wrapper around ZMQ sockets."""
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 import os
 import zlib

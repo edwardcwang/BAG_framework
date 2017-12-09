@@ -25,12 +25,6 @@
 
 """This module defines classes used to cache existing design masters
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-
-from future.utils import with_metaclass
 
 import sys
 import os
@@ -185,7 +179,7 @@ class ClassImporter(object):
         return getattr(cell_package, module_cls)
 
 
-class DesignMaster(with_metaclass(abc.ABCMeta, object)):
+class DesignMaster(abc.ABC):
     """A design master instance.
 
     This class represents a design master in the design database.
@@ -388,7 +382,7 @@ class DesignMaster(with_metaclass(abc.ABCMeta, object)):
 MasterType = TypeVar('MasterType', bound=DesignMaster)
 
 
-class MasterDB(with_metaclass(abc.ABCMeta, object)):
+class MasterDB(abc.ABC):
     """A database of existing design masters.
 
     This class keeps track of existing design masters and maintain design dependency hierarchy.

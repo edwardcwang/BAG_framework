@@ -24,10 +24,6 @@
 
 """This module implements LVS/RCX using Calibre and stream out from Virtuoso.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 import os
 from typing import TYPE_CHECKING, Optional, List, Tuple, Dict, Any, Sequence

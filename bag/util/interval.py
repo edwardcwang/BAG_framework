@@ -25,10 +25,6 @@
 
 """This module provides data structure that keeps track of intervals.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 import bisect
 from typing import List, Optional, Tuple, Any, Iterable

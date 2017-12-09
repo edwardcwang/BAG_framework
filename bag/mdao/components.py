@@ -24,10 +24,6 @@
 
 """This module defines various OpenMDAO component classes.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 import numpy as np
 import openmdao.api as omdao

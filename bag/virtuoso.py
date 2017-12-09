@@ -24,10 +24,6 @@
 
 """This module provides functions needed to get Virtuoso to work with BAG.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 import os
 import sys

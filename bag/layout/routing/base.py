@@ -25,11 +25,6 @@
 """This module provides basic routing classes.
 """
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-
 from typing import Tuple, Union, Generator, Dict, List, Sequence
 
 from ..util import BBox, BBoxArray

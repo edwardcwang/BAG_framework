@@ -25,11 +25,6 @@
 """This package provide routing classes.
 """
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-
 from .base import TrackID, WireArray, Port, TrackManager
 from .grid import RoutingGrid
 from .fill import UsedTracks

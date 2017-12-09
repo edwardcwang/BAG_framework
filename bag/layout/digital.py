@@ -25,11 +25,6 @@
 
 """This module defines layout template classes for digital standard cells.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-from future.utils import with_metaclass
 
 import abc
 from typing import Dict, Any, Set, Tuple, List, Optional
@@ -44,7 +39,7 @@ from .routing import TrackID, WireArray
 
 
 # noinspection PyAbstractClass
-class StdCellBase(with_metaclass(abc.ABCMeta, TemplateBase)):
+class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
     """The base class of all micro templates.
 
     Parameters

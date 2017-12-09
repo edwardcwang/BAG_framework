@@ -24,10 +24,6 @@
 
 """This packages defines classes to interface with CAD database and circuit simulators.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 from .server import SkillServer
 from .zmqwrapper import ZMQRouter, ZMQDealer

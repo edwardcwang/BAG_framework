@@ -24,10 +24,6 @@
 
 """This module defines functions and classes useful for characterizing linear time-invariant circuits.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 from typing import Dict, List, Tuple, Union, Optional
 
