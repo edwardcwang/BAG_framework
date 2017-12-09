@@ -25,11 +25,6 @@
 """This module defines classes that provides automatic fill utility on a grid.
 """
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-
 from typing import Optional, Union, List, Tuple, Iterable, Any, Dict
 
 import numpy as np

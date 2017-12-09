@@ -24,10 +24,6 @@
 
 """This module defines DbAccess, the base class for CAD database manipulation.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 import os
 import abc

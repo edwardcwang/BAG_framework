@@ -24,14 +24,9 @@
 
 """This module defines base design module class and primitive design classes.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 import os
 import abc
-from future.utils import with_metaclass
 from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Type, Set, Sequence, Callable
 
 from bag import float_to_si_string
@@ -365,7 +360,7 @@ class SchInstance(object):
             return kwargs
 
 
-class Module(with_metaclass(abc.ABCMeta, DesignMaster)):
+class Module(DesignMaster, metaclass=abc.ABCMeta):
     """The base class of all schematic generators.  This represents a schematic master.
 
     This class defines all the methods needed to implement a design in the CAD database.

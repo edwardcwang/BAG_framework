@@ -24,19 +24,14 @@
 
 
 """This module defines the differentiable function class."""
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 import abc
 from typing import Union, List, Optional, Tuple
 
 import numpy as np
-from future.utils import with_metaclass
 
 
-class DiffFunction(with_metaclass(abc.ABCMeta, object)):
+class DiffFunction(abc.ABC):
     """An abstract class representing a differentiable scalar function.
 
     Supports Numpy broadcasting.  Defaults to using finite difference for derivative calculation.

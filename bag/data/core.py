@@ -24,11 +24,6 @@
 
 """This module defines core data post-processing classes.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-
 
 import numpy as np
 import scipy.interpolate as interp

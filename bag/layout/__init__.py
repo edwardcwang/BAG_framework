@@ -24,10 +24,6 @@
 
 """This package contains code for templated based layout.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
 
 from .core import BagLayout, TechInfo
 from .routing import RoutingGrid

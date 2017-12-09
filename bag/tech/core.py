@@ -24,11 +24,6 @@
 
 """This module contains commonly used technology related classes and functions.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-from future.utils import with_metaclass
 
 import os
 import abc
@@ -81,7 +76,7 @@ def _in_list(item_list, item, rtol, atol):
     return _index_in_list(item_list, item, rtol, atol) >= 0
 
 
-class CircuitCharacterization(with_metaclass(abc.ABCMeta, SimulationManager)):
+class CircuitCharacterization(SimulationManager, metaclass=abc.ABCMeta):
     """A class that handles characterization of a circuit.
 
     This class sweeps schematic parameters and run a testbench with a single analysis.
@@ -203,7 +198,7 @@ class CircuitCharacterization(with_metaclass(abc.ABCMeta, SimulationManager)):
         return results, sweep_list
 
 
-class CharDB(with_metaclass(abc.ABCMeta, object)):
+class CharDB(abc.ABC):
     """The abstract base class of a database of characterization data.
 
     This class provides useful query/optimization methods and ways to store/retrieve

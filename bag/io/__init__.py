@@ -28,11 +28,6 @@ Most importantly, this module sorts out all the bytes v.s. unicode differences
 and simplifies writing python2/3 compatible code.
 """
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-
 from .common import fix_string, to_bytes, set_encoding, get_encoding, \
     set_error_policy, get_error_policy
 from .sim_data import load_sim_results, save_sim_results, load_sim_file
