@@ -162,6 +162,7 @@ class TemplateDB(MasterDB):
                 lib.add_purpose('drawing6', 246)
                 lib.add_purpose('drawing7', 247)
                 lib.add_purpose('drawing8', 248)
+                lib.add_purpose('drawing9', 249)
                 lib.add_purpose('boundary', 250)
                 lib.add_purpose('pin', 251)
 
