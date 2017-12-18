@@ -214,13 +214,14 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
                    threshold,  # type: str
                    nx=1,  # type: int
                    ny=1,  # type: int
-                   min_tracks=(1, 1, 1, 1),  # type: Tuple[int, ...]
+                   min_tracks=None,  # type: Optional[Tuple[int, ...]]
                    res_type='reference',  # type: str
                    em_specs=None,  # type: Optional[Dict[str, Any]]
                    grid_type='standard',  # type: str
                    ext_dir='',  # type: str
                    max_blk_ext=100,  # type: int
                    options=None,  # type: Optional[Dict[str, Any]]
+                   top_layer=None,  # type: Optional[int]
                    **kwargs
                    ):
         # type: (...) -> None
@@ -243,30 +244,43 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
             number of resistors in a row.
         ny : int
             number of resistors in a column.
-        min_tracks : Tuple[int, ...]
+        min_tracks : Optional[Tuple[int, ...]]
             minimum number of tracks per layer in the resistor unit cell.
+            If None, Defaults to all 1's.
         res_type : str
             the resistor type.
         em_specs : Optional[Dict[str, Any]]
             resistor EM specifications dictionary.
         grid_type : str
-            the lower resistor routing grid name.
+            the resistor private routing grid name.
         ext_dir : str
             resistor core extension direction.
         max_blk_ext : int
             maximum number of block pitches we can extend for primitives.
         options : Optional[Dict[str, Any]]
             custom options for resistor primitives.
+        top_layer : Optional[int]
+            The top metal layer this block will use.  Defaults to the layer above private routing grid.
+            If the top metal layer is equal to the default layer, then this will be a primitive template;
+            self.size will be None, and only one dimension is quantized.
+            If the top metal layer is above the default layer, then this will be a standard template, and
+            both width and height will be quantized according to the block size.
         """
         if em_specs is None:
             em_specs = {}
         # modify resistor layer routing grid.
         grid_layers = self.grid.tech_info.tech_params['layout']['analog_res'][grid_type]
-        for lay_id, tr_w, tr_sp, tr_dir, necessary in grid_layers:
-            if necessary or lay_id not in self.grid:
-                self.grid.add_new_layer(lay_id, tr_sp, tr_w, tr_dir, override=True)
+        min_tracks_default = []
+        for lay_id, tr_w, tr_sp, tr_dir in grid_layers:
+            self.grid.add_new_layer(lay_id, tr_sp, tr_w, tr_dir, override=True)
+            min_tracks_default.append(1)
 
         self.grid.update_block_pitch()
+
+        if min_tracks is None:
+            min_tracks = tuple(min_tracks_default)
+        if top_layer is None:
+            top_layer = self.grid.top_private_layer
 
         # find location of the lower-left resistor core
         res = self.grid.resolution
@@ -334,7 +348,6 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
         # set array box and size
         self.array_box = inst_bl.array_box.merge(inst_tr.array_box)
         bnd_box = inst_bl.bound_box.merge(inst_tr.bound_box)
-        top_layer = self._hm_layer + len(min_tracks) - 1
         if self.grid.size_defined(top_layer):
             self.set_size_from_bound_box(top_layer, bnd_box)
         else:
