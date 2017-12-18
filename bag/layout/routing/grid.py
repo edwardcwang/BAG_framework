@@ -144,7 +144,8 @@ class RoutingGrid(object):
             if has_bot and inst_has_bot:
                 w_par, sp_par = self.get_track_info(bot_layer, unit_mode=True)
                 w_inst, sp_inst = inst_grid.get_track_info(bot_layer, unit_mode=True)
-                if w_par != w_inst or sp_par != sp_inst:
+                if w_par != w_inst or sp_par != sp_inst or \
+                        self.get_direction(bot_layer) != inst_grid.get_direction(bot_layer):
                     return bot_layer + 1
             elif has_bot != inst_has_bot:
                 return bot_layer + 1
@@ -154,7 +155,7 @@ class RoutingGrid(object):
     def get_flip_parity_at(self, bot_layer, top_layer, loc, orient, unit_mode=False):
         # type: (int, int, Tuple[Union[int, float], Union[int, float]], str, bool) -> Dict[int, bool]
         """Compute the flip parity dictionary for an instance placed at the given location.
-        
+
         Parameters
         ----------
         bot_layer : int
@@ -256,7 +257,7 @@ class RoutingGrid(object):
         """helper method for updating block pitch."""
         pitch_list = []
         for lay in lay_list:
-            cur_blk_pitch = self.get_track_pitch(lay, unit_mode=True)
+            cur_blk_pitch = self.get_track_pitch(lay, unit_mode=True) // 2
             cur_dir = self.dir_tracks[lay]
             if pitch_list:
                 # the pitch of each layer = LCM of all layers below with same direction
@@ -372,28 +373,32 @@ class RoutingGrid(object):
         return bin_iter.get_last_save()
 
     def get_num_tracks(self, size, layer_id):
-        # type: (Tuple[int, int, int], int) -> int
+        # type: (Tuple[int, Union[int, float], Union[int, float]], int) -> Union[int, float]
         """Returns the number of tracks on the given layer for a block with the given size.
 
         Parameters
         ----------
-        size : Tuple[int, int, int]
+        size : Tuple[int, Union[int, float], Union[int, float]]
             the block size tuple.
         layer_id : int
             the layer ID.
 
         Returns
         -------
-        num_tracks : int
+        num_tracks : Union[int, float]
             number of tracks on that given layer.
         """
         tr_dir = self.get_direction(layer_id)
         blk_w, blk_h = self.get_size_dimension(size, unit_mode=True)
-        tr_pitch = self.get_track_pitch(layer_id, unit_mode=True)
+        tr_half_pitch = self.get_track_pitch(layer_id, unit_mode=True) // 2
         if tr_dir == 'x':
-            return blk_h // tr_pitch
+            val = blk_h // tr_half_pitch
         else:
-            return blk_w // tr_pitch
+            val = blk_w // tr_half_pitch
+
+        if val % 2 == 0:
+            return val // 2
+        return val / 2
 
     def get_min_length(self, layer_id, width_ntr, unit_mode=False):
         # type: (int, int, bool) -> Union[float, int]
@@ -499,8 +504,8 @@ class RoutingGrid(object):
             return ans * self._resolution
         return ans
 
-    def get_line_end_space_tracks(self, wire_layer, space_layer, width_ntr):
-        # type: (int, int, int) -> Union[float, int]
+    def get_line_end_space_tracks(self, wire_layer, space_layer, width_ntr, half_space=False):
+        # type: (int, int, int, bool) -> Union[float, int]
         """Returns the minimum line end spacing in number of space tracks.
 
         Parameters
@@ -512,6 +517,8 @@ class RoutingGrid(object):
             direction must be orthogonal to the wire layer.
         width_ntr : int
             wire width, in number of tracks.
+        half_space : bool
+            True to allow half-track spacing.
 
         Returns
         -------
@@ -525,12 +532,20 @@ class RoutingGrid(object):
         else:
             raise ValueError('space_layer must be adjacent to wire_layer')
 
+        if self.get_direction(space_layer) == self.get_direction(wire_layer):
+            raise ValueError('space_layer must be orthogonal to wire_layer.')
+
         wire_sp = self.get_line_end_space(wire_layer, width_ntr, unit_mode=True)
         margin = 2 * conn_ext + wire_sp
         w, sp = self.get_track_info(space_layer, unit_mode=True)
-        pitch = w + sp
-        space_ntr = max(-(-(margin - sp) // pitch), 0)
-        return space_ntr
+        half_pitch = (w + sp) // 2
+        space_ntr = max(-(-(margin - sp) // half_pitch), 0)
+        if space_ntr % 2 == 0:
+            return space_ntr // 2
+        elif half_space:
+            return space_ntr / 2
+        else:
+            return (space_ntr + 1) // 2
 
     def get_max_track_width(self, layer_id, num_tracks, tot_space, half_end_space=False):
         # type: (int, int, int, bool) -> int
@@ -634,22 +649,21 @@ class RoutingGrid(object):
         top_private_layer = self.top_private_layer
         top_dir = self.dir_tracks[layer_id]
 
-        if layer_id <= top_private_layer:
-            top_pitch = self.block_pitch[layer_id]
-            # in private layers, we could have consecutive layers in the same direction.
-            bot_layer = layer_id - 1
-            while bot_layer in self.dir_tracks and self.dir_tracks[bot_layer] == top_dir:
-                bot_layer -= 1
-            if bot_layer not in self.dir_tracks:
-                bot_pitch = 1
-            else:
-                bot_pitch = self.block_pitch[bot_layer]
+        # get bottom layer that has different direction
+        bot_layer = layer_id - 1
+        while bot_layer in self.dir_tracks and self.dir_tracks[bot_layer] == top_dir:
+            bot_layer -= 1
+
+        if bot_layer not in self.dir_tracks:
+            bot_pitch = 1
         else:
-            top_pitch = self.block_pitch[layer_id]
-            if layer_id - 1 == top_private_layer:
-                bot_pitch = 1
-            else:
-                bot_pitch = self.block_pitch.get(layer_id - 1, 1)
+            bot_pitch = self.block_pitch[bot_layer]
+
+        top_pitch = self.block_pitch[layer_id]
+
+        if layer_id > top_private_layer >= bot_layer:
+            # if top layer not private but bottom layer is, then bottom is not quantized.
+            bot_pitch = 1
 
         if top_dir == 'y':
             w_pitch, h_pitch = top_pitch, bot_pitch
@@ -687,10 +701,15 @@ class RoutingGrid(object):
         if not self.size_defined(layer_id):
             raise ValueError('Size tuple is undefined for layer = %d' % layer_id)
 
+        top_dir = self.dir_tracks[layer_id]
+        bot_layer = layer_id - 1
+        while bot_layer in self.dir_tracks and self.dir_tracks[bot_layer] == top_dir:
+            bot_layer -= 1
+
         h_pitch = self.get_track_pitch(layer_id, unit_mode=unit_mode)
-        w_pitch = self.get_track_pitch(layer_id - 1, unit_mode=unit_mode)
-        if self.dir_tracks[layer_id] == 'y':
-            h_pitch, w_pitch = w_pitch, h_pitch
+        w_pitch = self.get_track_pitch(bot_layer, unit_mode=unit_mode)
+        if top_dir == 'y':
+            return h_pitch, w_pitch
         return w_pitch, h_pitch
 
     def get_size_tuple(self,  # type: RoutingGrid
@@ -741,16 +760,18 @@ class RoutingGrid(object):
             else:
                 raise ValueError('height = %d not on block pitch (%d)' % (height, hblk))
 
-        return layer_id, width // w_pitch, height // h_pitch
+        w_size = width // w_pitch if width % w_pitch == 0 else width / w_pitch
+        h_size = height // h_pitch if height % h_pitch == 0 else height / h_pitch
+        return layer_id, w_size, h_size
 
     def get_size_dimension(self, size, unit_mode=False):
-        # type: (Tuple[int, int, int]) -> Tuple[Union[float, int], Union[float, int]]
+        # type: (Tuple[int, Union[float, int], Union[float, int]]) -> Tuple[Union[float, int], Union[float, int]]
         """Compute width and height from given size.
 
         Parameters
         ----------
-        size : Tuple[int, int, int]
-            size of a block, in (top_layer, nx_blk, ny_blk) format.
+        size : Tuple[int, Union[float, int], Union[float, int]]
+            size of a block.
         unit_mode : bool
             True to return width/height in resolution units.
 
@@ -762,7 +783,7 @@ class RoutingGrid(object):
             the height in layout units.
         """
         w_pitch, h_pitch = self.get_size_pitch(size[0], unit_mode=True)
-        w_unit, h_unit = size[1] * w_pitch, size[2] * h_pitch
+        w_unit, h_unit = int(round(size[1] * 2)) * w_pitch // 2, int(round(size[2] * 2)) * h_pitch // 2
 
         if unit_mode:
             return w_unit, h_unit
@@ -770,13 +791,13 @@ class RoutingGrid(object):
             return w_unit * self.resolution, h_unit * self.resolution
 
     def convert_size(self, size, new_top_layer):
-        # type: (Tuple[int, int, int], int) -> Tuple[int, int, int]
+        # type: (Tuple[int, Union[float, int], Union[float, int]], int) -> Tuple[int, int, int]
         """Convert the given size to a new top layer.
 
         Parameters
         ----------
-        size : Tuple[int, int, int]
-            size of a block, in (top_layer, nx_blk, ny_blk) format.
+        size : Tuple[int, Union[float, int], Union[float, int]]
+            size of a block.
         new_top_layer : int
             the new top level layer ID.
 
@@ -982,7 +1003,9 @@ class RoutingGrid(object):
         # use binary search to find the minimum track width
         bin_iter = BinaryIterator(1, None)
         tr_dir = self.dir_tracks[layer_id]
-        bot_dir = 'x' if tr_dir == 'y' else 'y'
+        alt_dir = 'x' if tr_dir == 'y' else 'y'
+        bot_dir = self.dir_tracks.get(layer_id - 1, alt_dir)
+        top_dir = self.dir_tracks.get(layer_id + 1, alt_dir)
         while bin_iter.has_next():
             ntr = bin_iter.get_next()
             width = self.get_track_width(layer_id, ntr, unit_mode=True)
@@ -992,7 +1015,7 @@ class RoutingGrid(object):
                 # check metal satisfies EM spec
                 bin_iter.up()
                 continue
-            if bot_w > 0:
+            if bot_w > 0 and bot_dir != tr_dir:
                 if tr_dir == 'x':
                     bbox = BBox(0.0, 0.0, bot_w, width, res, unit_mode=True)
                 else:
@@ -1001,7 +1024,7 @@ class RoutingGrid(object):
                 if idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or iac_peak > vinfo['iac_peak']:
                     bin_iter.up()
                     continue
-            if top_w > 0:
+            if top_w > 0 and top_dir != tr_dir:
                 if tr_dir == 'x':
                     bbox = BBox(0.0, 0.0, top_w, width, res, unit_mode=True)
                 else:
@@ -1172,6 +1195,10 @@ class RoutingGrid(object):
         bot_lay_name = self.get_layer_name(bot_layer_id, 0)
         top_lay_name = self.get_layer_name(bot_layer_id + 1, 0)
         bot_dir = self.get_direction(bot_layer_id)
+        top_dir = self.get_direction(bot_layer_id + 1)
+        if top_dir == bot_dir:
+            raise ValueError('This method only works if top and bottom layers are orthogonal.')
+
         if bot_dir == 'x':
             vbox = BBox(0, 0, top_dim, bot_dim, res, unit_mode=True)
             vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir)
