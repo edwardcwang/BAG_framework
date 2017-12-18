@@ -25,23 +25,16 @@
 
 """This module defines abstract analog resistor array component classes.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-from future.utils import with_metaclass
-
 import abc
-from typing import Dict, Set, Tuple, Any, List, Optional
+from typing import Dict, Set, Tuple, Any, List, Optional, Union
 
 from bag import float_to_si_string
-from bag.math import lcm
 from bag.util.search import BinaryIterator
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.routing import RoutingGrid
 
 
-class ResTech(with_metaclass(abc.ABCMeta, object)):
+class ResTech(object, metaclass=abc.ABCMeta):
     @classmethod
     @abc.abstractmethod
     def get_bot_layer(cls):
@@ -117,7 +110,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
                       sub_type,  # type: str
                       threshold,  # type: str
                       track_widths,  # type: List[int]
-                      track_spaces,  # type: List[int]
+                      track_spaces,  # type: List[Union[float, int]]
                       options,  # type: Dict[str, Any]
                       ):
         # type: (...) -> Optional[Dict[str, Any]]
@@ -145,7 +138,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             threshold type.
         track_widths : List[int]
             the track widths on each layer to meet EM specs.
-        track_spaces : List[int]
+        track_spaces : List[Union[float, int]]
             the track spaces on each layer.
         options : Dict[str, Any]
             optional parameter values.
@@ -169,7 +162,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
                          sub_type,  # type: str
                          threshold,  # type: str
                          track_widths,  # type: List[int]
-                         track_spaces,  # type: List[int]
+                         track_spaces,  # type: List[Union[float, int]]
                          options,  # type: Dict[str, Any]
                          ):
         # type: (...) -> Optional[Dict[str, Any]]
@@ -197,7 +190,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             threshold type.
         track_widths : List[int]
             the track widths on each layer to meet EM specs.
-        track_spaces : List[int]
+        track_spaces : List[Union[float, int]]
             the track spaces on each layer.
         options : Dict[str, Any]
             optional parameter values.
@@ -221,7 +214,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
                          sub_type,  # type: str
                          threshold,  # type: str
                          track_widths,  # type: List[int]
-                         track_spaces,  # type: List[int]
+                         track_spaces,  # type: List[Union[float, int]]
                          options,  # type: Dict[str, Any]
                          ):
         # type: (...) -> Optional[Dict[str, Any]]
@@ -249,7 +242,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
             threshold type.
         track_widths : List[int]
             the track widths on each layer to meet EM specs.
-        track_spaces : List[int]
+        track_spaces : List[Union[float, int]]
             the track spaces on each layer.
         options : Dict[str, Any]
             optional parameter values.
@@ -301,7 +294,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
                             min_tracks,  # type: Tuple[int, ...]
                             em_specs  # type: Dict[str, Any]
                             ):
-        # type: (...) -> Tuple[List[int], List[int], Tuple[int, int], Tuple[int, int]]
+        # type: (...) -> Tuple[List[int], List[Union[int, float]], Tuple[int, int], Tuple[int, int]]
         """Calculate resistor core size/track information based on given specs.
 
         This method calculate the track width/spacing on each routing layer from EM specifications,
@@ -312,7 +305,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
         ----------
         grid : RoutingGrid
             the RoutingGrid object.
-        min_tracks : List[int]
+        min_tracks : Tuple[int, ...]
             minimum number of tracks on each layer.
         em_specs : Dict[str, Any]
             EM specification dictionary.
@@ -321,7 +314,7 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
         -------
         track_widths : List[int]
             the track width on each layer that satisfies EM specs.
-        track_spaces : List[int]
+        track_spaces : List[Union[int, float]]
             the track space on each layer.
         min_size : Tuple[int, int]
             a tuple of minimum width and height of the core in resolution units.
@@ -334,27 +327,25 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
         min_w = min_h = 0
         cur_layer = cls.get_bot_layer()
         for min_num_tr in min_tracks:
-            tr_w, tr_sp = grid.get_track_info(cur_layer, unit_mode=True)
+            tr_p = grid.get_track_pitch(cur_layer, unit_mode=True)
             cur_width = grid.get_min_track_width(cur_layer, bot_w=prev_width, unit_mode=True, **em_specs)
-            cur_space = grid.get_num_space_tracks(cur_layer, cur_width)
+            cur_space = grid.get_num_space_tracks(cur_layer, cur_width, half_space=True)
             track_widths.append(cur_width)
             track_spaces.append(cur_space)
-            cur_width_lay = cur_width * tr_w + (cur_width - 1) * tr_sp
-            cur_space_lay = (cur_space + 1) * tr_sp + cur_space * tr_w
-            min_dim = min_num_tr * (cur_width_lay + cur_space_lay)
+            cur_ntr = min_num_tr * (cur_width + cur_space)
+            if isinstance(cur_space, float):
+                cur_ntr += 0.5
+            min_dim = int(round(tr_p * cur_ntr))
+
             if grid.get_direction(cur_layer) == 'x':
                 min_h = max(min_h, min_dim)
             else:
                 min_w = max(min_w, min_dim)
 
             cur_layer += 1
-            prev_width = cur_width_lay
+            prev_width = grid.get_track_width(cur_layer, cur_width, unit_mode=True)
 
-        cur_layer -= 1
-        wblk, hblk = grid.get_block_size(cur_layer, unit_mode=True)
-        rwblk, rhblk = cls.get_block_pitch()
-        wblk = lcm([wblk, rwblk])
-        hblk = lcm([hblk, rhblk])
+        wblk, hblk = grid.get_block_size(cur_layer - 1, unit_mode=True)
         min_w = -(-min_w // wblk) * wblk
         min_h = -(-min_h // hblk) * hblk
 
@@ -616,8 +607,14 @@ class ResTech(with_metaclass(abc.ABCMeta, object)):
                 dim_corner = hedge
 
             pitch = grid.get_track_pitch(lay, unit_mode=True)
-            num_tracks.append(dim // pitch)
-            num_corner_tracks.append(dim_corner // pitch)
+            if dim % pitch == 0:
+                num_tracks.append(dim // pitch)
+            else:
+                num_tracks.append(dim / pitch)
+            if dim_corner % pitch == 0:
+                num_corner_tracks.append(dim_corner // pitch)
+            else:
+                num_corner_tracks.append(dim_corner / pitch)
 
         res_info = dict(
             l=l,
@@ -686,12 +683,12 @@ class AnalogResCore(TemplateBase):
         )
 
     def get_num_tracks(self):
-        # type: () -> Tuple[int, int, int, int]
+        # type: () -> Tuple[Union[float, int], ...]
         """Returns a list of the number of tracks on each routing layer in this template.
 
         Returns
         -------
-        ntr_list : Tuple[int, int, int, int]
+        ntr_list : Tuple[Union[float, int], ...]
             a list of number of tracks in this template on each layer.
             index 0 is the bottom-most routing layer, and corresponds to
             AnalogResCore.port_layer_id().
@@ -699,12 +696,12 @@ class AnalogResCore(TemplateBase):
         return self._num_tracks
 
     def get_track_widths(self):
-        # type: () -> Tuple[int, int, int, int]
+        # type: () -> Tuple[int, ...]
         """Returns a list of track widths on each routing layer.
 
         Returns
         -------
-        width_list : Tuple[int, int, int, int]
+        width_list : Tuple[int, ...]
             a list of track widths in number of tracks on each layer.
             index 0 is the bottom-most routing layer, and corresponds to
             port_layer_id().
