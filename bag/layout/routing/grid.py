@@ -25,13 +25,16 @@
 """This module defines the RoutingGrid class.
 """
 
-from typing import Union, Tuple, List, Optional, Dict
+from typing import TYPE_CHECKING, Sequence, Union, Tuple, List, Optional, Dict
 
 import numpy as np
 
 from ..util import BBox
 from bag.util.search import BinaryIterator
 from bag.math import lcm
+
+if TYPE_CHECKING:
+    from bag.layout.core import TechInfo
 
 
 class RoutingGrid(object):
@@ -68,6 +71,7 @@ class RoutingGrid(object):
     """
 
     def __init__(self, tech_info, layers, spaces, widths, bot_dir, max_num_tr=100):
+        # type: (TechInfo, Sequence[int], Sequence[float], Sequence[float], str, Union[int, Sequence[int]]) -> None
         # error checking
         num_layer = len(layers)
         if len(spaces) != num_layer:
@@ -102,14 +106,18 @@ class RoutingGrid(object):
         self.update_block_pitch()
 
     def __contains__(self, layer):
+        # type: (int) -> bool
         """Returns True if this RoutingGrid contains the given layer. """
         return layer in self.sp_tracks
 
     def _get_track_offset(self, layer_id):
+        # type: (int) -> int
+        """Returns the track offset in resolution units on the given layer."""
         track_pitch = self.get_track_pitch(layer_id, unit_mode=True)
         return self.offset_tracks.get(layer_id, track_pitch // 2)
 
     def get_flip_parity(self):
+        # type: () -> Dict[int, Tuple[int, int]]
         """Returns a copy of the flip parity dictionary."""
         return self._flip_parity.copy()
 
@@ -200,31 +208,37 @@ class RoutingGrid(object):
         return flip_par
 
     def set_flip_parity(self, fp):
+        # type: (Dict[int, Tuple[int, int]]) -> None
         """set the flip track parity dictionary."""
         for lay in fp:
             self._flip_parity[lay] = fp[lay]
 
     @property
     def tech_info(self):
+        # type: () -> TechInfo
         """The TechInfo technology object."""
         return self._tech_info
 
     @property
     def resolution(self):
+        # type: () -> float
         """Returns the grid resolution."""
         return self._resolution
 
     @property
     def layout_unit(self):
+        # type: () -> float
         """Returns the layout unit length, in meters."""
         return self._layout_unit
 
     @property
     def top_private_layer(self):
+        # type: () -> int
         """Returns the top private layer ID."""
         return -99 if not self.private_layers else self.private_layers[-1]
 
     def update_block_pitch(self):
+        # type: () -> None
         """Update block pitch."""
         self.block_pitch.clear()
         top_private_layer = self.top_private_layer
@@ -238,6 +252,7 @@ class RoutingGrid(object):
         self._update_block_pitch_helper(lay_list)
 
     def _update_block_pitch_helper(self, lay_list):
+        # type: (Sequence[int]) -> None
         """helper method for updating block pitch."""
         pitch_list = []
         for lay in lay_list:
@@ -252,6 +267,7 @@ class RoutingGrid(object):
             self.block_pitch[lay] = cur_blk_pitch
 
     def get_direction(self, layer_id):
+        # type: (int) -> str
         """Returns the track direction of the given layer.
 
         Parameters
@@ -267,6 +283,7 @@ class RoutingGrid(object):
         return self.dir_tracks[layer_id]
 
     def get_track_pitch(self, layer_id, unit_mode=False):
+        # type: (int, bool) -> Union[float, int]
         """Returns the routing track pitch on the given layer.
 
         Parameters
@@ -410,6 +427,7 @@ class RoutingGrid(object):
             return min_length
 
     def get_num_space_tracks(self, layer_id, width_ntr, half_space=False, same_color=False):
+        # type: (int, int, bool, bool) -> Union[int, float]
         """Returns the number of tracks needed to reserve for space around a track of the given width.
 
         In advance technologies, metal spacing is often a function of the metal width, so for a
@@ -429,7 +447,7 @@ class RoutingGrid(object):
 
         Returns
         -------
-        num_sp_tracks : float or int
+        num_sp_tracks : Union[int, float]
             minimum space needed around the given track in number of tracks.
         """
         layer_name = self.tech_info.get_layer_name(layer_id)
@@ -454,6 +472,7 @@ class RoutingGrid(object):
             return (num_half_pitch + 1) // 2
 
     def get_line_end_space(self, layer_id, width_ntr, unit_mode=False):
+        # type: (int, int, bool) -> Union[float, int]
         """Returns the minimum line end spacing for the given wire.
 
         Parameters
@@ -481,6 +500,7 @@ class RoutingGrid(object):
         return ans
 
     def get_line_end_space_tracks(self, wire_layer, space_layer, width_ntr):
+        # type: (int, int, int) -> Union[float, int]
         """Returns the minimum line end spacing in number of space tracks.
 
         Parameters
@@ -488,13 +508,14 @@ class RoutingGrid(object):
         wire_layer : int
             line-end wire layer ID.
         space_layer : int
-            the layer used to measure line-end space.  Must be adjacent to wire_layer.
+            the layer used to measure line-end space.  Must be adjacent to wire_layer, and its
+            direction must be orthogonal to the wire layer.
         width_ntr : int
             wire width, in number of tracks.
 
         Returns
         -------
-        space_ntr : int
+        space_ntr : Union[float, int]
             number of tracks needed to reserve as space.
         """
         if space_layer == wire_layer - 1:
@@ -512,7 +533,7 @@ class RoutingGrid(object):
         return space_ntr
 
     def get_max_track_width(self, layer_id, num_tracks, tot_space, half_end_space=False):
-        # type: (int, int, int) -> int
+        # type: (int, int, int, bool) -> int
         """Compute maximum track width and space that satisfies DRC rule.
 
         Given available number of tracks and numbers of tracks needed, returns
@@ -552,7 +573,7 @@ class RoutingGrid(object):
 
     @staticmethod
     def get_evenly_spaced_tracks(num_tracks, tot_space, track_width, half_end_space=False):
-        # type: (int, int, int) -> List[Union[float, int]]
+        # type: (int, int, int, bool) -> List[Union[float, int]]
         """Evenly space given number of tracks in the available space.
 
         Currently this method may return half-integer tracks.
@@ -641,10 +662,12 @@ class RoutingGrid(object):
             return w_pitch * self.resolution, h_pitch * self.resolution
 
     def size_defined(self, layer_id):
+        # type: (int) -> bool
         """Returns True if size is defined on the given layer."""
         return layer_id >= self.top_private_layer + 2
 
     def get_size_pitch(self, layer_id, unit_mode=False):
+        # type: (int, bool) -> Tuple[Union[float, int], Union[float, int]]
         """Returns the horizontal/vertical pitch that defines template size.
 
         Parameters
@@ -670,7 +693,14 @@ class RoutingGrid(object):
             h_pitch, w_pitch = w_pitch, h_pitch
         return w_pitch, h_pitch
 
-    def get_size_tuple(self, layer_id, width, height, round_up=False, unit_mode=False):
+    def get_size_tuple(self,  # type: RoutingGrid
+                       layer_id,  # type: int
+                       width,  # type: Union[float, int]
+                       height,  # type: Union[float, int]
+                       round_up=False,  # type: bool
+                       unit_mode=False,  # type: bool
+                       ):
+        # type: (...) -> Tuple[int, Union[float, int], Union[float, int]]
         """Compute the size tuple corresponding to the given width and height from block pitch.
 
         Parameters
@@ -782,7 +812,21 @@ class RoutingGrid(object):
         return w * self._resolution, sp * self._resolution
 
     def get_track_parity(self, layer_id, tr_idx):
-        """Returns the parity of the given track."""
+        # type: (int, Union[float, int]) -> int
+        """Returns the parity of the given track.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer ID.
+        tr_idx : Union[float, int]
+            the track index.
+
+        Returns
+        -------
+        parity : int
+            the track parity, either 0 or 1.
+        """
         # multiply then divide by 2 makes sure negative tracks are colored correctly.
         htr = int(round(tr_idx * 2 + 1))
         scale, offset = self._flip_parity[layer_id]
@@ -792,14 +836,20 @@ class RoutingGrid(object):
         return 1
 
     def get_layer_name(self, layer_id, tr_idx):
+        # type: (int, Union[float, int]) -> str
         """Returns the layer name of the given track.
 
         Parameters
         ----------
         layer_id : int
             the layer ID.
-        tr_idx : float
+        tr_idx : Union[float, int]
             the track index.
+
+        Returns
+        -------
+        layer_name : str
+            the layer name.
         """
         layer_name = self.tech_info.get_layer_name(layer_id)
         if isinstance(layer_name, tuple):
@@ -810,14 +860,14 @@ class RoutingGrid(object):
             return layer_name
 
     def get_wire_bounds(self, layer_id, tr_idx, width=1, unit_mode=False):
-        # type: (int, float, int, bool) -> Tuple[Union[float, int], Union[float, int]]
+        # type: (int, Union[int, float], int, bool) -> Tuple[Union[float, int], Union[float, int]]
         """Calculate the wire bounds coordinate.
 
         Parameters
         ----------
         layer_id : int
             the layer ID.
-        tr_idx : flaot
+        tr_idx : Union[int, float]
             the center track index.
         width : int
             width of wire in number of tracks.
@@ -840,13 +890,14 @@ class RoutingGrid(object):
             return lower * self._resolution, upper * self._resolution
 
     def get_bbox(self, layer_id, tr_idx, lower, upper, width=1):
+        # type: (int, Union[int, float], float, float, int) -> BBox
         """Compute bounding box for the given wire.
 
         Parameters
         ----------
         layer_id : int
             the layer ID.
-        tr_idx : flaot
+        tr_idx : Union[int, float]
             the center track index.
         lower : float
             the lower coordinate along track direction.
@@ -870,6 +921,7 @@ class RoutingGrid(object):
 
     def get_min_track_width(self, layer_id, idc=0, iac_rms=0, iac_peak=0, l=-1,
                             bot_w=-1, top_w=-1, unit_mode=False, **kwargs):
+        # type: (int, float, float, float, float, float, float, bool, **kwargs) -> int
         """Returns the minimum track width required for the given EM specs.
 
         Parameters
@@ -1235,13 +1287,14 @@ class RoutingGrid(object):
 
     def coord_to_nearest_track(self, layer_id, coord, half_track=False, mode=0,
                                unit_mode=False):
+        # type: (int, Union[float, int], bool, int, bool) -> Union[float, int]
         """Returns the track number closest to the given coordinate.
 
         Parameters
         ----------
         layer_id : int
             the layer number.
-        coord : float
+        coord : Union[float, int]
             the coordinate perpendicular to the track direction.
         half_track : bool
             if True, allow half integer track numbers.
@@ -1266,7 +1319,7 @@ class RoutingGrid(object):
 
         Returns
         -------
-        track : float or int
+        track : Union[float, int]
             the track number
         """
         if not unit_mode:
@@ -1417,6 +1470,7 @@ class RoutingGrid(object):
         raise ValueError('Interval {} on layer {} width not quantized'.format(intv, layer_id))
 
     def copy(self):
+        # type: () -> RoutingGrid
         """Returns a deep copy of this RoutingGrid."""
         cls = self.__class__
         result = cls.__new__(cls)
@@ -1505,6 +1559,7 @@ class RoutingGrid(object):
             self._flip_parity[layer_id] = (1, 0)
 
     def set_track_offset(self, layer_id, offset, unit_mode=False):
+        # type: (int, Union[float, int], bool) -> None
         """Set track offset for this RoutingGrid.
 
         Parameters
@@ -1522,6 +1577,7 @@ class RoutingGrid(object):
         self.offset_tracks[layer_id] = offset
 
     def add_width_override(self, layer_id, width_ntr, tr_width, unit_mode=False):
+        # type: (int, int, Union[int, float], bool) -> None
         """Add width override.
 
         NOTE: call this method only directly after you construct the RoutingGrid.  Do not
@@ -1531,7 +1587,7 @@ class RoutingGrid(object):
         ----------
         layer_id : int
             the new layer ID.
-        width_ntr : intq
+        width_ntr : int
             the width in number of tracks.
         tr_width : Union[int, float]
             the actual width in layout units.
