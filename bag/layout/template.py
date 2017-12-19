@@ -2304,8 +2304,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         wire_arr : WireArray
             WireArray representing the tracks created.  None if nothing to do.
         """
-        warr_tid = warr.track_id
-        warr_layer = warr_tid.layer_id
+        warr_layer = warr.layer_id
 
         if targ_layer == warr_layer:
             # no need to do anything
@@ -2352,7 +2351,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         lower = int(round(warr.lower / res))
         upper = int(round(warr.upper / res))
         if not unit_mode:
-            fill_margin = int(round(fill_margin / unit_mode))
+            fill_margin = int(round(fill_margin / res))
 
         # error checking
         wdir = self.grid.get_direction(wire_layer)
@@ -2385,8 +2384,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         for tid in wire_tid:
             coord = self.grid.track_to_coord(wire_layer, tid, unit_mode=True)
             tid2 = self.grid.coord_to_track(targ_layer, coord, unit_mode=True)
-            bot_name = self.grid.get_layer_name(wire_layer, tid)
-            top_name = self.grid.get_layer_name(targ_layer, tid2)
+            w_name = self.grid.get_layer_name(wire_layer, tid)
+            t_name = self.grid.get_layer_name(targ_layer, tid2)
 
             w_yb, w_yt = self.grid.get_wire_bounds(wire_layer, tid, wire_tid.width, unit_mode=True)
             t_yb, t_yt = self.grid.get_wire_bounds(targ_layer, tid2, tr_w, unit_mode=True)
@@ -2394,10 +2393,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if wdir == 'y':
                 vbox = vbox.flip_xy()
             if wire_layer < targ_layer:
-                via = self.add_via(vbox, bot_name, top_name, wdir, extend=True, top_dir=wdir)
+                via = self.add_via(vbox, w_name, t_name, wdir, extend=True, top_dir=wdir)
                 tbox, wbox = via.top_box, via.bottom_box
             else:
-                via = self.add_via(vbox, top_name, bot_name, wdir, extend=True, top_dir=wdir)
+                via = self.add_via(vbox, t_name, w_name, wdir, extend=True, top_dir=wdir)
                 tbox, wbox = via.bottom_box, via.top_box
 
             if wdir == 'y':
