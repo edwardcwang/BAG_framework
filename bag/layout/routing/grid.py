@@ -631,8 +631,8 @@ class RoutingGrid(object):
         idx_list = ((hidx_arr - 1) / 2.0).tolist()  # type: List[float]
         return idx_list
 
-    def get_block_size(self, layer_id, unit_mode=False):
-        # type: (int, bool) -> Tuple[Union[float, int], Union[float, int]]
+    def get_block_size(self, layer_id, unit_mode=False, include_private=False):
+        # type: (int, bool, bool) -> Tuple[Union[float, int], Union[float, int]]
         """Returns unit block size given the top routing layer.
 
         Parameters
@@ -641,6 +641,8 @@ class RoutingGrid(object):
             the routing layer ID.
         unit_mode : bool
             True to return block dimension in resolution units.
+        include_private : bool
+            True to include private layers in block size calculation.
 
         Returns
         -------
@@ -664,7 +666,7 @@ class RoutingGrid(object):
 
         top_pitch = self.block_pitch[layer_id]
 
-        if layer_id > top_private_layer >= bot_layer:
+        if layer_id > top_private_layer >= bot_layer and not include_private:
             # if top layer not private but bottom layer is, then bottom is not quantized.
             bot_pitch = 1
 
