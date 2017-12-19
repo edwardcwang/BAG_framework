@@ -495,10 +495,11 @@ class TerminationCore(ResArrayBase):
                 # layer direction is the same.  Strap wires to current layer.
                 for warrs_idx in range(3):
                     cur_warrs = port_wires[warrs_idx]
-                    new_warrs = []
-                    for warr in cur_warrs:
-                        new_warrs.append(self.strap_wires(warr, cur_lay, tr_w_list=[cur_w], min_len_mode_list=[0]))
+                    new_warrs = [self.strap_wires(warr, cur_lay, tr_w_list=[cur_w], min_len_mode_list=[0])
+                                 for warr in cur_warrs]
                     port_wires[warrs_idx] = new_warrs
+
+            last_dir = cur_dir
 
         self.add_pin('inp', port_wires[0], show=show_pins)
         self.add_pin('inn', port_wires[2], show=show_pins)
