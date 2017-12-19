@@ -370,7 +370,10 @@ class RoutingGrid(object):
                     bin_iter.save()
                 bin_iter.down()
 
-        return bin_iter.get_last_save()
+        ans = bin_iter.get_last_save()
+        if ans is None:
+            return 0
+        return ans
 
     def get_num_tracks(self, size, layer_id):
         # type: (Tuple[int, Union[int, float], Union[int, float]], int) -> Union[int, float]

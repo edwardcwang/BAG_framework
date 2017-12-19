@@ -2014,7 +2014,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # type: (...) -> Optional[WireArray]
         """Connect all given WireArrays to the given track(s).
 
-        All given wires should be on adjcent layer of the track.
+        All given wires should be on adjacent layers of the track.
 
         Parameters
         ----------
@@ -2141,9 +2141,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                debug=False,  # type: bool
                                ):
         # type: (...) -> List[WireArray]
-        """Connect all given WireArrays to the given track(s).
+        """Connect a single wire to the given track by using a via stack.
 
-        All given wires should be on adjcent layer of the track.
+        This is a convenience function that draws via connections through several layers
+        at once.  With optional parameters to control the track widths on each
+        intermediate layers.
 
         Parameters
         ----------
@@ -2264,6 +2266,170 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             wire_array = warr
 
         return results
+
+    def strap_wires(self,  # type: TemplateBase
+                    warr,  # type: WireArray
+                    targ_layer,  # type: int
+                    tr_w_list=None,  # type: Optional[List[int]]
+                    min_len_mode_list=None,  # type: Optional[List[int]]
+                    fill_margin=0,  # type: Union[int, float]
+                    fill_type='',  # type: str
+                    unit_mode=False,  # type: bool
+                    ):
+        # type: (...) -> WireArray
+        """Strap the given WireArrays to the target routing layer.
+
+        This method is used to connects wires on adjacent layers that has the same direction.
+        The track locations must be valid on all routing layers for this method to work.
+
+        Parameters
+        ----------
+        warr : WireArray
+            the WireArrays to strap.
+        targ_layer : int
+            the final routing layer ID.
+        tr_w_list : Optional[List[int]]
+            the track widths to use on each layer.  If not specified, will determine automatically.
+        min_len_mode_list : Optional[List[int]]
+            minimum length mode flags on each layer.
+        fill_margin : Union[int, float]
+            minimum margin between wires and fill.
+        fill_type : str
+            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
+        unit_mode : bool
+            True if track_lower/track_upper/fill_margin is given in resolution units.
+
+        Returns
+        -------
+        wire_arr : WireArray
+            WireArray representing the tracks created.  None if nothing to do.
+        """
+        warr_tid = warr.track_id
+        warr_layer = warr_tid.layer_id
+
+        if targ_layer == warr_layer:
+            # no need to do anything
+            return warr
+
+        num_connections = abs(targ_layer - warr_layer)
+
+        # set default values
+        if tr_w_list is None:
+            tr_w_list = [-1] * num_connections
+        elif len(tr_w_list) != num_connections:
+            raise ValueError('tr_w_list must have exactly %d elements.' % num_connections)
+        else:
+            # create a copy of the given list, as this list may be modified later.
+            tr_w_list = list(tr_w_list)
+
+        if min_len_mode_list is None:
+            min_len_mode_list = [None] * num_connections
+        elif len(min_len_mode_list) != num_connections:
+            raise ValueError('min_len_mode_list must have exactly %d elements.' % num_connections)
+
+        layer_dir = 1 if targ_layer > warr_layer else -1
+        for tr_w, mlen_mode in zip(tr_w_list, min_len_mode_list):
+            warr = self._strap_wires_helper(warr, warr.layer_id + layer_dir, tr_w, mlen_mode,
+                                            fill_margin, fill_type, unit_mode)
+
+        return warr
+
+    def _strap_wires_helper(self,  # type: TemplateBase
+                            warr,  # type: WireArray
+                            targ_layer,  # type: int
+                            tr_w,  # type: int
+                            mlen_mode,  # type: Optional[int]
+                            fill_margin,  # type: Union[int, float]
+                            fill_type,  # type: str
+                            unit_mode,  # type: bool
+                            ):
+        # type: (...) -> WireArray
+        """Helper method for strap_wires().  Connect one layer at a time."""
+        wire_tid = warr.track_id
+        wire_layer = wire_tid.layer_id
+
+        res = self.grid.resolution
+        lower = int(round(warr.lower / res))
+        upper = int(round(warr.upper / res))
+        if not unit_mode:
+            fill_margin = int(round(fill_margin / unit_mode))
+
+        # error checking
+        wdir = self.grid.get_direction(wire_layer)
+        if wdir != self.grid.get_direction(targ_layer):
+            raise ValueError('Cannot strap wires with different directions.')
+
+        # convert base track index
+        base_coord = self.grid.track_to_coord(wire_layer, wire_tid.base_index, unit_mode=True)
+        base_tid = self.grid.coord_to_track(targ_layer, base_coord, unit_mode=True)
+        # convert pitch
+        wire_pitch = self.grid.get_track_pitch(wire_layer, unit_mode=True)
+        targ_pitch = self.grid.get_track_pitch(targ_layer, unit_mode=True)
+        targ_pitch_half = targ_pitch // 2
+        pitch_unit = int(round(wire_pitch * wire_tid.pitch))
+        if pitch_unit % targ_pitch_half != 0:
+            raise ValueError('Cannot strap wires on layers with mismatched pitch ')
+        num_pitch = pitch_unit // targ_pitch_half
+        if num_pitch % 2 == 0:
+            num_pitch //= 2
+        else:
+            num_pitch /= 2
+        # convert width
+        if tr_w < 0:
+            width_unit = self.grid.get_track_width(wire_layer, wire_tid.width, unit_mode=True)
+            tr_w = max(1, self.grid.get_track_width_inverse(targ_layer, width_unit, mode=-1, unit_mode=True))
+
+        # draw vias.  Update WireArray lower/upper
+        new_lower, new_upper = lower, upper
+        w_lower, w_upper = lower, upper
+        for tid in wire_tid:
+            coord = self.grid.track_to_coord(wire_layer, tid, unit_mode=True)
+            tid2 = self.grid.coord_to_track(targ_layer, coord, unit_mode=True)
+            bot_name = self.grid.get_layer_name(wire_layer, tid)
+            top_name = self.grid.get_layer_name(targ_layer, tid2)
+
+            w_yb, w_yt = self.grid.get_wire_bounds(wire_layer, tid, wire_tid.width, unit_mode=True)
+            t_yb, t_yt = self.grid.get_wire_bounds(targ_layer, tid2, tr_w, unit_mode=True)
+            vbox = BBox(lower, max(w_yb, t_yb), upper, min(w_yt, t_yt), res, unit_mode=True)
+            if wdir == 'y':
+                vbox = vbox.flip_xy()
+            if wire_layer < targ_layer:
+                via = self.add_via(vbox, bot_name, top_name, wdir, extend=True, top_dir=wdir)
+                tbox, wbox = via.top_box, via.bottom_box
+            else:
+                via = self.add_via(vbox, top_name, bot_name, wdir, extend=True, top_dir=wdir)
+                tbox, wbox = via.bottom_box, via.top_box
+
+            if wdir == 'y':
+                new_lower = min(new_lower, tbox.bottom_unit)
+                new_upper = max(new_upper, tbox.top_unit)
+                w_lower = min(w_lower, wbox.bottom_unit)
+                w_upper = max(w_upper, wbox.top_unit)
+            else:
+                new_lower = min(new_lower, tbox.left_unit)
+                new_upper = max(new_upper, tbox.right_unit)
+                w_lower = min(w_lower, wbox.left_unit)
+                w_upper = max(w_upper, wbox.top_unit)
+
+        # handle minimum length DRC rule
+        min_len = self.grid.get_min_length(targ_layer, tr_w, unit_mode=True)
+        ext = min_len - (new_upper - new_lower)
+        if mlen_mode is not None and ext > 0:
+            if mlen_mode < 0:
+                new_lower -= ext
+            elif mlen_mode > 0:
+                new_upper += ext
+            else:
+                new_lower -= ext // 2
+                new_upper += (ext - ext // 2)
+
+        # add wires
+        self.add_wires(wire_layer, wire_tid.base_index, w_lower, w_upper, width=wire_tid.width,
+                       num=wire_tid.num, pitch=wire_tid.pitch, fill_margin=fill_margin,
+                       fill_type=fill_type, unit_mode=True)
+        return self.add_wires(targ_layer, base_tid, new_lower, new_upper, width=tr_w,
+                              num=wire_tid.num, pitch=num_pitch, fill_margin=fill_margin,
+                              fill_type=fill_type, unit_mode=True)
 
     def connect_differential_tracks(self,  # type: TemplateBase
                                     pwarr_list,  # type: Union[WireArray, List[WireArray]]
