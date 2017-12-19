@@ -27,11 +27,6 @@
 
 This module also define some simple subclasses of ResArrayBase.
 """
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-# noinspection PyUnresolvedReferences,PyCompatibility
-from builtins import *
-from future.utils import with_metaclass
 
 import abc
 from typing import Dict, Set, Tuple, Union, Any, Optional
@@ -46,7 +41,7 @@ from ..analog_core.substrate import SubstrateContact
 
 
 # noinspection PyAbstractClass
-class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
+class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
     """An abstract template that draws analog resistors array and connections.
 
     This template assumes that the ressistor array uses 4 routing layers, with
@@ -184,28 +179,32 @@ class ResArrayBase(with_metaclass(abc.ABCMeta, TemplateBase)):
 
         return tuple(offsets)
 
-    def get_h_track_index(self, row_idx, tr_idx):
-        # type: (int, Union[float, int]) -> float
+    def get_abs_track_index(self, layer_id, cell_idx, tr_idx):
+        # type: (int, int, Union[float, int]) -> float
         """Compute absolute track index from relative track index.
 
         Parameters
         ----------
-        row_idx : int
-            the row index.  0 is the bottom row.
+        layer_id : int
+            the horizontal layer ID.
+        cell_idx : int
+            the row or column index.  0 is the bottom row/left-most column.
         tr_idx : Union[int, float]
-            the track index within the given row.
+            the track index within the given cell.
 
         Returns
         -------
         abs_idx : float
             the absolute track index in this template.
         """
-        delta = self._core_offset[1] + self._core_pitch[1] * row_idx
-        targ_layer = self.bot_layer_id + len(self._num_tracks) - 1
-        if self.grid.get_direction(targ_layer) == 'y':
-            targ_layer -= 1
+        dim_idx = 1 if self.grid.get_direction(layer_id) == 'x' else 0
+        delta = self._core_offset[dim_idx] + self._core_pitch[dim_idx] * cell_idx
 
-        return delta / self.grid.get_track_pitch(targ_layer, unit_mode=True) + tr_idx
+        half_pitch = self.grid.get_track_pitch(layer_id, unit_mode=True) // 2
+        htr = int(round(2 * tr_idx)) + delta // half_pitch
+        if htr % 2 == 0:
+            return htr // 2
+        return htr / 2
 
     def draw_array(self,  # type: ResArrayBase
                    l,  # type: float
@@ -403,6 +402,7 @@ class TerminationCore(ResArrayBase):
             res_type='reference',
             em_specs={},
             ext_dir='',
+            show_pins=True,
         )
 
     @classmethod
@@ -427,6 +427,7 @@ class TerminationCore(ResArrayBase):
             res_type='the resistor type.',
             em_specs='EM specifications for the termination network.',
             ext_dir='resistor core extension direction.',
+            show_pins='True to show pins.',
         )
 
     def draw_layout(self):
@@ -436,6 +437,7 @@ class TerminationCore(ResArrayBase):
         nx = self.params['nx']
         ny = self.params['ny']
         em_specs = self.params.pop('em_specs')
+        show_pins = self.params.pop('show_pins')
 
         if nx % 2 != 0 or nx <= 0:
             raise ValueError('number of resistors in a row must be even and positive.')
@@ -447,17 +449,10 @@ class TerminationCore(ResArrayBase):
             else:
                 div_em_specs[key] = 0.0
 
-        min_tracks = (1, 1, 1, 1)
-        self.draw_array(min_tracks=min_tracks, em_specs=div_em_specs, grid_type='low_res', **self.params)
-
-        vm_layer = self.bot_layer_id + 1
-        xm_layer = vm_layer + 1
-        ym_layer = xm_layer + 1
+        self.draw_array(em_specs=div_em_specs, grid_type='low_res', **self.params)
 
         # connect row resistors
-        hc_warr_list = []
-        hl_warr_list = []
-        hr_warr_list = []
+        port_wires = [[], [], []]
         for row_idx in range(ny):
             for col_idx in range(nx - 1):
                 ports_l = self.get_res_ports(row_idx, col_idx)
@@ -465,47 +460,49 @@ class TerminationCore(ResArrayBase):
                 con_par = (col_idx + row_idx) % 2
                 mid_wire = self.connect_wires([ports_l[con_par], ports_r[con_par]])
                 if col_idx == 0:
-                    hl_warr_list.append(ports_l[1 - con_par])
+                    port_wires[0].append(ports_l[1 - con_par])
                 if col_idx == nx - 2:
-                    hr_warr_list.append(ports_r[1 - con_par])
+                    port_wires[2].append(ports_r[1 - con_par])
                 if col_idx == (nx // 2) - 1:
-                    hc_warr_list.append(mid_wire[0])
+                    port_wires[1].append(mid_wire[0])
 
-        # connect to v layer
-        vm_width = self.w_tracks[1]
-        v_pitch = self.num_tracks[1]
-        vc_id = self.grid.coord_to_nearest_track(vm_layer, hc_warr_list[0].middle, half_track=True)
-        v_tid = TrackID(vm_layer, vc_id, width=vm_width)
-        vc_warr = self.connect_to_tracks(hc_warr_list, v_tid)
-        v_tid = TrackID(vm_layer, vc_id - v_pitch, width=vm_width)
-        vl_warr = self.connect_to_tracks(hl_warr_list, v_tid)
-        v_tid = TrackID(vm_layer, vc_id + v_pitch, width=vm_width)
-        vr_warr = self.connect_to_tracks(hr_warr_list, v_tid)
+        lay_offset = self.bot_layer_id
+        last_dir = 'x'
+        for lay_idx in range(1, len(self.w_tracks)):
+            cur_lay = lay_idx + lay_offset
+            cur_w = self.w_tracks[lay_idx]
+            cur_dir = self.grid.get_direction(cur_lay)
+            if cur_dir != last_dir:
+                # layer direction is orthogonal
+                if cur_dir == 'y':
+                    # connect all horizontal wires in last layer to one vertical wire
+                    for warrs_idx in range(3):
+                        cur_warrs = port_wires[warrs_idx]
+                        tidx = self.grid.coord_to_nearest_track(cur_lay, cur_warrs[0].middle, half_track=True)
+                        tid = TrackID(cur_lay, tidx, width=cur_w)
+                        port_wires[warrs_idx] = [self.connect_to_tracks(cur_warrs, tid)]
+                else:
+                    # draw one horizontal wire in middle of each row, then connect last vertical wire to it
+                    # this way we distribute currents evenly.
+                    cur_p = self.num_tracks[lay_idx]
+                    # relative base index.  Round down if we have half-integer number of tracks
+                    base_idx_rel = (int(round(cur_p * 2)) // 2 - 1) / 2
+                    base_idx = self.get_abs_track_index(cur_lay, 0, base_idx_rel)
+                    tid = TrackID(cur_lay, base_idx, width=cur_w, num=ny, pitch=cur_p)
+                    for warrs_idx in range(3):
+                        port_wires[warrs_idx] = self.connect_to_tracks(port_wires[warrs_idx], tid, min_len_mode=0)
+            else:
+                # layer direction is the same.  Strap wires to current layer.
+                for warrs_idx in range(3):
+                    cur_warrs = port_wires[warrs_idx]
+                    new_warrs = []
+                    for warr in cur_warrs:
+                        new_warrs.append(self.strap_wires(warr, cur_lay, tr_w_list=[cur_w], min_len_mode_list=[0]))
+                    port_wires[warrs_idx] = new_warrs
 
-        # connect to x layer
-        xm_width = self.w_tracks[2]
-        x_pitch = self.num_tracks[2]
-        x_base = self.get_h_track_index(0, (x_pitch - 1) / 2.0)
-        x_tid = TrackID(xm_layer, x_base, width=xm_width, num=ny, pitch=x_pitch)
-        xc_warr = self.connect_to_tracks(vc_warr, x_tid, min_len_mode=0)
-        xl_warr = self.connect_to_tracks(vl_warr, x_tid, min_len_mode=0)
-        xr_warr = self.connect_to_tracks(vr_warr, x_tid, min_len_mode=0)
-
-        # connect to y layer
-        bot_w = self.grid.get_track_width(xm_layer, xm_width)
-        ym_width = self.grid.get_min_track_width(ym_layer, bot_w=bot_w, **em_specs)
-        y_pitch = self.num_tracks[3]
-        yc_id = self.grid.coord_to_nearest_track(ym_layer, xc_warr.middle, half_track=True)
-        y_tid = TrackID(ym_layer, yc_id, width=ym_width)
-        yc_warr = self.connect_to_tracks(xc_warr, y_tid)
-        y_tid = TrackID(ym_layer, yc_id - y_pitch, width=ym_width)
-        yl_warr = self.connect_to_tracks(xl_warr, y_tid)
-        y_tid = TrackID(ym_layer, yc_id + y_pitch, width=ym_width)
-        yr_warr = self.connect_to_tracks(xr_warr, y_tid)
-
-        self.add_pin('inp', yl_warr, show=False)
-        self.add_pin('inn', yr_warr, show=False)
-        self.add_pin('incm', yc_warr, show=False)
+        self.add_pin('inp', port_wires[0], show=show_pins)
+        self.add_pin('inn', port_wires[2], show=show_pins)
+        self.add_pin('incm', port_wires[1], show=show_pins)
 
 
 class Termination(TemplateBase):
