@@ -29,6 +29,7 @@ import abc
 from typing import Dict, Set, Tuple, Any, List, Optional, Union
 
 from bag import float_to_si_string
+from bag.math import lcm
 from bag.util.search import BinaryIterator
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.routing import RoutingGrid
@@ -345,7 +346,11 @@ class ResTech(object, metaclass=abc.ABCMeta):
             cur_layer += 1
             prev_width = grid.get_track_width(cur_layer, cur_width, unit_mode=True)
 
-        wblk, hblk = grid.get_block_size(cur_layer - 1, unit_mode=True)
+        # get block size
+        wblk, hblk = grid.get_block_size(cur_layer - 1, unit_mode=True, include_private=True)
+        wblk_drc, hblk_drc = cls.get_block_pitch()
+        wblk = lcm([wblk, wblk_drc])
+        hblk = lcm([hblk, hblk_drc])
         min_w = -(-min_w // wblk) * wblk
         min_h = -(-min_h // hblk) * hblk
 
