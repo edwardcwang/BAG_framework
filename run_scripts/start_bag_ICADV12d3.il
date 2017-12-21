@@ -1322,7 +1322,32 @@ procedure( create_layout_helper( cv tech_file inst_list rect_list via_list pin_l
             create_path_helper(cv path)
         )
 
-        ;; TODO: create blockage, boundary, and polygon
+        ; create polygons
+        foreach( poly polygon_list
+            dbCreatePolygon(cv poly->layer poly->points)
+        )
+
+        ; create blockages
+        foreach( block blockage_list
+            if( block->btype == "placement" then
+                dbCreateAreaBlockage(cv block->points)
+            else
+                dbCreateLayerBlockage(cv block->layer block->btype block->points)
+            )
+        )
+
+        ; create boundaries
+        foreach( bound boundary_list
+            cond( (bound->btype == "PR"
+                   dbCreatePRBoundary(cv bound->points))
+                  (bound->btype == "snap"
+                   dbCreateSnapBoundary(cv bound->points))
+                  (bound->btype == "area"
+                   dbCreateAreaBoundary(cv bound->points))
+                  ('t
+                   warn("Unknown boundary type %s.  Skipping." bound->btype))
+            )
+        )
 
         ; create vias
         foreach( via via_list
