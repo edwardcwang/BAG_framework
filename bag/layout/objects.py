@@ -1079,7 +1079,7 @@ class TLineBus(PathCollection):
     ----------
     resolution : float
         layout unit resolution.
-    layer : str or Tuple[str, str]
+    layer : Union[str, Tuple[str, str]]
         the bus layer.
     points : List[Tuple[Union[float, int], Union[float, int]]]
         list of center points of the bus.
@@ -1288,6 +1288,12 @@ class Blockage(Polygon):
         # type: (float, str, str, List[Tuple[Union[float, int], Union[float, int]]], bool) -> None
         super(Blockage, self).__init__(resolution, block_layer, points, unit_mode=unit_mode)
         self._type = block_type
+        self._block_layer = block_layer
+
+    @property
+    def layer(self):
+        """The blockage layer."""
+        return self._block_layer
 
     @property
     def type(self):
