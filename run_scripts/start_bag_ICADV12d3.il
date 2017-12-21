@@ -1241,7 +1241,8 @@ procedure( create_path_helper( cv path )
 
 
 ; helper for creating a single layout view
-procedure( create_layout_helper( cv tech_file inst_list rect_list via_list pin_list path_list "gglllll" )
+procedure( create_layout_helper( cv tech_file inst_list rect_list via_list pin_list path_list
+                                 blockage_list boundary_list polygon_list "ggllllllll" )
     let( (inst_cv obj via_def via_enc1 via_enc2 enc1 enc2 off1 off2 via_params make_pin_rect
           pin_bb pin_w pin_h pin_xc pin_yc pin_orient label_h param_order orig_shape arr_dx arr_dy)
 
@@ -1320,6 +1321,8 @@ procedure( create_layout_helper( cv tech_file inst_list rect_list via_list pin_l
         foreach( path path_list
             create_path_helper(cv path)
         )
+
+        ;; TODO: create blockage, boundary, and polygon
 
         ; create vias
         foreach( via via_list
@@ -1412,7 +1415,8 @@ procedure( create_layout_helper( cv tech_file inst_list rect_list via_list pin_l
 ; create a new layout view with the given geometries
 ; inst_f, rect_f, via_f, and pin_f are files containing list of disembodied property lists.
 procedure( create_layout( lib_name view_name via_tech layout_f "ttt" )
-    let( (tech_file layout_info cell_name inst_list rect_list via_list pin_list cv)
+    let( (tech_file layout_info cell_name inst_list rect_list via_list pin_list
+          path_list blockage_list boundary_list polygon_list cv)
 
         unless( tech_file = techGetTechFile(ddGetObj(via_tech))
             error("Via technology file %s not found." via_tech)
@@ -1426,13 +1430,17 @@ procedure( create_layout( lib_name view_name via_tech layout_f "ttt" )
             via_list = nthelem(4 info)
             pin_list = nthelem(5 info)
             path_list = nthelem(6 info)
+            blockage_list = nthelem(7 info)
+            boundary_list = nthelem(8 info)
+            polygon_list = nthelem(9 info)
 
             unless( cv = dbOpenCellViewByType( lib_name cell_name view_name "maskLayout" "w" )
                 error("Cannot create new layout cell %s__%s (%s)." lib_name cell_name view_name)
             )
 
             printf("Creating %s__%s (%s)\n" lib_name cell_name view_name)
-            create_layout_helper(cv tech_file inst_list rect_list via_list pin_list path_list)
+            create_layout_helper(cv tech_file inst_list rect_list via_list pin_list path_list
+                                 blockage_list boundary_list polygon_list)
 
             dbSave(cv)
             dbClose(cv)
