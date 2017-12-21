@@ -41,10 +41,11 @@ from .util import BBox, BBoxArray
 from ..io import get_encoding, open_file
 from .routing import Port, TrackID, WireArray
 from .routing.fill import UsedTracks, get_power_fill_tracks, get_available_tracks
-from .objects import Instance, Rect, Via, Path, Blockage, Boundary
+from .objects import Instance, Rect, Via, Path
 
 if TYPE_CHECKING:
     from bag.core import BagProject
+    from .objects import Polygon, Blockage, Boundary
     from .routing import RoutingGrid
 
 # try to import cybagoa module
@@ -913,6 +914,23 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         self._layout.add_path(path)
         return path
+
+    def add_polygon(self, polygon):
+        # type: (Polygon) -> Polygon
+        """Add a new polygon.
+
+        Parameters
+        ----------
+        polygon : Polygon
+            the blockage to add.
+
+        Returns
+        -------
+        polygon : Polygon
+            the added blockage object.
+        """
+        self._layout.add_polygon(polygon)
+        return polygon
 
     def add_blockage(self, blockage):
         # type: (Blockage) -> Blockage
