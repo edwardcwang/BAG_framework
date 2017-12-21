@@ -44,15 +44,9 @@ a newline (to flush the standard input).  This script handles that protcol
 and will strip the newline before sending result back to client.
 """
 
-import os
 import traceback
 
-from jinja2 import Template
-
 import bag.io
-from .. import verification
-
-calibre_tmp = bag.io.read_resource(bag.__name__, os.path.join('virtuoso_files', 'calibreview_setup.pytemp'))
 
 
 def _object_to_skill_file_helper(py_obj, file_obj):
@@ -148,9 +142,6 @@ class SkillServer(object):
         self.handler = router
         self.virt_in = virt_in
         self.virt_out = virt_out
-        self.checker = None  # type: verification.base.Checker
-        self.calview_cell_map = None
-        self.calview_name = None
 
         # create a directory for all temporary files
         self.dtmp = bag.io.make_temp_dir('skillTmp', parent_dir=tmpdir)
@@ -172,12 +163,6 @@ class SkillServer(object):
                             self.send_skill(expr)
                             msg = self.recv_skill()
                             self.process_skill_result(msg, out_file)
-                    elif req['type'] == 'init_checker':
-                        self.process_checker_request(req)
-                    elif req['type'] == 'lvs':
-                        self.process_lvs_request(req)
-                    elif req['type'] == 'rcx':
-                        self.process_rcx_request(req)
                     else:
                         msg = '*Error* bag server error: bag request:\n%s' % str(req)
                         self.handler.send_obj(dict(type='error', data=msg))
@@ -242,6 +227,7 @@ class SkillServer(object):
         for key, val in input_files.items():
             with bag.io.open_temp(prefix=key, delete=False, dir=self.dtmp) as file_obj:
                 fname_dict[key] = '"%s"' % file_obj.name
+                # noinspection PyBroadException
                 try:
                     object_to_skill_file(val, file_obj)
                 except Exception:
@@ -287,100 +273,3 @@ class SkillServer(object):
         else:
             # return output from virtuoso directly
             self.handler.send_obj(dict(type='str', data=msg))
-
-    def process_checker_request(self, req):
-        """Process the given checker request."""
-        try:
-            self.checker = verification.make_checker(**req['kwargs'])
-            self.calview_cell_map = req['calview_cell_map']
-            self.calview_name = req['calview_name']
-        except Exception:
-            stack_trace = traceback.format_exc()
-            msg = '*Error* error creating Checker: %s' % stack_trace
-            self.handler.send_obj(dict(type='error', data=msg))
-            self.checker = None
-
-        if self.checker is not None:
-            self.handler.send_obj(dict(type='str', data='done'))
-
-    def process_lvs_request(self, req):
-        """Process the given LVS request."""
-        if self.checker is None:
-            msg = '*Error* Checker is not initialized.'
-            self.handler.send_obj(dict(type='error', data=msg))
-            return
-
-        try:
-            lib_name = req['lib_name']
-            cell_name = req['cell_name']
-            lay_view = req['lay_view']
-            sch_view = req['sch_view']
-            lvs_params = req['lvs_params']
-        except KeyError:
-            stack_trace = traceback.format_exc()
-            msg = '*Error* malformed request: %s\nstack trace: \n%s' % (str(req), stack_trace)
-            self.handler.send_obj(dict(type='error', data=msg))
-            return
-
-        with bag.io.open_temp(prefix='lvsLog', delete=False, dir=self.dtmp) as logfile:
-            log_fname = logfile.name
-        try:
-            result = self.checker.run_lvs(lib_name, cell_name, lay_view, sch_view, log_fname, lvs_params)
-            self.handler.send_obj(dict(type='tuple', data=(result, log_fname)))
-        except Exception:
-            stack_trace = traceback.format_exc()
-            msg = '*Error* error running LVS:\n%s' % stack_trace
-            self.handler.send_obj(dict(type='error', data=msg))
-
-    def process_rcx_request(self, req):
-        """Process the given LVS request."""
-        if self.checker is None:
-            msg = '*Error* Checker is not initialized.'
-            self.handler.send_obj(dict(type='error', data=msg))
-            return
-
-        try:
-            lib_name = req['lib_name']
-            cell_name = req['cell_name']
-            lay_view = req['lay_view']
-            sch_view = req['sch_view']
-            rcx_params = req['rcx_params']
-        except KeyError:
-            msg = '*Error* malformed request: %s' % str(req)
-            self.handler.send_obj(dict(type='error', data=msg))
-            return
-
-        with bag.io.open_temp(prefix='rcxLog', delete=False, dir=self.dtmp) as logfile:
-            log_fname = logfile.name
-
-        try:
-            netlist = self.checker.run_rcx(lib_name, cell_name, lay_view, sch_view, log_fname, rcx_params)
-        except Exception:
-            stack_trace = traceback.format_exc()
-            msg = '*Error* error running RCX:\n%s' % stack_trace
-            self.handler.send_obj(dict(type='error', data=msg))
-            return
-
-        if netlist is None:
-            self.handler.send_obj(dict(type='tuple', data=(False, log_fname)))
-        else:
-            # delete old calibre view
-            cmd = 'delete_cellview( "%s" "%s" "%s" )' % (lib_name, cell_name, self.calview_name)
-            self.send_skill(cmd)
-            self.recv_skill()
-
-            # create calibre view.
-            content = Template(calibre_tmp).render(netlist_file=netlist,
-                                                   lib_name=lib_name,
-                                                   cell_name=cell_name,
-                                                   calibre_cellmap=self.calview_cell_map,
-                                                   view_name=self.calview_name)
-
-            with bag.io.open_temp(prefix='calibre', delete=False, dir=self.dtmp) as file_obj:
-                setup_file = file_obj.name
-                file_obj.write(content)
-
-            cmd = 'mgc_rve_load_setup_file( "%s" )' % setup_file
-            self.send_skill(cmd)
-            self.recv_skill()
-            self.handler.send_obj(dict(type='tuple', data=(True, log_fname)))
