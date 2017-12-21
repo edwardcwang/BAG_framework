@@ -314,7 +314,18 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._used_tracks = UsedTracks(self._grid.resolution)
         self._added_inst_tracks = False
 
-        super(TemplateBase, self).__init__(temp_db, lib_name, params, used_names)
+        # add hidden parameters
+        if 'hidden_params' in kwargs:
+            hidden_params = kwargs['hidden_params'].copy()
+        else:
+            hidden_params = {}
+        hidden_params['flip_parity'] = None
+
+        super(TemplateBase, self).__init__(temp_db, lib_name, params, used_names, hidden_params=hidden_params)
+        # update RoutingGrid
+        fp_dict = self.params['flip_parity']
+        if fp_dict is not None:
+            self._grid.set_flip_parity(fp_dict)
 
     @abc.abstractmethod
     def draw_layout(self):
