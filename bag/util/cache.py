@@ -194,9 +194,11 @@ class DesignMaster(abc.ABC):
         the parameters dictionary.
     used_names : Set[str]
         a set of already used cell names.
+    **kwargs :
+        optional parameters.
     """
-    def __init__(self, master_db, lib_name, params, used_names):
-        # type: (MasterDB, str, Dict[str, Any], Set[str]) -> None
+    def __init__(self, master_db, lib_name, params, used_names, **kwargs):
+        # type: (MasterDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         self._master_db = master_db
         self._lib_name = lib_name
         self._used_names = used_names
@@ -212,7 +214,7 @@ class DesignMaster(abc.ABC):
             self._cell_name = None
             self._key = None
         else:
-            self.populate_params(params, params_info, default_params)
+            self.populate_params(params, params_info, default_params, **kwargs)
             # get unique cell name
             self._prelim_key = self.compute_unique_key()
             self.update_master_info()
@@ -235,6 +237,11 @@ class DesignMaster(abc.ABC):
                     self.params[key] = default_params[key]
             else:
                 self.params[key] = table[key]
+
+        # add hidden parameters
+        hidden_params = kwargs.get('hidden_params', {})
+        for name, value in hidden_params.items():
+            self.params[name] = table.get(name, value)
 
     @classmethod
     def to_immutable_id(cls, val):
