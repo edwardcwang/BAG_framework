@@ -32,7 +32,7 @@ import bag
 import bag.io
 from .util import BBox
 from .objects import Rect, Via, ViaInfo, Instance, InstanceInfo, PinInfo
-from .objects import Path, Blockage, Boundary
+from .objects import Path, Polygon, Blockage, Boundary
 from bag.util.search import BinaryIterator
 
 # try to import cybagoa module
@@ -1132,6 +1132,7 @@ class BagLayout(object):
         self._via_primitives = []  # type: List[ViaInfo]
         self._pin_list = []  # type: List[PinInfo]
         self._path_list = []  # type: List[Path]
+        self._polygon_list = []  # type: List[Polygon]
         self._blockage_list = []  # type: List[Blockage]
         self._boundary_list = []  # type: List[Boundary]
         self._used_inst_names = set()
@@ -1171,30 +1172,16 @@ class BagLayout(object):
                     obj_content = obj.content
                     rect_list.append(obj_content)
 
-        path_list = []
-        for obj in self._path_list:
-            if obj.valid:
-                obj_content = obj.content
-                path_list.append(obj_content)
-
-        blockage_list = []
-        for obj in self._blockage_list:
-            if obj.valid:
-                obj_content = obj.content
-                blockage_list.append(obj_content)
-
-        boundary_list = []
-        for obj in self._boundary_list:
-            if obj.valid:
-                obj_content = obj.content
-                boundary_list.append(obj_content)
-
-        # get vias
-        via_list = []  # type: List[ViaInfo]
-        for obj in self._via_list:
-            if obj.valid:
-                obj_content = obj.content
-                via_list.append(obj_content)
+        # filter out invalid geometries
+        path_list, polygon_list, blockage_list, boundary_list, via_list = [], [], [], [], []
+        for targ_list, obj_list in ((path_list, self._path_list),
+                                    (polygon_list, self._polygon_list),
+                                    (blockage_list, self._blockage_list),
+                                    (boundary_list, self._boundary_list),
+                                    (via_list, self._via_list)):
+            for obj in obj_list:
+                if obj.valid:
+                    targ_list.append(obj.content)
 
         # get via primitives
         via_list.extend(self._via_primitives)
@@ -1206,7 +1193,6 @@ class BagLayout(object):
                 obj_content = self._format_inst(obj)
                 inst_list.append(obj_content)
 
-        # TODO: add blockage/boundary support
         self._raw_content = [inst_list,
                              self._inst_primitives,
                              rect_list,
@@ -1215,10 +1201,12 @@ class BagLayout(object):
                              path_list,
                              blockage_list,
                              boundary_list,
+                             polygon_list,
                              ]
 
         if (not inst_list and not self._inst_primitives and not rect_list and not blockage_list and
-                not boundary_list and not via_list and not self._pin_list and not path_list):
+                not boundary_list and not via_list and not self._pin_list and not path_list and
+                not polygon_list):
             self._is_empty = True
         else:
             self._is_empty = False
@@ -1288,8 +1276,8 @@ class BagLayout(object):
             raise Exception('Layout is not finalized.')
 
         cell_name = rename_fun(cell_name)
-        (inst_list, inst_prim_list, rect_list, via_list,
-         pin_list, path_list, blockage_list, boundary_list) = self._raw_content
+        (inst_list, inst_prim_list, rect_list, via_list, pin_list,
+         path_list, blockage_list, boundary_list, polygon_list) = self._raw_content
 
         # update library name and apply layout cell renaming on instances
         inst_tot_list = []
@@ -1318,11 +1306,13 @@ class BagLayout(object):
                 oa_layout.add_blockage(**obj)
             for obj in boundary_list:
                 oa_layout.add_boundary(**obj)
+            for obj in polygon_list:
+                oa_layout.add_polygon(**obj)
 
             return cell_name, oa_layout
         else:
-            # TODO: Add blockage/boundary support
-            ans = [cell_name, inst_tot_list, rect_list, via_list, pin_list, path_list]
+            ans = [cell_name, inst_tot_list, rect_list, via_list, pin_list, path_list,
+                   blockage_list, boundary_list, polygon_list]
             return ans
 
     def add_instance(self, instance):
@@ -1359,7 +1349,8 @@ class BagLayout(object):
 
         for obj in chain(self._inst_list, self._inst_primitives, self._rect_list,
                          self._via_primitives, self._via_list, self._pin_list,
-                         self._path_list, self._blockage_list, self._boundary_list):
+                         self._path_list, self._blockage_list, self._boundary_list,
+                         self._polygon_list):
             obj.move_by(dx=dx, dy=dy, unit_mode=unit_mode)
 
     def add_instance_primitive(self, lib_name, cell_name, loc,
@@ -1454,6 +1445,20 @@ class BagLayout(object):
             raise Exception('Layout is already finalized.')
 
         self._path_list.append(path)
+
+    def add_polygon(self, polygon):
+        # type: (Polygon) -> None
+        """Add a new polygon.
+
+        Parameters
+        ----------
+        polygon : Polygon
+            the polygon object to add.
+        """
+        if self._finalized:
+            raise Exception('Layout is already finalized.')
+
+        self._polygon_list.append(polygon)
 
     def add_blockage(self, blockage):
         # type: (Blockage) -> None
