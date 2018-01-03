@@ -4,13 +4,13 @@
 """
 
 from typing import TYPE_CHECKING, Dict, Any, Union, Tuple, List, Optional
+
+import abc
+import yaml
 from collections import namedtuple
 
 from bag.layout.routing import RoutingGrid
 from bag.layout.template import TemplateBase
-
-import abc
-import yaml
 
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfoConfig
