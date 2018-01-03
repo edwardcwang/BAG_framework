@@ -579,7 +579,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         dum_layer : int
             the dummy connection layer ID.
         """
-        return self._mos_config['dum_conn_layer']
+        return self._mos_config['dum_layer']
 
     def get_mos_conn_layer(self):
         # type: () -> int
@@ -590,7 +590,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         mos_layer : int
             the transistor connection layer ID.
         """
-        return self._mos_config['mos_conn_layer']
+        return self._mos_config['ana_conn_layer']
 
     def get_dig_conn_layer(self):
         # type: () -> int
@@ -605,7 +605,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     def get_dig_top_layer(self):
         # type: () -> int
-        """Returns the digital connection layer ID.  Must be vertical.
+        """Returns the digital top layer ID.  Must be vertical.
 
         Returns
         -------
