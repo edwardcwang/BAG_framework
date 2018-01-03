@@ -34,13 +34,20 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
     def get_res_em_specs(self, res_type, w, l=-1, **kwargs):
         return float('inf'), float('inf'), float('inf')
 
-    def get_dnw_layers(self):
-        # type: () -> List[Tuple[str, str]]
-        return self.config['mos']['dnw_layers']
+    @abc.abstractmethod
+    def add_cell_boundary(self, template, box):
+        # type: (TemplateBase, BBox) -> None
+        pass
 
-    def get_dnw_margin_unit(self, dnw_mode):
-        # type: (str) -> int
-        return self.config['dnw_margins'][dnw_mode]
+    @abc.abstractmethod
+    def draw_device_blockage(self, template):
+        # type: (TemplateBase) -> None
+        pass
+
+    @abc.abstractmethod
+    def get_via_arr_enc(self, vname, vtype, mtype, mw_unit, is_bot):
+        # type: (...) -> Tuple[Optional[List[Tuple[int, int]]], Optional[Callable[[int, int], bool]]]
+        return None, None
 
     def get_implant_layers(self, mos_type, res_type=None):
         # type: (str, Optional[str]) -> List[Tuple[str, str]]
@@ -51,48 +58,44 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
 
         return list(table['imp_layers'][mos_type].keys())
 
+    def get_dnw_margin_unit(self, dnw_mode):
+        # type: (str) -> int
+        return self.config['dnw_margins'][dnw_mode]
+
+    def get_dnw_layers(self):
+        # type: () -> List[Tuple[str, str]]
+        return self.config['mos']['dnw_layers']
+
     def get_res_metal_layers(self, layer_id):
         # type: (int) -> List[Tuple[str, str]]
         return self.config['res_metal_layer_table'][layer_id]
 
-    @classmethod
-    def add_cell_boundary(cls, template, box):
-        # type: (TemplateBase, BBox) -> None
-        pass
-
-    @classmethod
-    def draw_device_blockage(cls, template):
-        # type: (TemplateBase) -> None
-        pass
-
-    @classmethod
-    def use_flip_parity(cls):
+    def use_flip_parity(self):
         # type: () -> bool
-        return False
+        return self.config['use_flip_parity']
 
     def get_layer_name(self, layer_id):
         # type: (int) -> str
-        name_dict = _config['layer_name']
+        name_dict = self.config['layer_name']
         return name_dict[layer_id]
 
     def get_layer_id(self, layer_name):
         # type: (str) -> int
-        for key, val in _config['layer_name'].items():
+        for key, val in self.config['layer_name'].items():
             if val == layer_name:
                 return key
         raise ValueError('Unknown layer: %s' % layer_name)
 
     def get_layer_type(self, layer_name):
         # type: (str) -> str
-        type_dict = _config['layer_type']
+        type_dict = self.config['layer_type']
         return type_dict[layer_name]
 
-    @classmethod
-    def get_idc_scale_factor(cls, temp, mtype, is_res=False):
+    def get_idc_scale_factor(self, temp, mtype, is_res=False):
         # type: (float, str, bool) -> float
         if is_res:
             mtype = 'res'
-        idc_em_scale = _config['idc_em_scale']
+        idc_em_scale = self.config['idc_em_scale']
         if mtype in idc_em_scale:
             idc_params = idc_em_scale[mtype]
         else:
@@ -106,23 +109,16 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
                 return scale
         return scale_list[-1]
 
-    # noinspection PyUnusedLocal
-    @classmethod
-    def get_via_arr_enc(cls, vname, vtype, mtype, mw_unit, is_bot):
-        # type: (...) -> Tuple[Optional[List[Tuple[int, int]]], Optional[Callable[[int, int], bool]]]
-        return None, None
-
     def get_via_name(self, bot_layer_id):
         # type: (int) -> str
-        return _config['via_name'][bot_layer_id]
+        return self.config['via_name'][bot_layer_id]
 
     def get_via_id(self, bot_layer, top_layer):
         # type: (str, str) -> str
-        return _config['via_id'][(bot_layer, top_layer)]
+        return self.config['via_id'][(bot_layer, top_layer)]
 
-    @classmethod
-    def get_via_drc_info(cls, vname, vtype, mtype, mw_unit, is_bot):
-        via_config = _config['via']
+    def get_via_drc_info(self, vname, vtype, mtype, mw_unit, is_bot):
+        via_config = self.config['via']
         if vname not in via_config:
             raise ValueError('Unsupported vname %s' % vname)
 
@@ -152,7 +148,7 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
                 enc_cur = enc
                 break
 
-        arr_enc, arr_test_tmp = cls.get_via_arr_enc(vname, vtype, mtype, mw_unit, is_bot)
+        arr_enc, arr_test_tmp = self.get_via_arr_enc(vname, vtype, mtype, mw_unit, is_bot)
         arr_test = arr_test_tmp
 
         if vtype == 'vrect':
@@ -171,9 +167,8 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
 
         return sp, sp2_list, sp3_list, dim, enc_cur, arr_enc, arr_test
 
-    @classmethod
-    def _space_helper(cls, config_name, layer_type, width):
-        sp_min_config = _config[config_name]
+    def _space_helper(self, config_name, layer_type, width):
+        sp_min_config = self.config[config_name]
         if layer_type not in sp_min_config:
             raise ValueError('Unsupported layer type: %s' % layer_type)
 
@@ -186,23 +181,21 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
                 return sp
         return None
 
-    @classmethod
-    def get_min_space_unit(cls, layer_type, w_unit, same_color=False):
+    def get_min_space_unit(self, layer_type, w_unit, same_color=False):
         # type: (str, int, bool) -> int
-        if not same_color or 'sp_sc_min' not in _config:
+        if not same_color or 'sp_sc_min' not in self.config:
             config_name = 'sp_min'
         else:
             config_name = 'sp_sc_min'
 
-        return cls._space_helper(config_name, layer_type, w_unit)
+        return self._space_helper(config_name, layer_type, w_unit)
 
-    @classmethod
-    def get_min_line_end_space_unit(cls, layer_type, w_unit):
-        return cls._space_helper('sp_le_min', layer_type, w_unit)
+    def get_min_line_end_space_unit(self, layer_type, w_unit):
+        return self._space_helper('sp_le_min', layer_type, w_unit)
 
     def get_min_space(self, layer_type, width, unit_mode=False, same_color=False):
         # type: (str, float, bool, bool) -> Union[float, int]
-        res = _config['resolution']
+        res = self.config['resolution']
         if not unit_mode:
             width = int(round(width / res))
 
@@ -213,8 +206,8 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
         return ans * res
 
     def get_min_line_end_space(self, layer_type, width, unit_mode=False):
-        # type: (str, float, bool, bool) -> Union[float, int]
-        res = _config['resolution']
+        # type: (str, float, bool) -> Union[float, int]
+        res = self.config['resolution']
         if not unit_mode:
             width = int(round(width / res))
 
@@ -224,15 +217,13 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
             return ans
         return ans * res
 
-    @classmethod
-    def layer_id_to_type(cls, layer_id):
-        name_dict = _config['layer_name']
-        type_dict = _config['layer_type']
+    def layer_id_to_type(self, layer_id):
+        name_dict = self.config['layer_name']
+        type_dict = self.config['layer_type']
         return type_dict[name_dict[layer_id]]
 
-    @classmethod
-    def get_min_length_unit(cls, layer_type, w_unit):
-        len_min_config = _config['len_min']
+    def get_min_length_unit(self, layer_type, w_unit):
+        len_min_config = self.config['len_min']
         if layer_type not in len_min_config:
             raise ValueError('Unsupported layer type: %s' % layer_type)
 
@@ -262,13 +253,13 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
         return res * self.get_min_length_unit(layer_type, w_unit)
 
     def get_res_rsquare(self, res_type):
-        return _config['resistor']['info'][res_type]['rsq']
+        return self.config['resistor']['info'][res_type]['rsq']
 
     def get_res_width_bounds(self, res_type):
-        return _config['resistor']['info'][res_type]['w_bounds']
+        return self.config['resistor']['info'][res_type]['w_bounds']
 
     def get_res_length_bounds(self, res_type):
-        return _config['resistor']['info'][res_type]['l_bounds']
+        return self.config['resistor']['info'][res_type]['l_bounds']
 
     def get_res_min_nsquare(self, res_type):
-        return _config['resistor']['info'][res_type]['min_nsq']
+        return self.config['resistor']['info'][res_type]['min_nsq']
