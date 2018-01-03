@@ -3,7 +3,7 @@
 """This module defines abstract analog mosfet template classes.
 """
 
-from typing import Dict, Any, Union, Tuple, List, Optional
+from typing import TYPE_CHECKING, Dict, Any, Union, Tuple, List, Optional
 from collections import namedtuple
 
 from bag.layout.routing import RoutingGrid
@@ -11,6 +11,9 @@ from bag.layout.template import TemplateBase
 
 import abc
 import yaml
+
+if TYPE_CHECKING:
+    from bag.layout.core import TechInfo
 
 
 PlaceInfo = namedtuple('PlaceInfo', ['tot_width', 'core_width', 'edge_margins', 'edge_widths', 'arr_box_x', ])
@@ -25,14 +28,439 @@ class MOSTech(object, metaclass=abc.ABCMeta):
     ----------
     tech_file : str
         the technology configuration file name.
+    tech_info : TechInfo
+        the TechInfo object.
     """
 
-    def __init__(self, tech_file):
-        # type: (str) -> None
+    def __init__(self, tech_file, tech_info):
+        # type: (str, TechInfo) -> None
         with open(tech_file, 'r') as f:
             self._config = yaml.load(f)
         self._mos_config = self._config['mos']
         self._res = self._config['resolution']
+        self._tech_info = tech_info
+
+    @abc.abstractmethod
+    def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
+        # type: (int, int, bool, **kwargs) -> Dict[str, Any]
+        """Returns a dictionary containing transistor edge layout information.
+
+        The returned dictionary must have two entries
+
+        edge_num_fg : int
+            edge block width in number of fingers.
+        edge_margin : int
+            the left/right margin needed around edge blocks, in resolution units.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length, in resolution units.
+        guard_ring_nf : int
+            guard ring width in number of fingers.
+        is_end : bool
+            True if there are no blocks abutting the left edge.
+        **kwargs :
+            Optional edge layout parameters.  Currently supported parameters are:
+
+            is_sub_ring : bool
+                True if this is a substrate ring edge.
+            dnw_mode : str
+                the deep N-well mode string, empty to disable.
+
+        Returns
+        -------
+        edge_info : Dict[str, Any]
+            edge layout information dictionary.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
+        # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
+        """Returns the transistor information dictionary.
+
+        The returned dictionary must have the following entries:
+
+        layout_info
+            the layout information dictionary.
+        ext_top_info
+            a tuple of values used to compute extension layout above the transistor.
+        ext_bot_info
+            a tuple of values used to compute extension layout below the transistor.
+        sd_yc
+            the Y coordinate of the center of source/drain junction.
+        g_conn_y
+            a Tuple of bottom/top Y coordinates of gate wire on mos_conn_layer.  Used to determine
+            gate tracks location.
+        d_conn_y
+            a Tuple of bottom/top Y coordinates of drain/source wire on mos_conn_layer.  Used to
+            determine drain/source tracks location.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+        w : int
+            the transistor w in number of fins/resolution units.
+        mos_type : str
+            the transistor type.  Either 'pch' or 'nch'.
+        threshold : str
+            the transistor threshold flavor.
+        fg : int
+            number of fingers in this transistor row.
+        **kwargs :
+            optional transistor row options.
+
+        Returns
+        -------
+        mos_info : Dict[str, Any]
+            the transistor information dictionary.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info):
+        # type: (int, Any, Any) -> List[int]
+        """Returns a list of valid extension widths in mos_pitch units.
+
+        the list should be sorted in increasing order, and any extension widths greater than
+        or equal to the last element should be valid.  For example, if the returned list
+        is [0, 2, 5], then extension widths 0, 2, 5, 6, 7, ... are valid, while extension
+        widths 1, 3, 4 are not valid.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+        top_ext_info : Any
+            layout information about the top block.
+        bot_ext_info : Any
+            layout information about the bottom block.
+        """
+        return [0]
+
+    @abc.abstractmethod
+    def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info):
+        # type: (int, int, int, Any, Any) -> Dict[str, Any]
+        """Returns the extension layout information dictionary.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+        w : int
+            the extension width in number of fins/resolution units.
+        fg : int
+            total number of fingers.
+        top_ext_info : Any
+            layout information about the top block.
+        bot_ext_info : Any
+            layout information about the bottom block.
+
+        Returns
+        -------
+        ext_info : Dict[str, Any]
+            the extension information dictionary.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_sub_ring_ext_info(self, sub_type, height, fg, end_ext_info, **kwargs):
+        # type: (str, int, int, Any, **kwargs) -> Dict[str, Any]
+        """Returns the SubstrateRing extension layout information dictionary.
+
+        Parameters
+        ----------
+        sub_type : str
+            the substrate type.  Either 'ptap' or 'ntap'.
+        height : int
+            the extension width in resolution units.
+        fg : int
+            total number of fingers.
+        end_ext_info : Any
+            layout extension information about the substrate inner end row.
+        **kwargs :
+            additional arguments.
+
+        Returns
+        -------
+        ext_info : Dict[str, Any]
+            the substrate ring extension information dictionary.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_substrate_info(self, lch_unit, w, sub_type, threshold, fg, blk_pitch=1, **kwargs):
+        # type: (int, int, str, str, int, int, int, **kwargs) -> Dict[str, Any]
+        """Returns the substrate layout information dictionary.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+        w : int
+            the transistor width in number of fins/resolution units.
+        sub_type : str
+            the substrate type.  Either 'ptap' or 'ntap'.
+        threshold : str
+            the substrate threshold type.
+        fg : int
+            total number of fingers.
+        blk_pitch : int
+            substrate height quantization pitch.  Defaults to 1 (no quantization).
+        **kwargs :
+            additional arguments.
+
+        Returns
+        -------
+        sub_info : Dict[str, Any]
+            the substrate information dictionary.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_analog_end_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
+        # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
+        """Returns the AnalogBase end row layout information dictionary.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+        sub_type : str
+            the substrate type.  Either 'ptap' or 'ntap'.
+        threshold : str
+            the substrate threshold type.
+        fg : int
+            total number of fingers.
+        is_end : bool
+            True if there are no block abutting the bottom.
+        blk_pitch : int
+            substrate height quantization pitch.
+        **kwargs :
+            optional keyword arguments.
+
+        Returns
+        -------
+        end_info : Dict[str, Any]
+            the end row information dictionary.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_sub_ring_end_info(self, sub_type, threshold, fg, end_ext_info, **kwargs):
+        # type: (str, str, int, Any, **kwargs) -> Dict[str, Any]
+        """Returns the SubstrateRing inner end row layout information dictionary.
+
+        Parameters
+        ----------
+        sub_type : str
+            the substrate type.  Either 'ptap' or 'ntap'.
+        threshold : str
+            the substrate threshold type.
+        fg : int
+            total number of fingers.
+        end_ext_info : Any
+            layout extension information about the substrate row.
+        **kwargs :
+            optional layout parameters.
+
+        Returns
+        -------
+        end_info : Dict[str, Any]
+            the end row information dictionary.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_outer_edge_info(self, guard_ring_nf, layout_info, is_end, adj_blk_info):
+        # type: (int, Dict[str, Any], bool, Optional[Any]) -> Dict[str, Any]
+        """Returns the outer edge layout information dictionary.
+
+        Parameters
+        ----------
+        guard_ring_nf : int
+            guard ring width in number of fingers.  0 if there is no guard ring.
+        layout_info : Dict[str, Any]
+            layout information dictionary of the center block.
+        is_end : bool
+            True if there are no blocks abutting the left edge.
+        adj_blk_info : Optional[Any]
+            data structure storing layout information of adjacent block.
+            If None, will use default settings.
+
+        Returns
+        -------
+        outer_edge_info : Dict[str, Any]
+            the outer edge layout information dictionary.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_gr_sub_info(self, guard_ring_nf, layout_info):
+        # type: (int, Dict[str, Any]) -> Dict[str, Any]
+        """Returns the guard ring substrate layout information dictionary.
+
+        Parameters
+        ----------
+        guard_ring_nf : int
+            guard ring width in number of fingers.  0 if there is no guard ring.
+        layout_info : Dict[str, Any]
+            layout information dictionary of the center block.
+
+        Returns
+        -------
+        gr_sub_info : Dict[str, Any]
+            the guard ring substrate layout information dictionary.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_gr_sep_info(self, layout_info, adj_blk_info):
+        # type: (Dict[str, Any], Any) -> Dict[str, Any]
+        """Returns the guard ring separator layout information dictionary.
+
+        Parameters
+        ----------
+        layout_info : Dict[str, Any]
+            layout information dictionary of the center block.
+        adj_blk_info : Optional[Any]
+            data structure storing layout information of adjacent block.
+            If None, will use default settings.
+
+        Returns
+        -------
+        gr_sub_info : Dict[str, Any]
+            the guard ring separator layout information dictionary.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def draw_mos(self, template, layout_info):
+        # type: (TemplateBase, Dict[str, Any]) -> None
+        """Draw transistor layout structure in the given template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        layout_info : Dict[str, Any]
+            layout information dictionary for the transistor/substrate/extension/edge blocks.
+        """
+        pass
+
+    @abc.abstractmethod
+    def draw_substrate_connection(self, template, layout_info, port_tracks, dum_tracks, dummy_only,
+                                  is_laygo, is_guardring):
+        # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool, bool, bool) -> bool
+        """Draw substrate connection layout in the given template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        layout_info : Dict[str, Any]
+            the substrate layout information dictionary.
+        port_tracks : List[int]
+            list of port track indices that must be drawn on transistor connection layer.
+        dum_tracks : List[int]
+            list of dummy port track indices that must be drawn on dummy connection layer.
+        dummy_only : bool
+            True to only draw connections up to dummy connection layer.
+        is_laygo : bool
+            True if this is Laygo substrate connection.
+        is_guardring : bool
+            True if this is guardring substrate connection.
+
+        Returns
+        -------
+        has_connection : bool
+            True if connection is drawn.
+        """
+        pass
+
+    @abc.abstractmethod
+    def draw_mos_connection(self, template, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
+                            min_ds_cap, is_diff, diode_conn, options):
+        # type: (TemplateBase, Dict[str, Any], int, int, str, int, bool, bool, bool, Dict[str, Any]) -> None
+        """Draw transistor connection layout in the given template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        mos_info : Dict[str, Any]
+            the transistor layout information dictionary.
+        sdir : int
+            source direction flag.  0 to go down, 1 to stay in middle, 2 to go up.
+        ddir : int
+            drain direction flag.  0 to go down, 1 to stay in middle, 2 to go up.
+        gate_pref_loc : str
+            preferred gate location flag, either 's' or 'd'.  This is only used if both source
+            and drain did not go down.
+        gate_ext_mode : int
+            gate extension flag.  This is a 2 bit integer, the LSB is 1 if we should connect
+            gate to the left adjacent block on lower metal layers, the MSB is 1 if we should
+            connect gate to the right adjacent block on lower metal layers.
+        min_ds_cap : bool
+            True to minimize drain-to-source parasitic capacitance.
+        is_diff : bool
+            True if this is a differential pair connection.
+        diode_conn : bool
+            True to short gate and drain together.
+        options : Dict[str, Any]
+            a dictionary of transistor row options.
+        """
+        pass
+
+    @abc.abstractmethod
+    def draw_dum_connection(self, template, mos_info, edge_mode, gate_tracks, options):
+        # type: (TemplateBase, Dict[str, Any], int, List[int], Dict[str, Any]) -> None
+        """Draw dummy connection layout in the given template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        mos_info : Dict[str, Any]
+            the transistor layout information dictionary.
+        edge_mode : int
+            the dummy edge mode flag.  This is a 2-bit integer, the LSB is 1 if there are no
+            transistors on the left side of the dummy, the MSB is 1 if there are no transistors
+            on the right side of the dummy.
+        gate_tracks : List[int]
+            list of dummy connection track indices.
+        options : Dict[str, Any]
+            a dictionary of transistor row options.
+        """
+        pass
+
+    @abc.abstractmethod
+    def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
+        # type: (TemplateBase, Dict[str, Any], int, int, int, bool, Dict[str, Any]) -> None
+        """Draw decoupling cap connection layout in the given template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        mos_info : Dict[str, Any]
+            the transistor layout information dictionary.
+        sdir : int
+            source direction flag.  0 to go down, 1 to stay in middle, 2 to go up.
+        ddir : int
+            drain direction flag.  0 to go down, 1 to stay in middle, 2 to go up.
+        gate_ext_mode : int
+            gate extension flag.  This is a 2 bit integer, the LSB is 1 if we should connect
+            gate to the left adjacent block on lower metal layers, the MSB is 1 if we should
+            connect gate to the right adjacent block on lower metal layers.
+        export_gate : bool
+            True to draw gate connections up to transistor connection layer.
+        options : Dict[str, Any]
+            a dictionary of transistor row options.
+        """
+        pass
 
     def get_mos_tech_constants(self, lch_unit):
         # type: (int) -> Dict[str, Any]
@@ -254,428 +682,6 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         if unit_mode:
             return ans
         return ans * self._res
-
-    @abc.abstractmethod
-    def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
-        # type: (int, int, bool, **kwargs) -> Dict[str, Any]
-        """Returns a dictionary containing transistor edge layout information.
-        
-        The returned dictionary must have two entries
-
-        edge_num_fg : int
-            edge block width in number of fingers.
-        edge_margin : int
-            the left/right margin needed around edge blocks, in resolution units.
-
-        Parameters
-        ----------
-        lch_unit : int
-            the channel length, in resolution units.
-        guard_ring_nf : int
-            guard ring width in number of fingers.
-        is_end : bool
-            True if there are no blocks abutting the left edge.
-        **kwargs :
-            Optional edge layout parameters.  Currently supported parameters are:
-
-            is_sub_ring : bool
-                True if this is a substrate ring edge.
-            dnw_mode : str
-                the deep N-well mode string, empty to disable.
-
-        Returns
-        -------
-        edge_info : Dict[str, Any]
-            edge layout information dictionary.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
-        # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
-        """Returns the transistor information dictionary.
-        
-        The returned dictionary must have the following entries:
-        
-        layout_info
-            the layout information dictionary.
-        ext_top_info
-            a tuple of values used to compute extension layout above the transistor.
-        ext_bot_info
-            a tuple of values used to compute extension layout below the transistor.
-        sd_yc
-            the Y coordinate of the center of source/drain junction.
-        g_conn_y
-            a Tuple of bottom/top Y coordinates of gate wire on mos_conn_layer.  Used to determine
-            gate tracks location.
-        d_conn_y
-            a Tuple of bottom/top Y coordinates of drain/source wire on mos_conn_layer.  Used to
-            determine drain/source tracks location.
-
-        Parameters
-        ----------
-        lch_unit : int
-            the channel length in resolution units.
-        w : int
-            the transistor w in number of fins/resolution units.
-        mos_type : str
-            the transistor type.  Either 'pch' or 'nch'.
-        threshold : str
-            the transistor threshold flavor.
-        fg : int
-            number of fingers in this transistor row.
-        **kwargs :
-            optional transistor row options.
-
-        Returns
-        -------
-        mos_info : Dict[str, Any]
-            the transistor information dictionary.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info):
-        # type: (int, Any, Any) -> List[int]
-        """Returns a list of valid extension widths in mos_pitch units.
-        
-        the list should be sorted in increasing order, and any extension widths greater than
-        or equal to the last element should be valid.  For example, if the returned list
-        is [0, 2, 5], then extension widths 0, 2, 5, 6, 7, ... are valid, while extension
-        widths 1, 3, 4 are not valid.
-        
-        Parameters
-        ----------
-        lch_unit : int
-            the channel length in resolution units.
-        top_ext_info : Any
-            layout information about the top block.
-        bot_ext_info : Any
-            layout information about the bottom block.
-        """
-        return [0]
-
-    @abc.abstractmethod
-    def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info):
-        # type: (int, int, int, Any, Any) -> Dict[str, Any]
-        """Returns the extension layout information dictionary.
-        
-        Parameters
-        ----------
-        lch_unit : int
-            the channel length in resolution units.
-        w : int
-            the extension width in number of fins/resolution units.
-        fg : int
-            total number of fingers.
-        top_ext_info : Any
-            layout information about the top block.
-        bot_ext_info : Any
-            layout information about the bottom block.
-
-        Returns
-        -------
-        ext_info : Dict[str, Any]
-            the extension information dictionary.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def get_sub_ring_ext_info(self, sub_type, height, fg, end_ext_info, **kwargs):
-        # type: (str, int, int, Any, **kwargs) -> Dict[str, Any]
-        """Returns the SubstrateRing extension layout information dictionary.
-
-        Parameters
-        ----------
-        sub_type : str
-            the substrate type.  Either 'ptap' or 'ntap'.
-        height : int
-            the extension width in resolution units.
-        fg : int
-            total number of fingers.
-        end_ext_info : Any
-            layout extension information about the substrate inner end row.
-        **kwargs :
-            additional arguments.
-
-        Returns
-        -------
-        ext_info : Dict[str, Any]
-            the substrate ring extension information dictionary.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def get_substrate_info(self, lch_unit, w, sub_type, threshold, fg, blk_pitch=1, **kwargs):
-        # type: (int, int, str, str, int, int, int, **kwargs) -> Dict[str, Any]
-        """Returns the substrate layout information dictionary.
-        
-        Parameters
-        ----------
-        lch_unit : int
-            the channel length in resolution units.
-        w : int
-            the transistor width in number of fins/resolution units.
-        sub_type : str
-            the substrate type.  Either 'ptap' or 'ntap'.
-        threshold : str
-            the substrate threshold type.
-        fg : int
-            total number of fingers.
-        blk_pitch : int
-            substrate height quantization pitch.  Defaults to 1 (no quantization).
-        **kwargs :
-            additional arguments.
-
-        Returns
-        -------
-        sub_info : Dict[str, Any]
-            the substrate information dictionary.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def get_analog_end_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
-        # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
-        """Returns the AnalogBase end row layout information dictionary.
-
-        Parameters
-        ----------
-        lch_unit : int
-            the channel length in resolution units.
-        sub_type : str
-            the substrate type.  Either 'ptap' or 'ntap'.
-        threshold : str
-            the substrate threshold type.
-        fg : int
-            total number of fingers.
-        is_end : bool
-            True if there are no block abutting the bottom.
-        blk_pitch : int
-            substrate height quantization pitch.
-        **kwargs :
-            optional keyword arguments.
-
-        Returns
-        -------
-        end_info : Dict[str, Any]
-            the end row information dictionary.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def get_sub_ring_end_info(self, sub_type, threshold, fg, end_ext_info, **kwargs):
-        # type: (str, str, int, Any, **kwargs) -> Dict[str, Any]
-        """Returns the SubstrateRing inner end row layout information dictionary.
-
-        Parameters
-        ----------
-        sub_type : str
-            the substrate type.  Either 'ptap' or 'ntap'.
-        threshold : str
-            the substrate threshold type.
-        fg : int
-            total number of fingers.
-        end_ext_info : Any
-            layout extension information about the substrate row.
-        **kwargs :
-            optional layout parameters.
-
-        Returns
-        -------
-        end_info : Dict[str, Any]
-            the end row information dictionary.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def get_outer_edge_info(self, guard_ring_nf, layout_info, is_end, adj_blk_info):
-        # type: (int, Dict[str, Any], bool, Optional[Any]) -> Dict[str, Any]
-        """Returns the outer edge layout information dictionary.
-        
-        Parameters
-        ----------
-        guard_ring_nf : int
-            guard ring width in number of fingers.  0 if there is no guard ring.
-        layout_info : Dict[str, Any]
-            layout information dictionary of the center block.
-        is_end : bool
-            True if there are no blocks abutting the left edge.
-        adj_blk_info : Optional[Any]
-            data structure storing layout information of adjacent block.
-            If None, will use default settings.
-
-        Returns
-        -------
-        outer_edge_info : Dict[str, Any]
-            the outer edge layout information dictionary.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def get_gr_sub_info(self, guard_ring_nf, layout_info):
-        # type: (int, Dict[str, Any]) -> Dict[str, Any]
-        """Returns the guard ring substrate layout information dictionary.
-
-        Parameters
-        ----------
-        guard_ring_nf : int
-            guard ring width in number of fingers.  0 if there is no guard ring.
-        layout_info : Dict[str, Any]
-            layout information dictionary of the center block.
-
-        Returns
-        -------
-        gr_sub_info : Dict[str, Any]
-            the guard ring substrate layout information dictionary.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def get_gr_sep_info(self, layout_info, adj_blk_info):
-        # type: (Dict[str, Any], Any) -> Dict[str, Any]
-        """Returns the guard ring separator layout information dictionary.
-
-        Parameters
-        ----------
-        layout_info : Dict[str, Any]
-            layout information dictionary of the center block.
-        adj_blk_info : Optional[Any]
-            data structure storing layout information of adjacent block.
-            If None, will use default settings.
-
-        Returns
-        -------
-        gr_sub_info : Dict[str, Any]
-            the guard ring separator layout information dictionary.
-        """
-        return {}
-
-    @abc.abstractmethod
-    def draw_mos(self, template, layout_info):
-        # type: (TemplateBase, Dict[str, Any]) -> None
-        """Draw transistor layout structure in the given template.
-        
-        Parameters
-        ----------
-        template : TemplateBase
-            the TemplateBase object to draw layout in.
-        layout_info : Dict[str, Any]
-            layout information dictionary for the transistor/substrate/extension/edge blocks.
-        """
-        pass
-
-    @abc.abstractmethod
-    def draw_substrate_connection(self, template, layout_info, port_tracks, dum_tracks, dummy_only,
-                                  is_laygo, is_guardring):
-        # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool, bool, bool) -> bool
-        """Draw substrate connection layout in the given template.
-        
-        Parameters
-        ----------
-        template : TemplateBase
-            the TemplateBase object to draw layout in.
-        layout_info : Dict[str, Any]
-            the substrate layout information dictionary.
-        port_tracks : List[int]
-            list of port track indices that must be drawn on transistor connection layer.
-        dum_tracks : List[int]
-            list of dummy port track indices that must be drawn on dummy connection layer.
-        dummy_only : bool
-            True to only draw connections up to dummy connection layer.
-        is_laygo : bool
-            True if this is Laygo substrate connection.
-        is_guardring : bool
-            True if this is guardring substrate connection.
-
-        Returns
-        -------
-        has_connection : bool
-            True if connection is drawn.
-        """
-        pass
-
-    @abc.abstractmethod
-    def draw_mos_connection(self, template, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
-                            min_ds_cap, is_diff, diode_conn, options):
-        # type: (TemplateBase, Dict[str, Any], int, int, str, int, bool, bool, bool, Dict[str, Any]) -> None
-        """Draw transistor connection layout in the given template.
-
-        Parameters
-        ----------
-        template : TemplateBase
-            the TemplateBase object to draw layout in.
-        mos_info : Dict[str, Any]
-            the transistor layout information dictionary.
-        sdir : int
-            source direction flag.  0 to go down, 1 to stay in middle, 2 to go up.
-        ddir : int
-            drain direction flag.  0 to go down, 1 to stay in middle, 2 to go up.
-        gate_pref_loc : str
-            preferred gate location flag, either 's' or 'd'.  This is only used if both source
-            and drain did not go down.
-        gate_ext_mode : int
-            gate extension flag.  This is a 2 bit integer, the LSB is 1 if we should connect
-            gate to the left adjacent block on lower metal layers, the MSB is 1 if we should
-            connect gate to the right adjacent block on lower metal layers.
-        min_ds_cap : bool
-            True to minimize drain-to-source parasitic capacitance.
-        is_diff : bool
-            True if this is a differential pair connection.
-        diode_conn : bool
-            True to short gate and drain together.
-        options : Dict[str, Any]
-            a dictionary of transistor row options.
-        """
-        pass
-
-    @abc.abstractmethod
-    def draw_dum_connection(self, template, mos_info, edge_mode, gate_tracks, options):
-        # type: (TemplateBase, Dict[str, Any], int, List[int], Dict[str, Any]) -> None
-        """Draw dummy connection layout in the given template.
-
-        Parameters
-        ----------
-        template : TemplateBase
-            the TemplateBase object to draw layout in.
-        mos_info : Dict[str, Any]
-            the transistor layout information dictionary.
-        edge_mode : int
-            the dummy edge mode flag.  This is a 2-bit integer, the LSB is 1 if there are no
-            transistors on the left side of the dummy, the MSB is 1 if there are no transistors
-            on the right side of the dummy.
-        gate_tracks : List[int]
-            list of dummy connection track indices.
-        options : Dict[str, Any]
-            a dictionary of transistor row options.
-        """
-        pass
-
-    @abc.abstractmethod
-    def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
-        # type: (TemplateBase, Dict[str, Any], int, int, int, bool, Dict[str, Any]) -> None
-        """Draw decoupling cap connection layout in the given template.
-
-        Parameters
-        ----------
-        template : TemplateBase
-            the TemplateBase object to draw layout in.
-        mos_info : Dict[str, Any]
-            the transistor layout information dictionary.
-        sdir : int
-            source direction flag.  0 to go down, 1 to stay in middle, 2 to go up.
-        ddir : int
-            drain direction flag.  0 to go down, 1 to stay in middle, 2 to go up.
-        gate_ext_mode : int
-            gate extension flag.  This is a 2 bit integer, the LSB is 1 if we should connect
-            gate to the left adjacent block on lower metal layers, the MSB is 1 if we should
-            connect gate to the right adjacent block on lower metal layers.
-        export_gate : bool
-            True to draw gate connections up to transistor connection layer.
-        options : Dict[str, Any]
-            a dictionary of transistor row options.
-        """
-        pass
 
     def get_dum_conn_track_info(self, lch_unit):
         # type: (int) -> Tuple[int, int]
