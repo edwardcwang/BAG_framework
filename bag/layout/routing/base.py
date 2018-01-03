@@ -244,6 +244,22 @@ class WireArray(object):
     def width(self):
         return self.track_id.width
 
+    @classmethod
+    def list_to_warr(cls, warr_list):
+        """Convert a list of WireArrays to a single WireArray.
+
+        Right now this method only works if all WireArrays in the list have only
+        one wire, and the spacing between adjacent wires are equal.
+        """
+        if len(warr_list) == 1:
+            return warr_list[0]
+
+        layer = warr_list[0].track_id.layer_id
+        lower, upper = warr_list[0].lower, warr_list[0].upper
+        base_idx = warr_list[0].track_id.base_index
+        pitch = warr_list[1].track_id.base_index - base_idx
+        return WireArray(TrackID(layer, base_idx, num=len(warr_list), pitch=pitch), lower, upper)
+
     def to_warr_list(self):
         tid = self._track_id
         layer = tid.layer_id
