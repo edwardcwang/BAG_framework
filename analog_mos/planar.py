@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import TYPE_CHECKING, Dict, Any, Union, List, Optional
+from typing import TYPE_CHECKING, Dict, Any, List, Optional
 import math
 from itertools import chain
 from collections import namedtuple
@@ -15,7 +15,7 @@ from bag.layout.routing.fill import fill_symmetric_min_density_info, fill_symmet
 from .core import MOSTech
 
 if TYPE_CHECKING:
-    from bag.layout.core import TechInfo
+    from bag.layout.tech import TechInfoConfig
 
 ExtInfo = namedtuple('ExtInfo', ['od_margin', 'po_margin', 'mx_margin', 'mtype', 'thres', 'imp_min_w',
                                  'm1_sub_w', 'od_w'])
@@ -27,18 +27,17 @@ class MOSTechPlanarGeneric(MOSTech):
     """A generic implementation of MOSTech for planar technologies."""
 
     def __init__(self, tech_file, tech_info):
-        # type: (str, TechInfo) -> None
+        # type: (str, TechInfoConfig) -> None
         MOSTech.__init__(self, tech_file, tech_info)
 
     def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
         # type: (int, int, bool, **kwargs) -> Dict[str, Any]
 
-        dnw_margins = _config['dnw_margins']
+        dnw_margins = self.config['dnw_margins']
 
-        mos_config = _config['mos']
-        imp_od_encx = mos_config['imp_od_encx']
-        nw_dnw_ovl = mos_config['nw_dnw_ovl']
-        nw_dnw_ext = mos_config['nw_dnw_ext']
+        imp_od_encx = self.mos_config['imp_od_encx']
+        nw_dnw_ovl = self.mos_config['nw_dnw_ovl']
+        nw_dnw_ext = self.mos_config['nw_dnw_ext']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
@@ -100,8 +99,8 @@ class MOSTechPlanarGeneric(MOSTech):
 
         mx_min_len = 0
         for layer_id in range(1, mos_conn_layer + 1):
-            layer_type = TechInfoPlanarGeneric.layer_id_to_type(layer_id)
-            mx_min_len = max(mx_min_len, TechInfoPlanarGeneric.get_min_length_unit(layer_type, w_conn_d[layer_id]))
+            layer_type = self.tech_info.layer_id_to_type(layer_id)
+            mx_min_len = max(mx_min_len, self.tech_info.get_min_length_unit(layer_type, w_conn_d[layer_id]))
 
         return mx_min_len
 
@@ -128,17 +127,16 @@ class MOSTechPlanarGeneric(MOSTech):
         po_od_exty = mos_constants['po_od_exty']
 
         # get via constants
-        mos_config = _config['mos']
-        via_g = mos_config['via_g']
-        via_d = mos_config['via_d']
-        imp_layers_info = mos_config['imp_layers'][mos_type]
-        thres_layers_info = mos_config['thres_layers'][mos_type][threshold]
+        via_g = self.mos_config['via_g']
+        via_d = self.mos_config['via_d']
+        imp_layers_info = self.mos_config['imp_layers'][mos_type]
+        thres_layers_info = self.mos_config['thres_layers'][mos_type][threshold]
 
         ds_dummy = kwargs.get('ds_dummy', False)
 
         # convert w to resolution units
-        layout_unit = _config['layout_unit']
-        res = _config['resolution']
+        layout_unit = self.config['layout_unit']
+        res = self.res
         w_unit = int(round(w / layout_unit / res))
 
         # get minimum metal lengths
@@ -271,11 +269,10 @@ class MOSTechPlanarGeneric(MOSTech):
         #. Return the list of valid extension widths
         """
 
-        mos_config = _config['mos']
-        sp_od_max = mos_config['sp_od_max']
-        od_w_min = mos_config['od_fill_w'][0]
-        imp_od_ency = mos_config['imp_od_ency']
-        imp_po_ency = mos_config['imp_po_ency']
+        sp_od_max = self.mos_config['sp_od_max']
+        od_w_min = self.mos_config['od_fill_w'][0]
+        imp_od_ency = self.mos_config['imp_od_ency']
+        imp_po_ency = self.mos_config['imp_po_ency']
 
         mos_pitch = self.get_mos_pitch(unit_mode=True)
         mos_constants = self.get_mos_tech_constants(lch_unit)
@@ -288,24 +285,24 @@ class MOSTechPlanarGeneric(MOSTech):
         mos_conn_layer = self.get_mos_conn_layer()
         mx_spy = 0
         for mx_id in range(1, mos_conn_layer + 1):
-            lay_type = TechInfoPlanarGeneric.layer_id_to_type(mx_id)
+            lay_type = self.tech_info.layer_id_to_type(mx_id)
             mx_w = w_conn_d[mx_id]
-            mx_spy = max(mx_spy, TechInfoPlanarGeneric.get_min_line_end_space_unit(lay_type, mx_w))
+            mx_spy = max(mx_spy, self.tech_info.get_min_line_end_space_unit(lay_type, mx_w))
 
         bot_imp_min_w = bot_ext_info.imp_min_w  # type: int
         top_imp_min_w = top_ext_info.imp_min_w  # type: int
 
         # step 1: get minimum extension width
         # step 1a: consider mx line-end spacing
-        mx_margin = top_ext_info.mx_margin + bot_ext_info.mx_margin
+        mx_margin = top_ext_info.mx_margin + bot_ext_info.mx_margin  # type: int
         min_ext_w = max(0, -(-(mx_spy - mx_margin) // mos_pitch))
         # step 1b: consider minimum implant width
         min_ext_w = max(min_ext_w, -(-(bot_imp_min_w + top_imp_min_w) // mos_pitch))
         # step 1c: consider substrate m1 rectangle spacing
         m1_sub_w_max = max(top_ext_info.m1_sub_w, bot_ext_info.m1_sub_w)
         if m1_sub_w_max > 0:
-            m1_type = TechInfoPlanarGeneric.layer_id_to_type(1)
-            m1_sub_spy = TechInfoPlanarGeneric.get_min_space_unit(m1_type, m1_sub_w_max)
+            m1_type = self.tech_info.layer_id_to_type(1)
+            m1_sub_spy = self.tech_info.get_min_space_unit(m1_type, m1_sub_w_max)
             min_ext_w = max(min_ext_w, -(-(m1_sub_spy - mx_margin) // mos_pitch))
 
         # step 2: get maximum extension width without dummy OD
@@ -344,10 +341,9 @@ class MOSTechPlanarGeneric(MOSTech):
             return width_list
 
     def _get_dummy_po_y_list(self, lch_unit, bot_ext_info, top_ext_info, yblk):
-        mos_config = _config['mos']
-        od_w_min, od_w_max = mos_config['od_fill_w']
-        sp_od_max = mos_config['sp_od_max']
-        od_min_density = mos_config['od_min_density']
+        od_w_min, od_w_max = self.mos_config['od_fill_w']
+        sp_od_max = self.mos_config['sp_od_max']
+        od_min_density = self.mos_config['od_min_density']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         po_h_min = mos_constants['po_h_min']
@@ -424,11 +420,10 @@ class MOSTechPlanarGeneric(MOSTech):
         6. top and bottom are different transistor.
            split, force to use transistor implant to avoid constraint 1.
         """
-        mos_config = _config['mos']
-        imp_od_ency = mos_config['imp_od_ency']
-        imp_po_ency = mos_config['imp_po_ency']
-        imp_layers_info_struct = mos_config['imp_layers']
-        thres_layers_info_struct = mos_config['thres_layers']
+        imp_od_ency = self.mos_config['imp_od_ency']
+        imp_po_ency = self.mos_config['imp_po_ency']
+        imp_layers_info_struct = self.mos_config['imp_layers']
+        thres_layers_info_struct = self.mos_config['thres_layers']
 
         mos_pitch = self.get_mos_pitch(unit_mode=True)
         mos_constants = self.get_mos_tech_constants(lch_unit)
@@ -599,7 +594,7 @@ class MOSTechPlanarGeneric(MOSTech):
     def get_sub_ring_ext_info(self, sub_type, height, fg, end_ext_info, **kwargs):
         # type: (str, int, int, ExtInfo, **kwargs) -> Dict[str, Any]
         lch = self.get_substrate_ring_lch()
-        lch_unit = int(round(lch / _config['layout_unit'] / _config['resolution']))
+        lch_unit = int(round(lch / self.config['layout_unit'] / self.res))
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
@@ -659,14 +654,13 @@ class MOSTechPlanarGeneric(MOSTech):
         #. Round up template height to blk_pitch, then recenter OD.
         #. make sure M1 are centered on OD.
         """
-        mos_config = _config['mos']
-        imp_od_ency = mos_config['imp_od_ency']
-        via_d = mos_config['via_d']
-        imp_layers_info = mos_config['imp_layers'][sub_type]
-        thres_layers_info = mos_config['thres_layers'][sub_type][threshold]
-        nw_dnw_ovl = mos_config['nw_dnw_ovl']
-        nw_dnw_ext = mos_config['nw_dnw_ext']
-        dnw_layers = mos_config['dnw_layers']
+        imp_od_ency = self.mos_config['imp_od_ency']
+        via_d = self.mos_config['via_d']
+        imp_layers_info = self.mos_config['imp_layers'][sub_type]
+        thres_layers_info = self.mos_config['thres_layers'][sub_type][threshold]
+        nw_dnw_ovl = self.mos_config['nw_dnw_ovl']
+        nw_dnw_ext = self.mos_config['nw_dnw_ext']
+        dnw_layers = self.mos_config['dnw_layers']
 
         mos_pitch = self.get_mos_pitch(unit_mode=True)
         md_min_len = self.get_md_min_len(lch_unit)
@@ -675,8 +669,8 @@ class MOSTechPlanarGeneric(MOSTech):
         sub_m1_enc_le = mos_constants['sub_m1_enc_le']
         sub_m1_extx = mos_constants['sub_m1_extx']
 
-        layout_unit = _config['layout_unit']
-        res = _config['resolution']
+        layout_unit = self.config['layout_unit']
+        res = self.res
         od_h = int(round(w / layout_unit / (2 * res))) * 2
 
         is_sub_ring = kwargs.get('is_sub_ring', False)
@@ -779,8 +773,8 @@ class MOSTechPlanarGeneric(MOSTech):
         # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
         """Just draw nothing, but compute height so edge margin is met."""
 
-        dnw_margins = _config['dnw_margins']
-        nw_dnw_ext = _config['mos']['nw_dnw_ext']
+        dnw_margins = self.config['dnw_margins']
+        nw_dnw_ext = self.mos_config['nw_dnw_ext']
 
         is_sub_ring = kwargs.get('is_sub_ring', False)
         dnw_mode = kwargs.get('dnw_mode', '')
@@ -829,7 +823,7 @@ class MOSTechPlanarGeneric(MOSTech):
 
         mos_pitch = self.get_mos_pitch(unit_mode=True)
         lch = self.get_substrate_ring_lch()
-        lch_unit = int(round(lch / _config['layout_unit'] / _config['resolution']))
+        lch_unit = int(round(lch / self.config['layout_unit'] / self.res))
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
@@ -914,11 +908,10 @@ class MOSTechPlanarGeneric(MOSTech):
     def get_gr_sub_info(self, guard_ring_nf, layout_info):
         # type: (int, Dict[str, Any]) -> Dict[str, Any]
 
-        mos_config = _config['mos']
-        imp_layers_info_struct = mos_config['imp_layers']
-        thres_layers_info_struct = mos_config['thres_layers']
-        dnw_layers = mos_config['dnw_layers']
-        nw_dnw_ovl = mos_config['nw_dnw_ovl']
+        imp_layers_info_struct = self.mos_config['imp_layers']
+        thres_layers_info_struct = self.mos_config['thres_layers']
+        dnw_layers = self.mos_config['dnw_layers']
+        nw_dnw_ovl = self.mos_config['nw_dnw_ovl']
 
         sd_pitch = layout_info['sd_pitch']
         blk_type = layout_info['blk_type']
@@ -1109,8 +1102,8 @@ class MOSTechPlanarGeneric(MOSTech):
         """
         res = template.grid.resolution
 
-        mos_layer_table = _config['mos_layer_table']
-        lay_name_table = _config['layer_name']
+        mos_layer_table = self.config['mos_layer_table']
+        lay_name_table = self.config['layer_name']
 
         blk_type = layout_info['blk_type']
         lch_unit = layout_info['lch_unit']
@@ -1330,10 +1323,10 @@ class MOSTechPlanarGeneric(MOSTech):
                                     num=num_d, pitch=stack * 2, unit_mode=True)
 
         if diode_conn:
-            d_warr = _to_warr(template.connect_wires([d_warr, ] + g_warrs))
+            d_warr = WireArray.list_to_warr(template.connect_wires([d_warr, ] + g_warrs))
             template.add_pin('g', d_warr, show=False)
         else:
-            template.add_pin('g', _to_warr(g_warrs), show=False)
+            template.add_pin('g', WireArray.list_to_warr(g_warrs), show=False)
 
         template.add_pin('d', d_warr, show=False)
         template.add_pin('s', s_warr, show=False)
@@ -1389,13 +1382,12 @@ class MOSTechPlanarGeneric(MOSTech):
     def _draw_g_vias(self, template, layout_info, fg, g_y_list, tid_list, po_xc,
                      m1_xl=None, m1_xr=None, has_od=True, dy=0, top_layer=None):
 
-        res = _config['resolution']
-        mos_layer_table = _config['mos_layer_table']
-        lay_name_table = _config['layer_name']
-        via_id_table = _config['via_id']
+        res = self.res
+        mos_layer_table = self.config['mos_layer_table']
+        lay_name_table = self.config['layer_name']
+        via_id_table = self.config['via_id']
 
-        mos_config = _config['mos']
-        via_g = mos_config['via_g']
+        via_g = self.mos_config['via_g']
 
         lch_unit = layout_info['lch_unit']
         sd_pitch = layout_info['sd_pitch']
@@ -1521,10 +1513,10 @@ class MOSTechPlanarGeneric(MOSTech):
                             ):
         # type: (...) -> bool
 
-        res = _config['resolution']
-        via_d = _config['mos']['via_d']
-        via_id_table = _config['via_id']
-        lay_name_table = _config['layer_name']
+        res = self.res
+        via_d = self.mos_config['via_d']
+        via_id_table = self.config['via_id']
+        lay_name_table = self.config['layer_name']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         w_conn_d = mos_constants['w_conn_d']
@@ -1544,7 +1536,7 @@ class MOSTechPlanarGeneric(MOSTech):
         for bot_lay_id in range(start_layer, top_layer):
             via_enc_le_bot = via_d['bot_enc_le'][bot_lay_id]
             if bot_lay_id == 0:
-                mos_layer_table = _config['mos_layer_table']
+                mos_layer_table = self.config['mos_layer_table']
                 od_lay = mos_layer_table['OD']
                 m1_name = lay_name_table[1]
                 via_type = via_id_table[(od_lay, m1_name)]
@@ -1592,6 +1584,5 @@ class MOSTechPlanarGeneric(MOSTech):
         return via_drawn
 
     def _get_wire_array(self, layer_id, tr0, num, lower, upper, pitch=1):
-        res = _config['resolution']
         tid = TrackID(layer_id, tr0, num=num, pitch=pitch)
-        return WireArray(tid, lower * res, upper * res)
+        return WireArray(tid, lower * self.res, upper * self.res)

@@ -13,7 +13,7 @@ import abc
 import yaml
 
 if TYPE_CHECKING:
-    from bag.layout.core import TechInfo
+    from bag.layout.tech import TechInfoConfig
 
 
 PlaceInfo = namedtuple('PlaceInfo', ['tot_width', 'core_width', 'edge_margins', 'edge_widths', 'arr_box_x', ])
@@ -33,12 +33,12 @@ class MOSTech(object, metaclass=abc.ABCMeta):
     """
 
     def __init__(self, tech_file, tech_info):
-        # type: (str, TechInfo) -> None
+        # type: (str, TechInfoConfig) -> None
         with open(tech_file, 'r') as f:
-            self._config = yaml.load(f)
-        self._mos_config = self._config['mos']
-        self._res = self._config['resolution']
-        self._tech_info = tech_info
+            self.config = yaml.load(f)
+        self.mos_config = self.config['mos']
+        self.res = self.config['resolution']
+        self.tech_info = tech_info
 
     @abc.abstractmethod
     def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
@@ -487,7 +487,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
         # handle general channel-length dependent constants
         ans = {}
-        for key, data in self._mos_config.items():
+        for key, data in self.mos_config.items():
             if isinstance(data, dict) and 'lch' in data and 'val' in data:
                 for lch, val in zip(data['lch'], data['val']):
                     if lch_unit <= lch:
@@ -511,7 +511,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         num_fg : int
             number of fingers in an AnalogBase row unit.
         """
-        return self._mos_config['analog_unit_fg']
+        return self.mos_config['analog_unit_fg']
 
     def draw_zero_extension(self):
         # type: () -> bool
@@ -522,7 +522,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         draw_ext : bool
             True to draw 0 width extension.
         """
-        return self._mos_config['draw_zero_extension']
+        return self.mos_config['draw_zero_extension']
 
     def floating_dummy(self):
         # type: () -> bool
@@ -533,7 +533,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         float_dummy : bool
             True if floating dummies are allowed.
         """
-        return self._mos_config['floating_dummy']
+        return self.mos_config['floating_dummy']
 
     def abut_analog_mos(self):
         # type: () -> bool
@@ -544,7 +544,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         abut_analog_mos : bool
             True if abutting transistors in AnalogBase is allowed.
         """
-        return self._mos_config['abut_analog_mos']
+        return self.mos_config['abut_analog_mos']
 
     def get_substrate_ring_lch(self):
         # type: () -> float
@@ -555,7 +555,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         lch : float
             Substrate channel length, in meters.
         """
-        return self._mos_config['sub_ring_lch']
+        return self.mos_config['sub_ring_lch']
 
     def get_dum_conn_pitch(self):
         # type: () -> int
@@ -568,7 +568,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         -------
         dum_conn_pitch : pitch between adjacent dummy connection.
         """
-        return self._mos_config['dum_conn_pitch']
+        return self.mos_config['dum_conn_pitch']
 
     def get_dum_conn_layer(self):
         # type: () -> int
@@ -579,7 +579,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         dum_layer : int
             the dummy connection layer ID.
         """
-        return self._mos_config['dum_layer']
+        return self.mos_config['dum_layer']
 
     def get_mos_conn_layer(self):
         # type: () -> int
@@ -590,7 +590,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         mos_layer : int
             the transistor connection layer ID.
         """
-        return self._mos_config['ana_conn_layer']
+        return self.mos_config['ana_conn_layer']
 
     def get_dig_conn_layer(self):
         # type: () -> int
@@ -601,7 +601,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         dig_layer : int
             the transistor connection layer ID.
         """
-        return self._mos_config['dig_conn_layer']
+        return self.mos_config['dig_conn_layer']
 
     def get_dig_top_layer(self):
         # type: () -> int
@@ -612,7 +612,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         dig_layer : int
             the transistor connection layer ID.
         """
-        return self._mos_config['dig_top_layer']
+        return self.mos_config['dig_top_layer']
 
     def get_min_fg_decap(self, lch_unit):
         # type: (int) -> int
@@ -660,7 +660,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         val : Any
             constant value.
         """
-        return self._config[name]
+        return self.config[name]
 
     def get_mos_pitch(self, unit_mode=False):
         # type: (bool) -> Union[float, int]
@@ -678,10 +678,10 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         mos_pitch : Union[float, int]
             the transistor vertical placement quantization pitch.
         """
-        ans = self._mos_config['mos_pitch']
+        ans = self.mos_config['mos_pitch']
         if unit_mode:
             return ans
-        return ans * self._res
+        return ans * self.res
 
     def get_dum_conn_track_info(self, lch_unit):
         # type: (int) -> Tuple[int, int]
