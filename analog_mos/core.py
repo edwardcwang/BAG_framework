@@ -598,10 +598,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         dig_layer : int
             the transistor connection layer ID.
         """
-        ans = self.mos_config['dig_conn_layer']
-        if ans < 0:
-            raise ValueError('This technology class does not support LaygoBase')
-        return ans
+        return self.mos_config['dig_conn_layer']
 
     def get_dig_top_layer(self):
         # type: () -> int
@@ -612,10 +609,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         dig_layer : int
             the transistor connection layer ID.
         """
-        ans = self.mos_config['dig_top_layer']
-        if ans < 0:
-            raise ValueError('This technology class does not support LaygoBase')
-        return ans
+        return self.mos_config['dig_top_layer']
 
     def get_min_fg_decap(self, lch_unit):
         # type: (int) -> int
@@ -631,10 +625,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         num_fg : int
             minimum number of decap fingers.
         """
-        ans = self.get_mos_tech_constants(lch_unit)['min_fg_decap']
-        if ans < 0:
-            raise ValueError('Decap connection is not supported in this technology.')
-        return ans
+        return self.get_mos_tech_constants(lch_unit)['min_fg_decap']
 
     def get_min_fg_sep(self, lch_unit):
         # type: (int) -> int
