@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from typing import TYPE_CHECKING, Dict, Any, List, Optional
+
 import math
 from itertools import chain
 from collections import namedtuple
