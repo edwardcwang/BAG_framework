@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import TYPE_CHECKING, Dict, Any, Union, List, Optional
+from typing import TYPE_CHECKING, Dict, Any, List, Optional
 from itertools import chain
 from collections import namedtuple
 
@@ -21,97 +21,23 @@ class MOSTechSOIGenericBC(MOSTech):
 
     def __init__(self, config, tech_info):
         # type: (Dict[str, Any], TechInfoConfig) -> None
-        MOSTech.__init__(self, config, tech_info)
+        MOSTech.__init__(self, config, tech_info, mos_entry_name='mos_analog')
 
-    @classmethod
-    def get_analog_unit_fg(cls):
-        # type: () -> int
-        return 2
-
-    @classmethod
-    def draw_zero_extension(cls):
-        # type: () -> bool
-        return False
-
-    @classmethod
-    def floating_dummy(cls):
-        # type: () -> bool
-        return True
-
-    @classmethod
-    def abut_analog_mos(cls):
-        # type: () -> bool
-        return False
-
-    @classmethod
-    def get_substrate_ring_lch(cls):
-        # type: () -> float
-        return 56e-9
-
-    @classmethod
-    def get_dum_conn_pitch(cls):
-        # type: () -> int
-        return 1
-
-    @classmethod
-    def get_dum_conn_layer(cls):
-        # type: () -> int
-        return _config['mos_analog']['dum_layer']
-
-    @classmethod
-    def get_mos_conn_layer(cls):
-        # type: () -> int
-        return _config['mos_analog']['conn_layer']
-
-    @classmethod
-    def get_dig_conn_layer(cls):
-        # type: () -> int
-        raise ValueError('Not supported')
-
-    @classmethod
-    def get_dig_top_layer(cls):
-        # type: () -> int
-        raise ValueError('Not supported')
-
-    @classmethod
-    def get_min_fg_decap(cls, lch_unit):
-        # type: (int) -> int
-        return 0
-
-    @classmethod
-    def get_min_fg_sep(cls, lch_unit):
-        # type: (int) -> int
-        return 2
-
-    @classmethod
-    def get_tech_constant(cls, name):
-        # type: (str) -> Any
-        return _config[name]
-
-    @classmethod
-    def get_mos_pitch(cls, unit_mode=False):
-        # type: (bool) -> Union[float, int]
-        if unit_mode:
-            return 1
-        return _config['resolution']
-
-    @classmethod
-    def get_edge_info(cls, lch_unit, guard_ring_nf, is_end, **kwargs):
+    def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
         # type: (int, int, bool) -> Dict[str, Any]
 
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         return dict(
             edge_num_fg=0,
             edge_margin=mos_constants['edge_margin'],
         )
 
-    @classmethod
-    def get_mos_info(cls, lch_unit, w, mos_type, threshold, fg, **kwargs):
+    def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
         # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
 
         # get transistor constants
-        mos_conn_layer = cls.get_mos_conn_layer()
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_conn_layer = self.get_mos_conn_layer()
+        mos_constants = self.get_mos_tech_constants(lch_unit)
 
         sd_pitch = mos_constants['sd_pitch']
         sp_bpo_v0 = mos_constants['sp_bpo_v0']
@@ -125,27 +51,26 @@ class MOSTechSOIGenericBC(MOSTech):
         w_conn_d = mos_constants['w_conn_d']
 
         # get via constants
-        mos_lay_table = _config['mos_layer_table']
-        mos_analog_config = _config['mos_analog']
-        via_g = mos_analog_config['via_g']
-        via_d = mos_analog_config['via_d']
-        via_b = mos_analog_config['via_b']
-        imp_layers_info = mos_analog_config['imp_layers'][mos_type]
-        thres_layers_info = mos_analog_config['thres_layers'][mos_type][threshold]
+        mos_lay_table = self.config['mos_layer_table']
+        via_g = self.mos_config['via_g']
+        via_d = self.mos_config['via_d']
+        via_b = self.mos_config['via_b']
+        imp_layers_info = self.mos_config['imp_layers'][mos_type]
+        thres_layers_info = self.mos_config['thres_layers'][mos_type][threshold]
 
         # convert w to resolution units
-        layout_unit = _config['layout_unit']
-        res = _config['resolution']
+        layout_unit = self.config['layout_unit']
+        res = self.config['resolution']
         w_unit = int(round(w / layout_unit / res))
 
         # get minimum metal lengths
         mx_min_len = 0
         for layer_id in range(2, mos_conn_layer + 1):
-            layer_type = TechInfoSOIGeneric.layer_id_to_type(layer_id)
-            mx_min_len = max(mx_min_len, TechInfoSOIGeneric.get_min_length_unit(layer_type, w_conn_g[layer_id]))
+            layer_type = self.tech_info.layer_id_to_type(layer_id)
+            mx_min_len = max(mx_min_len, self.tech_info.get_min_length_unit(layer_type, w_conn_g[layer_id]))
 
-        m1_type = TechInfoSOIGeneric.layer_id_to_type(1)
-        m1_min_len = TechInfoSOIGeneric.get_min_length_unit(m1_type, w_conn_d[1])
+        m1_type = self.tech_info.layer_id_to_type(1)
+        m1_min_len = self.tech_info.get_min_length_unit(m1_type, w_conn_d[1])
         md_min_len = max(m1_min_len, mx_min_len)
 
         # compute gate location
@@ -257,24 +182,23 @@ class MOSTechSOIGenericBC(MOSTech):
             d_conn_y=d_y_list[-1],
         )
 
-    @classmethod
-    def get_valid_extension_widths(cls, lch_unit, top_ext_info, bot_ext_info):
+    def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info):
         # type: (int, ExtInfo, ExtInfo) -> List[int]
 
         # get implant spacing info
-        imp_sp_info = _config['mos_analog']['imp_spaces']
+        imp_sp_info = self.config['mos_analog']['imp_spaces']
 
         # get transistor constants
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         w_conn_d = mos_constants['w_conn_d']
 
         # determine wire line-end spacing
-        mos_conn_layer = cls.get_mos_conn_layer()
+        mos_conn_layer = self.get_mos_conn_layer()
         mx_sp = 0
         for mx_id in range(1, mos_conn_layer + 1):
-            lay_type = TechInfoSOIGeneric.layer_id_to_type(mx_id)
+            lay_type = self.tech_info.layer_id_to_type(mx_id)
             mx_w = w_conn_d[mx_id]
-            mx_sp = max(mx_sp, TechInfoSOIGeneric.get_min_line_end_space_unit(lay_type, mx_w))
+            mx_sp = max(mx_sp, self.tech_info.get_min_line_end_space_unit(lay_type, mx_w))
 
         # get minimum extension width from wire line-end spacing
         w_min = max(0, mx_sp - top_ext_info.mx_margin - bot_ext_info.mx_margin)
@@ -298,15 +222,14 @@ class MOSTechSOIGenericBC(MOSTech):
 
         return [w_min]
 
-    @classmethod
-    def get_ext_info(cls, lch_unit, w, fg, top_ext_info, bot_ext_info):
+    def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info):
         # type: (int, int, int, ExtInfo, ExtInfo) -> Dict[str, Any]
 
         # get implant spacing info
-        imp_sp_info = _config['mos_analog']['imp_spaces']
+        imp_sp_info = self.config['mos_analog']['imp_spaces']
 
         # get transistor constants
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
 
         # extension block just have implant layers that needs to be merged
@@ -336,28 +259,26 @@ class MOSTechSOIGenericBC(MOSTech):
             right_edge_info=None,
         )
 
-    @classmethod
-    def get_sub_ring_ext_info(cls, sub_type, height, fg, end_ext_info, **kwargs):
+    def get_sub_ring_ext_info(self, sub_type, height, fg, end_ext_info, **kwargs):
         # type: (str, int, int, Any, **kwargs) -> Dict[str, Any]
         raise NotImplementedError('Not implemented yet')
 
-    @classmethod
-    def get_substrate_info(cls, lch_unit, w, sub_type, threshold, fg, blk_pitch=1, **kwargs):
+    def get_substrate_info(self, lch_unit, w, sub_type, threshold, fg, blk_pitch=1, **kwargs):
         # type: (int, int, str, str, int, int, **kwargs) -> Dict[str, Any]
 
         # convert width to resolution units
-        layout_unit = _config['layout_unit']
-        res = _config['resolution']
+        layout_unit = self.config['layout_unit']
+        res = self.config['resolution']
         w_unit = int(round(w / layout_unit / (2 * res))) * 2
 
         # get transistor constants
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
         sub_m1_extx = mos_constants['sub_m1_extx']
 
         # substrate row is just a slab of M1
-        m1_type = TechInfoSOIGeneric.layer_id_to_type(1)
-        m1_sp = TechInfoSOIGeneric.get_min_space_unit(m1_type, w_unit)
+        m1_type = self.tech_info.layer_id_to_type(1)
+        m1_sp = self.tech_info.get_min_space_unit(m1_type, w_unit)
 
         # compute extension information
         height = w_unit + 2 * m1_sp
@@ -389,12 +310,11 @@ class MOSTechSOIGenericBC(MOSTech):
             right_edge_info=None,
         )
 
-    @classmethod
-    def get_analog_end_info(cls, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
+    def get_analog_end_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
         # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
 
         # get transistor constants
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
 
         # analog_end is empty
@@ -414,13 +334,11 @@ class MOSTechSOIGenericBC(MOSTech):
             right_edge_info=None,
         )
 
-    @classmethod
-    def get_sub_ring_end_info(cls, sub_type, threshold, fg, end_ext_info, **kwargs):
+    def get_sub_ring_end_info(self, sub_type, threshold, fg, end_ext_info, **kwargs):
         # type: (str, str, int, Any, **kwargs) -> Dict[str, Any]
         raise NotImplementedError('Not implemented yet.')
 
-    @classmethod
-    def get_outer_edge_info(cls, guard_ring_nf, layout_info, is_end, adj_blk_info):
+    def get_outer_edge_info(self, guard_ring_nf, layout_info, is_end, adj_blk_info):
         # type: (int, Dict[str, Any], bool, Optional[Any]) -> Dict[str, Any]
 
         # outer edge is empty
@@ -434,18 +352,15 @@ class MOSTechSOIGenericBC(MOSTech):
             blk_type='edge',
         )
 
-    @classmethod
-    def get_gr_sub_info(cls, guard_ring_nf, layout_info):
+    def get_gr_sub_info(self, guard_ring_nf, layout_info):
         # type: (int, Dict[str, Any]) -> Dict[str, Any]
         raise ValueError('Guard ring is not supported in this technology.')
 
-    @classmethod
-    def get_gr_sep_info(cls, layout_info, adj_blk_info):
+    def get_gr_sep_info(self, layout_info, adj_blk_info):
         # type: (Dict[str, Any], Any) -> Dict[str, Any]
         raise ValueError('Guard ring is not supported in this technology.')
 
-    @classmethod
-    def draw_mos(cls, template, layout_info):
+    def draw_mos(self, template, layout_info):
         # type: (TemplateBase, Dict[str, Any]) -> None
         """Draw transistor geometries.
 
@@ -457,7 +372,7 @@ class MOSTechSOIGenericBC(MOSTech):
         all body connections together.
         """
 
-        res = _config['resolution']
+        res = self.config['resolution']
 
         sd_pitch = layout_info['sd_pitch']
         fg = layout_info['fg']
@@ -469,7 +384,7 @@ class MOSTechSOIGenericBC(MOSTech):
         width = fg * sd_pitch
         template.array_box = BBox(0, arr_yb, width, arr_yt, res, unit_mode=True)
         template.prim_bound_box = template.array_box
-        template.prim_top_layer = cls.get_mos_conn_layer()
+        template.prim_top_layer = self.get_mos_conn_layer()
 
         # draw implant layers
         for imp_name, (imp_yb, imp_yt) in imp_info.items():
@@ -481,11 +396,10 @@ class MOSTechSOIGenericBC(MOSTech):
             m1_extx = layout_info['m1_extx']
             mx_yb, mx_yt = layout_info['mx_y']
             sub_box = BBox(-m1_extx, mx_yb, width + m1_extx, mx_yt, res, unit_mode=True)
-            m1_name = _config['layer_name'][1]
+            m1_name = self.config['layer_name'][1]
             template.add_rect(m1_name, sub_box)
 
-    @classmethod
-    def draw_substrate_connection(cls, template, layout_info, port_tracks, dum_tracks, dummy_only,
+    def draw_substrate_connection(self, template, layout_info, port_tracks, dum_tracks, dummy_only,
                                   is_laygo, is_guardring):
         # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool, bool, bool) -> bool
 
@@ -498,26 +412,25 @@ class MOSTechSOIGenericBC(MOSTech):
 
         if mx_yt > mx_yb:
             # add pins
-            dum_conn_layer = cls.get_dum_conn_layer()
-            dum_warrs = cls._get_wire_array(dum_conn_layer, -0.5, fg + 1, mx_yb, mx_yt)
+            dum_conn_layer = self.get_dum_conn_layer()
+            dum_warrs = self._get_wire_array(dum_conn_layer, -0.5, fg + 1, mx_yb, mx_yt)
             template.add_pin(port_name, dum_warrs, show=False)
 
             if dummy_only:
                 end_layer = dum_conn_layer
             else:
-                end_layer = cls.get_mos_conn_layer()
-                mos_warrs = cls._get_wire_array(end_layer, -0.5, fg + 1, mx_yb, mx_yt)
+                end_layer = self.get_mos_conn_layer()
+                mos_warrs = self._get_wire_array(end_layer, -0.5, fg + 1, mx_yb, mx_yt)
                 template.add_pin(port_name, mos_warrs, show=False)
 
             # draw vias
-            cls._draw_vertical_vias(template, lch_unit, 0, fg + 1, sd_pitch, mx_yb, mx_yt, 1, end_layer=end_layer)
+            self._draw_vertical_vias(template, lch_unit, 0, fg + 1, sd_pitch, mx_yb, mx_yt, 1, end_layer=end_layer)
 
             return True
 
         return False
 
-    @classmethod
-    def draw_mos_connection(cls, template, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
+    def draw_mos_connection(self, template, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
                             min_ds_cap, is_diff, diode_conn, options):
         # type: (TemplateBase, Dict[str, Any], int, int, str, int, bool, bool, bool, Dict[str, Any]) -> None
 
@@ -525,15 +438,14 @@ class MOSTechSOIGenericBC(MOSTech):
         if diode_conn:
             raise ValueError('Diode connection not supported yet.')
 
-        res = _config['resolution']
-        via_id_table = _config['via_id']
-        mos_lay_table = _config['mos_layer_table']
-        lay_name_table = _config['layer_name']
-        mos_analog_config = _config['mos_analog']
+        res = self.config['resolution']
+        via_id_table = self.config['via_id']
+        mos_lay_table = self.config['mos_layer_table']
+        lay_name_table = self.config['layer_name']
 
-        gate_layers = mos_analog_config['gate_layers']
-        via_g = mos_analog_config['via_g']
-        via_b = mos_analog_config['via_b']
+        gate_layers = self.mos_config['gate_layers']
+        via_g = self.mos_config['via_g']
+        via_b = self.mos_config['via_b']
 
         layout_info = mos_info['layout_info']
         sd_yc = mos_info['sd_yc']
@@ -546,7 +458,7 @@ class MOSTechSOIGenericBC(MOSTech):
         d_y_list = layout_info['d_y_list']
         b_y_list = layout_info['b_y_list']
 
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         w_conn_g = mos_constants['w_conn_g']
         w_conn_d = mos_constants['w_conn_d']
         w_delta = mos_constants['w_delta']
@@ -649,13 +561,13 @@ class MOSTechSOIGenericBC(MOSTech):
         template.add_via_primitive(via_type, loc=[g_x0, via_yc - sd_yc], enc1=enc1, enc2=enc2, cut_width=via_w,
                                    cut_height=via_h, nx=num_g, spx=2 * sd_pitch, unit_mode=True)
         # draw gate vias to connection layer
-        cls._draw_vertical_vias(template, lch_unit, g_x0, num_g, 2 * sd_pitch,
-                                g_y_list[2][0] - sd_yc, g_y_list[2][1] - sd_yc, 2)
+        self._draw_vertical_vias(template, lch_unit, g_x0, num_g, 2 * sd_pitch,
+                                 g_y_list[2][0] - sd_yc, g_y_list[2][1] - sd_yc, 2)
 
         # draw drain vias to connection layer
         d_yb, d_yt = d_y_list[-1]
-        cls._draw_vertical_vias(template, lch_unit, 0, fg + 1, sd_pitch,
-                                d_yb - sd_yc, d_yt - sd_yc, 0)
+        self._draw_vertical_vias(template, lch_unit, 0, fg + 1, sd_pitch,
+                                 d_yb - sd_yc, d_yt - sd_yc, 0)
 
         # draw body vias to M1
         via_type = via_id_table[(od_name, m1_name)]
@@ -674,24 +586,23 @@ class MOSTechSOIGenericBC(MOSTech):
         template.add_rect(m1_name, m1_box)
 
         # add ports
-        mos_conn_layer = cls.get_mos_conn_layer()
+        mos_conn_layer = self.get_mos_conn_layer()
         gtr0 = template.grid.coord_to_track(mos_conn_layer, g_x0, unit_mode=True)
         g_yb, g_yt = g_y_list[-1]
-        g_warrs = cls._get_wire_array(mos_conn_layer, gtr0, num_g, g_yb - sd_yc, g_yt - sd_yc, pitch=2)
-        s_warrs = cls._get_wire_array(mos_conn_layer, -0.5, num_s, d_yb - sd_yc, d_yt - sd_yc, pitch=2)
-        d_warrs = cls._get_wire_array(mos_conn_layer, 0.5, num_d, d_yb - sd_yc, d_yt - sd_yc, pitch=2)
+        g_warrs = self._get_wire_array(mos_conn_layer, gtr0, num_g, g_yb - sd_yc, g_yt - sd_yc, pitch=2)
+        s_warrs = self._get_wire_array(mos_conn_layer, -0.5, num_s, d_yb - sd_yc, d_yt - sd_yc, pitch=2)
+        d_warrs = self._get_wire_array(mos_conn_layer, 0.5, num_d, d_yb - sd_yc, d_yt - sd_yc, pitch=2)
 
         template.add_pin('g', g_warrs, show=False)
         template.add_pin('d', d_warrs, show=False)
         template.add_pin('s', s_warrs, show=False)
 
-    @classmethod
-    def draw_dum_connection(cls, template, mos_info, edge_mode, gate_tracks, options):
+    def draw_dum_connection(self, template, mos_info, edge_mode, gate_tracks, options):
         # type: (TemplateBase, Dict[str, Any], int, List[int], Dict[str, Any]) -> None
 
-        res = _config['resolution']
-        mos_lay_table = _config['mos_layer_table']
-        lay_name_table = _config['layer_name']
+        res = self.config['resolution']
+        mos_lay_table = self.config['mos_layer_table']
+        lay_name_table = self.config['layer_name']
 
         layout_info = mos_info['layout_info']
         sd_yc = mos_info['sd_yc']
@@ -703,7 +614,7 @@ class MOSTechSOIGenericBC(MOSTech):
         g_y_list = layout_info['g_y_list']
         b_y_list = layout_info['b_y_list']
 
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sp_gb_po = mos_constants['sp_gb_po']
 
         width = fg * sd_pitch
@@ -734,25 +645,24 @@ class MOSTechSOIGenericBC(MOSTech):
         template.add_rect(m1_name, m1_box)
 
         # add body ports
-        dum_layer = cls.get_dum_conn_layer()
+        dum_layer = self.get_dum_conn_layer()
         for tidx in gate_tracks:
             warr = WireArray(TrackID(dum_layer, tidx), m1_box.bottom, m1_box.top)
             template.add_pin('dummy', warr, show=False)
 
-    @classmethod
-    def _draw_vertical_vias(cls, template, lch_unit, x0, num, pitch, mx_yb, mx_yt, start_layer, end_layer=None):
+    def _draw_vertical_vias(self, template, lch_unit, x0, num, pitch, mx_yb, mx_yt, start_layer, end_layer=None):
         # type: (TemplateBase, int, int, int, int, int, int, int, int) -> None
 
-        via_d = _config['mos_analog']['via_d']
-        via_id_table = _config['via_id']
-        mos_lay_table = _config['mos_layer_table']
-        lay_name_table = _config['layer_name']
+        via_d = self.config['mos_analog']['via_d']
+        via_id_table = self.config['via_id']
+        mos_lay_table = self.config['mos_layer_table']
+        lay_name_table = self.config['layer_name']
 
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         w_conn_d = mos_constants['w_conn_d']
 
         if end_layer is None:
-            end_layer = cls.get_mos_conn_layer()
+            end_layer = self.get_mos_conn_layer()
 
         mx_h = mx_yt - mx_yb
         mx_yc = (mx_yt + mx_yb) // 2
@@ -784,13 +694,11 @@ class MOSTechSOIGenericBC(MOSTech):
                                        enc1=enc1, enc2=enc2, cut_width=via_w, cut_height=via_h,
                                        nx=num, spx=pitch, unit_mode=True)
 
-    @classmethod
-    def _get_wire_array(cls, layer_id, tr0, num, lower, upper, pitch=1):
-        res = _config['resolution']
+    def _get_wire_array(self, layer_id, tr0, num, lower, upper, pitch=1):
+        res = self.config['resolution']
         tid = TrackID(layer_id, tr0, num=num, pitch=pitch)
         return WireArray(tid, lower * res, upper * res)
 
-    @classmethod
-    def draw_decap_connection(cls, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
+    def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
         # type: (TemplateBase, Dict[str, Any], int, int, int, bool, Dict[str, Any]) -> None
         raise ValueError('Decap connection is not supported in this technology.')

@@ -14,7 +14,6 @@ from bag.layout.template import TemplateBase
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfoConfig
 
-
 PlaceInfo = namedtuple('PlaceInfo', ['tot_width', 'core_width', 'edge_margins', 'edge_widths', 'arr_box_x', ])
 
 
@@ -31,10 +30,10 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         the TechInfo object.
     """
 
-    def __init__(self, config, tech_info):
-        # type: (Dict[str, Any], TechInfoConfig) -> None
+    def __init__(self, config, tech_info, mos_entry_name='mos'):
+        # type: (Dict[str, Any], TechInfoConfig, str) -> None
         self.config = config
-        self.mos_config = self.config['mos']
+        self.mos_config = self.config[mos_entry_name]
         self.res = self.config['resolution']
         self.tech_info = tech_info
 
@@ -599,7 +598,10 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         dig_layer : int
             the transistor connection layer ID.
         """
-        return self.mos_config['dig_conn_layer']
+        ans = self.mos_config['dig_conn_layer']
+        if ans < 0:
+            raise ValueError('This technology class does not support LaygoBase')
+        return ans
 
     def get_dig_top_layer(self):
         # type: () -> int
@@ -610,7 +612,10 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         dig_layer : int
             the transistor connection layer ID.
         """
-        return self.mos_config['dig_top_layer']
+        ans = self.mos_config['dig_top_layer']
+        if ans < 0:
+            raise ValueError('This technology class does not support LaygoBase')
+        return ans
 
     def get_min_fg_decap(self, lch_unit):
         # type: (int) -> int
@@ -626,7 +631,10 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         num_fg : int
             minimum number of decap fingers.
         """
-        return self.get_mos_tech_constants(lch_unit)['min_fg_decap']
+        ans = self.get_mos_tech_constants(lch_unit)['min_fg_decap']
+        if ans < 0:
+            raise ValueError('Decap connection is not supported in this technology.')
+        return ans
 
     def get_min_fg_sep(self, lch_unit):
         # type: (int) -> int
