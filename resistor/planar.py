@@ -23,9 +23,9 @@ if TYPE_CHECKING:
 class ResTechPlanarGeneric(ResTech):
     """Implementation of ResTech for generic planar technologies."""
 
-    def __init__(self, tech_file, tech_info):
-        # type: (str, TechInfoConfig) -> None
-        ResTech.__init__(self, tech_file, tech_info)
+    def __init__(self, config, tech_info):
+        # type: (Dict[str, Any], TechInfoConfig) -> None
+        ResTech.__init__(self, config, tech_info)
 
     def get_res_imp_layers(self, res_type, sub_type):
         imp_layers = self.tech_info.get_implant_layers(sub_type, res_type=res_type)

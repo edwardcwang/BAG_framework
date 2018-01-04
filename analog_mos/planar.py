@@ -26,9 +26,9 @@ AdjRowInfo = namedtuple('AdjRowInfo', ['od_y', 'od_type', 'po_y', ])
 class MOSTechPlanarGeneric(MOSTech):
     """A generic implementation of MOSTech for planar technologies."""
 
-    def __init__(self, tech_file, tech_info):
-        # type: (str, TechInfoConfig) -> None
-        MOSTech.__init__(self, tech_file, tech_info)
+    def __init__(self, config, tech_info):
+        # type: (Dict[str, Any], TechInfoConfig) -> None
+        MOSTech.__init__(self, config, tech_info)
 
     def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
         # type: (int, int, bool, **kwargs) -> Dict[str, Any]

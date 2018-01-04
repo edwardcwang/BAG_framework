@@ -6,7 +6,6 @@
 from typing import TYPE_CHECKING, Dict, Set, Tuple, Any, List, Optional, Union
 
 import abc
-import yaml
 
 from bag import float_to_si_string
 from bag.math import lcm
@@ -25,16 +24,15 @@ class ResTech(object, metaclass=abc.ABCMeta):
 
     Parameters
     ----------
-    tech_file : str
-        the technology configuration file name.
+    config : Dict[str, Any]
+        the technology configuration dictionary.
     tech_info : TechInfo
         the TechInfo object.
     """
 
-    def __init__(self, tech_file, tech_info):
-        # type: (str, TechInfoConfig) -> None
-        with open(tech_file, 'r') as f:
-            self.config = yaml.load(f)
+    def __init__(self, config, tech_info):
+        # type: (Dict[str, Any], TechInfoConfig) -> None
+        self.config = config
         self.res_config = self.config['resistor']
         self.res = self.config['resolution']
         self.tech_info = tech_info
