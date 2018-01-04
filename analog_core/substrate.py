@@ -433,6 +433,8 @@ class SubstrateRing(TemplateBase):
     def _make_masters(self, top_layer, mtop_lay, lch, fg_tot, w, fg_side, sub_type, threshold, dnw_mode, box_h):
         options1 = dict(is_sub_ring=True, dnw_mode=dnw_mode)
         options2 = dict(dnw_mode=dnw_mode)
+        options3 = options1.copy()
+        options3['integ_htr'] = True
 
         sub_params = dict(
             lch=lch,
@@ -441,7 +443,7 @@ class SubstrateRing(TemplateBase):
             sub_type=sub_type,
             threshold=threshold,
             top_layer=mtop_lay,
-            options=options1,
+            options=options3,
         )
         sub_master = self.new_template(params=sub_params, temp_cls=AnalogSubstrate)
 

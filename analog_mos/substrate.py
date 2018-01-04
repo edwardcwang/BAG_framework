@@ -3,6 +3,7 @@
 from typing import Dict, Any, Set
 
 from bag import float_to_si_string
+from bag.math import lcm
 from bag.layout.template import TemplateBase, TemplateDB
 
 from .core import MOSTech
@@ -130,11 +131,18 @@ class AnalogSubstrate(TemplateBase):
         top_layer = self.params['top_layer']
         options = self.params['options']
 
+        integ_htr = options.get('integ_htr', False)
+
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
         if top_layer is not None:
             blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
+            if integ_htr:
+                hm_layer = top_layer
+                while self.grid.get_direction(hm_layer) != 'x':
+                    hm_layer -= 1
+                blk_pitch = lcm([blk_pitch, self.grid.get_track_pitch(hm_layer, unit_mode=True)])
         else:
             blk_pitch = 1
         info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg, blk_pitch=blk_pitch, **options)
