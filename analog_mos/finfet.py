@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import TYPE_CHECKING, Dict, Any, Union, List, Optional
+from typing import TYPE_CHECKING, Dict, Any, List, Optional
 
 import abc
 from collections import namedtuple
@@ -16,8 +16,8 @@ from .core import MOSTech
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfoConfig
 
-ExtInfo = namedtuple('ExtInfo', ['mx_margin', 'od_margin', 'md_margin', 'm1_margin', 'imp_min_w',
-                                 'mtype', 'thres', 'po_types', 'edgel_info', 'edger_info'])
+ExtInfo = namedtuple('ExtInfo', ['margins', 'imp_min_w', 'mtype', 'thres', 'po_types',
+                                 'edgel_info', 'edger_info'])
 RowInfo = namedtuple('RowInfo', ['od_x_list', 'od_y', 'od_type', 'po_y', 'md_y'])
 AdjRowInfo = namedtuple('AdjRowInfo', ['po_y', 'po_types'])
 EdgeInfo = namedtuple('EdgeInfo', ['od_type'])
@@ -34,6 +34,25 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     def __init__(self, config, tech_info):
         # type: (Dict[str, Any], TechInfoConfig) -> None
         MOSTech.__init__(self, config, tech_info)
+
+    @abc.abstractmethod
+    def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
+        # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
+        """A single row of transistor, which enough margin to draw gate/drain via.
+
+        Strategy:
+
+        1. from CPO-M0PO spacing, get gate M0PO/M1 location
+        #. get OD location such that:
+           i. OD is in the center of drain/source M1 contact.
+           #. gate-drain M1 spacing is satisfied.
+        #. round OD location to fin grid, get M0OD/M1 coordinates.
+        #. update gate M0PO/M1 location so that gate-drain M1 spacing equals minimum.
+        #. find top CPO location from OD-CPO spacing.
+        #. compute gate/drain/source M3 locations.
+        #. compute extension information, then return layout information dictionary.
+        """
+        return {}
 
     def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
         # type: (int, int, bool, **kwargs) -> Dict[str, Any]
@@ -102,270 +121,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             fg_od_margin=fg_od_margin,
         )
 
-    @classmethod
-    def get_mos_tech_constants(self, lch_unit):
-        # type: (int) -> Dict[str, Any]
-        if lch_unit == 18:
-            constants = dict(
-                sd_pitch=90,
-            )
-        else:
-            raise ValueError('Unsupported channel length: %d' % lch_unit)
-
-        constants['laygo_num_sd_per_track'] = constants['num_sd_per_track'] = 1
-
-        # set MD related parameters
-        md_w = self.tech_constants['md_w']
-        constants['laygo_conn_w'] = constants['mos_conn_w'] = constants['dum_conn_w'] = constants['m1_w'] = md_w
-        return constants
-
-    @classmethod
-    def get_analog_unit_fg(self):
-        # type: () -> int
-        return 2
-
-    @classmethod
-    def draw_zero_extension(self):
-        return True
-
-    @classmethod
-    def floating_dummy(self):
-        return False
-
-    @classmethod
-    def get_dum_conn_pitch(self):
-        # type: () -> int
-        return 1
-
-    @classmethod
-    def abut_analog_mos(self):
-        # type: () -> bool
-        return True
-
-    @classmethod
-    def get_substrate_ring_lch(self):
-        # type: () -> float
-        raise NotImplementedError('Not implemented')
-
-    @classmethod
-    def get_dum_conn_layer(self):
-        # type: () -> int
-        return 1
-
-    @classmethod
-    def get_mos_conn_layer(self):
-        # type: () -> int
-        return 3
-
-    @classmethod
-    def get_dig_conn_layer(self):
-        # type: () -> int
-        return 1
-
-    @classmethod
-    def get_dig_top_layer(self):
-        # type: () -> int
-        return 3
-
-    @classmethod
-    def get_min_fg_decap(self, lch_unit):
-        # type: (int) -> int
-        return 2
-
-    @classmethod
-    def get_min_fg_sep(self, lch_unit):
-        # type: (int) -> int
-        return 2
-
-    @classmethod
-    def get_tech_constant(self, name):
-        # type: (str) -> Any
-        return self.tech_constants[name]
-
-    @classmethod
-    def get_mos_pitch(self, unit_mode=False):
-        # type: (bool) -> Union[float, int]
-        ans = self.tech_constants['fin_pitch']
-        if unit_mode:
-            return ans
-        return ans * self.tech_constants['resolution']
-
-    @classmethod
-    def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
-        # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
-        """A single row of transistor, which enough margin to draw gate/drain via.
-
-        Strategy:
-
-        1. from CPO-M0PO spacing, get gate M0PO/M1 location
-        #. get OD location such that:
-           i. OD is in the center of drain/source M1 contact.
-           #. gate-drain M1 spacing is satisfied.
-        #. round OD location to fin grid, get M0OD/M1 coordinates.
-        #. update gate M0PO/M1 location so that gate-drain M1 spacing equals minimum.
-        #. find top CPO location from OD-CPO spacing.
-        #. compute gate/drain/source M3 locations.
-        #. compute extension information, then return layout information dictionary.
-        """
-
-        fin_h = self.tech_constants['fin_h']
-        fin_p = self.tech_constants['fin_pitch']
-        mp_cpo_sp = self.tech_constants['mp_cpo_sp']
-        cpo_od_sp = self.tech_constants['cpo_od_sp']
-        md_w = self.tech_constants['md_w']
-        cpo_h = self.tech_constants['cpo_h']
-        mp_h = self.tech_constants['mp_h']
-        mx_spy_min = self.tech_constants['mx_spy_min']
-
-        mos_constants = self.get_mos_tech_constants(lch_unit)
-        sd_pitch = mos_constants['sd_pitch']
-        m3_w = mos_constants['mos_conn_w']
-
-        gate_via_info = self.get_gate_via_info(lch_unit)
-        gv0_h, gv1_h, gv2_h = gate_via_info['h']
-        g_m1_ency, g_m2_ency, g_m3_ency = gate_via_info['top_ency']
-        g_m1_h = gate_via_info['m1_h']
-        g_m2_h = gate_via_info['m2_h']
-        g_m3_h = gate_via_info['m3_h']
-
-        ds_via_info = self.get_ds_via_info(lch_unit, w)
-        dv0_h, dv1_h, dv2_h = ds_via_info['h']
-        ds_md_bot_ency, ds_m1_bot_ency, ds_m2_bot_ency = ds_via_info['bot_ency']
-        d_m1_ency, d_m2_ency, d_m3_ency = ds_via_info['top_ency']
-        md_h = ds_via_info['md_h']
-        m1_h = ds_via_info['m1_h']
-        m3_h = ds_via_info['m3_h']
-
-        # step 1: place bottom CPO, compute gate/OD locations
-        # step 1A: get CPO location
-        blk_yb = 0
-        cpo_bot_yb = blk_yb - cpo_h // 2
-        cpo_bot_yt = cpo_bot_yb + cpo_h
-        # step 1B: get gate via/M1 location
-        mp_yb = cpo_bot_yt + mp_cpo_sp
-        mp_yt = mp_yb + mp_h
-        mp_yc = (mp_yt + mp_yb) // 2
-        g_m1_yt = mp_yc + gv0_h // 2 + g_m1_ency
-        # step 1C: get OD location, round to fin grid.
-        od_yc = g_m1_yt + mx_spy_min + m1_h // 2
-        if w % 2 == 0:
-            od_yc = -(-od_yc // fin_p) * fin_p
-        else:
-            od_yc = -(-(od_yc - fin_p // 2) // fin_p) * fin_p + fin_p // 2
-        # compute OD/MD/CMD location
-        od_h = (w - 1) * fin_p + fin_h
-        od_yb = od_yc - od_h // 2
-        od_yt = od_yb + od_h
-        md_yb = od_yc - md_h // 2
-        md_yt = md_yb + md_h
-        ds_m1_yb = od_yc - m1_h // 2
-        ds_m1_yt = ds_m1_yb + m1_h
-        # update gate location
-        g_m1_yt = ds_m1_yb - mx_spy_min
-        g_m1_yb = g_m1_yt - g_m1_h
-        g_m1_yc = (g_m1_yb + g_m1_yt) // 2
-
-        # step 2: compute top CPO location.
-        blk_yt = od_yt + cpo_od_sp + cpo_h // 2
-        blk_yt = -(-blk_yt // fin_p) * fin_p
-
-        # step 3: compute gate M2/M3 locations
-        g_m2_yt = g_m1_yc + gv1_h // 2 + g_m2_ency
-        g_m2_yb = g_m2_yt - g_m2_h
-        g_m2_yc = (g_m2_yb + g_m2_yt) // 2
-        g_m3_yt = g_m2_yc + g_m3_h // 2
-        g_m3_yb = g_m3_yt - g_m3_h
-
-        # step 4: compute drain/source M3 location when going up.  This is needed for metal 3 margin.
-        d_v1_yc = ds_m1_yt - ds_m1_bot_ency - dv1_h // 2
-        d_m3_yb = d_v1_yc - dv2_h // 2 - d_m3_ency
-        d_m3_yt = d_m3_yb + m3_h
-
-        s_v1_yc = ds_m1_yb + ds_m1_bot_ency + dv1_h // 2
-        s_m3_yt = s_v1_yc + dv2_h // 2 + d_m3_ency
-        s_m3_yb = s_m3_yt - m3_h
-
-        # step 5: compute extension information
-        lr_edge_info = EdgeInfo(od_type='mos')
-
-        mtype = (mos_type, mos_type)
-        po_types = (1,) * fg
-        ext_top_info = ExtInfo(
-            mx_margin=blk_yt - d_m3_yt,
-            od_margin=blk_yt - od_yt,
-            md_margin=blk_yt - md_yt,
-            m1_margin=blk_yt - ds_m1_yt,
-            imp_min_w=0,
-            mtype=mtype,
-            thres=threshold,
-            po_types=po_types,
-            edgel_info=lr_edge_info,
-            edger_info=lr_edge_info,
-        )
-        ext_bot_info = ExtInfo(
-            mx_margin=g_m3_yb - blk_yb,
-            od_margin=od_yb - blk_yb,
-            md_margin=md_yb - blk_yb,
-            m1_margin=g_m1_yb - blk_yb,
-            imp_min_w=0,
-            mtype=mtype,
-            thres=threshold,
-            po_types=po_types,
-            edgel_info=lr_edge_info,
-            edger_info=lr_edge_info,
-        )
-
-        # step 6: compute layout information
-        lay_info_list = []
-        for lay in self.get_mos_layers(mos_type, threshold):
-            lay_info_list.append((lay, 0, blk_yb, blk_yt))
-
-        sub_type = 'ptap' if mos_type == 'nch' else 'ntap'
-        fill_info = FillInfo(layer=('M1', 'drawing'), exc_layer=None,
-                             x_intv_list=[], y_intv_list=[(ds_m1_yb, ds_m1_yt)])
-        layout_info = dict(
-            # information needed for draw_mos
-            lch_unit=lch_unit,
-            md_w=md_w,
-            fg=fg,
-            sd_pitch=sd_pitch,
-            array_box_xl=0,
-            array_box_y=(blk_yb, blk_yt),
-            draw_od=not kwargs.get('ds_dummy', False),
-            row_info_list=[RowInfo(od_x_list=[(0, fg)],
-                                   od_y=(od_yb, od_yt),
-                                   od_type=('mos', sub_type),
-                                   po_y=(blk_yb, blk_yt),
-                                   md_y=(md_yb, md_yt)), ],
-            lay_info_list=lay_info_list,
-            adj_info_list=[],
-            left_blk_info=None,
-            right_blk_info=None,
-            fill_info_list=[fill_info],
-
-            # information needed for computing edge block layout
-            blk_type='mos',
-            imp_params=[(mos_type, threshold, blk_yb, blk_yt, blk_yb, blk_yt)],
-        )
-
-        # step 8: return results
-        return dict(
-            layout_info=layout_info,
-            ext_top_info=ext_top_info,
-            ext_bot_info=ext_bot_info,
-            left_edge_info=(lr_edge_info, []),
-            right_edge_info=(lr_edge_info, []),
-            sd_yc=od_yc,
-            g_conn_y=(g_m3_yb, g_m3_yt),
-            d_conn_y=(d_m3_yb, d_m3_yt),
-            s_conn_y=(s_m3_yb, s_m3_yt),
-            gate_yc=g_m2_yc,
-            m3_w=m3_w,
-            sd_pitch=sd_pitch,
-            num_sd_per_track=1,
-        )
-
-    @classmethod
     def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info):
         # type: (int, ExtInfo, ExtInfo) -> List[int]
         """Compute a list of valid extension widths.
@@ -392,18 +147,18 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         #. Compute the minimum extension width that we can draw DRC clean dummy OD.
         #. Return the list of valid extension widths
         """
-        fin_h = self.tech_constants['fin_h']  # type: int
-        fin_p = self.tech_constants['fin_pitch']  # type: int
-        od_sp_nfin_max = self.tech_constants['od_sp_nfin_max']
-        od_nfin_min = self.tech_constants['od_nfin_min']
-        cpo_od_sp = self.tech_constants['cpo_od_sp']  # type: int
-        cpo_spy = self.tech_constants['cpo_spy']
-        md_od_exty = self.tech_constants['md_od_exty']
-        imp_od_ency = self.tech_constants['imp_od_ency']
-        mx_spy_min = self.tech_constants['mx_spy_min']  # type: int
-        md_sp = self.tech_constants['md_sp']  # type: int
-        cpo_h = self.tech_constants['cpo_h']
-        md_h_min = self.tech_constants['md_h_min']
+        fin_h = self.mos_config['fin_h']  # type: int
+        fin_p = self.mos_config['mos_pitch']  # type: int
+        od_sp_nfin_max = self.mos_config['od_sp_nfin_max']
+        od_nfin_min = self.mos_config['od_fill_w'][0]
+        cpo_od_sp = self.mos_config['cpo_od_sp']  # type: int
+        cpo_spy = self.mos_config['cpo_spy']
+        imp_od_ency = self.mos_config['imp_od_ency']
+
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        cpo_h = mos_constants['cpo_h']
+        md_h_min = mos_constants['md_h_min']
+        md_od_exty = mos_constants['md_od_exty']
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
@@ -411,15 +166,15 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         bot_imp_min_w = bot_ext_info.imp_min_w  # type: int
         top_imp_min_w = top_ext_info.imp_min_w  # type: int
 
-        # step 1: get minimum extension width
-        mx_margin = top_ext_info.mx_margin + bot_ext_info.mx_margin  # type: int
-        m1_margin = top_ext_info.m1_margin + bot_ext_info.m1_margin  # type: int
-        min_ext_w = max(0, -(-(mx_spy_min - min(mx_margin, m1_margin)) // fin_p))
-        md_margin = top_ext_info.md_margin + bot_ext_info.md_margin
-        min_ext_w = max(min_ext_w, -(-(md_sp - md_margin) // fin_p), -(-(bot_imp_min_w + top_imp_min_w) // fin_p))
+        # step 1: get minimum extension width from vertical spacing rule
+        min_ext_w = max(0, -(-(bot_imp_min_w + top_imp_min_w) // fin_p))
+        for name in top_ext_info.margins:
+            tot_margin = top_ext_info.margins[name] + bot_ext_info.margins[name]
+            spy_min = mos_constants['%s_spy' % name]
+            min_ext_w = max(min_ext_w, -(-(spy_min - tot_margin) // fin_p))
 
         # step 2: get maximum extension width without dummy OD
-        od_space_nfin = (top_ext_info.od_margin + bot_ext_info.od_margin + fin_h) // fin_p
+        od_space_nfin = (top_ext_info.margins['od'] + bot_ext_info.margins['od'] + fin_h) // fin_p
         max_ext_w_no_od = od_sp_nfin_max - od_space_nfin
 
         # step 3: find minimum extension width with dummy OD
