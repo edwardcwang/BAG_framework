@@ -52,11 +52,11 @@ class MOSTechSOIGenericBC(MOSTech):
 
         # get via constants
         mos_lay_table = self.config['mos_layer_table']
-        via_g = self.mos_config['via_g']
-        via_d = self.mos_config['via_d']
-        via_b = self.mos_config['via_b']
-        imp_layers_info = self.mos_config['imp_layers'][mos_type]
-        thres_layers_info = self.mos_config['thres_layers'][mos_type][threshold]
+        via_g = mos_constants['via_g']
+        via_d = mos_constants['via_d']
+        via_b = mos_constants['via_b']
+        imp_layers_info = mos_constants['imp_layers'][mos_type]
+        thres_layers_info = mos_constants['thres_layers'][mos_type][threshold]
 
         # convert w to resolution units
         layout_unit = self.config['layout_unit']
@@ -443,10 +443,6 @@ class MOSTechSOIGenericBC(MOSTech):
         mos_lay_table = self.config['mos_layer_table']
         lay_name_table = self.config['layer_name']
 
-        gate_layers = self.mos_config['gate_layers']
-        via_g = self.mos_config['via_g']
-        via_b = self.mos_config['via_b']
-
         layout_info = mos_info['layout_info']
         sd_yc = mos_info['sd_yc']
 
@@ -459,6 +455,9 @@ class MOSTechSOIGenericBC(MOSTech):
         b_y_list = layout_info['b_y_list']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
+        gate_layers = mos_constants['gate_layers']
+        via_g = mos_constants['via_g']
+        via_b = mos_constants['via_b']
         w_conn_g = mos_constants['w_conn_g']
         w_conn_d = mos_constants['w_conn_d']
         w_delta = mos_constants['w_delta']

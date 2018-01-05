@@ -37,6 +37,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         self.mos_config = self.config[mos_entry_name]
         self.res = self.config['resolution']
         self.tech_info = tech_info
+        self._lch_unit = None
+        self._mos_constants = None
 
     @abc.abstractmethod
     def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
@@ -503,23 +505,26 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         tech_dict : Dict[str, Any]
             a technology constants dictionary.
         """
+        if lch_unit != self._lch_unit:
+            # handle general channel-length dependent constants
+            ans = self.mos_config.copy()
+            for key, data in ans.items():
+                if isinstance(data, dict) and 'lch' in data and 'val' in data:
+                    for lch, val in zip(data['lch'], data['val']):
+                        if lch_unit <= lch:
+                            ans[key] = val
+                            break
 
-        # handle general channel-length dependent constants
-        ans = {}
-        for key, data in self.mos_config.items():
-            if isinstance(data, dict) and 'lch' in data and 'val' in data:
-                for lch, val in zip(data['lch'], data['val']):
-                    if lch_unit <= lch:
-                        ans[key] = val
-                        break
+            # handle mos/dum_conn_w
+            ans['mos_conn_w'] = ans['w_conn_d'][self.get_mos_conn_layer()]
+            ans['dum_conn_w'] = ans['w_conn_d'][self.get_dum_conn_layer()]
+            # handle sd_pitch
+            offset, scale = ans['sd_pitch_constants']
+            ans['sd_pitch'] = offset + int(round(scale * lch_unit))
+            self._mos_constants = ans
+            self._lch_unit = lch_unit
 
-        # handle mos/dum_conn_w
-        ans['mos_conn_w'] = ans['w_conn_d'][self.get_mos_conn_layer()]
-        ans['dum_conn_w'] = ans['w_conn_d'][self.get_dum_conn_layer()]
-        # handle sd_pitch
-        offset, scale = ans['sd_pitch_constants']
-        ans['sd_pitch'] = offset + int(round(scale * lch_unit))
-        return ans
+        return self._mos_constants
 
     def get_analog_unit_fg(self):
         # type: () -> int
