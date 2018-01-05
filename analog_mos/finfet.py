@@ -159,6 +159,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         cpo_h = mos_constants['cpo_h']
         md_h_min = mos_constants['md_h_min']
         md_od_exty = mos_constants['md_od_exty']
+        md_spy = mos_constants['md_spy']
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
@@ -185,7 +186,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # makes layout algorithm much much easier.
 
         # get od_yb_max1, round to fin grid.
-        dum_md_yb = -bot_ext_info.md_margin + md_sp
+        dum_md_yb = -bot_ext_info.margins['md'] + md_spy
         od_yb_max1 = max(dum_md_yb + md_od_exty, cpo_h // 2 + cpo_od_sp)
         od_yb_max1 = -(-(od_yb_max1 - fin_p2 + fin_h2) // fin_p)
         # get od_yb_max2, round to fin grid.
@@ -193,7 +194,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_yb_max = max(od_yb_max1, -(-(od_yb_max - fin_p2 + fin_h2) // fin_p))
 
         # get od_yt_min1 assuming yt = 0, round to fin grid.
-        dum_md_yt = top_ext_info.md_margin - md_sp
+        dum_md_yt = top_ext_info.margins['md'] - md_spy
         od_yt_min1 = min(dum_md_yt - md_od_exty, -(cpo_h // 2) - cpo_od_sp)
         od_yt_min1 = (od_yt_min1 - fin_p2 - fin_h2) // fin_p
         # get od_yt_min2, round to fin grid.
@@ -271,7 +272,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         return [(od_yb, od_yt)], [(md_yb, md_yt)]
 
-    @classmethod
     def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info):
         # type: (int, int, int, ExtInfo, ExtInfo) -> Dict[str, Any]
         """Draw extension block.
