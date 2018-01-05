@@ -6,6 +6,7 @@
 from typing import TYPE_CHECKING, Dict, Any, Union, Tuple, List, Optional
 
 import abc
+from itertools import chain
 from collections import namedtuple
 
 from bag.layout.routing import RoutingGrid
@@ -458,6 +459,27 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             a dictionary of transistor row options.
         """
         pass
+
+    def get_mos_layers(self, mos_type, threshold):
+        # type: (str, str) -> List[Tuple[str, str]]
+        """Returns a list of implant/well/threshold layers.
+
+        Parameters
+        ----------
+        mos_type : str
+            the transistor type.  Valid values are 'pch', 'nch', 'ntap', and 'ptap'.
+        threshold : str
+            the threshold flavor.
+
+        Returns
+        -------
+        layer_list : List[Tuple[str, str]]
+            a list of implant/well/threshold layer names.
+        """
+        imp_layers_info = self.mos_config['imp_layers'][mos_type]
+        thres_layers_info = self.mos_config['thres_layers'][mos_type][threshold]
+
+        return list(chain(imp_layers_info.keys(), thres_layers_info.keys()))
 
     def get_mos_tech_constants(self, lch_unit):
         # type: (int) -> Dict[str, Any]

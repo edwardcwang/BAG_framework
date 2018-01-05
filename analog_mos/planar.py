@@ -3,7 +3,6 @@
 from typing import TYPE_CHECKING, Dict, Any, List, Optional
 
 import math
-from itertools import chain
 from collections import namedtuple
 
 from bag.math import lcm
@@ -130,8 +129,6 @@ class MOSTechPlanarGeneric(MOSTech):
         # get via constants
         via_g = self.mos_config['via_g']
         via_d = self.mos_config['via_d']
-        imp_layers_info = self.mos_config['imp_layers'][mos_type]
-        thres_layers_info = self.mos_config['thres_layers'][mos_type][threshold]
 
         ds_dummy = kwargs.get('ds_dummy', False)
 
@@ -188,7 +185,7 @@ class MOSTechPlanarGeneric(MOSTech):
         # compute extension information
         mtype = mos_type, mos_type
         lay_info_list = []
-        for imp_name in chain(imp_layers_info.keys(), thres_layers_info.keys()):
+        for imp_name in self.get_mos_layers(mos_type, threshold):
             lay_info_list.append((imp_name, 0, 0, blk_yt))
 
         ext_top_info = ExtInfo(
@@ -556,7 +553,7 @@ class MOSTechPlanarGeneric(MOSTech):
             for cur_yb, cur_yt, lay_info in [(imp_yb, imp_yt, imp_layers_info),
                                              (thres_yb, thres_yt, thres_layers_info)]:
 
-                for lay_name in chain(lay_info.keys()):
+                for lay_name in lay_info:
                     lay_info_list.append((lay_name, 0, cur_yb, cur_yt))
 
         # construct row_info_list, now we know where the implant splits
@@ -657,8 +654,6 @@ class MOSTechPlanarGeneric(MOSTech):
         """
         imp_od_ency = self.mos_config['imp_od_ency']
         via_d = self.mos_config['via_d']
-        imp_layers_info = self.mos_config['imp_layers'][sub_type]
-        thres_layers_info = self.mos_config['thres_layers'][sub_type][threshold]
         nw_dnw_ovl = self.mos_config['nw_dnw_ovl']
         nw_dnw_ext = self.mos_config['nw_dnw_ext']
         dnw_layers = self.mos_config['dnw_layers']
@@ -705,7 +700,7 @@ class MOSTechPlanarGeneric(MOSTech):
 
         # step 5: compute layout information
         lay_info_list = []
-        for imp_name in chain(imp_layers_info.keys(), thres_layers_info.keys()):
+        for imp_name in self.get_mos_layers(sub_type, threshold):
             lay_info_list.append((imp_name, 0, 0, blk_yt))
         if dnw_mode:
             for lay in dnw_layers:
@@ -974,7 +969,7 @@ class MOSTechPlanarGeneric(MOSTech):
                 for cur_yb, cur_yt, lay_info in [(imp_yb, imp_yt, imp_layers_info),
                                                  (thres_yb, thres_yt, thres_layers_info)]:
 
-                    for lay_name in chain(lay_info.keys()):
+                    for lay_name in lay_info:
                         new_lay_list.append((lay_name, 0, cur_yb, cur_yt))
             if dnw_mode:
                 # add DNW layers
