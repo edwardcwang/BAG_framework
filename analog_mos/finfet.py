@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING, Dict, Any, Union, List, Optional
 
+import abc
 from collections import namedtuple
 
 from bag.math import lcm
@@ -23,243 +24,86 @@ EdgeInfo = namedtuple('EdgeInfo', ['od_type'])
 FillInfo = namedtuple('FillInfo', ['layer', 'exc_layer', 'x_intv_list', 'y_intv_list'])
 
 
-class MOSTechCDSFFMPT(MOSTech):
-    tech_constants = dict(
-        # layout unit length in meters
-        layout_unit=1e-6,
-        # layout resolution
-        resolution=0.001,
-        # fin height.
-        fin_h=14,
-        # fin pitch.
-        fin_pitch=48,
-        # space between MP and CPO
-        mp_cpo_sp=19,
-        # MP height
-        mp_h=40,
-        # MP and PO overlap
-        mp_po_ovl=16,
-        # space between MP and MD
-        mp_md_sp=13,
-        # vertical space between adjacent MP
-        mp_spy=34,
-        # MD width
-        md_w=40,
-        # MD space
-        md_sp=46,
-        # space between MD and OD
-        md_od_spy=40,
-        # extension of MD over OD
-        md_od_exty=20,
-        # minimum MD height
-        md_h_min=68,
-        # space between VIA0
-        v0_sp=32,
-        # space between VIA1X
-        vx_sp=42,
-        # CPO height
-        cpo_h=60,
-        # space between CPO and OD
-        cpo_od_sp=20,
-        # minimum CPO vertical space
-        cpo_spy=90,
-        # enclosure of CPO over PO
-        cpo_po_ency=34,
-        # maximum space between OD in fin pitch.
-        od_sp_nfin_max=11,
-        # minimum number of fins in OD
-        od_nfin_min=2,
-        # maximum number of fins in OD
-        od_nfin_max=20,
-        # minimum number of fingers for dummy OD
-        dum_od_fg_min=2,
-        # finger space between dummy OD
-        dum_od_fg_space=2,
-        # vertical enclosure of PP/NP/NW over OD
-        imp_od_ency=45,
-        # horizontal enclosure of PP/NP/NW over OD
-        imp_od_encx=65,
-        # minimum PP/NP width.
-        imp_wmin=52,
-        # minimum M1X area
-        mx_area_min=6176,
-        # maximum space between metal 1.
-        m1_sp_max=1600,
-        # space between metal 1 and boundary.
-        m1_sp_bnd=800,
-        # metal 1 fill minimum length
-        m1_fill_lmin=200,
-        # metal 1 fill maximum length
-        m1_fill_lmax=400,
-        # minimum M1X line-end spacing
-        mx_spy_min=64,
-        # M1 dummy horizontal connection height
-        m1_dum_h=40,
-        # drain/source M2 vertical spacing
-        m2_spy_ds=48,
-    )
+class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
+    """Base class for implementations of MOSTech in Finfet technologies.
 
-    @classmethod
-    def get_mos_layers(cls, mos_type, threshold):
-        """Returns a list of implant/well/threshold layers.
+    This class for now handles all DRC rules and drawings related to PO, OD, CPO,
+    and MD. The rest needs to be implemented by subclasses.
+    """
 
-        Parameters
-        ----------
-        mos_type : str
-            the transistor type.  Valid values are 'pch', 'nch', 'ntap', and 'ptap'.
-        threshold : str
-            the threshold flavor.
+    def __init__(self, config, tech_info):
+        # type: (Dict[str, Any], TechInfoConfig) -> None
+        MOSTech.__init__(self, config, tech_info)
 
-        Returns
-        -------
-        layer_list : list[Tuple[str, str]]
-            a list of implant/well/threshold layer names.
-        """
-        lay_list = [('FinArea', 'fin48')]
-        if mos_type == 'pch' or mos_type == 'ntap':
-            lay_list.append(('NWell', 'drawing'))
+    def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
+        # type: (int, int, bool, **kwargs) -> Dict[str, Any]
 
-        mtype = 'P' if mos_type == 'pch' or mos_type == 'ptap' else 'N'
+        dnw_margins = self.config['dnw_margins']
 
-        if threshold == 'lvt' or threshold == 'fast':
-            thres = '%slvt' % mtype
-        elif threshold == 'svt' or threshold == 'standard':
-            thres = '%ssvt' % mtype
-        elif threshold == 'hvt' or threshold == 'low_power':
-            thres = '%shvt' % mtype
-        else:
-            raise Exception('Unrecognized threshold %s' % threshold)
+        imp_od_encx = self.mos_config['imp_od_encx']
+        nw_dnw_ovl = self.mos_config['nw_dnw_ovl']
+        nw_dnw_ext = self.mos_config['nw_dnw_ext']
+        cpo_po_extx = self.mos_config['cpo_po_extx']
 
-        lay_list.append((thres, 'drawing'))
-        return lay_list
-
-    @classmethod
-    def get_gate_via_info(cls, lch_unit):
-        # type: (int) -> Dict[str, Any]
-        """Get gate via information"""
-        via_info = dict(
-            # gate via height
-            h=[32, 32, 32],
-            # gate via width
-            w=[32, 32, 32],
-            # bottom metal horizontal enclosure
-            bot_encx=[18, 4, 34],
-            # bottom metal vertical enclosure
-            bot_ency=[4, 40, 2],
-            # top metal horizontal enclosure
-            top_encx=[4, 34, 4],
-            # top metal vertical enclosure
-            top_ency=[40, 2, 40],
-        )
-
-        mx_area_min = cls.tech_constants['mx_area_min']
-        md_w = cls.tech_constants['md_w']
-
-        v0_h, v1_h, v2_h = via_info['h']
-        v0_m1_ency, v1_m2_ency, v2_m3_ency = via_info['top_ency']
-
-        mx_h_min = -(-mx_area_min // md_w)  # type: int
-        m1_h = max(v0_h + 2 * v0_m1_ency, mx_h_min)
-        m2_h = v1_h + 2 * v1_m2_ency
-        m3_h = max(v2_h + 2 * v2_m3_ency, mx_h_min)
-
-        via_info['m1_h'] = m1_h
-        via_info['m2_h'] = m2_h
-        via_info['m3_h'] = m3_h
-
-        return via_info
-
-    @classmethod
-    def get_ds_via_info(cls, lch_unit, w, compact=False):
-        # type: (int, int) -> Dict[str, Any]
-        """Get drain_source via information"""
-        via_info = dict(
-            # gate via height
-            h=[32, 64, 64],
-            # gate via width
-            w=[32, 32, 32],
-            # bottom metal horizontal enclosure
-            bot_encx=[3, 4, 10],
-            # bottom metal vertical enclosure
-            bot_ency=[18, 20, 10],
-            # top metal horizontal enclosure
-            top_encx=[4, 10, 4],
-            # top metal vertical enclosure
-            top_ency=[40, 10, 20],
-        )
-
-        # compute number of V0s and height of various metals
-        fin_h = cls.tech_constants['fin_h']
-        fin_p = cls.tech_constants['fin_pitch']
-        md_od_exty = cls.tech_constants['md_od_exty']
-        md_h_min = cls.tech_constants['md_h_min']
-        mx_area_min = cls.tech_constants['mx_area_min']
-        v0_sp = cls.tech_constants['v0_sp']
-        md_w = cls.tech_constants['md_w']
-        m2_spy_ds = cls.tech_constants['m2_spy_ds']
-
-        v0_h = via_info['h'][0]
-        v0_md_ency = via_info['bot_ency'][0]
-        v0_m1_ency = via_info['top_ency'][0]
-        od_h = (w - 1) * fin_p + fin_h
-        md_h = max(od_h + 2 * md_od_exty, md_h_min)
-        num_v0 = (md_h - v0_md_ency * 2 + v0_sp) // (v0_sp + v0_h)
-
-        # M1 height based on V0 enclosure
-        v0_harr = num_v0 * (v0_h + v0_sp) - v0_sp
-        m1_h = v0_harr + 2 * v0_m1_ency
-
-        # M1 height based on the fact that we need to fit two M2 wires
-        v1_h = via_info['h'][1]
-        v1_m1_ency = via_info['bot_ency'][1]
-        v1_m2_ency = via_info['top_ency'][1]
-        m2_h = v1_h + 2 * v1_m2_ency
-
-        m1_h = max(m1_h, 2 * v1_m1_ency + 2 * v1_h + 2 * v1_m2_ency + m2_spy_ds)
-
-        # make sure M1 passes minimum area rule
-        mx_h_min = -(-mx_area_min // md_w)  # type: int
-        m1_h = max(m1_h, mx_h_min)
-
-        # get M3 height
-        v2_h = via_info['h'][2]
-        v2_m3_ency = via_info['top_ency'][2]
-
-        m3_h = max(v2_h + 2 * v2_m3_ency, mx_h_min)
-
-        via_info['num_v0'] = num_v0
-        via_info['md_h'] = md_h
-        via_info['m1_h'] = m1_h
-        via_info['m2_h'] = m2_h
-        via_info['m3_h'] = m3_h
-
-        return via_info
-
-    @classmethod
-    def get_edge_tech_constants(cls, lch_unit):
-
-        imp_od_encx = cls.tech_constants['imp_od_encx']
-
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
+        edge_margin = mos_constants['edge_margin']
+        fg_gr_min = mos_constants['fg_gr_min']
+        fg_outer_min = mos_constants['fg_outer_min']
 
-        # calculate number of fingers needed around OD To satisfy implant enclosure rule
-        od_fg_margin = -(-(imp_od_encx - (sd_pitch - lch_unit) // 2) // sd_pitch)
+        is_sub_ring = kwargs.get('is_sub_ring', False)
+        dnw_mode = kwargs.get('dnw_mode', '')
 
-        constants = dict(
-            gr_nf_min=2,
-            outer_fg=3,
-            gr_outer_fg=0,
-            gr_sub_fg_margin=od_fg_margin,
-            gr_sep_fg=od_fg_margin + 1,
+        if 0 < guard_ring_nf < fg_gr_min:
+            raise ValueError('guard_ring_nf = %d < %d' % (guard_ring_nf, fg_gr_min))
+        if is_sub_ring and guard_ring_nf <= 0:
+            raise ValueError('guard_ring_nf = %d must be positive in substrate ring' % guard_ring_nf)
+
+        # step 0: figure out implant/OD enclosure and outer edge margin
+        outer_margin = edge_margin
+        if dnw_mode:
+            od_w = (fg_gr_min + 1) * sd_pitch + lch_unit
+            imp_od_encx = max(imp_od_encx, (nw_dnw_ovl + nw_dnw_ext - od_w) // 2)
+            outer_margin = dnw_margins[dnw_mode] - nw_dnw_ext
+
+        # calculate implant left X coordinate distance from right edge
+        od_delta = (sd_pitch + lch_unit) // 2
+        imp_delta = od_delta + imp_od_encx
+
+        # compute number of finger needed to have correct implant enclosure
+        fg_od_margin = -(-imp_delta // sd_pitch)
+        fg_outer = max(fg_od_margin, fg_outer_min)
+
+        if guard_ring_nf == 0:
+            fg_gr_sub = 0
+            fg_gr_sep = 0
+        else:
+            if is_sub_ring:
+                fg_gr_sep = -(-edge_margin // sd_pitch)
+            else:
+                fg_gr_sep = fg_outer
+            fg_outer = 0
+            fg_gr_sub = guard_ring_nf + 2 * fg_od_margin
+
+        # compute edge margin and cpo_xl
+        if is_end:
+            edge_margin = cpo_xl = 0
+        else:
+            edge_margin = outer_margin
+            cpo_xl = outer_margin + (sd_pitch - lch_unit) // 2 - cpo_po_extx
+
+        return dict(
+            edge_num_fg=fg_outer + fg_gr_sub + fg_gr_sep,
+            edge_margin=edge_margin,
+            cpo_xl=cpo_xl,
+            fg_outer=fg_outer,
+            fg_gr_sub=fg_gr_sub,
+            fg_gr_sep=fg_gr_sep,
+            fg_od_margin=fg_od_margin,
         )
 
-        constants['cpo_extx'] = 34
-
-        return constants
-
     @classmethod
-    def get_mos_tech_constants(cls, lch_unit):
+    def get_mos_tech_constants(self, lch_unit):
         # type: (int) -> Dict[str, Any]
         if lch_unit == 18:
             constants = dict(
@@ -271,131 +115,83 @@ class MOSTechCDSFFMPT(MOSTech):
         constants['laygo_num_sd_per_track'] = constants['num_sd_per_track'] = 1
 
         # set MD related parameters
-        md_w = cls.tech_constants['md_w']
+        md_w = self.tech_constants['md_w']
         constants['laygo_conn_w'] = constants['mos_conn_w'] = constants['dum_conn_w'] = constants['m1_w'] = md_w
         return constants
 
     @classmethod
-    def get_analog_unit_fg(cls):
+    def get_analog_unit_fg(self):
         # type: () -> int
         return 2
 
     @classmethod
-    def draw_zero_extension(cls):
+    def draw_zero_extension(self):
         return True
 
     @classmethod
-    def floating_dummy(cls):
+    def floating_dummy(self):
         return False
 
     @classmethod
-    def get_dum_conn_pitch(cls):
+    def get_dum_conn_pitch(self):
         # type: () -> int
         return 1
 
     @classmethod
-    def abut_analog_mos(cls):
+    def abut_analog_mos(self):
         # type: () -> bool
         return True
 
     @classmethod
-    def get_substrate_ring_lch(cls):
+    def get_substrate_ring_lch(self):
         # type: () -> float
         raise NotImplementedError('Not implemented')
 
     @classmethod
-    def get_dum_conn_layer(cls):
+    def get_dum_conn_layer(self):
         # type: () -> int
         return 1
 
     @classmethod
-    def get_mos_conn_layer(cls):
+    def get_mos_conn_layer(self):
         # type: () -> int
         return 3
 
     @classmethod
-    def get_dig_conn_layer(cls):
+    def get_dig_conn_layer(self):
         # type: () -> int
         return 1
 
     @classmethod
-    def get_dig_top_layer(cls):
+    def get_dig_top_layer(self):
         # type: () -> int
         return 3
 
     @classmethod
-    def get_min_fg_decap(cls, lch_unit):
+    def get_min_fg_decap(self, lch_unit):
         # type: (int) -> int
         return 2
 
     @classmethod
-    def get_min_fg_sep(cls, lch_unit):
+    def get_min_fg_sep(self, lch_unit):
         # type: (int) -> int
         return 2
 
     @classmethod
-    def get_tech_constant(cls, name):
+    def get_tech_constant(self, name):
         # type: (str) -> Any
-        return cls.tech_constants[name]
+        return self.tech_constants[name]
 
     @classmethod
-    def get_mos_pitch(cls, unit_mode=False):
+    def get_mos_pitch(self, unit_mode=False):
         # type: (bool) -> Union[float, int]
-        ans = cls.tech_constants['fin_pitch']
+        ans = self.tech_constants['fin_pitch']
         if unit_mode:
             return ans
-        return ans * cls.tech_constants['resolution']
+        return ans * self.tech_constants['resolution']
 
     @classmethod
-    def get_edge_info(cls, lch_unit, guard_ring_nf, is_end, **kwargs):
-        # type: (int, int, bool, **kwargs) -> Dict[str, Any]
-
-        edge_constants = cls.get_edge_tech_constants(lch_unit)
-        cpo_extx = edge_constants['cpo_extx']
-        gr_nf_min = edge_constants['gr_nf_min']
-        outer_fg = edge_constants['outer_fg']
-        gr_outer_fg = edge_constants['gr_outer_fg']
-        gr_sub_fg_margin = edge_constants['gr_sub_fg_margin']
-        gr_sep_fg = edge_constants['gr_sep_fg']
-
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
-        sd_pitch = mos_constants['sd_pitch']
-
-        if 0 < guard_ring_nf < gr_nf_min:
-            raise ValueError('guard_ring_nf = %d < %d' % (guard_ring_nf, gr_nf_min))
-
-        if is_end:
-            # compute how much to shift to the right to make room
-            # for implant layers enclosure, and also be fit in block pitch
-
-            # compute CPO X coordinate, and whether we need to shift PO over by 1.
-            left_margin = (sd_pitch - lch_unit) // 2
-            max_encx = max(left_margin, cpo_extx)
-            edge_margin = max_encx - left_margin
-            cpo_xl = min(left_margin - cpo_extx, 0)
-        else:
-            edge_margin = cpo_xl = 0
-
-        # compute total edge block width
-        if guard_ring_nf == 0:
-            fg_tot = outer_fg
-            gr_sub_fg = 0
-        else:
-            outer_fg = gr_outer_fg
-            gr_sub_fg = guard_ring_nf + 2 + 2 * gr_sub_fg_margin
-            fg_tot = outer_fg + gr_sub_fg + gr_sep_fg
-
-        return dict(
-            edge_num_fg=fg_tot,
-            edge_margin=edge_margin,
-            cpo_xl=cpo_xl,
-            outer_fg=outer_fg,
-            gr_sub_fg=gr_sub_fg,
-            gr_sep_fg=gr_sep_fg,
-        )
-
-    @classmethod
-    def get_mos_info(cls, lch_unit, w, mos_type, threshold, fg, **kwargs):
+    def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
         # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
         """A single row of transistor, which enough margin to draw gate/drain via.
 
@@ -412,27 +208,27 @@ class MOSTechCDSFFMPT(MOSTech):
         #. compute extension information, then return layout information dictionary.
         """
 
-        fin_h = cls.tech_constants['fin_h']
-        fin_p = cls.tech_constants['fin_pitch']
-        mp_cpo_sp = cls.tech_constants['mp_cpo_sp']
-        cpo_od_sp = cls.tech_constants['cpo_od_sp']
-        md_w = cls.tech_constants['md_w']
-        cpo_h = cls.tech_constants['cpo_h']
-        mp_h = cls.tech_constants['mp_h']
-        mx_spy_min = cls.tech_constants['mx_spy_min']
+        fin_h = self.tech_constants['fin_h']
+        fin_p = self.tech_constants['fin_pitch']
+        mp_cpo_sp = self.tech_constants['mp_cpo_sp']
+        cpo_od_sp = self.tech_constants['cpo_od_sp']
+        md_w = self.tech_constants['md_w']
+        cpo_h = self.tech_constants['cpo_h']
+        mp_h = self.tech_constants['mp_h']
+        mx_spy_min = self.tech_constants['mx_spy_min']
 
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
         m3_w = mos_constants['mos_conn_w']
 
-        gate_via_info = cls.get_gate_via_info(lch_unit)
+        gate_via_info = self.get_gate_via_info(lch_unit)
         gv0_h, gv1_h, gv2_h = gate_via_info['h']
         g_m1_ency, g_m2_ency, g_m3_ency = gate_via_info['top_ency']
         g_m1_h = gate_via_info['m1_h']
         g_m2_h = gate_via_info['m2_h']
         g_m3_h = gate_via_info['m3_h']
 
-        ds_via_info = cls.get_ds_via_info(lch_unit, w)
+        ds_via_info = self.get_ds_via_info(lch_unit, w)
         dv0_h, dv1_h, dv2_h = ds_via_info['h']
         ds_md_bot_ency, ds_m1_bot_ency, ds_m2_bot_ency = ds_via_info['bot_ency']
         d_m1_ency, d_m2_ency, d_m3_ency = ds_via_info['top_ency']
@@ -521,7 +317,7 @@ class MOSTechCDSFFMPT(MOSTech):
 
         # step 6: compute layout information
         lay_info_list = []
-        for lay in cls.get_mos_layers(mos_type, threshold):
+        for lay in self.get_mos_layers(mos_type, threshold):
             lay_info_list.append((lay, 0, blk_yb, blk_yt))
 
         sub_type = 'ptap' if mos_type == 'nch' else 'ntap'
@@ -570,7 +366,7 @@ class MOSTechCDSFFMPT(MOSTech):
         )
 
     @classmethod
-    def get_valid_extension_widths(cls, lch_unit, top_ext_info, bot_ext_info):
+    def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info):
         # type: (int, ExtInfo, ExtInfo) -> List[int]
         """Compute a list of valid extension widths.
 
@@ -596,18 +392,18 @@ class MOSTechCDSFFMPT(MOSTech):
         #. Compute the minimum extension width that we can draw DRC clean dummy OD.
         #. Return the list of valid extension widths
         """
-        fin_h = cls.tech_constants['fin_h']  # type: int
-        fin_p = cls.tech_constants['fin_pitch']  # type: int
-        od_sp_nfin_max = cls.tech_constants['od_sp_nfin_max']
-        od_nfin_min = cls.tech_constants['od_nfin_min']
-        cpo_od_sp = cls.tech_constants['cpo_od_sp']  # type: int
-        cpo_spy = cls.tech_constants['cpo_spy']
-        md_od_exty = cls.tech_constants['md_od_exty']
-        imp_od_ency = cls.tech_constants['imp_od_ency']
-        mx_spy_min = cls.tech_constants['mx_spy_min']  # type: int
-        md_sp = cls.tech_constants['md_sp']  # type: int
-        cpo_h = cls.tech_constants['cpo_h']
-        md_h_min = cls.tech_constants['md_h_min']
+        fin_h = self.tech_constants['fin_h']  # type: int
+        fin_p = self.tech_constants['fin_pitch']  # type: int
+        od_sp_nfin_max = self.tech_constants['od_sp_nfin_max']
+        od_nfin_min = self.tech_constants['od_nfin_min']
+        cpo_od_sp = self.tech_constants['cpo_od_sp']  # type: int
+        cpo_spy = self.tech_constants['cpo_spy']
+        md_od_exty = self.tech_constants['md_od_exty']
+        imp_od_ency = self.tech_constants['imp_od_ency']
+        mx_spy_min = self.tech_constants['mx_spy_min']  # type: int
+        md_sp = self.tech_constants['md_sp']  # type: int
+        cpo_h = self.tech_constants['cpo_h']
+        md_h_min = self.tech_constants['md_h_min']
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
@@ -668,18 +464,18 @@ class MOSTechCDSFFMPT(MOSTech):
             return width_list
 
     @classmethod
-    def _get_ext_dummy_loc(cls, lch_unit, bot_od_idx, top_od_idx, bot_cpo_yt, top_cpo_yb, bot_md_yt, top_md_yb,
+    def _get_ext_dummy_loc(self, lch_unit, bot_od_idx, top_od_idx, bot_cpo_yt, top_cpo_yb, bot_md_yt, top_md_yb,
                            bot_imp_y, top_imp_y):
         """ calculate extension dummy location if we only draw one dummy. """
-        cpo_od_sp = cls.tech_constants['cpo_od_sp']
-        fin_p = cls.tech_constants['fin_pitch']
-        fin_h = cls.tech_constants['fin_h']
-        od_nfin_min = cls.tech_constants['od_nfin_min']
-        md_od_exty = cls.tech_constants['md_od_exty']
-        imp_od_ency = cls.tech_constants['imp_od_ency']
-        od_sp_nfin_max = cls.tech_constants['od_sp_nfin_max']
-        md_sp = cls.tech_constants['md_sp']
-        md_h_min = cls.tech_constants['md_h_min']
+        cpo_od_sp = self.tech_constants['cpo_od_sp']
+        fin_p = self.tech_constants['fin_pitch']
+        fin_h = self.tech_constants['fin_h']
+        od_nfin_min = self.tech_constants['od_nfin_min']
+        md_od_exty = self.tech_constants['md_od_exty']
+        imp_od_ency = self.tech_constants['imp_od_ency']
+        od_sp_nfin_max = self.tech_constants['od_sp_nfin_max']
+        md_sp = self.tech_constants['md_sp']
+        md_h_min = self.tech_constants['md_h_min']
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
@@ -721,7 +517,7 @@ class MOSTechCDSFFMPT(MOSTech):
         return [(od_yb, od_yt)], [(md_yb, md_yt)]
 
     @classmethod
-    def get_ext_info(cls, lch_unit, w, fg, top_ext_info, bot_ext_info):
+    def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info):
         # type: (int, int, int, ExtInfo, ExtInfo) -> Dict[str, Any]
         """Draw extension block.
 
@@ -755,19 +551,19 @@ class MOSTechCDSFFMPT(MOSTech):
         6. top and bottom are different transistor.
             split, force to use transistor implant to avoid constraint 1.
         """
-        md_od_exty = cls.tech_constants['md_od_exty']
-        fin_h = cls.tech_constants['fin_h']
-        fin_p = cls.tech_constants['fin_pitch']
-        od_nfin_min = cls.tech_constants['od_nfin_min']
-        od_nfin_max = cls.tech_constants['od_nfin_max']
-        od_sp_nfin_max = cls.tech_constants['od_sp_nfin_max']
-        cpo_spy = cls.tech_constants['cpo_spy']
-        imp_od_ency = cls.tech_constants['imp_od_ency']
-        md_h_min = cls.tech_constants['md_h_min']
-        cpo_h = cls.tech_constants['cpo_h']
-        md_w = cls.tech_constants['md_w']
+        md_od_exty = self.tech_constants['md_od_exty']
+        fin_h = self.tech_constants['fin_h']
+        fin_p = self.tech_constants['fin_pitch']
+        od_nfin_min = self.tech_constants['od_nfin_min']
+        od_nfin_max = self.tech_constants['od_nfin_max']
+        od_sp_nfin_max = self.tech_constants['od_sp_nfin_max']
+        cpo_spy = self.tech_constants['cpo_spy']
+        imp_od_ency = self.tech_constants['imp_od_ency']
+        md_h_min = self.tech_constants['md_h_min']
+        cpo_h = self.tech_constants['cpo_h']
+        md_w = self.tech_constants['md_w']
 
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         m1_w = mos_constants['mos_conn_w']
         sd_pitch = mos_constants['sd_pitch']
 
@@ -818,9 +614,9 @@ class MOSTechCDSFFMPT(MOSTech):
         one_cpo = (w < cpo2_w)
 
         # calculate fill
-        m1_sp_max = cls.tech_constants['m1_sp_max']
-        m1_fill_lmin = cls.tech_constants['m1_fill_lmin']
-        m1_fill_lmax = cls.tech_constants['m1_fill_lmax']
+        m1_sp_max = self.tech_constants['m1_sp_max']
+        m1_fill_lmin = self.tech_constants['m1_fill_lmin']
+        m1_fill_lmax = self.tech_constants['m1_fill_lmax']
         area_yb = -bot_ext_info.m1_margin
         area_yt = yt + top_ext_info.m1_margin
         fill_y_list = fill_symmetric_const_space(area_yt - area_yb, m1_sp_max, m1_fill_lmin,
@@ -871,7 +667,7 @@ class MOSTechCDSFFMPT(MOSTech):
                 top_md_yb = yt + top_ext_info.md_margin
                 bot_imp_y = bot_ext_info.imp_min_w
                 top_imp_y = yt - top_ext_info.imp_min_w
-                od_y_list, md_y_list = cls._get_ext_dummy_loc(lch_unit, bot_od_yt_fin, top_od_yb_fin,
+                od_y_list, md_y_list = self._get_ext_dummy_loc(lch_unit, bot_od_yt_fin, top_od_yb_fin,
                                                               bot_cpo_yt, top_cpo_yb, bot_md_yt, top_md_yb,
                                                               bot_imp_y, top_imp_y)
             else:
@@ -971,7 +767,7 @@ class MOSTechCDSFFMPT(MOSTech):
                       (top_mtype, top_thres, imp_ysep, yt, imp_ysep, yt)]
 
         for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
-            for lay in cls.get_mos_layers(mtype, thres):
+            for lay in self.get_mos_layers(mtype, thres):
                 if lay[0].startswith('VT'):
                     cur_yb, cur_yt = thres_yb, thres_yt
                 else:
@@ -1019,15 +815,15 @@ class MOSTechCDSFFMPT(MOSTech):
         )
 
     @classmethod
-    def get_sub_ring_ext_info(cls, sub_type, height, fg, end_ext_info, **kwargs):
+    def get_sub_ring_ext_info(self, sub_type, height, fg, end_ext_info, **kwargs):
         # type: (str, int, int, ExtInfo, **kwargs) -> Dict[str, Any]
         # TODO: add actual implementation.
         raise NotImplementedError('Not implemented yet.')
 
     @classmethod
-    def _get_sub_m1_y(cls, lch_unit, od_yc, od_nfin):
+    def _get_sub_m1_y(self, lch_unit, od_yc, od_nfin):
         """Get M1 Y coordinates for substrate connection."""
-        via_info = cls.get_ds_via_info(lch_unit, od_nfin)
+        via_info = self.get_ds_via_info(lch_unit, od_nfin)
         m1_h = via_info['m1_h']
 
         m1_yb = od_yc - m1_h // 2
@@ -1036,7 +832,7 @@ class MOSTechCDSFFMPT(MOSTech):
         return m1_yb, m1_yt
 
     @classmethod
-    def get_substrate_info(cls, lch_unit, w, sub_type, threshold, fg, blk_pitch=1, **kwargs):
+    def get_substrate_info(self, lch_unit, w, sub_type, threshold, fg, blk_pitch=1, **kwargs):
         # type: (int, int, str, str, int, int, **kwargs) -> Dict[str, Any]
         """Get substrate layout information.
 
@@ -1051,21 +847,21 @@ class MOSTechCDSFFMPT(MOSTech):
         #. make sure MD/M1 are centered on OD.
         """
 
-        md_od_exty = cls.tech_constants['md_od_exty']
-        fin_h = cls.tech_constants['fin_h']
-        fin_p = cls.tech_constants['fin_pitch']
-        mp_h = cls.tech_constants['mp_h']
-        mp_cpo_sp = cls.tech_constants['mp_cpo_sp']
-        mp_md_sp = cls.tech_constants['mp_md_sp']
-        mp_spy = cls.tech_constants['mp_spy']
-        cpo_h = cls.tech_constants['cpo_h']
-        md_h_min = cls.tech_constants['md_h_min']
-        md_w = cls.tech_constants['md_w']
+        md_od_exty = self.tech_constants['md_od_exty']
+        fin_h = self.tech_constants['fin_h']
+        fin_p = self.tech_constants['fin_pitch']
+        mp_h = self.tech_constants['mp_h']
+        mp_cpo_sp = self.tech_constants['mp_cpo_sp']
+        mp_md_sp = self.tech_constants['mp_md_sp']
+        mp_spy = self.tech_constants['mp_spy']
+        cpo_h = self.tech_constants['cpo_h']
+        md_h_min = self.tech_constants['md_h_min']
+        md_w = self.tech_constants['md_w']
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
 
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
 
         # figure out od/md height
@@ -1101,7 +897,7 @@ class MOSTechCDSFFMPT(MOSTech):
 
         # step 3.5: update MP Y coordinates, compute M1 upper and lower bound
         # bottom MP
-        via_info = cls.get_ds_via_info(lch_unit, w)
+        via_info = self.get_ds_via_info(lch_unit, w)
         gv0_h = via_info['h'][0]
         top_ency = via_info['top_ency'][0]
         gm1_delta = gv0_h // 2 + top_ency
@@ -1119,7 +915,7 @@ class MOSTechCDSFFMPT(MOSTech):
         po_yb, po_yt = 0, cpo_top_yc
 
         # step 5: compute layout information
-        lay_info_list = [(lay, 0, po_yb, po_yt) for lay in cls.get_mos_layers(sub_type, threshold)]
+        lay_info_list = [(lay, 0, po_yb, po_yt) for lay in self.get_mos_layers(sub_type, threshold)]
         lr_edge_info = EdgeInfo(od_type='sub')
 
         ds_conn_y = (g_m1_yb, g_m1_yt)
@@ -1191,7 +987,7 @@ class MOSTechCDSFFMPT(MOSTech):
         )
 
     @classmethod
-    def get_analog_end_info(cls, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
+    def get_analog_end_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
         # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
         """Get substrate end layout information
 
@@ -1204,16 +1000,16 @@ class MOSTechCDSFFMPT(MOSTech):
         #. Compute CPO location, and PO coordinates if we need to draw PO.
         #. Compute implant location.
         """
-        fin_h = cls.tech_constants['fin_h']
-        fin_p = cls.tech_constants['fin_pitch']
-        cpo_po_ency = cls.tech_constants['cpo_po_ency']
-        md_w = cls.tech_constants['md_w']
-        cpo_h = cls.tech_constants['cpo_h']
+        fin_h = self.tech_constants['fin_h']
+        fin_p = self.tech_constants['fin_pitch']
+        cpo_po_ency = self.tech_constants['cpo_po_ency']
+        md_w = self.tech_constants['md_w']
+        cpo_h = self.tech_constants['cpo_h']
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
 
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
 
         lr_edge_info = EdgeInfo(od_type='sub')
@@ -1246,7 +1042,7 @@ class MOSTechCDSFFMPT(MOSTech):
                 adj_edge_infos = []
 
             lay_info_list = [(('CutPoly', 'drawing'), 0, cpo_bot_yb, cpo_bot_yt)]
-            for lay in cls.get_mos_layers(sub_type, threshold):
+            for lay in self.get_mos_layers(sub_type, threshold):
                 if lay[0] == 'FinArea':
                     yb, yt = finbound_yb, finbound_yt
                 else:
@@ -1291,16 +1087,16 @@ class MOSTechCDSFFMPT(MOSTech):
         )
 
     @classmethod
-    def get_sub_ring_end_info(cls, sub_type, threshold, fg, end_ext_info, **kwargs):
+    def get_sub_ring_end_info(self, sub_type, threshold, fg, end_ext_info, **kwargs):
         # type: (str, str, int, ExtInfo, **kwargs) -> Dict[str, Any]
         # TODO: add actual implementation
         raise NotImplementedError('not implemented yet.')
 
     @classmethod
-    def get_outer_edge_info(cls, guard_ring_nf, layout_info, is_end, adj_blk_info):
+    def get_outer_edge_info(self, guard_ring_nf, layout_info, is_end, adj_blk_info):
         # type: (int, Dict[str, Any], bool, Optional[Any]) -> Dict[str, Any]
         lch_unit = layout_info['lch_unit']
-        edge_info = cls.get_edge_info(lch_unit, guard_ring_nf, is_end)
+        edge_info = self.get_edge_info(lch_unit, guard_ring_nf, is_end)
         outer_fg = edge_info['outer_fg']
         cpo_xl = edge_info['cpo_xl']
         # compute new row_info_list
@@ -1321,7 +1117,7 @@ class MOSTechCDSFFMPT(MOSTech):
             # compute substrate implant layers
             for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
                 sub_type = 'ptap' if mtype == 'nch' or mtype == 'ptap' else 'ntap'
-                for lay in cls.get_mos_layers(sub_type, thres):
+                for lay in self.get_mos_layers(sub_type, thres):
                     cur_yb, cur_yt = imp_yb, imp_yt
                     new_lay_list.append((lay, 0, cur_yb, cur_yt))
 
@@ -1343,7 +1139,7 @@ class MOSTechCDSFFMPT(MOSTech):
         # compute new fill information
         sd_pitch = layout_info['sd_pitch']
         if outer_fg > 0:
-            mos_constants = cls.get_mos_tech_constants(lch_unit)
+            mos_constants = self.get_mos_tech_constants(lch_unit)
             m1_w = mos_constants['mos_conn_w']
             x_intv_list = [(sd_pitch - m1_w // 2, sd_pitch + m1_w // 2)]
         else:
@@ -1370,11 +1166,11 @@ class MOSTechCDSFFMPT(MOSTech):
         )
 
     @classmethod
-    def get_gr_sub_info(cls, guard_ring_nf, layout_info):
+    def get_gr_sub_info(self, guard_ring_nf, layout_info):
         # type: (int, Dict[str, Any]) -> Dict[str, Any]
 
         lch_unit = layout_info['lch_unit']
-        edge_constants = cls.get_edge_tech_constants(lch_unit)
+        edge_constants = self.get_edge_tech_constants(lch_unit)
         gr_nf_min = edge_constants['gr_nf_min']
         gr_sub_fg_margin = edge_constants['gr_sub_fg_margin']
 
@@ -1402,7 +1198,7 @@ class MOSTechCDSFFMPT(MOSTech):
             # compute substrate implant layers
             for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
                 sub_type = 'ptap' if mtype == 'nch' or mtype == 'ptap' else 'ntap'
-                for lay in cls.get_mos_layers(sub_type, thres):
+                for lay in self.get_mos_layers(sub_type, thres):
                     cur_yb, cur_yt = imp_yb, imp_yt
                     new_lay_list.append((lay, 0, cur_yb, cur_yt))
 
@@ -1434,11 +1230,11 @@ class MOSTechCDSFFMPT(MOSTech):
         )
 
     @classmethod
-    def get_gr_sep_info(cls, layout_info, adj_blk_info):
+    def get_gr_sep_info(self, layout_info, adj_blk_info):
         # type: (Dict[str, Any], Any) -> Dict[str, Any]
 
         lch_unit = layout_info['lch_unit']
-        edge_constants = cls.get_edge_tech_constants(lch_unit)
+        edge_constants = self.get_edge_tech_constants(lch_unit)
         fg = edge_constants['gr_sep_fg']
 
         # compute new row_info_list
@@ -1457,7 +1253,7 @@ class MOSTechCDSFFMPT(MOSTech):
             new_adj_list.append(adj_info._replace(po_types=po_types))
 
         # compute new fill information
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         m1_w = mos_constants['mos_conn_w']
         x_intv_list = [(-m1_w // 2, m1_w // 2)]
         # noinspection PyProtectedMember
@@ -1482,7 +1278,7 @@ class MOSTechCDSFFMPT(MOSTech):
         )
 
     @classmethod
-    def draw_mos(cls, template, layout_info):
+    def draw_mos(self, template, layout_info):
         # type: (TemplateBase, Dict[str, Any]) -> None
         """Draw transistor related layout.
 
@@ -1563,8 +1359,8 @@ class MOSTechCDSFFMPT(MOSTech):
         """
         res = template.grid.resolution
 
-        fin_pitch = cls.tech_constants['fin_pitch']
-        fin_h = cls.tech_constants['fin_h']
+        fin_pitch = self.tech_constants['fin_pitch']
+        fin_h = self.tech_constants['fin_h']
 
         fin_pitch2 = fin_pitch // 2
         fin_h2 = fin_h // 2
@@ -1712,15 +1508,15 @@ class MOSTechCDSFFMPT(MOSTech):
                         template.add_rect(lay, BBox(xl, yb, xr, yt, res, unit_mode=True))
 
     @classmethod
-    def draw_substrate_connection(cls, template, layout_info, port_tracks, dum_tracks, dummy_only,
+    def draw_substrate_connection(self, template, layout_info, port_tracks, dum_tracks, dummy_only,
                                   is_laygo, is_guardring):
         # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool, bool, bool) -> bool
 
-        fin_h = cls.tech_constants['fin_h']
-        fin_p = cls.tech_constants['fin_pitch']
-        mp_md_sp = cls.tech_constants['mp_md_sp']
-        mp_h = cls.tech_constants['mp_h']
-        mp_po_ovl = cls.tech_constants['mp_po_ovl']
+        fin_h = self.tech_constants['fin_h']
+        fin_p = self.tech_constants['fin_pitch']
+        mp_md_sp = self.tech_constants['mp_md_sp']
+        mp_h = self.tech_constants['mp_h']
+        mp_po_ovl = self.tech_constants['mp_po_ovl']
 
         lch_unit = layout_info['lch_unit']
         sd_pitch = layout_info['sd_pitch']
@@ -1744,7 +1540,7 @@ class MOSTechCDSFFMPT(MOSTech):
                 od_yc = (od_yb + od_yt) // 2
                 w = (od_yt - od_yb - fin_h) // fin_p + 1
 
-                via_info = cls.get_ds_via_info(lch_unit, w, compact=is_guardring)
+                via_info = self.get_ds_via_info(lch_unit, w, compact=is_guardring)
 
                 # find X locations of M1/M3.
                 # we can export all dummy tracks.
@@ -1766,7 +1562,7 @@ class MOSTechCDSFFMPT(MOSTech):
                     # find X coordinates
                     m3_x_list = [sd_pitch2 * v for v in sorted(phtr_set)]
 
-                m1_warrs, m3_warrs = cls._draw_ds_via(template, sd_pitch, od_yc, fg, via_info, 1, 1,
+                m1_warrs, m3_warrs = self._draw_ds_via(template, sd_pitch, od_yc, fg, via_info, 1, 1,
                                                       m1_x_list, m3_x_list, xshift=xshift)
                 template.add_pin(port_name, m1_warrs, show=False)
                 template.add_pin(port_name, m3_warrs, show=False)
@@ -1816,7 +1612,7 @@ class MOSTechCDSFFMPT(MOSTech):
         return has_od
 
     @classmethod
-    def draw_mos_connection(cls, template, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
+    def draw_mos_connection(self, template, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
                             min_ds_cap, is_diff, diode_conn, options):
         # type: (TemplateBase, Dict[str, Any], int, int, str, int, bool, bool, bool, Dict[str, Any]) -> None
 
@@ -1824,8 +1620,8 @@ class MOSTechCDSFFMPT(MOSTech):
         if is_diff:
             raise ValueError('differential connection not supported yet.')
 
-        fin_h = cls.tech_constants['fin_h']
-        fin_pitch = cls.tech_constants['fin_pitch']
+        fin_h = self.tech_constants['fin_h']
+        fin_pitch = self.tech_constants['fin_pitch']
 
         gate_yc = mos_info['gate_yc']
         layout_info = mos_info['layout_info']
@@ -1835,9 +1631,9 @@ class MOSTechCDSFFMPT(MOSTech):
         od_yb, od_yt = layout_info['row_info_list'][0].od_y
 
         w = (od_yt - od_yb - fin_h) // fin_pitch + 1
-        ds_via_info = cls.get_ds_via_info(lch_unit, w)
+        ds_via_info = self.get_ds_via_info(lch_unit, w)
 
-        g_via_info = cls.get_gate_via_info(lch_unit)
+        g_via_info = self.get_gate_via_info(lch_unit)
 
         stack = options.get('stack', 1)
         wire_pitch = stack * sd_pitch
@@ -1856,13 +1652,13 @@ class MOSTechCDSFFMPT(MOSTech):
             dloc = 2 - sloc
 
             # draw source
-            _, sarr = cls._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, sloc, sdir,
+            _, sarr = self._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, sloc, sdir,
                                        s_x_list, s_x_list)
             # draw drain
-            m1d, darr = cls._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, dloc, ddir,
+            m1d, darr = self._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, dloc, ddir,
                                          d_x_list, d_x_list)
             # draw gate
-            m1g, _ = cls._draw_g_via(template, lch_unit, fg, sd_pitch, gate_yc - sd_yc, g_via_info, [],
+            m1g, _ = self._draw_g_via(template, lch_unit, fg, sd_pitch, gate_yc - sd_yc, g_via_info, [],
                                      gate_ext_mode=gate_ext_mode)
             m1_yt = m1d[0].upper
             m1_yb = m1g[0].lower
@@ -1893,13 +1689,13 @@ class MOSTechCDSFFMPT(MOSTech):
                     g_x_list = [0, 2 * wire_pitch]
 
             # draw gate
-            _, garr = cls._draw_g_via(template, lch_unit, fg, sd_pitch, gate_yc - sd_yc, g_via_info,
+            _, garr = self._draw_g_via(template, lch_unit, fg, sd_pitch, gate_yc - sd_yc, g_via_info,
                                       g_x_list, gate_ext_mode=gate_ext_mode)
             # draw source
-            _, sarr = cls._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, sloc, sdir,
+            _, sarr = self._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, sloc, sdir,
                                        s_x_list, s_x_list)
             # draw drain
-            _, darr = cls._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, dloc, ddir,
+            _, darr = self._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, dloc, ddir,
                                        d_x_list, d_x_list)
 
             template.add_pin('s', WireArray.list_to_warr(sarr), show=False)
@@ -1907,12 +1703,12 @@ class MOSTechCDSFFMPT(MOSTech):
             template.add_pin('g', WireArray.list_to_warr(garr), show=False)
 
     @classmethod
-    def draw_dum_connection(cls, template, mos_info, edge_mode, gate_tracks, options):
+    def draw_dum_connection(self, template, mos_info, edge_mode, gate_tracks, options):
         # type: (TemplateBase, Dict[str, Any], int, List[int], Dict[str, Any]) -> None
 
-        fin_h = cls.tech_constants['fin_h']
-        fin_pitch = cls.tech_constants['fin_pitch']
-        m1_dum_h = cls.tech_constants['m1_dum_h']
+        fin_h = self.tech_constants['fin_h']
+        fin_pitch = self.tech_constants['fin_pitch']
+        m1_dum_h = self.tech_constants['m1_dum_h']
 
         gate_yc = mos_info['gate_yc']
         layout_info = mos_info['layout_info']
@@ -1923,9 +1719,9 @@ class MOSTechCDSFFMPT(MOSTech):
 
         sd_yc = (od_yb + od_yt) // 2
         w = (od_yt - od_yb - fin_h) // fin_pitch + 1
-        ds_via_info = cls.get_ds_via_info(lch_unit, w)
+        ds_via_info = self.get_ds_via_info(lch_unit, w)
 
-        g_via_info = cls.get_gate_via_info(lch_unit)
+        g_via_info = self.get_gate_via_info(lch_unit)
 
         left_edge = edge_mode % 2 == 1
         right_edge = edge_mode // 2 == 1
@@ -1941,9 +1737,9 @@ class MOSTechCDSFFMPT(MOSTech):
         ds_x_list = list(range(ds_x_start, ds_x_stop + 1, sd_pitch))
 
         # draw gate
-        m1g, _ = cls._draw_g_via(template, lch_unit, fg, sd_pitch, gate_yc - sd_yc, g_via_info, [])
+        m1g, _ = self._draw_g_via(template, lch_unit, fg, sd_pitch, gate_yc - sd_yc, g_via_info, [])
         # draw drain/source
-        m1d, _ = cls._draw_ds_via(template, sd_pitch, 0, fg, ds_via_info, 1, 1, ds_x_list, [], draw_m2=False)
+        m1d, _ = self._draw_ds_via(template, sd_pitch, 0, fg, ds_via_info, 1, 1, ds_x_list, [], draw_m2=False)
 
         # connect gate and drain/source together
         res = template.grid.resolution
@@ -1956,18 +1752,18 @@ class MOSTechCDSFFMPT(MOSTech):
         template.add_pin('dummy', m1g, show=False)
 
     @classmethod
-    def draw_decap_connection(cls, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
+    def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
         # type: (TemplateBase, Dict[str, Any], int, int, int, bool, Dict[str, Any]) -> None
         raise NotImplementedError('Not implemented')
 
     @classmethod
-    def _draw_g_via(cls, template, lch_unit, fg, sd_pitch, gate_yc, via_info, m3_x_list,
+    def _draw_g_via(self, template, lch_unit, fg, sd_pitch, gate_yc, via_info, m3_x_list,
                     gate_ext_mode=0, dx=0):
 
-        res = cls.tech_constants['resolution']
-        mp_po_ovl = cls.tech_constants['mp_po_ovl']
-        mp_h = cls.tech_constants['mp_h']
-        mx_area_min = cls.tech_constants['mx_area_min']
+        res = self.tech_constants['resolution']
+        mp_po_ovl = self.tech_constants['mp_po_ovl']
+        mp_h = self.tech_constants['mp_h']
+        mx_area_min = self.tech_constants['mx_area_min']
 
         w_list = via_info['w']
         h_list = via_info['h']
@@ -2067,11 +1863,11 @@ class MOSTechCDSFFMPT(MOSTech):
         return m1_warrs, m3_warrs
 
     @classmethod
-    def _draw_ds_via(cls, template, wire_pitch, od_yc, num_seg, via_info, m2_loc, m3_dir,
+    def _draw_ds_via(self, template, wire_pitch, od_yc, num_seg, via_info, m2_loc, m3_dir,
                      m1_x_list, m3_x_list, xshift=0, draw_m2=True):
-        res = cls.tech_constants['resolution']
-        v0_sp = cls.tech_constants['v0_sp']
-        mx_area_min = cls.tech_constants['mx_area_min']
+        res = self.tech_constants['resolution']
+        v0_sp = self.tech_constants['v0_sp']
+        mx_area_min = self.tech_constants['mx_area_min']
 
         nv0 = via_info['num_v0']
         m1_h = via_info['m1_h']
