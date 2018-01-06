@@ -115,6 +115,8 @@ class MOSTechPlanarGeneric(MOSTech):
         3. get top PO Y coordinates and wrap up.
         """
 
+        ds_dummy = kwargs.get('ds_dummy', False)
+
         # get transistor constants
         mos_constants = self.get_mos_tech_constants(lch_unit)
 
@@ -128,8 +130,6 @@ class MOSTechPlanarGeneric(MOSTech):
         # get via constants
         via_g = mos_constants['via_g']
         via_d = mos_constants['via_d']
-
-        ds_dummy = kwargs.get('ds_dummy', False)
 
         # convert w to resolution units
         layout_unit = self.config['layout_unit']
