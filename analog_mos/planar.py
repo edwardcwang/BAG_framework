@@ -337,11 +337,17 @@ class MOSTechPlanarGeneric(MOSTech):
             return width_list
 
     def _get_dummy_po_y_list(self, lch_unit, bot_ext_info, top_ext_info, yblk):
+        """Compute dummy PO Y intervals in an extension block.
+
+        This method computes the Y intervals of dummy PO in an extension block (from which dummy
+        OD Y intervals can be determined).  It tries to draw as few dummies as possible, but still
+        meet OD maximum spacing rule and OD minimum density rule, if possible.  All spacing DRC
+        rules are also considered.
+        """
         mos_constants = self.get_mos_tech_constants(lch_unit)
         od_w_min, od_w_max = mos_constants['od_fill_w']
         sp_od_max = mos_constants['sp_od_max']
         od_min_density = mos_constants['od_min_density']
-
         po_h_min = mos_constants['po_h_min']
         po_od_exty = mos_constants['po_od_exty']
         sp_po = mos_constants['sp_po']
