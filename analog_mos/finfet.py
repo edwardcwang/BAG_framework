@@ -204,8 +204,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             imp_params=[(mos_type, threshold, blk_yb, blk_yt, blk_yb, blk_yt)],
             is_sub_ring=False,
             dnw_mode='',
-            # MosConnection parameters
             md_w=md_w,
+            # MosConnection parameters
             g_y_list=g_y_list,
             d_y_list=d_y_list,
             s_y_list=s_y_list,
@@ -377,6 +377,53 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         return [(od_yb, od_yt)], [(md_yb, md_yt)]
 
+    def _get_dummy_md_y_list(self, lch_unit, bot_ext_info, top_ext_info, yblk):
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        od_w_min, od_w_max = mos_constants['od_fill_w']
+        sp_od_max = mos_constants['sp_od_max']
+        od_min_density = mos_constants['od_min_density']
+
+        po_h_min = mos_constants['po_h_min']
+        po_od_exty = mos_constants['po_od_exty']
+        sp_po = mos_constants['sp_po']
+
+        # step 1A: compute PO/OD bounds.
+        bot_od_yt = -bot_ext_info.od_margin
+        bot_po_yt = -bot_ext_info.po_margin
+        top_od_yb = yblk + top_ext_info.od_margin
+        top_po_yb = yblk + top_ext_info.po_margin
+        # step 1B: calculate PO area bounds.  Include OD bounds because substrate rows don't have PO
+        po_area_offset = max(bot_od_yt, bot_po_yt)
+        po_area_tot = min(top_po_yb, top_od_yb) - po_area_offset
+        # step 1B: compute target OD area needed from density rules
+        od_area_tot = top_od_yb - bot_od_yt + (top_ext_info.od_w + bot_ext_info.od_w) // 2
+        od_area_targ = int(math.ceil(od_area_tot * od_min_density))
+        # step 1C: binary search on target PO area to achieve target OD area
+        po_area_min = min(po_area_tot, od_area_targ + 2 * po_od_exty)
+        po_area_iter = BinaryIterator(po_area_min, po_area_tot + 1)
+        n_min_po = max(po_h_min, od_w_min + 2 * po_od_exty)
+        n_max_po = od_w_max + 2 * po_od_exty
+        sp_po_max = sp_od_max - 2 * po_od_exty
+        while po_area_iter.has_next():
+            po_area_targ = po_area_iter.get_next()
+            fill_info = fill_symmetric_min_density_info(po_area_tot, po_area_targ, n_min_po, n_max_po, sp_po,
+                                                        sp_max=sp_po_max, fill_on_edge=False, cyclic=False)
+            po_area_cur, nfill = fill_info[0][:2]
+            od_area_cur = po_area_cur - nfill * 2 * po_od_exty
+            if od_area_cur >= od_area_targ:
+                po_area_iter.save_info(fill_info)
+                po_area_iter.down()
+            else:
+                if po_area_cur < po_area_targ or po_area_targ == po_area_tot:
+                    # we cannot do any better by increasing po_area_targ
+                    po_area_iter.save_info(fill_info)
+                    break
+                else:
+                    po_area_iter.up()
+        fill_info = po_area_iter.get_last_save_info()
+        return fill_symmetric_interval(*fill_info[0][2], offset=po_area_offset, invert=fill_info[1])[0]
+
+
     def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info):
         # type: (int, int, int, ExtInfo, ExtInfo) -> Dict[str, Any]
         """Draw extension block.
@@ -411,6 +458,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         6. top and bottom are different transistor.
            split, force to use transistor implant to avoid constraint 1.
         """
+        mos_layer_table = self.config['mos_layer_table']
+
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
         fin_p = mos_constants['mos_pitch']
@@ -433,24 +482,30 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         lr_edge_info = EdgeInfo(od_type='dum', draw_layers={})
         if w == 0:
             # just draw CPO
+            top_mtype, top_row_type = top_ext_info.mtype
+            bot_mtype, bot_row_type = bot_ext_info.mtype
+            bot_sub = 'ptap' if (bot_row_type == 'nch' or bot_row_type == 'ptap') else 'ntap'
+            top_sub = 'ptap' if (top_row_type == 'nch' or top_row_type == 'ptap') else 'ntap'
             layout_info = dict(
+                blk_type='ext',
                 lch_unit=lch_unit,
-                md_w=md_w,
-                fg=fg,
                 sd_pitch=sd_pitch,
-                array_box_xl=0,
-                array_box_y=(0, 0),
+                fg=fg,
+                arr_y=(0, 0),
                 draw_od=True,
                 row_info_list=[],
-                lay_info_list=[(('CutPoly', 'drawing'), 0, -cpo_h // 2, cpo_h // 2)],
-                adj_info_list=[],
+                lay_info_list=[(mos_layer_table['CPO'], 0, -cpo_h // 2, cpo_h // 2)],
+                fill_info_list=[],
+                # edge parameters
+                sub_type=bot_sub if bot_sub == top_sub else None,
+                imp_params=None,
+                is_sub_ring=False,
+                dnw_mode='',
+                md_w=md_w,
+                # adjacent block information list
+                adj_row_list=[],
                 left_blk_info=None,
                 right_blk_info=None,
-                fill_info_list=[],
-
-                # information needed for computing edge block layout
-                blk_type='ext',
-                imp_params=None,
             )
 
             return dict(
