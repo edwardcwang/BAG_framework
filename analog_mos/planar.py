@@ -386,8 +386,8 @@ class MOSTechPlanarGeneric(MOSTech):
         # type: (int, int, int, ExtInfo, ExtInfo) -> Dict[str, Any]
         """Draw extension block.
 
-        extension block has zero or more rows of dummy transistors, we specify
-        the maximum OD spacing to meet OD density rule.  Most layout
+        extension block has zero or more rows of dummy transistors, which are
+        drawn to meet OD maximum spacing/density rules.  Most layout
         is straight-forward, but getting the implant right is very tricky.
 
         Extension implant strategy:

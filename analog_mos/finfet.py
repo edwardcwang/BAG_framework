@@ -381,20 +381,19 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # type: (int, int, int, ExtInfo, ExtInfo) -> Dict[str, Any]
         """Draw extension block.
 
-        extension block has zero or more rows of dummy transistors, the OD spacing
-        is guarantee to be < 0.6um so when guard ring edge draw substrate contact
-        in the same rows, we meet the guard ring OD separation constraint.  Most layout
-        is straight-forward, but getting the implant right is very tricky.
+        extension block has zero or more rows of dummy transistors, which are
+        drawn to meet OD maximum spacing rule.  Most layout is straight-forward,
+        but getting the implant right is very tricky.
 
         Extension implant strategy:
 
         constraints are:
         1. we cannot have checker-board pattern PP/NP.
-        2. PP/NP minimum width needs to be met
+        2. PP/NP has minimum width constraint.
         3. OD cannot intersect multiple types of implant.
 
-        we use the following strategy (note that in LaygoBase, a transistor row can have
-        both transistor or substrate):
+        To solve these constraints, we use the following strategy (note that in
+        LaygoBase, a transistor row can have both transistor or substrate):
 
         cases:
         1. top and bottom are same flavor transistor / sub (e.g. nch + nch or nch + ptap).
@@ -403,13 +402,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
            split at middle.  The split point is chosen based on threshold alphabetical
            comparison, so we make sure we consistently favor one threshold over another.
         3. top and bottom are same flavor transistor.
-            split at middle.  If there's OD, we force to use transistor implant.  This avoid constraint 3.
+           split at middle.  If there's OD, we force to use transistor implant.
+           This avoid constraint 3.
         4. top and bottom row are different flavor sub.
-            split at middle, draw more dummy OD on ptap side.
+           split at middle, draw more dummy OD on ptap side.
         5. top and bottom are different flavor, transistor and sub.
-            we use transistor implant
+           we use transistor implant.
         6. top and bottom are different transistor.
-            split, force to use transistor implant to avoid constraint 1.
+           split, force to use transistor implant to avoid constraint 1.
         """
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
