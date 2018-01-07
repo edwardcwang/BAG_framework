@@ -40,11 +40,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         MOSTech.__init__(self, config, tech_info)
 
     @abc.abstractmethod
-    def is_threshold_layer(self, layer):
-        """Returns True if the given layer tuple is a threshold layer."""
-        return False
-
-    @abc.abstractmethod
     def get_mos_yloc_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
         # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
         """Computes Y coordinates of various layers in the transistor row.
@@ -498,21 +493,17 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_layer_table = self.config['mos_layer_table']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
-        fin_h = mos_constants['fin_h']
+        imp_layers_info_struct = mos_constants['imp_layers']
+        thres_layers_info_struct = mos_constants['thres_layers']
         fin_p = mos_constants['mos_pitch']
         cpo_spy = mos_constants['cpo_spy']
         imp_od_ency = mos_constants['imp_od_ency']
-        md_h_min = mos_constants['md_h_min']
         cpo_h = mos_constants['cpo_h']
         md_w = mos_constants['md_w']
-        md_od_exty = mos_constants['md_od_exty']
-        m1_w = mos_constants['mos_conn_w']
         sd_pitch = mos_constants['sd_pitch']
         od_spx = mos_constants['od_spx']
         od_fill_w_max = mos_constants['od_fill_w_max']
 
-        fin_p2 = fin_p // 2
-        fin_h2 = fin_h // 2
         yt = w * fin_p
         yc = yt // 2
 
@@ -640,18 +631,20 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         top_tran = (top_row_type == 'nch' or top_row_type == 'pch')
         # figure out where to separate top/bottom implant/threshold.
         if bot_imp == top_imp:
+            sub_type = 'ptap' if bot_imp == 'nch' else 'ntap'
             if bot_tran != top_tran:
                 # case 1
                 sep_idx = 0 if bot_tran else 1
             elif bot_tran:
                 # case 3
                 sep_idx = 0 if bot_thres <= top_thres else 1
-                if od_x_list:
+                if num_dod > 0:
                     bot_mtype = top_mtype = bot_imp
             else:
                 # case 2
                 sep_idx = 0 if bot_thres <= top_thres else 1
         else:
+            sub_type = None
             if bot_tran != top_tran:
                 # case 5
                 if bot_tran:
@@ -678,12 +671,13 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                       (top_mtype, top_thres, imp_ysep, yt, thres_ysep, yt)]
 
         for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
-            for lay in self.get_mos_layers(mtype, thres):
-                if self.is_threshold_layer(lay):
-                    cur_yb, cur_yt = thres_yb, thres_yt
-                else:
-                    cur_yb, cur_yt = imp_yb, imp_yt
-                lay_info_list.append((lay, 0, cur_yb, cur_yt))
+            imp_layers_info = imp_layers_info_struct[mtype]
+            thres_layers_info = thres_layers_info_struct[mtype][thres]
+            for cur_yb, cur_yt, lay_info in [(imp_yb, imp_yt, imp_layers_info),
+                                             (thres_yb, thres_yt, thres_layers_info)]:
+
+                for lay_name in lay_info:
+                    lay_info_list.append((lay_name, 0, cur_yb, cur_yt))
 
         # construct row_info_list, now we know where the implant splits
         row_info_list = []
@@ -694,24 +688,30 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                          po_y=po_y, md_y=md_y))
 
         # create layout information dictionary
+        between_gr = (top_row_type == 'ntap' and bot_row_type == 'ptap') or \
+                     (top_row_type == 'ptap' and bot_row_type == 'ntap')
         layout_info = dict(
+            blk_type='ext',
             lch_unit=lch_unit,
-            md_w=md_w,
-            fg=fg,
             sd_pitch=sd_pitch,
-            array_box_xl=0,
-            array_box_y=(0, yt),
+            fg=fg,
+            arr_y=(0, yt),
             draw_od=True,
             row_info_list=row_info_list,
             lay_info_list=lay_info_list,
+            # TODO: figure out how to do fill in extension block.
+            fill_info_list=[],
+            # edge parameters
+            sub_type=sub_type,
+            imp_params=imp_params,
+            is_sub_ring=False,
+            dnw_mode='',
+            md_w=md_w,
+            between_gr=between_gr,
+            # adjacent block information list
             adj_info_list=adj_row_list,
             left_blk_info=None,
             right_blk_info=None,
-            fill_info_list=[fill_info],
-
-            # information needed for computing edge block layout
-            blk_type='ext',
-            imp_params=imp_params,
         )
 
         return dict(
@@ -720,13 +720,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             right_edge_info=(lr_edge_info, adj_edger_infos),
         )
 
-    @classmethod
     def get_sub_ring_ext_info(self, sub_type, height, fg, end_ext_info, **kwargs):
         # type: (str, int, int, ExtInfo, **kwargs) -> Dict[str, Any]
         # TODO: add actual implementation.
         raise NotImplementedError('Not implemented yet.')
 
-    @classmethod
     def _get_sub_m1_y(self, lch_unit, od_yc, od_nfin):
         """Get M1 Y coordinates for substrate connection."""
         via_info = self.get_ds_via_info(lch_unit, od_nfin)
@@ -737,7 +735,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         return m1_yb, m1_yt
 
-    @classmethod
     def get_substrate_info(self, lch_unit, w, sub_type, threshold, fg, blk_pitch=1, **kwargs):
         # type: (int, int, str, str, int, int, **kwargs) -> Dict[str, Any]
         """Get substrate layout information.
