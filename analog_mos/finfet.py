@@ -10,7 +10,9 @@ from bag.math import lcm
 from bag.util.search import BinaryIterator
 from bag.layout.util import BBox
 from bag.layout.routing import WireArray
-from bag.layout.routing.fill import fill_symmetric_min_density_info, fill_symmetric_interval, fill_symmetric_const_space
+from bag.layout.routing.fill import fill_symmetric_min_density_info
+from bag.layout.routing.fill import fill_symmetric_interval
+from bag.layout.routing.fill import fill_symmetric_max_density
 from bag.layout.template import TemplateBase
 
 from .core import MOSTech
@@ -36,6 +38,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     def __init__(self, config, tech_info):
         # type: (Dict[str, Any], TechInfoConfig) -> None
         MOSTech.__init__(self, config, tech_info)
+
+    @abc.abstractmethod
+    def is_threshold_layer(self, layer):
+        """Returns True if the given layer tuple is a threshold layer."""
+        return False
 
     @abc.abstractmethod
     def get_mos_yloc_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
@@ -262,7 +269,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fin_h = mos_constants['fin_h']  # type: int
         fin_p = mos_constants['mos_pitch']  # type: int
         od_sp_nfin_max = mos_constants['od_sp_nfin_max']
-        od_nfin_min = mos_constants['od_fill_w'][0]
+        od_nfin_min = mos_constants['od_fill_h'][0]
         imp_od_ency = mos_constants['imp_od_ency']
         cpo_h = mos_constants['cpo_h']
         cpo_od_sp = mos_constants['cpo_od_sp']
@@ -333,7 +340,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
         fin_p = mos_constants['mos_pitch']
-        od_nfin_min, od_nfin_max = mos_constants['od_fill_w']
+        od_nfin_min, od_nfin_max = mos_constants['od_fill_h']
         od_spy_min = mos_constants['od_spy_min']
         od_spy_max = mos_constants['od_spy_max']
         od_min_density = mos_constants['od_min_density']
@@ -391,7 +398,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
         fin_p = mos_constants['mos_pitch']
-        od_nfin_min, od_nfin_max = mos_constants['od_fill_w']
+        od_nfin_min, od_nfin_max = mos_constants['od_fill_h']
         od_spy_min = mos_constants['od_spy_min']
         md_h_min = mos_constants['md_h_min']
         md_od_exty = mos_constants['md_od_exty']
@@ -493,8 +500,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
         fin_p = mos_constants['mos_pitch']
-        od_nfin_min, od_nfin_max = mos_constants['od_fill_w']
-        od_sp_nfin_max = mos_constants['od_sp_nfin_max']
         cpo_spy = mos_constants['cpo_spy']
         imp_od_ency = mos_constants['imp_od_ency']
         md_h_min = mos_constants['md_h_min']
@@ -503,6 +508,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         md_od_exty = mos_constants['md_od_exty']
         m1_w = mos_constants['mos_conn_w']
         sd_pitch = mos_constants['sd_pitch']
+        od_spx = mos_constants['od_spx']
+        od_fill_w_max = mos_constants['od_fill_w_max']
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
@@ -544,38 +551,23 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 right_edge_info=(lr_edge_info, []),
             )
 
-        # step 1: compute OD Y coordinates
-        bot_od_yt = -bot_ext_info.od_margin
-        bot_od_yt_fin = (bot_od_yt - fin_p2 - fin_h2) // fin_p
-        top_od_yb = yt + top_ext_info.od_margin
-        top_od_yb_fin = (top_od_yb - fin_p2 + fin_h2) // fin_p
-        area = top_od_yb_fin - bot_od_yt_fin
-        od_fin_list = fill_symmetric_const_space(area, od_sp_nfin_max, od_nfin_min, od_nfin_max, offset=bot_od_yt_fin)
+        # get dummy fill locations
+        od_y_list, md_y_list = self._get_dummy_yloc(lch_unit, bot_ext_info, top_ext_info, yt)
 
         # check if we draw one or two CPO.  Compute threshold split Y coordinates accordingly.
         cpo2_w = -(-(cpo_spy + cpo_h) // fin_p)  # type: int
         one_cpo = (w < cpo2_w)
 
-        # calculate fill
-        m1_sp_max = self.tech_constants['m1_sp_max']
-        m1_fill_lmin = self.tech_constants['m1_fill_lmin']
-        m1_fill_lmax = self.tech_constants['m1_fill_lmax']
-        area_yb = -bot_ext_info.m1_margin
-        area_yt = yt + top_ext_info.m1_margin
-        fill_y_list = fill_symmetric_const_space(area_yt - area_yb, m1_sp_max, m1_fill_lmin,
-                                                 m1_fill_lmax, offset=area_yb)
-
         lay_info_list = []
-        cpo_lay = ('CutPoly', 'drawing')
-        if not od_fin_list:
+        num_dod = len(od_y_list)
+        cpo_lay = mos_layer_table['CPO']
+        if not od_y_list:
             # no dummy OD
             od_x_list = []
             od_y_list = md_y_list = [(0, 0)]
-
             if one_cpo:
                 po_y_list = [(0, 0)]
-                imp_split_y = (yc, yc)
-                # compute adjacent row geometry
+                thres_split_y = imp_split_y = yc, yc
                 adj_edgel_infos = [bot_ext_info.edgel_info, top_ext_info.edgel_info]
                 adj_edger_infos = [bot_ext_info.edger_info, top_ext_info.edger_info]
                 adj_row_list = [AdjRowInfo(po_types=bot_ext_info.po_types,
@@ -587,46 +579,26 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 lay_info_list.append((cpo_lay, 0, yc - cpo_h // 2, yc + cpo_h // 2))
             else:
                 po_y_list = [(0, yt)]
-                imp_split_y = (0, yt)
+                thres_split_y = imp_split_y = 0, yt
                 adj_row_list = []
                 adj_edgel_infos = []
                 adj_edger_infos = []
                 lay_info_list.append((cpo_lay, 0, -cpo_h // 2, cpo_h // 2))
                 lay_info_list.append((cpo_lay, 0, yt - cpo_h // 2, yt + cpo_h // 2))
-
         else:
-            # has dummy OD, compute OD X/Y coordinates
+            # has dummy OD
             adj_row_list = []
             adj_edgel_infos = []
             adj_edger_infos = []
-            od_x_list = [(0, fg)]
-            # add OD and CPO layout information, also calculate fill
-            num_dod = len(od_fin_list)
-            if num_dod == 1:
-                # if we only have 1 dummy, use manual algorithm to make sure we satisfy MD-MD and CPO-MD rules
-                bot_cpo_yt = cpo_h // 2
-                top_cpo_yb = yt - cpo_h // 2
-                bot_md_yt = -bot_ext_info.md_margin
-                top_md_yb = yt + top_ext_info.md_margin
-                bot_imp_y = bot_ext_info.imp_min_w
-                top_imp_y = yt - top_ext_info.imp_min_w
-                od_y_list, md_y_list = self._get_ext_dummy_loc(lch_unit, bot_od_yt_fin, top_od_yb_fin,
-                                                               bot_cpo_yt, top_cpo_yb, bot_md_yt, top_md_yb,
-                                                               bot_imp_y, top_imp_y)
+            # get OD horizontal partitioning
+            if od_fill_w_max is None:
+                od_x_list = [(0, fg)]
             else:
-                # for 2 for more dummy, od_sp_nfin_max (12) and od_nfin_max (20) values guarantee that
-                # all dummy locations are DRC clean
-                od_y_list = []
-                md_y_list = []
-                for a, b in od_fin_list:
-                    od_yb = fin_p2 - fin_h2 + a * fin_p
-                    od_yt = fin_p2 + fin_h2 + b * fin_p
-                    od_yc = (od_yb + od_yt) // 2
-                    md_h = max(md_h_min, od_yt - od_yb + 2 * md_od_exty)
-                    md_yb = od_yc - md_h // 2
-                    md_yt = od_yc + md_h // 2
-                    od_y_list.append((od_yb, od_yt))
-                    md_y_list.append((md_yb, md_yt))
+                od_fg_min = self.get_analog_unit_fg()
+                od_fg_max = (od_fill_w_max - lch_unit) // sd_pitch - 1
+                od_fg_sp = -(-(od_spx - (sd_pitch - lch_unit)) // sd_pitch) + 2
+                od_x_list = fill_symmetric_max_density(fg, fg, od_fg_min, od_fg_max, od_fg_sp,
+                                                       fill_on_edge=True, cyclic=False)[0]
 
             # get PO/CPO locations
             cpo_yc = 0
@@ -638,29 +610,24 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     next_cpo_yc = (od_yt + od_y_list[idx + 1][0]) // 2
                 else:
                     next_cpo_yc = yt
-
                 # record PO Y coordinates
                 po_y_list.append((cpo_yc, next_cpo_yc))
-
                 # add CPO
                 lay_info_list.append((cpo_lay, 0, cpo_yc - cpo_h // 2, cpo_yc + cpo_h // 2))
                 cpo_yc_list.append(cpo_yc)
                 # update CPO coordinates.
                 cpo_yc = next_cpo_yc
-
             # add last CPO
             lay_info_list.append((cpo_lay, 0, yt - cpo_h // 2, yt + cpo_h // 2))
             cpo_yc_list.append(yt)
 
-            # compute implant split Y coordinates
             if num_dod % 2 == 0:
-                # we can split exactly in middle
-                imp_split_y = (yc, yc)
+                thres_split_y = imp_split_y = yc, yc
             else:
-                # Find the two middle CPO coordinates.
-                top_cpo_idx = num_dod // 2
-                od_yb, od_yt = od_y_list[top_cpo_idx]
-                imp_split_y = (od_yb - imp_od_ency, od_yt + imp_od_ency)
+                mid_od_idx = num_dod // 2
+                od_yb, od_yt = od_y_list[mid_od_idx]
+                imp_split_y = od_yb - imp_od_ency, od_yt + imp_od_ency
+                thres_split_y = cpo_yc_list[mid_od_idx], cpo_yc_list[mid_od_idx + 1]
 
         # compute implant and threshold layer information
         top_mtype, top_row_type = top_ext_info.mtype
@@ -706,12 +673,13 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # add implant layers
         imp_ysep = imp_split_y[sep_idx]
-        imp_params = [(bot_mtype, bot_thres, 0, imp_ysep, 0, imp_ysep),
-                      (top_mtype, top_thres, imp_ysep, yt, imp_ysep, yt)]
+        thres_ysep = thres_split_y[sep_idx]
+        imp_params = [(bot_mtype, bot_thres, 0, imp_ysep, 0, thres_ysep),
+                      (top_mtype, top_thres, imp_ysep, yt, thres_ysep, yt)]
 
         for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
             for lay in self.get_mos_layers(mtype, thres):
-                if lay[0].startswith('VT'):
+                if self.is_threshold_layer(lay):
                     cur_yb, cur_yt = thres_yb, thres_yt
                 else:
                     cur_yb, cur_yt = imp_yb, imp_yt
@@ -725,11 +693,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             row_info_list.append(RowInfo(od_x_list=od_x_list, od_y=od_y, od_type=('dum', cur_sub_type),
                                          po_y=po_y, md_y=md_y))
 
-        # compute metal 1 fill locations
-        fill_x_list = [(idx * sd_pitch - m1_w // 2, idx * sd_pitch + m1_w // 2)
-                       for idx in range(0, fg + 1)]
-        fill_info = FillInfo(layer=('M1', 'drawing'), exc_layer=None,
-                             x_intv_list=fill_x_list, y_intv_list=fill_y_list)
         # create layout information dictionary
         layout_info = dict(
             lch_unit=lch_unit,
