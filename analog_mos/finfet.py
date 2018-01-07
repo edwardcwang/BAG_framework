@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 ExtInfo = namedtuple('ExtInfo', ['margins', 'od_w', 'imp_min_w', 'mtype', 'thres', 'po_types',
                                  'edgel_info', 'edger_info'])
-RowInfo = namedtuple('RowInfo', ['od_x_list', 'od_y', 'od_type', 'po_y', 'md_y'])
+RowInfo = namedtuple('RowInfo', ['od_x_list', 'od_type', 'od_y', 'po_y', 'md_y'])
 AdjRowInfo = namedtuple('AdjRowInfo', ['po_y', 'po_types'])
 EdgeInfo = namedtuple('EdgeInfo', ['od_type', 'draw_layers'])
 FillInfo = namedtuple('FillInfo', ['layer', 'exc_layer', 'x_intv_list', 'y_intv_list'])
@@ -454,7 +454,73 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     od_y_list[-2][1] + od_spy_min > od_y_list[1][0]):
                 raise ValueError('inner dummy OD spacing rule not met.  See developer.')
 
-        return od_y_list, md_y_list
+        # get PO/CPO locations
+        cpo_yc = 0
+        num_dod = len(od_y_list)
+        po_y_list, cpo_yc_list = [], []
+        for idx, (od_yb, od_yt) in enumerate(od_y_list):
+            # find next CPO coordinates
+            if idx + 1 < num_dod:
+                next_cpo_yc = (od_yt + od_y_list[idx + 1][0]) // 2
+            else:
+                next_cpo_yc = yblk
+            # record coordinates
+            po_y_list.append((cpo_yc, next_cpo_yc))
+            cpo_yc_list.append(cpo_yc)
+            cpo_yc = next_cpo_yc
+        # add last CPO
+        cpo_yc_list.append(yblk)
+
+        return od_y_list, md_y_list, po_y_list, cpo_yc_list
+
+    def _get_ext_adj_split_info(self, lch_unit, w, bot_ext_info, top_ext_info, od_y_list, cpo_yc_list):
+        """Compute adjacent block information and Y split coordinate in extension block."""
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        fin_p = mos_constants['mos_pitch']
+        cpo_spy = mos_constants['cpo_spy']
+        imp_od_ency = mos_constants['imp_od_ency']
+        cpo_h = mos_constants['cpo_h']
+
+        yt = w * fin_p
+        yc = yt // 2
+
+        # check if we draw one or two CPO.  Compute threshold split Y coordinates accordingly.
+        cpo2_w = -(-(cpo_spy + cpo_h) // fin_p)  # type: int
+        one_cpo = (w < cpo2_w)
+
+        num_dod = len(od_y_list)
+        if not od_y_list:
+            # no dummy OD
+            if one_cpo:
+                thres_split_y = imp_split_y = yc, yc
+                adj_edgel_infos = [bot_ext_info.edgel_info, top_ext_info.edgel_info]
+                adj_edger_infos = [bot_ext_info.edger_info, top_ext_info.edger_info]
+                adj_row_list = [AdjRowInfo(po_types=bot_ext_info.po_types,
+                                           po_y=(0, yc),
+                                           ),
+                                AdjRowInfo(po_types=top_ext_info.po_types,
+                                           po_y=(yc, yt),
+                                           )]
+            else:
+                thres_split_y = imp_split_y = 0, yt
+                adj_row_list = []
+                adj_edgel_infos = []
+                adj_edger_infos = []
+        else:
+            # has dummy OD
+            adj_row_list = []
+            adj_edgel_infos = []
+            adj_edger_infos = []
+
+            if num_dod % 2 == 0:
+                thres_split_y = imp_split_y = yc, yc
+            else:
+                mid_od_idx = num_dod // 2
+                od_yb, od_yt = od_y_list[mid_od_idx]
+                imp_split_y = od_yb - imp_od_ency, od_yt + imp_od_ency
+                thres_split_y = cpo_yc_list[mid_od_idx], cpo_yc_list[mid_od_idx + 1]
+
+        return adj_row_list, adj_edgel_infos, adj_edger_infos, thres_split_y, imp_split_y
 
     def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info):
         # type: (int, int, int, ExtInfo, ExtInfo) -> Dict[str, Any]
@@ -497,7 +563,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         thres_layers_info_struct = mos_constants['thres_layers']
         fin_p = mos_constants['mos_pitch']
         cpo_spy = mos_constants['cpo_spy']
-        imp_od_ency = mos_constants['imp_od_ency']
         cpo_h = mos_constants['cpo_h']
         md_w = mos_constants['md_w']
         sd_pitch = mos_constants['sd_pitch']
@@ -543,7 +608,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             )
 
         # get dummy fill locations
-        od_y_list, md_y_list = self._get_dummy_yloc(lch_unit, bot_ext_info, top_ext_info, yt)
+        od_y_list, md_y_list, po_y_list, cpo_yc_list = self._get_dummy_yloc(lch_unit, bot_ext_info, top_ext_info, yt)
+        # get adjacent block/split information
+        tmp = self._get_ext_adj_split_info(lch_unit, w, bot_ext_info, top_ext_info, od_y_list, cpo_yc_list)
+        adj_row_list, adj_edgel_infos, adj_edger_infos, thres_split_y, imp_split_y = tmp
 
         # check if we draw one or two CPO.  Compute threshold split Y coordinates accordingly.
         cpo2_w = -(-(cpo_spy + cpo_h) // fin_p)  # type: int
@@ -558,29 +626,13 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             od_y_list = md_y_list = [(0, 0)]
             if one_cpo:
                 po_y_list = [(0, 0)]
-                thres_split_y = imp_split_y = yc, yc
-                adj_edgel_infos = [bot_ext_info.edgel_info, top_ext_info.edgel_info]
-                adj_edger_infos = [bot_ext_info.edger_info, top_ext_info.edger_info]
-                adj_row_list = [AdjRowInfo(po_types=bot_ext_info.po_types,
-                                           po_y=(0, yc),
-                                           ),
-                                AdjRowInfo(po_types=top_ext_info.po_types,
-                                           po_y=(yc, yt),
-                                           )]
                 lay_info_list.append((cpo_lay, 0, yc - cpo_h // 2, yc + cpo_h // 2))
             else:
-                po_y_list = [(0, yt)]
                 thres_split_y = imp_split_y = 0, yt
-                adj_row_list = []
-                adj_edgel_infos = []
-                adj_edger_infos = []
                 lay_info_list.append((cpo_lay, 0, -cpo_h // 2, cpo_h // 2))
                 lay_info_list.append((cpo_lay, 0, yt - cpo_h // 2, yt + cpo_h // 2))
         else:
             # has dummy OD
-            adj_row_list = []
-            adj_edgel_infos = []
-            adj_edger_infos = []
             # get OD horizontal partitioning
             if od_fill_w_max is None:
                 od_x_list = [(0, fg)]
@@ -591,34 +643,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 od_x_list = fill_symmetric_max_density(fg, fg, od_fg_min, od_fg_max, od_fg_sp,
                                                        fill_on_edge=True, cyclic=False)[0]
 
-            # get PO/CPO locations
-            cpo_yc = 0
-            cpo_yc_list = []
-            po_y_list = []
-            for idx, (od_yb, od_yt) in enumerate(od_y_list):
+            # add CPO layers
+            for cpo_yc in cpo_yc_list:
                 # find next CPO coordinates
-                if idx + 1 < num_dod:
-                    next_cpo_yc = (od_yt + od_y_list[idx + 1][0]) // 2
-                else:
-                    next_cpo_yc = yt
-                # record PO Y coordinates
-                po_y_list.append((cpo_yc, next_cpo_yc))
-                # add CPO
                 lay_info_list.append((cpo_lay, 0, cpo_yc - cpo_h // 2, cpo_yc + cpo_h // 2))
-                cpo_yc_list.append(cpo_yc)
-                # update CPO coordinates.
-                cpo_yc = next_cpo_yc
-            # add last CPO
-            lay_info_list.append((cpo_lay, 0, yt - cpo_h // 2, yt + cpo_h // 2))
-            cpo_yc_list.append(yt)
-
-            if num_dod % 2 == 0:
-                thres_split_y = imp_split_y = yc, yc
-            else:
-                mid_od_idx = num_dod // 2
-                od_yb, od_yt = od_y_list[mid_od_idx]
-                imp_split_y = od_yb - imp_od_ency, od_yt + imp_od_ency
-                thres_split_y = cpo_yc_list[mid_od_idx], cpo_yc_list[mid_od_idx + 1]
 
         # compute implant and threshold layer information
         top_mtype, top_row_type = top_ext_info.mtype
@@ -722,8 +750,55 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
     def get_sub_ring_ext_info(self, sub_type, height, fg, end_ext_info, **kwargs):
         # type: (str, int, int, ExtInfo, **kwargs) -> Dict[str, Any]
-        # TODO: add actual implementation.
-        raise NotImplementedError('Not implemented yet.')
+        dnw_mode = kwargs.get('dnw_mode', '')
+
+        lch = self.get_substrate_ring_lch()
+        lch_unit = int(round(lch / self.config['layout_unit'] / self.res))
+
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        sd_pitch = mos_constants['sd_pitch']
+        md_w = mos_constants['md_w']
+
+        tmp = self._get_dummy_yloc(lch_unit, end_ext_info, end_ext_info, height)
+        od_y_list, md_y_list, po_y_list, cpo_yc_list = tmp
+        tmp = self._get_ext_adj_split_info(lch_unit, height, end_ext_info, end_ext_info, od_y_list, cpo_yc_list)
+        adj_row_list, adj_edgel_infos, adj_edger_infos, _, _ = tmp
+
+        # construct row_info_list
+        row_info_list = []
+        for od_y, md_y, po_y in zip(od_y_list, md_y_list, po_y_list):
+            row_info_list.append(RowInfo(od_x_list=(0, 0), od_type=('dum', sub_type),
+                                         od_y=od_y, po_y=po_y, md_y=md_y))
+
+        lr_edge_info = EdgeInfo(od_type='dum', draw_layers={})
+        layout_info = dict(
+            blk_type='ext_subring',
+            lch_unit=lch_unit,
+            sd_pitch=sd_pitch,
+            fg=fg,
+            arr_y=(0, height),
+            draw_od=False,
+            row_info_list=row_info_list,
+            lay_info_list=[],
+            # TODO: figure out how to do fill in extension block.
+            fill_info_list=[],
+            # edge parameters
+            sub_type=sub_type,
+            imp_params=[(sub_type, end_ext_info.thres, 0, height, 0, height), ],
+            is_sub_ring=True,
+            dnw_mode=dnw_mode,
+            md_w=md_w,
+            # adjacent block information list
+            adj_info_list=adj_row_list,
+            left_blk_info=None,
+            right_blk_info=None,
+        )
+
+        return dict(
+            layout_info=layout_info,
+            left_edge_info=(lr_edge_info, adj_edgel_infos),
+            right_edge_info=(lr_edge_info, adj_edger_infos),
+        )
 
     def _get_sub_m1_y(self, lch_unit, od_yc, od_nfin):
         """Get M1 Y coordinates for substrate connection."""
