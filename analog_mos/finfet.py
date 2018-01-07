@@ -3,12 +3,14 @@
 from typing import TYPE_CHECKING, Dict, Any, List, Optional
 
 import abc
+import math
 from collections import namedtuple
 
 from bag.math import lcm
+from bag.util.search import BinaryIterator
 from bag.layout.util import BBox
 from bag.layout.routing import WireArray
-from bag.layout.routing.fill import fill_symmetric_const_space
+from bag.layout.routing.fill import fill_symmetric_min_density_info, fill_symmetric_interval, fill_symmetric_const_space
 from bag.layout.template import TemplateBase
 
 from .core import MOSTech
@@ -16,7 +18,7 @@ from .core import MOSTech
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfoConfig
 
-ExtInfo = namedtuple('ExtInfo', ['margins', 'imp_min_w', 'mtype', 'thres', 'po_types',
+ExtInfo = namedtuple('ExtInfo', ['margins', 'od_w', 'imp_min_w', 'mtype', 'thres', 'po_types',
                                  'edgel_info', 'edger_info'])
 RowInfo = namedtuple('RowInfo', ['od_x_list', 'od_y', 'od_type', 'po_y', 'md_y'])
 AdjRowInfo = namedtuple('AdjRowInfo', ['po_y', 'po_types'])
@@ -50,10 +52,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             a tuple of MD bottom/top Y coordinates.
         top_margins :
             a dictionary of top extension margins, which is
-            spy_min / 2 - (blk_yt - lay_yt) of each layer.
+            (blk_yt - lay_yt) of each layer.
         bot_margins :
             a dictionary of bottom extension margins, which is
-            spy_min / 2 - (lay_yb - blk_yb) of each layer.
+            (lay_yb - blk_yb) of each layer.
         fill_info :
             a dictionary from metal layer tuple to tuple of exclusion
             layer name and list of metal fill Y intervals.
@@ -163,6 +165,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         po_types = (1,) * fg
         ext_top_info = ExtInfo(
             margins=top_margins,
+            od_w=w,
             imp_min_w=0,
             mtype=mtype,
             thres=threshold,
@@ -172,6 +175,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         )
         ext_bot_info = ExtInfo(
             margins=bot_margins,
+            od_w=w,
             imp_min_w=0,
             mtype=mtype,
             thres=threshold,
@@ -276,7 +280,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # step 1: get minimum extension width from vertical spacing rule
         min_ext_w = max(0, -(-(bot_imp_min_w + top_imp_min_w) // fin_p))
         for name in top_ext_info.margins:
-            tot_margin = top_ext_info.margins[name] + bot_ext_info.margins[name]
+            cur_spy = mos_constants['%s_spy'] % name
+            tot_margin = cur_spy - (top_ext_info.margins[name] + bot_ext_info.margins[name])
             min_ext_w = max(min_ext_w, -(-tot_margin // fin_p))
 
         # step 2: get maximum extension width without dummy OD
@@ -324,105 +329,130 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             width_list.append(min_ext_w_od)
             return width_list
 
-    @classmethod
-    def _get_ext_dummy_loc(self, lch_unit, bot_od_idx, top_od_idx, bot_cpo_yt, top_cpo_yb, bot_md_yt, top_md_yb,
-                           bot_imp_y, top_imp_y):
-        """ calculate extension dummy location if we only draw one dummy. """
-        cpo_od_sp = self.tech_constants['cpo_od_sp']
-        fin_p = self.tech_constants['fin_pitch']
-        fin_h = self.tech_constants['fin_h']
-        od_nfin_min = self.tech_constants['od_nfin_min']
-        md_od_exty = self.tech_constants['md_od_exty']
-        imp_od_ency = self.tech_constants['imp_od_ency']
-        od_sp_nfin_max = self.tech_constants['od_sp_nfin_max']
-        md_sp = self.tech_constants['md_sp']
-        md_h_min = self.tech_constants['md_h_min']
-
-        fin_p2 = fin_p // 2
-        fin_h2 = fin_h // 2
-
-        # calculate minimum OD coordinates
-        md_yb_min = bot_md_yt + md_sp
-        md_yt_max = top_md_yb - md_sp
-        od_yb_min = max(bot_cpo_yt + cpo_od_sp, md_yb_min + md_od_exty, bot_imp_y + imp_od_ency)
-        od_yt_max = min(top_cpo_yb - cpo_od_sp, md_yt_max - md_od_exty, top_imp_y - imp_od_ency)
-
-        od_area = top_od_idx - bot_od_idx
-        od_sp = min((od_area - od_nfin_min) // 2, od_sp_nfin_max)
-        od_nfin = od_area - (od_sp * 2) + 1
-        od_yb = (bot_od_idx + od_sp) * fin_p + fin_p2 - fin_h2
-        od_yt = od_yb + (od_nfin - 1) * fin_p + fin_h
-
-        # make sure OD Y coordinates are legal.
-        od_h_min = (od_nfin_min - 1) * fin_p + fin_h
-        if od_yb < od_yb_min:
-            od_yb = -(-(od_yb_min - fin_p2 + fin_h2) // fin_p) * fin_p + fin_p2 - fin_h2
-            od_yt = max(od_yb + od_h_min, od_yt)
-        if od_yt > od_yt_max:
-            od_yt = (od_yt_max - fin_p2 - fin_h2) // fin_p * fin_p + fin_p2 + fin_h2
-            od_yb = min(od_yt - od_h_min, od_yb)
-
-        # compute MD Y coordinates.
-        md_h = max(md_h_min, od_yt - od_yb + 2 * md_od_exty)
-        od_yc = (od_yb + od_yt) // 2
-        md_yb = od_yc - md_h // 2
-        md_yt = md_yb + md_h
-        # make sure MD Y coordinates are legal
-        if md_yb < md_yb_min:
-            md_yb = md_yb_min
-            md_yt = max(md_yt, md_yb + md_h_min)
-        if md_yt > md_yt_max:
-            md_yt = md_yt_max
-            md_yb = min(md_yt - md_h_min, md_yb)
-
-        return [(od_yb, od_yt)], [(md_yb, md_yt)]
-
-    def _get_dummy_md_y_list(self, lch_unit, bot_ext_info, top_ext_info, yblk):
+    def _get_dummy_od_yloc(self, lch_unit, bot_ext_info, top_ext_info, yblk):
         mos_constants = self.get_mos_tech_constants(lch_unit)
-        od_w_min, od_w_max = mos_constants['od_fill_w']
-        sp_od_max = mos_constants['sp_od_max']
+        fin_h = mos_constants['fin_h']
+        fin_p = mos_constants['mos_pitch']
+        od_nfin_min, od_nfin_max = mos_constants['od_fill_w']
+        od_spy_min = mos_constants['od_spy_min']
+        od_spy_max = mos_constants['od_spy_max']
         od_min_density = mos_constants['od_min_density']
 
-        po_h_min = mos_constants['po_h_min']
-        po_od_exty = mos_constants['po_od_exty']
-        sp_po = mos_constants['sp_po']
+        od_yb_offset = (fin_p - fin_h) // 2
+        od_yt_offset = od_yb_offset + fin_h
+        od_spy_nfin_min = (od_spy_min - (fin_p - fin_h)) // fin_p
+        od_spy_nfin_max = (od_spy_max - (fin_p - fin_h)) // fin_p
 
-        # step 1A: compute PO/OD bounds.
-        bot_od_yt = -bot_ext_info.od_margin
-        bot_po_yt = -bot_ext_info.po_margin
-        top_od_yb = yblk + top_ext_info.od_margin
-        top_po_yb = yblk + top_ext_info.po_margin
-        # step 1B: calculate PO area bounds.  Include OD bounds because substrate rows don't have PO
-        po_area_offset = max(bot_od_yt, bot_po_yt)
-        po_area_tot = min(top_po_yb, top_od_yb) - po_area_offset
-        # step 1B: compute target OD area needed from density rules
-        od_area_tot = top_od_yb - bot_od_yt + (top_ext_info.od_w + bot_ext_info.od_w) // 2
-        od_area_targ = int(math.ceil(od_area_tot * od_min_density))
-        # step 1C: binary search on target PO area to achieve target OD area
-        po_area_min = min(po_area_tot, od_area_targ + 2 * po_od_exty)
-        po_area_iter = BinaryIterator(po_area_min, po_area_tot + 1)
-        n_min_po = max(po_h_min, od_w_min + 2 * po_od_exty)
-        n_max_po = od_w_max + 2 * po_od_exty
-        sp_po_max = sp_od_max - 2 * po_od_exty
-        while po_area_iter.has_next():
-            po_area_targ = po_area_iter.get_next()
-            fill_info = fill_symmetric_min_density_info(po_area_tot, po_area_targ, n_min_po, n_max_po, sp_po,
-                                                        sp_max=sp_po_max, fill_on_edge=False, cyclic=False)
-            po_area_cur, nfill = fill_info[0][:2]
-            od_area_cur = po_area_cur - nfill * 2 * po_od_exty
+        # compute MD/OD locations.
+        bot_od_yt = -bot_ext_info.margins['od']
+        top_od_yb = yblk + top_ext_info.margins['od']
+        bot_od_fidx = (bot_od_yt - od_yt_offset) // fin_p
+        top_od_fidx = (top_od_yb - od_yb_offset) // fin_p
+
+        # compute OD fill area needed to meet density
+        bot_od_w = (bot_ext_info.od_w - 1) * fin_p + fin_h
+        top_od_w = (top_ext_info.od_w - 1) * fin_p + fin_h
+        od_area_adj = (bot_od_w + top_od_w) // 2
+        od_area_tot = top_od_yb - bot_od_yt + od_area_adj
+        od_area_targ = int(math.ceil(od_area_tot * od_min_density)) - od_area_adj
+        od_fin_area_min = -(-(od_area_targ - fin_h) // fin_p) + 1
+        od_fin_area_tot = top_od_fidx - bot_od_fidx - 1
+        od_fin_area_iter = BinaryIterator(od_fin_area_min, od_fin_area_tot + 1)
+
+        # binary search on OD fill area
+        while od_fin_area_iter.has_next():
+            # compute fill with fin-area target
+            od_fin_area_targ_cur = od_fin_area_iter.get_next()
+            fill_info = fill_symmetric_min_density_info(od_fin_area_tot, od_fin_area_targ_cur,
+                                                        od_nfin_min, od_nfin_max, od_spy_nfin_min,
+                                                        sp_max=od_spy_nfin_max, fill_on_edge=False,
+                                                        cyclic=False)
+            od_nfin_tot_cur = fill_info[0][0]
+
+            # compute actual OD area
+            od_intv_list = fill_symmetric_interval(*fill_info[0][2], offset=bot_od_fidx + 1, invert=fill_info[1])[0]
+            od_area_cur = sum(((start - stop - 1) * fin_p + fin_h for start, stop in od_intv_list))
             if od_area_cur >= od_area_targ:
-                po_area_iter.save_info(fill_info)
-                po_area_iter.down()
+                od_fin_area_iter.save_info(od_intv_list)
+                od_fin_area_iter.down()
             else:
-                if po_area_cur < po_area_targ or po_area_targ == po_area_tot:
-                    # we cannot do any better by increasing po_area_targ
-                    po_area_iter.save_info(fill_info)
+                if od_nfin_tot_cur < od_fin_area_targ_cur or od_fin_area_targ_cur == od_fin_area_tot:
+                    # we cannot do any better by increasing od_fin_area_targ
+                    od_fin_area_iter.save_info(od_intv_list)
                     break
                 else:
-                    po_area_iter.up()
-        fill_info = po_area_iter.get_last_save_info()
-        return fill_symmetric_interval(*fill_info[0][2], offset=po_area_offset, invert=fill_info[1])[0]
+                    od_fin_area_iter.up()
 
+        # convert fin interval to Y coordinates
+        od_intv_list = od_fin_area_iter.get_last_save_info()
+        return [(start * fin_p + od_yb_offset, stop * fin_p + od_yt_offset) for start, stop in od_intv_list]
+
+    def _get_dummy_yloc(self, lch_unit, bot_ext_info, top_ext_info, yblk):
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        fin_h = mos_constants['fin_h']
+        fin_p = mos_constants['mos_pitch']
+        od_nfin_min, od_nfin_max = mos_constants['od_fill_w']
+        od_spy_min = mos_constants['od_spy_min']
+        md_h_min = mos_constants['md_h_min']
+        md_od_exty = mos_constants['md_od_exty']
+        md_spy = mos_constants['md_spy']
+
+        od_yb_offset = (fin_p - fin_h) // 2
+        od_yt_offset = od_yb_offset + fin_h
+        od_h_min = (od_nfin_min - 1) * fin_p + fin_h
+
+        # compute MD/OD locations.
+        bot_md_yt = -bot_ext_info.margins['md']
+        top_md_yb = yblk + top_ext_info.margins['md']
+
+        # get dummy OD/MD intervals
+        od_y_list = self._get_dummy_od_yloc(lch_unit, bot_ext_info, top_ext_info, yblk)
+        md_y_list = []
+        for od_yb, od_yt in od_y_list:
+            md_h = max(md_h_min, od_yt - od_yb + 2 * md_od_exty)
+            md_yb = (od_yb + od_yt - md_h) // 2
+            md_y_list.append((md_yb, md_yb + md_h))
+
+        # check and fix bottom MD spacing violation
+        if md_y_list[0][0] < bot_md_yt + md_spy:
+            od_yt = od_y_list[0][1]
+            od_bot_fidx = -(-(bot_md_yt + md_spy + md_od_exty - od_yb_offset) // fin_p)
+            od_yb = od_bot_fidx * fin_p + od_yb_offset
+            od_yt = max(od_yb + od_h_min, od_yt)
+            od_y_list[0] = od_yb, od_yt
+            md_h = max(md_h_min, od_yt - od_yb + 2 * md_od_exty)
+            md_yb = max((od_yb + od_yt - md_h) // 2, bot_md_yt + md_spy)
+            md_y_list[0] = md_yb, md_yb + md_h
+        # check and fix MD spacing violation
+        if md_y_list[-1][1] > top_md_yb - md_spy:
+            od_yb = od_y_list[-1][0]
+            od_top_fidx = (top_md_yb - md_spy - md_od_exty - od_yt_offset) // fin_p
+            od_yt = od_top_fidx * fin_p + od_yt_offset
+            od_yb = min(od_yt - od_h_min, od_yb)
+            od_y_list[-1] = od_yb, od_yt
+            md_h = max(md_h_min, od_yt - od_yb + 2 * md_od_exty)
+            md_yt = min((od_yb + od_yt + md_h) // 2, top_md_yb - md_spy)
+            md_y_list[0] = md_yt - md_h, md_yt
+
+        if md_y_list[0][0] < bot_md_yt + md_spy:
+            # bottom MD spacing rule violated.  This only happens if we have exactly
+            # one dummy OD, and there is no solution that works for both top and bottom
+            # MD spacing rules.
+            raise ValueError('Cannot draw dummy OD and meet MD spacing constraints.  '
+                             'See developer.')
+        if len(md_y_list) > 1:
+            # check inner MD and OD spacing rules are met.
+            # I don't think these rules will ever be broken, so I'm not fixing it now.
+            # However, if there does need to be a fix, you probably need to recompute
+            # inner dummy OD Y coordinates.
+            if (md_y_list[0][1] + md_spy > md_y_list[1][0] or
+                    md_y_list[-2][1] + md_spy > md_y_list[-1][0]):
+                raise ValueError('inner dummy MD spacing rule not met.  See developer.')
+            if (od_y_list[0][1] + od_spy_min > od_y_list[1][0] or
+                    od_y_list[-2][1] + od_spy_min > od_y_list[1][0]):
+                raise ValueError('inner dummy OD spacing rule not met.  See developer.')
+
+        return od_y_list, md_y_list
 
     def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info):
         # type: (int, int, int, ExtInfo, ExtInfo) -> Dict[str, Any]
@@ -581,8 +611,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 bot_imp_y = bot_ext_info.imp_min_w
                 top_imp_y = yt - top_ext_info.imp_min_w
                 od_y_list, md_y_list = self._get_ext_dummy_loc(lch_unit, bot_od_yt_fin, top_od_yb_fin,
-                                                              bot_cpo_yt, top_cpo_yb, bot_md_yt, top_md_yb,
-                                                              bot_imp_y, top_imp_y)
+                                                               bot_cpo_yt, top_cpo_yb, bot_md_yt, top_md_yb,
+                                                               bot_imp_y, top_imp_y)
             else:
                 # for 2 for more dummy, od_sp_nfin_max (12) and od_nfin_max (20) values guarantee that
                 # all dummy locations are DRC clean
@@ -1476,7 +1506,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     m3_x_list = [sd_pitch2 * v for v in sorted(phtr_set)]
 
                 m1_warrs, m3_warrs = self._draw_ds_via(template, sd_pitch, od_yc, fg, via_info, 1, 1,
-                                                      m1_x_list, m3_x_list, xshift=xshift)
+                                                       m1_x_list, m3_x_list, xshift=xshift)
                 template.add_pin(port_name, m1_warrs, show=False)
                 template.add_pin(port_name, m3_warrs, show=False)
 
@@ -1566,13 +1596,13 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
             # draw source
             _, sarr = self._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, sloc, sdir,
-                                       s_x_list, s_x_list)
+                                        s_x_list, s_x_list)
             # draw drain
             m1d, darr = self._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, dloc, ddir,
-                                         d_x_list, d_x_list)
+                                          d_x_list, d_x_list)
             # draw gate
             m1g, _ = self._draw_g_via(template, lch_unit, fg, sd_pitch, gate_yc - sd_yc, g_via_info, [],
-                                     gate_ext_mode=gate_ext_mode)
+                                      gate_ext_mode=gate_ext_mode)
             m1_yt = m1d[0].upper
             m1_yb = m1g[0].lower
             template.add_wires(1, m1d[0].track_id.base_index, m1_yb, m1_yt, num=len(m1d), pitch=2 * stack)
@@ -1603,13 +1633,13 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
             # draw gate
             _, garr = self._draw_g_via(template, lch_unit, fg, sd_pitch, gate_yc - sd_yc, g_via_info,
-                                      g_x_list, gate_ext_mode=gate_ext_mode)
+                                       g_x_list, gate_ext_mode=gate_ext_mode)
             # draw source
             _, sarr = self._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, sloc, sdir,
-                                       s_x_list, s_x_list)
+                                        s_x_list, s_x_list)
             # draw drain
             _, darr = self._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, dloc, ddir,
-                                       d_x_list, d_x_list)
+                                        d_x_list, d_x_list)
 
             template.add_pin('s', WireArray.list_to_warr(sarr), show=False)
             template.add_pin('d', WireArray.list_to_warr(darr), show=False)

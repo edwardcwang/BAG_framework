@@ -361,8 +361,9 @@ class MOSTechPlanarGeneric(MOSTech):
         po_area_offset = max(bot_od_yt, bot_po_yt)
         po_area_tot = min(top_po_yb, top_od_yb) - po_area_offset
         # step 1B: compute target OD area needed from density rules
-        od_area_tot = top_od_yb - bot_od_yt + (top_ext_info.od_w + bot_ext_info.od_w) // 2
-        od_area_targ = int(math.ceil(od_area_tot * od_min_density))
+        od_area_adj = (top_ext_info.od_w + bot_ext_info.od_w) // 2
+        od_area_tot = top_od_yb - bot_od_yt + od_area_adj
+        od_area_targ = int(math.ceil(od_area_tot * od_min_density)) - od_area_adj
         # step 1C: binary search on target PO area to achieve target OD area
         po_area_min = min(po_area_tot, od_area_targ + 2 * po_od_exty)
         po_area_iter = BinaryIterator(po_area_min, po_area_tot + 1)
