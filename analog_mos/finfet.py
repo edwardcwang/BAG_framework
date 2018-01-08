@@ -783,8 +783,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                          po_y=po_y, md_y=md_y))
 
         # create layout information dictionary
-        between_gr = (top_row_type == 'ntap' and bot_row_type == 'ptap') or \
-                     (top_row_type == 'ptap' and bot_row_type == 'ntap')
         layout_info = dict(
             blk_type='ext',
             lch_unit=lch_unit,
@@ -801,7 +799,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             imp_params=imp_params,
             is_sub_ring=False,
             dnw_mode='',
-            between_gr=between_gr,
             # adjacent block information list
             adj_info_list=adj_row_list,
             left_blk_info=None,
@@ -1223,24 +1220,16 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         the layout information dictionary should contain the following entries:
 
-
         blk_type
             a string describing the type of this block.
         lch_unit
             channel length in resolution units
-        md_w
-            M0OD width in resolution units
-        fg
-            the width of this template in number of fingers
         sd_pitch
             the source/drain pitch of this template.
-        array_box_xl
-            array box left coordinate.  All PO X coordinates are calculated
-            relative to this point.
-        array_box_y
+        fg
+            the width of this template in number of fingers
+        arr_y
             array box Y coordinates as two-element integer tuple.
-        od_type
-            the OD type in this template.  Either 'mos', 'sub', or 'dum'.
         draw_od
             If False, we will not draw OD in this template.  This is used for
             supporting the ds_dummy option.
@@ -1253,30 +1242,18 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             should have the following entries:
 
             od_x_list
-                A list of transistor X intervals in finger index.
+                A list of OD X intervals in finger index.
+            od_type
+                the OD type.  One of 'mos', 'sub', or 'dum'.
             od_y
-                OD Y coordinates as two-element integer tuple.
+                OD Y interval.
             po_y
-                PO Y coordinates as two-element integer tuple.
+                PO Y interval.
             md_y
-                MD Y coordinates as two-element integer tuple.
+                MD Y interval.
         lay_info_list
             a list of layers to draw.  Each layer information is a tuple
             of (imp_layer, xl, yb, yt).
-        adj_info_list
-            a list of named tuples for geometries belonging to adjacent
-            rows.  Each named tuple should contain:
-
-            po_y
-                PO Y coordinates as two-element integer tuple.
-            po_types
-                list of po types.  1 for drawing, 0 for dummy.
-        left_blk_info
-            a tuple of (EdgeInfo, List[EdgeInfo]) that represents edge information
-            of the left adjacent block.  These influences the geometry abutting the
-            left block.  If None, assume default behavior.
-        right_blk_info
-            same as left_blk_info, but for the right edge.
         fill_info_list:
             a list of fill information named tuple.  Each tuple contains:
 
@@ -1288,6 +1265,20 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 a list of X intervals of the fill
             y_intv_list
                 a list of Y intervals of the fill
+        adj_row_list
+            a list of named tuples for geometries belonging to adjacent
+            rows.  Each named tuple should contain:
+
+            po_y
+                PO Y interval.
+            po_types
+                list of po types corresponding to each PO.  1 for drawing, 0 for dummy.
+        left_blk_info
+            a tuple of (EdgeInfo, List[EdgeInfo]) that represents edge information
+            of the left adjacent block.  These influences the geometry abutting the
+            left edge.  If None, assume default behavior.
+        right_blk_info
+            same as left_blk_info, but for the right edge.
 
         Parameters
         ----------
