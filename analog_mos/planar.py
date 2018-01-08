@@ -790,7 +790,6 @@ class MOSTechPlanarGeneric(MOSTech):
         if is_end:
             # step 1: figure out Y coordinates of CPO
             blk_pitch = lcm([blk_pitch, mos_pitch])
-            # first assume top Y coordinate is 0
             arr_yt = -(-edge_margin // blk_pitch) * blk_pitch
         else:
             # allow substrate row abutment
