@@ -166,7 +166,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             fg_od_margin=fg_od_margin,
         )
 
-    def _get_block_info(self, lch_unit, fg, w, mos_type, sub_type, threshold, **kwargs):
+    def _get_mos_blk_info(self, lch_unit, fg, w, mos_type, sub_type, threshold, **kwargs):
         # type: (int, int, int, str, str, str, **kwargs) -> Dict[str, Any]
 
         dnw_mode = kwargs.get('dnw_mode', '')
@@ -293,7 +293,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
         # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
         sub_type = 'ptap' if mos_type == 'nch' else 'ntap'
-        return self._get_block_info(lch_unit, fg, w, mos_type, sub_type, threshold, **kwargs)
+        return self._get_mos_blk_info(lch_unit, fg, w, mos_type, sub_type, threshold, **kwargs)
 
     def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info):
         # type: (int, ExtInfo, ExtInfo) -> List[int]
@@ -873,9 +873,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
     def get_substrate_info(self, lch_unit, w, sub_type, threshold, fg, blk_pitch=1, **kwargs):
         # type: (int, int, str, str, int, int, **kwargs) -> Dict[str, Any]
-        return self._get_block_info(lch_unit, fg, w, sub_type, sub_type, threshold, **kwargs)
+        return self._get_mos_blk_info(lch_unit, fg, w, sub_type, sub_type, threshold, **kwargs)
 
-    def get_analog_end_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
+    def _get_end_blk_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
         # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
         """Get substrate end layout information
 
@@ -890,6 +890,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """
         is_sub_ring = kwargs.get('is_sub_ring', False)
         dnw_mode = kwargs.get('dnw_mode', '')
+        end_ext_info = kwargs.get('end_ext_info', None)
+
+        is_sub_ring_end = (end_ext_info is not None)
 
         dnw_margins = self.config['dnw_margins']
         mos_layer_table = self.config['mos_layer_table']
@@ -906,7 +909,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
-        if dnw_mode:
+        if dnw_mode and not is_sub_ring_end:
             edge_margin = dnw_margins[dnw_mode] - nw_dnw_ext
 
         lr_edge_info = EdgeInfo(od_type='sub', draw_layers={})
@@ -923,12 +926,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             imp_yb = min(po_yb, (cpo_bot_yt + cpo_bot_yb) // 2)
             min_yb = min(finbound_yb, cpo_bot_yb, imp_yb - edge_margin)
             # make sure all layers are in first quadrant
-            if min_yb < 0:
+            if is_sub_ring_end:
+                yshift = -min_yb
+            else:
                 yshift = -(min_yb // blk_pitch) * blk_pitch
-                arr_yt += yshift
-                cpo_bot_yt += yshift
-                cpo_bot_yb += yshift
-                finbound_yb += yshift
+            arr_yt += yshift
+            cpo_bot_yt += yshift
+            cpo_bot_yb += yshift
+            finbound_yb += yshift
 
             finbound_yt = arr_yt + fin_p2 + fin_h2
             cpo_bot_yc = (cpo_bot_yb + cpo_bot_yt) // 2
@@ -957,8 +962,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             adj_row_list = []
             adj_edge_infos = []
 
+        blk_type = 'end_subring' if is_sub_ring_end else 'end'
         layout_info = dict(
-            blk_type='end',
+            blk_type=blk_type,
             lch_unit=lch_unit,
             sd_pitch=sd_pitch,
             fg=fg,
@@ -979,19 +985,49 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             right_blk_info=None,
         )
 
-        return dict(
+        ans = dict(
             layout_info=layout_info,
             left_edge_info=(lr_edge_info, adj_edge_infos),
             right_edge_info=(lr_edge_info, adj_edge_infos),
         )
+        if is_sub_ring_end:
+            ans['ext_info'] = ExtInfo(
+                margins={key: val + arr_yt for key, val in end_ext_info.margins.items()},
+                od_w=end_ext_info.od_w,
+                imp_min_w=0,
+                mtype=end_ext_info.mtype,
+                thres=threshold,
+                po_types=(1,) * fg,
+                edgel_info=lr_edge_info,
+                edger_info=lr_edge_info,
+            )
 
-    @classmethod
+        return ans
+
+    def get_analog_end_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
+        # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
+        """Get substrate end layout information
+
+        Layout is quite simple.  We draw the right CPO width, and extend PO so PO-CPO overlap
+        rule is satisfied.
+
+        Strategy:
+        If is not end (array abutment), just draw CPO.  If is end:
+        1. find margin between bottom coordinate and array box bottom, round up to block pitch.
+        #. Compute CPO location, and PO coordinates if we need to draw PO.
+        #. Compute implant location.
+        """
+        return self._get_end_blk_info(lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs)
+
     def get_sub_ring_end_info(self, sub_type, threshold, fg, end_ext_info, **kwargs):
         # type: (str, str, int, ExtInfo, **kwargs) -> Dict[str, Any]
-        # TODO: add actual implementation
-        raise NotImplementedError('not implemented yet.')
+        """Empty block, just reserve space for margin."""
+        lch = self.get_substrate_ring_lch()
+        lch_unit = int(round(lch / self.config['layout_unit'] / self.res))
 
-    @classmethod
+        kwargs['end_ext_info'] = end_ext_info
+        return self._get_end_blk_info(lch_unit, sub_type, threshold, fg, True, 1, **kwargs)
+
     def get_outer_edge_info(self, guard_ring_nf, layout_info, is_end, adj_blk_info):
         # type: (int, Dict[str, Any], bool, Optional[Any]) -> Dict[str, Any]
         lch_unit = layout_info['lch_unit']
