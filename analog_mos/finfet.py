@@ -151,10 +151,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # compute edge margin and cpo_xl
         if is_end:
-            edge_margin = cpo_xl = 0
-        else:
             edge_margin = outer_margin
             cpo_xl = outer_margin + (sd_pitch - lch_unit) // 2 - cpo_po_extx
+        else:
+            edge_margin = cpo_xl = 0
 
         return dict(
             edge_num_fg=fg_outer + fg_gr_sub + fg_gr_sep,
@@ -252,7 +252,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             imp_params=[(mos_type, threshold, blk_yb, blk_yt, blk_yb, blk_yt)],
             is_sub_ring=is_sub_ring,
             dnw_mode='',
-            md_w=md_w,
             # adjacent block information list
             adj_row_list=[],
             left_blk_info=None,
@@ -665,7 +664,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 imp_params=None,
                 is_sub_ring=False,
                 dnw_mode='',
-                md_w=md_w,
                 # adjacent block information list
                 adj_row_list=[],
                 left_blk_info=None,
@@ -805,7 +803,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             imp_params=imp_params,
             is_sub_ring=False,
             dnw_mode='',
-            md_w=md_w,
             between_gr=between_gr,
             # adjacent block information list
             adj_info_list=adj_row_list,
@@ -858,7 +855,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             imp_params=[(sub_type, end_ext_info.thres, 0, height, 0, height), ],
             is_sub_ring=True,
             dnw_mode=dnw_mode,
-            md_w=md_w,
             # adjacent block information list
             adj_info_list=adj_row_list,
             left_blk_info=None,
@@ -978,7 +974,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             imp_params=None,
             is_sub_ring=is_sub_ring,
             dnw_mode=dnw_mode,
-            md_w=md_w,
             # adjacent block information list
             adj_row_list=adj_row_list,
             left_blk_info=None,
@@ -1030,74 +1025,65 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
     def get_outer_edge_info(self, guard_ring_nf, layout_info, is_end, adj_blk_info):
         # type: (int, Dict[str, Any], bool, Optional[Any]) -> Dict[str, Any]
+        mos_layer_table = self.config['mos_layer_table']
+
         lch_unit = layout_info['lch_unit']
-        edge_info = self.get_edge_info(lch_unit, guard_ring_nf, is_end)
-        outer_fg = edge_info['outer_fg']
+        sd_pitch = layout_info['sd_pitch']
+        arr_y = layout_info['arr_y']
+        row_info_list = layout_info['row_info_list']
+        lay_info_list = layout_info['lay_info_list']
+        adj_row_list = layout_info['adj_row_list']
+        imp_params = layout_info['imp_params']
+        dnw_mode = layout_info['dnw_mode']
+
+        edge_info = self.get_edge_info(lch_unit, guard_ring_nf, is_end, dnw_mode=dnw_mode)
+        fg_outer = edge_info['fg_outer']
         cpo_xl = edge_info['cpo_xl']
-        # compute new row_info_list
-        # noinspection PyProtectedMember
-        row_info_list = [rinfo._replace(od_x_list=[]) for rinfo in layout_info['row_info_list']]
 
         # compute new lay_info_list
-        lay_info_list = layout_info['lay_info_list']
-        imp_params = layout_info['imp_params']
+        cpo_lay = mos_layer_table['CPO']
         if guard_ring_nf == 0 or imp_params is None:
-            # we keep all implant layers, just update left coordinate.
-            new_lay_list = [(lay, cpo_xl if lay[0] == 'CutPoly' else 0, yb, yt)
+            # we keep all implant layers, just update CPO left coordinate.
+            new_lay_list = [(lay, cpo_xl if lay == cpo_lay else 0, yb, yt)
                             for lay, _, yb, yt in lay_info_list]
         else:
-            # we need to convert implant layers to substrate implants
-            # first, get all CPO layers
-            new_lay_list = [(lay, cpo_xl, yb, yt) for lay, _, yb, yt in lay_info_list if lay[0] == 'CutPoly']
-            # compute substrate implant layers
-            for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
-                sub_type = 'ptap' if mtype == 'nch' or mtype == 'ptap' else 'ntap'
-                for lay in self.get_mos_layers(sub_type, thres):
-                    cur_yb, cur_yt = imp_yb, imp_yt
-                    new_lay_list.append((lay, 0, cur_yb, cur_yt))
+            # in guard ring mode, only draw CPO
+            new_lay_list = [(lay, cpo_xl, yb, yt) for lay, _, yb, yt in lay_info_list if lay == cpo_lay]
+
+        # compute new row_info_list
+        # noinspection PyProtectedMember
+        row_info_list = [rinfo._replace(od_x_list=[]) for rinfo in row_info_list]
 
         # compute new adj_info_list
-        adj_info_list = layout_info['adj_info_list']
         if adj_blk_info is None:
-            adj_blk_info = (None, [None] * len(adj_info_list))
+            adj_blk_info = (None, [None] * len(adj_row_list))
 
-        new_adj_list = []
-        if outer_fg > 0:
-            for adj_edge_info, adj_info in zip(adj_blk_info[1], adj_info_list):
+        # change PO type in adjacent row geometries
+        new_adj_row_list = []
+        if fg_outer > 0:
+            for adj_edge_info, adj_info in zip(adj_blk_info[1], adj_row_list):
                 if adj_edge_info is not None and (adj_edge_info.od_type == 'mos' or adj_edge_info.od_type == 'sub'):
-                    po_types = (0,) * (outer_fg - 1) + (1,)
+                    po_types = (0,) * (fg_outer - 1) + (1,)
                 else:
-                    po_types = (0,) * outer_fg
+                    po_types = (0,) * fg_outer
                 # noinspection PyProtectedMember
-                new_adj_list.append(adj_info._replace(po_types=po_types))
-
-        # compute new fill information
-        sd_pitch = layout_info['sd_pitch']
-        if outer_fg > 0:
-            mos_constants = self.get_mos_tech_constants(lch_unit)
-            m1_w = mos_constants['mos_conn_w']
-            x_intv_list = [(sd_pitch - m1_w // 2, sd_pitch + m1_w // 2)]
-        else:
-            x_intv_list = []
-        # noinspection PyProtectedMember
-        fill_info_list = [f._replace(x_intv_list=x_intv_list) for f in layout_info['fill_info_list']]
+                new_adj_row_list.append(adj_info._replace(po_types=po_types))
 
         return dict(
+            blk_type='edge' if guard_ring_nf == 0 else 'gr_edge',
             lch_unit=lch_unit,
-            md_w=layout_info['md_w'],
-            fg=outer_fg,
             sd_pitch=sd_pitch,
-            array_box_xl=0,
-            array_box_y=layout_info['array_box_y'],
+            fg=fg_outer,
+            arr_y=arr_y,
             draw_od=True,
             row_info_list=row_info_list,
             lay_info_list=new_lay_list,
-            adj_info_list=new_adj_list,
-            left_blk_info=EdgeInfo(od_type=None),
+            # TODO: figure out how to draw fill in outer edge block
+            fill_info_list=[],
+            # adjacent block information
+            adj_row_list=new_adj_row_list,
+            left_blk_info=EdgeInfo(od_type=None, draw_layers={}),
             right_blk_info=adj_blk_info[0],
-            fill_info_list=fill_info_list,
-
-            blk_type='edge' if guard_ring_nf == 0 else 'gr_edge',
         )
 
     @classmethod
