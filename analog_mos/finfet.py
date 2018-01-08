@@ -176,7 +176,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         nw_dnw_ovl = mos_constants['nw_dnw_ovl']
         dnw_layers = mos_constants['dnw_layers']
-        md_w = mos_constants['md_w']
 
         is_sub = (mos_type == sub_type)
         od_type = 'sub' if is_sub else 'mos'
@@ -249,7 +248,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             fill_info_list=fill_info_list,
             # edge parameters
             sub_type=sub_type,
-            imp_params=[(mos_type, threshold, blk_yb, blk_yt, blk_yb, blk_yt)],
+            imp_params=None if is_sub else [(mos_type, threshold, blk_yb, blk_yt, blk_yb, blk_yt)],
             is_sub_ring=is_sub_ring,
             dnw_mode='',
             # adjacent block information list
@@ -634,7 +633,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fin_p = mos_constants['mos_pitch']
         cpo_spy = mos_constants['cpo_spy']
         cpo_h = mos_constants['cpo_h']
-        md_w = mos_constants['md_w']
         sd_pitch = mos_constants['sd_pitch']
         od_spx = mos_constants['od_spx']
         od_fill_w_max = mos_constants['od_fill_w_max']
@@ -825,7 +823,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
-        md_w = mos_constants['md_w']
 
         tmp = self._get_dummy_yloc(lch_unit, end_ext_info, end_ext_info, height)
         od_y_list, md_y_list, po_y_list, cpo_yc_list = tmp
@@ -899,7 +896,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fin_p = mos_constants['mos_pitch']
         cpo_po_ency = mos_constants['cpo_po_ency']
         cpo_h = mos_constants['cpo_h']
-        md_w = mos_constants['md_w']
         nw_dnw_ext = mos_constants['nw_dnw_ext']
         edge_margin = mos_constants['edge_margin']
 
@@ -1086,71 +1082,92 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             right_blk_info=adj_blk_info[0],
         )
 
-    @classmethod
     def get_gr_sub_info(self, guard_ring_nf, layout_info):
         # type: (int, Dict[str, Any]) -> Dict[str, Any]
+        mos_layer_table = self.config['mos_layer_table']
 
+        imp_layers_info_struct = self.mos_config['imp_layers']
+        thres_layers_info_struct = self.mos_config['thres_layers']
+        dnw_layers = self.mos_config['dnw_layers']
+        nw_dnw_ovl = self.mos_config['nw_dnw_ovl']
+
+        sd_pitch = layout_info['sd_pitch']
         lch_unit = layout_info['lch_unit']
-        edge_constants = self.get_edge_tech_constants(lch_unit)
-        gr_nf_min = edge_constants['gr_nf_min']
-        gr_sub_fg_margin = edge_constants['gr_sub_fg_margin']
+        arr_y = layout_info['arr_y']
+        lay_info_list = layout_info['lay_info_list']
+        row_info_list = layout_info['row_info_list']
+        fill_info_list = layout_info['fill_info_list']
+        adj_row_list = layout_info['adj_row_list']
+        imp_params = layout_info['imp_params']
+        dnw_mode = layout_info['dnw_mode']
 
-        if guard_ring_nf < gr_nf_min:
-            raise ValueError('guard_ring_nf = %d < %d' % (guard_ring_nf, gr_nf_min))
-
-        fg = gr_nf_min + 2 + 2 * gr_sub_fg_margin
+        edge_info = self.get_edge_info(lch_unit, guard_ring_nf, True, dnw_mode=dnw_mode)
+        fg_gr_sub = edge_info['fg_gr_sub']
+        fg_od_margin = edge_info['fg_od_margin']
 
         # compute new row_info_list
-        od_x_list = [(gr_sub_fg_margin + 1, gr_sub_fg_margin + 1 + gr_nf_min)]
+        od_x_list = [(fg_od_margin + 1, fg_od_margin + 1 + guard_ring_nf)]
         # noinspection PyProtectedMember
         row_info_list = [rinfo._replace(od_x_list=od_x_list, od_type=('sub', rinfo.od_type[1]))
-                         for rinfo in layout_info['row_info_list']]
+                         for rinfo in row_info_list]
 
         # compute new lay_info_list
-        lay_info_list = layout_info['lay_info_list']
-        imp_params = layout_info['imp_params']
+        cpo_lay = mos_layer_table['CPO']
+        wblk = fg_gr_sub * sd_pitch
         if imp_params is None:
-            # don't have to recompute implant layers
-            new_lay_list = lay_info_list
+            # copy implant layers, but update left coordinate of DNW layers
+            new_lay_list = []
+            for lay_name, xl, yb, yt in lay_info_list:
+                if lay_name in dnw_layers:
+                    new_lay_list.append((lay_name, wblk - nw_dnw_ovl, yb, yt))
+                else:
+                    new_lay_list.append((lay_name, xl, yb, yt))
         else:
             # we need to convert implant layers to substrate implants
             # first, get all CPO layers
-            new_lay_list = [lay_info for lay_info in lay_info_list if lay_info[0][0] == 'CutPoly']
+            new_lay_list = [lay_info for lay_info in lay_info_list if lay_info[0] == cpo_lay]
             # compute substrate implant layers
             for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
                 sub_type = 'ptap' if mtype == 'nch' or mtype == 'ptap' else 'ntap'
-                for lay in self.get_mos_layers(sub_type, thres):
-                    cur_yb, cur_yt = imp_yb, imp_yt
-                    new_lay_list.append((lay, 0, cur_yb, cur_yt))
+                imp_layers_info = imp_layers_info_struct[sub_type]
+                thres_layers_info = thres_layers_info_struct[sub_type][thres]
+                for cur_yb, cur_yt, lay_info in [(imp_yb, imp_yt, imp_layers_info),
+                                                 (thres_yb, thres_yt, thres_layers_info)]:
+                    for lay_name in lay_info:
+                        new_lay_list.append((lay_name, 0, cur_yb, cur_yt))
+            # add DNW layers
+            if dnw_mode:
+                # add DNW layers
+                # NOTE: since substrate has imp_params = None, if we're here we know that we're not
+                # next to substrate, so DNW should span the entire height of this template
+                for lay_name in dnw_layers:
+                    new_lay_list.append((lay_name, wblk - nw_dnw_ovl, 0, arr_y[1]))
 
-        # compute new adj_info_list
-        po_types = (0,) * gr_sub_fg_margin + (1,) * (gr_nf_min + 2) + (0,) * gr_sub_fg_margin
+        # compute new adj_row_list
+        po_types = (0,) * fg_od_margin + (1,) * (guard_ring_nf + 2) + (0,) * fg_od_margin
         # noinspection PyProtectedMember
-        adj_info_list = [ar_info._replace(po_types=po_types) for ar_info in layout_info['adj_info_list']]
+        new_adj_row_list = [ar_info._replace(po_types=po_types) for ar_info in adj_row_list]
 
         # compute new fill information
         # noinspection PyProtectedMember
-        fill_info_list = [f._replace(x_intv_list=[]) for f in layout_info['fill_info_list']]
+        fill_info_list = [f._replace(x_intv_list=[]) for f in fill_info_list]
 
         return dict(
+            blk_type='gr_sub',
             lch_unit=lch_unit,
-            md_w=layout_info['md_w'],
-            fg=fg,
-            sd_pitch=layout_info['sd_pitch'],
-            array_box_xl=0,
-            array_box_y=layout_info['array_box_y'],
+            sd_pitch=sd_pitch,
+            fg=fg_gr_sub,
+            arr_y=arr_y,
             draw_od=True,
             row_info_list=row_info_list,
             lay_info_list=new_lay_list,
-            adj_info_list=adj_info_list,
+            fill_info_list=fill_info_list,
+            # adjacent block information list
+            adj_row_list=new_adj_row_list,
             left_blk_info=None,
             right_blk_info=None,
-            fill_info_list=fill_info_list,
-
-            blk_type='gr_sub',
         )
 
-    @classmethod
     def get_gr_sep_info(self, layout_info, adj_blk_info):
         # type: (Dict[str, Any], Any) -> Dict[str, Any]
 
