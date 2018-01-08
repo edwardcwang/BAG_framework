@@ -1172,50 +1172,51 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # type: (Dict[str, Any], Any) -> Dict[str, Any]
 
         lch_unit = layout_info['lch_unit']
-        edge_constants = self.get_edge_tech_constants(lch_unit)
-        fg = edge_constants['gr_sep_fg']
+        sd_pitch = layout_info['sd_pitch']
+        arr_y = layout_info['arr_y']
+        lay_info_list = layout_info['lay_info_list']
+        row_info_list = layout_info['row_info_list']
+        adj_row_list = layout_info['adj_row_list']
+        is_sub_ring = layout_info['is_sub_ring']
+        dnw_mode = layout_info['dnw_mode']
+
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        fg_gr_min = mos_constants['fg_gr_min']
+
+        edge_constants = self.get_edge_info(lch_unit, fg_gr_min, True, is_sub_ring=is_sub_ring, dnw_mode=dnw_mode)
+        fg_gr_sep = edge_constants['fg_gr_sep']
 
         # compute new row_info_list
         # noinspection PyProtectedMember
-        row_info_list = [rinfo._replace(od_x_list=[]) for rinfo in layout_info['row_info_list']]
+        new_row_list = [rinfo._replace(od_x_list=[]) for rinfo in row_info_list]
 
         # compute new adj_info_list
-        adj_info_list = layout_info['adj_info_list']
         new_adj_list = []
-        for adj_edge_info, adj_info in zip(adj_blk_info[1], adj_info_list):
+        for adj_edge_info, adj_info in zip(adj_blk_info[1], adj_row_list):
             if adj_edge_info.od_type == 'mos' or adj_edge_info.od_type == 'sub':
-                po_types = (0,) * (fg - 1) + (1,)
+                po_types = (0,) * (fg_gr_sep - 1) + (1,)
             else:
-                po_types = (0,) * fg
+                po_types = (0,) * fg_gr_sep
             # noinspection PyProtectedMember
             new_adj_list.append(adj_info._replace(po_types=po_types))
 
-        # compute new fill information
-        mos_constants = self.get_mos_tech_constants(lch_unit)
-        m1_w = mos_constants['mos_conn_w']
-        x_intv_list = [(-m1_w // 2, m1_w // 2)]
-        # noinspection PyProtectedMember
-        fill_info_list = [f._replace(x_intv_list=x_intv_list) for f in layout_info['fill_info_list']]
-
         return dict(
+            blk_type='gr_sep',
             lch_unit=lch_unit,
-            md_w=layout_info['md_w'],
-            fg=fg,
-            sd_pitch=layout_info['sd_pitch'],
-            array_box_xl=0,
-            array_box_y=layout_info['array_box_y'],
+            sd_pitch=sd_pitch,
+            fg=fg_gr_sep,
+            arr_y=arr_y,
             draw_od=True,
-            row_info_list=row_info_list,
-            lay_info_list=layout_info['lay_info_list'],
-            adj_info_list=new_adj_list,
+            row_info_list=new_row_list,
+            lay_info_list=lay_info_list,
+            # TODO: figure out how to compute fill information
+            fill_info_list=[],
+            # adjacent block information list
+            adj_row_list=new_adj_list,
             left_blk_info=None,
             right_blk_info=adj_blk_info[0],
-            fill_info_list=fill_info_list,
-
-            blk_type='gr_sep',
         )
 
-    @classmethod
     def draw_mos(self, template, layout_info):
         # type: (TemplateBase, Dict[str, Any]) -> None
         """Draw transistor related layout.
