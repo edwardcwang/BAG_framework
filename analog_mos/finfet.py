@@ -888,28 +888,40 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         #. Compute CPO location, and PO coordinates if we need to draw PO.
         #. Compute implant location.
         """
-        fin_h = self.tech_constants['fin_h']
-        fin_p = self.tech_constants['fin_pitch']
-        cpo_po_ency = self.tech_constants['cpo_po_ency']
-        md_w = self.tech_constants['md_w']
-        cpo_h = self.tech_constants['cpo_h']
+        is_sub_ring = kwargs.get('is_sub_ring', False)
+        dnw_mode = kwargs.get('dnw_mode', '')
 
-        fin_p2 = fin_p // 2
-        fin_h2 = fin_h // 2
+        dnw_margins = self.config['dnw_margins']
+        mos_layer_table = self.config['mos_layer_table']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
+        fin_h = mos_constants['fin_h']
+        fin_p = mos_constants['mos_pitch']
+        cpo_po_ency = mos_constants['cpo_po_ency']
+        cpo_h = mos_constants['cpo_h']
+        md_w = mos_constants['md_w']
+        nw_dnw_ext = mos_constants['nw_dnw_ext']
+        edge_margin = mos_constants['edge_margin']
 
-        lr_edge_info = EdgeInfo(od_type='sub')
+        fin_p2 = fin_p // 2
+        fin_h2 = fin_h // 2
+        if dnw_mode:
+            edge_margin = dnw_margins[dnw_mode] - nw_dnw_ext
+
+        lr_edge_info = EdgeInfo(od_type='sub', draw_layers={})
+        cpo_lay = mos_layer_table['CPO']
+        finbound_lay = mos_layer_table['FB']
         if is_end:
-            # step 1: figure out Y coordinates of CPO
             blk_pitch = lcm([blk_pitch, fin_p])
             # first assume top Y coordinate is 0
             arr_yt = 0
             cpo_bot_yt = arr_yt + cpo_h // 2
             cpo_bot_yb = cpo_bot_yt - cpo_h
             finbound_yb = arr_yt - fin_p2 - fin_h2
-            min_yb = min(finbound_yb, cpo_bot_yb)
+            po_yb = cpo_bot_yt - cpo_po_ency
+            imp_yb = min(po_yb, (cpo_bot_yt + cpo_bot_yb) // 2)
+            min_yb = min(finbound_yb, cpo_bot_yb, imp_yb - edge_margin)
             # make sure all layers are in first quadrant
             if min_yb < 0:
                 yshift = -(min_yb // blk_pitch) * blk_pitch
@@ -922,50 +934,49 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             cpo_bot_yc = (cpo_bot_yb + cpo_bot_yt) // 2
             po_yt = arr_yt
             po_yb = cpo_bot_yt - cpo_po_ency
+            imp_yb = min(po_yb, cpo_bot_yc)
             if po_yt > po_yb:
-                adj_info_list = [AdjRowInfo(po_y=(po_yb, po_yt), po_types=(1,) * fg)]
+                adj_row_list = [AdjRowInfo(po_y=(po_yb, po_yt), po_types=(1,) * fg)]
                 adj_edge_infos = [lr_edge_info]
             else:
-                adj_info_list = []
+                adj_row_list = []
                 adj_edge_infos = []
 
-            lay_info_list = [(('CutPoly', 'drawing'), 0, cpo_bot_yb, cpo_bot_yt)]
+            lay_info_list = [(cpo_lay, 0, cpo_bot_yb, cpo_bot_yt), ]
             for lay in self.get_mos_layers(sub_type, threshold):
-                if lay[0] == 'FinArea':
+                if lay == finbound_lay:
                     yb, yt = finbound_yb, finbound_yt
                 else:
-                    yb, yt = min(po_yb, cpo_bot_yc), arr_yt
+                    yb, yt = imp_yb, arr_yt
                 if yt > yb:
                     lay_info_list.append((lay, 0, yb, yt))
         else:
             # we just draw CPO
             arr_yt = 0
-            cpo_h = mos_constants['cpo_h']
-            lay_info_list = [(('CutPoly', 'drawing'), 0, -cpo_h // 2, cpo_h // 2)]
-            adj_info_list = []
+            lay_info_list = [(cpo_lay, 0, -cpo_h // 2, cpo_h // 2)]
+            adj_row_list = []
             adj_edge_infos = []
 
         layout_info = dict(
-            # information needed for draw_mos
+            blk_type='end',
             lch_unit=lch_unit,
-            md_w=md_w,
-            fg=fg,
             sd_pitch=sd_pitch,
-            array_box_xl=0,
-            array_box_y=(0, arr_yt),
+            fg=fg,
+            arr_y=(0, arr_yt),
             draw_od=True,
             row_info_list=[],
             lay_info_list=lay_info_list,
-            adj_info_list=adj_info_list,
+            fill_info_list=[],
+            # edge parameters
+            sub_type=sub_type,
+            imp_params=None,
+            is_sub_ring=is_sub_ring,
+            dnw_mode=dnw_mode,
+            md_w=md_w,
+            # adjacent block information list
+            adj_row_list=adj_row_list,
             left_blk_info=None,
             right_blk_info=None,
-            fill_info_list=[],
-
-            # information needed for computing edge block layout
-            blk_type='end',
-            imp_params=None,
-            left_edge_info=(lr_edge_info, adj_edge_infos),
-            right_edge_info=(lr_edge_info, adj_edge_infos),
         )
 
         return dict(
