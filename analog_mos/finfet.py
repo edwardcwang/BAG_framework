@@ -235,7 +235,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         layout_info = dict(
             blk_type=od_type,
             lch_unit=lch_unit,
-            sd_pitch=self.get_sd_pitch(lch_unit),
             fg=fg,
             arr_y=(blk_yb, blk_yt),
             draw_od=not ds_dummy,
@@ -650,7 +649,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             layout_info = dict(
                 blk_type='ext',
                 lch_unit=lch_unit,
-                sd_pitch=sd_pitch,
                 fg=fg,
                 arr_y=(0, 0),
                 draw_od=True,
@@ -786,7 +784,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         layout_info = dict(
             blk_type='ext',
             lch_unit=lch_unit,
-            sd_pitch=sd_pitch,
             fg=fg,
             arr_y=(0, yt),
             draw_od=True,
@@ -818,9 +815,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         lch = self.get_substrate_ring_lch()
         lch_unit = int(round(lch / self.config['layout_unit'] / self.res))
 
-        mos_constants = self.get_mos_tech_constants(lch_unit)
-        sd_pitch = mos_constants['sd_pitch']
-
         tmp = self._get_dummy_yloc(lch_unit, end_ext_info, end_ext_info, height)
         od_y_list, md_y_list, po_y_list, cpo_yc_list = tmp
         tmp = self._get_ext_adj_split_info(lch_unit, height, end_ext_info, end_ext_info, od_y_list, cpo_yc_list)
@@ -836,7 +830,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         layout_info = dict(
             blk_type='ext_subring',
             lch_unit=lch_unit,
-            sd_pitch=sd_pitch,
             fg=fg,
             arr_y=(0, height),
             draw_od=False,
@@ -888,7 +881,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_layer_table = self.config['mos_layer_table']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
-        sd_pitch = mos_constants['sd_pitch']
         fin_h = mos_constants['fin_h']
         fin_p = mos_constants['mos_pitch']
         cpo_po_ency = mos_constants['cpo_po_ency']
@@ -955,7 +947,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         layout_info = dict(
             blk_type=blk_type,
             lch_unit=lch_unit,
-            sd_pitch=sd_pitch,
             fg=fg,
             arr_y=(0, arr_yt),
             draw_od=True,
@@ -1021,7 +1012,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_layer_table = self.config['mos_layer_table']
 
         lch_unit = layout_info['lch_unit']
-        sd_pitch = layout_info['sd_pitch']
         arr_y = layout_info['arr_y']
         row_info_list = layout_info['row_info_list']
         lay_info_list = layout_info['lay_info_list']
@@ -1065,7 +1055,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return dict(
             blk_type='edge' if guard_ring_nf == 0 else 'gr_edge',
             lch_unit=lch_unit,
-            sd_pitch=sd_pitch,
             fg=fg_outer,
             arr_y=arr_y,
             draw_od=True,
@@ -1152,7 +1141,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return dict(
             blk_type='gr_sub',
             lch_unit=lch_unit,
-            sd_pitch=sd_pitch,
             fg=fg_gr_sub,
             arr_y=arr_y,
             draw_od=True,
@@ -1169,7 +1157,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # type: (Dict[str, Any], Any) -> Dict[str, Any]
 
         lch_unit = layout_info['lch_unit']
-        sd_pitch = layout_info['sd_pitch']
         arr_y = layout_info['arr_y']
         lay_info_list = layout_info['lay_info_list']
         row_info_list = layout_info['row_info_list']
@@ -1200,7 +1187,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return dict(
             blk_type='gr_sep',
             lch_unit=lch_unit,
-            sd_pitch=sd_pitch,
             fg=fg_gr_sep,
             arr_y=arr_y,
             draw_od=True,
@@ -1224,8 +1210,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             a string describing the type of this block.
         lch_unit
             channel length in resolution units
-        sd_pitch
-            the source/drain pitch of this template.
         fg
             the width of this template in number of fingers
         arr_y
@@ -1244,7 +1228,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             od_x_list
                 A list of OD X intervals in finger index.
             od_type
-                the OD type.  One of 'mos', 'sub', or 'dum'.
+                a tuple of (OD type, substrate type).  OD type is one of 'mos', 'sub', or 'dum'.
             od_y
                 OD Y interval.
             po_y
@@ -1287,30 +1271,30 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         layout_info : Dict[str, Any]
             the layout information dictionary.
         """
-        res = template.grid.resolution
+        res = self.res
+        mos_layer_table = self.config['mos_layer_table']
 
-        fin_pitch = self.tech_constants['fin_pitch']
-        fin_h = self.tech_constants['fin_h']
-
-        fin_pitch2 = fin_pitch // 2
-        fin_h2 = fin_h // 2
-
-        blk_type = layout_info['blk_type']
         lch_unit = layout_info['lch_unit']
-        md_w = layout_info['md_w']
         fg = layout_info['fg']
-        sd_pitch = layout_info['sd_pitch']
-        arr_xl = layout_info['array_box_xl']
-        arr_yb, arr_yt = layout_info['array_box_y']
+        arr_yb, arr_yt = layout_info['arr_y']
         draw_od = layout_info['draw_od']
         row_info_list = layout_info['row_info_list']
         lay_info_list = layout_info['lay_info_list']
-        adj_info_list = layout_info['adj_info_list']
+        fill_info_list = layout_info['fill_info_list']
+        adj_row_list = layout_info['adj_row_list']
         left_blk_info = layout_info['left_blk_info']
         right_blk_info = layout_info['right_blk_info']
-        fill_info_list = layout_info['fill_info_list']
 
-        default_edge_info = EdgeInfo(od_type=None)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        fin_h = mos_constants['fin_h']
+        fin_p = mos_constants['mos_pitch']
+        sd_pitch = mos_constants['sd_pitch']
+        md_w = mos_constants['md_w']
+
+        fin_p2 = fin_p // 2
+        fin_h2 = fin_h // 2
+
+        default_edge_info = EdgeInfo(od_type=None, draw_layers={})
         if left_blk_info is None:
             if fg == 1 and right_blk_info is not None:
                 # make sure if we only have one finger, PO purpose is still chosen correctly.
@@ -1324,30 +1308,37 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             else:
                 right_blk_info = default_edge_info
 
-        blk_w = fg * sd_pitch + arr_xl
+        blk_w = fg * sd_pitch
 
         # figure out transistor layout settings
-        od_dum_lay = ('Active', 'dummy')
-        po_dum_lay = ('Poly', 'dummy')
-        md_lay = ('LiAct', 'drawing')
+        od_lay = mos_layer_table['OD']
+        od_dum_lay = mos_layer_table['OD_dummy']
+        po_lay = mos_layer_table['PO']
+        po_dum_lay = mos_layer_table['PO_dummy']
+        pode_lay = mos_layer_table['PODE']
+        md_lay = mos_layer_table['MD']
+        md_dum_lay = mos_layer_table['MD_dummy']
+        finbound_lay = mos_layer_table['FB']
 
-        po_xc = arr_xl + sd_pitch // 2
+        po_xc = sd_pitch // 2
         # draw transistor rows
         for row_info in row_info_list:
             od_type = row_info.od_type[0]
             if od_type == 'dum' or od_type is None:
-                od_lay = od_dum_lay
+                od_lay_cur = od_dum_lay
+                md_lay_cur = md_dum_lay
             else:
-                od_lay = ('Active', 'drawing')
+                od_lay_cur = od_lay
+                md_lay_cur = md_lay
             od_x_list = row_info.od_x_list
             od_yb, od_yt = row_info.od_y
             po_yb, po_yt = row_info.po_y
             md_yb, md_yt = row_info.md_y
 
+            # draw OD and figure out PO/MD info
             po_on_od = [False] * fg
             md_on_od = [False] * (fg + 1)
             if od_yt > od_yb:
-                # draw OD and figure out PO/MD info
                 for od_start, od_stop in od_x_list:
                     # mark PO/MD indices that are on OD
                     if od_start - 1 >= 0:
@@ -1360,9 +1351,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     if draw_od:
                         od_xl = po_xc - lch_unit // 2 + (od_start - 1) * sd_pitch
                         od_xr = po_xc + lch_unit // 2 + od_stop * sd_pitch
-                        template.add_rect(od_lay, BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True))
+                        template.add_rect(od_lay_cur, BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True))
 
-            # draw PO
+            # draw PO/PODE
             if po_yt > po_yb:
                 for idx in range(fg):
                     po_xl = po_xc + idx * sd_pitch - lch_unit // 2
@@ -1382,43 +1373,49 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                             is_edge = False
 
                     if is_edge and cur_od_type is not None:
-                        lay = ('Poly', 'edge')
+                        lay = po_lay
+                        draw_pode = True
                     elif cur_od_type == 'mos' or cur_od_type == 'sub':
-                        lay = ('Poly', 'drawing')
+                        lay = po_lay
+                        draw_pode = False
                     else:
-                        lay = ('Poly', 'dummy')
+                        lay = po_dum_lay
+                        draw_pode = False
                     template.add_rect(lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
+                    if draw_pode and od_yt > od_yb:
+                        template.add_rect(pode_lay, BBox(po_xl, od_yb, po_xr, od_yt, res, unit_mode=True))
 
-            # draw MD if it's physical
+            # draw MD
             if md_yt > md_yb and fg > 0:
-                md_range = range(1, fg) if blk_type == 'gr_sub' else range(fg + 1)
-                for idx in md_range:
-                    md_xl = arr_xl + idx * sd_pitch - md_w // 2
+                for idx in range(fg + 1):
+                    md_xl = idx * sd_pitch - md_w // 2
                     md_xr = md_xl + md_w
                     if md_on_od[idx]:
-                        template.add_rect(md_lay, BBox(md_xl, md_yb, md_xr, md_yt, res, unit_mode=True))
+                        template.add_rect(md_lay_cur, BBox(md_xl, md_yb, md_xr, md_yt, res, unit_mode=True))
+                    else:
+                        template.add_rect(md_dum_lay, BBox(md_xl, md_yb, md_xr, md_yt, res, unit_mode=True))
 
         # draw other layers
         for imp_lay, xl, yb, yt in lay_info_list:
-            if imp_lay[0] == 'FinArea':
+            if imp_lay == finbound_lay:
                 # round to fin grid
-                yb = (yb - fin_pitch2 + fin_h2) // fin_pitch * fin_pitch + fin_pitch2 - fin_h2
-                yt = -(-(yt - fin_pitch2 - fin_h2) // fin_pitch) * fin_pitch + fin_pitch2 + fin_h2
+                yb = (yb - fin_p2 + fin_h2) // fin_p * fin_p + fin_p2 - fin_h2
+                yt = -(-(yt - fin_p2 - fin_h2) // fin_p) * fin_p + fin_p2 + fin_h2
             box = BBox(xl, yb, blk_w, yt, res, unit_mode=True)
             if box.is_physical():
                 template.add_rect(imp_lay, box)
 
         # draw adjacent row geometries
-        for adj_info in adj_info_list:
+        for adj_info in adj_row_list:
             po_yb, po_yt = adj_info.po_y
             for idx, po_type in enumerate(adj_info.po_types):
-                lay = po_dum_lay if po_type == 0 else ('Poly', 'drawing')
+                lay = po_dum_lay if po_type == 0 else po_lay
                 po_xl = po_xc + idx * sd_pitch - lch_unit // 2
                 po_xr = po_xl + lch_unit
                 template.add_rect(lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
 
         # set size and add PR boundary
-        arr_box = BBox(arr_xl, arr_yb, blk_w, arr_yt, res, unit_mode=True)
+        arr_box = BBox(0, arr_yb, blk_w, arr_yt, res, unit_mode=True)
         bound_box = arr_box.extend(x=0, y=0, unit_mode=True)
         template.array_box = arr_box
         template.prim_bound_box = bound_box
