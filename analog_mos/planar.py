@@ -841,7 +841,7 @@ class MOSTechPlanarGeneric(MOSTech):
             thres=threshold,
             imp_min_w=0,
             m1_sub_w=0,
-            od_w=0,
+            od_w=end_ext_info.od_w,
         )
 
         layout_info = dict(
