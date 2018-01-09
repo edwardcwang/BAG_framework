@@ -232,6 +232,51 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """
         return []
 
+    @abc.abstractmethod
+    def draw_decap_connection_helper(self,
+                                     template,  # type: TemplateBase
+                                     fg,  # type: int
+                                     sd_pitch,  # type: int
+                                     xc,  # type: int
+                                     od_y,  # type: Tuple[int, int]
+                                     md_y,  # type: Tuple[int, int]
+                                     gate_ext_mode,  # type: int
+                                     export_gate,  # type: bool
+                                     ):
+        # type: (...) -> Tuple[Optional[WireArray], List[WireArray]]
+        """Draw dummy connections on the given template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the template to draw the connection in.
+        fg : int
+            number of fingers of the connection.
+        sd_pitch : int
+            the source/drain pitch.
+        xc : int
+            the center X coordinate of left-most source/drain.
+        od_y : Tuple[int, int]
+            the OD Y interval tuple.
+        md_y : Tuple[int, int]
+            the MD Y interval tuple.
+        gate_ext_mode : int
+            gate extension mode.  2-bit integer where LSB is 1 to
+            extend left, MSB is 1 to extend right.
+        export_gate : bool
+            True to export gate on mos connection lay.
+
+        Returns
+        -------
+        g_warr : Optional[WireArray]
+            the gate wires.  None if gate does not need to be exported.
+        sup_warrs : List[WireArray]
+            list of supply wires.  Each supply wire will be exported
+            individually.  wires with the same pitch should be grouped
+            in a single WireArray.
+        """
+        return None, []
+
     def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
         # type: (int, int, bool, **kwargs) -> Dict[str, Any]
         is_sub_ring = kwargs.get('is_sub_ring', False)
@@ -1731,4 +1776,25 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
     def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
         # type: (TemplateBase, Dict[str, Any], int, int, int, bool, Dict[str, Any]) -> None
-        raise NotImplementedError('Not implemented')
+        layout_info = mos_info['layout_info']
+
+        lch_unit = layout_info['lch_unit']
+        fg = layout_info['fg']
+        row_info = layout_info['row_info_list'][0]
+
+        mos_constants = self.get_tech_constant(lch_unit)
+        sd_pitch = mos_constants['sd_pitch']
+
+        od_yb, od_yt = row_info.od_y
+        md_yb, md_yt = row_info.md_y
+        # shift Y interval so that OD centers at y=0
+        od_yc = (od_yb + od_yt) // 2
+        od_y = od_yb - od_yc, od_yt - od_yc
+        md_y = md_yb - od_yc, md_yt - od_yc
+
+        g_warr, sup_warrs = self.draw_decap_connection_helper(template, fg, sd_pitch, 0, od_y, md_y,
+                                                              gate_ext_mode, export_gate)
+        if g_warr is not None:
+            template.add_pin('g', g_warr, show=False)
+        for sup_warr in sup_warrs:
+            template.add_pin('supply', sup_warr, show=False)
