@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, Union, Type, Seque
 import yaml
 
 from .interface import ZMQDealer
+from .interface.database import DbAccess
 from .design import ModuleDB, SchInstance
 from .layout.core import DummyTechInfo
 from .io import read_file, sim_data
@@ -41,7 +42,6 @@ from .concurrent.core import batch_async_task
 
 if TYPE_CHECKING:
     from .interface.simulator import SimAccess
-    from .interface.database import DbAccess
     from .layout.core import TechInfo
     from .design.module import Module
 
@@ -513,12 +513,19 @@ class BagProject(object):
             dealer = ZMQDealer(port, **dealer_kwargs)
             db_cls = _import_class_from_str(self.bag_config['database']['class'])
             self.impl_db = db_cls(dealer, bag_tmp_dir, self.bag_config['database'])  # type: Optional[DbAccess]
+            self._default_lib_path = self.impl_db.default_lib_path
         else:
             self.impl_db = None  # type: Optional[DbAccess]
+            self._default_lib_path = DbAccess.get_default_lib_path(self.bag_config['database'])
 
         # make SimAccess instance.
         sim_cls = _import_class_from_str(self.bag_config['simulation']['class'])
         self.sim = sim_cls(bag_tmp_dir, self.bag_config['simulation'])  # type: SimAccess
+
+    @property
+    def default_lib_path(self):
+        # type: () -> str
+        return self._default_lib_path
 
     def close_bag_server(self):
         # type: () -> None
