@@ -81,18 +81,28 @@ class TemplateDB(MasterDB):
         True to use cybagoa module to accelerate layout.
     flatten : bool
         True to compute flattened layout.
+    **kwargs :
+        additional arguments.
     """
 
     def __init__(self, lib_defs, routing_grid, lib_name, prj=None, name_prefix='', name_suffix='',
-                 use_cybagoa=False, flatten=False):
-        # type: (str, RoutingGrid, str, Optional[BagProject], str, str, bool, bool) -> None
+                 use_cybagoa=False, flatten=False, **kwargs):
+        # type: (str, RoutingGrid, str, Optional[BagProject], str, str, bool, bool, **kwargs) -> None
         super(TemplateDB, self).__init__(lib_name, lib_defs=lib_defs,
                                          name_prefix=name_prefix, name_suffix=name_suffix)
+
+        pure_oa = kwargs.get('pure_oa', False)
+
+        if pure_oa:
+            if cybagoa is None:
+                raise ValueError('Cannot use pure OA mode when cybagoa is not found.')
+            use_cybagoa = True
 
         self._prj = prj
         self._grid = routing_grid
         self._use_cybagoa = use_cybagoa and cybagoa is not None
         self._flatten = flatten
+        self._pure_oa = pure_oa
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
         # type: (Type[TemplateType], str, Dict[str, Any], Set[str], **kwargs) -> TemplateType
@@ -137,23 +147,26 @@ class TemplateDB(MasterDB):
         if self._prj is None:
             raise ValueError('BagProject is not defined.')
 
-        # create library if it does not exist
-        self._prj.create_library(self._lib_name)
-
         if self._use_cybagoa:
             # remove write locks from old layouts
             cell_view_list = [(item[0], 'layout') for item in content_list]
-            self._prj.release_write_locks(self._lib_name, cell_view_list)
+            if self._pure_oa:
+                pass
+            else:
+                # create library if it does not exist
+                self._prj.create_library(self._lib_name)
+                self._prj.release_write_locks(self._lib_name, cell_view_list)
 
             if debug:
                 print('Instantiating layout')
             # create OALayouts
             start = time.time()
             if 'CDSLIBPATH' in os.environ:
-                cds_lib_path = os.path.join(os.environ['CDSLIBPATH'], 'cds.lib')
+                cds_lib_path = os.path.abspath(os.path.join(os.environ['CDSLIBPATH'], 'cds.lib'))
             else:
-                cds_lib_path = './cds.lib'
-            with cybagoa.PyOALayoutLibrary(cds_lib_path, self._lib_name, get_encoding()) as lib:
+                cds_lib_path = os.path.abspath('./cds.lib')
+            with cybagoa.PyOALayoutLibrary(cds_lib_path, self._lib_name, self._prj.default_lib_path,
+                                           self._prj.tech_info.via_tech_name, get_encoding()) as lib:
                 lib.add_layer('prBoundary', 235)
                 lib.add_purpose('drawing1', 241)
                 lib.add_purpose('drawing2', 242)
@@ -173,6 +186,9 @@ class TemplateDB(MasterDB):
             if debug:
                 print('layout instantiation took %.4g seconds' % (end - start))
         else:
+            # create library if it does not exist
+            self._prj.create_library(self._lib_name)
+
             if debug:
                 print('Instantiating layout')
             via_tech_name = self._grid.tech_info.via_tech_name
