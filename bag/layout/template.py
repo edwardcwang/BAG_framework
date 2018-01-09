@@ -164,9 +164,9 @@ class TemplateDB(MasterDB):
             # create OALayouts
             start = time.time()
             if 'CDSLIBPATH' in os.environ:
-                cds_lib_path = os.path.join(os.environ['CDSLIBPATH'], 'cds.lib')
+                cds_lib_path = os.path.abspath(os.path.join(os.environ['CDSLIBPATH'], 'cds.lib'))
             else:
-                cds_lib_path = './cds.lib'
+                cds_lib_path = os.path.abspath('./cds.lib')
             with cybagoa.PyOALayoutLibrary(cds_lib_path, self._lib_name,
                                            get_encoding(), self._lib_path) as lib:
                 lib.add_layer('prBoundary', 235)
