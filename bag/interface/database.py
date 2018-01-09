@@ -161,7 +161,7 @@ class DbAccess(with_metaclass(abc.ABCMeta, object)):
 
         # set default lib path
         lib_path_fallback = os.path.abspath('.')
-        self._default_lib_path = self.db_config.get('default_lib_path', lib_path_fallback)
+        self._default_lib_path = os.path.abspath(self.db_config.get('default_lib_path', lib_path_fallback))
         if not os.path.isdir(self._default_lib_path):
             self._default_lib_path = lib_path_fallback
 

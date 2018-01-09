@@ -92,7 +92,6 @@ class TemplateDB(MasterDB):
                                          name_prefix=name_prefix, name_suffix=name_suffix)
 
         pure_oa = kwargs.get('pure_oa', False)
-        lib_path = kwargs.get('lib_path', '')
 
         if pure_oa:
             if cybagoa is None:
@@ -104,7 +103,6 @@ class TemplateDB(MasterDB):
         self._use_cybagoa = use_cybagoa and cybagoa is not None
         self._flatten = flatten
         self._pure_oa = pure_oa
-        self._lib_path = lib_path
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
         # type: (Type[TemplateType], str, Dict[str, Any], Set[str], **kwargs) -> TemplateType
@@ -146,7 +144,7 @@ class TemplateDB(MasterDB):
         debug : bool
             True to print debug messages
         """
-        if self._prj is None and not self._pure_oa:
+        if self._prj is None:
             raise ValueError('BagProject is not defined.')
 
         if self._use_cybagoa:
@@ -167,8 +165,8 @@ class TemplateDB(MasterDB):
                 cds_lib_path = os.path.abspath(os.path.join(os.environ['CDSLIBPATH'], 'cds.lib'))
             else:
                 cds_lib_path = os.path.abspath('./cds.lib')
-            with cybagoa.PyOALayoutLibrary(cds_lib_path, self._lib_name,
-                                           get_encoding(), self._lib_path) as lib:
+            with cybagoa.PyOALayoutLibrary(cds_lib_path, self._lib_name, self._prj.impl_db.default_lib_path,
+                                           self._prj.tech_info.via_tech_name, get_encoding()) as lib:
                 lib.add_layer('prBoundary', 235)
                 lib.add_purpose('drawing1', 241)
                 lib.add_purpose('drawing2', 242)
