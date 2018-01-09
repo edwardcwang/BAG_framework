@@ -165,7 +165,7 @@ class TemplateDB(MasterDB):
                 cds_lib_path = os.path.abspath(os.path.join(os.environ['CDSLIBPATH'], 'cds.lib'))
             else:
                 cds_lib_path = os.path.abspath('./cds.lib')
-            with cybagoa.PyOALayoutLibrary(cds_lib_path, self._lib_name, self._prj.impl_db.default_lib_path,
+            with cybagoa.PyOALayoutLibrary(cds_lib_path, self._lib_name, self._prj.default_lib_path,
                                            self._prj.tech_info.via_tech_name, get_encoding()) as lib:
                 lib.add_layer('prBoundary', 235)
                 lib.add_purpose('drawing1', 241)
