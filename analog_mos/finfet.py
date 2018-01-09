@@ -105,12 +105,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     def draw_ds_connection(self,
                            template,  # type: TemplateBase
                            fg,  # type: int
-                           sd_pitch,  # type: int
+                           wire_pitch,  # type: int
                            xc,  # type: int
                            od_y,  # type: Tuple[int, int]
                            md_y,  # type: Tuple[int, int]
                            dum_x_list,  # type: List[int]
                            conn_x_list,  # type: List[int]
+                           align_gate,  # type: bool
+                           wire_dir,  # type: int
                            ds_code=3,  # type: int
                            ):
         # type: (...) -> Tuple[List[WireArray], List[WireArray]]
@@ -122,8 +124,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             the template to draw the connection in.
         fg : int
             number of fingers of the connection.
-        sd_pitch : int
-            the source/drain pitch.
+        wire_pitch : int
+            the source/drain wire pitch.
         xc : int
             the center X coordinate of left-most source/drain.
         od_y : Tuple[int, int]
@@ -131,9 +133,13 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         md_y : Tuple[int, int]
             the MD Y interval tuple.
         dum_x_list : List[int]
-            list of center X coordinates to export dummy port.
+            list of center X coordinates to export dummy connection port.
         conn_x_list : List[int]
             list of center X coordinates to export connection port.
+        align_gate : bool
+            True if this drain/source connection is in the same column as gate.
+        wire_dir : int
+            the wire direction.  2 for up, 1 for middle, 0 for down.
         ds_code : int
             the drain/source code.  1 to draw source, 2 to draw drain, 3 to draw and short both.
 
@@ -154,7 +160,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                           xc,  # type: int
                           od_y,  # type: Tuple[int, int]
                           md_y,  # type: Tuple[int, int]
-                          ds_code=1,  # type: int
+                          conn_x_list,  # type: List[int]
+                          is_sub=False,  # type: bool
                           ):
         # type: (...) -> List[WireArray]
         """Draw drain/source connection on the given template.
@@ -173,9 +180,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             the OD Y interval tuple.
         md_y : Tuple[int, int]
             the MD Y interval tuple.
-        ds_code : int
-            the drain/source code.  1 to align gate and source, 2 to align gate and
-            drain, 3 to short all gate/drain/source together (substrate connection).
+        conn_x_list : List[int]
+            list of center X coordinates to export connection port.
+        is_sub : bool
+            True if this is gate connection for substrate.
 
         Returns
         -------
@@ -1513,18 +1521,22 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         row_info_list = layout_info['row_info_list']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
-        fin_h = mos_constants['fin_h']
-        fin_p = mos_constants['mos_pitch']
         sd_pitch = mos_constants['sd_pitch']
 
         sd_pitch2 = sd_pitch // 2
 
         has_od = False
         for row_info in row_info_list:
-            od_y = row_info.od_y
-            md_y = row_info.md_y
-            if od_y[1] > od_y[0]:
+            od_yb, od_yt = row_info.od_y
+            md_yb, md_yt = row_info.md_y
+            if od_yt > od_yb:
                 has_od = True
+
+                # shift Y interval so that OD centers at y=0
+                od_yc = (od_yb + od_yt) // 2
+                od_y = od_yb - od_yc, od_yt - od_yc
+                md_y = md_yb - od_yc, md_yt - od_yc
+
                 # find current port name
                 od_start, od_stop = row_info.od_x_list[0]
                 fg = od_stop - od_start
@@ -1553,83 +1565,77 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     conn_x_list = [sd_pitch2 * v for v in sorted(conn_htr_set)]
 
                 dum_warrs, port_warrs = self.draw_ds_connection(template, fg, sd_pitch, xshift, od_y, md_y,
-                                                                dum_x_list, conn_x_list, ds_code=3)
+                                                                dum_x_list, conn_x_list, True, 1, ds_code=3)
                 template.add_pin(port_name, dum_warrs, show=False)
                 template.add_pin(port_name, port_warrs, show=False)
 
                 if not is_guardring:
-                    self.draw_g_connection(template, fg, sd_pitch, xshift, od_y, md_y, ds_code=3)
+                    self.draw_g_connection(template, fg, sd_pitch, xshift, od_y, md_y, conn_x_list, is_sub=True)
         return has_od
 
     def draw_mos_connection(self, template, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
                             min_ds_cap, is_diff, diode_conn, options):
         # type: (TemplateBase, Dict[str, Any], int, int, str, int, bool, bool, bool, Dict[str, Any]) -> None
 
+        stack = options.get('stack', 1)
+
         # NOTE: ignore min_ds_cap.
         if is_diff:
             raise ValueError('differential connection not supported yet.')
 
-        fin_h = self.tech_constants['fin_h']
-        fin_pitch = self.tech_constants['fin_pitch']
-
-        gate_yc = mos_info['gate_yc']
         layout_info = mos_info['layout_info']
+
         lch_unit = layout_info['lch_unit']
         fg = layout_info['fg']
-        sd_pitch = layout_info['sd_pitch']
-        od_yb, od_yt = layout_info['row_info_list'][0].od_y
+        row_info = layout_info['row_info_list'][0]
 
-        w = (od_yt - od_yb - fin_h) // fin_pitch + 1
-        ds_via_info = self.get_ds_via_info(lch_unit, w)
+        mos_constants = self.get_tech_constant(lch_unit)
+        sd_pitch = mos_constants['sd_pitch']
 
-        g_via_info = self.get_gate_via_info(lch_unit)
-
-        stack = options.get('stack', 1)
-        wire_pitch = stack * sd_pitch
         if fg % stack != 0:
             raise ValueError('AnalogMosConn: stack = %d must evenly divides fg = %d' % (stack, fg))
+
+        od_yb, od_yt = row_info.od_y
+        md_yb, md_yt = row_info.md_y
+        # shift Y interval so that OD centers at y=0
+        od_yc = (od_yb + od_yt) // 2
+        od_y = od_yb - od_yc, od_yt - od_yc
+        md_y = md_yb - od_yc, md_yt - od_yc
+        wire_pitch = stack * sd_pitch
         num_seg = fg // stack
 
         s_x_list = list(range(0, num_seg * wire_pitch + 1, 2 * wire_pitch))
         d_x_list = list(range(wire_pitch, num_seg * wire_pitch + 1, 2 * wire_pitch))
-        sd_yc = (od_yb + od_yt) // 2
+
         if diode_conn:
             if fg == 1:
                 raise ValueError('1 finger transistor connection not supported.')
 
-            sloc = 0 if sdir <= 1 else 2
-            dloc = 2 - sloc
+            # draw wires
+            _, s_warrs = self.draw_ds_connection(template, fg, wire_pitch, 0, od_y, md_y,
+                                                 s_x_list, s_x_list, False, sdir, ds_code=1)
+            _, d_warrs = self.draw_ds_connection(template, fg, wire_pitch, 0, od_y, md_y,
+                                                 d_x_list, d_x_list, True, 0, ds_code=2)
+            g_warrs = self.draw_g_connection(template, fg, sd_pitch, 0, od_y, md_y, d_x_list, is_sub=False)
 
-            # draw source
-            _, sarr = self._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, sloc, sdir,
-                                        s_x_list, s_x_list)
-            # draw drain
-            m1d, darr = self._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, dloc, ddir,
-                                          d_x_list, d_x_list)
-            # draw gate
-            m1g, _ = self._draw_g_via(template, lch_unit, fg, sd_pitch, gate_yc - sd_yc, g_via_info, [],
-                                      gate_ext_mode=gate_ext_mode)
-            m1_yt = m1d[0].upper
-            m1_yb = m1g[0].lower
-            template.add_wires(1, m1d[0].track_id.base_index, m1_yb, m1_yt, num=len(m1d), pitch=2 * stack)
-            template.add_pin('g', WireArray.list_to_warr(darr), show=False)
-            template.add_pin('d', WireArray.list_to_warr(darr), show=False)
-            template.add_pin('s', WireArray.list_to_warr(sarr), show=False)
+            g_warrs = WireArray.list_to_warr(g_warrs)
+            d_warrs = WireArray.list_to_warr(d_warrs)
+            s_warrs = WireArray.list_to_warr(s_warrs)
+            template.connect_wires([g_warrs, d_warrs])
+            template.add_pin('g', g_warrs, show=False)
+            template.add_pin('d', d_warrs, show=False)
+            template.add_pin('s', s_warrs, show=False)
         else:
             # determine gate location
             if sdir == 0:
-                gloc = 'd'
+                ds_code = 2
             elif ddir == 0:
-                gloc = 's'
+                ds_code = 1
             else:
-                gloc = gate_pref_loc
+                ds_code = 1 if gate_pref_loc == 's' else 2
 
-            if (gloc == 's' and num_seg == 2) or gloc == 'd':
-                sloc, dloc = 0, 2
-            else:
-                sloc, dloc = 2, 0
-
-            if gloc == 'd':
+            if ds_code == 2:
+                # avoid drawing gate on the left-most source/drain if number of fingers is odd
                 g_x_list = list(range(wire_pitch, num_seg * wire_pitch, 2 * wire_pitch))
             else:
                 if num_seg != 2:
@@ -1637,21 +1643,17 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 else:
                     g_x_list = [0, 2 * wire_pitch]
 
-            # draw gate
-            _, garr = self._draw_g_via(template, lch_unit, fg, sd_pitch, gate_yc - sd_yc, g_via_info,
-                                       g_x_list, gate_ext_mode=gate_ext_mode)
-            # draw source
-            _, sarr = self._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, sloc, sdir,
-                                        s_x_list, s_x_list)
-            # draw drain
-            _, darr = self._draw_ds_via(template, wire_pitch, 0, num_seg, ds_via_info, dloc, ddir,
-                                        d_x_list, d_x_list)
+            # draw wires
+            _, s_warrs = self.draw_ds_connection(template, fg, wire_pitch, 0, od_y, md_y,
+                                                 s_x_list, s_x_list, ds_code == 1, sdir, ds_code=1)
+            _, d_warrs = self.draw_ds_connection(template, fg, wire_pitch, 0, od_y, md_y,
+                                                 d_x_list, d_x_list, ds_code == 2, ddir, ds_code=2)
+            g_warrs = self.draw_g_connection(template, fg, sd_pitch, 0, od_y, md_y, g_x_list, is_sub=False)
 
-            template.add_pin('s', WireArray.list_to_warr(sarr), show=False)
-            template.add_pin('d', WireArray.list_to_warr(darr), show=False)
-            template.add_pin('g', WireArray.list_to_warr(garr), show=False)
+            template.add_pin('s', WireArray.list_to_warr(s_warrs), show=False)
+            template.add_pin('d', WireArray.list_to_warr(d_warrs), show=False)
+            template.add_pin('g', WireArray.list_to_warr(g_warrs), show=False)
 
-    @classmethod
     def draw_dum_connection(self, template, mos_info, edge_mode, gate_tracks, options):
         # type: (TemplateBase, Dict[str, Any], int, List[int], Dict[str, Any]) -> None
 
