@@ -92,6 +92,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def draw_ds_connection(self,
                            template,  # type: TemplateBase
+                           lch_unit,  # type: int
                            fg,  # type: int
                            wire_pitch,  # type: int
                            xc,  # type: int
@@ -101,7 +102,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                            conn_x_list,  # type: List[int]
                            align_gate,  # type: bool
                            wire_dir,  # type: int
-                           ds_code=3,  # type: int
+                           ds_code,  # type: int
                            ):
         # type: (...) -> Tuple[List[WireArray], List[WireArray]]
         """Draw drain/source connections on the given template.
@@ -110,6 +111,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         ----------
         template : TemplateBase
             the template to draw the connection in.
+        lch_unit : int
+            the channel length in resolution units.
         fg : int
             number of fingers of the connection.
         wire_pitch : int
@@ -144,6 +147,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def draw_g_connection(self,
                           template,  # type: TemplateBase
+                          lch_unit,  # type: int
                           fg,  # type: int
                           sd_pitch,  # type: int
                           xc,  # type: int
@@ -159,6 +163,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         ----------
         template : TemplateBase
             the template to draw the connection in.
+        lch_unit : int
+            the channel length in resolution units.
         fg : int
             number of fingers of the connection.
         sd_pitch : int
@@ -184,6 +190,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def draw_dum_connection_helper(self,
                                    template,  # type: TemplateBase
+                                   lch_unit,  # type: int
                                    fg,  # type: int
                                    sd_pitch,  # type: int
                                    xc,  # type: int
@@ -199,6 +206,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         ----------
         template : TemplateBase
             the template to draw the connection in.
+        lch_unit : int
+            the channel length in resolution units.
         fg : int
             number of fingers of the connection.
         sd_pitch : int
@@ -224,6 +233,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def draw_decap_connection_helper(self,
                                      template,  # type: TemplateBase
+                                     lch_unit,  # type: int
                                      fg,  # type: int
                                      sd_pitch,  # type: int
                                      xc,  # type: int
@@ -239,6 +249,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         ----------
         template : TemplateBase
             the template to draw the connection in.
+        lch_unit : int
+            the channel length in resolution units.
         fg : int
             number of fingers of the connection.
         sd_pitch : int
@@ -509,7 +521,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         md_h_min = mos_constants['md_h_min']
         md_od_exty = mos_constants['md_od_exty']
         md_spy = mos_constants['md_spy']
-        mos_conn_w = mos_constants['mos_conn_w']
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
@@ -1666,13 +1677,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     # find X coordinates
                     conn_x_list = [sd_pitch2 * v for v in sorted(conn_htr_set)]
 
-                dum_warrs, port_warrs = self.draw_ds_connection(template, fg, sd_pitch, xshift, od_y, md_y,
-                                                                dum_x_list, conn_x_list, True, 1, ds_code=3)
+                dum_warrs, port_warrs = self.draw_ds_connection(template, lch_unit, fg, sd_pitch, xshift, od_y, md_y,
+                                                                dum_x_list, conn_x_list, True, 1, 3)
                 template.add_pin(port_name, dum_warrs, show=False)
                 template.add_pin(port_name, port_warrs, show=False)
 
                 if not is_guardring:
-                    self.draw_g_connection(template, fg, sd_pitch, xshift, od_y, md_y, conn_x_list, is_sub=True)
+                    self.draw_g_connection(template, lch_unit, fg, sd_pitch, xshift, od_y, md_y,
+                                           conn_x_list, is_sub=True)
         return has_od
 
     def draw_mos_connection(self, template, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
@@ -1714,11 +1726,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 raise ValueError('1 finger transistor connection not supported.')
 
             # draw wires
-            _, s_warrs = self.draw_ds_connection(template, fg, wire_pitch, 0, od_y, md_y,
-                                                 s_x_list, s_x_list, False, sdir, ds_code=1)
-            _, d_warrs = self.draw_ds_connection(template, fg, wire_pitch, 0, od_y, md_y,
-                                                 d_x_list, d_x_list, True, 0, ds_code=2)
-            g_warrs = self.draw_g_connection(template, fg, sd_pitch, 0, od_y, md_y, d_x_list, is_sub=False)
+            _, s_warrs = self.draw_ds_connection(template, lch_unit, fg, wire_pitch, 0, od_y, md_y,
+                                                 s_x_list, s_x_list, False, sdir, 1)
+            _, d_warrs = self.draw_ds_connection(template, lch_unit, fg, wire_pitch, 0, od_y, md_y,
+                                                 d_x_list, d_x_list, True, 0, 2)
+            g_warrs = self.draw_g_connection(template, lch_unit, fg, sd_pitch, 0, od_y, md_y, d_x_list, is_sub=False)
 
             g_warrs = WireArray.list_to_warr(g_warrs)
             d_warrs = WireArray.list_to_warr(d_warrs)
@@ -1746,11 +1758,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     g_x_list = [0, 2 * wire_pitch]
 
             # draw wires
-            _, s_warrs = self.draw_ds_connection(template, fg, wire_pitch, 0, od_y, md_y,
-                                                 s_x_list, s_x_list, ds_code == 1, sdir, ds_code=1)
-            _, d_warrs = self.draw_ds_connection(template, fg, wire_pitch, 0, od_y, md_y,
-                                                 d_x_list, d_x_list, ds_code == 2, ddir, ds_code=2)
-            g_warrs = self.draw_g_connection(template, fg, sd_pitch, 0, od_y, md_y, g_x_list, is_sub=False)
+            _, s_warrs = self.draw_ds_connection(template, lch_unit, fg, wire_pitch, 0, od_y, md_y,
+                                                 s_x_list, s_x_list, ds_code == 1, sdir, 1)
+            _, d_warrs = self.draw_ds_connection(template, lch_unit, fg, wire_pitch, 0, od_y, md_y,
+                                                 d_x_list, d_x_list, ds_code == 2, ddir, 2)
+            g_warrs = self.draw_g_connection(template, lch_unit, fg, sd_pitch, 0, od_y, md_y, g_x_list, is_sub=False)
 
             template.add_pin('s', WireArray.list_to_warr(s_warrs), show=False)
             template.add_pin('d', WireArray.list_to_warr(d_warrs), show=False)
@@ -1788,7 +1800,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         ds_x_list = list(range(ds_x_start, ds_x_stop + 1, sd_pitch))
 
-        dum_warrs = self.draw_dum_connection_helper(template, fg, sd_pitch, 0, od_y, md_y, ds_x_list, gate_tracks)
+        dum_warrs = self.draw_dum_connection_helper(template, lch_unit, fg, sd_pitch, 0,
+                                                    od_y, md_y, ds_x_list, gate_tracks)
         template.add_pin('dummy', dum_warrs, show=False)
 
     def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
@@ -1809,7 +1822,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_y = od_yb - od_yc, od_yt - od_yc
         md_y = md_yb - od_yc, md_yt - od_yc
 
-        g_warr, sup_warrs = self.draw_decap_connection_helper(template, fg, sd_pitch, 0, od_y, md_y,
+        g_warr, sup_warrs = self.draw_decap_connection_helper(template, lch_unit, fg, sd_pitch, 0, od_y, md_y,
                                                               gate_ext_mode, export_gate)
         if g_warr is not None:
             template.add_pin('g', g_warr, show=False)
