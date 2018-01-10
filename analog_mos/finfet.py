@@ -61,12 +61,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fill_info :
             a dictionary from metal layer tuple to tuple of exclusion
             layer name and list of metal fill Y intervals.
-        g_y_list :
-            a list of gate wire Y intervals on each layer.
-        d_y_list :
-            a list of drain wire Y intervals on each layer.
-        s_y_list :
-            a list of source wire Y intervals on each layer.
         """
         return {}
 
@@ -92,12 +86,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fill_info :
             a dictionary from metal layer tuple to tuple of exclusion
             layer name and list of metal fill Y intervals.
-        g_y_list :
-            a list of gate wire Y intervals on each layer.
-        d_y_list :
-            a list of drain wire Y intervals on each layer.
-        s_y_list :
-            a list of source wire Y intervals on each layer.
         """
         return {}
 
@@ -142,6 +130,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             the wire direction.  2 for up, 1 for middle, 0 for down.
         ds_code : int
             the drain/source code.  1 to draw source, 2 to draw drain, 3 to draw and short both.
+            Right now, code 3 is reserved for substrate connection only.
 
         Returns
         -------
@@ -406,9 +395,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         top_margins = yloc_info['top_margins']
         bot_margins = yloc_info['bot_margins']
         fill_info = yloc_info['fill_info']
-        g_y_list = yloc_info['g_y_list']
-        d_y_list = yloc_info['d_y_list']
-        s_y_list = yloc_info['s_y_list']
 
         od_yc = (od_yloc[0] + od_yloc[1]) // 2
 
@@ -468,10 +454,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             adj_row_list=[],
             left_blk_info=None,
             right_blk_info=None,
-            # MOS/sub connection parameters
-            g_y_list=g_y_list,
-            d_y_list=d_y_list,
-            s_y_list=s_y_list,
         )
 
         # step 8: return results
@@ -482,11 +464,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             left_edge_info=(lr_edge_info, []),
             right_edge_info=(lr_edge_info, []),
             sd_yc=od_yc,
-            # MOS/sub connection parameters
-            blk_height=blk_yt,
-            g_conn_y=g_y_list[-1],
-            d_conn_y=d_y_list[-1],
-            s_conn_y=s_y_list[-1],
         )
 
     def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
