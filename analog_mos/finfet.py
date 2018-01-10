@@ -277,6 +277,44 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """
         return None, []
 
+    def get_conn_drc_info(self, lch_unit, wire_type):
+        # type: (int, str) -> Dict[int, Dict[str, Any]]
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        bot_layer = mos_constants['%s_bot_layer' % wire_type]
+        widths = mos_constants['%s_conn_w' % wire_type]
+        via_info = mos_constants['%s_via' % wire_type]
+        dirs = mos_constants['%s_conn_dir' % wire_type]
+
+        conn_info = {}
+        layers = range(bot_layer, bot_layer + len(dirs))
+        for lay, w, direction, vdim, vble, vtle in \
+            zip(layers, widths, dirs, via_info['dim'],
+                via_info['bot_enc_le'], via_info['top_enc_le']):
+            vdim_le = vdim[0] if direction == 'x' else vdim[1]
+            top_ext = vdim_le // 2 + vtle
+            lay_name = self.tech_info.get_layer_name(lay)
+            if isinstance(lay_name, tuple):
+                lay_name = lay_name[0]
+            lay_type = self.tech_info.get_layer_type(lay_name)
+            min_len = self.tech_info.get_min_length_unit(lay_type, w)
+            min_len = max(2 * top_ext, min_len)
+            sp_le = self.tech_info.get_min_line_end_space_unit(lay_type, w)
+
+            conn_info[lay] = dict(
+                w=w,
+                direction=direction,
+                min_len=min_len,
+                sp_le=sp_le,
+                top_ext=top_ext,
+                bot_ext=0,
+            )
+
+            if lay > bot_layer:
+                vdim_le = vdim[0] if dirs[lay - bot_layer - 1] == 'x' else vdim[1]
+                conn_info[lay - 1]['bot_ext'] = vdim_le // 2 + vble
+
+        return conn_info
+
     def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
         # type: (int, int, bool, **kwargs) -> Dict[str, Any]
         is_sub_ring = kwargs.get('is_sub_ring', False)
