@@ -1058,7 +1058,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
     def get_substrate_info(self, lch_unit, w, sub_type, threshold, fg, blk_pitch=1, **kwargs):
         # type: (int, int, str, str, int, int, **kwargs) -> Dict[str, Any]
-        return self._get_mos_blk_info(lch_unit, fg, w, sub_type, sub_type, threshold, **kwargs)
+        return self._get_mos_blk_info(lch_unit, fg, w, sub_type, sub_type, threshold,
+                                      blk_pitch=blk_pitch, **kwargs)
 
     def _get_end_blk_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
         # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
