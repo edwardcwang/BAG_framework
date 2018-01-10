@@ -53,11 +53,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         md :
             a tuple of MD bottom/top Y coordinates.
         top_margins :
-            a dictionary of top extension margins, which is
-            (blk_yt - lay_yt) of each layer.
+            a dictionary of top extension margins and minimum space,
+            which is ((blk_yt - lay_yt), spy) of each layer.
         bot_margins :
-            a dictionary of bottom extension margins, which is
-            (lay_yb - blk_yb) of each layer.
+            a dictionary of bottom extension margins and minimum space,
+            which is ((lay_yb - blk_yb), spy) of each layer.
         fill_info :
             a dictionary from metal layer tuple to tuple of exclusion
             layer name and list of metal fill Y intervals.
@@ -84,11 +84,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         md :
             a tuple of MD bottom/top Y coordinates.
         top_margins :
-            a dictionary of top extension margins, which is
-            (blk_yt - lay_yt) of each layer.
+            a dictionary of top extension margins and minimum space,
+            which is ((blk_yt - lay_yt), spy) of each layer.
         bot_margins :
-            a dictionary of bottom extension margins, which is
-            (lay_yb - blk_yb) of each layer.
+            a dictionary of bottom extension margins and minimum space,
+            which is ((lay_yb - blk_yb), spy) of each layer.
         fill_info :
             a dictionary from metal layer tuple to tuple of exclusion
             layer name and list of metal fill Y intervals.
@@ -494,6 +494,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         md_h_min = mos_constants['md_h_min']
         md_od_exty = mos_constants['md_od_exty']
         md_spy = mos_constants['md_spy']
+        mos_conn_w = mos_constants['mos_conn_w']
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
@@ -503,13 +504,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # step 1: get minimum extension width from vertical spacing rule
         min_ext_w = max(0, -(-(bot_imp_min_w + top_imp_min_w) // fin_p))
-        for name in top_ext_info.margins:
-            cur_spy = mos_constants['%s_spy'] % name
-            tot_margin = cur_spy - (top_ext_info.margins[name] + bot_ext_info.margins[name])
+        for name, (tm, cur_spy) in top_ext_info.margins.items():
+            tot_margin = cur_spy - (tm + bot_ext_info.margins[name][0])
             min_ext_w = max(min_ext_w, -(-tot_margin // fin_p))
 
         # step 2: get maximum extension width without dummy OD
-        od_space_nfin = (top_ext_info.margins['od'] + bot_ext_info.margins['od'] + fin_h) // fin_p
+        od_space_nfin = (top_ext_info.margins['od'][0] + bot_ext_info.margins['od'][0] + fin_h) // fin_p
         max_ext_w_no_od = od_sp_nfin_max - od_space_nfin
 
         # step 3: find minimum extension width with dummy OD
@@ -520,7 +520,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # makes layout algorithm much much easier.
 
         # get od_yb_max1, round to fin grid.
-        dum_md_yb = -bot_ext_info.margins['md'] + md_spy
+        dum_md_yb = -bot_ext_info.margins['md'][0] + md_spy
         od_yb_max1 = max(dum_md_yb + md_od_exty, cpo_h // 2 + cpo_od_sp)
         od_yb_max1 = -(-(od_yb_max1 - fin_p2 + fin_h2) // fin_p)
         # get od_yb_max2, round to fin grid.
@@ -528,7 +528,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_yb_max = max(od_yb_max1, -(-(od_yb_max - fin_p2 + fin_h2) // fin_p))
 
         # get od_yt_min1 assuming yt = 0, round to fin grid.
-        dum_md_yt = top_ext_info.margins['md'] - md_spy
+        dum_md_yt = top_ext_info.margins['md'][0] - md_spy
         od_yt_min1 = min(dum_md_yt - md_od_exty, -(cpo_h // 2) - cpo_od_sp)
         od_yt_min1 = (od_yt_min1 - fin_p2 - fin_h2) // fin_p
         # get od_yt_min2, round to fin grid.
@@ -563,18 +563,18 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fin_h = mos_constants['fin_h']
         fin_p = mos_constants['mos_pitch']
         od_nfin_min, od_nfin_max = mos_constants['od_fill_h']
-        od_spy_min = mos_constants['od_spy_min']
+        od_spy = mos_constants['od_spy']
         od_spy_max = mos_constants['od_spy_max']
         od_min_density = mos_constants['od_min_density']
 
         od_yb_offset = (fin_p - fin_h) // 2
         od_yt_offset = od_yb_offset + fin_h
-        od_spy_nfin_min = (od_spy_min - (fin_p - fin_h)) // fin_p
+        od_spy_nfin_min = (od_spy - (fin_p - fin_h)) // fin_p
         od_spy_nfin_max = (od_spy_max - (fin_p - fin_h)) // fin_p
 
         # compute MD/OD locations.
-        bot_od_yt = -bot_ext_info.margins['od']
-        top_od_yb = yblk + top_ext_info.margins['od']
+        bot_od_yt = -bot_ext_info.margins['od'][0]
+        top_od_yb = yblk + top_ext_info.margins['od'][0]
         bot_od_fidx = (bot_od_yt - od_yt_offset) // fin_p
         top_od_fidx = (top_od_yb - od_yb_offset) // fin_p
 
@@ -626,7 +626,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fin_h = mos_constants['fin_h']
         fin_p = mos_constants['mos_pitch']
         od_nfin_min, od_nfin_max = mos_constants['od_fill_h']
-        od_spy_min = mos_constants['od_spy_min']
+        od_spy = mos_constants['od_spy']
         md_h_min = mos_constants['md_h_min']
         md_od_exty = mos_constants['md_od_exty']
         md_spy = mos_constants['md_spy']
@@ -636,8 +636,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_h_min = (od_nfin_min - 1) * fin_p + fin_h
 
         # compute MD/OD locations.
-        bot_md_yt = -bot_ext_info.margins['md']
-        top_md_yb = yblk + top_ext_info.margins['md']
+        bot_md_yt = -bot_ext_info.margins['md'][0]
+        top_md_yb = yblk + top_ext_info.margins['md'][0]
 
         # get dummy OD/MD intervals
         od_y_list = self._get_dummy_od_yloc(lch_unit, bot_ext_info, top_ext_info, yblk)
@@ -682,8 +682,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             if (md_y_list[0][1] + md_spy > md_y_list[1][0] or
                     md_y_list[-2][1] + md_spy > md_y_list[-1][0]):
                 raise ValueError('inner dummy MD spacing rule not met.  See developer.')
-            if (od_y_list[0][1] + od_spy_min > od_y_list[1][0] or
-                    od_y_list[-2][1] + od_spy_min > od_y_list[1][0]):
+            if (od_y_list[0][1] + od_spy > od_y_list[1][0] or
+                    od_y_list[-2][1] + od_spy > od_y_list[1][0]):
                 raise ValueError('inner dummy OD spacing rule not met.  See developer.')
 
         # get PO/CPO locations
@@ -1135,7 +1135,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         )
         if is_sub_ring_end:
             ans['ext_info'] = ExtInfo(
-                margins={key: val + arr_yt for key, val in end_ext_info.margins.items()},
+                margins={key: (val[0] + arr_yt, val[1])
+                         for key, val in end_ext_info.margins.items()},
                 od_w=end_ext_info.od_w,
                 imp_min_w=0,
                 mtype=end_ext_info.mtype,
