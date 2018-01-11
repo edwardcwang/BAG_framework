@@ -413,6 +413,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         top_margins = yloc_info['top_margins']
         bot_margins = yloc_info['bot_margins']
         fill_info = yloc_info['fill_info']
+        g_conn_y = yloc_info['g_conn_y']
+        d_conn_y = yloc_info['d_conn_y']
 
         od_yc = (od_yloc[0] + od_yloc[1]) // 2
 
@@ -482,6 +484,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             left_edge_info=(lr_edge_info, []),
             right_edge_info=(lr_edge_info, []),
             sd_yc=od_yc,
+            g_conn_y=g_conn_y,
+            d_conn_y=d_conn_y,
         )
 
     def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
@@ -518,7 +522,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']  # type: int
         fin_p = mos_constants['mos_pitch']  # type: int
-        od_sp_nfin_max = mos_constants['od_sp_nfin_max']
+        od_spy_max = mos_constants['od_spy_max']
         od_nfin_min = mos_constants['od_fill_h'][0]
         imp_od_ency = mos_constants['imp_od_ency']
         cpo_h = mos_constants['cpo_h']
@@ -530,6 +534,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
+        od_spy_nfin_max = (od_spy_max - (fin_p - fin_h)) // fin_p
 
         bot_imp_min_w = bot_ext_info.imp_min_w  # type: int
         top_imp_min_w = top_ext_info.imp_min_w  # type: int
@@ -542,7 +547,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # step 2: get maximum extension width without dummy OD
         od_space_nfin = (top_ext_info.margins['od'][0] + bot_ext_info.margins['od'][0] + fin_h) // fin_p
-        max_ext_w_no_od = od_sp_nfin_max - od_space_nfin
+        max_ext_w_no_od = od_spy_nfin_max - od_space_nfin
 
         # step 3: find minimum extension width with dummy OD
         # now, the tricky part is that we need to make sure OD can be drawn in such a way
@@ -993,7 +998,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             is_sub_ring=False,
             dnw_mode='',
             # adjacent block information list
-            adj_info_list=adj_row_list,
+            adj_row_list=adj_row_list,
             left_blk_info=None,
             right_blk_info=None,
         )
@@ -1039,7 +1044,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             is_sub_ring=True,
             dnw_mode=dnw_mode,
             # adjacent block information list
-            adj_info_list=adj_row_list,
+            adj_row_list=adj_row_list,
             left_blk_info=None,
             right_blk_info=None,
         )
@@ -1217,7 +1222,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         imp_params = layout_info['imp_params']
         dnw_mode = layout_info['dnw_mode']
 
-        mos_constants = self.get_tech_constant(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         pode_is_poly = mos_constants['pode_is_poly']
 
         edge_info = self.get_edge_info(lch_unit, guard_ring_nf, is_end, dnw_mode=dnw_mode)
@@ -1238,7 +1243,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # noinspection PyProtectedMember
         row_info_list = [rinfo._replace(od_x_list=[]) for rinfo in row_info_list]
 
-        # compute new adj_info_list
+        # compute new adj_row_list
         if adj_blk_info is None:
             adj_blk_info = (None, [None] * len(adj_row_list))
 
@@ -1382,7 +1387,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # noinspection PyProtectedMember
         new_row_list = [rinfo._replace(od_x_list=[]) for rinfo in row_info_list]
 
-        # compute new adj_info_list
+        # compute new adj_row_list
         new_adj_list = []
         po_edge_code = 2 if pode_is_poly else 1
         for adj_edge_info, adj_info in zip(adj_blk_info[1], adj_row_list):
@@ -1723,7 +1728,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fg = layout_info['fg']
         row_info = layout_info['row_info_list'][0]
 
-        mos_constants = self.get_tech_constant(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
 
         if fg % stack != 0:
@@ -1797,7 +1802,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fg = layout_info['fg']
         row_info = layout_info['row_info_list'][0]
 
-        mos_constants = self.get_tech_constant(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
 
         od_yb, od_yt = row_info.od_y
@@ -1832,7 +1837,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fg = layout_info['fg']
         row_info = layout_info['row_info_list'][0]
 
-        mos_constants = self.get_tech_constant(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
 
         od_yb, od_yt = row_info.od_y
