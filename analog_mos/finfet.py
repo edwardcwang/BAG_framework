@@ -40,8 +40,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         MOSTech.__init__(self, config, tech_info)
 
     @abc.abstractmethod
-    def get_mos_yloc_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
-        # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
+    def get_mos_yloc_info(self, lch_unit, w, fg, **kwargs):
+        # type: (int, int, int, **kwargs) -> Dict[str, Any]
         """Computes Y coordinates of various layers in the transistor row.
 
         The returned dictionary should have the following entries:
@@ -65,8 +65,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return {}
 
     @abc.abstractmethod
-    def get_sub_yloc_info(self, lch_unit, w, sub_type, threshold, fg, **kwargs):
-        # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
+    def get_sub_yloc_info(self, lch_unit, w, fg, **kwargs):
+        # type: (int, int, int, **kwargs) -> Dict[str, Any]
         """Computes Y coordinates of various layers in the substrate row.
 
         The returned dictionary should have the following entries:
@@ -403,9 +403,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_type = 'sub' if is_sub else 'mos'
 
         if is_sub:
-            yloc_info = self.get_sub_yloc_info(lch_unit, w, sub_type, threshold, fg, **kwargs)
+            yloc_info = self.get_sub_yloc_info(lch_unit, w, fg, **kwargs)
         else:
-            yloc_info = self.get_mos_yloc_info(lch_unit, w, mos_type, threshold, fg, **kwargs)
+            yloc_info = self.get_mos_yloc_info(lch_unit, w, fg, **kwargs)
 
         # Compute Y coordinates of various layers
         blk_yb, blk_yt = yloc_info['blk']
@@ -1099,6 +1099,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fin_p = mos_constants['mos_pitch']
         cpo_po_ency = mos_constants['cpo_po_ency']
         cpo_h = mos_constants['cpo_h']
+        cpo_h_end = mos_constants['cpo_h_end']
         nw_dnw_ext = mos_constants['nw_dnw_ext']
         edge_margin = mos_constants['edge_margin']
 
@@ -1115,7 +1116,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # first assume top Y coordinate is 0
             arr_yt = 0
             cpo_bot_yt = arr_yt + cpo_h // 2
-            cpo_bot_yb = cpo_bot_yt - cpo_h
+            cpo_bot_yb = cpo_bot_yt - cpo_h_end
             finbound_yb = arr_yt - fin_p2 - fin_h2
             po_yb = cpo_bot_yt - cpo_po_ency
             imp_yb = min(po_yb, (cpo_bot_yt + cpo_bot_yb) // 2)
