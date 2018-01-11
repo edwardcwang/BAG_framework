@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import TYPE_CHECKING, Dict, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Union, Any, List, Optional, Tuple
 
 import abc
 import math
@@ -103,6 +103,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                            align_gate,  # type: bool
                            wire_dir,  # type: int
                            ds_code,  # type: int
+                           **kwargs
                            ):
         # type: (...) -> Tuple[List[WireArray], List[WireArray]]
         """Draw drain/source connections on the given template.
@@ -134,6 +135,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         ds_code : int
             the drain/source code.  1 to draw source, 2 to draw drain, 3 to draw and short both.
             Right now, code 3 is reserved for substrate connection only.
+        **kwargs :
+            optional parameters.
 
         Returns
         -------
@@ -155,6 +158,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                           md_y,  # type: Tuple[int, int]
                           conn_x_list,  # type: List[int]
                           is_sub=False,  # type: bool
+                          **kwargs,
                           ):
         # type: (...) -> List[WireArray]
         """Draw gate connections on the given template.
@@ -179,6 +183,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             list of center X coordinates to export connection port.
         is_sub : bool
             True if this is gate connection for substrate.
+        **kwargs :
+            optional parameters.
 
         Returns
         -------
@@ -197,7 +203,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                    od_y,  # type: Tuple[int, int]
                                    md_y,  # type: Tuple[int, int]
                                    ds_x_list,  # type: List[int]
-                                   gate_tracks,  # type: List[int]
+                                   gate_tracks,  # type: List[Union[float, int]]
                                    ):
         # type: (...) -> List[WireArray]
         """Draw dummy connections on the given template.
@@ -1769,7 +1775,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             template.add_pin('g', WireArray.list_to_warr(g_warrs), show=False)
 
     def draw_dum_connection(self, template, mos_info, edge_mode, gate_tracks, options):
-        # type: (TemplateBase, Dict[str, Any], int, List[int], Dict[str, Any]) -> None
+        # type: (TemplateBase, Dict[str, Any], int, List[Union[float, int]], Dict[str, Any]) -> None
 
         layout_info = mos_info['layout_info']
 

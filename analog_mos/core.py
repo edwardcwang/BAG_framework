@@ -416,7 +416,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def draw_dum_connection(self, template, mos_info, edge_mode, gate_tracks, options):
-        # type: (TemplateBase, Dict[str, Any], int, List[int], Dict[str, Any]) -> None
+        # type: (TemplateBase, Dict[str, Any], int, List[Union[float, int]], Dict[str, Any]) -> None
         """Draw dummy connection layout in the given template.
 
         Parameters
@@ -429,7 +429,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             the dummy edge mode flag.  This is a 2-bit integer, the LSB is 1 if there are no
             transistors on the left side of the dummy, the MSB is 1 if there are no transistors
             on the right side of the dummy.
-        gate_tracks : List[int]
+        gate_tracks : List[Union[float, int]]
             list of dummy connection track indices.
         options : Dict[str, Any]
             a dictionary of transistor row options.
