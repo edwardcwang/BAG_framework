@@ -304,9 +304,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 lay_name = lay_name[0]
             lay_type = self.tech_info.get_layer_type(lay_name)
             min_len = self.tech_info.get_min_length_unit(lay_type, w)
-            min_len = max(2 * top_ext, min_len)
+            min_len = max(2 * top_ext, -(-min_len // 2) * 2)
             sp_le = self.tech_info.get_min_line_end_space_unit(lay_type, w)
-
             conn_info[lay] = dict(
                 w=w,
                 direction=direction,
@@ -612,6 +611,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # compute MD/OD locations.
         bot_od_yt = -bot_ext_info.margins['od'][0]
         top_od_yb = yblk + top_ext_info.margins['od'][0]
+        # check if we can just not draw anything
+        if top_od_yb - bot_od_yt <= od_spy_max:
+            return []
         bot_od_fidx = (bot_od_yt - od_yt_offset) // fin_p
         top_od_fidx = (top_od_yb - od_yb_offset) // fin_p
 
@@ -678,6 +680,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # get dummy OD/MD intervals
         od_y_list = self._get_dummy_od_yloc(lch_unit, bot_ext_info, top_ext_info, yblk)
+        if not od_y_list:
+            return [], [], [(0, yblk)], [0, yblk]
+
         md_y_list = []
         for od_yb, od_yt in od_y_list:
             md_h = max(md_h_min, od_yt - od_yb + 2 * md_od_exty)
@@ -1665,15 +1670,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         has_od = False
         for row_info in row_info_list:
-            od_yb, od_yt = row_info.od_y
-            md_yb, md_yt = row_info.md_y
-            if od_yt > od_yb:
+            od_y = row_info.od_y
+            md_y = row_info.md_y
+            if od_y[1] > od_y[0]:
                 has_od = True
-
-                # shift Y interval so that OD centers at y=0
-                od_yc = (od_yb + od_yt) // 2
-                od_y = od_yb - od_yc, od_yt - od_yc
-                md_y = md_yb - od_yc, md_yt - od_yc
 
                 # find current port name
                 od_start, od_stop = row_info.od_x_list[0]
