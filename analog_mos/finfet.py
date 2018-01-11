@@ -317,7 +317,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
             if lay > bot_layer:
                 vdim_le = vdim[0] if dirs[lay - bot_layer - 1] == 'x' else vdim[1]
-                conn_info[lay - 1]['bot_ext'] = vdim_le // 2 + vble
+                bot_ext = vdim_le // 2 + vble
+                conn_info[lay - 1]['bot_ext'] = bot_ext
+                conn_info[lay - 1]['min_len'] = max(conn_info[lay - 1]['min_len'], 2 * bot_ext)
 
         return conn_info
 
