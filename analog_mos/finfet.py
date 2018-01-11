@@ -372,7 +372,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # compute edge margin and cpo_xl
         if is_end:
             edge_margin = outer_margin
-            cpo_xl = outer_margin + (sd_pitch - lch_unit) // 2 - cpo_po_extx
+            cpo_xl = (sd_pitch - lch_unit) // 2 - cpo_po_extx
         else:
             edge_margin = cpo_xl = 0
 
@@ -639,7 +639,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
             # compute actual OD area
             od_intv_list = fill_symmetric_interval(*fill_info[0][2], offset=bot_od_fidx + 1, invert=fill_info[1])[0]
-            od_area_cur = sum(((start - stop - 1) * fin_p + fin_h for start, stop in od_intv_list))
+            od_area_cur = sum(((stop - start - 1) * fin_p + fin_h for start, stop in od_intv_list))
             if od_area_cur >= od_area_targ:
                 od_fin_area_iter.save_info(od_intv_list)
                 od_fin_area_iter.down()
@@ -669,6 +669,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         md_h_min = mos_constants['md_h_min']
         md_od_exty = mos_constants['md_od_exty']
         md_spy = mos_constants['md_spy']
+        cpo_h = mos_constants['cpo_h']
+        cpo_od_sp = mos_constants['cpo_od_sp']
 
         od_yb_offset = (fin_p - fin_h) // 2
         od_yt_offset = od_yb_offset + fin_h
@@ -689,20 +691,23 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             md_yb = (od_yb + od_yt - md_h) // 2
             md_y_list.append((md_yb, md_yb + md_h))
 
-        # check and fix bottom MD spacing violation
-        if md_y_list[0][0] < bot_md_yt + md_spy:
+        # check and fix MD spacing violation
+        cpo_bot_yt = cpo_h // 2
+        cpo_top_yb = yblk - cpo_h // 2
+        if md_y_list[0][0] < bot_md_yt + md_spy or od_y_list[0][0] < cpo_bot_yt + cpo_od_sp:
             od_yt = od_y_list[0][1]
-            od_bot_fidx = -(-(bot_md_yt + md_spy + md_od_exty - od_yb_offset) // fin_p)
+            od_bot_correct = max(cpo_bot_yt + cpo_od_sp, bot_md_yt + md_spy + md_od_exty)
+            od_bot_fidx = -(-(od_bot_correct - od_yb_offset) // fin_p)
             od_yb = od_bot_fidx * fin_p + od_yb_offset
             od_yt = max(od_yb + od_h_min, od_yt)
             od_y_list[0] = od_yb, od_yt
             md_h = max(md_h_min, od_yt - od_yb + 2 * md_od_exty)
             md_yb = max((od_yb + od_yt - md_h) // 2, bot_md_yt + md_spy)
             md_y_list[0] = md_yb, md_yb + md_h
-        # check and fix MD spacing violation
-        if md_y_list[-1][1] > top_md_yb - md_spy:
+        if md_y_list[-1][1] > top_md_yb - md_spy or od_y_list[-1][1] > cpo_top_yb - cpo_od_sp:
             od_yb = od_y_list[-1][0]
-            od_top_fidx = (top_md_yb - md_spy - md_od_exty - od_yt_offset) // fin_p
+            od_top_correct = min(cpo_top_yb - cpo_od_sp, top_md_yb - md_spy - md_od_exty)
+            od_top_fidx = (od_top_correct - od_yt_offset) // fin_p
             od_yt = od_top_fidx * fin_p + od_yt_offset
             od_yb = min(od_yt - od_h_min, od_yb)
             od_y_list[-1] = od_yb, od_yt
@@ -710,7 +715,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             md_yt = min((od_yb + od_yt + md_h) // 2, top_md_yb - md_spy)
             md_y_list[0] = md_yt - md_h, md_yt
 
-        if md_y_list[0][0] < bot_md_yt + md_spy:
+        if md_y_list[0][0] < bot_md_yt + md_spy or od_y_list[0][0] < cpo_bot_yt + cpo_od_sp:
             # bottom MD spacing rule violated.  This only happens if we have exactly
             # one dummy OD, and there is no solution that works for both top and bottom
             # MD spacing rules.
@@ -1631,7 +1636,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         for adj_info in adj_row_list:
             po_yb, po_yt = adj_info.po_y
             for idx, po_type in enumerate(adj_info.po_types):
-                lay = po_dum_lay if po_type == 0 else po_lay
+                if po_type == 0:
+                    lay = po_dum_lay
+                elif po_type == 1:
+                    lay = po_lay
+                else:
+                    lay = po_pode_lay
                 po_xl = po_xc + idx * sd_pitch - lch_unit // 2
                 po_xr = po_xl + lch_unit
                 template.add_rect(lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
