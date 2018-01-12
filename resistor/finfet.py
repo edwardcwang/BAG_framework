@@ -19,6 +19,7 @@ from .base import ResTech
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfoConfig
     from bag.layout.routing import RoutingGrid
+    from ..analog_mos.core import MOSTech
 
 
 class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
@@ -27,6 +28,37 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
     def __init__(self, config, tech_info):
         # type: (Dict[str, Any], TechInfoConfig) -> None
         ResTech.__init__(self, config, tech_info)
+        self.mos_tech = tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+
+    @abc.abstractmethod
+    def get_port_info(self, xc, yc, wres, port_yb, port_yt, resolution):
+        # type: (int, int, int, int, int, float) -> Tuple[List[Tuple[Tuple[str, str], BBox]], List[Dict[str, Any]]]
+        """Calculate port geometry information.
+
+        Parameters
+        ----------
+        xc : int
+            resistor port center X coordinate
+        yc : int
+            resistor center Y coordinate.
+        wres : int
+            width of the resistor.
+        port_yb : int
+            port wire bottom Y coordinate.
+        port_yb : int
+            port wire top Y coordinate.
+        resolution : float
+            the grid resolution.
+
+        Returns
+        -------
+        rect_list : List[Tuple[Tuple[str, str], BBox]]
+            list of rectangles to create, in (layer, bbox) tuple form.
+        via_list : List[Dict[str, Any]]
+            list of vias to create.
+
+        """
+        return [], []
 
     def get_res_dimension(self, l, w):
         """Get PO resistor dimension in core and two edge blocks.
@@ -42,61 +74,42 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         # type: (int, int, str, str, str, Dict[str, Any]) -> Tuple[int, int]
         """Returns smallest possible resistor core dimension.
 
-        width calculated so we can draw at least 1 dummy OD.
+        width calculated so we can draw at least 1 dummy OD with 2 fingers.
         height calculated so adjacent resistor is DRC clean.
         """
-        od_wmin = self.res_config['od_dim_min'][0]
-        po_od_sp = self.res_config['po_od_sp']
-        po_sp = self.res_config['po_sp']
-        imp_od_sp = self.res_config['imp_od_sp']
-        imp_ency = self.res_config['imp_enc'][1]
-        res_info = self.res_config['info'][res_type]
-        od_in_res = res_info['od_in_res']
+        po_lch = self.res_config['po_lch']
+        po_pitch = self.res_config['po_pitch']
+        po_res_sp = self.res_config['po_res_sp']
+        mp_res_sp = self.res_config['mp_res_sp']
+        res_spy = self.res_config['res_spy']
+
+        po_res_spx = max(po_res_sp, mp_res_sp - po_lch // 2)
 
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
-        if od_in_res:
-            # OD can be drawn in RES layer
-            hblk = lres + po_sp
-            wblk = wres + 2 * po_od_sp + od_wmin
-        else:
-            # OD cannot be drawn in RES layer
-            hblk = lres + 2 * (imp_ency + imp_od_sp) + od_wmin
-            wblk = wres + po_sp
 
-        return wblk, hblk
+        # at least 2 finger dummy transistor between resistors
+        res_sp = po_lch + po_pitch + 2 * po_res_spx
 
-    def get_via0_info(self, xc, yc, wres, resolution):
-        """Compute resistor CO parameters and metal 1 bounding box."""
-        mos_layer_table = self.config['mos_layer_table']
-        layer_table = self.config['layer_name']
-        via_id_table = self.config['via_id']
-        co_w = self.res_config['co_w']
-        co_sp = self.res_config['co_sp']
-        po_co_encx, po_co_ency = self.res_config['po_co_enc']
-        m1_co_encx, m1_co_ency = self.res_config['m1_co_enc']
-        num_co = (wres - po_co_encx * 2 + co_sp) // (co_w + co_sp)
-        m1_h = co_w + 2 * m1_co_ency
+        wcore = wres + res_sp
+        hcore = lres + res_spy
 
-        # get via parameters
-        po_name = mos_layer_table['PO']
-        m1_name = layer_table[1]
-        via_id = via_id_table[(po_name, m1_name)]
-        via_params = dict(via_type=via_id, loc=[xc, yc],
-                          num_cols=num_co, sp_cols=co_sp,
-                          enc1=[po_co_encx, po_co_encx, po_co_ency, po_co_ency],
-                          enc2=[m1_co_encx, m1_co_encx, m1_co_ency, m1_co_ency],
-                          unit_mode=True)
+        return wcore, hcore
 
-        varr_w = num_co * (co_w + co_sp) - co_sp
-        m1_xl = xc - (varr_w // 2) - m1_co_encx
-        m1_xr = m1_xl + 2 * m1_co_encx + varr_w
-        m1_yb = yc - m1_h // 2
-        m1_yt = m1_yb + m1_h
+    @classmethod
+    def _compute_od_y_loc(cls, od_fin_loc, fin_pitch, fin_h, fin_offset):
+        """Convert dummy OD fin location list to Y coordinate.
 
-        m1_box = BBox(m1_xl, m1_yb, m1_xr, m1_yt, resolution, unit_mode=True)
-        return via_params, m1_box
+        fin_offset is the Y coordinate of fin 0 in the given fin number list.
+        """
+        new_loc = []
+        fin_h2 = fin_h // 2
+        for fin_start, fin_stop in od_fin_loc:
+            yb = fin_offset + fin_start * fin_pitch - fin_h2
+            yt = fin_offset + (fin_stop - 1) * fin_pitch + fin_h2
+            new_loc.append((yb, yt))
+        return new_loc
 
-    def get_core_info(self,
+    def get_core_info(self,  # type: ResTechFinfetBase
                       grid,  # type: RoutingGrid
                       width,  # type: int
                       height,  # type: int
@@ -114,77 +127,99 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         This method checks max PO and min OD density rules.
         """
-        layer_table = self.config['layer_name']
-        od_wmin = self.res_config['od_dim_min'][0]
-        od_wmax = self.res_config['od_dim_max'][0]
-        od_sp = self.res_config['od_sp']
+        res = grid.resolution
+
+        nfin_min, nfin_max = self.res_config['od_fill_w']
+        po_od_ext = self.res_config['po_od_ext']
+        po_spx = self.res_config['po_spx']
+        po_spy = self.res_config['po_spy']
+        po_res_sp = self.res_config['po_res_sp']
+        mp_res_sp = self.res_config['mp_res_sp']
+        po_lch = self.res_config['po_lch']
+        po_pitch = self.res_config['po_pitch']
+        mp_h = self.res_config['mp_h']
+        res_max_density = self.res_config['res_max_density']
         od_min_density = self.res_config['od_min_density']
-        po_od_sp = self.res_config['po_od_sp']
-        po_max_density = self.res_config['po_max_density']
-        co_w = self.res_config['co_w']
-        rpo_co_sp = self.res_config['rpo_co_sp']
         m1_sp_max = self.res_config['m1_sp_max']
-        imp_od_sp = self.res_config['imp_od_sp']
-        imp_ency = self.res_config['imp_enc'][1]
-        res_info = self.res_config['info'][res_type]
-        od_in_res = res_info['od_in_res']
+
+        po_res_spx = max(po_res_sp, mp_res_sp - po_lch // 2)
+
+        fin_h = self.mos_tech.mos_config['fin_h']
+        fin_p = self.mos_tech.mos_config['mos_pitch']
+
+        fin_p2 = fin_p // 2
+        fin_h2 = fin_h // 2
 
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
 
-        # check PO density
-        max_res_area = int(width * height * po_max_density)
+        # check RH_TN density
+        max_res_area = int(width * height * res_max_density)
         if wres * lres > max_res_area:
             return None
 
-        # compute OD fill X coordinates on the left/right edge
-        if od_in_res:
-            bnd_spx = (width - wres) // 2
-            area = 2 * (bnd_spx - po_od_sp)
-            lr_od_xloc = fill_symmetric_max_density(area, area, od_wmin, od_wmax, od_sp, offset=-bnd_spx + po_od_sp,
-                                                    sp_max=None, fill_on_edge=True, cyclic=False)[0]
-            lr_od_h = lres
-        else:
-            lr_od_xloc = []
-            lr_od_h = 0
-        # compute OD fill Y coordinates on the top/bottom edge
+        # Compute dummy Y coordinates
+        # compute dummy OD Y separation in number of fins
+        od_sp = po_spy + po_od_ext * 2
+        # when two ODs are N fin pitches apart, the actual OD spacing is N * fin_pitch - fin_h
+        od_sp = -(-(od_sp + fin_h) // fin_p)
+        # compute OD Y coordinates for left/right edge.
+        h_core_nfin = height // fin_p
+        core_lr_od_loc = fill_symmetric_max_density(h_core_nfin, h_core_nfin, nfin_min, nfin_max, od_sp,
+                                                    fill_on_edge=False, cyclic=True)[0]
+        # compute OD Y coordinates for top/bottom edge.
+        # compute fin offset for top edge dummies
         bnd_spy = (height - lres) // 2
-        if od_in_res:
-            area = 2 * (bnd_spy - po_od_sp)
-            tb_od_offset = -bnd_spy + po_od_sp
-            tb_od_w = wres
-        else:
-            area = 2 * (bnd_spy - (imp_od_sp + imp_ency))
-            tb_od_offset = -bnd_spy + imp_od_sp + imp_ency
-            tb_od_w = width - od_sp
-        dod_dx = (width - tb_od_w) // 2
-        tb_od_xloc = [(dod_dx, width - dod_dx)]
-        tb_od_yloc = fill_symmetric_max_density(area, area, od_wmin, od_wmax, od_sp, offset=tb_od_offset,
-                                                sp_max=None, fill_on_edge=True, cyclic=False)[0]
+        top_dummy_bnd = bnd_spy + lres + po_res_sp + po_od_ext
+        # find the fin pitch index of the lower bound of the empty space.
+        pitch_index = -(-(top_dummy_bnd - fin_p2 + fin_h2) // fin_p)
+        tot_space = 2 * (h_core_nfin - pitch_index)
+        core_tb_od_loc = fill_symmetric_max_density(tot_space, tot_space, nfin_min, nfin_max, od_sp,
+                                                    fill_on_edge=True, cyclic=False)[0]
+
+        # compute dummy number of fingers for left/right edge
+        bnd_spx = (width - wres) // 2
+        avail_sp = bnd_spx * 2 - po_res_spx * 2
+        core_lr_fg = (avail_sp - po_lch) // po_pitch + 1
+        # compute dummy number of fingers for top/bottom edge
+        core_lr_dum_w = po_lch + (core_lr_fg - 1) * po_pitch
+        avail_sp = width - core_lr_dum_w - 2 * po_spx
+        core_tb_fg = (avail_sp - po_lch) // po_pitch + 1
+        core_tb_dum_w = po_lch + (core_tb_fg - 1) * po_pitch
 
         # check OD density
         min_od_area = int(math.ceil(width * height * od_min_density))
         # compute OD area
         od_area = 0
-        for od_w, od_intv_list in ((lr_od_h, lr_od_xloc), (tb_od_w, tb_od_yloc)):
-            for lower, upper in od_intv_list:
-                od_area += od_w * (upper - lower)
+        for od_w, od_fin_list in ((core_lr_dum_w, core_lr_od_loc), (core_tb_dum_w, core_tb_od_loc)):
+            for fin_start, fin_stop in od_fin_list:
+                od_area += od_w * ((fin_stop - fin_start - 1) * fin_p + fin_h)
         if od_area < min_od_area:
             return None
 
         # if we get here, then all density rules are met
-        # split into top and bottom dummy locations
-        num_dummy_half = -(-len(tb_od_yloc) // 2)
-        bot_od_yloc = tb_od_yloc[-num_dummy_half:]
-        top_od_yloc = [(a + height, b + height) for a, b in tb_od_yloc[:num_dummy_half]]
+        # convert dummy fin location to Y coordinates
+        core_lr_od_loc = self._compute_od_y_loc(core_lr_od_loc, fin_p, fin_h, fin_p2)
+        # split the top/bottom dummies into halves
+        num_dummy_half = -(-len(core_tb_od_loc) // 2)
+        # top dummy locations
+        top_offset = pitch_index * fin_p + fin_p2
+        core_top_od_loc = self._compute_od_y_loc(core_tb_od_loc[:num_dummy_half], fin_p, fin_h, top_offset)
+        core_top_po_bnd = (height - bnd_spy + po_res_sp, height + bnd_spy - po_res_sp)
+        # bottom dummy locations
+        core_bot_od_loc = self._compute_od_y_loc(core_tb_od_loc[-num_dummy_half:], fin_p, fin_h, top_offset - height)
+        core_bot_po_bnd = (-bnd_spy + po_res_sp, bnd_spy - po_res_sp)
 
         # fill layout info with dummy information
         layout_info = dict(
             width=width,
             height=height,
-            lr_od_xloc=lr_od_xloc,
-            bot_od_yloc=bot_od_yloc,
-            top_od_yloc=top_od_yloc,
-            tb_od_xloc=tb_od_xloc,
+            lr_dum_w=core_lr_dum_w,
+            tb_dum_w=core_tb_dum_w,
+            lr_od_loc=(core_lr_od_loc, None),
+            top_od_loc=(core_top_od_loc, core_top_po_bnd),
+            bot_od_loc=(core_bot_od_loc, core_bot_po_bnd),
+            lr_fg=core_lr_fg,
+            tb_fg=core_tb_fg,
         )
 
         # compute port information
@@ -192,46 +227,27 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         xc = width // 2
         rpdmy_yb = height // 2 - l // 2
         rpdmy_yt = rpdmy_yb + l
-        bot_yc = rpdmy_yb - rpo_co_sp - co_w // 2
-        top_yc = rpdmy_yt + rpo_co_sp + co_w // 2
+        bot_yc = rpdmy_yb - mp_h // 2
+        top_yc = rpdmy_yt + mp_h // 2
         bot_layer = self.get_bot_layer()
         bot_pitch = grid.get_track_pitch(bot_layer, unit_mode=True)
-        bot_num_tr = height // bot_pitch if height % bot_pitch == 0 else height / bot_pitch
+        bot_num_tr = height // bot_pitch
         # first, find M2 tracks such that the top track of this block and the bottom track of
         # the top adjacent block is track_spaces[0] tracks apart.  the actual tracks cannot exceed these.
-        m2_w, m2_sp = track_widths[0], track_spaces[0]
-        if isinstance(m2_sp, int):
-            bot_tr_min = (m2_w + m2_sp + 1) / 2 - 1
-        else:
-            # for half-integer spacing, we need to round up edge space so that tracks remain centered
-            # in the block
-            bot_tr_min = (m2_w + m2_sp + 1.5) / 2 - 1
-        top_tr_max = bot_num_tr - 1 - bot_tr_min
-
+        top_tr_max = bot_num_tr - (track_widths[0] + track_spaces[0] + 1) / 2
+        bot_tr_min = (track_widths[0] + track_spaces[0] + 1) / 2 - 1
         # find M2 tracks closest to ports
         top_tr = min(top_tr_max, grid.coord_to_nearest_track(bot_layer, top_yc, half_track=True, mode=1,
                                                              unit_mode=True))
         bot_tr = max(bot_tr_min, grid.coord_to_nearest_track(bot_layer, bot_yc, half_track=True, mode=-1,
                                                              unit_mode=True))
 
-        # get CO/VIA1 parameters, and metal 1 bounding box
-        m1_name = layer_table[1]
-        m2_name = layer_table[2]
-        m2_h = grid.get_track_width(bot_layer, m2_w, unit_mode=True)
-        res = grid.resolution
+        # get VIA0/VIA1 parameters, and metal 1 bounding box
         port_info = []
         for port_name, yc, m2_tr in (('bot', bot_yc, bot_tr), ('top', top_yc, top_tr)):
-            via0_params, m1_box = self.get_via0_info(xc, yc, wres, res)
-            # get via1 parameters
-            m2_yc = grid.track_to_coord(bot_layer, m2_tr, unit_mode=True)
-            v1_box = BBox(m1_box.left_unit, m2_yc - m2_h // 2, m1_box.right_unit, m2_yc + m2_h // 2,
-                          res, unit_mode=True)
-            via1_info = grid.tech_info.get_via_info(v1_box, m1_name, m2_name, 'y')
-            m1_box = m1_box.merge(via1_info['bot_box'])
-            m2_box = via1_info['top_box']
-            via1_params = via1_info['params']
-            via1_params['via_type'] = via1_params.pop('id')
-            port_info.append((port_name, via0_params, via1_params, m1_box, m2_box))
+            port_yb, port_yt = grid.get_wire_bounds(bot_layer, m2_tr, track_widths[0], unit_mode=True)
+            rect_list, via_list = self.get_port_info(xc, yc, wres, port_yb, port_yt, res)
+            port_info.append((port_name, rect_list, via_list))
 
         # compute fill information
         # compute fill Y coordinate in core block
@@ -244,8 +260,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         m1_top_yb, m1_top_yt = m1_top.bottom_unit, m1_top.top_unit
         m1_core_mid_y = fill_symmetric_const_space(m1_top_yb - m1_bot_yt, m1_sp_max, m1_h, m1_h, offset=m1_bot_yt)
         # compute fill Y coordinates between ports outside the cell
-        m1_core_top_y = fill_symmetric_const_space(m1_bot_yb + height - m1_top_yt, m1_sp_max,
-                                                   m1_h, m1_h, offset=m1_top_yt)
+        m1_core_top_y = fill_symmetric_const_space(m1_bot_yb + height - m1_top_yt, m1_sp_max, m1_h, m1_h,
+                                                   offset=m1_top_yt)
         # combine fill Y coordinates together in one list
         fill_len2 = -(-len(m1_core_top_y) // 2)
         m1_core_y = [(a - height, b - height) for (a, b) in m1_core_top_y[-fill_len2:]]
