@@ -647,6 +647,7 @@ class MOSTechSOIGenericBC(MOSTech):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         d_conn_w = mos_constants['d_conn_w']
+        d_bot_layer = mos_constants['d_bot_layer']
         md_w = mos_constants['md_w']
 
         if end_layer is None:
@@ -664,8 +665,8 @@ class MOSTechSOIGenericBC(MOSTech):
                 via_type = via_id_table[(lay_name_table[bot_lay_id], lay_name_table[bot_lay_id + 1])]
                 via_enc_le = max(d_via_info['bot_enc_le'][bot_lay_id], d_via_info['top_enc_le'][bot_lay_id])
 
-            w_bot = md_w if bot_lay_id == 0 else d_conn_w[bot_lay_id]
-            w_top = d_conn_w[bot_lay_id + 1]
+            w_bot = md_w if bot_lay_id == 0 else d_conn_w[bot_lay_id - d_bot_layer]
+            w_top = d_conn_w[bot_lay_id + 1 - d_bot_layer]
 
             via_w, via_h = d_via_info['dim'][bot_lay_id]
             via_sp = d_via_info['sp'][bot_lay_id]
