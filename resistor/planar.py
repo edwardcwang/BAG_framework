@@ -442,6 +442,7 @@ class ResTechPlanarGeneric(ResTech):
         l = layout_info['l']
         res_type = layout_info['res_type']
         sub_type = layout_info['sub_type']
+        threshold = layout_info['threshold']
         wcore = layout_info['w_core']
         hcore = layout_info['h_core']
         track_widths = layout_info['track_widths']
@@ -462,7 +463,7 @@ class ResTechPlanarGeneric(ResTech):
         wres, lres, _, _ = self.get_res_dimension(l, w)
 
         # set size and draw implant layers
-        implant_layers = self.get_res_imp_layers(res_type, sub_type)
+        implant_layers = self.get_res_imp_layers(res_type, sub_type, threshold)
         arr_box = BBox(0, 0, wcore, hcore, res, unit_mode=True)
         po_yb = yc - lres // 2
         po_yt = yc + lres // 2
@@ -540,6 +541,7 @@ class ResTechPlanarGeneric(ResTech):
         l = layout_info['l']
         res_type = layout_info['res_type']
         sub_type = layout_info['sub_type']
+        threshold = layout_info['threshold']
         w_core = layout_info['w_core']
         h_core = layout_info['h_core']
         w_edge = layout_info['w_edge']
@@ -550,7 +552,7 @@ class ResTechPlanarGeneric(ResTech):
         od_in_res = res_info['od_in_res']
 
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
-        implant_layers = self.get_res_imp_layers(res_type, sub_type)
+        implant_layers = self.get_res_imp_layers(res_type, sub_type, threshold)
         bnd_spx = (w_core - wres) // 2
         bnd_spy = (h_core - lres) // 2
 

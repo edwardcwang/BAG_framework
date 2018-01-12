@@ -252,12 +252,12 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         # compute fill information
         # compute fill Y coordinate in core block
         # compute fill Y coordinates between ports inside the cell
-        m1_w = port_info[0][3].width_unit
-        m1_h = port_info[0][3].height_unit
-        m1_bot = port_info[0][3]
-        m1_top = port_info[1][3]
-        m1_bot_yb, m1_bot_yt = m1_bot.bottom_unit, m1_bot.top_unit
-        m1_top_yb, m1_top_yt = m1_top.bottom_unit, m1_top.top_unit
+        m1_bot_box = port_info[0][1][0][0]
+        m1_top_box = port_info[1][1][0][0]
+        m1_w = m1_bot_box.width_unit
+        m1_h = m1_bot_box.height_unit
+        m1_bot_yb, m1_bot_yt = m1_bot_box.bottom_unit, m1_bot_box.top_unit
+        m1_top_yb, m1_top_yt = m1_top_box.bottom_unit, m1_top_box.top_unit
         m1_core_mid_y = fill_symmetric_const_space(m1_top_yb - m1_bot_yt, m1_sp_max, m1_h, m1_h, offset=m1_bot_yt)
         # compute fill Y coordinates between ports outside the cell
         m1_core_top_y = fill_symmetric_const_space(m1_bot_yb + height - m1_top_yt, m1_sp_max, m1_h, m1_h,
@@ -271,7 +271,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         m1_core_y.extend(m1_core_top_y[:fill_len2])
 
         # compute fill X coordinate in core block
-        m1_xl, m1_xr = m1_bot.left_unit, m1_bot.right_unit
+        m1_xl, m1_xr = m1_bot_box.left_unit, m1_bot_box.right_unit
         sp_xl = -width + m1_xr
         sp_xr = m1_xl
         m1_core_x = fill_symmetric_const_space(sp_xr - sp_xl, m1_sp_max, m1_w, m1_w, offset=sp_xl)
@@ -530,31 +530,121 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             m1_edge_y=m1_edge_y,
         )
 
-    def _draw_dummies(self, template, xintv_list, yintv_list, dx=0, dy=0):
-        mos_layer_table = self.config['mos_layer_table']
-        od_dummy_lay = mos_layer_table['OD_dummy']
+    def _draw_dummies(self, template, xc, fg, od_po_loc):
+        mos_lay_table = self.config['mos_layer_table']
+
+        po_lch = self.res_config['po_lch']
+        po_pitch = self.res_config['po_pitch']
+        po_od_ext = self.res_config['po_od_ext']
+        mp_spy_dum = self.res_config['mp_spy_dum']
+        mp_h_dum = self.res_config['mp_h_dum']
+        mp_od_ency = self.res_config['mp_od_ency']
+        po_h_min = self.res_config['po_h_min']
+
+        m0po_pitch = mp_spy_dum + mp_h_dum
+
         res = template.grid.resolution
 
-        for xl, xr in xintv_list:
-            for yb, yt in yintv_list:
-                box = BBox(xl, yb, xr, yt, res, unit_mode=True)
-                template.add_rect(od_dummy_lay, box.move_by(dx=dx, dy=dy, unit_mode=True))
+        od_w = po_lch + (fg - 1) * po_pitch
+        od_xl = xc - od_w // 2
+        od_xr = od_xl + od_w
+        po_xr = od_xl + po_lch
+        od_loc, po_loc = od_po_loc
+        od_dum_lay = mos_lay_table['OD_dummy']
+        po_dum_lay = mos_lay_table['PO_dummy']
+        mp_dum_lay = mos_lay_table['MP_dummy']
+        if od_loc:
+            # draw dummy transistors
+            for od_yb, od_yt in od_loc:
+                po_yb = od_yb - po_od_ext
+                po_yt = od_yt + po_od_ext
+                # draw OD
+                template.add_rect(od_dum_lay, BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True))
+                # draw PO
+                template.add_rect(po_dum_lay, BBox(od_xl, po_yb, po_xr, po_yt, res, unit_mode=True),
+                                  nx=fg, spx=po_pitch * res)
+                # draw M0PO
+                # compute number of M0PO
+                od_h = od_yt - od_yb
+                avail_sp = od_h - 2 * mp_od_ency
+                num_m0po = (avail_sp - mp_h_dum) // m0po_pitch + 1
+                if num_m0po > 0:
+                    m0po_harr = mp_h_dum + (num_m0po - 1) * m0po_pitch
+                    m0po_xl = od_xl + po_lch // 2
+                    m0po_xr = od_xr - po_lch // 2
+                    m0po_yb = od_yb + (od_h - m0po_harr) // 2
+                    m0po_yt = m0po_yb + mp_h_dum
+                    template.add_rect(mp_dum_lay, BBox(m0po_xl, m0po_yb, m0po_xr, m0po_yt, res, unit_mode=True),
+                                      ny=num_m0po, spy=m0po_pitch * res)
+        elif po_loc is not None:
+            # draw dummy PO only
+            po_yb, po_yt = po_loc
+            if po_yt - po_yb >= po_h_min:
+                template.add_rect(po_dum_lay, BBox(od_xl, po_yb, po_xr, po_yt, res, unit_mode=True),
+                                  nx=fg, spx=po_pitch * res)
+
+    def _get_via0_info(self, xc, yc, wres, resolution):
+        """Compute resistor M0PO-to-M1 via parameters and metal 1 bounding box."""
+        m0po_res_exth = self.res_config['m0po_res_exth']
+        v_h = self.res_config['via0_h']
+        via0_w_sq, via0_w_rect = self.res_config['via0_w']
+        via0_sp_sq, via0_sp_rect = self.res_config['via0_sp']
+        via0_m0po_enc = self.res_config['via0_m0po_enc']
+        v_enc2xy = self.res_config['via0_m1_enc']
+        m0po_h = self.res_config['m0po_h']
+
+        m0po_w = wres + m0po_res_exth * 2
+        # step 3B: determine VIA0 parameters
+        nvia_eff = 0
+        nv = 0
+        v_w = 0
+        v_sp = 0
+        v_enc1x = via0_m0po_enc
+        v_enc1y = (m0po_h - v_h) // 2
+        for mult, vw, vsp in ((1, via0_w_sq, via0_sp_sq), (2, via0_w_rect, via0_sp_rect)):
+            nvia = (m0po_w - 2 * via0_m0po_enc + vsp) // (vw + vsp)
+            if nvia * mult > nvia_eff:
+                nvia_eff = nvia * mult
+                nv = nvia
+                v_w, v_sp = vw, vsp
+                v_enc1x = (m0po_w - (nvia * (vw + vsp) - vsp)) // 2
+
+        # step 3C: add VIA0 and calculate M1 bounding box.
+        via_params = dict(via_type='M1_M0PO', loc=[xc, yc],
+                          num_cols=nv, sp_cols=v_sp,
+                          enc1=[v_enc1x, v_enc1x, v_enc1y, v_enc1y],
+                          enc2=[v_enc2xy, v_enc2xy, v_enc2xy, v_enc2xy],
+                          cut_width=v_w, cut_height=v_h, unit_mode=True)
+
+        varr_w = nv * (v_w + v_sp) - v_sp
+        m1_xl = xc - (varr_w // 2) - v_enc2xy
+        m1_xr = m1_xl + 2 * v_enc2xy + varr_w
+        m1_yb = yc - (v_h // 2) - v_enc2xy
+        m1_yt = m1_yb + 2 * v_enc2xy + v_h
+
+        m1_box = BBox(m1_xl, m1_yb, m1_xr, m1_yt, resolution, unit_mode=True)
+        return via_params, m1_box
 
     def draw_res_core(self, template, layout_info):
         # type: (TemplateBase, Dict[str, Any]) -> None
 
-        mos_layer_table = self.config['mos_layer_table']
-        res_layer_table = self.config['res_layer_table']
-        metal_exclude_table = self.config['metal_exclude_table']
-        layer_table = self.config['layer_name']
-        res_info = self.res_config['info']
-        imp_ency = self.res_config['imp_enc'][1]
+        mos_lay_table = self.config['mos_layer_table']
+        res_lay_table = self.config['res_layer_table']
+        exc_lay_table = self.config['metal_exclude_table']
+
+        fin_h2 = self.mos_tech.mos_config['fin_h'] // 2
+        fin_p2 = self.mos_tech.mos_config['mos_pitch'] // 2
 
         grid = template.grid
         res = grid.resolution
 
+        finfet_lay = mos_lay_table['FB']
+        rpdmy_lay = res_lay_table['RPDMY']
+        rpo_lay = res_lay_table['RPO']
+
         w = layout_info['w']
         l = layout_info['l']
+        threshold = layout_info['threshold']
         res_type = layout_info['res_type']
         sub_type = layout_info['sub_type']
         wcore = layout_info['w_core']
@@ -562,97 +652,93 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         track_widths = layout_info['track_widths']
 
         core_info = layout_info['core_info']
-        lr_od_xloc = core_info['lr_od_xloc']
-        top_od_yloc = core_info['top_od_yloc']
-        bot_od_yloc = core_info['bot_od_yloc']
-        tb_od_xloc = core_info['tb_od_xloc']
+        lr_od_loc = core_info['lr_od_loc']
+        top_od_loc = core_info['top_od_loc']
+        bot_od_loc = core_info['bot_od_loc']
+        lr_fg = core_info['lr_fg']
+        tb_fg = core_info['tb_fg']
         port_info = core_info['port_info']
-
-        res_info = res_info[res_type]
-        need_rpo = res_info['need_rpo']
-        need_rpdmy = res_info['need_rpdmy']
-        od_in_res = res_info['od_in_res']
 
         xc, yc = wcore // 2, hcore // 2
         wres, lres, _, _ = self.get_res_dimension(l, w)
 
         # set size and draw implant layers
-        implant_layers = self.get_res_imp_layers(res_type, sub_type)
+        implant_layers = self.get_res_imp_layers(res_type, sub_type, threshold)
         arr_box = BBox(0, 0, wcore, hcore, res, unit_mode=True)
-        po_yb = yc - lres // 2
-        po_yt = yc + lres // 2
-        if od_in_res:
-            imp_box = arr_box
-        else:
-            imp_box = BBox(0, po_yb - imp_ency, wcore, po_yt + imp_ency, res, unit_mode=True)
+        # mos layer need to be snap to fin edges.
+        fin_box = BBox(0, -fin_p2 - fin_h2, wcore, hcore + fin_p2 + fin_h2, res, unit_mode=True)
         for lay in implant_layers:
-            template.add_rect(lay, imp_box)
+            if lay == finfet_lay:
+                template.add_rect(lay, fin_box)
+            else:
+                template.add_rect(lay, arr_box)
         template.array_box = arr_box
         template.prim_bound_box = arr_box
         template.add_cell_boundary(arr_box)
 
         # draw RPDMY
-        po_xl = xc - wres // 2
-        po_xr = xc + wres // 2
         rpdmy_yb = yc - l // 2
         rpdmy_yt = rpdmy_yb + l
-        if need_rpdmy:
-            rpdmy_name = res_layer_table['RPDMY']
-            template.add_rect(rpdmy_name, BBox(po_xl, rpdmy_yb, po_xr, rpdmy_yt, res, unit_mode=True))
-        if need_rpo:
-            # draw RPO
-            rpo_name = res_layer_table['RPO']
-            template.add_rect(rpo_name, BBox(0, rpdmy_yb, wcore, rpdmy_yt, res, unit_mode=True))
+        template.add_rect(rpdmy_lay, BBox(0, rpdmy_yb, wcore, rpdmy_yt, res, unit_mode=True))
 
-        # draw PO
-        po_name = mos_layer_table['PO']
-        template.add_rect(po_name, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
+        # draw RH
+        rh_yb = yc - lres // 2
+        rh_xl = xc - wres // 2
+        template.add_rect(rpo_lay, BBox(rh_xl, rh_yb, rh_xl + wres, rh_yb + lres, res, unit_mode=True))
 
         # draw vias and ports
-        m1_name = layer_table[1]
         bot_layer = self.get_bot_layer()
-        for port_name, v0_params, v1_params, m1_box, m2_box in port_info:
-            template.add_rect(m1_name, m1_box)
-            template.add_via_primitive(**v0_params)
-            template.add_via_primitive(**v1_params)
-            m2_tr = grid.coord_to_track(bot_layer, m2_box.yc_unit, unit_mode=True)
-            template.add_pin(port_name, WireArray(TrackID(bot_layer, m2_tr, width=track_widths[0]),
-                                                  m2_box.left, m2_box.right), show=False)
+        for port_name, rect_list, via_list in port_info:
+            for lay, bbox in rect_list:
+                template.add_rect(lay, bbox)
+            for via_params in via_list:
+                template.add_via_primitive(**via_params)
+
+            tr_bbox = rect_list[-1][1]
+            port_tr = grid.coord_to_track(bot_layer, tr_bbox.yc_unit, unit_mode=True)
+            template.add_pin(port_name, WireArray(TrackID(bot_layer, port_tr, width=track_widths[0]),
+                                                  tr_bbox.left, tr_bbox.right), show=False)
 
         # draw dummies
-        po_y_list = [(po_yb, po_yt)]
-        self._draw_dummies(template, lr_od_xloc, po_y_list)
-        self._draw_dummies(template, lr_od_xloc, po_y_list, dx=wcore)
-        self._draw_dummies(template, tb_od_xloc, bot_od_yloc)
-        self._draw_dummies(template, tb_od_xloc, top_od_yloc)
+        self._draw_dummies(template, 0, lr_fg, lr_od_loc)
+        self._draw_dummies(template, wcore, lr_fg, lr_od_loc)
+        self._draw_dummies(template, xc, tb_fg, top_od_loc)
+        self._draw_dummies(template, xc, tb_fg, bot_od_loc)
 
-        # draw M1 exclusion layer
-        m1_exc_layer = metal_exclude_table[1]
-        template.add_rect(m1_exc_layer, arr_box)
+        # draw metal exclusion layers
+        template.add_rect(exc_lay_table[1], arr_box)
 
         # draw M1 fill
         m1_x_list = core_info['m1_core_x']
         m1_y_list = core_info['m1_core_y']
+        m1_lay = self.tech_info.get_layer_name(1)
+        if isinstance(m1_lay, tuple):
+            m1_lay = m1_lay[0]
         for xl, xr in m1_x_list:
             for yb, yt in m1_y_list:
-                template.add_rect(m1_name, BBox(xl, yb, xr, yt, res, unit_mode=True))
+                template.add_rect(m1_lay, BBox(xl, yb, xr, yt, res, unit_mode=True))
 
     def draw_res_boundary(self, template, boundary_type, layout_info, end_mode):
         # type: (TemplateBase, str, Dict[str, Any], bool) -> None
 
-        mos_layer_table = self.config['mos_layer_table']
-        res_layer_table = self.config['res_layer_table']
-        metal_exclude_table = self.config['metal_exclude_table']
-        layer_table = self.config['layer_name']
-        res_info = self.res_config['info']
-        imp_ency = self.res_config['imp_enc'][1]
-        rpo_extx = self.res_config['rpo_extx']
+        mos_lay_table = self.config['mos_layer_table']
+        res_lay_table = self.config['res_layer_table']
+        exc_lay_table = self.config['metal_exclude_table']
+
+        fin_h2 = self.mos_tech.mos_config['fin_h'] // 2
+        fin_p2 = self.mos_tech.mos_config['mos_pitch'] // 2
 
         grid = template.grid
         res = grid.resolution
 
+        finfet_lay = mos_lay_table['FB']
+        rpdmy_lay = res_lay_table['RPDMY']
+        rpo_lay = res_lay_table['RPO']
+        rtop_lay = res_lay_table['RH']
+
         w = layout_info['w']
         l = layout_info['l']
+        threshold = layout_info['threshold']
         res_type = layout_info['res_type']
         sub_type = layout_info['sub_type']
         w_core = layout_info['w_core']
@@ -660,12 +746,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         w_edge = layout_info['w_edge']
         h_edge = layout_info['h_edge']
 
-        res_info = res_info[res_type]
-        need_rpo = res_info['need_rpo']
-        od_in_res = res_info['od_in_res']
-
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
-        implant_layers = self.get_res_imp_layers(res_type, sub_type)
+        implant_layers = self.get_res_imp_layers(res_type, sub_type, threshold)
         bnd_spx = (w_core - wres) // 2
         bnd_spy = (h_core - lres) // 2
 
@@ -673,81 +755,101 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         edge_lr_info = layout_info['edge_lr_info']
         edge_tb_info = layout_info['edge_tb_info']
 
+        fb_xl = edge_lr_info['fb_xl']
+        imp_xl = edge_lr_info['imp_xl']
         well_xl = edge_lr_info['well_xl']
+        rtop_xl = edge_lr_info['rtop_xl']
+        vt_xl = edge_lr_info['vt_xl']
+        fb_yb = edge_tb_info['fb_yb']
+        imp_yb = edge_tb_info['imp_yb']
         well_yb = edge_tb_info['well_yb']
+        rtop_yb = edge_tb_info['rtop_yb']
+        vt_yb = edge_tb_info['vt_yb']
 
-        core_lr_od_xloc = core_info['lr_od_xloc']
-        core_top_od_yloc = core_info['top_od_yloc']
-        core_bot_od_yloc = core_info['bot_od_yloc']
+        core_lr_od_loc = core_info['lr_od_loc']
+        core_top_od_loc = core_info['top_od_loc']
+        core_bot_od_loc = core_info['bot_od_loc']
+        edge_bot_od_loc = edge_tb_info['bot_od_loc']
+        edge_lr_od_loc = edge_tb_info['lr_od_loc']
+        core_lr_fg = core_info['lr_fg']
+        core_tb_fg = core_info['tb_fg']
+        edge_lr_fg = edge_lr_info['lr_fg']
+        edge_tb_fg = edge_lr_info['tb_fg']
+        edge_tb_xc = edge_lr_info['tb_xc']
+        edge_lr_xc = edge_lr_info['lr_xc']
 
-        #  get bounding box/implant coordinates, draw RPDMY/RPO, and draw dummies.
-        po_xl = po_xr = po_yb = po_yt = None
+        #  get bounding box/implant coordinates, draw RPDMY, and draw dummies.
         if boundary_type == 'lr':
-            # set implant Y coordinates to 0
-            well_yb = 0
-            # get bounding box and PO coordinates
+            # get bounding box and RH coordinates
             bnd_box = BBox(0, 0, w_edge, h_core, res, unit_mode=True)
-            if wres_lr > 0:
-                po_xr = w_edge - bnd_spx
-                po_xl = po_xr - wres_lr
-                po_yb, po_yt = bnd_spy, bnd_spy + lres
-                # draw bottom/top edge dummies
-                po_x_list = [(po_xl, po_xr)]
-                self._draw_dummies(template, po_x_list, core_bot_od_yloc)
-                self._draw_dummies(template, po_x_list, core_top_od_yloc)
-            if need_rpo:
-                # draw RPO in left/right edge block
-                rpo_yb = h_core // 2 - l // 2
-                rpo_yt = rpo_yb + l
-                rpo_name = res_layer_table['RPO']
-                rpo_xl = w_edge + bnd_spx - rpo_extx
-                template.add_rect(rpo_name, BBox(rpo_xl, rpo_yb, w_edge, rpo_yt, res, unit_mode=True))
+            rh_xr = w_edge - bnd_spx
+            rh_xl = rh_xr - wres_lr
+            rh_yb, rh_yt = bnd_spy, bnd_spy + lres
+            # draw RPDMY in left/right edge block
+            rpdmy_yb = h_core // 2 - l // 2
+            rpdmy_yt = rpdmy_yb + l
+            template.add_rect(rpdmy_lay, BBox(rh_xr, rpdmy_yb, w_edge, rpdmy_yt, res, unit_mode=True))
+            # set implant Y coordinates to 0
+            vt_yb = imp_yb = well_yb = rtop_yb = 0
+            fb_yb = -fin_p2 - fin_h2
+            # draw left edge dummies
+            self._draw_dummies(template, edge_lr_xc, edge_lr_fg, core_lr_od_loc)
+            # draw bottom/top edge dummies
+            self._draw_dummies(template, edge_tb_xc, edge_tb_fg, core_bot_od_loc)
+            self._draw_dummies(template, edge_tb_xc, edge_tb_fg, core_top_od_loc)
             m1_x_list = edge_lr_info['m1_edge_x']
             m1_y_list = core_info['m1_core_y']
         elif boundary_type == 'tb':
-            # set implant X coordinates to 0
-            well_xl = 0
-            # get bounding box and PO coordinates
+            # get bounding box and RH coordinates
             bnd_box = BBox(0, 0, w_core, h_edge, res, unit_mode=True)
-            if lres_tb > 0:
-                po_yt = h_edge - bnd_spy
-                po_yb = po_yt - lres_tb
-                po_xl, po_xr = bnd_spx, bnd_spx + wres
-                # draw bottom edge dummies
-                po_y_list = [(po_yb, po_yt)]
-                self._draw_dummies(template, core_lr_od_xloc, po_y_list)
-                self._draw_dummies(template, core_lr_od_xloc, po_y_list, dx=w_core)
+            rh_xl, rh_xr = bnd_spx, bnd_spx + wres
+            rh_yt = h_edge - bnd_spy
+            rh_yb = rh_yt - lres_tb
+            # set implant X coordinates to 0
+            vt_xl = fb_xl = imp_xl = well_xl = rtop_xl = 0
+            # draw bottom edge dummies
+            self._draw_dummies(template, 0, core_lr_fg, edge_bot_od_loc)
+            self._draw_dummies(template, w_core // 2, core_tb_fg, edge_bot_od_loc)
+            self._draw_dummies(template, w_core, core_lr_fg, edge_bot_od_loc)
+            # draw left/right edge dummies
+            self._draw_dummies(template, 0, core_lr_fg, edge_lr_od_loc)
+            self._draw_dummies(template, w_core, core_lr_fg, edge_lr_od_loc)
             m1_x_list = core_info['m1_core_x']
             m1_y_list = edge_tb_info['m1_edge_y']
         else:
-            # get bounding box and PO coordinates
+            # get bounding box and RH coordinates
             bnd_box = BBox(0, 0, w_edge, h_edge, res, unit_mode=True)
-            if wres_lr > 0 and lres_tb > 0:
-                po_xr = w_edge - bnd_spx
-                po_xl = po_xr - wres_lr
-                po_yt = h_edge - bnd_spy
-                po_yb = po_yt - lres_tb
+            rh_xr = w_edge - bnd_spx
+            rh_xl = rh_xr - wres_lr
+            rh_yt = h_edge - bnd_spy
+            rh_yb = rh_yt - lres_tb
+            # draw bottom edge dummies
+            self._draw_dummies(template, edge_lr_xc, edge_lr_fg, edge_bot_od_loc)
+            self._draw_dummies(template, edge_tb_xc, edge_tb_fg, edge_bot_od_loc)
+            # draw left edge dummies
+            self._draw_dummies(template, edge_lr_xc, edge_lr_fg, edge_lr_od_loc)
             m1_x_list = edge_lr_info['m1_edge_x']
             m1_y_list = edge_tb_info['m1_edge_y']
 
-        # draw DPO
-        if wres_lr > 0 and lres_tb > 0:
-            dpo_name = mos_layer_table['PO_dummy']
-            template.add_rect(dpo_name, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
+        # draw RH
+        template.add_rect(rpo_lay, BBox(rh_xl, rh_yb, rh_xr, rh_yt, res, unit_mode=True))
 
         # draw implant layers
-        if not od_in_res:
-            if boundary_type == 'lr':
-                po_yb, po_yt = bnd_spy, bnd_spy + lres
-                imp_box = BBox(well_xl, po_yb - imp_ency, bnd_box.right_unit, po_yt + imp_ency, res, unit_mode=True)
+        for lay in implant_layers:
+            yt = bnd_box.top_unit
+            if lay == finfet_lay:
+                xl, yb = fb_xl, fb_yb
+                yt += fin_p2 + fin_h2
+            elif lay[0] == 'NW':
+                xl, yb = well_xl, well_yb
+            elif lay == rtop_lay:
+                xl, yb = rtop_xl, rtop_yb
+            elif lay[0] == 'PP' or lay[0] == 'NP':
+                xl, yb = imp_xl, imp_yb
             else:
-                imp_box = BBox.get_invalid_bbox()
-        else:
-            imp_box = BBox(well_xl, well_yb, bnd_box.right_unit, bnd_box.top_unit, res, unit_mode=True)
-
-        if imp_box.is_physical():
-            for lay in implant_layers:
-                template.add_rect(lay, imp_box)
+                # threshold
+                xl, yb = vt_xl, vt_yb
+            template.add_rect(lay, BBox(xl, yb, bnd_box.right_unit, yt, res, unit_mode=True))
 
         # set bounding box
         template.prim_bound_box = bnd_box
@@ -755,11 +857,12 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         template.add_cell_boundary(bnd_box)
 
         # draw M1 exclusion layer
-        m1_exc_layer = metal_exclude_table[1]
-        template.add_rect(m1_exc_layer, bnd_box)
+        template.add_rect(exc_lay_table[1], bnd_box)
 
         # draw M1 fill
-        m1_lay = layer_table[1]
+        m1_lay = self.tech_info.get_layer_name(1)
+        if isinstance(m1_lay, tuple):
+            m1_lay = m1_lay[0]
         for xl, xr in m1_x_list:
             for yb, yt in m1_y_list:
                 template.add_rect(m1_lay, BBox(xl, yb, xr, yt, res, unit_mode=True))
