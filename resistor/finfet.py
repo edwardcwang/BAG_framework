@@ -286,7 +286,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         return layout_info
 
-    def get_lr_edge_info(self,
+    def get_lr_edge_info(self,  # type: ResTechFinfetBase
                          grid,  # type: RoutingGrid
                          core_info,  # type: Dict[str, Any]
                          wedge,  # type: int
@@ -308,14 +308,30 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         if all these pass, return LR edge layout information dictionary.
         """
-        edge_margin = self.res_config['edge_margin']
-        imp_encx = self.res_config['imp_enc'][0]
-        po_max_density = self.res_config['po_max_density']
+        nw_sp = self.res_config['nw_sp']
+        po_lch = self.res_config['po_lch']
+        po_pitch = self.res_config['po_pitch']
+        fill_fg_min = self.res_config['fill_fg_min']
+        po_res_sp = self.res_config['po_res_sp']
+        mp_res_sp = self.res_config['mp_res_sp']
+        res_max_density = self.res_config['res_max_density']
+        od_min_density = self.res_config['od_min_density']
+        po_spx = self.res_config['po_spx']
+        finfet_od_extx = self.res_config['finfet_od_extx']
+        imp_od_enc = self.res_config['imp_od_enc']
+        nw_od_encx = self.res_config['nw_od_encx']
+        rtop_od_enc = self.res_config['rtop_od_enc']
         m1_sp_max = self.res_config['m1_sp_max']
         m1_sp_bnd = self.res_config['m1_sp_bnd']
 
+        po_res_spx = max(po_res_sp, mp_res_sp - po_lch // 2)
+
         wcore = core_info['width']
         hcore = core_info['height']
+        core_lr_dum_w = core_info['lr_dum_w']
+        core_lr_od_loc = core_info['lr_od_loc'][0]
+        core_top_od_loc = core_info['top_od_loc'][0]
+        core_bot_od_loc = core_info['bot_od_loc'][0]
         m1_core_x = core_info['m1_core_x']
         m1_w = core_info['m1_w']
 
@@ -324,40 +340,69 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         # check spacing rule
         # get space between resistor and core boundary
         spx = (wcore - wres) // 2
-        if wres_lr > 0:
-            # width is given by margin/enclosure/res/res-to-boundary-space
-            wedge_min = edge_margin // 2 + imp_encx + wres_lr + spx
-            well_xl = wedge - spx - wres_lr - imp_encx
-        else:
-            # width is given by margin/enclosure to core resistor
-            imp_encx_edge = max(imp_encx - spx, 0)
-            wedge_min = edge_margin // 2 + imp_encx_edge
-            well_xl = wedge - imp_encx_edge
+        # width of dummy transistor in left/right edge
+        dum_w = po_lch + po_pitch * (fill_fg_min - 1)
+        # width is given by NW space/dummy/dummy-to-res-space/res/res-to-boundary-space
+        wedge_min = nw_sp // 2 + nw_od_encx + dum_w + po_res_spx + wres_lr + spx
 
         if wedge < wedge_min:
             return None
 
-        # check PO density rule
-        max_res_area = int(wedge * hcore * po_max_density)
+        # check RH_TN density rule
+        max_res_area = int(wedge * hcore * res_max_density)
         if wres_lr * lres > max_res_area:
+            return None
+
+        # compute dummy number of fingers for left edge of LREdge block, and also the center X coordinate
+        avail_sp_xl = nw_sp // 2 + nw_od_encx
+        avail_sp_xr = wedge - spx - wres_lr - po_res_spx
+        avail_sp = avail_sp_xr - avail_sp_xl
+        edge_lr_fg = (avail_sp - po_lch) // po_pitch + 1
+        edge_lr_dum_w = po_lch + (edge_lr_fg - 1) * po_pitch
+        edge_lr_xc = avail_sp_xl + edge_lr_dum_w // 2
+        edge_lr_dum_xl = avail_sp_xl
+        # compute dummy number of fingers for top/bottom edge of LREdge block, and also the center X coordinate
+        avail_sp_xl = avail_sp_xl + edge_lr_dum_w + po_spx
+        avail_sp_xr = wedge - core_lr_dum_w // 2 - po_spx
+        edge_tb_xc = (avail_sp_xl + avail_sp_xr) // 2
+        avail_sp = avail_sp_xr - avail_sp_xl
+        edge_tb_fg = (avail_sp - po_lch) // po_pitch + 1
+        edge_tb_dum_w = po_lch + (edge_tb_fg - 1) * po_pitch
+        # compute total OD area
+        od_area = 0
+        for od_w, yloc_list in ((edge_lr_dum_w, core_lr_od_loc), (edge_tb_dum_w, core_top_od_loc),
+                                (edge_tb_dum_w, core_bot_od_loc)):
+            for yb, yt in yloc_list:
+                # we do not add OD with bottom Y coordinates less than 0, because of arraying over-counting issues
+                if yb >= 0:
+                    od_area += od_w * (yt - yb)
+        # check OD density rule
+        min_od_area = int(math.ceil(hcore * wedge * od_min_density))
+        if od_area < min_od_area:
             return None
 
         # if we get here, then all density rules are met
         # compute fill X coordinate in edge block
-        m1_sp = m1_core_x[0][0] * 2
         sp_xl = m1_sp_bnd + m1_w
         sp_xr = wedge + m1_core_x[0][0]
         m1_edge_x = fill_symmetric_const_space(sp_xr - sp_xl, m1_sp_max, m1_w, m1_w, offset=sp_xl)
-        if sp_xr - sp_xl >= m1_sp:
-            m1_edge_x.insert(0, (m1_sp_bnd, sp_xl))
+        m1_edge_x.insert(0, (m1_sp_bnd, sp_xl))
 
         # return layout information
         return dict(
-            well_xl=well_xl,
+            lr_fg=edge_lr_fg,
+            tb_fg=edge_tb_fg,
+            lr_xc=edge_lr_xc,
+            tb_xc=edge_tb_xc,
+            fb_xl=edge_lr_dum_xl - finfet_od_extx,
+            imp_xl=edge_lr_dum_xl - imp_od_enc,
+            well_xl=edge_lr_dum_xl - nw_od_encx,
+            rtop_xl=edge_lr_dum_xl - rtop_od_enc,
+            vt_xl=edge_lr_dum_xl - imp_od_enc,
             m1_edge_x=m1_edge_x,
         )
 
-    def get_tb_edge_info(self,
+    def get_tb_edge_info(self,  # type: ResTechFinfetBase
                          grid,  # type: RoutingGrid
                          core_info,  # type: Dict[str, Any]
                          hedge,  # type: int
@@ -379,51 +424,109 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         if all these pass, return TB edge layout information dictionary.
         """
-        edge_margin = self.res_config['edge_margin']
-        imp_ency = self.res_config['imp_enc'][1]
-        po_max_density = self.res_config['po_max_density']
+        nfin_min, nfin_max = self.res_config['od_fill_w']
+        po_od_ext = self.res_config['po_od_ext']
+        nw_sp = self.res_config['nw_sp']
+        po_res_sp = self.res_config['po_res_sp']
+        res_max_density = self.res_config['res_max_density']
+        od_min_density = self.res_config['od_min_density']
+        po_spy = self.res_config['po_spy']
+        vt_po_ext = self.res_config['vt_po_ext']
+        finfet_od_exty = self.res_config['finfet_od_exty']
+        imp_od_enc = self.res_config['imp_od_enc']
+        nw_od_ency = self.res_config['nw_od_ency']
+        rtop_od_enc = self.res_config['rtop_od_enc']
         m1_sp_max = self.res_config['m1_sp_max']
         m1_sp_bnd = self.res_config['m1_sp_bnd']
 
+        fin_h = self.mos_tech.mos_config['fin_h']
+        fin_p = self.mos_tech.mos_config['mos_pitch']
+
+        fin_p2 = fin_p // 2
+        fin_h2 = fin_h // 2
+
         wcore = core_info['width']
         hcore = core_info['height']
+        core_lr_dum_w = core_info['lr_dum_w']
+        core_tb_dum_w = core_info['tb_dum_w']
+        core_lr_od_loc = core_info['lr_od_loc'][0]
         m1_core_y = core_info['m1_core_y']
         m1_h = core_info['m1_h']
 
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
 
-        # check spacing rule
-        # get space between resistor and core boundary
-        spy = (hcore - lres) // 2
-        if lres_tb > 0:
-            # width is given by NW space/enclosure/res/res-to-boundary-space
-            hedge_min = edge_margin // 2 + imp_ency + lres_tb + spy
-            well_yb = hedge - spy - lres_tb - imp_ency
-        else:
-            imp_ency_edge = max(imp_ency - spy, 0)
-            hedge_min = edge_margin // 2 + imp_ency_edge
-            well_yb = hedge - imp_ency_edge
+        # compute dummy OD Y separation in number of fins
+        od_sp = po_spy + po_od_ext * 2
+        # when two ODs are N fin pitches apart, the actual OD spacing is N * fin_pitch - fin_h
+        od_sp = -(-(od_sp + fin_h) // fin_p)
 
-        if hedge < hedge_min:
+        # check RH_TN density rule
+        max_res_area = int(wcore * hedge * res_max_density)
+        if wres * lres_tb > max_res_area:
             return None
 
-        # check PO density rule
-        max_res_area = int(hedge * wcore * po_max_density)
-        if wres * lres_tb > max_res_area:
+        # check spacing rule, which just means we can draw dummy transistors below RH
+        # get space between resistor and core boundary
+        spy = (hcore - lres) // 2
+        # find bottom edge OD locations
+        # compute OD Y coordinate for bottom edge of TBEdge block
+        bot_dummy_bnd = nw_sp // 2 + nw_od_ency
+        bot_pitch_index = -(-(bot_dummy_bnd - fin_p2 + fin_h2) // fin_p)
+        top_dummy_bnd = hedge - spy - lres_tb - po_res_sp - po_od_ext
+        top_pitch_index = (top_dummy_bnd - fin_p2 - fin_h2) // fin_p
+        tot_space = top_pitch_index - bot_pitch_index + 1
+        edge_bot_od_loc = fill_symmetric_max_density(tot_space, tot_space, nfin_min, nfin_max, od_sp,
+                                                     fill_on_edge=True, cyclic=False)[0]
+        # compute fin 0 offset and convert fin location to Y coordinates
+        fin_offset = bot_pitch_index * fin_p + fin_p2
+        edge_bot_od_loc = self._compute_od_y_loc(edge_bot_od_loc, fin_p, fin_h, fin_offset)
+        if not edge_bot_od_loc:
+            # we cannot draw any bottom OD
+            return None
+        edge_tb_dum_yb = edge_bot_od_loc[0][0]
+
+        # compute OD Y coordinate for left/right edge of TBEdge block.
+        # find the fin pitch index of the lower bound of empty space.
+        bot_pitch_index = top_pitch_index + od_sp
+        # find the fin pitch index of the upper bound of empty space.
+        adj_top_od_yb = hedge + core_lr_od_loc[0][0]
+        top_pitch_index = (adj_top_od_yb - fin_p2 + fin_h2) // fin_p - od_sp
+        # compute total space and fill
+        tot_space = top_pitch_index - bot_pitch_index + 1
+        edge_lr_od_loc = fill_symmetric_max_density(tot_space, tot_space, nfin_min, nfin_max, od_sp,
+                                                    fill_on_edge=True, cyclic=False)[0]
+        # compute fin 0 offset and convert fin location to Y coordinates
+        fin_offset = bot_pitch_index * fin_p + fin_p2
+        edge_lr_od_loc = self._compute_od_y_loc(edge_lr_od_loc, fin_p, fin_h, fin_offset)
+        edge_lr_po_bnd = (edge_bot_od_loc[-1][-1] + po_od_ext + po_spy,
+                          adj_top_od_yb - po_od_ext - po_spy)
+
+        # compute total OD area
+        od_area = 0
+        for od_w, yloc_list in ((core_lr_dum_w + core_tb_dum_w, edge_bot_od_loc), (core_lr_dum_w, edge_lr_od_loc)):
+            for yb, yt in yloc_list:
+                od_area += od_w * (yt - yb)
+        # check OD density rule
+        min_od_area = int(math.ceil(wcore * hedge * od_min_density))
+        if od_area < min_od_area:
             return None
 
         # if we get here, then all density rules are met
         # compute fill Y coordinate in edge block
-        m1_sp = m1_core_y[0][0] * 2
         sp_yb = m1_sp_bnd + m1_h
         sp_yt = hedge + m1_core_y[0][0]
         m1_edge_y = fill_symmetric_const_space(sp_yt - sp_yb, m1_sp_max, m1_h, m1_h, offset=sp_yb)
-        if sp_yt - sp_yb >= m1_sp:
-            m1_edge_y.insert(0, (m1_sp_bnd, sp_yb))
+        m1_edge_y.insert(0, (m1_sp_bnd, sp_yb))
 
         # return layout information
         return dict(
-            well_yb=well_yb,
+            lr_od_loc=(edge_lr_od_loc, edge_lr_po_bnd),
+            bot_od_loc=(edge_bot_od_loc, None),
+            fb_yb=edge_tb_dum_yb - finfet_od_exty,
+            imp_yb=edge_tb_dum_yb - imp_od_enc,
+            well_yb=edge_tb_dum_yb - nw_od_ency,
+            rtop_yb=edge_tb_dum_yb - rtop_od_enc,
+            vt_yb=edge_tb_dum_yb - po_od_ext - vt_po_ext,
             m1_edge_y=m1_edge_y,
         )
 
