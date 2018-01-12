@@ -573,8 +573,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             dum_layer = self.get_dum_conn_layer()
             d_conn_w = ans['d_conn_w']
             d_bot_layer = ans['d_bot_layer']
-            ans['mos_conn_w'] = d_conn_w[dum_layer - d_bot_layer]['w']
-            ans['dum_conn_w'] = d_conn_w[mos_layer - d_bot_layer]['w']
+            ans['mos_conn_w'] = d_conn_w[dum_layer - d_bot_layer]
+            ans['dum_conn_w'] = d_conn_w[mos_layer - d_bot_layer]
 
             # handle sd_pitch
             offset, scale = ans['sd_pitch_constants']
