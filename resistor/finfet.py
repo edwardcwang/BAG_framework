@@ -5,6 +5,7 @@
 
 from typing import Dict, Any, Tuple, List, Optional, Union, TYPE_CHECKING
 
+import abc
 import math
 
 from bag.layout.util import BBox
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
     from bag.layout.routing import RoutingGrid
 
 
-class ResTechPlanarGeneric(ResTech):
+class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
     """Implementation of ResTech for generic planar technologies."""
 
     def __init__(self, config, tech_info):
@@ -30,17 +31,12 @@ class ResTechPlanarGeneric(ResTech):
     def get_res_dimension(self, l, w):
         """Get PO resistor dimension in core and two edge blocks.
         """
-        co_w = self.res_config['co_w']
-        rpo_co_sp = self.res_config['rpo_co_sp']
-        po_co_ency = self.res_config['po_co_enc'][1]
-        dpo_wmin, dpo_lmin = self.res_config['dpo_dim_min']
-        po_rpo_ext_exact = self.res_config.get('po_rpo_ext_exact', -1)
+        mp_h = self.res_config['mp_h']
+        po_mp_exty = self.res_config['po_mp_exty']
 
-        if po_rpo_ext_exact >= 0:
-            lres = l + 2 * po_rpo_ext_exact
-        else:
-            lres = l + 2 * (rpo_co_sp + co_w + po_co_ency)
-        return w, lres, dpo_wmin, dpo_lmin
+        lres = l + 2 * (mp_h + po_mp_exty)
+        lres_tb = min(w, lres)
+        return w, lres, w, lres_tb
 
     def get_min_res_core_size(self, l, w, res_type, sub_type, threshold, options):
         # type: (int, int, str, str, str, Dict[str, Any]) -> Tuple[int, int]

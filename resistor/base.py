@@ -254,6 +254,28 @@ class ResTech(object, metaclass=abc.ABCMeta):
         """
         pass
 
+    def get_res_imp_layers(self, res_type, sub_type):
+        # type: (str, str) -> List[Tuple[str, str]]
+        """Returns a list of resistor implant layers.
+
+        Parameters
+        ----------
+        res_type : str
+            the resistor type.
+        sub_type : str
+            the resistor substrate type.
+
+        Returns
+        -------
+        imp_list : List[Tuple[str, str]]
+            a list of implant layers.
+        """
+        imp_layers = self.tech_info.get_implant_layers(sub_type, res_type=res_type)
+
+        res_layers = self.res_config['res_layers'][res_type]
+        imp_layers.extend(res_layers.keys())
+        return imp_layers
+
     def get_bot_layer(self):
         # type: () -> int
         """Returns the layer ID of the bottom horizontal routing layer.
