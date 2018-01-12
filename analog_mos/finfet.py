@@ -40,8 +40,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         MOSTech.__init__(self, config, tech_info)
 
     @abc.abstractmethod
-    def get_mos_yloc_info(self, lch_unit, w, fg, **kwargs):
-        # type: (int, int, int, **kwargs) -> Dict[str, Any]
+    def get_mos_yloc_info(self, lch_unit, w, **kwargs):
+        # type: (int, int, **kwargs) -> Dict[str, Any]
         """Computes Y coordinates of various layers in the transistor row.
 
         The returned dictionary should have the following entries:
@@ -65,8 +65,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return {}
 
     @abc.abstractmethod
-    def get_sub_yloc_info(self, lch_unit, w, fg, **kwargs):
-        # type: (int, int, int, **kwargs) -> Dict[str, Any]
+    def get_sub_yloc_info(self, lch_unit, w, **kwargs):
+        # type: (int, int, **kwargs) -> Dict[str, Any]
         """Computes Y coordinates of various layers in the substrate row.
 
         The returned dictionary should have the following entries:
@@ -403,9 +403,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_type = 'sub' if is_sub else 'mos'
 
         if is_sub:
-            yloc_info = self.get_sub_yloc_info(lch_unit, w, fg, **kwargs)
+            yloc_info = self.get_sub_yloc_info(lch_unit, w, **kwargs)
         else:
-            yloc_info = self.get_mos_yloc_info(lch_unit, w, fg, **kwargs)
+            yloc_info = self.get_mos_yloc_info(lch_unit, w, **kwargs)
 
         # Compute Y coordinates of various layers
         blk_yb, blk_yt = yloc_info['blk']
@@ -1696,23 +1696,35 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
 
                 # find X locations of M1/M3.
-                # we can export all dummy tracks.
-                dum_x_list = list(range(0, (fg + 1) * sd_pitch, sd_pitch))
                 if dummy_only:
                     # find X locations to draw vias
+                    dum_x_list = [sd_pitch2 * int(2 * v + 1) for v in dum_tracks]
                     conn_x_list = []
                 else:
-                    # first, figure out port/dummy tracks.
-                    # Try to add as many unused tracks to port tracks as possible, while making sure we don't end
-                    # up with adjacent port tracks.  This improves substrate connection resistance to supply.
+                    # first, figure out port/dummy tracks
+                    # To lower parasitics, we try to draw only as many dummy tracks as necessary. Also, every
+                    # port track is also a dummy track (because some technology there's no horizontal short).
+                    # With these constraints, our track selection algorithm is as follows:
+                    # 1. for every dummy track, if its not adjacent to any port tracks, add it to port tracks (this
+                    #    improves dummy connection resistance to supply).
+                    # 2. Try to add as many unused tracks to port tracks as possible, while making sure we don't end
+                    #    up with adjacent port tracks.  This improves substrate connection resistance to supply.
 
                     # use half track indices so we won't have rounding errors.
+                    dum_htr_set = set((int(2 * v + 1) for v in dum_tracks))
                     conn_htr_set = set((int(2 * v + 1) for v in port_tracks))
+                    # add as many dummy tracks as possible to port tracks
+                    for d in dum_htr_set:
+                        if d + 2 not in conn_htr_set and d - 2 not in conn_htr_set:
+                            conn_htr_set.add(d)
                     # add as many unused tracks as possible to port tracks
                     for htr in range(0, 2 * fg + 1, 2):
                         if htr + 2 not in conn_htr_set and htr - 2 not in conn_htr_set:
                             conn_htr_set.add(htr)
+                    # add all port sets to dummy set
+                    dum_htr_set.update(conn_htr_set)
                     # find X coordinates
+                    dum_x_list = [sd_pitch2 * v for v in sorted(dum_htr_set)]
                     conn_x_list = [sd_pitch2 * v for v in sorted(conn_htr_set)]
 
                 dum_warrs, port_warrs = self.draw_ds_connection(template, lch_unit, fg, sd_pitch, xshift, od_y, md_y,
