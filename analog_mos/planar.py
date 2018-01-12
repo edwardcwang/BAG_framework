@@ -91,17 +91,8 @@ class MOSTechPlanarGeneric(MOSTech):
     def get_md_min_len(self, lch_unit):
         # type: () -> int
         """Returns minimum drain wire length."""
-        mos_conn_layer = self.get_mos_conn_layer()
-
-        mos_constants = self.get_mos_tech_constants(lch_unit)
-        w_conn_d = mos_constants['w_conn_d']
-
-        mx_min_len = 0
-        for layer_id in range(1, mos_conn_layer + 1):
-            layer_type = self.tech_info.layer_id_to_type(layer_id)
-            mx_min_len = max(mx_min_len, self.tech_info.get_min_length_unit(layer_type, w_conn_d[layer_id]))
-
-        return mx_min_len
+        drc_info = self.get_conn_drc_info(lch_unit, 'd')
+        return max((info['min_len'] for info in drc_info.values()))
 
     def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
         # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
@@ -124,12 +115,12 @@ class MOSTechPlanarGeneric(MOSTech):
         sp_po = mos_constants['sp_po']
         sp_gd_mx = mos_constants['sp_gd_mx']
         sp_gd_od = mos_constants['sp_gd_od']
-        w_conn_g = mos_constants['w_conn_g']
         po_od_exty = mos_constants['po_od_exty']
+        g_via_info = mos_constants['g_via']
+        d_via_info = mos_constants['d_via']
 
-        # get via constants
-        via_g = mos_constants['via_g']
-        via_d = mos_constants['via_d']
+        g_drc_info = self.get_conn_drc_info(lch_unit, 'g')
+        g_m1_w = g_drc_info[1]['w']
 
         # convert w to resolution units
         layout_unit = self.config['layout_unit']
@@ -141,12 +132,12 @@ class MOSTechPlanarGeneric(MOSTech):
 
         # compute gate location, based on PO-PO spacing
         po_yb = sp_po // 2
-        g_co_yb = po_yb + via_g['bot_enc_le'][0]
-        g_co_yt = g_co_yb + via_g['dim'][0][1]
+        g_co_yb = po_yb + g_via_info['bot_enc_le'][0]
+        g_co_yt = g_co_yb + g_via_info['dim'][0][1]
         g_co_yc = (g_co_yb + g_co_yt) // 2
-        g_m1_yb = g_co_yc - w_conn_g[1] // 2
-        g_m1_yt = g_m1_yb + w_conn_g[1]
-        g_mx_yt = g_co_yc + via_g['dim'][1][1] + via_g['top_enc_le'][1]
+        g_m1_yb = g_co_yc - g_m1_w // 2
+        g_m1_yt = g_m1_yb + g_m1_w
+        g_mx_yt = g_co_yc + g_via_info['dim'][1][1] + g_via_info['top_enc_le'][1]
         g_mx_yb = g_mx_yt - md_min_len
         g_y_list = [(g_m1_yb, g_m1_yt), (g_mx_yb, g_mx_yt)]
 
@@ -156,10 +147,10 @@ class MOSTechPlanarGeneric(MOSTech):
         od_yt = od_yb + w_unit
         od_yc = (od_yb + od_yt) // 2
         # get number of vias
-        d_v0_h = via_d['dim'][0][1]
-        d_v0_sp = via_d['sp'][0]
-        d_v0_od_ency = via_d['bot_enc_le'][0]
-        d_v0_m1_ency = via_d['top_enc_le'][0]
+        d_v0_h = d_via_info['dim'][0][1]
+        d_v0_sp = d_via_info['sp'][0]
+        d_v0_od_ency = d_via_info['bot_enc_le'][0]
+        d_v0_m1_ency = d_via_info['top_enc_le'][0]
         d_v0_n = (w_unit - 2 * d_v0_od_ency + d_v0_sp) // (d_v0_h + d_v0_sp)
         d_v0_arrh = d_v0_n * (d_v0_h + d_v0_sp) - d_v0_sp
         # get metal length and bottom metal coordinate
@@ -272,18 +263,13 @@ class MOSTechPlanarGeneric(MOSTech):
         od_w_min = mos_constants['od_fill_w'][0]
         imp_od_ency = mos_constants['imp_od_ency']
         imp_po_ency = mos_constants['imp_po_ency']
-        w_conn_d = mos_constants['w_conn_d']
         sp_po = mos_constants['sp_po']
         po_od_exty = mos_constants['po_od_exty']
         po_h_min = mos_constants['po_h_min']
 
         # determine wire line-end spacing
-        mos_conn_layer = self.get_mos_conn_layer()
-        mx_spy = 0
-        for mx_id in range(1, mos_conn_layer + 1):
-            lay_type = self.tech_info.layer_id_to_type(mx_id)
-            mx_w = w_conn_d[mx_id]
-            mx_spy = max(mx_spy, self.tech_info.get_min_line_end_space_unit(lay_type, mx_w))
+        drc_info = self.get_conn_drc_info(lch_unit, 'd')
+        mx_spy = max((info['sp_le'] for info in drc_info.values()))
 
         bot_imp_min_w = bot_ext_info.imp_min_w  # type: int
         top_imp_min_w = top_ext_info.imp_min_w  # type: int
@@ -662,7 +648,7 @@ class MOSTechPlanarGeneric(MOSTech):
         md_min_len = self.get_md_min_len(lch_unit)
         mos_constants = self.get_mos_tech_constants(lch_unit)
         imp_od_ency = mos_constants['imp_od_ency']
-        via_d = mos_constants['via_d']
+        d_via_info = mos_constants['d_via']
         nw_dnw_ovl = mos_constants['nw_dnw_ovl']
         nw_dnw_ext = mos_constants['nw_dnw_ext']
         dnw_layers = mos_constants['dnw_layers']
@@ -694,9 +680,9 @@ class MOSTechPlanarGeneric(MOSTech):
         od_yc = (od_yb + od_yt) // 2
 
         # step 2: find metal height
-        d_v0_h = via_d['dim'][0][1]
-        d_v0_sp = via_d['sp'][0]
-        d_v0_od_ency = via_d['bot_enc_le'][0]
+        d_v0_h = d_via_info['dim'][0][1]
+        d_v0_sp = d_via_info['sp'][0]
+        d_v0_od_ency = d_via_info['bot_enc_le'][0]
         d_v0_n = (od_h - 2 * d_v0_od_ency + d_v0_sp) // (d_v0_h + d_v0_sp)
         d_v0_arrh = d_v0_n * (d_v0_h + d_v0_sp) - d_v0_sp
         mx_h = max(md_min_len, d_v0_arrh + 2 * sub_m1_enc_le)
@@ -1209,6 +1195,9 @@ class MOSTechPlanarGeneric(MOSTech):
         sub_y_list = layout_info['sub_y_list']
         mx_yb, mx_yt = sub_y_list[2]
 
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        via_info = mos_constants['d_via']
+
         dum_conn_layer = self.get_dum_conn_layer()
         mos_conn_layer = self.get_mos_conn_layer()
 
@@ -1218,21 +1207,22 @@ class MOSTechPlanarGeneric(MOSTech):
             port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
 
             # draw vias
+            drc_info = self.get_conn_drc_info(lch_unit, 'd')
             x0 = sub_fg[0] * sd_pitch
             num_via = sub_fg[1] - sub_fg[0] + 1
             m1_yb, m1_yt = sub_y_list[1]
             od_yb, od_yt = sub_y_list[0]
             top_layer = dum_conn_layer if dummy_only else mos_conn_layer
             if blk_type == 'sub' or blk_type == 'gr_sub_sub':
-                # we can use draw_vertical_vias method to draw all vias
-                via_drawn = self._draw_vertical_vias(template, lch_unit, x0, num_via, sd_pitch,
-                                                     m1_yb, m1_yt, 0, top_layer=top_layer, is_sub=True,
-                                                     mbot_yb=od_yb, mbot_yt=od_yt)
+                via_yb, via_yt = m1_yb, m1_yt
+                via_abut = False
             else:
                 # we need to make sure substrate vias abut with top and bottom row
-                via_drawn = self._draw_vertical_vias(template, lch_unit, x0, num_via, sd_pitch,
-                                                     mx_yb, mx_yt, 0, top_layer=top_layer, via_abut=True, is_sub=True,
-                                                     mbot_yb=od_yb, mbot_yt=od_yt)
+                via_yb, via_yt = mx_yb, mx_yt
+                via_abut = True
+            via_drawn = self._draw_vertical_vias(template, lch_unit, x0, num_via, sd_pitch, via_yb, via_yt,
+                                                 0, drc_info, via_info, top_layer=top_layer, via_abut=via_abut,
+                                                 is_sub=True, mbot_yb=od_yb, mbot_yt=od_yt)
 
             # add pins if vias are drawn
             if via_drawn:
@@ -1250,6 +1240,9 @@ class MOSTechPlanarGeneric(MOSTech):
                             min_ds_cap, is_diff, diode_conn, options):
         # type: (TemplateBase, Dict[str, Any], int, int, str, int, bool, bool, bool, Dict[str, Any]) -> None
 
+        has_od = not options.get('ds_dummy', False)
+        stack = options.get('stack', 1)
+
         # note: ignore min_ds_cap
         if is_diff:
             raise ValueError('Differential connection not supported yet.')
@@ -1263,8 +1256,8 @@ class MOSTechPlanarGeneric(MOSTech):
         g_y_list = layout_info['g_y_list']
         d_y_list = layout_info['d_y_list']
 
-        has_od = not options.get('ds_dummy', False)
-        stack = options.get('stack', 1)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        d_via_info = mos_constants['d_via']
 
         if fg % stack != 0:
             raise ValueError('stack = %d must evenly divide fg = %d' % (stack, fg))
@@ -1311,10 +1304,11 @@ class MOSTechPlanarGeneric(MOSTech):
         num_d = seg + 1 - num_s
         mx_yb, mx_yt = d_y_list[-1][0] - sd_yc, d_y_list[-1][1] - sd_yc
         od_yb, od_yt = d_y_list[0][0] - sd_yc, d_y_list[0][1] - sd_yc
+        drc_info = self.get_conn_drc_info(lch_unit, 'd')
         self._draw_vertical_vias(template, lch_unit, 0, num_s, wire_pitch * 2, mx_yb, mx_yt, 0,
-                                 mbot_yb=od_yb, mbot_yt=od_yt)
+                                 drc_info, d_via_info, mbot_yb=od_yb, mbot_yt=od_yt)
         self._draw_vertical_vias(template, lch_unit, wire_pitch, num_d, wire_pitch * 2, mx_yb, mx_yt, 0,
-                                 mbot_yb=od_yb, mbot_yt=od_yt)
+                                 drc_info, d_via_info, mbot_yb=od_yb, mbot_yt=od_yt)
 
         # get drain/source wire arrays
         mos_conn_layer = self.get_mos_conn_layer()
@@ -1345,6 +1339,8 @@ class MOSTechPlanarGeneric(MOSTech):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         dum_m1_encx = mos_constants['dum_m1_encx']
+        d_via_info = mos_constants['d_via']
+        drc_info = self.get_conn_drc_info(lch_unit, 'd')
 
         width = fg * sd_pitch
         has_od = not options.get('ds_dummy', False)
@@ -1370,7 +1366,7 @@ class MOSTechPlanarGeneric(MOSTech):
         m1_yb = g_y_list[0][0] - sd_yc
         od_yb, od_yt = d_y_list[0][0] - sd_yc, d_y_list[0][1] - sd_yc
         self._draw_vertical_vias(template, lch_unit, xc, num_ds_tot, sd_pitch, mx_yb, mx_yt, 0,
-                                 top_layer=1, m1_yb=m1_yb, mbot_yb=od_yb, mbot_yt=od_yt)
+                                 drc_info, d_via_info, top_layer=1, m1_yb=m1_yb, mbot_yb=od_yb, mbot_yt=od_yt)
 
         # add pins
         template.add_pin('dummy', dum_warrs, show=False)
@@ -1391,8 +1387,8 @@ class MOSTechPlanarGeneric(MOSTech):
         sd_pitch = layout_info['sd_pitch']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
-        via_g = mos_constants['via_g']
-        w_conn_g = mos_constants['w_conn_g']
+        g_via_info = mos_constants['g_via']
+        g_drc_info = self.get_conn_drc_info(lch_unit, 'g')
 
         dum_conn_layer = self.get_dum_conn_layer()
         mos_conn_layer = self.get_mos_conn_layer()
@@ -1404,12 +1400,12 @@ class MOSTechPlanarGeneric(MOSTech):
         m1_yb, m1_yt = g_y_list[0]
         m1_name = lay_name_table[1]
         m1_yc = (m1_yb + m1_yt) // 2
-        v0_w, v0_h = via_g['dim'][0]
+        v0_w, v0_h = g_via_info['dim'][0]
         via_type = via_id_table[(po_lay, m1_name)]
-        po_ency = via_g['bot_enc_le'][0]
-        m1_encx = via_g['top_enc_le'][0]
+        po_ency = g_via_info['bot_enc_le'][0]
+        m1_encx = g_via_info['top_enc_le'][0]
 
-        m1_w = w_conn_g[1]
+        m1_w = g_drc_info[1]['w']
         via_enc1 = (lch_unit - v0_w) // 2
         via_enc2 = (m1_w - v0_h) // 2
         enc1 = [via_enc1, via_enc1, po_ency, po_ency]
@@ -1426,15 +1422,15 @@ class MOSTechPlanarGeneric(MOSTech):
             m1_xr = po_xc + (fg - 1) * sd_pitch + v0_w // 2 + m1_encx
         template.add_rect(m1_name, BBox(m1_xl, m1_yb + dy, m1_xr, m1_yt + dy, res, unit_mode=True))
 
-        m2_w = w_conn_g[2]
+        m2_w = g_drc_info[2]['w']
         m2_name = lay_name_table[2]
         if tid_list[0] == -0.5 and top_layer == mos_conn_layer:
             # we only get here if we're drawing 2 segments with gate on source side
             # draw horizontal M2 to avoid DRC errors
             via_type = via_id_table[(m1_name, m2_name)]
-            v1_w, v1_h = via_g['dim'][1]
-            m1_encx = via_g['bot_enc_le'][1]
-            m2_encx = via_g['top_enc_le'][1]
+            v1_w, v1_h = g_via_info['dim'][1]
+            m1_encx = g_via_info['bot_enc_le'][1]
+            m2_encx = g_via_info['top_enc_le'][1]
             m1_ency = (m1_w - v1_h) // 2
             m2_ency = (m2_w - v1_h) // 2
             enc1 = [m1_encx, m1_encx, m1_ency, m1_ency]
@@ -1446,8 +1442,8 @@ class MOSTechPlanarGeneric(MOSTech):
             m2_yt = m1_yc + dy + m2_w // 2
 
             # draw horizontal M2 bar
-            v2_w, v2_h = via_g['dim'][2]
-            m2_encx = via_g['bot_enc_le'][2]
+            v2_w, v2_h = g_via_info['dim'][2]
+            m2_encx = g_via_info['bot_enc_le'][2]
             m2_xl = -v2_w // 2 - m2_encx
             m2_xr = fg * sd_pitch + v2_w // 2 + m2_encx
             template.add_rect(m2_name, BBox(m2_xl, m2_yb, m2_xr, m2_yt, res, unit_mode=True))
@@ -1460,13 +1456,13 @@ class MOSTechPlanarGeneric(MOSTech):
         # draw vertical wires to the top
         dum_warrs, conn_warrs = [], []
         # draw horizontal to vertical vias and bars
-        mv_w = w_conn_g[horiz_layer + 1]
+        mv_w = g_drc_info[horiz_layer + 1]['w']
         mh_name = lay_name_table[horiz_layer]
         mv_name = lay_name_table[horiz_layer + 1]
         via_type = via_id_table[(mh_name, mv_name)]
-        vh_w, vh_h = via_g['dim'][horiz_layer]
-        mh_encx = via_g['bot_enc_le'][horiz_layer]
-        mv_ency = via_g['top_enc_le'][horiz_layer]
+        vh_w, vh_h = g_via_info['dim'][horiz_layer]
+        mh_encx = g_via_info['bot_enc_le'][horiz_layer]
+        mv_ency = g_via_info['top_enc_le'][horiz_layer]
         mh_ency = (mh_w - vh_h) // 2
         mv_encx = (mv_w - vh_w) // 2
 
@@ -1482,7 +1478,8 @@ class MOSTechPlanarGeneric(MOSTech):
                                        cut_width=vh_w, cut_height=vh_h, unit_mode=True)
 
             # draw rest of vertical wires to the top
-            self._draw_vertical_vias(template, lch_unit, xc, 1, 0, mx_yb, mx_yt, horiz_layer + 1, top_layer=top_layer)
+            self._draw_vertical_vias(template, lch_unit, xc, 1, 0, mx_yb, mx_yt, horiz_layer + 1,
+                                     g_drc_info, g_via_info, top_layer=top_layer)
 
             # collect gate ports
             if horiz_layer != dum_conn_layer:
@@ -1503,6 +1500,8 @@ class MOSTechPlanarGeneric(MOSTech):
                             mx_yb,  # type: int
                             mx_yt,  # type: int
                             start_layer,  # type: int
+                            drc_info,  # type: Dict[int, Dict[str, Any]],
+                            via_info,  # type: Dict[str, Any],
                             via_abut=False,  # type: bool
                             is_sub=False,  # type: bool
                             top_layer=None,  # type: Optional[int]
@@ -1517,9 +1516,8 @@ class MOSTechPlanarGeneric(MOSTech):
         lay_name_table = self.config['layer_name']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
-        via_d = mos_constants['via_d']
-        w_conn_d = mos_constants['w_conn_d']
         sub_m1_enc_le = mos_constants['sub_m1_enc_le']
+        md_w = mos_constants['md_w']
 
         mx_yc = (mx_yt + mx_yb) // 2
         via_drawn = True
@@ -1533,7 +1531,13 @@ class MOSTechPlanarGeneric(MOSTech):
 
         mtop_h = mx_yt - mx_yb
         for bot_lay_id in range(start_layer, top_layer):
-            via_enc_le_bot = via_d['bot_enc_le'][bot_lay_id]
+            via_enc_le_bot = via_info['bot_enc_le'][bot_lay_id]
+            via_w, via_h = via_info['dim'][bot_lay_id]
+            via_sp = via_info['sp'][bot_lay_id]
+
+            w_bot = md_w if bot_lay_id == 0 else drc_info[bot_lay_id]['w']
+            w_top = drc_info[bot_lay_id + 1]['w']
+
             if bot_lay_id == 0:
                 mos_layer_table = self.config['mos_layer_table']
                 od_lay = mos_layer_table['OD']
@@ -1541,12 +1545,6 @@ class MOSTechPlanarGeneric(MOSTech):
                 via_type = via_id_table[(od_lay, m1_name)]
             else:
                 via_type = via_id_table[(lay_name_table[bot_lay_id], lay_name_table[bot_lay_id + 1])]
-
-            w_bot = w_conn_d[bot_lay_id]
-            w_top = w_conn_d[bot_lay_id + 1]
-
-            via_w, via_h = via_d['dim'][bot_lay_id]
-            via_sp = via_d['sp'][bot_lay_id]
 
             if via_abut:
                 # force these vias to have line end of ceil(sp / 2) or more
