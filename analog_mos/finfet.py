@@ -1502,6 +1502,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         res = self.res
         mos_layer_table = self.config['mos_layer_table']
 
+        blk_type = layout_info['blk_type']
         lch_unit = layout_info['lch_unit']
         fg = layout_info['fg']
         arr_yb, arr_yt = layout_info['arr_y']
@@ -1603,11 +1604,18 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                             is_edge = False
 
                     if is_edge and cur_od_type is not None:
-                        lay = po_pode_lay
-                        draw_pode = True
-                    elif cur_od_type == 'mos' or cur_od_type == 'sub':
+                        if cur_od_type == 'dum':
+                            lay = po_dum_lay
+                            draw_pode = False
+                        else:
+                            lay = po_pode_lay
+                            draw_pode = True
+                    elif cur_od_type == 'mos':
                         lay = po_lay
                         draw_pode = False
+                    elif cur_od_type == 'sub':
+                        lay = po_lay
+                        draw_pode = not pode_is_poly
                     else:
                         lay = po_dum_lay
                         draw_pode = False
@@ -1623,7 +1631,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     if md_on_od[idx]:
                         template.add_rect(md_lay_cur, BBox(md_xl, md_yb, md_xr, md_yt, res, unit_mode=True))
                     else:
-                        template.add_rect(md_dum_lay, BBox(md_xl, md_yb, md_xr, md_yt, res, unit_mode=True))
+                        if idx != 0 or (blk_type != 'edge' and blk_type != 'gr_edge'):
+                            template.add_rect(md_dum_lay, BBox(md_xl, md_yb, md_xr, md_yt, res, unit_mode=True))
 
         # draw other layers
         for imp_lay, xl, yb, yt in lay_info_list:
