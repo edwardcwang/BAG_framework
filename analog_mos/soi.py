@@ -35,10 +35,10 @@ class MOSTechSOIGenericBC(MOSTech):
     def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
         # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
 
-        # get transistor constants
-        mos_conn_layer = self.get_mos_conn_layer()
-        mos_constants = self.get_mos_tech_constants(lch_unit)
+        mos_lay_table = self.config['mos_layer_table']
 
+        # get transistor constants
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
         sp_bpo_v0 = mos_constants['sp_bpo_v0']
         sp_gb_m1 = mos_constants['sp_gb_m1']
@@ -47,16 +47,17 @@ class MOSTechSOIGenericBC(MOSTech):
         h_body = mos_constants['h_body']
         body_po_loc = mos_constants['body_po_loc']
         num_via_body = mos_constants['num_via_body']
-        w_conn_g = mos_constants['w_conn_g']
-        w_conn_d = mos_constants['w_conn_d']
-
-        # get via constants
-        mos_lay_table = self.config['mos_layer_table']
-        via_g = mos_constants['via_g']
-        via_d = mos_constants['via_d']
-        via_b = mos_constants['via_b']
         imp_layers_info = mos_constants['imp_layers'][mos_type]
         thres_layers_info = mos_constants['thres_layers'][mos_type][threshold]
+        mp_h = mos_constants['mp_h']
+
+        # get via constants
+        g_via_info = mos_constants['g_via']
+        d_via_info = mos_constants['d_via']
+        b_via_info = mos_constants['b_via']
+
+        g_drc_info = self.get_conn_drc_info(lch_unit, 'g')
+        d_drc_info = self.get_conn_drc_info(lch_unit, 'd')
 
         # convert w to resolution units
         layout_unit = self.config['layout_unit']
@@ -64,27 +65,20 @@ class MOSTechSOIGenericBC(MOSTech):
         w_unit = int(round(w / layout_unit / res))
 
         # get minimum metal lengths
-        mx_min_len = 0
-        for layer_id in range(2, mos_conn_layer + 1):
-            layer_type = self.tech_info.layer_id_to_type(layer_id)
-            mx_min_len = max(mx_min_len, self.tech_info.get_min_length_unit(layer_type, w_conn_g[layer_id]))
-
-        m1_type = self.tech_info.layer_id_to_type(1)
-        m1_min_len = self.tech_info.get_min_length_unit(m1_type, w_conn_d[1])
-        md_min_len = max(m1_min_len, mx_min_len)
+        g_min_len = max((info['min_len'] for info in g_drc_info.values() if info['direction'] == 'y'))
+        d_min_len = max((info['min_len'] for info in d_drc_info.values()))
 
         # compute gate location
-        g_v1_h = via_g['dim'][1][1]
-        g_v1_m2_ency = via_g['top_enc_le'][1]
-        g_po_h = w_conn_g[0]
-        g_m1_h = w_conn_g[1]
+        g_v1_h = g_via_info['dim'][1][1]
+        g_v1_m2_ency = g_via_info['top_enc_le'][1]
+        g_m1_h = g_drc_info[1]['w']
         g_m1_yb = sp_gb_m1 // 2
         g_m1_yt = g_m1_yb + g_m1_h
         g_m1_yc = (g_m1_yb + g_m1_yt) // 2
-        g_po_yb = g_m1_yc - g_po_h // 2
-        g_po_yt = g_po_yb + g_po_h
+        g_po_yb = g_m1_yc - mp_h // 2
+        g_po_yt = g_po_yb + mp_h
         g_mx_yt = g_m1_yc + g_v1_h // 2 + g_v1_m2_ency
-        g_mx_yb = g_mx_yt - mx_min_len
+        g_mx_yb = g_mx_yt - g_min_len
         g_y_list = [(g_po_yb, g_po_yt), (g_m1_yb, g_m1_yt), (g_mx_yb, g_mx_yt)]
 
         # compute drain/source location
@@ -96,15 +90,15 @@ class MOSTechSOIGenericBC(MOSTech):
         # get top edge of drain/source contact
         d_v0_yt = b_po_yb - sp_bpo_v0
         # get number of vias
-        d_v0_h = via_d['dim'][0][1]
-        d_v0_sp = via_d['sp'][0]
-        d_v0_od_ency = via_d['bot_enc_le'][0]
-        d_v0_m1_ency = via_d['top_enc_le'][0]
+        d_v0_h = d_via_info['dim'][0][1]
+        d_v0_sp = d_via_info['sp'][0]
+        d_v0_od_ency = d_via_info['bot_enc_le'][0]
+        d_v0_m1_ency = d_via_info['top_enc_le'][0]
         d_v0_arrh = d_v0_yt - d_od_yb - d_v0_od_ency
         d_v0_n = (d_v0_arrh + d_v0_sp) // (d_v0_h + d_v0_sp)
         # get metal length and bottom metal coordinate
         d_v0_arrh = d_v0_n * (d_v0_h + d_v0_sp) - d_v0_sp
-        mx_h = max(md_min_len, d_v0_arrh + 2 * d_v0_m1_ency)
+        mx_h = max(d_min_len, d_v0_arrh + 2 * d_v0_m1_ency)
         d_v0_m1_ency = (mx_h - d_v0_arrh) // 2
         d_mx_yb = d_v0_yt + d_v0_m1_ency - mx_h
         # check sp_gd_m1 spec, move everything up if necessary
@@ -123,10 +117,10 @@ class MOSTechSOIGenericBC(MOSTech):
         d_y_list = [(d_od_yb, d_od_yt), (d_mx_yb, d_mx_yt)]
 
         # compute body location
-        b_v0_w, b_v0_h = via_b['dim']
-        b_v0_sp = via_b['sp']
-        b_v0_enc1 = via_b['enc1']
-        b_v0_enc2 = via_b['enc2']
+        b_v0_w, b_v0_h = b_via_info['dim']
+        b_v0_sp = b_via_info['sp']
+        b_v0_enc1 = b_via_info['enc1']
+        b_v0_enc2 = b_via_info['enc2']
         b_od_yt = b_od_yb + h_body
         b_v0_arrh = num_via_body * (b_v0_h + b_v0_sp) - b_v0_sp
         b_m1_yt = b_od_yt - b_v0_enc1[2] + b_v0_enc2[2]
@@ -189,17 +183,10 @@ class MOSTechSOIGenericBC(MOSTech):
         imp_sp_info = self.config['mos_analog']['imp_spaces']
 
         # get transistor constants
-        mos_constants = self.get_mos_tech_constants(lch_unit)
-        w_conn_d = mos_constants['w_conn_d']
+        d_drc_info = self.get_conn_drc_info(lch_unit, 'd')
 
         # determine wire line-end spacing
-        mos_conn_layer = self.get_mos_conn_layer()
-        mx_sp = 0
-        for mx_id in range(1, mos_conn_layer + 1):
-            lay_type = self.tech_info.layer_id_to_type(mx_id)
-            mx_w = w_conn_d[mx_id]
-            mx_sp = max(mx_sp, self.tech_info.get_min_line_end_space_unit(lay_type, mx_w))
-
+        mx_sp = max(info['sp_le'] for info in d_drc_info.values())
         # get minimum extension width from wire line-end spacing
         w_min = max(0, mx_sp - top_ext_info.mx_margin - bot_ext_info.mx_margin)
 
@@ -456,24 +443,25 @@ class MOSTechSOIGenericBC(MOSTech):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         gate_layers = mos_constants['gate_layers']
-        via_g = mos_constants['via_g']
-        via_b = mos_constants['via_b']
-        w_conn_g = mos_constants['w_conn_g']
-        w_conn_d = mos_constants['w_conn_d']
+        g_via_info = mos_constants['g_via']
+        b_via_info = mos_constants['b_via']
         w_delta = mos_constants['w_delta']
         w_body = mos_constants['w_body']
         body_po_extx = mos_constants['body_po_extx']
         num_via_body = mos_constants['num_via_body']
+        md_w = mos_constants['md_w']
+        mp_h = mos_constants['mp_h']
+
+        g_drc_info = self.get_conn_drc_info(lch_unit, 'g')
 
         width = fg * sd_pitch
 
         # draw OD
         # draw main OD
         od_name = mos_lay_table['OD']
-        w_od = w_conn_d[0]
         d_od_yb, d_od_yt = d_y_list[0]
         d_od_yt += w_delta
-        od_box = BBox(-w_od // 2, d_od_yb, width + w_od // 2, d_od_yt, res, unit_mode=True)
+        od_box = BBox(-md_w // 2, d_od_yb, width + md_w // 2, d_od_yt, res, unit_mode=True)
         od_box = od_box.move_by(dy=-sd_yc, unit_mode=True)
         template.add_rect(od_name, od_box)
         # draw body OD
@@ -518,11 +506,11 @@ class MOSTechSOIGenericBC(MOSTech):
         m1_name = lay_name_table[1]
         via_xc = width // 2
         via_yc = g_po_yc
-        via_w, via_h = via_g['dim'][0]
+        via_w, via_h = g_via_info['dim'][0]
         via_type = via_id_table[(po_name, m1_name)]
-        via_enc_le = via_g['bot_enc_le'][0]
-        m1_w_g = w_conn_g[1]
-        via_enc1 = (w_conn_g[0] - via_h) // 2
+        via_enc_le = g_via_info['bot_enc_le'][0]
+        m1_w_g = g_drc_info[1]['w']
+        via_enc1 = (mp_h - via_h) // 2
         via_enc2 = (m1_w_g - via_h) // 2
         enc1 = [via_enc_le, via_enc_le, via_enc1, via_enc1]
         enc2 = [via_enc_le, via_enc_le, via_enc2, via_enc2]
@@ -547,10 +535,10 @@ class MOSTechSOIGenericBC(MOSTech):
 
         # draw gate M1 to M2 vias
         m2_name = lay_name_table[2]
-        m2_w = w_conn_g[2]
-        via_w, via_h = via_g['dim'][1]
-        via_enc_le1 = via_g['bot_enc_le'][1]
-        via_enc_top2 = via_g['top_enc_le'][1]
+        m2_w = g_drc_info[2]['w']
+        via_w, via_h = g_via_info['dim'][1]
+        via_enc_le1 = g_via_info['bot_enc_le'][1]
+        via_enc_top2 = g_via_info['top_enc_le'][1]
         via_enc_bot2 = via_yc - via_h // 2 - g_y_list[2][0]
         via_enc1 = (m1_w_g - via_h) // 2
         via_enc2 = (m2_w - via_w) // 2
@@ -570,10 +558,10 @@ class MOSTechSOIGenericBC(MOSTech):
 
         # draw body vias to M1
         via_type = via_id_table[(od_name, m1_name)]
-        via_w, via_h = via_b['dim']
-        via_sp = via_b['sp']
-        enc1 = via_b['enc1']
-        enc2 = via_b['enc2']
+        via_w, via_h = b_via_info['dim']
+        via_sp = b_via_info['sp']
+        enc1 = b_via_info['enc1']
+        enc2 = b_via_info['enc2']
         b_m1_yb, b_m1_yt = b_y_list[1]
         via_yc = (b_m1_yb + b_m1_yt) // 2
         template.add_via_primitive(via_type, loc=[sd_pitch // 2, via_yc - sd_yc], num_rows=num_via_body,
@@ -652,13 +640,14 @@ class MOSTechSOIGenericBC(MOSTech):
     def _draw_vertical_vias(self, template, lch_unit, x0, num, pitch, mx_yb, mx_yt, start_layer, end_layer=None):
         # type: (TemplateBase, int, int, int, int, int, int, int, int) -> None
 
-        via_d = self.config['mos_analog']['via_d']
+        d_via_info = self.config['mos_analog']['d_via']
         via_id_table = self.config['via_id']
         mos_lay_table = self.config['mos_layer_table']
         lay_name_table = self.config['layer_name']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
-        w_conn_d = mos_constants['w_conn_d']
+        d_conn_w = mos_constants['d_conn_w']
+        md_w = mos_constants['md_w']
 
         if end_layer is None:
             end_layer = self.get_mos_conn_layer()
@@ -670,16 +659,16 @@ class MOSTechSOIGenericBC(MOSTech):
                 od_name = mos_lay_table['OD']
                 m1_name = lay_name_table[1]
                 via_type = via_id_table[(od_name, m1_name)]
-                via_enc_le = via_d['top_enc_le'][bot_lay_id]
+                via_enc_le = d_via_info['top_enc_le'][bot_lay_id]
             else:
                 via_type = via_id_table[(lay_name_table[bot_lay_id], lay_name_table[bot_lay_id + 1])]
-                via_enc_le = max(via_d['bot_enc_le'][bot_lay_id], via_d['top_enc_le'][bot_lay_id])
+                via_enc_le = max(d_via_info['bot_enc_le'][bot_lay_id], d_via_info['top_enc_le'][bot_lay_id])
 
-            w_bot = w_conn_d[bot_lay_id]
-            w_top = w_conn_d[bot_lay_id + 1]
+            w_bot = md_w if bot_lay_id == 0 else d_conn_w[bot_lay_id]
+            w_top = d_conn_w[bot_lay_id + 1]
 
-            via_w, via_h = via_d['dim'][bot_lay_id]
-            via_sp = via_d['sp'][bot_lay_id]
+            via_w, via_h = d_via_info['dim'][bot_lay_id]
+            via_sp = d_via_info['sp'][bot_lay_id]
 
             num_via = (mx_h - 2 * via_enc_le + via_sp) // (via_w + via_sp)
             via_harr = num_via * (via_w + via_sp) - via_sp

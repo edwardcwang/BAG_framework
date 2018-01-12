@@ -569,19 +569,11 @@ class MOSTech(object, metaclass=abc.ABCMeta):
                             break
 
             # handle mos/dum_conn_w
-            # TODO: Hack to support both finfet and planar/soi for now.
-            # will unify notation later.
             mos_layer = self.get_mos_conn_layer()
             dum_layer = self.get_dum_conn_layer()
-            if 'w_conn_d' in ans:
-                w_list = ans['w_conn_d']
-                ans['mos_conn_w'] = w_list[mos_layer]
-                ans['dum_conn_w'] = w_list[dum_layer]
-            else:
-                w_list = ans['d_conn_w']
-                bot_layer = ans['d_bot_layer']
-                ans['mos_conn_w'] = w_list[mos_layer - bot_layer]
-                ans['dum_conn_w'] = w_list[dum_layer - bot_layer]
+            d_drc_info = self.get_conn_drc_info(lch_unit, 'd')
+            ans['mos_conn_w'] = d_drc_info[dum_layer]['w']
+            ans['dum_conn_w'] = d_drc_info[mos_layer]['w']
 
             # handle sd_pitch
             offset, scale = ans['sd_pitch_constants']
