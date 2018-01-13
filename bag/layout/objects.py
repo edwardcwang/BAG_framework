@@ -1517,7 +1517,7 @@ class Via(Arrayable):
 
         self._tech = tech
         self._bot_layer = bot_layer[0], bot_layer[1]
-        self._top_layer = bot_layer[0], bot_layer[1]
+        self._top_layer = top_layer[0], top_layer[1]
         self._bot_dir = bot_dir
         self._top_dir = top_dir
         self._extend = extend

@@ -842,7 +842,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         vname = self.get_via_name(bot_id)
 
         if not top_dir:
-            top_dir = 'x' if bot_dir == 'y' else 'x'
+            top_dir = 'x' if bot_dir == 'y' else 'y'
 
         via_result = self.get_best_via_array(vname, bmtype, tmtype, bot_dir, top_dir, bbox.width, bbox.height, extend)
         if via_result is None:
