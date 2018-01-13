@@ -9,7 +9,7 @@ from bag.layout.routing.fill import fill_symmetric_max_density
 
 from .tech import LaygoTech
 from ..analog_mos.finfet import MOSTechFinfetBase
-from ..analog_mos.finfet import ExtInfo, RowInfo, AdjRowInfo, EdgeInfo, FillInfo
+from ..analog_mos.finfet import ExtInfo, RowInfo, EdgeInfo, FillInfo
 
 
 if TYPE_CHECKING:
@@ -243,6 +243,42 @@ class LaygoTechFinfetBase(MOSTechFinfetBase, LaygoTech, metaclass=abc.ABCMeta):
 
         return ans
 
+    def get_row_extension_info(self, bot_ext_list, top_ext_list):
+        # type: (List[ExtInfo], List[ExtInfo]) -> List[Tuple[int, ExtInfo, ExtInfo]]
+
+        # merge list of bottom and top extension informations into a list of bottom/top extension tuples
+        bot_idx = top_idx = 0
+        bot_len = len(bot_ext_list)
+        top_len = len(top_ext_list)
+        ext_groups = []
+        cur_fg = bot_off = top_off = 0
+        while bot_idx < bot_len and top_idx < top_len:
+            bot_info = bot_ext_list[bot_idx]
+            top_info = top_ext_list[top_idx]
+            bot_ptype = bot_info.po_types
+            top_ptype = top_info.po_types
+            bot_stop = bot_off + len(bot_ptype)
+            top_stop = top_off + len(top_ptype)
+            stop_idx = min(bot_stop, top_stop)
+
+            # create new bottom/top extension information objects for the current overlapping block
+            # noinspection PyProtectedMember
+            cur_bot_info = bot_info._replace(po_types=bot_ptype[cur_fg - bot_off:stop_idx - bot_off])
+            # noinspection PyProtectedMember
+            cur_top_info = top_info._replace(po_types=top_ptype[cur_fg - top_off:stop_idx - top_off])
+            # append tuples of current number of fingers and bottom/top extension information object
+            ext_groups.append((stop_idx - cur_fg, cur_bot_info, cur_top_info))
+
+            cur_fg = stop_idx
+            if stop_idx == bot_stop:
+                bot_off = cur_fg
+                bot_idx += 1
+            if stop_idx == top_stop:
+                top_off = cur_fg
+                top_idx += 1
+
+        return ext_groups
+
     def draw_laygo_connection(self, template, mos_info, blk_type, options):
         # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> None
         pass
@@ -250,7 +286,3 @@ class LaygoTechFinfetBase(MOSTechFinfetBase, LaygoTech, metaclass=abc.ABCMeta):
     def draw_laygo_space_connection(self, template, space_info, left_blk_info, right_blk_info):
         # type: (TemplateBase, Dict[str, Any], Any, Any) -> Tuple[Any, Any]
         pass
-
-    def get_row_extension_info(self, bot_ext_list, top_ext_list):
-        # type: (List[Any], List[Any]) -> List[Tuple[int, Any, Any]]
-        return []

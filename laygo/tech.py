@@ -187,6 +187,25 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
+    def get_row_extension_info(self, bot_ext_list, top_ext_list):
+        # type: (List[Any], List[Any]) -> List[Tuple[int, Any, Any]]
+        """Compute the list of bottom/top extension information pair needed to create Laygo extension row.
+
+        Parameters
+        ----------
+        bot_ext_list : List[Any]
+            list of bottom extension information objects.
+        top_ext_list : List[Any]
+            list of top extension information objects.
+
+        Returns
+        -------
+        ext_combo_list : List[Tuple[int, Any, Any]]
+            list of number of fingers and bottom/top extension information objects for each extension primitive.
+        """
+        return []
+
+    @abc.abstractmethod
     def draw_laygo_connection(self, template, mos_info, blk_type, options):
         # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> None
         """Draw digital transistor connection in the given template.
@@ -228,25 +247,6 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
             space block top extension information.
         """
         pass
-
-    @abc.abstractmethod
-    def get_row_extension_info(self, bot_ext_list, top_ext_list):
-        # type: (List[Any], List[Any]) -> List[Tuple[int, Any, Any]]
-        """Compute the list of bottom/top extension information pair needed to create Laygo extension row.
-
-        Parameters
-        ----------
-        bot_ext_list : List[Any]
-            list of bottom extension information objects.
-        top_ext_list : List[Any]
-            list of top extension information objects.
-
-        Returns
-        -------
-        ext_combo_list : List[Tuple[int, Any, Any]]
-            list of number of fingers and bottom/top extension information objects for each extension primitive.
-        """
-        return []
 
     def get_laygo_fg2d_s_short(self):
         # type: () -> bool
