@@ -46,81 +46,6 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         return 0
 
     @abc.abstractmethod
-    def get_laygo_fg2d_s_short(self):
-        # type: () -> bool
-        """Returns True if the two source wires of fg2d is shorted together in the primitive.
-
-        Returns
-        -------
-        s_short : bool
-            True if the two source wires of fg2d is shorted together
-        """
-        return False
-
-    @abc.abstractmethod
-    def get_laygo_unit_fg(self):
-        # type: () -> int
-        """Returns the number of fingers in a LaygoBase unit cell.
-
-        Returns
-        -------
-        num_fg : int
-            number of fingers in a LaygoBase unit cell.
-        """
-        return 2
-
-    @abc.abstractmethod
-    def get_sub_columns(self, lch_unit):
-        # type: (int) -> int
-        """Returns the number of columns per substrate block.
-
-        Parameters
-        ----------
-        lch_unit : int
-            the channel length in resolution units.
-
-        Returns
-        -------
-        num_cols : int
-            number of columns per substrate block.
-        """
-        return 1
-
-    @abc.abstractmethod
-    def get_sub_port_columns(self, lch_unit):
-        # type: (int) -> List[int]
-        """Returns the columns indices that have ports in substrate block.
-
-        Parameters
-        ----------
-        lch_unit : int
-            the channel length in resolution units.
-
-        Returns
-        -------
-        port_cols : List[int]
-            the columns indices that have ports in substrate block.
-        """
-        return [0]
-
-    @abc.abstractmethod
-    def get_min_sub_space_columns(self, lch_unit):
-        # type: (int) -> int
-        """Returns the minimum number of space columns needed around substrate blocks.
-
-        Parameters
-        ----------
-        lch_unit : int
-            the channel length in resolution units.
-
-        Returns
-        -------
-        num_cols : int
-            minimum number of space columns.
-        """
-        return 1
-
-    @abc.abstractmethod
     def get_laygo_sub_info(self, lch_unit, w, mos_type, threshold, **kwargs):
         # type: (int, int, str, str, **kwargs) -> Dict[str, Any]
         """Returns the transistor information dictionary for laygo blocks.
@@ -319,6 +244,76 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
             list of number of fingers and bottom/top extension information objects for each extension primitive.
         """
         return []
+
+    def get_laygo_fg2d_s_short(self):
+        # type: () -> bool
+        """Returns True if the two source wires of fg2d is shorted together in the primitive.
+
+        Returns
+        -------
+        s_short : bool
+            True if the two source wires of fg2d is shorted together
+        """
+        return self.mos_config['laygo_fg2d_s_short']
+
+    def get_laygo_unit_fg(self):
+        # type: () -> int
+        """Returns LaygoBase unit cell width in number of fingers.
+
+        Returns
+        -------
+        num_fg : int
+            LaygoBase unit cell width in number of fingers.
+        """
+        return self.mos_config['laygo_unit_fg']
+
+    def get_sub_columns(self, lch_unit):
+        # type: (int) -> int
+        """Returns the number of columns per substrate block.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+
+        Returns
+        -------
+        num_cols : int
+            number of columns per substrate block.
+        """
+        return self.get_mos_tech_constants(lch_unit)['laygo_sub_ncol']
+
+    def get_sub_port_columns(self, lch_unit):
+        # type: (int) -> List[int]
+        """Returns the columns indices that have ports in substrate block.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+
+        Returns
+        -------
+        port_cols : List[int]
+            the columns indices that have ports in substrate block.
+        """
+        return self.get_mos_tech_constants(lch_unit)['laygo_sub_port_cols']
+
+    def get_min_sub_space_columns(self, lch_unit):
+        # type: (int) -> int
+        """Returns the minimum number of space columns needed around substrate blocks.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the channel length in resolution units.
+
+        Returns
+        -------
+        num_cols : int
+            minimum number of space columns.
+        """
+        return self.get_mos_tech_constants(lch_unit)['laygo_sub_spx']
 
     def get_laygo_conn_track_info(self, lch_unit):
         # type: (int) -> Tuple[int, int]
