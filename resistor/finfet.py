@@ -81,9 +81,9 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         """Get PO resistor dimension in core and two edge blocks.
         """
         mp_h = self.res_config['mp_h']
-        po_mp_exty = self.res_config['po_mp_exty']
+        res_mp_exty = self.res_config['res_mp_exty']
 
-        lres = l + 2 * (mp_h + po_mp_exty)
+        lres = l + 2 * (mp_h + res_mp_exty)
         lres_tb = min(w, lres)
         return w, lres, w, lres_tb
 
@@ -96,11 +96,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         """
         po_lch = self.res_config['po_lch']
         po_pitch = self.res_config['po_pitch']
-        po_res_sp = self.res_config['po_res_sp']
-        mp_res_sp = self.res_config['mp_res_sp']
+        po_res_spx = self.res_config['po_res_spx']
         res_spy = self.res_config['res_spy']
-
-        po_res_spx = max(po_res_sp, mp_res_sp - po_lch // 2)
 
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
 
@@ -146,19 +143,17 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         """
         res = grid.resolution
 
-        nfin_min, nfin_max = self.res_config['od_fill_w']
-        po_od_ext = self.res_config['po_od_ext']
+        nfin_min, nfin_max = self.res_config['od_fill_h']
+        po_od_exty = self.res_config['po_od_exty']
         po_spx = self.res_config['po_spx']
         po_spy = self.res_config['po_spy']
-        po_res_sp = self.res_config['po_res_sp']
-        mp_res_sp = self.res_config['mp_res_sp']
+        po_res_spx = self.res_config['po_res_spx']
+        po_res_spy = self.res_config['po_res_spy']
         po_lch = self.res_config['po_lch']
         po_pitch = self.res_config['po_pitch']
         mp_h = self.res_config['mp_h']
         res_max_density = self.res_config['res_max_density']
         od_min_density = self.res_config['od_min_density']
-
-        po_res_spx = max(po_res_sp, mp_res_sp - po_lch // 2)
 
         fin_h = self.mos_tech.mos_config['fin_h']
         fin_p = self.mos_tech.mos_config['mos_pitch']
@@ -175,7 +170,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         # Compute dummy Y coordinates
         # compute dummy OD Y separation in number of fins
-        od_sp = po_spy + po_od_ext * 2
+        od_sp = po_spy + po_od_exty * 2
         # when two ODs are N fin pitches apart, the actual OD spacing is N * fin_pitch - fin_h
         od_sp = -(-(od_sp + fin_h) // fin_p)
         # compute OD Y coordinates for left/right edge.
@@ -185,7 +180,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         # compute OD Y coordinates for top/bottom edge.
         # compute fin offset for top edge dummies
         bnd_spy = (height - lres) // 2
-        top_dummy_bnd = bnd_spy + lres + po_res_sp + po_od_ext
+        top_dummy_bnd = bnd_spy + lres + po_res_spy + po_od_exty
         # find the fin pitch index of the lower bound of the empty space.
         pitch_index = -(-(top_dummy_bnd - fin_p2 + fin_h2) // fin_p)
         tot_space = 2 * (h_core_nfin - pitch_index)
@@ -220,10 +215,10 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         # top dummy locations
         top_offset = pitch_index * fin_p + fin_p2
         core_top_od_loc = self._compute_od_y_loc(core_tb_od_loc[:num_dummy_half], fin_p, fin_h, top_offset)
-        core_top_po_bnd = (height - bnd_spy + po_res_sp, height + bnd_spy - po_res_sp)
+        core_top_po_bnd = (height - bnd_spy + po_res_spy, height + bnd_spy - po_res_spy)
         # bottom dummy locations
         core_bot_od_loc = self._compute_od_y_loc(core_tb_od_loc[-num_dummy_half:], fin_p, fin_h, top_offset - height)
-        core_bot_po_bnd = (-bnd_spy + po_res_sp, bnd_spy - po_res_sp)
+        core_bot_po_bnd = (-bnd_spy + po_res_spy, bnd_spy - po_res_spy)
 
         # fill layout info with dummy information
         layout_info = dict(
@@ -328,21 +323,17 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         if all these pass, return LR edge layout information dictionary.
         """
-        nw_sp = self.res_config['nw_sp']
+        edge_margin = self.res_config['edge_margin']
         po_lch = self.res_config['po_lch']
         po_pitch = self.res_config['po_pitch']
-        fill_fg_min = self.res_config['fill_fg_min']
-        po_res_sp = self.res_config['po_res_sp']
-        mp_res_sp = self.res_config['mp_res_sp']
+        od_fg_min = self.res_config['od_fg_min']
+        po_res_spx = self.res_config['po_res_spx']
         res_max_density = self.res_config['res_max_density']
         od_min_density = self.res_config['od_min_density']
         po_spx = self.res_config['po_spx']
         finfet_od_extx = self.res_config['finfet_od_extx']
-        imp_od_enc = self.res_config['imp_od_enc']
-        nw_od_encx = self.res_config['nw_od_encx']
-        rtop_od_enc = self.res_config['rtop_od_enc']
-
-        po_res_spx = max(po_res_sp, mp_res_sp - po_lch // 2)
+        imp_od_encx = self.res_config['imp_od_encx']
+        rtop_od_encx = self.res_config['rtop_od_encx']
 
         wcore = core_info['width']
         hcore = core_info['height']
@@ -358,9 +349,9 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         # get space between resistor and core boundary
         spx = (wcore - wres) // 2
         # width of dummy transistor in left/right edge
-        dum_w = po_lch + po_pitch * (fill_fg_min - 1)
+        dum_w = po_lch + po_pitch * (od_fg_min - 1)
         # width is given by NW space/dummy/dummy-to-res-space/res/res-to-boundary-space
-        wedge_min = nw_sp // 2 + nw_od_encx + dum_w + po_res_spx + wres_lr + spx
+        wedge_min = edge_margin + imp_od_encx + dum_w + po_res_spx + wres_lr + spx
 
         if wedge < wedge_min:
             return None
@@ -371,7 +362,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             return None
 
         # compute dummy number of fingers for left edge of LREdge block, and also the center X coordinate
-        avail_sp_xl = nw_sp // 2 + nw_od_encx
+        avail_sp_xl = edge_margin + imp_od_encx
         avail_sp_xr = wedge - spx - wres_lr - po_res_spx
         avail_sp = avail_sp_xr - avail_sp_xl
         edge_lr_fg = (avail_sp - po_lch) // po_pitch + 1
@@ -415,10 +406,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             lr_xc=edge_lr_xc,
             tb_xc=edge_tb_xc,
             fb_xl=edge_lr_dum_xl - finfet_od_extx,
-            imp_xl=edge_lr_dum_xl - imp_od_enc,
-            well_xl=edge_lr_dum_xl - nw_od_encx,
-            rtop_xl=edge_lr_dum_xl - rtop_od_enc,
-            vt_xl=edge_lr_dum_xl - imp_od_enc,
+            imp_xl=edge_lr_dum_xl - imp_od_encx,
+            rtop_xl=edge_lr_dum_xl - rtop_od_encx,
             fill_edge_x_list=fill_edge_x_list,
         )
 
@@ -444,18 +433,16 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         if all these pass, return TB edge layout information dictionary.
         """
-        nfin_min, nfin_max = self.res_config['od_fill_w']
-        po_od_ext = self.res_config['po_od_ext']
-        nw_sp = self.res_config['nw_sp']
-        po_res_sp = self.res_config['po_res_sp']
+        nfin_min, nfin_max = self.res_config['od_fill_h']
+        po_od_exty = self.res_config['po_od_exty']
+        edge_margin = self.res_config['edge_margin']
+        po_res_spy = self.res_config['po_res_spy']
         res_max_density = self.res_config['res_max_density']
         od_min_density = self.res_config['od_min_density']
         po_spy = self.res_config['po_spy']
-        vt_po_ext = self.res_config['vt_po_ext']
         finfet_od_exty = self.res_config['finfet_od_exty']
-        imp_od_enc = self.res_config['imp_od_enc']
-        nw_od_ency = self.res_config['nw_od_ency']
-        rtop_od_enc = self.res_config['rtop_od_enc']
+        imp_po_ency = self.res_config['imp_po_ency']
+        rtop_od_ency = self.res_config['rtop_od_ency']
 
         fin_h = self.mos_tech.mos_config['fin_h']
         fin_p = self.mos_tech.mos_config['mos_pitch']
@@ -473,7 +460,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
 
         # compute dummy OD Y separation in number of fins
-        od_sp = po_spy + po_od_ext * 2
+        od_sp = po_spy + po_od_exty * 2
         # when two ODs are N fin pitches apart, the actual OD spacing is N * fin_pitch - fin_h
         od_sp = -(-(od_sp + fin_h) // fin_p)
 
@@ -487,9 +474,9 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         spy = (hcore - lres) // 2
         # find bottom edge OD locations
         # compute OD Y coordinate for bottom edge of TBEdge block
-        bot_dummy_bnd = nw_sp // 2 + nw_od_ency
+        bot_dummy_bnd = edge_margin + imp_po_ency + po_od_exty
         bot_pitch_index = -(-(bot_dummy_bnd - fin_p2 + fin_h2) // fin_p)
-        top_dummy_bnd = hedge - spy - lres_tb - po_res_sp - po_od_ext
+        top_dummy_bnd = hedge - spy - lres_tb - po_res_spy - po_od_exty
         top_pitch_index = (top_dummy_bnd - fin_p2 - fin_h2) // fin_p
         tot_space = top_pitch_index - bot_pitch_index + 1
         edge_bot_od_loc = fill_symmetric_max_density(tot_space, tot_space, nfin_min, nfin_max, od_sp,
@@ -515,8 +502,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         # compute fin 0 offset and convert fin location to Y coordinates
         fin_offset = bot_pitch_index * fin_p + fin_p2
         edge_lr_od_loc = self._compute_od_y_loc(edge_lr_od_loc, fin_p, fin_h, fin_offset)
-        edge_lr_po_bnd = (edge_bot_od_loc[-1][-1] + po_od_ext + po_spy,
-                          adj_top_od_yb - po_od_ext - po_spy)
+        edge_lr_po_bnd = (edge_bot_od_loc[-1][-1] + po_od_exty + po_spy,
+                          adj_top_od_yb - po_od_exty - po_spy)
 
         # compute total OD area
         od_area = 0
@@ -543,10 +530,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             lr_od_loc=(edge_lr_od_loc, edge_lr_po_bnd),
             bot_od_loc=(edge_bot_od_loc, None),
             fb_yb=edge_tb_dum_yb - finfet_od_exty,
-            imp_yb=edge_tb_dum_yb - imp_od_enc,
-            well_yb=edge_tb_dum_yb - nw_od_ency,
-            rtop_yb=edge_tb_dum_yb - rtop_od_enc,
-            vt_yb=edge_tb_dum_yb - po_od_ext - vt_po_ext,
+            rtop_yb=edge_tb_dum_yb - rtop_od_ency,
+            imp_yb=edge_tb_dum_yb - po_od_exty - imp_po_ency,
             fill_edge_y_list=fill_edge_y_list,
         )
 
@@ -555,13 +540,13 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         po_lch = self.res_config['po_lch']
         po_pitch = self.res_config['po_pitch']
-        po_od_ext = self.res_config['po_od_ext']
+        po_od_exty = self.res_config['po_od_exty']
         mp_spy_dum = self.res_config['mp_spy_dum']
         mp_h_dum = self.res_config['mp_h_dum']
-        mp_od_ency = self.res_config['mp_od_ency']
+        od_mp_ency_dum = self.res_config['od_mp_ency_dum']
         po_h_min = self.res_config['po_h_min']
 
-        m0po_pitch = mp_spy_dum + mp_h_dum
+        mp_pitch = mp_spy_dum + mp_h_dum
 
         res = template.grid.resolution
 
@@ -576,8 +561,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         if od_loc:
             # draw dummy transistors
             for od_yb, od_yt in od_loc:
-                po_yb = od_yb - po_od_ext
-                po_yt = od_yt + po_od_ext
+                po_yb = od_yb - po_od_exty
+                po_yt = od_yt + po_od_exty
                 # draw OD
                 template.add_rect(od_dum_lay, BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True))
                 # draw PO
@@ -586,16 +571,16 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
                 # draw M0PO
                 # compute number of M0PO
                 od_h = od_yt - od_yb
-                avail_sp = od_h - 2 * mp_od_ency
-                num_m0po = (avail_sp - mp_h_dum) // m0po_pitch + 1
-                if num_m0po > 0:
-                    m0po_harr = mp_h_dum + (num_m0po - 1) * m0po_pitch
-                    m0po_xl = od_xl + po_lch // 2
-                    m0po_xr = od_xr - po_lch // 2
-                    m0po_yb = od_yb + (od_h - m0po_harr) // 2
-                    m0po_yt = m0po_yb + mp_h_dum
-                    template.add_rect(mp_dum_lay, BBox(m0po_xl, m0po_yb, m0po_xr, m0po_yt, res, unit_mode=True),
-                                      ny=num_m0po, spy=m0po_pitch * res)
+                avail_sp = od_h - 2 * od_mp_ency_dum
+                num_mp = (avail_sp - mp_h_dum) // mp_pitch + 1
+                if num_mp > 0:
+                    mp_harr = mp_h_dum + (num_mp - 1) * mp_pitch
+                    mp_xl = od_xl + po_lch // 2
+                    mp_xr = od_xr - po_lch // 2
+                    mp_yb = od_yb + (od_h - mp_harr) // 2
+                    mp_yt = mp_yb + mp_h_dum
+                    template.add_rect(mp_dum_lay, BBox(mp_xl, mp_yb, mp_xr, mp_yt, res, unit_mode=True),
+                                      ny=num_mp, spy=mp_pitch * res)
         elif po_loc is not None:
             # draw dummy PO only
             po_yb, po_yt = po_loc
