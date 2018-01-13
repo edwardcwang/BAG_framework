@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
 
-"""This module defines AmplifierBase, a base template class for Amplifier-like layout topologies."""
+"""This module defines AnalogBase, a base template class for generic analog layout topologies."""
 
 import abc
 from itertools import chain
-from typing import List, Union, Optional, Dict, Any, Set, Tuple
+from typing import TYPE_CHECKING, List, Union, Optional, Dict, Any, Set, Tuple
 import bisect
 
 from bag.math import lcm
 from bag.util.interval import IntervalSet
 from bag.util.search import BinaryIterator
-from bag.layout.template import TemplateBase, TemplateDB
-from bag.layout.routing import TrackID, WireArray, RoutingGrid
+from bag.layout.template import TemplateBase
+from bag.layout.routing import TrackID, WireArray
 from bag.layout.util import BBox
 from bag.layout.objects import Instance
 
@@ -20,6 +20,10 @@ from ..analog_mos.mos import AnalogMOSBase, AnalogMOSExt
 from ..analog_mos.substrate import AnalogSubstrate
 from ..analog_mos.edge import AnalogEdge, AnalogEndRow
 from ..analog_mos.conn import AnalogMOSConn, AnalogMOSDecap, AnalogMOSDummy, AnalogSubstrateConn
+
+if TYPE_CHECKING:
+    from bag.layout.template import TemplateDB
+    from bag.layout.routing import RoutingGrid
 
 
 class AnalogBaseInfo(object):

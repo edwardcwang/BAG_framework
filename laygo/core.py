@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 
+"""This module defines LaygoBase, a base template class for generic digital layout topologies."""
+
 import abc
-from typing import Dict, Any, Set, Tuple, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Any, Set, Tuple, List, Optional, Iterable
 
 import bisect
 
@@ -9,7 +11,7 @@ from bag.math import lcm
 from bag.util.interval import IntervalSet
 
 from bag.layout.util import BBox
-from bag.layout.template import TemplateBase, TemplateDB
+from bag.layout.template import TemplateBase
 from bag.layout.objects import Instance
 from bag.layout.routing import TrackID
 
@@ -17,17 +19,52 @@ from .tech import LaygoTech
 from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow, LaygoSpace
 
 if TYPE_CHECKING:
+    from bag.layout.template import TemplateDB
     from bag.layout.routing import RoutingGrid
 
 
 class LaygoIntvSet(object):
+    """A data structure that keeps track of used laygo columns in a laygo row.
+
+    This class is used to automatically fill empty spaces, and also get
+    left/right/top/bottom layout information needed to create space blocks
+    and extension rows.
+
+    Note: We intentionally did not keep track of total number of columns in
+    thie object.  This makes it possible to dynamically size a laygo row.
+
+    Parameters
+    ----------
+    default_end_info : Any
+        the default left/right edge layout information object to use.
+    """
     def __init__(self, default_end_info):
-        super(LaygoIntvSet, self).__init__()
+        # type: (Any) -> None
         self._intv = IntervalSet()
         self._end_flags = {}
         self._default_end_info = default_end_info
 
     def add(self, intv, ext_info, endl, endr):
+        # type: (Tuple[int, int], Any, Any, Any) -> bool
+        """Add a new interval to this data structure.
+
+        Parameters
+        ----------
+        intv : Tuple[int, int]
+            the laygo interval as (start_column, stop_column) tuple.
+        ext_info : Any
+            the top/bottom extension information object of this interval.
+        endl : Any
+            the left edge layout information object.
+        endr : Any
+            the right edge layout information object.
+
+        Returns
+        -------
+        success : bool
+            True if the given interval is successfully added.  False if it
+            overlaps with existing blocks.
+        """
         ans = self._intv.add(intv, val=ext_info)
         if ans:
             start, stop = intv
@@ -44,9 +81,31 @@ class LaygoIntvSet(object):
             return False
 
     def values(self):
+        # type: () -> Iterable[Any]
+        """Returns an iterator over extension information objects stored in this row."""
         return self._intv.values()
 
     def get_complement(self, total_intv, endl_info, endr_info):
+        # type: (Tuple[int, int], Any, Any) -> Tuple[List[Tuple[int, int]], List[Tuple[Any, Any]]]
+        """Returns a list of unused column intervals.
+
+        Parameters
+        ----------
+        total_intv : Tuple[int, int]
+            A (start, stop) tuple that indicates how many columns are in this row.
+        endl_info : Any
+            the left-most edge layout information object of this row.
+        endr_info : Any
+            the right-most edge layout information object of this row.
+
+        Returns
+        -------
+        intv_list : List[Tuple[int, int]]
+            a list of unused column intervals.
+        end_list : List[Tuple[Any, Any]]
+            a list of left/right edge layout information object corresponding to each
+            unused interval.
+        """
         compl_intv = self._intv.get_complement(total_intv)
         intv_list = []
         end_list = []
@@ -57,19 +116,36 @@ class LaygoIntvSet(object):
         return intv_list, end_list
 
     def get_end_info(self, num_col):
+        # type: (int) -> Tuple[Any, Any]
+        """Returns the left-most and right-most edge layout information object of this row.
+
+        Parameters
+        ----------
+        num_col : int
+            number of columns in this row.
+
+        Returns
+        -------
+        endl_info : Any
+            the left-most edge layout information object of this row.
+        endr_info : Any
+            the right-most edge layout information object of this row.
+        """
         if 0 not in self._end_flags:
-            start_info = self._default_end_info
+            endl_info = self._default_end_info
         else:
-            start_info = self._end_flags[0]
+            endl_info = self._end_flags[0]
 
         if num_col not in self._end_flags:
-            end_info = self._default_end_info
+            endr_info = self._default_end_info
         else:
-            end_info = self._end_flags[num_col]
+            endr_info = self._end_flags[num_col]
 
-        return start_info, end_info
+        return endl_info, endr_info
 
     def get_end(self):
+        # type: () -> int
+        """Returns the end column index of the last used interval."""
         if not self._intv:
             return 0
         return self._intv.get_end()
