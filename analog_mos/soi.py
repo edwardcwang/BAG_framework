@@ -17,11 +17,22 @@ ExtInfo = namedtuple('ExtInfo', ['mx_margin', 'imp_margins', 'mtype', 'thres'])
 
 
 class MOSTechSOIGenericBC(MOSTech):
-    """A generic implementation of MOSTech for SOI technologies with body-connected transistors."""
+    """A generic implementation of MOSTech for SOI technologies with body-connected transistors.
 
-    def __init__(self, config, tech_info):
-        # type: (Dict[str, Any], TechInfoConfig) -> None
-        MOSTech.__init__(self, config, tech_info, mos_entry_name='mos_analog')
+    Parameters
+    ----------
+    config : Dict[str, Any]
+        the technology configuration dictionary.
+    tech_info : TechInfo
+        the TechInfo object.
+    mos_entry_name : str
+        name of the entry that contains technology parameters for transistors in
+        the given configuration dictionary.
+    """
+
+    def __init__(self, config, tech_info, mos_entry_name='mos_analog'):
+        # type: (Dict[str, Any], TechInfoConfig, str) -> None
+        MOSTech.__init__(self, config, tech_info, mos_entry_name=mos_entry_name)
 
     def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
         # type: (int, int, bool) -> Dict[str, Any]

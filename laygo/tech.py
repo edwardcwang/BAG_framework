@@ -32,7 +32,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
     tech_info : TechInfo
         the TechInfo object.
     mos_entry_name : str
-        the transistor parameters entry name in the given configuration dictionary.
+        name of the entry that contains technology parameters for transistors in
+        the given configuration dictionary.
     """
 
     def __init__(self, config, tech_info, mos_entry_name='mos'):

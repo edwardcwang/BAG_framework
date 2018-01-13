@@ -33,11 +33,21 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
     This class for now handles all DRC rules and drawings related to PO, OD, CPO,
     and MD. The rest needs to be implemented by subclasses.
+
+    Parameters
+    ----------
+    config : Dict[str, Any]
+        the technology configuration dictionary.
+    tech_info : TechInfo
+        the TechInfo object.
+    mos_entry_name : str
+        name of the entry that contains technology parameters for transistors in
+        the given configuration dictionary.
     """
 
-    def __init__(self, config, tech_info):
-        # type: (Dict[str, Any], TechInfoConfig) -> None
-        MOSTech.__init__(self, config, tech_info)
+    def __init__(self, config, tech_info, mos_entry_name='mos'):
+        # type: (Dict[str, Any], TechInfoConfig, str) -> None
+        MOSTech.__init__(self, config, tech_info, mos_entry_name=mos_entry_name)
 
     @abc.abstractmethod
     def get_mos_yloc_info(self, lch_unit, w, **kwargs):

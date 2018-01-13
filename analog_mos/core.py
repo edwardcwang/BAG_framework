@@ -29,6 +29,9 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         the technology configuration dictionary.
     tech_info : TechInfo
         the TechInfo object.
+    mos_entry_name : str
+        name of the entry that contains technology parameters for transistors in
+        the given configuration dictionary.
     """
 
     def __init__(self, config, tech_info, mos_entry_name='mos'):
