@@ -60,22 +60,6 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         """
         return [], []
 
-    @abc.abstractmethod
-    def is_implant_layer(self, layer):
-        # type: (Tuple[str, str]) -> bool
-        """Returns true if the given layer tuple represents an implant layer.
-
-        Parameters
-        ----------
-        layer : Tuple[str, str]
-            the layer name/purpose tuple.
-
-        Returns
-        -------
-        is_imp : True if the given layer is an implant layer.
-        """
-        return False
-
     def get_res_dimension(self, l, w):
         # type: (int, int) -> Tuple[int, int, int, int]
         """Get PO resistor dimension in core and two edge blocks.
@@ -687,7 +671,6 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         grid = template.grid
         res = grid.resolution
 
-        nw_lay = mos_lay_table['NW']
         finfet_lay = mos_lay_table['FB']
         rpdmy_lay = res_lay_table['RPDMY']
         rtop_lay = res_lay_table['RTOP']
@@ -714,14 +697,10 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         fb_xl = edge_lr_info['fb_xl']
         imp_xl = edge_lr_info['imp_xl']
-        well_xl = edge_lr_info['well_xl']
         rtop_xl = edge_lr_info['rtop_xl']
-        vt_xl = edge_lr_info['vt_xl']
         fb_yb = edge_tb_info['fb_yb']
         imp_yb = edge_tb_info['imp_yb']
-        well_yb = edge_tb_info['well_yb']
         rtop_yb = edge_tb_info['rtop_yb']
-        vt_yb = edge_tb_info['vt_yb']
 
         core_fill_info = core_info['fill_info']
         core_lr_od_loc = core_info['lr_od_loc']
@@ -748,7 +727,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             rpdmy_yt = rpdmy_yb + l
             template.add_rect(rpdmy_lay, BBox(rh_xr, rpdmy_yb, w_edge, rpdmy_yt, res, unit_mode=True))
             # set implant Y coordinates to 0
-            vt_yb = imp_yb = well_yb = rtop_yb = 0
+            imp_yb = rtop_yb = 0
             fb_yb = -fin_p2 - fin_h2
             # draw left edge dummies
             self._draw_dummies(template, edge_lr_xc, edge_lr_fg, core_lr_od_loc)
@@ -764,7 +743,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             rh_yt = h_edge - bnd_spy
             rh_yb = rh_yt - lres_tb
             # set implant X coordinates to 0
-            vt_xl = fb_xl = imp_xl = well_xl = rtop_xl = 0
+            fb_xl = imp_xl = rtop_xl = 0
             # draw bottom edge dummies
             self._draw_dummies(template, 0, core_lr_fg, edge_bot_od_loc)
             self._draw_dummies(template, w_core // 2, core_tb_fg, edge_bot_od_loc)
@@ -798,15 +777,10 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             if lay == finfet_lay:
                 xl, yb = fb_xl, fb_yb
                 yt += fin_p2 + fin_h2
-            elif lay == nw_lay:
-                xl, yb = well_xl, well_yb
             elif lay == rtop_lay:
                 xl, yb = rtop_xl, rtop_yb
-            elif self.is_implant_layer(lay):
-                xl, yb = imp_xl, imp_yb
             else:
-                # threshold
-                xl, yb = vt_xl, vt_yb
+                xl, yb = imp_xl, imp_yb
             template.add_rect(lay, BBox(xl, yb, bnd_box.right_unit, yt, res, unit_mode=True))
 
         # set bounding box
