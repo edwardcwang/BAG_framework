@@ -433,6 +433,11 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         elif blk_type == 'sub':
             warrs = self.draw_laygo_sub_connection(template, mos_info, **options)
             port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
-            template.add_pin(port_name, warrs, show=False)
+            s_warrs = warrs[0::2]
+            d_warrs = warrs[1::2]
+            template.add_pin(port_name, s_warrs, show=False)
+            template.add_pin(port_name + '_s', s_warrs, show=False)
+            template.add_pin(port_name + '_d', d_warrs, show=False)
+
         else:
             raise ValueError('Unsupported laygo primitive type: %s' % blk_type)
