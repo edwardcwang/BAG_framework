@@ -71,9 +71,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         self._via_tech = via_tech
         self.tech_params = process_params
 
-    @classmethod
     @abc.abstractmethod
-    def get_implant_layers(cls, mos_type, res_type=None):
+    def get_implant_layers(self, mos_type, res_type=None):
         # type: (str, Optional[str]) -> List[Tuple[str, str]]
         """Returns a list of implant layers associated with the given transistor/substrate/resistor type.
 
@@ -91,9 +90,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         """
         return []
 
-    @classmethod
     @abc.abstractmethod
-    def get_dnw_margin_unit(cls, dnw_mode):
+    def get_dnw_margin_unit(self, dnw_mode):
         # type: (str) -> int
         """Returns the required DNW margin given the DNW mode.
 
@@ -109,9 +107,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         """
         return 0
 
-    @classmethod
     @abc.abstractmethod
-    def get_dnw_layers(cls):
+    def get_dnw_layers(self):
         # type: () -> List[Tuple[str, str]]
         """Returns a list of layers that defines DNW.
 
@@ -122,9 +119,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         """
         return []
 
-    @classmethod
     @abc.abstractmethod
-    def get_res_metal_layers(cls, layer_id):
+    def get_res_metal_layers(self, layer_id):
         # type: (int) -> List[Tuple[str, str]]
         """Returns a list of layers associated with the given metal resistor.
 
@@ -140,9 +136,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         """
         return []
 
-    @classmethod
     @abc.abstractmethod
-    def add_cell_boundary(cls, template, box):
+    def add_cell_boundary(self, template, box):
         """Adds a cell boundary object to the given template.
         
         This is usually the PR boundary.
@@ -156,9 +151,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         """
         pass
 
-    @classmethod
     @abc.abstractmethod
-    def draw_device_blockage(cls, template):
+    def draw_device_blockage(self, template):
         """Draw device blockage layers on the given template.
 
         Parameters
@@ -168,9 +162,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         """
         pass
 
-    @classmethod
     @abc.abstractmethod
-    def get_via_drc_info(cls, vname, vtype, mtype, mw_unit, is_bot):
+    def get_via_drc_info(self, vname, vtype, mtype, mw_unit, is_bot):
         """Return data structures used to identify VIA DRC rules.
 
         Parameters
@@ -208,40 +201,6 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             None if no constraint.
         """
         return (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
-
-    @classmethod
-    def use_flip_parity(cls):
-        # type: () -> bool
-        """Returns True if flip_parity dictionary is needed in this technology."""
-        return True
-
-    @classmethod
-    def finalize_template(cls, template):
-        """Perform any operations necessary on the given layout template before finalizing it.
-
-        By default, nothing is done.
-
-        Parameters
-        ----------
-        template : TemplateBase
-            the template object.
-        """
-        pass
-
-    @property
-    def via_tech_name(self):
-        """Returns the via technology library name."""
-        return self._via_tech
-
-    @property
-    def resolution(self):
-        """Returns the grid resolution."""
-        return self._resolution
-
-    @property
-    def layout_unit(self):
-        """Returns the layout unit length, in meters."""
-        return self._layout_unit
 
     @abc.abstractmethod
     def get_min_space(self, layer_type, width, unit_mode=False, same_color=False):
@@ -539,6 +498,38 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             maximum AC peak current, in Amperes.
         """
         return float('inf'), float('inf'), float('inf')
+
+    @property
+    def via_tech_name(self):
+        """Returns the via technology library name."""
+        return self._via_tech
+
+    @property
+    def resolution(self):
+        """Returns the grid resolution."""
+        return self._resolution
+
+    @property
+    def layout_unit(self):
+        """Returns the layout unit length, in meters."""
+        return self._layout_unit
+
+    def use_flip_parity(self):
+        # type: () -> bool
+        """Returns True if flip_parity dictionary is needed in this technology."""
+        return True
+
+    def finalize_template(self, template):
+        """Perform any operations necessary on the given layout template before finalizing it.
+
+        By default, nothing is done.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the template object.
+        """
+        pass
 
     def get_res_info(self, res_type, w, l, **kwargs):
         """Returns a dictionary containing EM information of the given resistor.
@@ -1034,35 +1025,28 @@ class DummyTechInfo(TechInfo):
     def __init__(self, tech_params):
         TechInfo.__init__(self, 0.001, 1e-6, '', tech_params)
 
-    @classmethod
-    def get_implant_layers(cls, mos_type, res_type=None):
+    def get_implant_layers(self, mos_type, res_type=None):
         return []
 
-    @classmethod
-    def get_dnw_layers(cls):
+    def get_dnw_layers(self):
         # type: () -> List[Tuple[str, str]]
         return []
 
-    @classmethod
-    def get_dnw_margin_unit(cls, dnw_mode):
+    def get_dnw_margin_unit(self, dnw_mode):
         # type: (str) -> int
         return 0
 
-    @classmethod
-    def get_res_metal_layers(cls, layer_id):
+    def get_res_metal_layers(self, layer_id):
         # type: (int) -> List[Tuple[str, str]]
         return []
 
-    @classmethod
-    def add_cell_boundary(cls, template, box):
+    def add_cell_boundary(self, template, box):
         pass
 
-    @classmethod
-    def draw_device_blockage(cls, template):
+    def draw_device_blockage(self, template):
         pass
 
-    @classmethod
-    def get_via_drc_info(cls, vname, vtype, mtype, mw_unit, is_bot):
+    def get_via_drc_info(self, vname, vtype, mtype, mw_unit, is_bot):
         return (0, 0), [(0, 0)], [(0, 0)], (0, 0), [(0, 0)], None, None
 
     def get_min_space(self, layer_type, width, unit_mode=False, same_color=False):
