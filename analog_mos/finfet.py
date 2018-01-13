@@ -71,6 +71,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fill_info :
             a dictionary from metal layer tuple to tuple of exclusion
             layer name and list of metal fill Y intervals.
+        g_conn_y :
+            Y coordinate interval where horizontal gate wires can contact
+            to gate.
+        d_conn_y :
+            Y coordinate interval where horizontal drain/source wire can
+            contact to drain/source.
         """
         return {}
 
@@ -96,6 +102,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fill_info :
             a dictionary from metal layer tuple to tuple of exclusion
             layer name and list of metal fill Y intervals.
+        g_conn_y :
+            Y coordinate interval where horizontal gate wires can contact
+            to gate.
+        d_conn_y :
+            Y coordinate interval where horizontal drain/source wire can
+            contact to drain/source.
         """
         return {}
 
