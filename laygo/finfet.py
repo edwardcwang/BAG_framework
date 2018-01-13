@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import TYPE_CHECKING, Dict, Any, List, Tuple
+from typing import TYPE_CHECKING, Dict, Any, List, Tuple, Union
 
 import abc
 
@@ -8,16 +8,16 @@ from bag import float_to_si_string
 from bag.layout.routing.fill import fill_symmetric_max_density
 
 from .tech import LaygoTech
-from ..analog_mos.finfet import MOSTechFinfetBase
 from ..analog_mos.finfet import ExtInfo, RowInfo, EdgeInfo, FillInfo
 
 
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfoConfig
+    from bag.layout.routing import WireArray
     from bag.layout.template import TemplateBase
 
 
-class LaygoTechFinfetBase(MOSTechFinfetBase, LaygoTech, metaclass=abc.ABCMeta):
+class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
     """Base class for implementations of LaygoTech in Finfet technologies.
 
     This class for now handles all DRC rules and drawings related to PO, OD, CPO,
@@ -36,7 +36,7 @@ class LaygoTechFinfetBase(MOSTechFinfetBase, LaygoTech, metaclass=abc.ABCMeta):
 
     def __init__(self, config, tech_info, mos_entry_name='mos'):
         # type: (Dict[str, Any], TechInfoConfig, str) -> None
-        MOSTechFinfetBase.__init__(self, config, tech_info, mos_entry_name=mos_entry_name)
+        LaygoTech.__init__(self, config, tech_info, mos_entry_name=mos_entry_name)
 
     @abc.abstractmethod
     def get_laygo_yloc_info(self, lch_unit, w, is_sub, **kwargs):
@@ -73,12 +73,81 @@ class LaygoTechFinfetBase(MOSTechFinfetBase, LaygoTech, metaclass=abc.ABCMeta):
         template : TemplateBase
             the TemplateBase object to draw layout in.
         space_info : Dict[str, Any]
-            the layout information dictionary.
+            the block layout information dictionary.
         left_blk_info : Any
             left block information.
         right_blk_info : Any
             right block information.
         """
+
+    @abc.abstractmethod
+    def draw_laygo_g_connection(self, template, mos_info, g_loc, num_fg, **kwargs):
+        # type: (TemplateBase, Dict[str, Any], str, int, **kwargs) -> List[WireArray]
+        """Draw laygo gate connections.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        mos_info : Dict[str, Any]
+            the block layout information dictionary.
+        g_loc : str
+            gate wire alignment location.  Either 'd' or 's'.
+        num_fg : int
+            number of gate fingers.
+        **kwargs :
+            optional parameters.
+
+        Returns
+        -------
+        warr_list : List[WireArray]
+            list of port wires as single-wire WireArrays.
+        """
+        return []
+
+    @abc.abstractmethod
+    def draw_laygo_ds_connection(self, template, mos_info, tidx_list, **kwargs):
+        # type: (TemplateBase, Dict[str, Any], List[Union[float, int]], **kwargs) -> List[WireArray]
+        """Draw laygo drain/source connections.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        mos_info : Dict[str, Any]
+            the block layout information dictionary.
+        tidx_list : List[Union[float, int]]
+            list of track index to draw drain/source wires.
+        **kwargs :
+            optional parameters.
+
+        Returns
+        -------
+        warr_list : List[WireArray]
+            list of port wires as single-wire WireArrays.
+        """
+        return []
+
+    @abc.abstractmethod
+    def draw_laygo_sub_connection(self, template, mos_info, **kwargs):
+        # type: (TemplateBase, Dict[str, Any], **kwargs) -> List[WireArray]
+        """Draw laygo substrate connections.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        mos_info : Dict[str, Any]
+            the block layout information dictionary.
+        **kwargs :
+            optional parameters.
+
+        Returns
+        -------
+        warr_list : List[WireArray]
+            list of port wires as single-wire WireArrays.
+        """
+        return []
 
     def get_default_end_info(self):
         # type: () -> Any
@@ -329,4 +398,34 @@ class LaygoTechFinfetBase(MOSTechFinfetBase, LaygoTech, metaclass=abc.ABCMeta):
 
     def draw_laygo_connection(self, template, mos_info, blk_type, options):
         # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> None
-        pass
+
+        layout_info = mos_info['layout_info']
+        sub_type = layout_info['sub_type']
+
+        if blk_type in ('fg2d', 'fg2s', 'stack2d', 'stack2s', 'fg1d', 'fg1s'):
+            g_loc = blk_type[-1]
+            num_fg = int(blk_type[-2])
+            if blk_type.startswith('fg2'):
+                didx_list = [0.5]
+                sidx_list = [-0.5, 1.5]
+            elif blk_type.startswith('stack2'):
+                didx_list = [1.5]
+                sidx_list = [-0.5]
+            else:
+                didx_list = [0.5]
+                sidx_list = [-0.5]
+            g_warrs = self.draw_laygo_g_connection(template, mos_info, g_loc, num_fg, **options)
+            d_warrs = self.draw_laygo_ds_connection(template, mos_info, didx_list, **options)
+            s_warrs = self.draw_laygo_ds_connection(template, mos_info, sidx_list, **options)
+
+            for name, warr_list in (('g', g_warrs), ('d', d_warrs), ('s', s_warrs)):
+                template.add_pin(name, warr_list, show=False)
+                if len(warr_list) > 1:
+                    for idx, warr in enumerate(warr_list):
+                        template.add_pin('%s%d' % (name, idx), warr, show=False)
+        elif blk_type == 'sub':
+            warrs = self.draw_laygo_sub_connection(template, mos_info, **options)
+            port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
+            template.add_pin(port_name, warrs, show=False)
+        else:
+            raise ValueError('Unsupported laygo primitive type: %s' % blk_type)
