@@ -535,46 +535,53 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
     def tot_height(self):
         return self._row_y[-1][-1]
 
-    def _get_track_intervals(self, hm_layer, orient, info, ycur, ybot, ytop, delta):
+    def _get_track_intervals(self, hm_layer, orient, info, ycur, ybot, via_exty, ng, ngb, nds):
         if 'g_conn_y' in info:
-            gyt = info['g_conn_y'][1]
+            gyb, gyt = info['g_conn_y']
         else:
-            gyt = ybot
+            gyb, gyt = ybot
 
-        syb = info['ds_conn_y'][0]
-        dyb = info['gb_conn_y'][0]
+        syb, syt = info['ds_conn_y']
+        dyb, dyt = info['gb_conn_y']
 
         if orient == 'R0':
+            gyb += ycur
             gyt += ycur
             syb += ycur
+            syt += ycur
             dyb += ycur
+            dyt += ycur
 
-            gbtr = self.grid.coord_to_nearest_track(hm_layer, ybot + delta, half_track=True, mode=1, unit_mode=True)
-            gttr = self.grid.coord_to_nearest_track(hm_layer, gyt - delta, half_track=True, mode=-1, unit_mode=True)
-            g_intv = (gbtr, gttr + 1)
-            sbtr = self.grid.coord_to_nearest_track(hm_layer, syb + delta, half_track=True, mode=1, unit_mode=True)
-            sttr = self.grid.coord_to_nearest_track(hm_layer, ytop - delta, half_track=True, mode=-1, unit_mode=True)
-            s_intv = (sbtr, sttr + 1)
-            dbtr = self.grid.coord_to_nearest_track(hm_layer, dyb + delta, half_track=True, mode=1, unit_mode=True)
-            dttr = self.grid.coord_to_nearest_track(hm_layer, ytop - delta, half_track=True, mode=-1, unit_mode=True)
-            d_intv = (dbtr, dttr + 1)
+            gbtr = self.grid.coord_to_nearest_track(hm_layer, gyb + via_exty, half_track=True, mode=1, unit_mode=True)
+            gttr = self.grid.coord_to_nearest_track(hm_layer, gyt - via_exty, half_track=True, mode=-1, unit_mode=True)
+            g_intv = (min(gbtr, gttr + 1 - ng), gttr + 1)
+            sbtr = self.grid.coord_to_nearest_track(hm_layer, syb + via_exty, half_track=True, mode=1, unit_mode=True)
+            sttr = self.grid.coord_to_nearest_track(hm_layer, syt - via_exty, half_track=True, mode=-1, unit_mode=True)
+            s_intv = (sbtr, max(sttr + 1, sbtr + nds))
+            dbtr = self.grid.coord_to_nearest_track(hm_layer, dyb + via_exty, half_track=True, mode=1, unit_mode=True)
+            dttr = self.grid.coord_to_nearest_track(hm_layer, dyt - via_exty, half_track=True, mode=-1, unit_mode=True)
+            d_intv = (dbtr, max(dttr + 1, dbtr + ngb))
+            yt_vm = max(syt, dyt)
         else:
             h = info['layout_info']['arr_y'][1]
-            gyb = ycur + h - gyt
-            dyt = ycur + h - dyb
-            syt = ycur + h - syb
+            gyb, gyt = ycur + h - gyt, ycur + h - gyb
+            dyb, dyt = ycur + h - dyt, ycur + h - dyb
+            syb, syt = ycur + h - syt, ycur + h - syb
 
-            gbtr = self.grid.coord_to_nearest_track(hm_layer, gyb + delta, half_track=True, mode=1, unit_mode=True)
-            gttr = self.grid.coord_to_nearest_track(hm_layer, ytop - delta, half_track=True, mode=-1, unit_mode=True)
-            g_intv = (gbtr, gttr + 1)
-            sbtr = self.grid.coord_to_nearest_track(hm_layer, ybot + delta, half_track=True, mode=1, unit_mode=True)
-            sttr = self.grid.coord_to_nearest_track(hm_layer, syt - delta, half_track=True, mode=-1, unit_mode=True)
-            s_intv = (sbtr, sttr + 1)
-            dbtr = self.grid.coord_to_nearest_track(hm_layer, ybot + delta, half_track=True, mode=1, unit_mode=True)
-            dttr = self.grid.coord_to_nearest_track(hm_layer, dyt - delta, half_track=True, mode=-1, unit_mode=True)
-            d_intv = (dbtr, dttr + 1)
+            gbtr = self.grid.coord_to_nearest_track(hm_layer, gyb + via_exty, half_track=True, mode=1, unit_mode=True)
+            gttr = self.grid.coord_to_nearest_track(hm_layer, gyt - via_exty, half_track=True, mode=-1, unit_mode=True)
+            g_intv = (gbtr, max(gttr + 1, gbtr + ng))
+            sbtr = self.grid.coord_to_nearest_track(hm_layer, syb + via_exty, half_track=True, mode=1, unit_mode=True)
+            sttr = self.grid.coord_to_nearest_track(hm_layer, syt - via_exty, half_track=True, mode=-1, unit_mode=True)
+            s_intv = (min(sbtr, sttr + 1 - nds), sttr + 1)
+            dbtr = self.grid.coord_to_nearest_track(hm_layer, dyb + via_exty, half_track=True, mode=1, unit_mode=True)
+            dttr = self.grid.coord_to_nearest_track(hm_layer, dyt - via_exty, half_track=True, mode=-1, unit_mode=True)
+            d_intv = (min(dbtr, dttr + 1 - ngb), dttr + 1)
+            yt_vm = gyt
 
-        return g_intv, s_intv, d_intv
+        tr_top = max(g_intv[1], d_intv[1], s_intv[1]) - 1
+        yt_vm = max(yt_vm, self.grid.track_to_coord(hm_layer, tr_top, unit_mode=True) + via_exty)
+        return g_intv, s_intv, d_intv, yt_vm
 
     def _set_endlr_infos(self, num_rows):
         default_end_info = self._tech_cls.get_default_end_info()
@@ -976,8 +983,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                     cur_bot_ext_h = (ycur - ytop_prev) // mos_pitch
 
             # recompute gate and drain/source track indices
-            g_intv, ds_intv, gb_intv = self._get_track_intervals(hm_layer, row_orient, mos_info,
-                                                                 ycur, ytop_prev, ytop, via_exty)
+            g_intv, ds_intv, gb_intv, yt_vm_cur = self._get_track_intervals(hm_layer, row_orient, mos_info, ycur,
+                                                                            ytop_prev, via_exty, ng, ngb, nds)
 
             # record information
             mos_info['g_intv'] = g_intv
@@ -992,9 +999,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             ext_params_list.append((prev_ext_h + cur_bot_ext_h, ext_y))
 
             # update previous row information
-            top_tr = max(g_intv[1], ds_intv[1], gb_intv[1]) - 1
             ytop_prev = ytop
-            yt_vm_prev = self.grid.track_to_coord(hm_layer, top_tr, unit_mode=True) + via_exty
+            yt_vm_prev = yt_vm_cur
             prev_ext_info = ext_top_info
             prev_ext_h = cur_top_ext_h
 
