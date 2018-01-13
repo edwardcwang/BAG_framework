@@ -15,26 +15,38 @@ from ..analog_mos.mos import AnalogMOSExt
 from ..analog_mos.edge import AnalogEdge
 
 if TYPE_CHECKING:
+    from bag.layout.tech import TechInfoConfig
     from .base import LaygoEndRow
     from .core import LaygoBaseInfo
 
 
 class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
-    """An abstract static class for drawing transistor related layout.
+    """An abstract class for drawing transistor related layout for custom digital circuits.
 
-    This class defines various static methods use to draw layouts used by AnalogBase.
+    This class defines various methods use to draw layouts used by LaygoBase.
+
+    Parameters
+    ----------
+    config : Dict[str, Any]
+        the technology configuration dictionary.
+    tech_info : TechInfo
+        the TechInfo object.
+    mos_entry_name : str
+        the transistor parameters entry name in the given configuration dictionary.
     """
 
-    @classmethod
+    def __init__(self, config, tech_info, mos_entry_name='mos'):
+        # type: (Dict[str, Any], TechInfoConfig, str) -> None
+        MOSTech.__init__(self, config, tech_info, mos_entry_name=mos_entry_name)
+
     @abc.abstractmethod
-    def get_default_end_info(cls):
+    def get_default_end_info(self):
         # type: () -> Any
         """Returns the default end_info object."""
         return 0
 
-    @classmethod
     @abc.abstractmethod
-    def get_laygo_fg2d_s_short(cls):
+    def get_laygo_fg2d_s_short(self):
         # type: () -> bool
         """Returns True if the two source wires of fg2d is shorted together in the primitive.
 
@@ -45,9 +57,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         return False
 
-    @classmethod
     @abc.abstractmethod
-    def get_laygo_unit_fg(cls):
+    def get_laygo_unit_fg(self):
         # type: () -> int
         """Returns the number of fingers in a LaygoBase unit cell.
 
@@ -58,9 +69,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         return 2
 
-    @classmethod
     @abc.abstractmethod
-    def get_sub_columns(cls, lch_unit):
+    def get_sub_columns(self, lch_unit):
         # type: (int) -> int
         """Returns the number of columns per substrate block.
 
@@ -76,9 +86,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         return 1
 
-    @classmethod
     @abc.abstractmethod
-    def get_sub_port_columns(cls, lch_unit):
+    def get_sub_port_columns(self, lch_unit):
         # type: (int) -> List[int]
         """Returns the columns indices that have ports in substrate block.
 
@@ -94,9 +103,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         return [0]
 
-    @classmethod
     @abc.abstractmethod
-    def get_min_sub_space_columns(cls, lch_unit):
+    def get_min_sub_space_columns(self, lch_unit):
         # type: (int) -> int
         """Returns the minimum number of space columns needed around substrate blocks.
 
@@ -112,9 +120,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         return 1
 
-    @classmethod
     @abc.abstractmethod
-    def get_laygo_sub_info(cls, lch_unit, w, mos_type, threshold, **kwargs):
+    def get_laygo_sub_info(self, lch_unit, w, mos_type, threshold, **kwargs):
         # type: (int, int, str, str, **kwargs) -> Dict[str, Any]
         """Returns the transistor information dictionary for laygo blocks.
 
@@ -154,9 +161,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         return {}
 
-    @classmethod
     @abc.abstractmethod
-    def get_laygo_mos_info(cls, lch_unit, w, mos_type, threshold, blk_type, bot_row_type, top_row_type, **kwargs):
+    def get_laygo_mos_info(self, lch_unit, w, mos_type, threshold, blk_type, bot_row_type, top_row_type, **kwargs):
         # type: (int, int, str, str, str, str, str, **kwargs) -> Dict[str, Any]
         """Returns the transistor information dictionary for laygo blocks.
 
@@ -202,9 +208,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         return {}
 
-    @classmethod
     @abc.abstractmethod
-    def get_laygo_end_info(cls, lch_unit, mos_type, threshold, fg, is_end, blk_pitch):
+    def get_laygo_end_info(self, lch_unit, mos_type, threshold, fg, is_end, blk_pitch):
         # type: (int, str, str, int, bool, int) -> Dict[str, Any]
         """Returns the LaygoBase end row layout information dictionary.
 
@@ -230,9 +235,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         return {}
 
-    @classmethod
     @abc.abstractmethod
-    def get_laygo_space_info(cls, row_info, num_blk, left_blk_info, right_blk_info):
+    def get_laygo_space_info(self, row_info, num_blk, left_blk_info, right_blk_info):
         # type: (Dict[str, Any], int, Any, Any) -> Dict[str, Any]
         """Returns a new layout information dictionary for drawing LaygoBase space blocks.
 
@@ -254,9 +258,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         pass
 
-    @classmethod
     @abc.abstractmethod
-    def draw_laygo_connection(cls, template, mos_info, blk_type, options):
+    def draw_laygo_connection(self, template, mos_info, blk_type, options):
         # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> None
         """Draw digital transistor connection in the given template.
 
@@ -273,9 +276,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         pass
 
-    @classmethod
     @abc.abstractmethod
-    def draw_laygo_space_connection(cls, template, space_info, left_blk_info, right_blk_info):
+    def draw_laygo_space_connection(self, template, space_info, left_blk_info, right_blk_info):
         # type: (TemplateBase, Dict[str, Any], Any, Any) -> Tuple[Any, Any]
         """Draw digital transistor connection in the given template.
 
@@ -299,9 +301,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         pass
 
-    @classmethod
     @abc.abstractmethod
-    def get_row_extension_info(cls, bot_ext_list, top_ext_list):
+    def get_row_extension_info(self, bot_ext_list, top_ext_list):
         # type: (List[Any], List[Any]) -> List[Tuple[int, Any, Any]]
         """Compute the list of bottom/top extension information pair needed to create Laygo extension row.
 
@@ -319,8 +320,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         return []
 
-    @classmethod
-    def get_laygo_conn_track_info(cls, lch_unit):
+    def get_laygo_conn_track_info(self, lch_unit):
         # type: (int) -> Tuple[int, int]
         """Returns dummy connection layer space and width.
 
@@ -336,14 +336,13 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         dum_w : int
             width of dummy tracks in resolution units.
         """
-        mos_constants = cls.get_mos_tech_constants(lch_unit)
+        mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
         laygo_conn_w = mos_constants['laygo_conn_w']
         laygo_num_sd_per_track = mos_constants['laygo_num_sd_per_track']
         return sd_pitch * laygo_num_sd_per_track - laygo_conn_w, laygo_conn_w
 
-    @classmethod
-    def draw_extensions(cls,  # type: LaygoTech
+    def draw_extensions(self,  # type: LaygoTech
                         template,  # type: TemplateBase
                         laygo_info,  # type: LaygoBaseInfo
                         w,  # type: int
@@ -379,13 +378,13 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         top_layer = laygo_info.top_layer
         guard_ring_nf = laygo_info.guard_ring_nf
 
-        ext_groups = cls.get_row_extension_info(bot_ext_list, top_ext_list)
+        ext_groups = self.get_row_extension_info(bot_ext_list, top_ext_list)
         num_ext = len(ext_groups)
 
         curx = laygo_info.col_to_coord(0, 's', unit_mode=True)
         ext_edges = []
         for idx, (fg, bot_info, top_info) in enumerate(ext_groups):
-            if w > 0 or cls.draw_zero_extension():
+            if w > 0 or self.draw_zero_extension():
                 ext_params = dict(
                     lch=lch,
                     w=w,
@@ -414,8 +413,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
 
         return ext_edges
 
-    @classmethod
-    def draw_boundaries(cls,  # type: LaygoTech
+    def draw_boundaries(self,  # type: LaygoTech
                         template,  # type: TemplateBase
                         laygo_info,  # type: LaygoBaseInfo
                         num_col,  # type: int
@@ -496,7 +494,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
 
         gr_vss_warrs = []
         gr_vdd_warrs = []
-        conn_layer = cls.get_dig_conn_layer()
+        conn_layer = self.get_dig_conn_layer()
         for inst in edge_inst_list:
             if inst.has_port('VDD'):
                 gr_vdd_warrs.extend(inst.get_all_port_pins('VDD', layer=conn_layer))
