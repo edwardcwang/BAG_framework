@@ -900,8 +900,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             else:
                 od_fg_min = self.get_analog_unit_fg()
                 od_fg_max = (od_fill_w_max - lch_unit) // sd_pitch - 1
-                od_fg_sp = -(-(od_spx - (sd_pitch - lch_unit)) // sd_pitch) + 2
-                od_x_list = fill_symmetric_max_density(fg, fg, od_fg_min, od_fg_max, od_fg_sp,
+                od_spx_fg = -(-(od_spx - sd_pitch + lch_unit) // sd_pitch) + 2
+                od_x_list = fill_symmetric_max_density(fg, fg, od_fg_min, od_fg_max, od_spx_fg,
                                                        fill_on_edge=True, cyclic=False)[0]
 
             # add CPO layers

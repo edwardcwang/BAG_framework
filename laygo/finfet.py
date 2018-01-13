@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Dict, Any, List, Tuple
 import abc
 
 from bag import float_to_si_string
+from bag.layout.routing.fill import fill_symmetric_max_density
 
 from .tech import LaygoTech
 from ..analog_mos.finfet import MOSTechFinfetBase
@@ -191,15 +192,56 @@ class LaygoTechFinfetBase(MOSTechFinfetBase, LaygoTech, metaclass=abc.ABCMeta):
 
     def get_laygo_sub_info(self, lch_unit, w, mos_type, threshold, **kwargs):
         # type: (int, int, str, str, **kwargs) -> Dict[str, Any]
-        return {}
+        return self.get_laygo_mos_info(lch_unit, w, mos_type, threshold, 'sub', '', '', **kwargs)
 
-    def get_laygo_end_info(self, lch_unit, mos_type, threshold, fg, is_end, blk_pitch):
-        # type: (int, str, str, int, bool, int) -> Dict[str, Any]
-        return {}
+    def get_laygo_end_info(self, lch_unit, mos_type, threshold, fg, is_end, blk_pitch, **kwargs):
+        # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
+        return self.get_analog_end_info(lch_unit, mos_type, threshold, fg, is_end, blk_pitch, **kwargs)
 
     def get_laygo_space_info(self, row_info, num_blk, left_blk_info, right_blk_info):
         # type: (Dict[str, Any], int, Any, Any) -> Dict[str, Any]
-        pass
+
+        ans = row_info.copy()
+        layout_info = row_info['layout_info'].copy()
+
+        lch_unit = layout_info['lch_unit']
+        row_info_list = layout_info['row_info_list']
+
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        sd_pitch = mos_constants['sd_pitch']
+        od_spx = mos_constants['od_spx']
+        od_fill_w_max = mos_constants['od_fill_w_max']
+
+        laygo_unit_fg = self.get_laygo_unit_fg()
+        od_fg_max = (od_fill_w_max - lch_unit) // sd_pitch - 1
+        od_spx_fg = -(-(od_spx - sd_pitch + lch_unit) // sd_pitch) + 2
+
+        # get OD fill X interval
+        num_fg = laygo_unit_fg * num_blk
+        area = num_fg - 2 * od_spx_fg
+        if area > 0:
+            od_x_list = fill_symmetric_max_density(area, area, laygo_unit_fg, od_fg_max, od_spx_fg,
+                                                   offset=od_spx_fg, fill_on_edge=True, cyclic=False)[0]
+        else:
+            od_x_list = []
+        # get row OD list
+        row_info_list = [RowInfo(od_x_list=od_x_list, od_y=row_info.od_y,
+                                 od_type=('dum', row_info.od_type[1]),
+                                 po_y=row_info.po_y, md_y=row_info.md_y)
+                         for row_info in row_info_list]
+
+        # update layout and result information dictionary.
+        layout_info['fg'] = num_fg
+        layout_info['row_info_list'] = row_info_list
+        layout_info['left_blk_info'] = left_blk_info[0]
+        layout_info['right_blk_info'] = right_blk_info[0]
+
+        lr_edge_info = (EdgeInfo(od_type=None, draw_layers={}), [])
+        ans['layout_info'] = layout_info
+        ans['left_edge_info'] = lr_edge_info
+        ans['right_edge_info'] = lr_edge_info
+
+        return ans
 
     def draw_laygo_connection(self, template, mos_info, blk_type, options):
         # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> None

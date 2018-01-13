@@ -135,8 +135,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         return {}
 
     @abc.abstractmethod
-    def get_laygo_end_info(self, lch_unit, mos_type, threshold, fg, is_end, blk_pitch):
-        # type: (int, str, str, int, bool, int) -> Dict[str, Any]
+    def get_laygo_end_info(self, lch_unit, mos_type, threshold, fg, is_end, blk_pitch, **kwargs):
+        # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
         """Returns the LaygoBase end row layout information dictionary.
 
         Parameters
@@ -153,6 +153,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
             True if there are no block abutting the bottom.
         blk_pitch : int
             height quantization pitch, in resolution units.
+        **kwargs :
+            optional parameters.
 
         Returns
         -------
