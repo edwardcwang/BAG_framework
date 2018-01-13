@@ -152,7 +152,7 @@ class LaygoIntvSet(object):
 
 
 class LaygoBaseInfo(object):
-    """A class that calculates informations to assist in LaygoBase layout calculations.
+    """A class that provides information to assist in LaygoBase layout calculations.
 
     Parameters
     ----------
@@ -197,10 +197,10 @@ class LaygoBaseInfo(object):
         for lay, w, sp in zip(self._config['tr_layers'], self._config['tr_widths'], self._config['tr_spaces']):
             self.grid.add_new_layer(lay, sp, w, tdir, override=True, unit_mode=True)
             if tdir == 'y':
-                tdir = 'x'
                 pitch = w + sp
                 if pitch % sd_pitch != 0:
                     raise ValueError('laygo vertical routing pitch must be multiples of %d' % sd_pitch)
+                tdir = 'x'
             else:
                 tdir = 'y'
         self.grid.update_block_pitch()

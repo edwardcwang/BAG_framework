@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 
 class AnalogBaseInfo(object):
-    """A class that calculates informations to assist in AnalogBase layout calculations.
+    """A class that provides information to assist in AnalogBase layout calculations.
 
     Parameters
     ----------
