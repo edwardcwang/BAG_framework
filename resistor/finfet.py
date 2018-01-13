@@ -32,7 +32,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_port_info(self, xc, yc, wres, port_yb, port_yt, resolution):
-        # type: (int, int, int, int, int, float) -> Tuple[List[Tuple[Tuple[str, str], BBox]], List[Dict[str, Any]]]
+        # type: (int, int, int, int, int, float) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]
         """Calculate port geometry information.
 
         Parameters
@@ -52,10 +52,10 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        rect_list : List[Tuple[Tuple[str, str], BBox]]
-            list of rectangles to create, in (layer, bbox) tuple form.
+        rect_list : List[Dict[str, Any]]
+            list of rectangle information dictionaries.
         via_list : List[Dict[str, Any]]
-            list of vias to create.
+            list of vias parameters.
 
         """
         return [], []
@@ -140,7 +140,6 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         mp_h = self.res_config['mp_h']
         res_max_density = self.res_config['res_max_density']
         od_min_density = self.res_config['od_min_density']
-        m1_sp_max = self.res_config['m1_sp_max']
 
         po_res_spx = max(po_res_sp, mp_res_sp - po_lch // 2)
 
@@ -152,7 +151,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
 
-        # check RH_TN density
+        # check resistor density
         max_res_area = int(width * height * res_max_density)
         if wres * lres > max_res_area:
             return None
@@ -223,7 +222,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         )
 
         # compute port information
-        # first, compute M2 routing track location
+        # first, compute port track location
         xc = width // 2
         rpdmy_yb = height // 2 - l // 2
         rpdmy_yt = rpdmy_yb + l
@@ -232,17 +231,17 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         bot_layer = self.get_bot_layer()
         bot_pitch = grid.get_track_pitch(bot_layer, unit_mode=True)
         bot_num_tr = height // bot_pitch
-        # first, find M2 tracks such that the top track of this block and the bottom track of
+        # first, find port tracks such that the top track of this block and the bottom track of
         # the top adjacent block is track_spaces[0] tracks apart.  the actual tracks cannot exceed these.
         top_tr_max = bot_num_tr - (track_widths[0] + track_spaces[0] + 1) / 2
         bot_tr_min = (track_widths[0] + track_spaces[0] + 1) / 2 - 1
-        # find M2 tracks closest to ports
+        # find port tracks closest to ports
         top_tr = min(top_tr_max, grid.coord_to_nearest_track(bot_layer, top_yc, half_track=True, mode=1,
                                                              unit_mode=True))
         bot_tr = max(bot_tr_min, grid.coord_to_nearest_track(bot_layer, bot_yc, half_track=True, mode=-1,
                                                              unit_mode=True))
 
-        # get VIA0/VIA1 parameters, and metal 1 bounding box
+        # get port information
         port_info = []
         for port_name, yc, m2_tr in (('bot', bot_yc, bot_tr), ('top', top_yc, top_tr)):
             port_yb, port_yt = grid.get_wire_bounds(bot_layer, m2_tr, track_widths[0], unit_mode=True)
@@ -251,39 +250,43 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         # compute fill information
         # compute fill Y coordinate in core block
-        # compute fill Y coordinates between ports inside the cell
-        m1_bot_box = port_info[0][1][0][0]
-        m1_top_box = port_info[1][1][0][0]
-        m1_w = m1_bot_box.width_unit
-        m1_h = m1_bot_box.height_unit
-        m1_bot_yb, m1_bot_yt = m1_bot_box.bottom_unit, m1_bot_box.top_unit
-        m1_top_yb, m1_top_yt = m1_top_box.bottom_unit, m1_top_box.top_unit
-        m1_core_mid_y = fill_symmetric_const_space(m1_top_yb - m1_bot_yt, m1_sp_max, m1_h, m1_h, offset=m1_bot_yt)
-        # compute fill Y coordinates between ports outside the cell
-        m1_core_top_y = fill_symmetric_const_space(m1_bot_yb + height - m1_top_yt, m1_sp_max, m1_h, m1_h,
-                                                   offset=m1_top_yt)
-        # combine fill Y coordinates together in one list
-        fill_len2 = -(-len(m1_core_top_y) // 2)
-        m1_core_y = [(a - height, b - height) for (a, b) in m1_core_top_y[-fill_len2:]]
-        m1_core_y.append((m1_bot_yb, m1_bot_yt))
-        m1_core_y.extend(m1_core_mid_y)
-        m1_core_y.append((m1_top_yb, m1_top_yt))
-        m1_core_y.extend(m1_core_top_y[:fill_len2])
+        bot_rect_list = port_info[0][1]
+        top_rect_list = port_info[1][1]
+        fill_info = []
+        for bot_rect_info, top_rect_info in zip(bot_rect_list, top_rect_list):
+            if bot_rect_info['do_fill']:
+                layer = bot_rect_info['layer']
+                exc_layer = bot_rect_info['exc_layer']
+                sp_max = bot_rect_info['sp_max']
+                sp_bnd = bot_rect_info['sp_bnd']
+                bot_box = bot_rect_info['bbox']
+                top_box = top_rect_info['bbox']
+                w, h = bot_box.width_unit, bot_box.height_unit
+                bot_yb, bot_yt = bot_box.bottom_unit, bot_box.top_unit
+                top_yb, top_yt = top_box.bottom_unit, top_box.top_unit
+                # compute fill Y coordinates between ports inside the cell
+                core_mid_y = fill_symmetric_const_space(top_yb - bot_yt, sp_max, h, h, offset=bot_yt)
+                # compute fill Y coordinates between ports outside the cell
+                core_top_y = fill_symmetric_const_space(bot_yb + height - top_yt, sp_max, h, h, offset=top_yt)
+                # combine fill Y coordinates together in one list
+                fill_len2 = -(-len(core_top_y) // 2)
+                core_y = [(a - height, b - height) for (a, b) in core_top_y[-fill_len2:]]
+                core_y.append((bot_yb, bot_yt))
+                core_y.extend(core_mid_y)
+                core_y.append((top_yb, top_yt))
+                core_y.extend(core_top_y[:fill_len2])
+                # compute fill X coordinate in core block
+                xl, xr = bot_box.left_unit, bot_box.right_unit
+                sp_xl = -width + xr
+                sp_xr = xl
+                core_x = fill_symmetric_const_space(sp_xr - sp_xl, sp_max, w, w, offset=sp_xl)
+                core_x.append((xl, xr))
+                core_x.extend(((a + width, b + width) for (a, b) in core_x[:-1]))
 
-        # compute fill X coordinate in core block
-        m1_xl, m1_xr = m1_bot_box.left_unit, m1_bot_box.right_unit
-        sp_xl = -width + m1_xr
-        sp_xr = m1_xl
-        m1_core_x = fill_symmetric_const_space(sp_xr - sp_xl, m1_sp_max, m1_w, m1_w, offset=sp_xl)
-        m1_core_x.append((m1_xl, m1_xr))
-        m1_core_x.extend(((a + width, b + width) for (a, b) in m1_core_x[:-1]))
+                fill_info.append((layer, exc_layer, w, h, core_x, core_y, sp_max, sp_bnd))
 
         layout_info['port_info'] = port_info
-        layout_info['m1_core_x'] = m1_core_x
-        layout_info['m1_core_y'] = m1_core_y
-        layout_info['m1_w'] = m1_w
-        layout_info['m1_h'] = m1_h
-
+        layout_info['fill_info'] = fill_info
         return layout_info
 
     def get_lr_edge_info(self,  # type: ResTechFinfetBase
@@ -321,8 +324,6 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         imp_od_enc = self.res_config['imp_od_enc']
         nw_od_encx = self.res_config['nw_od_encx']
         rtop_od_enc = self.res_config['rtop_od_enc']
-        m1_sp_max = self.res_config['m1_sp_max']
-        m1_sp_bnd = self.res_config['m1_sp_bnd']
 
         po_res_spx = max(po_res_sp, mp_res_sp - po_lch // 2)
 
@@ -332,8 +333,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         core_lr_od_loc = core_info['lr_od_loc'][0]
         core_top_od_loc = core_info['top_od_loc'][0]
         core_bot_od_loc = core_info['bot_od_loc'][0]
-        m1_core_x = core_info['m1_core_x']
-        m1_w = core_info['m1_w']
+        core_fill_info = core_info['fill_info']
 
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
 
@@ -348,7 +348,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         if wedge < wedge_min:
             return None
 
-        # check RH_TN density rule
+        # check resistor density rule
         max_res_area = int(wedge * hcore * res_max_density)
         if wres_lr * lres > max_res_area:
             return None
@@ -383,10 +383,13 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         # if we get here, then all density rules are met
         # compute fill X coordinate in edge block
-        sp_xl = m1_sp_bnd + m1_w
-        sp_xr = wedge + m1_core_x[0][0]
-        m1_edge_x = fill_symmetric_const_space(sp_xr - sp_xl, m1_sp_max, m1_w, m1_w, offset=sp_xl)
-        m1_edge_x.insert(0, (m1_sp_bnd, sp_xl))
+        fill_edge_x_list = []
+        for _, _, w, h, core_x, core_y, sp_max, sp_bnd in core_fill_info:
+            sp_xl = sp_bnd + w
+            sp_xr = wedge + core_x[0][0]
+            edge_x = fill_symmetric_const_space(sp_xr - sp_xl, sp_max, w, w, offset=sp_xl)
+            edge_x.insert(0, (sp_bnd, sp_xl))
+            fill_edge_x_list.append(edge_x)
 
         # return layout information
         return dict(
@@ -399,7 +402,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             well_xl=edge_lr_dum_xl - nw_od_encx,
             rtop_xl=edge_lr_dum_xl - rtop_od_enc,
             vt_xl=edge_lr_dum_xl - imp_od_enc,
-            m1_edge_x=m1_edge_x,
+            fill_edge_x_list=fill_edge_x_list,
         )
 
     def get_tb_edge_info(self,  # type: ResTechFinfetBase
@@ -436,8 +439,6 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         imp_od_enc = self.res_config['imp_od_enc']
         nw_od_ency = self.res_config['nw_od_ency']
         rtop_od_enc = self.res_config['rtop_od_enc']
-        m1_sp_max = self.res_config['m1_sp_max']
-        m1_sp_bnd = self.res_config['m1_sp_bnd']
 
         fin_h = self.mos_tech.mos_config['fin_h']
         fin_p = self.mos_tech.mos_config['mos_pitch']
@@ -450,8 +451,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         core_lr_dum_w = core_info['lr_dum_w']
         core_tb_dum_w = core_info['tb_dum_w']
         core_lr_od_loc = core_info['lr_od_loc'][0]
-        m1_core_y = core_info['m1_core_y']
-        m1_h = core_info['m1_h']
+        core_fill_info = core_info['fill_info']
 
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
 
@@ -513,10 +513,13 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         # if we get here, then all density rules are met
         # compute fill Y coordinate in edge block
-        sp_yb = m1_sp_bnd + m1_h
-        sp_yt = hedge + m1_core_y[0][0]
-        m1_edge_y = fill_symmetric_const_space(sp_yt - sp_yb, m1_sp_max, m1_h, m1_h, offset=sp_yb)
-        m1_edge_y.insert(0, (m1_sp_bnd, sp_yb))
+        fill_edge_y_list = []
+        for _, _, w, h, core_x, core_y, sp_max, sp_bnd in core_fill_info:
+            sp_yb = sp_bnd + h
+            sp_yt = hedge + core_y[0][0]
+            edge_y = fill_symmetric_const_space(sp_yt - sp_yb, sp_max, h, h, offset=sp_yb)
+            edge_y.insert(0, (sp_bnd, sp_yb))
+            fill_edge_y_list.append(edge_y)
 
         # return layout information
         return dict(
@@ -527,7 +530,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             well_yb=edge_tb_dum_yb - nw_od_ency,
             rtop_yb=edge_tb_dum_yb - rtop_od_enc,
             vt_yb=edge_tb_dum_yb - po_od_ext - vt_po_ext,
-            m1_edge_y=m1_edge_y,
+            fill_edge_y_list=fill_edge_y_list,
         )
 
     def _draw_dummies(self, template, xc, fg, od_po_loc):
@@ -583,54 +586,11 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
                 template.add_rect(po_dum_lay, BBox(od_xl, po_yb, po_xr, po_yt, res, unit_mode=True),
                                   nx=fg, spx=po_pitch * res)
 
-    def _get_via0_info(self, xc, yc, wres, resolution):
-        """Compute resistor M0PO-to-M1 via parameters and metal 1 bounding box."""
-        m0po_res_exth = self.res_config['m0po_res_exth']
-        v_h = self.res_config['via0_h']
-        via0_w_sq, via0_w_rect = self.res_config['via0_w']
-        via0_sp_sq, via0_sp_rect = self.res_config['via0_sp']
-        via0_m0po_enc = self.res_config['via0_m0po_enc']
-        v_enc2xy = self.res_config['via0_m1_enc']
-        m0po_h = self.res_config['m0po_h']
-
-        m0po_w = wres + m0po_res_exth * 2
-        # step 3B: determine VIA0 parameters
-        nvia_eff = 0
-        nv = 0
-        v_w = 0
-        v_sp = 0
-        v_enc1x = via0_m0po_enc
-        v_enc1y = (m0po_h - v_h) // 2
-        for mult, vw, vsp in ((1, via0_w_sq, via0_sp_sq), (2, via0_w_rect, via0_sp_rect)):
-            nvia = (m0po_w - 2 * via0_m0po_enc + vsp) // (vw + vsp)
-            if nvia * mult > nvia_eff:
-                nvia_eff = nvia * mult
-                nv = nvia
-                v_w, v_sp = vw, vsp
-                v_enc1x = (m0po_w - (nvia * (vw + vsp) - vsp)) // 2
-
-        # step 3C: add VIA0 and calculate M1 bounding box.
-        via_params = dict(via_type='M1_M0PO', loc=[xc, yc],
-                          num_cols=nv, sp_cols=v_sp,
-                          enc1=[v_enc1x, v_enc1x, v_enc1y, v_enc1y],
-                          enc2=[v_enc2xy, v_enc2xy, v_enc2xy, v_enc2xy],
-                          cut_width=v_w, cut_height=v_h, unit_mode=True)
-
-        varr_w = nv * (v_w + v_sp) - v_sp
-        m1_xl = xc - (varr_w // 2) - v_enc2xy
-        m1_xr = m1_xl + 2 * v_enc2xy + varr_w
-        m1_yb = yc - (v_h // 2) - v_enc2xy
-        m1_yt = m1_yb + 2 * v_enc2xy + v_h
-
-        m1_box = BBox(m1_xl, m1_yb, m1_xr, m1_yt, resolution, unit_mode=True)
-        return via_params, m1_box
-
     def draw_res_core(self, template, layout_info):
         # type: (TemplateBase, Dict[str, Any]) -> None
 
         mos_lay_table = self.config['mos_layer_table']
         res_lay_table = self.config['res_layer_table']
-        exc_lay_table = self.config['metal_exclude_table']
 
         fin_h2 = self.mos_tech.mos_config['fin_h'] // 2
         fin_p2 = self.mos_tech.mos_config['mos_pitch'] // 2
@@ -658,6 +618,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         lr_fg = core_info['lr_fg']
         tb_fg = core_info['tb_fg']
         port_info = core_info['port_info']
+        fill_info = core_info['fill_info']
 
         xc, yc = wcore // 2, hcore // 2
         wres, lres, _, _ = self.get_res_dimension(l, w)
@@ -705,25 +666,18 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         self._draw_dummies(template, xc, tb_fg, top_od_loc)
         self._draw_dummies(template, xc, tb_fg, bot_od_loc)
 
-        # draw metal exclusion layers
-        template.add_rect(exc_lay_table[1], arr_box)
-
-        # draw M1 fill
-        m1_x_list = core_info['m1_core_x']
-        m1_y_list = core_info['m1_core_y']
-        m1_lay = self.tech_info.get_layer_name(1)
-        if isinstance(m1_lay, tuple):
-            m1_lay = m1_lay[0]
-        for xl, xr in m1_x_list:
-            for yb, yt in m1_y_list:
-                template.add_rect(m1_lay, BBox(xl, yb, xr, yt, res, unit_mode=True))
+        # draw metal fill
+        for layer, exc_layer, w, h, core_x, core_y, sp_max, sp_bnd in fill_info:
+            template.add_rect(exc_layer, arr_box)
+            for xl, xr in core_x:
+                for yb, yt in core_y:
+                    template.add_rect(layer, BBox(xl, yb, xr, yt, res, unit_mode=True))
 
     def draw_res_boundary(self, template, boundary_type, layout_info, end_mode):
         # type: (TemplateBase, str, Dict[str, Any], bool) -> None
 
         mos_lay_table = self.config['mos_layer_table']
         res_lay_table = self.config['res_layer_table']
-        exc_lay_table = self.config['metal_exclude_table']
 
         fin_h2 = self.mos_tech.mos_config['fin_h'] // 2
         fin_p2 = self.mos_tech.mos_config['mos_pitch'] // 2
@@ -766,6 +720,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         rtop_yb = edge_tb_info['rtop_yb']
         vt_yb = edge_tb_info['vt_yb']
 
+        core_fill_info = core_info['fill_info']
         core_lr_od_loc = core_info['lr_od_loc']
         core_top_od_loc = core_info['top_od_loc']
         core_bot_od_loc = core_info['bot_od_loc']
@@ -797,8 +752,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             # draw bottom/top edge dummies
             self._draw_dummies(template, edge_tb_xc, edge_tb_fg, core_bot_od_loc)
             self._draw_dummies(template, edge_tb_xc, edge_tb_fg, core_top_od_loc)
-            m1_x_list = edge_lr_info['m1_edge_x']
-            m1_y_list = core_info['m1_core_y']
+            fill_x_list = edge_lr_info['fill_edge_x_list']
+            fill_y_list = [info[5] for info in core_fill_info]
         elif boundary_type == 'tb':
             # get bounding box and RH coordinates
             bnd_box = BBox(0, 0, w_core, h_edge, res, unit_mode=True)
@@ -814,8 +769,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             # draw left/right edge dummies
             self._draw_dummies(template, 0, core_lr_fg, edge_lr_od_loc)
             self._draw_dummies(template, w_core, core_lr_fg, edge_lr_od_loc)
-            m1_x_list = core_info['m1_core_x']
-            m1_y_list = edge_tb_info['m1_edge_y']
+            fill_x_list = [info[4] for info in core_fill_info]
+            fill_y_list = edge_tb_info['fill_edge_y_list']
         else:
             # get bounding box and RH coordinates
             bnd_box = BBox(0, 0, w_edge, h_edge, res, unit_mode=True)
@@ -828,8 +783,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             self._draw_dummies(template, edge_tb_xc, edge_tb_fg, edge_bot_od_loc)
             # draw left edge dummies
             self._draw_dummies(template, edge_lr_xc, edge_lr_fg, edge_lr_od_loc)
-            m1_x_list = edge_lr_info['m1_edge_x']
-            m1_y_list = edge_tb_info['m1_edge_y']
+            fill_x_list = edge_lr_info['fill_edge_x_list']
+            fill_y_list = edge_tb_info['fill_edge_y_list']
 
         # draw RH
         template.add_rect(rpo_lay, BBox(rh_xl, rh_yb, rh_xr, rh_yt, res, unit_mode=True))
@@ -856,13 +811,9 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         template.array_box = bnd_box
         template.add_cell_boundary(bnd_box)
 
-        # draw M1 exclusion layer
-        template.add_rect(exc_lay_table[1], bnd_box)
-
-        # draw M1 fill
-        m1_lay = self.tech_info.get_layer_name(1)
-        if isinstance(m1_lay, tuple):
-            m1_lay = m1_lay[0]
-        for xl, xr in m1_x_list:
-            for yb, yt in m1_y_list:
-                template.add_rect(m1_lay, BBox(xl, yb, xr, yt, res, unit_mode=True))
+        # draw metal fill
+        for (layer, exc_layer, _, _, _, _, _, _), fill_x, fill_y in zip(core_fill_info, fill_x_list, fill_y_list):
+            template.add_rect(exc_layer, bnd_box)
+            for xl, xr in fill_x:
+                for yb, yt in fill_y:
+                    template.add_rect(layer, BBox(xl, yb, xr, yt, res, unit_mode=True))
