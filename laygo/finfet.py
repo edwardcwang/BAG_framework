@@ -259,7 +259,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
             is_sub_ring=False,
             dnw_mode='',
             # adjacent block information list
-            adj_info_list=[],
+            adj_row_list=[],
             left_blk_info=None,
             right_blk_info=None,
             # laygo connections information

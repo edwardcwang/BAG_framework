@@ -483,7 +483,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             dttr = self.grid.coord_to_nearest_track(hm_layer, ytop - delta, half_track=True, mode=-1, unit_mode=True)
             d_intv = (dbtr, dttr + 1)
         else:
-            h = info['blk_height']
+            h = info['layout_info']['arr_y'][1]
             gyb = ycur + h - gyt
             dyt = ycur + h - dyb
             syt = ycur + h - syb
@@ -697,7 +697,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         return row_specs
 
     def _place_with_num_tracks(self, row_info, row_orient, y0, hm_layer, conn_delta, mos_pitch, ng, ngb, nds):
-        blk_height = row_info['blk_height']
+        blk_height = row_info['layout_info']['arr_y'][1]
         if row_orient == 'R0':
             # gate tracks on bottom
             num_tr1 = num_tr2 = ng
@@ -737,7 +737,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         sub_ext_info = sub_info['ext_top_info']
 
         # quantize substrate height to top layer pitch.
-        sub_height = sub_info['blk_height']
+        sub_height = sub_info['layout_info']['arr_y'][1]
         min_sub_height = mos_pitch
         sub_pitch = lcm([mos_pitch, self.grid.get_track_pitch(self._laygo_info.top_layer, unit_mode=True)])
         for layer, num_tr in min_sub_tracks:
@@ -803,7 +803,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 ext_top_info = mos_info['ext_bot_info']
                 ext_bot_info = mos_info['ext_top_info']
 
-            blk_height = mos_info['blk_height']
+            blk_height = mos_info['layout_info']['arr_y'][1]
             # step 1: find Y coordinate
             if idx == 0 and is_sub:
                 # bottom substrate has orientation R0, just abut to bottom.

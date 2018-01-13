@@ -489,7 +489,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         bot_layer = mos_constants[wire_type + '_bot_layer']
         widths = mos_constants[wire_type + '_conn_w']
         via_info = mos_constants[wire_type + '_via']
-        dirs = mos_constants['wire_type + _conn_dir']
+        dirs = mos_constants[wire_type + '_conn_dir']
 
         conn_info = {}
         layers = range(bot_layer, bot_layer + len(dirs))
@@ -582,6 +582,12 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             d_bot_layer = ans['d_bot_layer']
             ans['mos_conn_w'] = d_conn_w[dum_layer - d_bot_layer]
             ans['dum_conn_w'] = d_conn_w[mos_layer - d_bot_layer]
+            # handle laygo_conn_w
+            if 'laygo_d_conn_w' in ans:
+                d_conn_w = ans['laygo_d_conn_w']
+                d_bot_layer = ans['laygo_d_bot_layer']
+                laygo_layer = self.get_dig_conn_layer()
+                ans['laygo_conn_w'] = d_conn_w[laygo_layer - d_bot_layer]
 
             # handle sd_pitch
             offset, scale = ans['sd_pitch_constants']
@@ -832,6 +838,22 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         """
         mos_constants = self.get_mos_tech_constants(lch_unit)
         return mos_constants['num_sd_per_track']
+
+    def get_laygo_num_fingers_per_sd(self, lch_unit):
+        # type: (int) -> int
+        """Returns the number of transistor source/drain junction per vertical track.
+
+        Parameters
+        ----------
+        lch_unit : int
+            channel length in resolution units
+
+        Returns
+        -------
+        num_sd_per_track : number of source/drain junction per vertical track.
+        """
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        return mos_constants['laygo_num_sd_per_track']
 
     def get_sd_pitch(self, lch_unit):
         # type: (int) -> int
