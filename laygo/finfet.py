@@ -63,6 +63,23 @@ class LaygoTechFinfetBase(MOSTechFinfetBase, LaygoTech, metaclass=abc.ABCMeta):
         """
         return {}
 
+    @abc.abstractmethod
+    def draw_laygo_space_geometries(self, template, space_info, left_blk_info, right_blk_info):
+        # type: (TemplateBase, Dict[str, Any], Any, Any) -> None
+        """Draw any geometries necessary in the given laygo space template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        space_info : Dict[str, Any]
+            the layout information dictionary.
+        left_blk_info : Any
+            left block information.
+        right_blk_info : Any
+            right block information.
+        """
+
     def get_default_end_info(self):
         # type: () -> Any
         return EdgeInfo(od_type=None, draw_layers={})
@@ -279,10 +296,37 @@ class LaygoTechFinfetBase(MOSTechFinfetBase, LaygoTech, metaclass=abc.ABCMeta):
 
         return ext_groups
 
-    def draw_laygo_connection(self, template, mos_info, blk_type, options):
-        # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> None
-        pass
-
     def draw_laygo_space_connection(self, template, space_info, left_blk_info, right_blk_info):
         # type: (TemplateBase, Dict[str, Any], Any, Any) -> Tuple[Any, Any]
+
+        # draw geometries
+        self.draw_laygo_space_geometries(template, space_info, left_blk_info, right_blk_info)
+
+        layout_info = space_info['layout_info']
+        ext_top_info = space_info['ext_top_info']
+        ext_bot_info = space_info['ext_bot_info']
+
+        fg = layout_info['fg']
+        lch_unit = layout_info['lch_unit']
+
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        pode_is_poly = mos_constants['pode_is_poly']
+
+        # figure out poly types per finger
+        od_type_list = ('mos', 'sub', 'mos_fake')
+        po_edge_code = 2 if pode_is_poly else 1
+        po_types = [po_edge_code if left_blk_info[0].od_type in od_type_list else 0]
+        po_types.extend((0 for _ in range(fg - 2)))
+        po_types.append(po_edge_code if right_blk_info[0].od_type in od_type_list else 0)
+
+        # noinspection PyProtectedMember
+        ext_top_info = ext_top_info._replace(po_types=po_types)
+        # noinspection PyProtectedMember
+        ext_bot_info = ext_bot_info._replace(po_types=po_types)
+
+        # return new extension information objects
+        return ext_bot_info, ext_top_info
+
+    def draw_laygo_connection(self, template, mos_info, blk_type, options):
+        # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> None
         pass

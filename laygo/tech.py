@@ -206,27 +206,9 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         return []
 
     @abc.abstractmethod
-    def draw_laygo_connection(self, template, mos_info, blk_type, options):
-        # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> None
-        """Draw digital transistor connection in the given template.
-
-        Parameters
-        ----------
-        template : TemplateBase
-            the TemplateBase object to draw layout in.
-        mos_info : Dict[str, Any]
-            the transistor layout information dictionary.
-        blk_type : str
-            the digital block type.
-        options : Dict[str, Any]
-            any additional connection options.
-        """
-        pass
-
-    @abc.abstractmethod
     def draw_laygo_space_connection(self, template, space_info, left_blk_info, right_blk_info):
         # type: (TemplateBase, Dict[str, Any], Any, Any) -> Tuple[Any, Any]
-        """Draw digital transistor connection in the given template.
+        """Draw any space geometries necessary in the given template.
 
         Parameters
         ----------
@@ -245,6 +227,24 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
             space block bottom extension information.
         top_ext_info : Any
             space block top extension information.
+        """
+        pass
+
+    @abc.abstractmethod
+    def draw_laygo_connection(self, template, mos_info, blk_type, options):
+        # type: (TemplateBase, Dict[str, Any], str, Dict[str, Any]) -> None
+        """Draw digital transistor connection in the given template.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        mos_info : Dict[str, Any]
+            the transistor layout information dictionary.
+        blk_type : str
+            the digital block type.
+        options : Dict[str, Any]
+            any additional connection options.
         """
         pass
 
