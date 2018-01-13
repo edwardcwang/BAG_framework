@@ -53,7 +53,20 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         Returns
         -------
         rect_list : List[Dict[str, Any]]
-            list of rectangle information dictionaries.
+            list of rectangle information dictionaries.  Must have the following fields:
+
+            do_fill : bool
+                True to draw fill geometries for this layer.
+            layer : Tuple[str, str]
+                the layer name.
+            exc_layer : Tuple[str, str]
+                the exclusion layer name.
+            sp_max : int
+                maximum space between fill blocks.
+            sp_bnd : int
+                space of fill blocks to boundary.
+            bbox : BBox
+                the bounding box of the rectangle.
         via_list : List[Dict[str, Any]]
             list of vias parameters.
 
