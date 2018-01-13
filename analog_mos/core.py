@@ -465,8 +465,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         """
         pass
 
-    def get_conn_drc_info(self, lch_unit, wire_type):
-        # type: (int, str) -> Dict[int, Dict[str, Any]]
+    def get_conn_drc_info(self, lch_unit, wire_type, is_laygo=False):
+        # type: (int, str, bool) -> Dict[int, Dict[str, Any]]
         """Get DRC information about gate/drain/source wire on each layer.
 
         Parameters
@@ -475,17 +475,21 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             channel length, in resolution units.
         wire_type : str
             the wire type, either 'g' or 'd'.
+        is_laygo : bool
+            True if this is for laygo connections.
 
         Returns
         -------
         drc_info : Dict[int, Dict[str, Any]]
             a dictionary from layer ID to DRC information dictionary.
         """
+        if is_laygo:
+            wire_type = 'laygo_' + wire_type
         mos_constants = self.get_mos_tech_constants(lch_unit)
-        bot_layer = mos_constants['%s_bot_layer' % wire_type]
-        widths = mos_constants['%s_conn_w' % wire_type]
-        via_info = mos_constants['%s_via' % wire_type]
-        dirs = mos_constants['%s_conn_dir' % wire_type]
+        bot_layer = mos_constants[wire_type + '_bot_layer']
+        widths = mos_constants[wire_type + '_conn_w']
+        via_info = mos_constants[wire_type + '_via']
+        dirs = mos_constants['wire_type + _conn_dir']
 
         conn_info = {}
         layers = range(bot_layer, bot_layer + len(dirs))

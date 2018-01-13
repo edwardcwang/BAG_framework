@@ -60,6 +60,12 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         fill_info :
             a dictionary from metal layer tuple to tuple of exclusion
             layer name and list of metal fill Y intervals.
+        g_conn_y :
+            gate wire Y interval.
+        gb_conn_y :
+            gate-bar wire Y interval.
+        ds_conn_y :
+            drain/source wire Y interval.
         """
         return {}
 
@@ -234,6 +240,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
 
         blk_y = (blk_yb, blk_yt)
         layout_info = dict(
+            is_sub_row=is_sub,
             blk_type='mos',
             lch_unit=lch_unit,
             fg=fg,
