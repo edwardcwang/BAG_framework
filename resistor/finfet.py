@@ -397,13 +397,15 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             fill_edge_x_list.append(edge_x)
 
         # return layout information
+        well_xl = edge_lr_dum_xl - imp_od_encx
         return dict(
             lr_fg=edge_lr_fg,
             tb_fg=edge_tb_fg,
             lr_xc=edge_lr_xc,
             tb_xc=edge_tb_xc,
             fb_xl=edge_lr_dum_xl - finfet_od_extx,
-            imp_xl=edge_lr_dum_xl - imp_od_encx,
+            imp_xl=well_xl,
+            well_xl=well_xl,
             rtop_xl=edge_lr_dum_xl - rtop_od_encx,
             fill_edge_x_list=fill_edge_x_list,
         )
@@ -649,12 +651,12 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         # draw vias and ports
         bot_layer = self.get_bot_layer()
         for port_name, rect_list, via_list in port_info:
-            for lay, bbox in rect_list:
-                template.add_rect(lay, bbox)
+            for rect_info in rect_list:
+                template.add_rect(rect_info['layer'], rect_info['bbox'])
             for via_params in via_list:
                 template.add_via_primitive(**via_params)
 
-            tr_bbox = rect_list[-1][1]
+            tr_bbox = rect_list[-1]['bbox']
             port_tr = grid.coord_to_track(bot_layer, tr_bbox.yc_unit, unit_mode=True)
             template.add_pin(port_name, WireArray(TrackID(bot_layer, port_tr, width=track_widths[0]),
                                                   tr_bbox.left, tr_bbox.right), show=False)
