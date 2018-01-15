@@ -169,10 +169,10 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         is_sub = (mos_type == 'ptap' or mos_type == 'ntap')
         sub_type = 'ptap' if mos_type == 'nch' or mos_type == 'ptap' else 'ntap'
         po_edge_code = 2 if pode_is_poly else 1
+        fg = 2
         if blk_type.startswith('fg1'):
             mtype = (mos_type, mos_type)
             od_type = 'mos'
-            fg = 1
             od_intv = (0, 1)
             edgel_info = EdgeInfo(od_type=od_type, draw_layers={})
             edger_info = EdgeInfo(od_type=None, draw_layers={})
@@ -181,7 +181,6 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
             mtype = (sub_type, mos_type)
             od_type = 'sub'
             if is_sub:
-                fg = 2
                 od_intv = (0, 2)
                 edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={})
                 po_types = (1, 1)
@@ -193,7 +192,6 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         else:
             mtype = (mos_type, mos_type)
             od_type = 'mos'
-            fg = 2
             od_intv = (0, 2)
             edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={})
             po_types = (1, 1)
