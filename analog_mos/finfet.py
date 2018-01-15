@@ -1551,15 +1551,18 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # draw OD and figure out PO/MD info
             po_on_od = [False] * fg
             md_on_od = [False] * (fg + 1)
+            po_is_edge = [False] * fg
             if od_yt > od_yb:
                 for od_start, od_stop in od_x_list:
                     # mark PO/MD indices that are on OD
-                    if od_start - 1 >= 0:
+                    if od_start >= 1:
                         po_on_od[od_start - 1] = True
+                        po_is_edge[od_start - 1] = True
                     for idx in range(od_start, od_stop + 1):
                         md_on_od[idx] = True
                         if idx < fg:
                             po_on_od[idx] = True
+                            po_is_edge[idx] = idx == od_stop
 
                     if draw_od:
                         od_xl = po_xc - lch_unit // 2 + (od_start - 1) * sd_pitch
@@ -1571,9 +1574,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 for idx in range(fg):
                     po_xl = po_xc + idx * sd_pitch - lch_unit // 2
                     po_xr = po_xl + lch_unit
+                    is_edge = po_is_edge[idx]
                     if po_on_od[idx]:
                         cur_od_type = od_type
-                        is_edge = False
                     else:
                         if idx == 0:
                             cur_od_type = left_blk_info.od_type
@@ -1583,7 +1586,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                             is_edge = True
                         else:
                             cur_od_type = None
-                            is_edge = False
 
                     if is_edge and cur_od_type is not None:
                         if cur_od_type == 'dum':

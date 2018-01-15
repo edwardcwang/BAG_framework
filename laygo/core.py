@@ -277,7 +277,7 @@ class LaygoBaseInfo(object):
 
     @property
     def tot_height_pitch(self):
-        return self.grid.get_block_size(self.top_layer, unit_mode=True)[1]
+        return lcm([self.grid.get_block_size(self.top_layer, unit_mode=True)[1], self.mos_pitch])
 
     @property
     def num_col(self):
