@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING, List, Dict, Tuple, Optional, Sequence, Any, Un
 
 from jinja2 import Template
 import yaml
-from future.utils import with_metaclass
 
 import bag.io
 from ..verification import make_checker
@@ -131,7 +130,7 @@ def get_python_template(lib_name, cell_name, primitive_table):
     return Template(content).render(**param_dict)
 
 
-class DbAccess(with_metaclass(abc.ABCMeta, object)):
+class DbAccess(object, metaclass=abc.ABCMeta):
     """A class that manipulates the CAD database.
 
     Parameters
