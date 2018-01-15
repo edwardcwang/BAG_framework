@@ -1,26 +1,4 @@
 # -*- coding: utf-8 -*-
-########################################################################################################################
-#
-# Copyright (c) 2014, Regents of the University of California
-# All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-# following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-#   disclaimer.
-# 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-#    following disclaimer in the documentation and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-# INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-########################################################################################################################
 
 """This module defines base design module class and primitive design classes.
 """
@@ -62,7 +40,7 @@ class ModuleDB(MasterDB):
         path to create generated library in.
     """
     def __init__(self, lib_defs, tech_info, sch_exc_libs, prj=None, name_prefix='', name_suffix='', lib_path=''):
-        # type: (str, TechInfo, List[str], Optional[BagProject], str, str) -> None
+        # type: (str, TechInfo, List[str], Optional[BagProject], str, str, str) -> None
         super(ModuleDB, self).__init__('', lib_defs=lib_defs, name_prefix=name_prefix, name_suffix=name_suffix)
 
         self._prj = prj
@@ -98,6 +76,7 @@ class ModuleDB(MasterDB):
         kwargs['lib_name'] = lib_name
         kwargs['params'] = params
         kwargs['used_names'] = used_cell_names
+        # noinspection PyTypeChecker
         return gen_cls(self, **kwargs)
 
     def create_masters_in_db(self, lib_name, content_list, debug=False):
@@ -384,7 +363,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
     # noinspection PyUnusedLocal
     def __init__(self, database, yaml_fname, **kwargs):
-        # type: (ModuleDB, str, None, Optional[BagProject], **kwargs) -> None
+        # type: (ModuleDB, str, **kwargs) -> None
 
         lib_name = kwargs['lib_name']
         params = kwargs['params']
