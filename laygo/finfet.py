@@ -157,7 +157,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
 
     def get_default_end_info(self):
         # type: () -> Any
-        return EdgeInfo(od_type=None, draw_layers={})
+        return EdgeInfo(od_type=None, draw_layers={}), []
 
     def get_laygo_mos_info(self, lch_unit, w, mos_type, threshold, blk_type, bot_row_type, top_row_type, **kwargs):
         # type: (int, int, str, str, str, str, str, **kwargs) -> Dict[str, Any]
@@ -169,29 +169,30 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         is_sub = (mos_type == 'ptap' or mos_type == 'ntap')
         sub_type = 'ptap' if mos_type == 'nch' or mos_type == 'ptap' else 'ntap'
         po_edge_code = 2 if pode_is_poly else 1
-        fg = 2
         if blk_type.startswith('fg1'):
             mtype = (mos_type, mos_type)
             od_type = 'mos'
+            fg = 1
             od_intv = (0, 1)
-            edgel_info = EdgeInfo(od_type=od_type, draw_layers={})
-            edger_info = EdgeInfo(od_type=None, draw_layers={})
-            po_types = (1, po_edge_code)
+            edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={})
+            po_types = (1, )
         elif blk_type == 'sub':
             mtype = (sub_type, mos_type)
             od_type = 'sub'
             if is_sub:
+                fg = 2
                 od_intv = (0, 2)
                 edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={})
                 po_types = (1, 1)
             else:
-                fg = self.get_sub_columns(lch_unit) * 2
+                fg = self.get_sub_columns(lch_unit)
                 od_intv = (2, fg - 2)
                 edgel_info = edger_info = EdgeInfo(od_type=None, draw_layers={})
                 po_types = (0, po_edge_code) + (1,) * (fg - 4) + (po_edge_code, 0,)
         else:
             mtype = (mos_type, mos_type)
             od_type = 'mos'
+            fg = 2
             od_intv = (0, 2)
             edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={})
             po_types = (1, 1)
@@ -303,15 +304,13 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         od_spx = mos_constants['od_spx']
         od_fill_w_max = mos_constants['od_fill_w_max']
 
-        laygo_unit_fg = self.get_laygo_unit_fg()
         od_fg_max = (od_fill_w_max - lch_unit) // sd_pitch - 1
         od_spx_fg = -(-(od_spx - sd_pitch + lch_unit) // sd_pitch) + 2
 
         # get OD fill X interval
-        num_fg = laygo_unit_fg * num_blk
-        area = num_fg - 2 * od_spx_fg
+        area = num_blk - 2 * od_spx_fg
         if area > 0:
-            od_x_list = fill_symmetric_max_density(area, area, laygo_unit_fg, od_fg_max, od_spx_fg,
+            od_x_list = fill_symmetric_max_density(area, area, 2, od_fg_max, od_spx_fg,
                                                    offset=od_spx_fg, fill_on_edge=True, cyclic=False)[0]
         else:
             od_x_list = []
@@ -322,7 +321,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                          for row_info in row_info_list]
 
         # update layout and result information dictionary.
-        layout_info['fg'] = num_fg
+        layout_info['fg'] = num_blk
         layout_info['row_info_list'] = row_info_list
         layout_info['left_blk_info'] = left_blk_info[0]
         layout_info['right_blk_info'] = right_blk_info[0]

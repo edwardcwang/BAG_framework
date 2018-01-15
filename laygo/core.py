@@ -216,7 +216,7 @@ class LaygoBaseInfo(object):
         self.guard_ring_nf = guard_ring_nf
         self.top_layer = dig_top_layer + 1 if top_layer is None else top_layer
         self.end_mode = end_mode
-        self._col_width = self._tech_cls.get_sd_pitch(self._lch_unit) * self._tech_cls.get_laygo_unit_fg()
+        self._col_width = self._tech_cls.get_sd_pitch(self._lch_unit)
         self.draw_boundaries = draw_boundaries
 
         # set number of columns
@@ -228,10 +228,6 @@ class LaygoBaseInfo(object):
     @property
     def tech_cls(self):
         return self._tech_cls
-
-    @property
-    def unit_fg(self):
-        return self._tech_cls.get_laygo_unit_fg()
 
     @property
     def conn_layer(self):
@@ -299,8 +295,7 @@ class LaygoBaseInfo(object):
     def get_placement_info(self, num_col):
         left_end = (self.end_mode & 4) != 0
         right_end = (self.end_mode & 8) != 0
-        fg_tot = self.unit_fg * num_col
-        return self._tech_cls.get_placement_info(self.grid, self.top_layer, fg_tot, self._lch_unit,
+        return self._tech_cls.get_placement_info(self.grid, self.top_layer, num_col, self._lch_unit,
                                                  self.guard_ring_nf, left_end, right_end, True)
 
     def set_num_col(self, new_num_col):
@@ -1112,7 +1107,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             threshold=threshold,
             options=options,
         )
-        num_col = 1
         if mos_type == 'ntap' or mos_type == 'ptap':
             master = self.new_template(params=params, temp_cls=LaygoSubstrate)
         else:
@@ -1124,9 +1118,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             params['bot_row_type'] = bot_row_type
             params['top_row_type'] = top_row_type
             master = self.new_template(params=params, temp_cls=LaygoPrimitive)
-            if blk_type == 'sub':
-                num_col = self.sub_columns
 
+        num_col = master.laygo_size[0]
         intv = self._used_list[row_idx]
         inst_endl = master.get_left_edge_info()
         inst_endr = master.get_right_edge_info()

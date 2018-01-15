@@ -259,17 +259,6 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         """
         return self.mos_config['laygo_fg2d_s_short']
 
-    def get_laygo_unit_fg(self):
-        # type: () -> int
-        """Returns LaygoBase unit cell width in number of fingers.
-
-        Returns
-        -------
-        num_fg : int
-            LaygoBase unit cell width in number of fingers.
-        """
-        return self.mos_config['laygo_unit_fg']
-
     def get_sub_columns(self, lch_unit):
         # type: (int) -> int
         """Returns the number of columns per substrate block.

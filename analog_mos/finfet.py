@@ -895,7 +895,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         else:
             # has dummy OD
             # get OD horizontal partitioning
-            if od_fill_w_max is None:
+            if od_fill_w_max is None or fg == 1:
+                # force dummy OD if 1 finger, so that Laygo extensions will have dummy OD.
                 od_x_list = [(0, fg)]
             else:
                 od_fg_min = self.get_analog_unit_fg()

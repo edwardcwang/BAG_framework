@@ -105,12 +105,13 @@ class LaygoPrimitive(TemplateBase):
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        if blk_type == 'sub':
-            self._num_col = self._tech_cls.get_sub_columns(lch_unit)
         self._row_info = self._tech_cls.get_laygo_mos_info(lch_unit, w, mos_type, threshold, blk_type,
                                                            bot_row_type, top_row_type, **options)
+
+        layout_info = self._row_info['layout_info']
+        self._num_col = layout_info['fg']
         # draw transistor
-        self._tech_cls.draw_mos(self, self._row_info['layout_info'])
+        self._tech_cls.draw_mos(self, layout_info)
         # draw connection
         if options is None:
             options = {}
@@ -144,6 +145,7 @@ class LaygoSubstrate(TemplateBase):
         self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         self._row_info = None
+        self._num_col = 1
 
     def get_left_edge_info(self):
         return self._row_info['left_edge_info']
@@ -163,7 +165,7 @@ class LaygoSubstrate(TemplateBase):
 
     @property
     def laygo_size(self):
-        return 1, 1
+        return self._num_col, 1
 
     @classmethod
     def get_default_param_values(cls):
@@ -211,8 +213,10 @@ class LaygoSubstrate(TemplateBase):
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
         self._row_info = self._tech_cls.get_laygo_sub_info(lch_unit, w, mos_type, threshold, **options)
+        layout_info = self._row_info['layout_info']
+        self._num_col = layout_info['fg']
         # draw transistor
-        self._tech_cls.draw_mos(self, self._row_info['layout_info'])
+        self._tech_cls.draw_mos(self, layout_info)
         # draw connection
         if options is None:
             options = {}
@@ -245,7 +249,6 @@ class LaygoEndRow(TemplateBase):
         super(LaygoEndRow, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
-        self._fg = self._tech_cls.get_laygo_unit_fg()
         self._end_info = None
 
     def get_edge_layout_info(self):
@@ -298,7 +301,7 @@ class LaygoEndRow(TemplateBase):
         top_layer = self.params['top_layer']
 
         blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
-        self._end_info = self._tech_cls.get_laygo_end_info(lch_unit, mos_type, threshold, self._fg, is_end, blk_pitch)
+        self._end_info = self._tech_cls.get_laygo_end_info(lch_unit, mos_type, threshold, 1, is_end, blk_pitch)
         self._tech_cls.draw_mos(self, self._end_info['layout_info'])
 
 
