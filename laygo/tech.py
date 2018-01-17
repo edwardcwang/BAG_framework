@@ -47,38 +47,31 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         return 0
 
     @abc.abstractmethod
-    def get_laygo_mos_info(self, lch_unit, w, mos_type, threshold, blk_type, bot_row_type, top_row_type, **kwargs):
-        # type: (int, int, str, str, str, str, str, **kwargs) -> Dict[str, Any]
-        """Returns the transistor information dictionary for laygo blocks.
-
-        The returned dictionary must have the following entries:
-
-        layout_info: the layout information dictionary.
-        ext_top_info: a tuple of values used to compute extension layout above the transistor.
-        ext_bot_info : a tuple of values used to compute extension layout below the transistor.
-        sd_yc : the Y coordinate of the center of source/drain junction.
-        top_gtr_yc : maximum Y coordinate of the center of top gate track.
-        bot_dstr_yc : minimum Y coordinate of the center of bottom drain/source track.
-        max_bot_tr_yc : maximum Y coordinate of the center of bottom block tracks.
-        min_top_tr_yc : minimum Y coordinate of the center of top block tracks.
-        blk_height : the block height in mos pitches.
-
-        The 4 track Y coordinates (top_gtr_yc, bot_dstr_yc, max_bot_tr_yc, min_top_tr_yc)
-        should be independent of the transistor width.  In this way, you can use different
-        width transistors in the same row.
+    def get_laygo_mos_row_info(self,  # type: LaygoTech
+                               lch_unit,  # type: int
+                               w_max,  # type: int
+                               w_sub,  # type: int
+                               mos_type,  # type: str
+                               threshold,  # type: str
+                               bot_row_type,  # type: str
+                               top_row_type,  # type: str
+                               **kwargs):
+        # type: (...) -> Dict[str, Any]
+        """Returns the information dictionary for laygo transistor row.
 
         Parameters
         ----------
         lch_unit : int
             the channel length in resolution units.
-        w : int
-            the transistor width in number of fins/resolution units.
+        w_max : int
+            the maximum transistor width in number of fins/resolution units.
+            Must be greater than or equal to w_sub.
+        w_sub : int
+            the substrate width in number of fins/resolution units.
         mos_type : str
             the transistor/substrate type.  One of 'pch', 'nch', 'ptap', or 'ntap'.
         threshold : str
             the transistor threshold flavor.
-        blk_type : str
-            the digital block type.
         bot_row_type : str
             the bottom (next to gate) laygo row type.
         top_row_type: str
@@ -88,38 +81,43 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        mos_info : Dict[str, Any]
-            the transistor information dictionary.
+        row_info : Dict[str, Any]
+            the row information dictionary.  Must have the following entries:
+
+            lch : int
+                the channel length.
+            mos_type : str
+                the transistor type.
+            threshold : str
+                the threshold flavor.
+            ext_top_info : Any
+                an object used to compute extension layout above this row.
+            ext_bot_info : Any
+                an object used to compute extension layout below this row.
+            sd_yc : int
+                the Y coordinate of the center of source/drain junction.
+            g_conn_y : Tuple[int, int]
+                the gate connection Y coordinates.
+            gb_conn_y : Tuple[int, int]
+                the gate-bar connection Y coordinates.
+            ds_conn_y : Tuple[int, int]
+                the drain-source connection Y coordinates.
+            row_name_id : str
+                the name ID for this row.
         """
         return {}
 
     @abc.abstractmethod
-    def get_laygo_sub_info(self, lch_unit, w, mos_type, threshold, **kwargs):
+    def get_laygo_sub_row_info(self, lch_unit, w, mos_type, threshold, **kwargs):
         # type: (int, int, str, str, **kwargs) -> Dict[str, Any]
-        """Returns the transistor information dictionary for laygo blocks.
-
-        The returned dictionary must have the following entries:
-
-        layout_info: the layout information dictionary.
-        ext_top_info: a tuple of values used to compute extension layout above the transistor.
-        ext_bot_info : a tuple of values used to compute extension layout below the transistor.
-        sd_yc : the Y coordinate of the center of source/drain junction.
-        top_gtr_yc : maximum Y coordinate of the center of top gate track.
-        bot_dstr_yc : minimum Y coordinate of the center of bottom drain/source track.
-        max_bot_tr_yc : maximum Y coordinate of the center of bottom block tracks.
-        min_top_tr_yc : minimum Y coordinate of the center of top block tracks.
-        blk_height : the block height in mos pitches.
-
-        The 4 track Y coordinates (top_gtr_yc, bot_dstr_yc, max_bot_tr_yc, min_top_tr_yc)
-        should be independent of the transistor width.  In this way, you can use different
-        width transistors in the same row.
+        """Returns the information dictionary for laygo substrate row.
 
         Parameters
         ----------
         lch_unit : int
             the channel length in resolution units.
         w : int
-            the transistor width in number of fins/resolution units.
+            the substrate width in number of fins/resolution units.
         mos_type : str
             the transistor/substrate type.  One of 'pch', 'nch', 'ptap', or 'ntap'.
         threshold : str
@@ -129,8 +127,46 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        mos_info : Dict[str, Any]
-            the transistor information dictionary.
+        row_info : Dict[str, Any]
+            the row information dictionary.  Must have the following entries:
+
+            ext_top_info : Any
+                an object used to compute extension layout above this row.
+            ext_bot_info : Any
+                an object used to compute extension layout below this row.
+            sd_yc : int
+                the Y coordinate of the center of source/drain junction.
+            g_conn_y : Tuple[int, int]
+                the gate connection Y coordinates.
+            gb_conn_y : Tuple[int, int]
+                the gate-bar connection Y coordinates.
+            ds_conn_y : Tuple[int, int]
+                the drain-source connection Y coordinates.
+            row_name_id : str
+                the name ID for this row.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_laygo_blk_info(self, blk_type, w, row_info, **kwargs):
+        # type: (str, int, Dict[str, Any], **kwargs) -> Dict[str, Any]
+        """Returns the layout information dictionary for the given laygo block.
+
+        Parameters
+        ----------
+        blk_type : str
+            the laygo block type.
+        w : int
+            the transistor width.
+        row_info : Dict[str, Any]
+            the row layout information object.
+        **kwargs
+            optional keyword arguments.
+
+        Returns
+        -------
+        blk_info : Dict[str, Any]
+            the block information dictionary.
         """
         return {}
 

@@ -10,7 +10,6 @@ from bag.layout.routing.fill import fill_symmetric_max_density
 from .tech import LaygoTech
 from ..analog_mos.finfet import ExtInfo, RowInfo, EdgeInfo, FillInfo
 
-
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfoConfig
     from bag.layout.routing import WireArray
@@ -39,7 +38,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         LaygoTech.__init__(self, config, tech_info, mos_entry_name=mos_entry_name)
 
     @abc.abstractmethod
-    def get_laygo_yloc_info(self, lch_unit, w, is_sub, **kwargs):
+    def get_laygo_row_yloc_info(self, lch_unit, w, is_sub, **kwargs):
         # type: (int, int, bool, **kwargs) -> Dict[str, Any]
         """Computes Y coordinates of various layers in the laygo row.
 
@@ -66,6 +65,20 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
             gate-bar wire Y interval.
         ds_conn_y :
             drain/source wire Y interval.
+        """
+        return {}
+
+    @abc.abstractmethod
+    def get_laygo_blk_yloc_info(self, w, row_info, **kwargs):
+        # type: (int, Dict[str, Any], **kwargs) -> Dict[str, Any]
+        """Computes Y coordinates of various layers in the laygo block.
+
+        The returned dictionary should have the following entries:
+
+        od :
+            a tuple of OD bottom/top Y coordinates.
+        md :
+            a tuple of MD bottom/top Y coordinates.
         """
         return {}
 
@@ -159,25 +172,120 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         # type: () -> Any
         return EdgeInfo(od_type=None, draw_layers={}), []
 
-    def get_laygo_mos_info(self, lch_unit, w, mos_type, threshold, blk_type, bot_row_type, top_row_type, **kwargs):
-        # type: (int, int, str, str, str, str, str, **kwargs) -> Dict[str, Any]
+    def get_laygo_mos_row_info(self,  # type: LaygoTechFinfetBase
+                               lch_unit,  # type: int
+                               w_max,  # type: int
+                               w_sub,  # type: int
+                               mos_type,  # type: str
+                               threshold,  # type: str
+                               bot_row_type,  # type: str
+                               top_row_type,  # type: str
+                               **kwargs):
+        # type: (...) -> Dict[str, Any]
+
+        # figure out various properties of the current laygo block
+        is_sub = (mos_type == 'ptap' or mos_type == 'ntap')
+        sub_type = 'ptap' if mos_type == 'nch' or mos_type == 'ptap' else 'ntap'
+
+        # get Y coordinate information dictionary
+        row_yloc_info = self.get_laygo_row_yloc_info(lch_unit, w_max, is_sub, **kwargs)
+        blk_yb, blk_yt = row_yloc_info['blk']
+        od_yloc = row_yloc_info['od']
+        md_yloc = row_yloc_info['md']
+        top_margins = row_yloc_info['top_margins']
+        bot_margins = row_yloc_info['bot_margins']
+        fill_info = row_yloc_info['fill_info']
+        g_conn_y = row_yloc_info['g_conn_y']
+        gb_conn_y = row_yloc_info['gb_conn_y']
+        ds_conn_y = row_yloc_info['ds_conn_y']
+
+        # compute extension information
+        mtype = (mos_type, mos_type)
+        po_types = (1, 1)
+        lr_edge_info = EdgeInfo(od_type='sub' if is_sub else 'mos', draw_layers={})
+        ext_top_info = ExtInfo(margins=top_margins,
+                               od_w=w_max,
+                               imp_min_w=0,
+                               mtype=mtype,
+                               thres=threshold,
+                               po_types=po_types,
+                               edgel_info=lr_edge_info,
+                               edger_info=lr_edge_info,
+                               )
+        ext_bot_info = ExtInfo(margins=bot_margins,
+                               od_w=w_max,
+                               imp_min_w=0,
+                               mtype=mtype,
+                               thres=threshold,
+                               po_types=po_types,
+                               edgel_info=lr_edge_info,
+                               edger_info=lr_edge_info,
+                               )
+
+        lay_info_list = [(lay, 0, blk_yb, blk_yt) for lay in self.get_mos_layers(mos_type, threshold)]
+        imp_params = [(mos_type, threshold, blk_yb, blk_yt, blk_yb, blk_yt)],
+
+        fill_info_list = [FillInfo(layer=layer, exc_layer=info[0], x_intv_list=[],
+                                   y_intv_list=info[1]) for layer, info in fill_info.items()]
+
+        blk_y = (blk_yb, blk_yt)
+        lch = lch_unit * self.res * self.tech_info.layout_unit
+        lch_str = float_to_si_string(lch)
+        row_name_id = '%s_l%s_w%d_%s' % (mos_type, lch_str, w_max, threshold)
+        return dict(
+            w_max=w_max,
+            w_sub=w_sub,
+            lch_unit=lch_unit,
+            row_type=mos_type,
+            sub_type=sub_type,
+            threshold=threshold,
+            arr_y=blk_y,
+            od_y=od_yloc,
+            po_y=blk_y,
+            md_y=md_yloc,
+            ext_top_info=ext_top_info,
+            ext_bot_info=ext_bot_info,
+            lay_info_list=lay_info_list,
+            imp_params=imp_params,
+            fill_info_list=fill_info_list,
+            g_conn_y=g_conn_y,
+            gb_conn_y=gb_conn_y,
+            ds_conn_y=ds_conn_y,
+            row_name_id=row_name_id,
+        )
+
+    def get_laygo_sub_row_info(self, lch_unit, w, mos_type, threshold, **kwargs):
+        # type: (int, int, str, str, **kwargs) -> Dict[str, Any]
+        return self.get_laygo_mos_row_info(lch_unit, w, w, mos_type, threshold, '', '', **kwargs)
+
+    def get_laygo_blk_info(self, blk_type, w, row_info, **kwargs):
+        # type: (str, int, Dict[str, Any], **kwargs) -> Dict[str, Any]
+
+        arr_y = row_info['arr_y']
+        lch_unit = row_info['lch_unit']
+        row_type = row_info['row_type']
+        sub_type = row_info['sub_type']
+        row_ext_top = row_info['ext_top_info']
+        row_ext_bot = row_info['ext_bot_info']
+        lay_info_list = row_info['lay_info_list']
+        imp_params = row_info['imp_params']
+        fill_info_list = row_info['fill_info_list']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         pode_is_poly = mos_constants['pode_is_poly']
 
         # figure out various properties of the current laygo block
-        is_sub = (mos_type == 'ptap' or mos_type == 'ntap')
-        sub_type = 'ptap' if mos_type == 'nch' or mos_type == 'ptap' else 'ntap'
+        is_sub = (row_type == sub_type)
         po_edge_code = 2 if pode_is_poly else 1
         if blk_type.startswith('fg1'):
-            mtype = (mos_type, mos_type)
+            mtype = (row_type, row_type)
             od_type = 'mos'
             fg = 1
             od_intv = (0, 1)
             edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={})
-            po_types = (1, )
+            po_types = (1,)
         elif blk_type == 'sub':
-            mtype = (sub_type, mos_type)
+            mtype = (sub_type, row_type)
             od_type = 'sub'
             if is_sub:
                 fg = 2
@@ -190,7 +298,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                 edgel_info = edger_info = EdgeInfo(od_type=None, draw_layers={})
                 po_types = (0, po_edge_code) + (1,) * (fg - 4) + (po_edge_code, 0,)
         else:
-            mtype = (mos_type, mos_type)
+            mtype = (row_type, row_type)
             od_type = 'mos'
             fg = 2
             od_intv = (0, 2)
@@ -198,93 +306,51 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
             po_types = (1, 1)
 
         # get Y coordinate information dictionary
-        yloc_info = self.get_laygo_yloc_info(lch_unit, w, is_sub, **kwargs)
-        blk_yb, blk_yt = yloc_info['blk']
+        yloc_info = self.get_laygo_blk_yloc_info(w, row_info, **kwargs)
         od_yloc = yloc_info['od']
         md_yloc = yloc_info['md']
-        top_margins = yloc_info['top_margins']
-        bot_margins = yloc_info['bot_margins']
-        fill_info = yloc_info['fill_info']
-        g_conn_y = yloc_info['g_conn_y']
-        gb_conn_y = yloc_info['gb_conn_y']
-        ds_conn_y = yloc_info['ds_conn_y']
 
-        od_yc = (od_yloc[0] + od_yloc[1]) // 2
+        # update extension information
+        # noinspection PyProtectedMember
+        ext_top_info = row_ext_top._replace(mtype=mtype, po_types=po_types,
+                                            edgel_info=edgel_info, edger_info=edger_info)
+        # noinspection PyProtectedMember
+        ext_bot_info = row_ext_bot._replace(mtype=mtype, po_types=po_types,
+                                            edgel_info=edgel_info, edger_info=edger_info)
 
-        # compute extension information
-        ext_top_info = ExtInfo(margins=top_margins,
-                               od_w=w,
-                               imp_min_w=0,
-                               mtype=mtype,
-                               thres=threshold,
-                               po_types=po_types,
-                               edgel_info=edgel_info,
-                               edger_info=edger_info,
-                               )
-        ext_bot_info = ExtInfo(margins=bot_margins,
-                               od_w=w,
-                               imp_min_w=0,
-                               mtype=mtype,
-                               thres=threshold,
-                               po_types=po_types,
-                               edgel_info=edgel_info,
-                               edger_info=edger_info,
-                               )
-
-        # compute layout information
-        lay_info_list = [(lay, 0, blk_yb, blk_yt) for lay in self.get_mos_layers(mos_type, threshold)]
-
-        fill_info_list = [FillInfo(layer=layer, exc_layer=info[0], x_intv_list=[],
-                                   y_intv_list=info[1]) for layer, info in fill_info.items()]
-
-        blk_y = (blk_yb, blk_yt)
         layout_info = dict(
             is_sub_row=is_sub,
-            blk_type='mos',
+            blk_type='sub' if is_sub else 'mos',
             lch_unit=lch_unit,
             fg=fg,
-            arr_y=blk_y,
+            arr_y=arr_y,
             draw_od=True,
             row_info_list=[RowInfo(od_x_list=[od_intv],
                                    od_y=od_yloc,
                                    od_type=(od_type, sub_type),
-                                   po_y=blk_y,
+                                   po_y=arr_y,
                                    md_y=md_yloc), ],
             lay_info_list=lay_info_list,
             fill_info_list=fill_info_list,
             # edge parameters
             sub_type=sub_type,
-            imp_params=[(mos_type, threshold, blk_yb, blk_yt, blk_yb, blk_yt)],
+            imp_params=imp_params,
             is_sub_ring=False,
             dnw_mode='',
             # adjacent block information list
             adj_row_list=[],
             left_blk_info=None,
             right_blk_info=None,
-            # laygo connections information
-            w=w,
         )
 
         # step 8: return results
-        lch = lch_unit * self.res * self.tech_info.layout_unit
-        lch_str = float_to_si_string(lch)
-        row_name_id = '%s_l%s_w%d_%s' % (mos_type, lch_str, w, threshold)
         return dict(
             layout_info=layout_info,
             ext_top_info=ext_top_info,
             ext_bot_info=ext_bot_info,
             left_edge_info=(edgel_info, []),
             right_edge_info=(edger_info, []),
-            sd_yc=od_yc,
-            g_conn_y=g_conn_y,
-            gb_conn_y=gb_conn_y,
-            ds_conn_y=ds_conn_y,
-            row_name_id=row_name_id,
         )
-
-    def get_laygo_sub_info(self, lch_unit, w, mos_type, threshold, **kwargs):
-        # type: (int, int, str, str, **kwargs) -> Dict[str, Any]
-        return self.get_laygo_mos_info(lch_unit, w, mos_type, threshold, 'sub', '', '', **kwargs)
 
     def get_laygo_end_info(self, lch_unit, mos_type, threshold, fg, is_end, blk_pitch, **kwargs):
         # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
@@ -293,11 +359,20 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
     def get_laygo_space_info(self, row_info, num_blk, left_blk_info, right_blk_info):
         # type: (Dict[str, Any], int, Any, Any) -> Dict[str, Any]
 
-        ans = row_info.copy()
-        layout_info = row_info['layout_info'].copy()
+        od_y = row_info['od_y']
+        po_y = row_info['po_y']
+        md_y = row_info['md_y']
+        arr_y = row_info['arr_y']
+        lch_unit = row_info['lch_unit']
+        row_type = row_info['row_type']
+        sub_type = row_info['sub_type']
+        row_ext_top = row_info['ext_top_info']
+        row_ext_bot = row_info['ext_bot_info']
+        lay_info_list = row_info['lay_info_list']
+        fill_info_list = row_info['fill_info_list']
+        imp_params = row_info['imp_params']
 
-        lch_unit = layout_info['lch_unit']
-        row_info_list = layout_info['row_info_list']
+        is_sub = (row_type == sub_type)
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
@@ -315,23 +390,49 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         else:
             od_x_list = []
         # get row OD list
-        row_info_list = [RowInfo(od_x_list=od_x_list, od_y=row_info.od_y,
-                                 od_type=('dum', row_info.od_type[1]),
-                                 po_y=row_info.po_y, md_y=row_info.md_y)
-                         for row_info in row_info_list]
+        row_info_list = [RowInfo(od_x_list=od_x_list, od_y=od_y,
+                                 od_type=('dum', sub_type), po_y=po_y, md_y=md_y), ]
 
-        # update layout and result information dictionary.
-        layout_info['fg'] = num_blk
-        layout_info['row_info_list'] = row_info_list
-        layout_info['left_blk_info'] = left_blk_info[0]
-        layout_info['right_blk_info'] = right_blk_info[0]
+        # update extension information
+        po_types = (0, ) * num_blk
+        cur_edge_info = EdgeInfo(od_type=None, draw_layers={})
+        # noinspection PyProtectedMember
+        ext_top_info = row_ext_top._replace(po_types=po_types, edgel_info=cur_edge_info,
+                                            edger_info=cur_edge_info)
+        # noinspection PyProtectedMember
+        ext_bot_info = row_ext_bot._replace(po_types=po_types, edgel_info=cur_edge_info,
+                                            edger_info=cur_edge_info)
 
-        lr_edge_info = (EdgeInfo(od_type=None, draw_layers={}), [])
-        ans['layout_info'] = layout_info
-        ans['left_edge_info'] = lr_edge_info
-        ans['right_edge_info'] = lr_edge_info
+        lr_edge_info = (cur_edge_info, [])
+        layout_info = dict(
+            is_sub_row=is_sub,
+            blk_type='sub' if is_sub else 'mos',
+            lch_unit=lch_unit,
+            fg=num_blk,
+            arr_y=arr_y,
+            draw_od=True,
+            row_info_list=row_info_list,
+            lay_info_list=lay_info_list,
+            fill_info_list=fill_info_list,
+            # edge parameters
+            sub_type=sub_type,
+            imp_params=imp_params,
+            is_sub_ring=False,
+            dnw_mode='',
+            # adjacent block information list
+            adj_row_list=[],
+            left_blk_info=left_blk_info[0],
+            right_blk_info=right_blk_info[0],
+        )
 
-        return ans
+        # step 8: return results
+        return dict(
+            layout_info=layout_info,
+            ext_top_info=ext_top_info,
+            ext_bot_info=ext_bot_info,
+            left_edge_info=lr_edge_info,
+            right_edge_info=lr_edge_info,
+        )
 
     def get_row_extension_info(self, bot_ext_list, top_ext_list):
         # type: (List[ExtInfo], List[ExtInfo]) -> List[Tuple[int, ExtInfo, ExtInfo]]
