@@ -1082,7 +1082,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         row_info = self._row_infos[loc[1]]
         row_type = row_info['row_type']
-        wblk = kwargs.get('w', row_info['w_max'])
+        wblk = kwargs.pop('w', row_info['w_max'])
 
         col_width = self._laygo_info.col_width
 

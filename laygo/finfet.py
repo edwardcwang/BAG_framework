@@ -153,7 +153,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
 
     def get_default_end_info(self):
         # type: () -> Any
-        return EdgeInfo(od_type=None, draw_layers={}), []
+        return EdgeInfo(od_type=None, draw_layers={}, y_intv={}), []
 
     def get_laygo_mos_row_info(self,  # type: LaygoTechFinfetBase
                                lch_unit,  # type: int
@@ -185,7 +185,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         # compute extension information
         mtype = (mos_type, mos_type)
         po_types = (1, 1)
-        lr_edge_info = EdgeInfo(od_type='sub' if is_sub else 'mos', draw_layers={})
+        lr_edge_info = EdgeInfo(od_type='sub' if is_sub else 'mos', draw_layers={}, y_intv={})
         ext_top_info = ExtInfo(margins=top_margins,
                                od_w=w_max,
                                imp_min_w=0,
@@ -257,15 +257,21 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         pode_is_poly = mos_constants['pode_is_poly']
 
+        # get Y coordinate information dictionary
+        yloc_info = self.get_laygo_blk_yloc_info(w, row_info, **kwargs)
+        od_yloc = yloc_info['od']
+        md_yloc = yloc_info['md']
+
         # figure out various properties of the current laygo block
         is_sub = (row_type == sub_type)
         po_edge_code = 2 if pode_is_poly else 1
+        y_intv = dict(od=od_yloc, md=md_yloc)
         if blk_type.startswith('fg1'):
             mtype = (row_type, row_type)
             od_type = 'mos'
             fg = 1
             od_intv = (0, 1)
-            edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={})
+            edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={}, y_intv=y_intv)
             po_types = (1,)
         elif blk_type == 'sub':
             mtype = (sub_type, row_type)
@@ -273,25 +279,20 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
             if is_sub:
                 fg = 2
                 od_intv = (0, 2)
-                edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={})
+                edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={}, y_intv=y_intv)
                 po_types = (1, 1)
             else:
                 fg = self.get_sub_columns(lch_unit)
                 od_intv = (2, fg - 2)
-                edgel_info = edger_info = EdgeInfo(od_type=None, draw_layers={})
+                edgel_info = edger_info = EdgeInfo(od_type=None, draw_layers={}, y_intv=y_intv)
                 po_types = (0, po_edge_code) + (1,) * (fg - 4) + (po_edge_code, 0,)
         else:
             mtype = (row_type, row_type)
             od_type = 'mos'
             fg = 2
             od_intv = (0, 2)
-            edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={})
+            edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={}, y_intv=y_intv)
             po_types = (1, 1)
-
-        # get Y coordinate information dictionary
-        yloc_info = self.get_laygo_blk_yloc_info(w, row_info, **kwargs)
-        od_yloc = yloc_info['od']
-        md_yloc = yloc_info['md']
 
         # update extension information
         # noinspection PyProtectedMember
@@ -378,7 +379,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                                  od_type=('dum', sub_type), po_y=po_y, md_y=md_y), ]
 
         # update extension information
-        cur_edge_info = EdgeInfo(od_type=None, draw_layers={})
+        cur_edge_info = EdgeInfo(od_type=None, draw_layers={}, y_intv=dict(od=od_y, md=md_y))
         # figure out poly types per finger
         od_type_list = ('mos', 'sub', 'mos_fake')
         po_edge_code = 2 if pode_is_poly else 1

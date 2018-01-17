@@ -24,7 +24,7 @@ ExtInfo = namedtuple('ExtInfo', ['margins', 'od_w', 'imp_min_w', 'mtype', 'thres
                                  'edgel_info', 'edger_info'])
 RowInfo = namedtuple('RowInfo', ['od_x_list', 'od_type', 'od_y', 'po_y', 'md_y'])
 AdjRowInfo = namedtuple('AdjRowInfo', ['po_y', 'po_types'])
-EdgeInfo = namedtuple('EdgeInfo', ['od_type', 'draw_layers'])
+EdgeInfo = namedtuple('EdgeInfo', ['od_type', 'draw_layers', 'y_intv'])
 FillInfo = namedtuple('FillInfo', ['layer', 'exc_layer', 'x_intv_list', 'y_intv_list'])
 
 
@@ -403,7 +403,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_yc = (od_yloc[0] + od_yloc[1]) // 2
 
         # Compute extension information
-        lr_edge_info = EdgeInfo(od_type=od_type, draw_layers={})
+        lr_edge_info = EdgeInfo(od_type=od_type, draw_layers={}, y_intv={})
 
         po_types = (1,) * fg
         mtype = (mos_type, mos_type)
@@ -835,7 +835,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         yt = w * fin_p
         yc = yt // 2
 
-        lr_edge_info = EdgeInfo(od_type='dum', draw_layers={})
+        lr_edge_info = EdgeInfo(od_type='dum', draw_layers={}, y_intv={})
         if w == 0:
             # just draw CPO
             top_mtype, top_row_type = top_ext_info.mtype
@@ -1023,7 +1023,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             row_info_list.append(RowInfo(od_x_list=(0, 0), od_type=('dum', sub_type),
                                          od_y=od_y, po_y=po_y, md_y=md_y))
 
-        lr_edge_info = EdgeInfo(od_type='dum', draw_layers={})
+        lr_edge_info = EdgeInfo(od_type='dum', draw_layers={}, y_intv={})
         layout_info = dict(
             blk_type='ext_subring',
             lch_unit=lch_unit,
@@ -1092,7 +1092,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         if dnw_mode and not is_sub_ring_end:
             edge_margin = dnw_margins[dnw_mode] - nw_dnw_ext
 
-        lr_edge_info = EdgeInfo(od_type='sub', draw_layers={})
+        lr_edge_info = EdgeInfo(od_type='sub', draw_layers={}, y_intv={})
         cpo_lay = mos_layer_table['CPO']
         finbound_lay = mos_layer_table['FB']
         if is_end:
@@ -1268,7 +1268,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             fill_info_list=[],
             # adjacent block information
             adj_row_list=new_adj_row_list,
-            left_blk_info=EdgeInfo(od_type=None, draw_layers={}),
+            left_blk_info=EdgeInfo(od_type=None, draw_layers={}, y_intv={}),
             right_blk_info=adj_blk_info[0],
         )
 
@@ -1507,7 +1507,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
 
-        default_edge_info = EdgeInfo(od_type=None, draw_layers={})
+        default_edge_info = EdgeInfo(od_type=None, draw_layers={}, y_intv={})
         if left_blk_info is None:
             if fg == 1 and right_blk_info is not None:
                 # make sure if we only have one finger, PO purpose is still chosen correctly.
@@ -1576,15 +1576,18 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     po_xl = po_xc + idx * sd_pitch - lch_unit // 2
                     po_xr = po_xl + lch_unit
                     is_edge = po_is_edge[idx]
+                    pode_y = row_info.od_y
                     if po_on_od[idx]:
                         cur_od_type = od_type
                     else:
                         if idx == 0:
                             cur_od_type = left_blk_info.od_type
                             is_edge = True
+                            pode_y = left_blk_info.y_intv.get('od', row_info.od_y)
                         elif idx == fg - 1:
                             cur_od_type = right_blk_info.od_type
                             is_edge = True
+                            pode_y = right_blk_info.y_intv.get('od', row_info.od_y)
                         else:
                             cur_od_type = None
 
@@ -1606,7 +1609,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                         draw_pode = False
                     template.add_rect(lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
                     if draw_pode and not pode_is_poly and od_yt > od_yb:
-                        template.add_rect(pode_lay, BBox(po_xl, od_yb, po_xr, od_yt, res, unit_mode=True))
+                        template.add_rect(pode_lay, BBox(po_xl, pode_y[0], po_xr, pode_y[1], res, unit_mode=True))
 
             # draw MD
             if md_yt > md_yb and fg > 0:
