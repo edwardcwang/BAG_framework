@@ -84,18 +84,36 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         row_info : Dict[str, Any]
             the row information dictionary.  Must have the following entries:
 
-            lch : int
+            w_max : int
+                maximum transistor width in this row.
+            w_sub : int
+                substrate width in this row.
+            lch_unit : int
                 the channel length.
-            mos_type : str
-                the transistor type.
+            row_type : str
+                the row transistor/substrate type.
+            sub_type : str
+                the row substrate type.
             threshold : str
                 the threshold flavor.
+            arr_y : Tuple[int, int]
+                the array box Y interval.
+            od_y : Tuple[int, int]
+                the worst case OD Y interval.
+            po_y : Tuple[int, int]
+                the PO Y interval.
+            md_y : Tuple[int, int]
+                the worst case MD Y interval.
             ext_top_info : Any
                 an object used to compute extension layout above this row.
             ext_bot_info : Any
                 an object used to compute extension layout below this row.
-            sd_yc : int
-                the Y coordinate of the center of source/drain junction.
+            lay_info_list : List[Any]
+                the default layer information list.
+            imp_params : Any
+                the defeault implant parameters of this row.
+            fill_info_list : List[Any]
+                the fill information list.
             g_conn_y : Tuple[int, int]
                 the gate connection Y coordinates.
             gb_conn_y : Tuple[int, int]
@@ -130,12 +148,36 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         row_info : Dict[str, Any]
             the row information dictionary.  Must have the following entries:
 
+            w_max : int
+                maximum transistor width in this row.
+            w_sub : int
+                substrate width in this row.
+            lch_unit : int
+                the channel length.
+            row_type : str
+                the row transistor/substrate type.
+            sub_type : str
+                the row substrate type.
+            threshold : str
+                the threshold flavor.
+            arr_y : Tuple[int, int]
+                the array box Y interval.
+            od_y : Tuple[int, int]
+                the worst case OD Y interval.
+            po_y : Tuple[int, int]
+                the PO Y interval.
+            md_y : Tuple[int, int]
+                the worst case MD Y interval.
             ext_top_info : Any
                 an object used to compute extension layout above this row.
             ext_bot_info : Any
                 an object used to compute extension layout below this row.
-            sd_yc : int
-                the Y coordinate of the center of source/drain junction.
+            lay_info_list : List[Any]
+                the default layer information list.
+            imp_params : Any
+                the defeault implant parameters of this row.
+            fill_info_list : List[Any]
+                the fill information list.
             g_conn_y : Tuple[int, int]
                 the gate connection Y coordinates.
             gb_conn_y : Tuple[int, int]
@@ -166,7 +208,18 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         Returns
         -------
         blk_info : Dict[str, Any]
-            the block information dictionary.
+            the block information dictionary.  Contains the following entries:
+
+            layout_info : Dict[str, Any]
+                the block layout information dictionary.
+            ext_top_info : Any
+                an object used to compute extension layout above this block.
+            ext_bot_info : Any
+                an object used to compute extension layout below this block.
+            left_edge_info : Any
+                an object used to compute layout on the left of this block.
+            right_edge_info : Any
+                an object used to compute layout on the right of this block.
         """
         return {}
 
