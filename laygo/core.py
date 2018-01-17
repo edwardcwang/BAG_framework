@@ -1172,7 +1172,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         params = dict(
             row_info=row_info,
-            name_id=row_info['row_name_id'],
             num_blk=num_blk,
             left_blk_info=adj_end_info[0],
             right_blk_info=adj_end_info[1],
@@ -1245,14 +1244,18 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             # compute row edge information
             row_edge_infos = self._get_row_edge_infos()
             for ridx, (y, orient, re_params) in enumerate(row_edge_infos):
+                cur_row_info = re_params['row_info']
+                test_blk_info = self._tech_cls.get_laygo_blk_info('fg2d', cur_row_info['w_max'],
+                                                                  cur_row_info)
+
                 endl, endr = self._get_end_info_row(ridx)
                 for x, is_end, flip_lr, end_info in \
                         ((emargin_l, left_end, False, endl), (xr - emargin_r, right_end, True, endr)):
                     edge_params = re_params.copy()
                     del edge_params['row_info']
                     edge_params['is_end'] = is_end
-                    edge_params['name_id'] = re_params['row_info']['row_name_id']
-                    edge_params['layout_info'] = re_params['row_info']['layout_info']
+                    edge_params['name_id'] = cur_row_info['row_name_id']
+                    edge_params['layout_info'] = test_blk_info['layout_info']
                     edge_params['adj_blk_info'] = end_info
                     if flip_lr:
                         eorient = 'MY' if orient == 'R0' else 'R180'

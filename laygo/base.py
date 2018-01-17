@@ -77,10 +77,11 @@ class LaygoPrimitive(TemplateBase):
         blk_type = self.params['blk_type']
         wstr = float_to_si_string(self.params['w'])
         row_info = self.params['row_info']
-        mos_type = row_info['mos_type']
+        row_type = row_info['row_type']
         th = row_info['threshold']
-        lstr = float_to_si_string(row_info['lch'])
-        return fmt % (mos_type, lstr, wstr, th, blk_type)
+        lch_unit = row_info['lch_unit']
+        lstr = float_to_si_string(lch_unit * self.grid.layout_unit * self.grid.resolution)
+        return fmt % (row_type, lstr, wstr, th, blk_type)
 
     def draw_layout(self):
         blk_type = self.params['blk_type']
@@ -90,7 +91,7 @@ class LaygoPrimitive(TemplateBase):
 
         self._blk_info = self._tech_cls.get_laygo_blk_info(blk_type, w, row_info, **options)
         layout_info = self._blk_info['layout_info']
-        self._num_col = self._blk_info['fg']
+        self._num_col = layout_info['fg']
         # draw transistor
         self._tech_cls.draw_mos(self, layout_info)
         # draw connection
@@ -100,10 +101,7 @@ class LaygoPrimitive(TemplateBase):
 
 
 class LaygoSubstrate(TemplateBase):
-    """An abstract template for analog mosfet.
-
-    Must have parameters mos_type, lch, w, threshold, fg.
-    Instantiates a transistor with minimum G/D/S connections.
+    """A laygo substrate block.
 
     Parameters
     ----------
@@ -170,12 +168,13 @@ class LaygoSubstrate(TemplateBase):
 
     def get_layout_basename(self):
         fmt = 'laygo_%s_l%s_w%s_%s'
-        wstr = float_to_si_string(self.params['w'])
         row_info = self.params['row_info']
-        mos_type = row_info['mos_type']
+        sub_type = row_info['sub_type']
         th = row_info['threshold']
-        lstr = float_to_si_string(row_info['lch'])
-        return fmt % (mos_type, lstr, wstr, th)
+        wstr = float_to_si_string(row_info['w_sub'])
+        lch_unit = row_info['lch_unit']
+        lstr = float_to_si_string(lch_unit * self.grid.layout_unit * self.grid.resolution)
+        return fmt % (sub_type, lstr, wstr, th)
 
     def draw_layout(self):
         row_info = self.params['row_info']
@@ -195,10 +194,7 @@ class LaygoSubstrate(TemplateBase):
 
 
 class LaygoEndRow(TemplateBase):
-    """An abstract template for analog mosfet.
-
-    Must have parameters mos_type, lch, w, threshold, fg.
-    Instantiates a transistor with minimum G/D/S connections.
+    """A laygo end row block.
 
     Parameters
     ----------
@@ -274,10 +270,7 @@ class LaygoEndRow(TemplateBase):
 
 
 class LaygoSpace(TemplateBase):
-    """An abstract template for analog mosfet.
-
-    Must have parameters mos_type, lch, w, threshold, fg.
-    Instantiates a transistor with minimum G/D/S connections.
+    """A laygo space block.
 
     Parameters
     ----------
@@ -331,7 +324,6 @@ class LaygoSpace(TemplateBase):
         """
         return dict(
             row_info='the Laygo row information dictionary.',
-            name_id='the layout name ID.',
             num_blk='number of space blocks.',
             left_blk_info='left block layout information.',
             right_blk_info='right block layout information.',
@@ -339,7 +331,7 @@ class LaygoSpace(TemplateBase):
 
     def get_layout_basename(self):
         fmt = '%s_space%d'
-        name_id = self.params['name_id']
+        name_id = self.params['row_info']['row_name_id']
         num_blk = self.params['num_blk']
         return fmt % (name_id, num_blk)
 
