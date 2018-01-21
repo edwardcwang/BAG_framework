@@ -155,9 +155,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         wire_dir : int
             the wire direction.  2 for up, 1 for middle, 0 for down.
         ds_code : int
-            the drain/source code.  1 to draw source, 2 to draw drain, 3 to draw and short both.
-            Right now, code 3 is reserved for substrate connection only.
-        **kwargs :
+            the drain/source code.  1 to draw source, 2 to draw drain, 3 to draw substrate connnection.
+            4 to draw substrate connection in guard ring.
+\        **kwargs :
             optional parameters.
 
         Returns
@@ -350,7 +350,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             if is_sub_ring:
                 fg_gr_sep = -(-edge_margin // sd_pitch)
             else:
-                fg_gr_sep = fg_outer
+                fg_gr_sep = fg_od_margin
             fg_outer = 0
             fg_gr_sub = guard_ring_nf + 2 * fg_od_margin
 
@@ -1281,7 +1281,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         dnw_layers = self.mos_config['dnw_layers']
         nw_dnw_ovl = self.mos_config['nw_dnw_ovl']
 
-        sd_pitch = layout_info['sd_pitch']
         lch_unit = layout_info['lch_unit']
         arr_y = layout_info['arr_y']
         lay_info_list = layout_info['lay_info_list']
@@ -1293,13 +1292,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         pode_is_poly = mos_constants['pode_is_poly']
+        sd_pitch = mos_constants['sd_pitch']
 
         edge_info = self.get_edge_info(lch_unit, guard_ring_nf, True, dnw_mode=dnw_mode)
         fg_gr_sub = edge_info['fg_gr_sub']
         fg_od_margin = edge_info['fg_od_margin']
 
         # compute new row_info_list
-        od_x_list = [(fg_od_margin + 1, fg_od_margin + 1 + guard_ring_nf)]
+        od_x_list = [(fg_od_margin, fg_od_margin + guard_ring_nf)]
         # noinspection PyProtectedMember
         row_info_list = [rinfo._replace(od_x_list=od_x_list, od_type=('sub', rinfo.od_type[1]))
                          for rinfo in row_info_list]
@@ -1338,8 +1338,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # compute new adj_row_list
         po_edge_code = 2 if pode_is_poly else 1
-        po_types = (0,) * fg_od_margin + (po_edge_code, ) + \
-                   (1,) * guard_ring_nf + (po_edge_code, ) + (0,) * fg_od_margin
+        po_types = (0,) * (fg_od_margin - 1) + (po_edge_code, ) + \
+                   (1,) * guard_ring_nf + (po_edge_code, ) + (0,) * (fg_od_margin - 1)
         # noinspection PyProtectedMember
         new_adj_row_list = [ar_info._replace(po_types=po_types) for ar_info in adj_row_list]
 
@@ -1717,7 +1717,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                         if d + 2 not in conn_htr_set and d - 2 not in conn_htr_set:
                             conn_htr_set.add(d)
                     # add as many unused tracks as possible to port tracks
-                    for htr in range(0, 2 * fg + 1, 2):
+                    for htr in range(od_start * 2, 2 * od_stop + 1, 2):
                         if htr + 2 not in conn_htr_set and htr - 2 not in conn_htr_set:
                             conn_htr_set.add(htr)
                     # add all port sets to dummy set
@@ -1726,8 +1726,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     dum_x_list = [sd_pitch2 * v for v in sorted(dum_htr_set)]
                     conn_x_list = [sd_pitch2 * v for v in sorted(conn_htr_set)]
 
+                ds_code = 4 if is_guardring else 3
                 dum_warrs, port_warrs = self.draw_ds_connection(template, lch_unit, fg, sd_pitch, xshift, od_y, md_y,
-                                                                dum_x_list, conn_x_list, True, 1, 3)
+                                                                dum_x_list, conn_x_list, True, 1, ds_code)
                 template.add_pin(port_name, dum_warrs, show=False)
                 template.add_pin(port_name, port_warrs, show=False)
 
