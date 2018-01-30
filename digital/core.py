@@ -243,18 +243,13 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                 for intv in self._used_list:
                     num_col = max(num_col, intv.get_end())
 
+            self._laygo_info.set_num_col(num_col)
             self._dig_size = num_col, self._num_rows
 
             top_layer = self._laygo_info.top_layer
-            draw_boundaries = self._laygo_info.draw_boundaries
-            col_width = self._laygo_info.col_width
-            left_margin = self._laygo_info.left_margin
-            right_margin = self._laygo_info.right_margin
 
-            width = col_width * num_col
+            width = self._laygo_info.tot_width
             height = self._ytop[1]
-            if draw_boundaries:
-                width += left_margin + right_margin
 
             bound_box = BBox(0, 0, width, height, self.grid.resolution, unit_mode=True)
             self.set_size_from_bound_box(top_layer, bound_box)
@@ -266,7 +261,6 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             raise ValueError('Cannot add block at row %d' % row_idx)
 
         col_width = self._laygo_info.col_width
-        left_margin = self._laygo_info.left_margin
 
         intv = self._used_list[row_idx]
         inst_endl = master.get_left_edge_info()
@@ -286,7 +280,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                 raise ValueError('Cannot add primitive on row %d, '
                                  'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
 
-        x0 = left_margin + col_idx * col_width
+        x0 = self._laygo_info.col_to_coord(col_idx, 's', unit_mode=True)
         if flip:
             x0 += master.digital_size[0]
 
@@ -400,10 +394,11 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         num_col = self._dig_size[0]
         top_layer = self._laygo_info.top_layer
         guard_ring_nf = self._laygo_info.guard_ring_nf
-        x0 = self._laygo_info.left_margin
         spx = self._laygo_info.col_width
         end_mode = self._laygo_info.end_mode
         xr = self.bound_box.right_unit
+        x0 = self._laygo_info.col_to_coord(0, 's', unit_mode=True)
+        tech_cls = self._laygo_info.tech_cls
 
         left_end = (end_mode & 4) != 0
         right_end = (end_mode & 8) != 0
@@ -424,11 +419,13 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         ytop = self._ytop[0]
         for warrs, m1, m2, y, orient, name in ((bot_warrs, self._bot_sub_master, bot_sub2, ybot, 'R0', 'XBSUB%d'),
                                                (top_warrs, self._top_sub_master, top_sub2, ytop, 'MX', 'XTSUB%d')):
+            port_name = 'VSS' if m1.has_port('VSS') else 'VDD'
             xcur = x0
             for col_idx in range(num_col):
                 if col_idx in port_cols:
                     inst = self.add_instance(m1, inst_name=name % col_idx, loc=(xcur, y), orient=orient, unit_mode=True)
-                    warrs.extend(inst.get_all_port_pins())
+
+                    warrs.extend(inst.get_all_port_pins(port_name))
                 else:
                     self.add_instance(m2, inst_name=name % col_idx, loc=(xcur, y), orient=orient, unit_mode=True)
                 xcur += spx
@@ -438,13 +435,14 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             endl = master.get_left_edge_info()
             endr = master.get_right_edge_info()
             rinfo = master.row_info
+            test_blk_info = tech_cls.get_laygo_blk_info('fg2d', rinfo['w_max'], rinfo)
             for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
                 edge_params = dict(
                     top_layer=top_layer,
                     guard_ring_nf=guard_ring_nf,
                     is_end=is_end,
                     name_id=rinfo['row_name_id'],
-                    layout_info=rinfo['layout_info'],
+                    layout_info=test_blk_info['layout_info'],
                     adj_blk_info=end_flag,
                     is_laygo=True,
                 )
@@ -510,12 +508,14 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                     edge_infos.append((x, yscale * y + yoff, orient, tmp_copy))
                 # add row edges
                 for (y, row_orient, re_params), endl, endr in zip(row_edge_infos, endl_list, endr_list):
+                    cur_row_info = re_params['row_info']
+                    test_blk_info = tech_cls.get_laygo_blk_info('fg2d', cur_row_info['w_max'], cur_row_info)
                     for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
                         edge_params = re_params.copy()
                         del edge_params['row_info']
                         edge_params['is_end'] = is_end
-                        edge_params['name_id'] = re_params['row_info']['row_name_id']
-                        edge_params['layout_info'] = re_params['row_info']['layout_info']
+                        edge_params['name_id'] = cur_row_info['row_name_id']
+                        edge_params['layout_info'] = test_blk_info['layout_info']
                         edge_params['adj_blk_info'] = end_flag
                         if flip_lr:
                             eorient = 'MY' if row_orient == 'R0' else 'R180'
