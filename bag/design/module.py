@@ -200,7 +200,11 @@ class SchInstance(object):
     def is_primitive(self):
         # type: () -> bool
         """Returns true if this is an instance of a primitive schematic generator."""
-        return self._static or self._master.is_primitive()
+        if self._static:
+            return True
+        if self._master is None:
+            raise ValueError('Instance %s has no master.  Did you forget to call design()?' % self._name)
+        return self._master.is_primitive()
 
     @property
     def should_delete(self):
