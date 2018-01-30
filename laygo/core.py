@@ -585,16 +585,17 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             self._endr_infos = [default_end_info] * num_rows
 
     def set_rows_direct(self, dig_row_info):
+        default_end_info = self._tech_cls.get_default_end_info()
+
+        # set LaygoInfo
         self._laygo_info.top_layer = dig_row_info['top_layer']
         self._laygo_info.guard_ring_nf = dig_row_info['guard_ring_nf']
         self._laygo_info.draw_boundaries = False
         self._laygo_info.end_mode = 0
 
-        row_types = dig_row_info['row_types']
-        default_end_info = self._tech_cls.get_default_end_info()
-
-        self._num_rows = len(row_types)
+        # set row information
         self._row_orientations = dig_row_info['row_orientations']
+        self._num_rows = len(self._row_orientations)
         self._row_kwargs = dig_row_info['row_kwargs']
         self._row_min_tracks = dig_row_info['row_min_tracks']
         self._used_list = [LaygoIntvSet(default_end_info) for _ in range(self._num_rows)]
@@ -616,6 +617,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             raise ValueError('top substrate orientation must be MX')
         if len(row_types) < 2:
             raise ValueError('Must draw at least 2 rows.')
+        if len(row_types) != len(row_widths) or len(row_types) != len(row_orientations):
+            raise ValueError('row_types/row_widths/row_orientations length mismatch.')
         if draw_boundaries and num_col is None:
             raise ValueError('Must specify total number of columns if drawing boundary.')
         if not row_sub_widths:
@@ -623,38 +626,38 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         elif len(row_sub_widths) != len(row_widths):
             raise ValueError('row_widths and row_sub_widths must have same length.')
 
-        self._laygo_info.set_num_col(num_col)
-
-        self._num_rows = len(row_types)
-        # set left and right end information list
-        self._set_endlr_infos(self._num_rows)
-
-        if row_kwargs is None:
-            row_kwargs = [{}] * self._num_rows
-        if row_min_tracks is None:
-            row_min_tracks = [{}] * self._num_rows
-
-        # update LaygoInfo information
+        # set default values
+        num_rows = len(row_types)
         if not draw_boundaries:
             end_mode = 0
-        if top_layer is not None:
-            self._laygo_info.top_layer = top_layer
-        else:
+        if row_kwargs is None:
+            row_kwargs = [{}] * num_rows
+        if row_min_tracks is None:
+            row_min_tracks = [{}] * num_rows
+        if top_layer is None:
             top_layer = self._laygo_info.top_layer
 
+        default_end_info = self._tech_cls.get_default_end_info()
+
+        # set LaygoInfo
+        self._laygo_info.top_layer = top_layer
         self._laygo_info.guard_ring_nf = guard_ring_nf
         self._laygo_info.draw_boundaries = draw_boundaries
         self._laygo_info.end_mode = end_mode
+        self._laygo_info.set_num_col(num_col)
 
-        tot_height_pitch = self._laygo_info.tot_height_pitch
-
-        # get layout information for all rows
+        # set known row information
         self._row_orientations = row_orientations
+        self._num_rows = num_rows
         self._row_kwargs = row_kwargs
         self._row_min_tracks = row_min_tracks
-        default_end_info = self._tech_cls.get_default_end_info()
         self._used_list = [LaygoIntvSet(default_end_info) for _ in range(self._num_rows)]
 
+        # set left and right end information list
+        self._set_endlr_infos(self._num_rows)
+
+        # compute remaining row information
+        tot_height_pitch = self._laygo_info.tot_height_pitch
         if draw_boundaries:
             bot_end = (end_mode & 1) != 0
             top_end = (end_mode & 2) != 0
@@ -688,8 +691,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         row_specs = self._get_row_specs(row_types, row_widths, row_sub_widths, row_orientations, row_thresholds,
                                         row_min_tracks, row_kwargs, num_g_tracks, num_gb_tracks, num_ds_tracks)
 
-        # compute location and information of each row
         result = self._place_rows(ybot, tot_height_pitch, row_specs)
+
+        # set remaining row information
         self._row_infos, self._ext_params, self._row_y = result
 
         # compute laygo size if we know the number of columns

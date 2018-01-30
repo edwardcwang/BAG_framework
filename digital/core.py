@@ -98,32 +98,36 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         return self._laygo_info
 
     def initialize(self, row_info, num_rows, draw_boundaries, end_mode, guard_ring_nf=0):
+
+        laygo_row_infos = row_info['row_infos']
+
         self._laygo_info = LaygoBaseInfo(self.grid, row_info['config'])
         self.grid = self._laygo_info.grid
         self._row_info = row_info
         self._num_rows = num_rows
         self._row_height = row_info['row_height']
 
-        num_laygo_rows = len(row_info['row_types'])
+        num_laygo_rows = len(laygo_row_infos)
         self._laygo_info.guard_ring_nf = guard_ring_nf
         self._laygo_info.draw_boundaries = draw_boundaries
         self._laygo_info.end_mode = end_mode
-        default_end_info = [self._laygo_info.tech_cls.get_default_end_info()] * num_laygo_rows
-        self._used_list = [LaygoIntvSet(default_end_info) for _ in range(num_rows)]
+
+        tech_cls = self._laygo_info.tech_cls
+        default_end_info = tech_cls.get_default_end_info()
+        default_dig_end_info = [default_end_info] * num_laygo_rows
+
+        self._used_list = [LaygoIntvSet(default_dig_end_info) for _ in range(num_rows)]
 
         lch = self._laygo_info.lch
         top_layer = self._laygo_info.top_layer
         mos_pitch = self._laygo_info.mos_pitch
         tot_height = self._row_height * num_rows
-        tech_cls = self._laygo_info.tech_cls
-        fg_unit = self._laygo_info.unit_fg
 
         bot_extw = row_info['bot_extw']
         bot_sub_extw = row_info['bot_sub_extw']
         bot_extw_tot = bot_extw + bot_sub_extw
 
         # set left and right end informations
-        default_end_info = tech_cls.get_default_end_info()
         self._endl_infos = self.params['digital_endl_infos']
         if self._endl_infos is None:
             self._endl_infos = [[default_end_info] * num_laygo_rows] * num_rows
@@ -139,8 +143,8 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             top_end = (end_mode & 2) != 0
 
             # create end row and substrate masters
-            mtype = row_info['row_types'][0]
-            thres = row_info['row_thresholds'][0]
+            mtype = laygo_row_infos[0]['row_type']
+            thres = laygo_row_infos[0]['threshold']
             sub_type = 'ptap' if mtype == 'nch' else 'ntap'
             params = dict(
                 lch=lch,
@@ -150,20 +154,17 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                 top_layer=top_layer,
             )
             self._bot_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
+            sub_info = tech_cls.get_laygo_sub_row_info(lch_unit, w_sub, sub_type, thres)
             params = dict(
-                lch=lch,
-                w=w_sub,
-                mos_type=sub_type,
-                threshold=thres,
+                row_info=sub_info,
                 options={},
             )
             self._bot_sub_master = self.new_template(params=params, temp_cls=LaygoSubstrate)
-            sub_info = tech_cls.get_laygo_sub_info(lch_unit, w_sub, sub_type, thres)
             sub_ext_info = sub_info['ext_top_info']
             bot_ext_params = dict(
                 lch=lch,
                 w=bot_extw_tot,
-                fg=fg_unit,
+                fg=1,
                 top_ext_info=row_info['bot_ext_info'],
                 bot_ext_info=sub_ext_info,
                 is_laygo=True,
@@ -186,8 +187,8 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                 top_ext_params['top_ext_info'] = bot_ext_params['bot_ext_info']
                 top_extw_tot = bot_extw_tot
             else:
-                mtype = row_info['row_types'][-1]
-                thres = row_info['row_thresholds'][-1]
+                mtype = laygo_row_infos[-1]['row_type']
+                thres = laygo_row_infos[-1]['threshold']
                 sub_type = 'ptap' if mtype == 'nch' else 'ntap'
                 params = dict(
                     lch=lch,
@@ -197,11 +198,9 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                     top_layer=top_layer,
                 )
                 self._top_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
+                sub_info = tech_cls.get_laygo_sub_row_info(lch_unit, w_sub, sub_type, thres)
                 params = dict(
-                    lch=lch,
-                    w=w_sub,
-                    mos_type=sub_type,
-                    threshold=thres,
+                    row_info=sub_info,
                     options={},
                 )
                 self._top_sub_master = self.new_template(params=params, temp_cls=LaygoSubstrate)
