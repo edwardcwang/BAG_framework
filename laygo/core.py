@@ -810,7 +810,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         sub_ext_info = sub_info['ext_top_info']
 
         # quantize substrate height to top layer pitch.
-        sub_height = sub_info['layout_info']['arr_y'][1]
+        sub_height = sub_info['arr_y'][1]
         min_sub_height = mos_pitch
         sub_pitch = lcm([mos_pitch, self.grid.get_track_pitch(self._laygo_info.top_layer, unit_mode=True)])
         for layer, num_tr in min_sub_tracks:
