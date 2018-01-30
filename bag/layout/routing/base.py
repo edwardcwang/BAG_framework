@@ -575,3 +575,46 @@ class TrackManager(object):
             num_tracks = num_tracks_half // 2
 
         return num_tracks, answer
+
+    def align_wires(self, layer_id, name_list, tot_ntr, alignment=0, start_idx=0):
+        # type: (int, Sequence[str], Union[float, int], int, int) -> List[Union[float, int]]
+        """Place the given wires in the given space with the specified alignment.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer of the tracks.
+        name_list : Sequence[str]
+            list of wire types.
+        tot_ntr : Union[float, int]
+            total available space in number of tracks.
+        alignment : int
+            If alignment == -1, will "left adjust" the wires (left is the lower track index direction).
+            If alignment == 0, will center the wires in the middle.
+            If alignment == 1, will "right adjust" the wires.
+        start_idx : Union[float, int]
+            the starting track index.
+
+        Returns
+        -------
+        locations : List[Union[float, int]]
+            the center track index of each wire.
+        """
+        num_used, idx_list = self.place_wires(layer_id, name_list, start_idx=start_idx)
+        if num_used > tot_ntr:
+            raise ValueError('Given tracks occupy more space than given.')
+
+        if alignment == -1 or num_used == tot_ntr:
+            # we already aligned to left
+            return idx_list
+        elif alignment == 0:
+            # center tracks
+            delta_htr = int((tot_ntr - num_used) * 2) // 2
+            delta = delta_htr / 2 if delta_htr % 2 == 1 else delta_htr // 2
+        elif alignment == 1:
+            # align to right
+            delta = tot_ntr - num_used
+        else:
+            raise ValueError('Unknown alignment code: %d' % alignment)
+
+        return [idx + delta for idx in idx_list]
