@@ -1411,6 +1411,25 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             right_blk_info=adj_blk_info[0],
         )
 
+    def draw_mos_rect(self, template, layer, bbox):
+        # type: (TemplateBase, Tuple[str, str], BBox) -> None
+        """This method draws the given transistor layer geometry.
+
+        The default implementation is to just call the add_rect() method.  However, if the
+        technology requires more complex handling, you can override this method to implement
+        the correct drawing behavior.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the template.
+        layer : Tuple[str, str]
+            the layer/purpose pair.
+        bbox : BBox
+            the geometry bounding box.
+        """
+        template.add_rect(layer, bbox)
+
     def draw_mos(self, template, layout_info):
         # type: (TemplateBase, Dict[str, Any]) -> None
         """Draw transistor related layout.
@@ -1568,7 +1587,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     if draw_od:
                         od_xl = po_xc - lch_unit // 2 + (od_start - 1) * sd_pitch
                         od_xr = po_xc + lch_unit // 2 + od_stop * sd_pitch
-                        template.add_rect(od_lay_cur, BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True))
+                        od_box = BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True)
+                        self.draw_mos_rect(template, od_lay_cur, od_box)
 
             # draw PO/PODE
             if po_yt > po_yb:
@@ -1607,22 +1627,25 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     else:
                         lay = po_dum_lay
                         draw_pode = False
-                    template.add_rect(lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
+                    self.draw_mos_rect(template, lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
+
                     if draw_pode and not pode_is_poly and od_yt > od_yb:
-                        template.add_rect(pode_lay, BBox(po_xl, pode_y[0], po_xr, pode_y[1], res, unit_mode=True))
+                        self.draw_mos_rect(template, pode_lay, BBox(po_xl, pode_y[0], po_xr,
+                                                                    pode_y[1], res, unit_mode=True))
 
             # draw MD
             if md_yt > md_yb and fg > 0:
                 for idx in range(fg + 1):
                     md_xl = idx * sd_pitch - md_w // 2
                     md_xr = md_xl + md_w
+                    md_box = BBox(md_xl, md_yb, md_xr, md_yt, res, unit_mode=True)
                     if md_on_od[idx]:
-                        template.add_rect(md_lay_cur, BBox(md_xl, md_yb, md_xr, md_yt, res, unit_mode=True))
+                        self.draw_mos_rect(template, md_lay_cur, md_box)
                     else:
                         if (0 < idx < fg or
                                 idx == 0 and 'md' in left_blk_info.draw_layers or
                                 idx == fg and 'md' in right_blk_info.draw_layers):
-                            template.add_rect(md_dum_lay, BBox(md_xl, md_yb, md_xr, md_yt, res, unit_mode=True))
+                            self.draw_mos_rect(template, md_dum_lay, md_box)
 
         # draw other layers
         for imp_lay, xl, yb, yt in lay_info_list:
@@ -1632,7 +1655,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 yt = -(-(yt - fin_p2 - fin_h2) // fin_p) * fin_p + fin_p2 + fin_h2
             box = BBox(xl, yb, blk_w, yt, res, unit_mode=True)
             if box.is_physical():
-                template.add_rect(imp_lay, box)
+                self.draw_mos_rect(template, imp_lay, box)
 
         # draw adjacent row geometries
         for adj_info in adj_row_list:
@@ -1646,7 +1669,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     lay = po_pode_lay
                 po_xl = po_xc + idx * sd_pitch - lch_unit // 2
                 po_xr = po_xl + lch_unit
-                template.add_rect(lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
+                self.draw_mos_rect(template, lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
 
         # set size and add PR boundary
         arr_box = BBox(0, arr_yb, blk_w, arr_yt, res, unit_mode=True)
@@ -1663,10 +1686,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 x_intv_list = fill_info.x_intv_list
                 y_intv_list = fill_info.y_intv_list
                 if exc_lay is not None:
-                    template.add_rect(exc_lay, bound_box)
+                    self.draw_mos_rect(template, exc_lay, bound_box)
                 for xl, xr in x_intv_list:
                     for yb, yt in y_intv_list:
-                        template.add_rect(lay, BBox(xl, yb, xr, yt, res, unit_mode=True))
+                        self.draw_mos_rect(template, lay, BBox(xl, yb, xr, yt, res, unit_mode=True))
 
     def draw_substrate_connection(self, template, layout_info, port_tracks, dum_tracks, dummy_only,
                                   is_laygo, is_guardring):
