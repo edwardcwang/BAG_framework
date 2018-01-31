@@ -30,7 +30,7 @@ class DigitalSpace(LaygoBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(DigitalSpace, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        LaygoBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -69,7 +69,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         hidden_params['digital_endl_infos'] = None
         hidden_params['digital_endr_infos'] = None
 
-        super(DigitalBase, self).__init__(temp_db, lib_name, params, used_names, hidden_params=hidden_params, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, hidden_params=hidden_params, **kwargs)
         self._laygo_info = None
 
         # initialize attributes
@@ -97,8 +97,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
     def laygo_info(self):
         return self._laygo_info
 
-    def initialize(self, row_info, num_rows, draw_boundaries, end_mode, guard_ring_nf=0):
-
+    def initialize(self, row_info, num_rows, draw_boundaries, end_mode, guard_ring_nf=0, num_col=None):
         laygo_row_infos = row_info['row_infos']
 
         self._laygo_info = LaygoBaseInfo(self.grid, row_info['config'])
@@ -111,6 +110,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         self._laygo_info.guard_ring_nf = guard_ring_nf
         self._laygo_info.draw_boundaries = draw_boundaries
         self._laygo_info.end_mode = end_mode
+        self._laygo_info.set_num_col(num_col)
 
         tech_cls = self._laygo_info.tech_cls
         default_end_info = tech_cls.get_default_end_info()
@@ -404,7 +404,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         right_end = (end_mode & 8) != 0
 
         if port_cols is None:
-            port_cols = set(range(num_col))
+            port_cols = set(range(0, num_col, 2))
             bot_sub2 = top_sub2 = None
         else:
             port_cols = set(port_cols)
@@ -421,7 +421,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                                                (top_warrs, self._top_sub_master, top_sub2, ytop, 'MX', 'XTSUB%d')):
             port_name = 'VSS' if m1.has_port('VSS') else 'VDD'
             xcur = x0
-            for col_idx in range(num_col):
+            for col_idx in range(0, num_col, 2):
                 if col_idx in port_cols:
                     inst = self.add_instance(m1, inst_name=name % col_idx, loc=(xcur, y), orient=orient, unit_mode=True)
 

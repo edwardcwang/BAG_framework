@@ -289,6 +289,8 @@ class LaygoBaseInfo(object):
 
     @property
     def tot_width(self):
+        if self._edge_margins is None:
+            raise ValueError('Edge margins is not defined.  Did you set number of columns?')
         return self._edge_margins[0] + self._edge_margins[1] + self._edge_widths[0] + self._edge_widths[1] + \
                self._num_col * self._col_width
 
@@ -320,6 +322,9 @@ class LaygoBaseInfo(object):
         return self._config[item]
 
     def col_to_coord(self, col_idx, ds_type, unit_mode=False):
+        if self._edge_margins is None:
+            raise ValueError('Edge margins is not defined.  Did you set number of columns?')
+
         ans = self._edge_margins[0] + self._edge_widths[0] + col_idx * self._col_width
         if ds_type == 'd':
             ans += self._col_width // 2
@@ -379,6 +384,9 @@ class LaygoBaseInfo(object):
             return q / 2
 
     def coord_to_col(self, coord, unit_mode=False):
+        if self._edge_margins is None:
+            raise ValueError('Edge margins is not defined.  Did you set number of columns?')
+
         if not unit_mode:
             coord = int(round(coord / self.grid.resolution))
 
@@ -394,6 +402,9 @@ class LaygoBaseInfo(object):
             return (col_idx_half - 1) // 2, 'd'
 
     def coord_to_nearest_col(self, coord, ds_type=None, mode=0, unit_mode=False):
+        if self._edge_margins is None:
+            raise ValueError('Edge margins is not defined.  Did you set number of columns?')
+
         if not unit_mode:
             coord = int(round(coord / self.grid.resolution))
 
@@ -474,7 +485,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         hidden_params['laygo_endl_infos'] = None
         hidden_params['laygo_endr_infos'] = None
 
-        super(LaygoBase, self).__init__(temp_db, lib_name, params, used_names, hidden_params=hidden_params, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, hidden_params=hidden_params, **kwargs)
 
         self._laygo_info = LaygoBaseInfo(self.grid, self.params['config'])
         self.grid = self._laygo_info.grid

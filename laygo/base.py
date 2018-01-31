@@ -28,7 +28,7 @@ class LaygoPrimitive(TemplateBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(LaygoPrimitive, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         self._num_col = 1
@@ -120,7 +120,7 @@ class LaygoSubstrate(TemplateBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(LaygoSubstrate, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         self._blk_info = None
@@ -213,7 +213,7 @@ class LaygoEndRow(TemplateBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(LaygoEndRow, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         self._end_info = None
@@ -289,7 +289,7 @@ class LaygoSpace(TemplateBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(LaygoSpace, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         self._num_blk = self.params['num_blk']
