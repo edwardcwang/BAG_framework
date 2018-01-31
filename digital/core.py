@@ -391,14 +391,14 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             raise ValueError('Unknonw orientation: %s' % orient)
 
     def _draw_end_substrates(self, port_cols):
+        laygo_info = self._laygo_info
+
         num_col = self._dig_size[0]
-        top_layer = self._laygo_info.top_layer
-        guard_ring_nf = self._laygo_info.guard_ring_nf
-        spx = self._laygo_info.col_width
-        end_mode = self._laygo_info.end_mode
+        top_layer = laygo_info.top_layer
+        guard_ring_nf = laygo_info.guard_ring_nf
+        end_mode = laygo_info.end_mode
         xr = self.bound_box.right_unit
-        x0 = self._laygo_info.col_to_coord(0, 's', unit_mode=True)
-        tech_cls = self._laygo_info.tech_cls
+        tech_cls = laygo_info.tech_cls
 
         left_end = (end_mode & 4) != 0
         right_end = (end_mode & 8) != 0
@@ -420,15 +420,14 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         for warrs, m1, m2, y, orient, name in ((bot_warrs, self._bot_sub_master, bot_sub2, ybot, 'R0', 'XBSUB%d'),
                                                (top_warrs, self._top_sub_master, top_sub2, ytop, 'MX', 'XTSUB%d')):
             port_name = 'VSS' if m1.has_port('VSS') else 'VDD'
-            xcur = x0
             for col_idx in range(0, num_col, 2):
+                xcur = laygo_info.col_to_coord(col_idx, 's', unit_mode=True)
                 if col_idx in port_cols:
                     inst = self.add_instance(m1, inst_name=name % col_idx, loc=(xcur, y), orient=orient, unit_mode=True)
 
                     warrs.extend(inst.get_all_port_pins(port_name))
                 else:
                     self.add_instance(m2, inst_name=name % col_idx, loc=(xcur, y), orient=orient, unit_mode=True)
-                xcur += spx
 
         edge_infos = []
         for master, y, orient in ((self._bot_sub_master, ybot, 'R0'), (self._top_sub_master, ytop, 'MX')):
