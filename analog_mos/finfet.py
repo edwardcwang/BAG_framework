@@ -331,6 +331,23 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_fin_exty = mos_constants['od_fin_exty']
         return (w - 1) * fin_p + fin_h + 2 * od_fin_exty
 
+    def get_od_h_inverse(self, lch_unit, od_h, round_up=None):
+        # type: (int, int) -> int
+        """Calculate number of fins from OD height."""
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        fin_h = mos_constants['fin_h']
+        fin_p = mos_constants['fin_p']
+        od_fin_exty = mos_constants['od_fin_exty']
+
+        q = od_h - 2 * od_fin_exty - fin_h
+        if round_up is None and q % fin_p != 0:
+            raise ValueError('OD height %d is not on fin grid.' % od_h)
+        elif round_up:
+            w = -(-q // fin_p) + 1
+        else:
+            w = q // fin_p + 1
+        return w
+
     def get_od_sp_nfin(self, lch_unit, sp):
         # type: (int, int) -> int
         """Calculate OD space in number of fin pitches, rounded up.
@@ -344,9 +361,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         return -(-(sp + fin_h + 2 * od_fin_exty) // fin_p)
 
-    def snap_od_edge(self, lch_unit, od_y, top_edge, round_up):
+    def get_fin_idx(self, lch_unit, od_y, top_edge, round_up=None):
         # type: (int, int, bool, bool) -> int
-        """Snap the OD horizontal edge to fin grid."""
+        """Get fin index from OD top/bottom edge coordinate."""
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
         fin_p = mos_constants['fin_p']
@@ -357,12 +374,38 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         delta = fin_h2 + od_fin_exty
         if not top_edge:
             delta *= -1
-        if round_up:
-            fin_idx = -(-(od_y - delta - fin_p2) // fin_p)
+
+        quantity = od_y - delta - fin_p2
+        if round_up is None and quantity % fin_p != 0:
+            raise ValueError('OD coordinate %d is not on fin grid.' % od_y)
+        elif round_up:
+            fin_idx = -(-quantity // fin_p)
         else:
-            fin_idx = (od_y - delta - fin_p2) // fin_p
+            fin_idx = quantity // fin_p
+
+        return fin_idx
+
+    def get_od_edge(self, lch_unit, fin_idx, top_edge):
+        # type: (int, int, bool) -> int
+        """Get OD edge Y coordinate from fin index."""
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        fin_h = mos_constants['fin_h']
+        fin_p = mos_constants['fin_p']
+        od_fin_exty = mos_constants['od_fin_exty']
+
+        fin_p2 = fin_p // 2
+        fin_h2 = fin_h // 2
+        delta = fin_h2 + od_fin_exty
+        if not top_edge:
+            delta *= -1
 
         return fin_idx * fin_p + fin_p2 + delta
+
+    def snap_od_edge(self, lch_unit, od_y, top_edge, round_up):
+        # type: (int, int, bool, bool) -> int
+        """Snap the OD horizontal edge to fin grid."""
+        fin_idx = self.get_fin_idx(lch_unit, od_y, top_edge, round_up=round_up)
+        return self.get_od_edge(lch_unit, fin_idx, top_edge)
 
     def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
         # type: (int, int, bool, **kwargs) -> Dict[str, Any]
@@ -638,17 +681,13 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         minimum OD density rules are met.
         """
         mos_constants = self.get_mos_tech_constants(lch_unit)
-        fin_h = mos_constants['fin_h']
-        fin_p = mos_constants['mos_pitch']
         od_nfin_min, od_nfin_max = mos_constants['od_fill_h']
         od_spy = mos_constants['od_spy']
         od_spy_max = mos_constants['od_spy_max']
         od_min_density = mos_constants['od_min_density']
 
-        od_yb_offset = (fin_p - fin_h) // 2
-        od_yt_offset = od_yb_offset + fin_h
-        od_spy_nfin_min = (od_spy - (fin_p - fin_h)) // fin_p
-        od_spy_nfin_max = (od_spy_max - (fin_p - fin_h)) // fin_p
+        od_spy_nfin_min = self.get_od_sp_nfin(lch_unit, od_spy)
+        od_spy_nfin_max = self.get_od_sp_nfin(lch_unit, od_spy_max)
 
         # compute MD/OD locations.
         bot_od_yt = -bot_ext_info.margins['od'][0]
@@ -656,8 +695,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # check if we can just not draw anything
         if top_od_yb - bot_od_yt <= od_spy_max:
             return []
-        bot_od_fidx = (bot_od_yt - od_yt_offset) // fin_p
-        top_od_fidx = (top_od_yb - od_yb_offset) // fin_p
+        bot_od_fidx = self.get_fin_idx(lch_unit, bot_od_yt, True)
+        top_od_fidx = self.get_fin_idx(lch_unit, top_od_yb, False)
 
         # compute OD fill area needed to meet density
         bot_od_h = bot_ext_info.od_h
@@ -665,7 +704,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_area_adj = (bot_od_h + top_od_h) // 2
         od_area_tot = top_od_yb - bot_od_yt + od_area_adj
         od_area_targ = int(math.ceil(od_area_tot * od_min_density)) - od_area_adj
-        od_fin_area_min = -(-(od_area_targ - fin_h) // fin_p) + 1
+        od_fin_area_min = self.get_od_h_inverse(lch_unit, od_area_targ, round_up=True)
         od_fin_area_tot = top_od_fidx - bot_od_fidx - 1
         od_fin_area_iter = BinaryIterator(od_fin_area_min, od_fin_area_tot + 1)
 
@@ -681,7 +720,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
             # compute actual OD area
             od_intv_list = fill_symmetric_interval(*fill_info[0][2], offset=bot_od_fidx + 1, invert=fill_info[1])[0]
-            od_area_cur = sum(((stop - start - 1) * fin_p + fin_h for start, stop in od_intv_list))
+            od_area_cur = sum((self.get_od_h(lch_unit, stop - start) for start, stop in od_intv_list))
             if od_area_cur >= od_area_targ:
                 od_fin_area_iter.save_info(od_intv_list)
                 od_fin_area_iter.down()
@@ -695,7 +734,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # convert fin interval to Y coordinates
         od_intv_list = od_fin_area_iter.get_last_save_info()
-        return [(start * fin_p + od_yb_offset, stop * fin_p + od_yt_offset) for start, stop in od_intv_list]
+        return [(self.get_od_edge(lch_unit, start, False),
+                 self.get_od_edge(lch_unit, stop, False)) for start, stop in od_intv_list]
 
     def _get_dummy_yloc(self, lch_unit, bot_ext_info, top_ext_info, yblk):
         """Compute dummy OD/MD/PO/CPO Y intervals in extension block.
