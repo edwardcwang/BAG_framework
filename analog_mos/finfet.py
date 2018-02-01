@@ -348,7 +348,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             w = q // fin_p + 1
         return w
 
-    def get_od_spy_nfin(self, lch_unit, sp):
+    def get_od_spy_nfin(self, lch_unit, sp, round_up=True):
         # type: (int, int) -> int
         """Calculate OD vertical space in number of fin pitches, rounded up.
 
@@ -359,7 +359,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fin_p = mos_constants['mos_pitch']
         od_fin_exty = mos_constants['od_fin_exty']
 
-        return -(-(sp + fin_h + 2 * od_fin_exty) // fin_p)
+        q = sp + fin_h + 2 * od_fin_exty - fin_p
+        return -(-q // fin_p) if round_up else q // fin_p
 
     def get_od_spx_fg(self, lch_unit, sp):
         """Calculate OD horizontal space in number of fingers, rounded up.
@@ -629,7 +630,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         md_od_exty = mos_constants['md_od_exty']
         md_spy = mos_constants['md_spy']
 
-        od_spy_nfin_max = self.get_od_spy_nfin(lch_unit, od_spy_max)
+        od_spy_nfin_max = self.get_od_spy_nfin(lch_unit, od_spy_max, round_up=False)
 
         bot_imp_min_h = bot_ext_info.imp_min_h  # type: int
         top_imp_min_h = top_ext_info.imp_min_h  # type: int
@@ -641,7 +642,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             min_ext_h = max(min_ext_h, -(-tot_margin // fin_p))
 
         # step 2: get maximum extension width without dummy OD
-        od_space_nfin = self.get_od_spy_nfin(lch_unit, top_ext_info.margins['od'][0] + bot_ext_info.margins['od'][0])
+        od_space_nfin = self.get_od_spy_nfin(lch_unit, top_ext_info.margins['od'][0] + bot_ext_info.margins['od'][0],
+                                             round_up=True)
         max_ext_w_no_od = od_spy_nfin_max - od_space_nfin
 
         # step 3: find minimum extension width with dummy OD
@@ -668,7 +670,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_yt_min = min(od_yt_min1, self.snap_od_edge(lch_unit, od_yt_min, True, False))
 
         # get minimum extension width from OD related spacing rules
-        min_ext_w_od = max(0, (od_nfin_min - 1) * fin_p - (od_yt_min - od_yb_max))
+        min_ext_w_od = max(0, self.get_od_h(lch_unit, od_nfin_min) - (od_yt_min - od_yb_max))
         # check to see CPO spacing rule is satisfied
         min_ext_w_od = max(min_ext_w_od, cpo_spy + cpo_h)
         # check to see MD minimum height rule is satisfied
@@ -697,8 +699,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_spy_max = mos_constants['od_spy_max']
         od_min_density = mos_constants['od_min_density']
 
-        od_spy_nfin_min = self.get_od_spy_nfin(lch_unit, od_spy)
-        od_spy_nfin_max = self.get_od_spy_nfin(lch_unit, od_spy_max)
+        od_spy_nfin_min = self.get_od_spy_nfin(lch_unit, od_spy, round_up=True)
+        od_spy_nfin_max = self.get_od_spy_nfin(lch_unit, od_spy_max, round_up=False)
 
         # compute MD/OD locations.
         bot_od_yt = -bot_ext_info.margins['od'][0]
