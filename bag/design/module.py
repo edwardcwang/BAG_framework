@@ -909,8 +909,8 @@ class MosModuleBase(Module):
         w = self.params['w']
         l = self.params['l']
         nf = self.params['nf']
-        wstr = w if isinstance(w, str) else float_to_si_string(w / w_res) * w_res
-        lstr = l if isinstance(l, str) else float_to_si_string(l / l_res) * l_res
+        wstr = w if isinstance(w, str) else float_to_si_string(int(round(w / w_res)) * w_res)
+        lstr = l if isinstance(l, str) else float_to_si_string(int(round(l / l_res)) * l_res)
         nstr = nf if isinstance(nf, str) else '%d' % nf
 
         return dict(w=wstr, l=lstr, nf=nstr)
