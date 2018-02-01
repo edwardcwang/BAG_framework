@@ -538,7 +538,7 @@ class DesignManager(object):
         """
         if generate:
             extract = self.specs['view_name'] != 'schematic'
-            self.create_designs()
+            self.create_designs(extract)
         else:
             extract = False
 
@@ -596,8 +596,8 @@ class DesignManager(object):
             self.create_dut_schematics(sch_params_list, [dsn_name], gen_wrappers=False)
         print('done')
 
-    def create_designs(self):
-        # type: () -> None
+    def create_designs(self, create_layout):
+        # type: (bool) -> None
         """Create DUT schematics/layouts.
         """
         if self.prj is None:
@@ -614,9 +614,14 @@ class DesignManager(object):
             lay_params_list.append(lay_params)
             combo_list_list.append(combo_list)
 
-        print('creating all layouts')
-        sch_params_list = self.create_dut_layouts(lay_params_list, dsn_name_list, temp_db)
-        print('creating all schematics')
+        if create_layout:
+            print('creating all layouts.')
+            sch_params_list = self.create_dut_layouts(lay_params_list, dsn_name_list, temp_db)
+        else:
+            print('schematic simulation, skipping layouts.')
+            sch_params_list = [self.get_schematic_params(combo_list) for combo_list in self.get_combinations_iter()]
+
+        print('creating all schematics.')
         self.create_dut_schematics(sch_params_list, dsn_name_list, gen_wrappers=True)
 
         print('design generation done.')
@@ -692,6 +697,15 @@ class DesignManager(object):
         # type: (Tuple[Any, ...]) -> Dict[str, Any]
         """Returns the layout dictionary from the given sweep parameter values."""
         lay_params = self.specs['layout_params'].copy()
+        for var, val in zip(self.swp_var_list, val_list):
+            lay_params[var] = val
+
+        return lay_params
+
+    def get_schematic_params(self, val_list):
+        # type: (Tuple[Any, ...]) -> Dict[str, Any]
+        """Returns the layout dictionary from the given sweep parameter values."""
+        lay_params = self.specs['schematic_params'].copy()
         for var, val in zip(self.swp_var_list, val_list):
             lay_params[var] = val
 
