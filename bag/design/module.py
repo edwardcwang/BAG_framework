@@ -906,10 +906,14 @@ class MosModuleBase(Module):
         # type: () -> Dict[str, str]
         w_res = self.tech_info.tech_params['mos']['width_resolution']
         l_res = self.tech_info.tech_params['mos']['length_resolution']
-        return {'w': float_to_si_string(round(self.params['w'] / w_res) * w_res),
-                'l': float_to_si_string(round(self.params['l'] / l_res) * l_res),
-                'nf': '%d' % self.params['nf'],
-                }
+        w = self.params['w']
+        l = self.params['l']
+        nf = self.params['nf']
+        wstr = w if isinstance(w, str) else float_to_si_string(w / w_res) * w_res
+        lstr = l if isinstance(l, str) else float_to_si_string(l / l_res) * l_res
+        nstr = nf if isinstance(nf, str) else '%d' % nf
+
+        return dict(w=wstr, l=lstr, nf=nstr)
 
     def get_cell_name_from_parameters(self):
         # type: () -> str
@@ -955,9 +959,12 @@ class ResPhysicalModuleBase(Module):
 
     def get_schematic_parameters(self):
         # type: () -> Dict[str, str]
-        return {'w': float_to_si_string(self.params['w']),
-                'l': float_to_si_string(self.params['l']),
-                }
+        w = self.params['w']
+        l = self.params['l']
+        wstr = w if isinstance(w, str) else float_to_si_string(w)
+        lstr = l if isinstance(l, str) else float_to_si_string(l)
+
+        return dict(w=wstr, l=lstr)
 
     def get_cell_name_from_parameters(self):
         # type: () -> str
