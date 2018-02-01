@@ -543,6 +543,11 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
         return list(chain(imp_layers_info.keys(), thres_layers_info.keys()))
 
+    def postprocess_mos_tech_constants(self, lch_unit, mos_constants):
+        # type: (int, Dict[str, Any]) -> None
+        """Optional method subclasses can override to add more entries to mos_constants."""
+        pass
+
     def get_mos_tech_constants(self, lch_unit):
         # type: (int) -> Dict[str, Any]
         """Returns a dictionary of technology constants given transistor channel length.
@@ -591,7 +596,15 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
             # handle sd_pitch
             offset, scale = ans['sd_pitch_constants']
-            ans['sd_pitch'] = offset + int(round(scale * lch_unit))
+            sd_pitch = offset + int(round(scale * lch_unit))
+            ans['sd_pitch'] = sd_pitch
+
+            # handle default parameters
+            if 'po_od_extx' not in ans:
+                offset, lch_scale, sd_pitch_scale = ans.get('po_od_extx_constants', (0, 0, 1))
+                ans['po_od_extx'] = offset + int(round(lch_scale * lch_unit)) + int(round(sd_pitch_scale * sd_pitch))
+
+            self.postprocess_mos_tech_constants(lch_unit, ans)
             self._mos_constants = ans
             self._lch_unit = lch_unit
 
