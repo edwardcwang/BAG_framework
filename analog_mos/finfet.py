@@ -327,7 +327,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """Calculate OD height."""
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
-        fin_p = mos_constants['fin_p']
+        fin_p = mos_constants['mos_pitch']
         od_fin_exty = mos_constants['od_fin_exty']
         return (w - 1) * fin_p + fin_h + 2 * od_fin_exty
 
@@ -336,7 +336,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """Calculate number of fins from OD height."""
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
-        fin_p = mos_constants['fin_p']
+        fin_p = mos_constants['mos_pitch']
         od_fin_exty = mos_constants['od_fin_exty']
 
         q = od_h - 2 * od_fin_exty - fin_h
@@ -356,7 +356,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
-        fin_p = mos_constants['fin_p']
+        fin_p = mos_constants['mos_pitch']
         od_fin_exty = mos_constants['od_fin_exty']
 
         return -(-(sp + fin_h + 2 * od_fin_exty) // fin_p)
@@ -377,7 +377,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """Get fin index from OD top/bottom edge coordinate."""
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
-        fin_p = mos_constants['fin_p']
+        fin_p = mos_constants['mos_pitch']
         od_fin_exty = mos_constants['od_fin_exty']
 
         fin_p2 = fin_p // 2
@@ -401,7 +401,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """Get OD edge Y coordinate from fin index."""
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
-        fin_p = mos_constants['fin_p']
+        fin_p = mos_constants['mos_pitch']
         od_fin_exty = mos_constants['od_fin_exty']
 
         fin_p2 = fin_p // 2
