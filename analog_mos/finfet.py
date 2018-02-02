@@ -780,7 +780,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # get dummy OD/MD intervals
         od_y_list = self._get_dummy_od_yloc(lch_unit, bot_ext_info, top_ext_info, yblk)
         if not od_y_list:
-            return [], [], [(0, yblk)], [0, yblk]
+            return [], [], [(0, yblk)], [(cpo_h // 2, yblk - cpo_h // 2)], [0, yblk]
 
         md_y_list = []
         for od_yb, od_yt in od_y_list:
