@@ -230,6 +230,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                    md_y,  # type: Tuple[int, int]
                                    ds_x_list,  # type: List[int]
                                    gate_tracks,  # type: List[Union[float, int]]
+                                   left_edge,  # type: bool
+                                   right_edge,  # type: bool
                                    ):
         # type: (...) -> List[WireArray]
         """Draw dummy connections on the given template.
@@ -254,6 +256,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             list of center X coordinates to draw drain/source dummy connections.
         gate_tracks : List[int]
             tracks to export dummy gate connections.
+        left_edge : bool
+            True if this dummy is on the left-most edge.
+        right_edge : bool
+            True if this dummy is on the right-most edge.
 
         Returns
         -------
@@ -2027,7 +2033,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         ds_x_list = list(range(ds_x_start, ds_x_stop + 1, sd_pitch))
 
         dum_warrs = self.draw_dum_connection_helper(template, lch_unit, fg, sd_pitch, 0,
-                                                    od_y, md_y, ds_x_list, gate_tracks)
+                                                    od_y, md_y, ds_x_list, gate_tracks,
+                                                    left_edge, right_edge)
         template.add_pin('dummy', dum_warrs, show=False)
 
     def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
