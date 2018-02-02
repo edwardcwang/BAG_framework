@@ -46,6 +46,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
 
         blk :
             a tuple of row bottom/top Y coordinates.
+        po :
+            a tuple of PO bottom/top Y coordinates that's outside of CPO.
         od :
             a tuple of OD bottom/top Y coordinates.
         md :
@@ -173,6 +175,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         # get Y coordinate information dictionary
         row_yloc_info = self.get_laygo_row_yloc_info(lch_unit, w_max, is_sub, **kwargs)
         blk_yb, blk_yt = row_yloc_info['blk']
+        po_yloc = row_yloc_info['po']
         od_yloc = row_yloc_info['od']
         md_yloc = row_yloc_info['md']
         top_margins = row_yloc_info['top_margins']
@@ -224,7 +227,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
             threshold=threshold,
             arr_y=blk_y,
             od_y=od_yloc,
-            po_y=blk_y,
+            po_y=po_yloc,
             md_y=md_yloc,
             ext_top_info=ext_top_info,
             ext_bot_info=ext_bot_info,
@@ -245,6 +248,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         # type: (str, int, Dict[str, Any], **kwargs) -> Dict[str, Any]
 
         arr_y = row_info['arr_y']
+        po_y = row_info['po_y']
         lch_unit = row_info['lch_unit']
         row_type = row_info['row_type']
         sub_type = row_info['sub_type']
@@ -308,7 +312,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
             row_info_list=[RowInfo(od_x_list=[od_intv],
                                    od_y=od_yloc,
                                    od_type=(od_type, sub_type),
-                                   po_y=arr_y,
+                                   row_y=arr_y,
+                                   po_y=po_y,
                                    md_y=md_yloc), ],
             lay_info_list=lay_info_list,
             fill_info_list=fill_info_list,
@@ -370,13 +375,12 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         else:
             od_x_list = []
         # get row OD list
-        row_info_list = [RowInfo(od_x_list=od_x_list, od_y=od_y,
-                                 od_type=('dum', sub_type), po_y=po_y, md_y=md_y), ]
+        row_info_list = [RowInfo(od_x_list=od_x_list, od_y=od_y, od_type=('dum', sub_type),
+                                 row_y=arr_y, po_y=po_y, md_y=md_y), ]
 
         # update extension information
         cur_edge_info = EdgeInfo(od_type=None, draw_layers={}, y_intv=dict(od=od_y, md=md_y))
         # figure out poly types per finger
-        od_type_list = ('mos', 'sub', 'mos_fake')
         po_types = []
         lod_type = left_blk_info[0].od_type
         if lod_type == 'mos' or lod_type == 'sub':

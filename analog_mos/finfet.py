@@ -58,6 +58,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         blk :
             a tuple of row bottom/top Y coordinates.
+        po :
+            a tuple of PO bottom/top Y coordinates that's outside of CPO.
         od :
             a tuple of OD bottom/top Y coordinates.
         md :
@@ -89,6 +91,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         blk :
             a tuple of row bottom/top Y coordinates.
+        po :
+            a tuple of PO bottom/top Y coordinates that's outside of CPO.
         od :
             a tuple of OD bottom/top Y coordinates.
         md :
