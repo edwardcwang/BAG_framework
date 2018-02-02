@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 
 ExtInfo = namedtuple('ExtInfo', ['margins', 'od_h', 'imp_min_h', 'mtype', 'thres', 'po_types',
                                  'edgel_info', 'edger_info'])
-RowInfo = namedtuple('RowInfo', ['od_x_list', 'od_type', 'od_y', 'po_y', 'md_y'])
-AdjRowInfo = namedtuple('AdjRowInfo', ['po_y', 'po_types'])
+RowInfo = namedtuple('RowInfo', ['od_x_list', 'od_type', 'row_y', 'od_y', 'po_y', 'md_y'])
+AdjRowInfo = namedtuple('AdjRowInfo', ['row_y', 'po_y', 'po_types'])
 EdgeInfo = namedtuple('EdgeInfo', ['od_type', 'draw_layers', 'y_intv'])
 FillInfo = namedtuple('FillInfo', ['layer', 'exc_layer', 'x_intv_list', 'y_intv_list'])
 
@@ -506,6 +506,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # Compute Y coordinates of various layers
         blk_yb, blk_yt = yloc_info['blk']
+        po_yloc = yloc_info['po']
         od_yloc = yloc_info['od']
         md_yloc = yloc_info['md']
         top_margins = yloc_info['top_margins']
@@ -560,7 +561,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             row_info_list=[RowInfo(od_x_list=[(0, fg)],
                                    od_y=od_yloc,
                                    od_type=(od_type, sub_type),
-                                   po_y=(blk_yb, blk_yt),
+                                   row_y=(blk_yb, blk_yt),
+                                   po_y=po_yloc,
                                    md_y=md_yloc), ],
             lay_info_list=lay_info_list,
             fill_info_list=fill_info_list,
@@ -825,7 +827,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # get PO/CPO locations
         cpo_yc = 0
         num_dod = len(od_y_list)
-        po_y_list, cpo_yc_list = [], []
+        row_y_list, po_y_list, cpo_yc_list = [], [], []
         for idx, (od_yb, od_yt) in enumerate(od_y_list):
             # find next CPO coordinates
             if idx + 1 < num_dod:
@@ -833,13 +835,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             else:
                 next_cpo_yc = yblk
             # record coordinates
-            po_y_list.append((cpo_yc, next_cpo_yc))
+            row_y_list.append((cpo_yc, next_cpo_yc))
+            po_y_list.append((cpo_yc + cpo_h // 2, next_cpo_yc - cpo_h // 2))
             cpo_yc_list.append(cpo_yc)
             cpo_yc = next_cpo_yc
         # add last CPO
         cpo_yc_list.append(yblk)
 
-        return od_y_list, md_y_list, po_y_list, cpo_yc_list
+        return od_y_list, md_y_list, row_y_list, po_y_list, cpo_yc_list
 
     def _get_ext_adj_split_info(self, lch_unit, w, bot_ext_info, top_ext_info, od_y_list, cpo_yc_list):
         """Compute adjacent block information and Y split coordinate in extension block."""
@@ -864,10 +867,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 adj_edgel_infos = [bot_ext_info.edgel_info, top_ext_info.edgel_info]
                 adj_edger_infos = [bot_ext_info.edger_info, top_ext_info.edger_info]
                 adj_row_list = [AdjRowInfo(po_types=bot_ext_info.po_types,
-                                           po_y=(0, yc),
+                                           row_y=(0, yc),
+                                           po_y=(0, yc - cpo_h // 2),
                                            ),
                                 AdjRowInfo(po_types=top_ext_info.po_types,
-                                           po_y=(yc, yt),
+                                           row_y=(yc, yt),
+                                           po_y=(yc + cpo_h // 2, yt),
                                            )]
             else:
                 thres_split_y = imp_split_y = 0, yt
@@ -973,7 +978,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             )
 
         # get dummy fill locations
-        od_y_list, md_y_list, po_y_list, cpo_yc_list = self._get_dummy_yloc(lch_unit, bot_ext_info, top_ext_info, yt)
+        tmp = self._get_dummy_yloc(lch_unit, bot_ext_info, top_ext_info, yt)
+        od_y_list, md_y_list, row_y_list, po_y_list, cpo_yc_list = tmp
         # get adjacent block/split information
         tmp = self._get_ext_adj_split_info(lch_unit, w, bot_ext_info, top_ext_info, od_y_list, cpo_yc_list)
         adj_row_list, adj_edgel_infos, adj_edger_infos, thres_split_y, imp_split_y = tmp
@@ -1075,11 +1081,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # construct row_info_list, now we know where the implant splits
         row_info_list = []
-        for od_y, po_y, md_y in zip(od_y_list, po_y_list, md_y_list):
+        for od_y, row_y, po_y, md_y in zip(od_y_list, row_y_list, po_y_list, md_y_list):
             cur_mtype = bot_mtype if max(od_y[0], od_y[1]) < imp_ysep else top_mtype
             cur_sub_type = 'ptap' if cur_mtype == 'nch' or cur_mtype == 'ptap' else 'ntap'
             row_info_list.append(RowInfo(od_x_list=od_x_list, od_y=od_y, od_type=('dum', cur_sub_type),
-                                         po_y=po_y, md_y=md_y))
+                                         row_y=row_y, po_y=po_y, md_y=md_y))
 
         # create layout information dictionary
         layout_info = dict(
@@ -1117,15 +1123,15 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         lch_unit = int(round(lch / self.config['layout_unit'] / self.res))
 
         tmp = self._get_dummy_yloc(lch_unit, end_ext_info, end_ext_info, height)
-        od_y_list, md_y_list, po_y_list, cpo_yc_list = tmp
+        od_y_list, md_y_list, row_y_list, po_y_list, cpo_yc_list = tmp
         tmp = self._get_ext_adj_split_info(lch_unit, height, end_ext_info, end_ext_info, od_y_list, cpo_yc_list)
         adj_row_list, adj_edgel_infos, adj_edger_infos, _, _ = tmp
 
         # construct row_info_list
         row_info_list = []
-        for od_y, md_y, po_y in zip(od_y_list, md_y_list, po_y_list):
+        for od_y, md_y, row_y, po_y in zip(od_y_list, md_y_list, row_y_list, po_y_list):
             row_info_list.append(RowInfo(od_x_list=(0, 0), od_type=('dum', sub_type),
-                                         od_y=od_y, po_y=po_y, md_y=md_y))
+                                         od_y=od_y, row_y=row_y, po_y=po_y, md_y=md_y))
 
         lr_edge_info = EdgeInfo(od_type='dum', draw_layers={}, y_intv={})
         layout_info = dict(
@@ -1225,7 +1231,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             po_yb = cpo_bot_yt - cpo_po_ency
             imp_yb = min(po_yb, cpo_bot_yc)
             if po_yt > po_yb:
-                adj_row_list = [AdjRowInfo(po_y=(po_yb, po_yt), po_types=('PO',) * fg)]
+                adj_row_list = [AdjRowInfo(row_y=(po_yb, po_yt), po_y=(0, 0), po_types=('PO',) * fg)]
                 adj_edge_infos = [lr_edge_info]
             else:
                 adj_row_list = []
@@ -1536,6 +1542,44 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """
         template.add_rect(layer, bbox)
 
+    # noinspection PyUnusedLocal
+    def draw_poly(self, template, po_type, po_x, row_y, po_y, od_y):
+        # type: (TemplateBase, str, Tuple[int, int], Tuple[int, int], Tuple[int, int], Tuple[int, int]) -> None
+        """This method draws a transistor poly.
+
+        By default, this method does the following:
+
+        1. draws a PO on row_y coordinates.
+        2. if the PO is an edge PO or a substrate PO, then draw PODE on od_y coordinates.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the template.
+        po_type : str
+            the PO type.
+        po_x : Tuple[int, int]
+            the PO X bounds.
+        row_y : Tuple[int, int]
+            the row Y bounds.
+        po_y : Tuple[int, int]
+            the PO Y bounds outside of CPO.
+        od_y : Tuple[int, int]
+            the OD Y bounds that intersects this PO.
+        """
+        mos_layer_table = self.config['mos_layer_table']
+
+        po_lay = mos_layer_table[po_type]
+        res = template.grid.resolution
+
+        po_xl, po_xr = po_x
+        template.add_rect(po_lay, BBox(po_xl, row_y[0], po_xr, row_y[1], res, unit_mode=True))
+        od_yb, od_yt = od_y
+        if od_yt > od_yb and ('edge' in po_type or 'sub' in po_type):
+            pode_lay = mos_layer_table.get('PODE', None)
+            if pode_lay is not None:
+                template.add_rect(pode_lay, BBox(po_xl, od_yb, po_xr, od_yt, res, unit_mode=True))
+
     def draw_mos(self, template, layout_info):
         # type: (TemplateBase, Dict[str, Any]) -> None
         """Draw transistor related layout.
@@ -1567,8 +1611,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 a tuple of (OD type, substrate type).  OD type is one of 'mos', 'sub', or 'dum'.
             od_y
                 OD Y interval.
+            row_y
+                the row Y interval.
             po_y
-                PO Y interval.
+                PO Y interval; does not include PO in CPO.
             md_y
                 MD Y interval.
         lay_info_list
@@ -1589,8 +1635,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             a list of named tuples for geometries belonging to adjacent
             rows.  Each named tuple should contain:
 
+            row_y
+                the row Y interval.
             po_y
-                PO Y interval.
+                PO Y interval; does not include PO in CPO.
             po_types
                 list of po types corresponding to each PO.  0 for dummy, 1 for drawing,
                 2 for PODE if PODE is a special poly layer.
@@ -1627,7 +1675,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fin_p = mos_constants['mos_pitch']
         sd_pitch = mos_constants['sd_pitch']
         md_w = mos_constants['md_w']
-        pode_is_poly = mos_constants['pode_is_poly']
         po_od_extx = mos_constants['po_od_extx']
 
         fin_p2 = fin_p // 2
@@ -1652,7 +1699,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # figure out transistor layout settings
         od_lay = mos_layer_table['OD']
         od_dum_lay = mos_layer_table['OD_dummy']
-        pode_lay = mos_layer_table['PODE']
         md_lay = mos_layer_table['MD']
         md_dum_lay = mos_layer_table['MD_dummy']
         finbound_lay = mos_layer_table['FB']
@@ -1669,7 +1715,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 md_lay_cur = md_lay
             od_x_list = row_info.od_x_list
             od_yb, od_yt = row_info.od_y
-            po_yb, po_yt = row_info.po_y
+            row_y = row_info.row_y
+            po_y = row_info.po_y
             md_yb, md_yt = row_info.md_y
 
             # draw OD and figure out PO/MD info
@@ -1695,7 +1742,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                         self.draw_mos_rect(template, od_lay_cur, od_box)
 
             # draw PO/PODE
-            if po_yt > po_yb:
+            if row_y[1] > row_y[0]:
                 for idx in range(fg):
                     po_xl = po_xc + idx * sd_pitch - lch_unit // 2
                     po_xr = po_xl + lch_unit
@@ -1718,28 +1765,17 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     if is_edge and cur_od_type is not None:
                         if cur_od_type == 'dum':
                             lay = 'PO_edge_dummy'
-                            draw_pode = False
                         else:
                             lay = 'PO_edge'
-                            draw_pode = True
                     elif cur_od_type == 'mos':
                         lay = 'PO'
-                        draw_pode = False
                     elif cur_od_type == 'sub':
                         lay = 'PO'
-                        draw_pode = not pode_is_poly
                     elif cur_od_type == 'dum':
                         lay = 'PO_gate_dummy'
-                        draw_pode = False
                     else:
                         lay = 'PO_dummy'
-                        draw_pode = False
-                    po_lay_cur = mos_layer_table[lay]
-                    self.draw_mos_rect(template, po_lay_cur, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
-
-                    if draw_pode and not pode_is_poly and od_yt > od_yb:
-                        self.draw_mos_rect(template, pode_lay, BBox(po_xl, pode_y[0], po_xr,
-                                                                    pode_y[1], res, unit_mode=True))
+                    self.draw_poly(template, lay, (po_xl, po_xr), row_y, po_y, pode_y)
 
             # draw MD
             if md_yt > md_yb and fg > 0:
@@ -1767,12 +1803,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # draw adjacent row geometries
         for adj_info in adj_row_list:
-            po_yb, po_yt = adj_info.po_y
-            for idx, po_type in enumerate(adj_info.po_types):
-                lay = mos_layer_table[po_type]
-                po_xl = po_xc + idx * sd_pitch - lch_unit // 2
-                po_xr = po_xl + lch_unit
-                self.draw_mos_rect(template, lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
+            row_y = adj_info.row_y
+            po_y = adj_info.po_y
+            if row_y[1] > row_y[0]:
+                for idx, po_type in enumerate(adj_info.po_types):
+                    lay = mos_layer_table[po_type]
+                    po_xl = po_xc + idx * sd_pitch - lch_unit // 2
+                    po_xr = po_xl + lch_unit
+                    self.draw_poly(template, lay, (po_xl, po_xr), row_y, po_y, (po_y[0], po_y[0]))
 
         # set size and add PR boundary
         arr_box = BBox(0, arr_yb, blk_w, arr_yt, res, unit_mode=True)
