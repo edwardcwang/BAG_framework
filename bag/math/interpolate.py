@@ -12,7 +12,7 @@ import scipy.ndimage.interpolation as imag_interp
 from ..math.dfun import DiffFunction
 
 __author__ = 'erichang'
-__all__ = ['interpolate_grid']
+__all__ = ['interpolate_grid', 'LinearInterpolator']
 
 
 def _scales_to_points(scale_list, values, delta=1e-4):
@@ -139,8 +139,8 @@ class LinearInterpolator(DiffFunction):
             return ans[0]
         return ans
 
-    def integrate(self, xstart, xstop, axis=-1, logx=False, logy=False):
-        # type: (float, float, int, bool, bool) -> Union[LinearInterpolator, float]
+    def integrate(self, xstart, xstop, axis=-1, logx=False, logy=False, raw=False):
+        # type: (float, float, int, bool, bool, bool) -> Union[LinearInterpolator, np.ndarray]
         """Integrate away the given axis.
 
         if logx/logy is True, that means this LinearInterpolator is actually used
@@ -160,10 +160,12 @@ class LinearInterpolator(DiffFunction):
             the real values.
         logy : bool
             True if the Y values are actually the logarithm of the real values.
+        raw : bool
+            True to return the raw data points instead of a LinearInterpolator object.
 
         Returns
         -------
-        result : Union[LinearInterpolator, float]
+        result : Union[LinearInterpolator, np.ndarray]
             float if this interpolator has only 1 dimension, otherwise a new
             LinearInterpolator is returned.
         """
@@ -246,7 +248,7 @@ class LinearInterpolator(DiffFunction):
             # just use trapezoid integration
             new_values = np.trapz(values, x=integ_x, axis=axis)  # type: np.multiarray.ndarray
 
-        if new_points:
+        if not raw and new_points:
             return LinearInterpolator(new_points, new_values, new_deltas, extrapolate=self._extrapolate)
         else:
             return new_values
