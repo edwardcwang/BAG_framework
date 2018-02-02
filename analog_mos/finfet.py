@@ -524,7 +524,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # Compute extension information
         lr_edge_info = EdgeInfo(od_type=od_type, draw_layers={}, y_intv={})
 
-        po_types = ('PO',) * fg
+        po_type = 'PO_sub' if is_sub else 'PO'
+        po_types = (po_type,) * fg
         mtype = (mos_type, mos_type)
         od_h = self.get_od_h(lch_unit, w)
         ext_top_info = ExtInfo(
@@ -1235,7 +1236,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             po_yb = cpo_bot_yt - cpo_po_ency
             imp_yb = min(po_yb, cpo_bot_yc)
             if po_yt > po_yb:
-                adj_row_list = [AdjRowInfo(row_y=(po_yb, po_yt), po_y=(0, 0), po_types=('PO',) * fg)]
+                adj_row_list = [AdjRowInfo(row_y=(po_yb, po_yt), po_y=(0, 0), po_types=('PO_sub',) * fg)]
                 adj_edge_infos = [lr_edge_info]
             else:
                 adj_row_list = []
@@ -1290,7 +1291,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 imp_min_h=0,
                 mtype=end_ext_info.mtype,
                 thres=threshold,
-                po_types=('PO',) * fg,
+                po_types=('PO_sub',) * fg,
                 edgel_info=lr_edge_info,
                 edger_info=lr_edge_info,
             )
@@ -1361,9 +1362,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             for adj_edge_info, adj_info in zip(adj_blk_info[1], adj_row_list):
                 if adj_edge_info is not None:
                     po_types = ('PO_dummy',) * (fg_outer - 1)
-                    if adj_edge_info.od_type == 'mos' or adj_edge_info.od_type == 'sub':
+                    adj_od_type = adj_edge_info.od_type
+                    if adj_od_type == 'mos':
                         po_types += ('PO_edge',)
-                    elif adj_edge_info.od_type == 'dum':
+                    elif adj_od_type == 'sub':
+                        po_types += ('PO_edge_sub', )
+                    elif adj_od_type == 'dum':
                         po_types += ('PO_edge_dummy', )
                     else:
                         po_types += ('PO_dummy', )
@@ -1453,7 +1457,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # compute new adj_row_list
         po_types = ('PO_dummy',) * (fg_od_margin - 1) + ('PO_edge', ) + \
-                   ('PO',) * guard_ring_nf + ('PO_edge', ) + ('PO_dummy',) * (fg_od_margin - 1)
+                   ('PO_sub',) * guard_ring_nf + ('PO_edge', ) + ('PO_dummy',) * (fg_od_margin - 1)
         # noinspection PyProtectedMember
         new_adj_row_list = [ar_info._replace(po_types=po_types) for ar_info in adj_row_list]
 
@@ -1501,9 +1505,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         new_adj_list = []
         for adj_edge_info, adj_info in zip(adj_blk_info[1], adj_row_list):
             po_types = ('PO_dummy', ) * (fg_gr_sep - 1)
-            if adj_edge_info.od_type == 'mos' or adj_edge_info.od_type == 'sub':
+            adj_od_type = adj_edge_info.od_type
+            if adj_od_type == 'mos':
                 po_types += ('PO_edge', )
-            elif adj_edge_info.od_type == 'dum':
+            elif adj_od_type == 'sub':
+                po_types += ('PO_edge_sub', )
+            elif adj_od_type == 'dum':
                 po_types += ('PO_edge_dummy', )
             else:
                 po_types += ('PO_dummy', )
@@ -1769,12 +1776,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     if is_edge and cur_od_type is not None:
                         if cur_od_type == 'dum':
                             lay = 'PO_edge_dummy'
+                        elif cur_od_type == 'sub':
+                            lay = 'PO_edge_sub'
                         else:
                             lay = 'PO_edge'
                     elif cur_od_type == 'mos':
                         lay = 'PO'
                     elif cur_od_type == 'sub':
-                        lay = 'PO'
+                        lay = 'PO_sub'
                     elif cur_od_type == 'dum':
                         lay = 'PO_gate_dummy'
                     else:

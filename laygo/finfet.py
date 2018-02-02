@@ -187,7 +187,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
 
         # compute extension information
         mtype = (mos_type, mos_type)
-        po_types = ('PO', 'PO')
+        po_type = 'PO_sub' if is_sub else 'PO'
+        po_types = (po_type, po_type)
         lr_edge_info = EdgeInfo(od_type='sub' if is_sub else 'mos', draw_layers={}, y_intv={})
         ext_top_info = ExtInfo(margins=top_margins,
                                od_w=w_max,
@@ -280,12 +281,12 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                 fg = 2
                 od_intv = (0, 2)
                 edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={}, y_intv=y_intv)
-                po_types = ('PO', 'PO')
+                po_types = ('PO_sub', 'PO_sub')
             else:
                 fg = self.get_sub_columns(lch_unit)
                 od_intv = (2, fg - 2)
                 edgel_info = edger_info = EdgeInfo(od_type=None, draw_layers={}, y_intv=y_intv)
-                po_types = ('PO_dummy', 'PO_edge') + ('PO',) * (fg - 4) + ('PO_edge', 'PO_dummy',)
+                po_types = ('PO_dummy', 'PO_edge_sub') + ('PO_sub',) * (fg - 4) + ('PO_edge_sub', 'PO_dummy',)
         else:
             mtype = (row_type, row_type)
             od_type = 'mos'
@@ -383,8 +384,10 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         # figure out poly types per finger
         po_types = []
         lod_type = left_blk_info[0].od_type
-        if lod_type == 'mos' or lod_type == 'sub':
+        if lod_type == 'mos':
             po_types.append('PO_edge')
+        elif lod_type == 'sub':
+            po_types.append('PO_edge_sub')
         elif lod_type == 'dum':
             po_types.append('PO_edge_dummy')
         else:
@@ -408,8 +411,10 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                 po_types.append('PO_dummy')
         po_types.extend(('PO_dummy' for _ in range(num_blk - 2)))
         rod_type = right_blk_info[0].od_type
-        if rod_type == 'mos' or rod_type == 'sub':
+        if rod_type == 'mos':
             po_types.append('PO_edge')
+        elif rod_type == 'sub':
+            po_types.append('PO_edge_sub')
         elif rod_type == 'dum':
             po_types.append('PO_edge_dummy')
         else:
