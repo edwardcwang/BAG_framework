@@ -519,7 +519,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # Compute extension information
         lr_edge_info = EdgeInfo(od_type=od_type, draw_layers={}, y_intv={})
 
-        po_types = (1,) * fg
+        po_types = ('PO',) * fg
         mtype = (mos_type, mos_type)
         od_h = self.get_od_h(lch_unit, w)
         ext_top_info = ExtInfo(
@@ -1225,7 +1225,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             po_yb = cpo_bot_yt - cpo_po_ency
             imp_yb = min(po_yb, cpo_bot_yc)
             if po_yt > po_yb:
-                adj_row_list = [AdjRowInfo(po_y=(po_yb, po_yt), po_types=(1,) * fg)]
+                adj_row_list = [AdjRowInfo(po_y=(po_yb, po_yt), po_types=('PO',) * fg)]
                 adj_edge_infos = [lr_edge_info]
             else:
                 adj_row_list = []
@@ -1280,7 +1280,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 imp_min_h=0,
                 mtype=end_ext_info.mtype,
                 thres=threshold,
-                po_types=(1,) * fg,
+                po_types=('PO',) * fg,
                 edgel_info=lr_edge_info,
                 edger_info=lr_edge_info,
             )
@@ -1323,9 +1323,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         imp_params = layout_info['imp_params']
         dnw_mode = layout_info['dnw_mode']
 
-        mos_constants = self.get_mos_tech_constants(lch_unit)
-        pode_is_poly = mos_constants['pode_is_poly']
-
         edge_info = self.get_edge_info(lch_unit, guard_ring_nf, is_end, dnw_mode=dnw_mode)
         fg_outer = edge_info['fg_outer']
         cpo_xl = edge_info['cpo_xl']
@@ -1350,13 +1347,18 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # change PO type in adjacent row geometries
         new_adj_row_list = []
-        po_edge_code = 2 if pode_is_poly else 1
         if fg_outer > 0:
             for adj_edge_info, adj_info in zip(adj_blk_info[1], adj_row_list):
-                if adj_edge_info is not None and (adj_edge_info.od_type == 'mos' or adj_edge_info.od_type == 'sub'):
-                    po_types = (0,) * (fg_outer - 1) + (po_edge_code,)
+                if adj_edge_info is not None:
+                    po_types = ('PO_dummy',) * (fg_outer - 1)
+                    if adj_edge_info.od_type == 'mos' or adj_edge_info.od_type == 'sub':
+                        po_types += ('PO_edge',)
+                    elif adj_edge_info.od_type == 'dum':
+                        po_types += ('PO_edge_dummy', )
+                    else:
+                        po_types += ('PO_dummy', )
                 else:
-                    po_types = (0,) * fg_outer
+                    po_types = ('PO_dummy',) * fg_outer
                 # noinspection PyProtectedMember
                 new_adj_row_list.append(adj_info._replace(po_types=po_types))
 
@@ -1395,7 +1397,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         dnw_mode = layout_info['dnw_mode']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
-        pode_is_poly = mos_constants['pode_is_poly']
         sd_pitch = mos_constants['sd_pitch']
 
         edge_info = self.get_edge_info(lch_unit, guard_ring_nf, True, dnw_mode=dnw_mode)
@@ -1441,9 +1442,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     new_lay_list.append((lay_name, wblk - nw_dnw_ovl, 0, arr_y[1]))
 
         # compute new adj_row_list
-        po_edge_code = 2 if pode_is_poly else 1
-        po_types = (0,) * (fg_od_margin - 1) + (po_edge_code, ) + \
-                   (1,) * guard_ring_nf + (po_edge_code, ) + (0,) * (fg_od_margin - 1)
+        po_types = ('PO_dummy',) * (fg_od_margin - 1) + ('PO_edge', ) + \
+                   ('PO',) * guard_ring_nf + ('PO_edge', ) + ('PO_dummy',) * (fg_od_margin - 1)
         # noinspection PyProtectedMember
         new_adj_row_list = [ar_info._replace(po_types=po_types) for ar_info in adj_row_list]
 
@@ -1479,7 +1479,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fg_gr_min = mos_constants['fg_gr_min']
-        pode_is_poly = mos_constants['pode_is_poly']
 
         edge_constants = self.get_edge_info(lch_unit, fg_gr_min, True, is_sub_ring=is_sub_ring, dnw_mode=dnw_mode)
         fg_gr_sep = edge_constants['fg_gr_sep']
@@ -1490,12 +1489,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # compute new adj_row_list
         new_adj_list = []
-        po_edge_code = 2 if pode_is_poly else 1
         for adj_edge_info, adj_info in zip(adj_blk_info[1], adj_row_list):
+            po_types = ('PO_dummy', ) * (fg_gr_sep - 1)
             if adj_edge_info.od_type == 'mos' or adj_edge_info.od_type == 'sub':
-                po_types = (0,) * (fg_gr_sep - 1) + (po_edge_code,)
+                po_types += ('PO_edge', )
+            elif adj_edge_info.od_type == 'dum':
+                po_types += ('PO_edge_dummy', )
             else:
-                po_types = (0,) * fg_gr_sep
+                po_types += ('PO_dummy', )
             # noinspection PyProtectedMember
             new_adj_list.append(adj_info._replace(po_types=po_types))
 
@@ -1651,10 +1652,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # figure out transistor layout settings
         od_lay = mos_layer_table['OD']
         od_dum_lay = mos_layer_table['OD_dummy']
-        po_lay = mos_layer_table['PO']
-        po_dum_lay = mos_layer_table['PO_dummy']
         pode_lay = mos_layer_table['PODE']
-        po_pode_lay = mos_layer_table['PODE'] if pode_is_poly else po_lay
         md_lay = mos_layer_table['MD']
         md_dum_lay = mos_layer_table['MD_dummy']
         finbound_lay = mos_layer_table['FB']
@@ -1719,21 +1717,25 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
                     if is_edge and cur_od_type is not None:
                         if cur_od_type == 'dum':
-                            lay = po_dum_lay
+                            lay = 'PO_edge_dummy'
                             draw_pode = False
                         else:
-                            lay = po_pode_lay
+                            lay = 'PO_edge'
                             draw_pode = True
                     elif cur_od_type == 'mos':
-                        lay = po_lay
+                        lay = 'PO'
                         draw_pode = False
                     elif cur_od_type == 'sub':
-                        lay = po_lay
+                        lay = 'PO'
                         draw_pode = not pode_is_poly
-                    else:
-                        lay = po_dum_lay
+                    elif cur_od_type == 'dum':
+                        lay = 'PO_gate_dummy'
                         draw_pode = False
-                    self.draw_mos_rect(template, lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
+                    else:
+                        lay = 'PO_dummy'
+                        draw_pode = False
+                    po_lay_cur = mos_layer_table[lay]
+                    self.draw_mos_rect(template, po_lay_cur, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
 
                     if draw_pode and not pode_is_poly and od_yt > od_yb:
                         self.draw_mos_rect(template, pode_lay, BBox(po_xl, pode_y[0], po_xr,
@@ -1767,12 +1769,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         for adj_info in adj_row_list:
             po_yb, po_yt = adj_info.po_y
             for idx, po_type in enumerate(adj_info.po_types):
-                if po_type == 0:
-                    lay = po_dum_lay
-                elif po_type == 1:
-                    lay = po_lay
-                else:
-                    lay = po_pode_lay
+                lay = mos_layer_table[po_type]
                 po_xl = po_xc + idx * sd_pitch - lch_unit // 2
                 po_xr = po_xl + lch_unit
                 self.draw_mos_rect(template, lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))

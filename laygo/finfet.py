@@ -184,7 +184,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
 
         # compute extension information
         mtype = (mos_type, mos_type)
-        po_types = (1, 1)
+        po_types = ('PO', 'PO')
         lr_edge_info = EdgeInfo(od_type='sub' if is_sub else 'mos', draw_layers={}, y_intv={})
         ext_top_info = ExtInfo(margins=top_margins,
                                od_w=w_max,
@@ -254,9 +254,6 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         imp_params = row_info['imp_params']
         fill_info_list = row_info['fill_info_list']
 
-        mos_constants = self.get_mos_tech_constants(lch_unit)
-        pode_is_poly = mos_constants['pode_is_poly']
-
         # get Y coordinate information dictionary
         yloc_info = self.get_laygo_blk_yloc_info(w, row_info, **kwargs)
         od_yloc = yloc_info['od']
@@ -264,7 +261,6 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
 
         # figure out various properties of the current laygo block
         is_sub = (row_type == sub_type)
-        po_edge_code = 2 if pode_is_poly else 1
         y_intv = dict(od=od_yloc, md=md_yloc)
         if blk_type.startswith('fg1'):
             mtype = (row_type, row_type)
@@ -272,7 +268,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
             fg = 1
             od_intv = (0, 1)
             edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={}, y_intv=y_intv)
-            po_types = (1,)
+            po_types = ('PO',)
         elif blk_type == 'sub':
             mtype = (sub_type, row_type)
             od_type = 'sub'
@@ -280,19 +276,19 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                 fg = 2
                 od_intv = (0, 2)
                 edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={}, y_intv=y_intv)
-                po_types = (1, 1)
+                po_types = ('PO', 'PO')
             else:
                 fg = self.get_sub_columns(lch_unit)
                 od_intv = (2, fg - 2)
                 edgel_info = edger_info = EdgeInfo(od_type=None, draw_layers={}, y_intv=y_intv)
-                po_types = (0, po_edge_code) + (1,) * (fg - 4) + (po_edge_code, 0,)
+                po_types = ('PO_dummy', 'PO_edge') + ('PO',) * (fg - 4) + ('PO_edge', 'PO_dummy',)
         else:
             mtype = (row_type, row_type)
             od_type = 'mos'
             fg = 2
             od_intv = (0, 2)
             edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={}, y_intv=y_intv)
-            po_types = (1, 1)
+            po_types = ('PO', 'PO')
 
         # update extension information
         # noinspection PyProtectedMember
@@ -362,7 +358,6 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         sd_pitch = mos_constants['sd_pitch']
         od_spx = mos_constants['od_spx']
         od_fill_w_max = mos_constants['od_fill_w_max']
-        pode_is_poly = mos_constants['pode_is_poly']
 
         od_fg_max = (od_fill_w_max - lch_unit) // sd_pitch - 1
         od_spx_fg = -(-(od_spx - sd_pitch + lch_unit) // sd_pitch) + 2
@@ -382,10 +377,39 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         cur_edge_info = EdgeInfo(od_type=None, draw_layers={}, y_intv=dict(od=od_y, md=md_y))
         # figure out poly types per finger
         od_type_list = ('mos', 'sub', 'mos_fake')
-        po_edge_code = 2 if pode_is_poly else 1
-        po_types = [po_edge_code if left_blk_info[0].od_type in od_type_list else 0]
-        po_types.extend((0 for _ in range(num_blk - 2)))
-        po_types.append(po_edge_code if right_blk_info[0].od_type in od_type_list else 0)
+        po_types = []
+        lod_type = left_blk_info[0].od_type
+        if lod_type == 'mos' or lod_type == 'sub':
+            po_types.append('PO_edge')
+        elif lod_type == 'dum':
+            po_types.append('PO_edge_dummy')
+        else:
+            po_types.append('PO_dummy')
+        od_intv_idx = 0
+        for cur_idx in range(od_spx_fg, od_spx_fg + num_blk - 2):
+            if od_intv_idx < len(od_x_list):
+                cur_od_intv = od_x_list[od_intv_idx]
+                if cur_od_intv[1] == cur_idx:
+                    po_types.append('PO_edge_dummy')
+                    od_intv_idx += 1
+                elif cur_od_intv[0] <= cur_idx < cur_od_intv[1]:
+                    po_types.append('PO_gate_dummy')
+                elif cur_idx == cur_od_intv[0] - 1:
+                    po_types.append('PO_edge_dummy')
+                else:
+                    if cur_idx > cur_od_intv[1]:
+                        od_intv_idx += 1
+                    po_types.append('PO_dummy')
+            else:
+                po_types.append('PO_dummy')
+        po_types.extend(('PO_dummy' for _ in range(num_blk - 2)))
+        rod_type = right_blk_info[0].od_type
+        if rod_type == 'mos' or rod_type == 'sub':
+            po_types.append('PO_edge')
+        elif rod_type == 'dum':
+            po_types.append('PO_edge_dummy')
+        else:
+            po_types.append('PO_dummy')
         # noinspection PyProtectedMember
         ext_top_info = row_ext_top._replace(po_types=po_types, edgel_info=cur_edge_info,
                                             edger_info=cur_edge_info)
