@@ -873,11 +873,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 adj_edger_infos = [bot_ext_info.edger_info, top_ext_info.edger_info]
                 adj_row_list = [AdjRowInfo(po_types=bot_ext_info.po_types,
                                            row_y=(0, yc),
-                                           po_y=(0, yc - cpo_h // 2),
+                                           po_y=(-(cpo_h // 2), yc - cpo_h // 2),
                                            ),
                                 AdjRowInfo(po_types=top_ext_info.po_types,
                                            row_y=(yc, yt),
-                                           po_y=(yc + cpo_h // 2, yt),
+                                           po_y=(yc + cpo_h // 2, yt + cpo_h // 2),
                                            )]
             else:
                 thres_split_y = imp_split_y = 0, yt
