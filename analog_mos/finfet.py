@@ -1586,7 +1586,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         po_xl, po_xr = po_x
         template.add_rect(po_lay, BBox(po_xl, row_y[0], po_xr, row_y[1], res, unit_mode=True))
         od_yb, od_yt = od_y
-        if od_yt > od_yb and ('edge' in po_type or 'sub' in po_type):
+        if od_yt > od_yb and ('sub' in po_type or ('edge' in po_type and po_type != 'PO_edge_dummy')):
             pode_lay = mos_layer_table.get('PODE', None)
             if pode_lay is not None:
                 template.add_rect(pode_lay, BBox(po_xl, od_yb, po_xr, od_yt, res, unit_mode=True))
