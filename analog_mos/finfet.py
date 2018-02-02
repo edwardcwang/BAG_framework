@@ -1001,7 +1001,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             od_x_list = []
             od_y_list = md_y_list = [(0, 0)]
             if one_cpo:
-                po_y_list = [(0, 0)]
+                row_y_list = po_y_list = [(0, 0)]
                 lay_info_list.append((cpo_lay, 0, yc - cpo_h // 2, yc + cpo_h // 2))
             else:
                 thres_split_y = imp_split_y = 0, yt
