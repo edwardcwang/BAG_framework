@@ -1627,6 +1627,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         sd_pitch = mos_constants['sd_pitch']
         md_w = mos_constants['md_w']
         pode_is_poly = mos_constants['pode_is_poly']
+        po_od_extx = mos_constants['po_od_extx']
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
@@ -1690,8 +1691,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                             po_is_edge[idx] = idx == od_stop
 
                     if draw_od:
-                        od_xl = po_xc - lch_unit // 2 + (od_start - 1) * sd_pitch
-                        od_xr = po_xc + lch_unit // 2 + od_stop * sd_pitch
+                        od_xl = po_xc - lch_unit // 2 + od_start * sd_pitch - po_od_extx
+                        od_xr = po_xc + lch_unit // 2 + (od_stop - 1) * sd_pitch + po_od_extx
                         od_box = BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True)
                         self.draw_mos_rect(template, od_lay_cur, od_box)
 
