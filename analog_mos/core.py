@@ -465,6 +465,20 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         """
         pass
 
+    def get_mos_conn_modulus(self, lch_unit):
+        # type: (int) -> int
+        """Returns the source/drain modulus for transistor/dummy connections.
+
+        This allows transistor/dummy connections to change their geometry based
+        on the source column index modulo by this number.
+
+        Parameters
+        ----------
+        lch_unit : int
+            the transistor channel length
+        """
+        return self.get_mos_tech_constants(lch_unit).get('mos_conn_modulus', 1)
+
     def get_conn_drc_info(self, lch_unit, wire_type, is_laygo=False):
         # type: (int, str, bool) -> Dict[int, Dict[str, Any]]
         """Get DRC information about gate/drain/source wire on each layer.
