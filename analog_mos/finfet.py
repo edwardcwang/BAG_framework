@@ -1927,6 +1927,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # type: (TemplateBase, Dict[str, Any], int, int, str, int, bool, bool, bool, Dict[str, Any]) -> None
 
         stack = options.get('stack', 1)
+        source_parity = options.get('source_parity', 0)
 
         # NOTE: ignore min_ds_cap.
         if is_diff:
@@ -1940,6 +1941,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
+        mos_conn_modullus = mos_constants['mos_conn_modulus']
 
         if fg % stack != 0:
             raise ValueError('AnalogMosConn: stack = %d must evenly divides fg = %d' % (stack, fg))
@@ -1961,10 +1963,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 raise ValueError('1 finger transistor connection not supported.')
 
             # draw wires
+            drain_parity = (source_parity + 1) % mos_conn_modullus
             _, s_warrs = self.draw_ds_connection(template, lch_unit, fg, wire_pitch, 0, od_y, md_y,
-                                                 s_x_list, s_x_list, False, sdir, 1)
+                                                 s_x_list, s_x_list, False, sdir, 1, source_parity=source_parity)
             _, d_warrs = self.draw_ds_connection(template, lch_unit, fg, wire_pitch, 0, od_y, md_y,
-                                                 d_x_list, d_x_list, True, 0, 2)
+                                                 d_x_list, d_x_list, True, 0, 2, source_parity=drain_parity)
             g_warrs = self.draw_g_connection(template, lch_unit, fg, sd_pitch, 0, od_y, md_y, d_x_list, is_sub=False)
 
             g_warrs = WireArray.list_to_warr(g_warrs)
