@@ -184,7 +184,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                           md_y,  # type: Tuple[int, int]
                           conn_x_list,  # type: List[int]
                           is_sub=False,  # type: bool
-                          **kwargs,
+                          **kwargs
                           ):
         # type: (...) -> List[WireArray]
         """Draw gate connections on the given template.
@@ -1343,6 +1343,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         imp_params = layout_info['imp_params']
         dnw_mode = layout_info['dnw_mode']
 
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        imp_edge_dx = mos_constants.get('imp_edge_dx', {})
+        sd_pitch = mos_constants['sd_pitch']
+
         edge_info = self.get_edge_info(lch_unit, guard_ring_nf, is_end, dnw_mode=dnw_mode)
         fg_outer = edge_info['fg_outer']
         cpo_xl = edge_info['cpo_xl']
@@ -1351,8 +1355,16 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         cpo_lay = mos_layer_table['CPO']
         if guard_ring_nf == 0 or imp_params is None:
             # we keep all implant layers, just update CPO left coordinate.
-            new_lay_list = [(lay, cpo_xl if lay == cpo_lay else 0, yb, yt)
-                            for lay, _, yb, yt in lay_info_list]
+            new_lay_list = []
+            for lay, _, yb, yt in lay_info_list:
+                if lay == cpo_lay:
+                    new_lay_list.append((lay, cpo_xl, yb, yt))
+                elif lay in imp_edge_dx:
+                    offset, lch_scale, sd_scale = imp_edge_dx[lay]
+                    cur_xl = offset + int(round(lch_scale * lch_unit)) + int(round(sd_scale * sd_pitch))
+                    new_lay_list.append((lay, cur_xl, yb, yt))
+                else:
+                    new_lay_list.append((lay, 0, yb, yt))
         else:
             # in guard ring mode, only draw CPO
             new_lay_list = [(lay, cpo_xl, yb, yt) for lay, _, yb, yt in lay_info_list if lay == cpo_lay]
