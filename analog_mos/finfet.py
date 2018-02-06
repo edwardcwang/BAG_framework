@@ -1994,9 +1994,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
             # draw wires
             drain_parity = (source_parity + 1) % mos_conn_modullus
-            _, s_warrs = self.draw_ds_connection(template, lch_unit, fg, wire_pitch, 0, od_y, md_y,
+            _, s_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y, md_y,
                                                  s_x_list, s_x_list, False, sdir, 1, source_parity=source_parity)
-            _, d_warrs = self.draw_ds_connection(template, lch_unit, fg, wire_pitch, 0, od_y, md_y,
+            _, d_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y, md_y,
                                                  d_x_list, d_x_list, True, 0, 2, source_parity=drain_parity)
             g_warrs = self.draw_g_connection(template, lch_unit, fg, sd_pitch, 0, od_y, md_y, d_x_list, is_sub=False)
 
@@ -2026,9 +2026,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     g_x_list = [0, 2 * wire_pitch]
 
             # draw wires
-            _, s_warrs = self.draw_ds_connection(template, lch_unit, fg, wire_pitch, 0, od_y, md_y,
+            _, s_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y, md_y,
                                                  s_x_list, s_x_list, ds_code == 1, sdir, 1)
-            _, d_warrs = self.draw_ds_connection(template, lch_unit, fg, wire_pitch, 0, od_y, md_y,
+            _, d_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y, md_y,
                                                  d_x_list, d_x_list, ds_code == 2, ddir, 2)
             g_warrs = self.draw_g_connection(template, lch_unit, fg, sd_pitch, 0, od_y, md_y, g_x_list, is_sub=False)
 
