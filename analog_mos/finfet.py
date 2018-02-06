@@ -387,7 +387,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return -(-(sp + 2 * po_od_exty + lch_unit - 3 * sd_pitch) // sd_pitch)
 
     def get_fin_idx(self, lch_unit, od_y, top_edge, round_up=None):
-        # type: (int, int, bool, bool) -> int
+        # type: (int, int, bool, Optional[bool]) -> int
         """Get fin index from OD top/bottom edge coordinate."""
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
@@ -764,7 +764,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # convert fin interval to Y coordinates
         od_intv_list = od_fin_area_iter.get_last_save_info()
         return [(self.get_od_edge(lch_unit, start, False),
-                 self.get_od_edge(lch_unit, stop, False)) for start, stop in od_intv_list]
+                 self.get_od_edge(lch_unit, stop, True)) for start, stop in od_intv_list]
 
     def _get_dummy_yloc(self, lch_unit, bot_ext_info, top_ext_info, yblk):
         """Compute dummy OD/MD/PO/CPO Y intervals in extension block.
