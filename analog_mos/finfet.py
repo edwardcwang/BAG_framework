@@ -865,7 +865,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         cpo_spy = mos_constants['cpo_spy']
         imp_od_ency = mos_constants['imp_od_ency']
         cpo_h = mos_constants['cpo_h']
+        no_sub_dummy = mos_constants.get('no_sub_dummy', False)
 
+        _, top_row_type = top_ext_info.mtype
+        _, bot_row_type = bot_ext_info.mtype
+        top_is_sub = (top_row_type == 'ptap' or top_row_type == 'ntap')
+        bot_is_sub = (bot_row_type == 'ptap' or bot_row_type == 'ntap')
         yt = w * fin_p
         yc = yt // 2
 
@@ -899,13 +904,26 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             adj_edgel_infos = []
             adj_edger_infos = []
 
-            if num_dod % 2 == 0:
+            if no_sub_dummy:
+                if top_is_sub and bot_is_sub:
+                    raise ValueError('Impossible to draw extensions; both rows are substrates.')
+                all_or_nothing = top_is_sub or bot_is_sub
+            else:
+                all_or_nothing = False
+
+            if num_dod % 2 == 0 and not all_or_nothing:
                 thres_split_y = imp_split_y = yc, yc
             else:
-                mid_od_idx = num_dod // 2
-                od_yb, od_yt = od_y_list[mid_od_idx]
-                imp_split_y = od_yb - imp_od_ency, od_yt + imp_od_ency
-                thres_split_y = cpo_yc_list[mid_od_idx], cpo_yc_list[mid_od_idx + 1]
+                if all_or_nothing:
+                    bod_yb, _ = od_y_list[0]
+                    _, tod_yt = od_y_list[-1]
+                    imp_split_y = bod_yb - imp_od_ency, tod_yt + imp_od_ency
+                    thres_split_y = cpo_yc_list[0], cpo_yc_list[-1]
+                else:
+                    mid_od_idx = num_dod // 2
+                    od_yb, od_yt = od_y_list[mid_od_idx]
+                    imp_split_y = od_yb - imp_od_ency, od_yt + imp_od_ency
+                    thres_split_y = cpo_yc_list[mid_od_idx], cpo_yc_list[mid_od_idx + 1]
 
         return adj_row_list, adj_edgel_infos, adj_edger_infos, thres_split_y, imp_split_y
 
@@ -929,7 +947,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         cases:
         1. top and bottom are same flavor transistor / sub (e.g. nch + nch or nch + ptap).
-           split at middle, draw more dummy OD on substrate side.
+           split at middle, draw more dummy OD on transistor side.
         2. top and bottom are same flavor sub.
            split at middle.  The split point is chosen based on threshold alphabetical
            comparison, so we make sure we consistently favor one threshold over another.
@@ -1048,7 +1066,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             sub_type = 'ptap' if bot_imp == 'nch' else 'ntap'
             if bot_tran != top_tran:
                 # case 1
-                sep_idx = 0 if bot_tran else 1
+                sep_idx = 1 if bot_tran else 0
             elif bot_tran:
                 # case 3
                 sep_idx = 0 if bot_thres <= top_thres else 1
