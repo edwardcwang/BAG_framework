@@ -49,6 +49,10 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
         # type: (...) -> Tuple[Optional[List[Tuple[int, int]]], Optional[Callable[[int, int], bool]]]
         return None, None
 
+    def get_via_types(self, bmtype, tmtype):
+        table = self.config['via_type_order']
+        return table.get((bmtype, tmtype), [('square', 1), ('vrect', 2), ('hrect', 2)])
+
     def get_implant_layers(self, mos_type, res_type=None):
         # type: (str, Optional[str]) -> List[Tuple[str, str]]
         if res_type is None:

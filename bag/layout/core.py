@@ -551,6 +551,9 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             iac_peak=ipeak,
         )
 
+    def get_via_types(self, bmtype, tmtype):
+        return [('square', 1), ('vrect', 2), ('hrect', 2)]
+
     def get_best_via_array(self, vname, bmtype, tmtype, bot_dir, top_dir, w, h, extend):
         """Maximize the number of vias in the given area.
 
@@ -608,7 +611,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         best_vdim = None
         best_sp = None
         best_adim = None
-        for vtype, weight in [('square', 1), ('vrect', 2), ('hrect', 2)]:
+        via_type_list = self.get_via_types(bmtype, tmtype)
+        for vtype, weight in via_type_list:
             try:
                 # get space and enclosure rules for top and bottom layer
                 bot_drc_info = self.get_via_drc_info(vname, vtype, bmtype, bb, True)
