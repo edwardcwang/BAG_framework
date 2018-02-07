@@ -818,14 +818,21 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             od_y_list[-1] = od_yb, od_yt
             md_h = max(md_h_min, od_yt - od_yb + 2 * md_od_exty)
             md_yt = min((od_yb + od_yt + md_h) // 2, top_md_yb - md_spy)
-            md_y_list[0] = md_yt - md_h, md_yt
+            md_yb = md_yt - md_h
+            # here actually MD bottom spacing could be violated again
+            if bot_md_yt + md_spy > md_yb:
+                # first check if it's even possible to solve
+                if md_h > top_md_yb - bot_md_yt - 2 * md_spy or bot_md_yt + md_spy > od_yb - md_od_exty:
+                    raise ValueError('Cannot draw dummy OD and meet MD spacing constraints.  See developer.')
+                md_yb = bot_md_yt + md_spy
+                md_yt = md_yb + md_h
+            md_y_list[0] = md_yb, md_yt
 
         if md_y_list[0][0] < bot_md_yt + md_spy or od_y_list[0][0] < cpo_bot_yt + cpo_od_sp:
             # bottom MD spacing rule violated.  This only happens if we have exactly
             # one dummy OD, and there is no solution that works for both top and bottom
             # MD spacing rules.
-            raise ValueError('Cannot draw dummy OD and meet MD spacing constraints.  '
-                             'See developer.')
+            raise ValueError('Cannot draw dummy OD and meet MD spacing constraints.  See developer.')
         if len(md_y_list) > 1:
             # check inner MD and OD spacing rules are met.
             # I don't think these rules will ever be broken, so I'm not fixing it now.
