@@ -50,8 +50,11 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
         return None, None
 
     def get_via_types(self, bmtype, tmtype):
-        table = self.config['via_type_order']
-        return table.get((bmtype, tmtype), [('square', 1), ('vrect', 2), ('hrect', 2)])
+        default = [('square', 1), ('vrect', 2), ('hrect', 2)]
+        if 'via_type_order' in self.config:
+            table = self.config['via_type_order']
+            return table.get((bmtype, tmtype), default)
+        return default
 
     def get_implant_layers(self, mos_type, res_type=None):
         # type: (str, Optional[str]) -> List[Tuple[str, str]]
