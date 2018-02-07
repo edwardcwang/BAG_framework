@@ -636,6 +636,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_p = mos_constants['mos_pitch']  # type: int
+        od_spy_dum = mos_constants.get('od_spy_dum', 'od_spy')
         od_spy_max = mos_constants['od_spy_max']
         od_nfin_min = mos_constants['od_fill_h'][0]
         imp_od_ency = mos_constants['imp_od_ency']
@@ -658,8 +659,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             min_ext_h = max(min_ext_h, -(-tot_margin // fin_p))
 
         # step 2: get maximum extension width without dummy OD
-        od_space_nfin = self.get_od_spy_nfin(lch_unit, top_ext_info.margins['od'][0] + bot_ext_info.margins['od'][0],
-                                             round_up=True)
+        od_bot_yt = -bot_ext_info.margins['od'][0]
+        od_top_yb = top_ext_info.margins['od'][0]
+        od_space_nfin = self.get_od_spy_nfin(lch_unit, od_top_yb - od_bot_yt, round_up=True)
         max_ext_w_no_od = od_spy_nfin_max - od_space_nfin
 
         # step 3: find minimum extension width with dummy OD
@@ -671,7 +673,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # get od_yb_max1, round to fin grid.
         dum_md_yb = -bot_ext_info.margins['md'][0] + md_spy
-        od_yb_max1 = max(dum_md_yb + md_od_exty, cpo_h // 2 + cpo_od_sp)
+        od_yb_max1 = max(dum_md_yb + md_od_exty, cpo_h // 2 + cpo_od_sp, od_bot_yt + od_spy_dum)
         od_yb_max1 = self.snap_od_edge(lch_unit, od_yb_max1, False, True)
         # get od_yb_max2, round to fin grid.
         od_yb_max = bot_imp_min_h + imp_od_ency
@@ -679,7 +681,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # get od_yt_min1 assuming yt = 0, round to fin grid.
         dum_md_yt = top_ext_info.margins['md'][0] - md_spy
-        od_yt_min1 = min(dum_md_yt - md_od_exty, -(cpo_h // 2) - cpo_od_sp)
+        od_yt_min1 = min(dum_md_yt - md_od_exty, -(cpo_h // 2) - cpo_od_sp, od_top_yb - od_spy_dum)
         od_yt_min1 = self.snap_od_edge(lch_unit, od_yt_min1, True, False)
         # get od_yt_min2, round to fin grid.
         od_yt_min = -top_imp_min_h - imp_od_ency
