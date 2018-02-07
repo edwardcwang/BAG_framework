@@ -636,7 +636,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_p = mos_constants['mos_pitch']  # type: int
-        od_spy_dum = mos_constants.get('od_spy_dum', 'od_spy')
+        od_spy_dum = mos_constants.get('od_spy_dum', mos_constants['od_spy'])
         od_spy_max = mos_constants['od_spy_max']
         od_nfin_min = mos_constants['od_fill_h'][0]
         imp_od_ency = mos_constants['imp_od_ency']
