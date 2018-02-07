@@ -302,7 +302,11 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
 
             if load_from_file:
                 print('Measurement %s in state %s, load sim data from file.' % (self.meas_name, cur_state))
-                cur_results = load_sim_file(raw_data_fname)
+                if os.path.isfile(raw_data_fname):
+                    cur_results = load_sim_file(raw_data_fname)
+                else:
+                    print('Cannot find data file, simulating...')
+                    cur_results = await tb_manager.setup_and_simulate(prj, tb_sch_params)
             else:
                 cur_results = await tb_manager.setup_and_simulate(prj, tb_sch_params)
 
