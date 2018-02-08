@@ -485,6 +485,11 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return self._via_tech
 
     @property
+    def pin_purpose(self):
+        """Returns the layout pin purpose name."""
+        return 'pin'
+
+    @property
     def resolution(self):
         """Returns the grid resolution."""
         return self._resolution
@@ -1091,7 +1096,7 @@ class BagLayout(object):
     def __init__(self, grid, use_cybagoa=False):
         self._res = grid.resolution
         self._via_tech = grid.tech_info.via_tech_name
-        self._pin_purpose = 'pin'
+        self._pin_purpose = grid.tech_info.pin_purpose
         self._make_pin_rect = True
         self._inst_list = []  # type: List[Instance]
         self._inst_primitives = []  # type: List[InstanceInfo]

@@ -49,6 +49,10 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
         # type: (...) -> Tuple[Optional[List[Tuple[int, int]]], Optional[Callable[[int, int], bool]]]
         return None, None
 
+    @property
+    def pin_purpose(self):
+        return self.config.get('pin_purpose', 'pin')
+
     def get_via_types(self, bmtype, tmtype):
         default = [('square', 1), ('vrect', 2), ('hrect', 2)]
         if 'via_type_order' in self.config:

@@ -298,9 +298,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
 
+        use_cybagoa = kwargs.get('use_cybagoa', False)
+
         # initialize template attributes
         self._grid = kwargs.get('grid', temp_db.grid).copy()
-        self._layout = BagLayout(self._grid, use_cybagoa=kwargs.get('use_cybagoa', False),)
+        self._layout = BagLayout(self._grid, use_cybagoa=use_cybagoa)
         self._size = None  # type: Tuple[int, int, int]
         self.pins = {}
         self._ports = {}
