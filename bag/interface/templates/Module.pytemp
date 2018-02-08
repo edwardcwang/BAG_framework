@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 
+from typing import Dict
+
 import os
 import pkg_resources
-from typing import Dict
 
 from bag.design import Module
 
