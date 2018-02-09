@@ -240,7 +240,10 @@ class MOSTechSOIGenericBC(MOSTech):
                 top_margin = top_imp_info[bot_name]
                 imp_sp, join_flag = imp_sp_info[bot_name]
                 if join_flag == 2 or join_flag == 1 and bot_margin + top_margin + w < imp_sp:
-                    imp_info[bot_name] = (-bot_margin, w + top_margin)
+                    imp_yb = -bot_margin
+                    imp_yt = w + top_margin
+                    if imp_yb < imp_yt:
+                        imp_info[bot_name] = (imp_yb, imp_yt)
 
         layout_info = dict(
             lch_unit=lch_unit,
@@ -385,9 +388,10 @@ class MOSTechSOIGenericBC(MOSTech):
         template.prim_top_layer = self.get_mos_conn_layer()
 
         # draw implant layers
-        for imp_name, (imp_yb, imp_yt) in imp_info.items():
-            imp_box = BBox(0, imp_yb, width, imp_yt, res, unit_mode=True)
-            template.add_rect(imp_name, imp_box)
+        if width > 0:
+            for imp_name, (imp_yb, imp_yt) in imp_info.items():
+                imp_box = BBox(0, imp_yb, width, imp_yt, res, unit_mode=True)
+                template.add_rect(imp_name, imp_box)
 
         if blk_type == 'sub':
             # draw M1 rectangle for substrate contact
