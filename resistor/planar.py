@@ -306,6 +306,7 @@ class ResTechPlanarGeneric(ResTech):
         hcore = core_info['height']
         m1_core_x = core_info['m1_core_x']
         m1_w = core_info['m1_w']
+        lr_od_xloc = core_info['lr_od_xloc']
 
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
 
@@ -318,7 +319,8 @@ class ResTechPlanarGeneric(ResTech):
             well_xl = wedge - spx - wres_lr - imp_encx
         else:
             # width is given by margin/enclosure to core resistor
-            imp_encx_edge = max(imp_encx - spx, 0)
+            od_xl = lr_od_xloc[0][0] if lr_od_xloc else 0
+            imp_encx_edge = max(imp_encx - spx, 0, -od_xl)
             wedge_min = edge_margin // 2 + imp_encx_edge
             well_xl = wedge - imp_encx_edge
 
@@ -332,14 +334,17 @@ class ResTechPlanarGeneric(ResTech):
 
         # if we get here, then all density rules are met
         # compute fill X coordinate in edge block
-        m1_sp = m1_core_x[0][0] * 2
         sp_xl = m1_sp_bnd + m1_w
         sp_xr = wedge + m1_core_x[0][0]
-        if (sp_xr - sp_xl - m1_w) % 2 != 0:
-            sp_xl -= 1
-        m1_edge_x = fill_symmetric_const_space(sp_xr - sp_xl, m1_sp_max, m1_w, m1_w, offset=sp_xl)
-        if sp_xr - sp_xl >= m1_sp:
-            m1_edge_x.insert(0, (m1_sp_bnd, sp_xl))
+        if sp_xr < sp_xl:
+            m1_edge_x = []
+        else:
+            m1_sp = m1_core_x[0][0] * 2
+            if (sp_xr - sp_xl - m1_w) % 2 != 0:
+                sp_xl -= 1
+            m1_edge_x = fill_symmetric_const_space(sp_xr - sp_xl, m1_sp_max, m1_w, m1_w, offset=sp_xl)
+            if sp_xr - sp_xl >= m1_sp:
+                m1_edge_x.insert(0, (m1_sp_bnd, sp_xl))
 
         # return layout information
         return dict(
@@ -379,6 +384,7 @@ class ResTechPlanarGeneric(ResTech):
         hcore = core_info['height']
         m1_core_y = core_info['m1_core_y']
         m1_h = core_info['m1_h']
+        bot_od_yloc = core_info['bot_od_yloc']
 
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
 
@@ -390,7 +396,8 @@ class ResTechPlanarGeneric(ResTech):
             hedge_min = edge_margin // 2 + imp_ency + lres_tb + spy
             well_yb = hedge - spy - lres_tb - imp_ency
         else:
-            imp_ency_edge = max(imp_ency - spy, 0)
+            od_yb = bot_od_yloc[0][0] if bot_od_yloc else 0
+            imp_ency_edge = max(imp_ency - spy, 0, -od_yb)
             hedge_min = edge_margin // 2 + imp_ency_edge
             well_yb = hedge - imp_ency_edge
 
@@ -404,14 +411,17 @@ class ResTechPlanarGeneric(ResTech):
 
         # if we get here, then all density rules are met
         # compute fill Y coordinate in edge block
-        m1_sp = m1_core_y[0][0] * 2
         sp_yb = m1_sp_bnd + m1_h
         sp_yt = hedge + m1_core_y[0][0]
-        if (sp_yt - sp_yb - m1_h) % 2 != 0:
-            sp_yb -= 1
-        m1_edge_y = fill_symmetric_const_space(sp_yt - sp_yb, m1_sp_max, m1_h, m1_h, offset=sp_yb)
-        if sp_yt - sp_yb >= m1_sp:
-            m1_edge_y.insert(0, (m1_sp_bnd, sp_yb))
+        if sp_yt < sp_yb:
+            m1_edge_y = []
+        else:
+            m1_sp = m1_core_y[0][0] * 2
+            if (sp_yt - sp_yb - m1_h) % 2 != 0:
+                sp_yb -= 1
+            m1_edge_y = fill_symmetric_const_space(sp_yt - sp_yb, m1_sp_max, m1_h, m1_h, offset=sp_yb)
+            if sp_yt - sp_yb >= m1_sp:
+                m1_edge_y.insert(0, (m1_sp_bnd, sp_yb))
 
         # return layout information
         return dict(

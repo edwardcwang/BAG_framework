@@ -678,7 +678,7 @@ class AnalogResCore(TemplateBase):
         self._layout_info = params['res_info']
         self._num_tracks = self._layout_info['num_tracks']
         self._track_widths = self._layout_info['track_widths']
-        super(AnalogResCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['res_tech_class']  # type: ResTech
 
     @classmethod
@@ -784,7 +784,7 @@ class AnalogResBoundary(TemplateBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(AnalogResBoundary, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['res_tech_class']  # type: ResTech
         self._well_xl = self.params['layout_info']['well_xl']
 
