@@ -183,6 +183,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
             return htr // 2
         return htr / 2
 
+    # noinspection PyUnusedLocal
     def draw_array(self,  # type: ResArrayBase
                    l,  # type: float
                    w,  # type: float
@@ -241,6 +242,8 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
             self.size will be None, and only one dimension is quantized.
             If the top metal layer is above the default layer, then this will be a standard template, and
             both width and height will be quantized according to the block size.
+        **kwargs :
+            optional arguments.
         """
         if em_specs is None:
             em_specs = {}
@@ -526,6 +529,7 @@ class Termination(TemplateBase):
             ext_dir='',
             res_type='reference',
             em_specs={},
+            show_pins=True,
         )
 
     @classmethod
@@ -544,7 +548,7 @@ class Termination(TemplateBase):
             l='unit resistor length, in meters.',
             w='unit resistor width, in meters.',
             sub_lch='substrate contact channel length.',
-            sub_w='substrate contact width.',
+            sub_w='substrate contact width. Set to 0 to disable drawing substrate contact.',
             sub_type='the substrate type.',
             threshold='the substrate threshold flavor.',
             nx='number of resistors in a row.  Must be even.',
@@ -552,6 +556,7 @@ class Termination(TemplateBase):
             res_type='the resistor type.',
             em_specs='EM specifications for the termination network.',
             ext_dir='resistor core extension direction.',
+            show_pins='True to show pins.',
         )
 
     def draw_layout(self):
@@ -562,50 +567,57 @@ class Termination(TemplateBase):
         sub_lch = res_params.pop('sub_lch')
         sub_w = res_params.pop('sub_w')
         sub_type = self.params['sub_type']
+        show_pins = self.params['show_pins']
 
         res_master = self.new_template(params=res_params, temp_cls=TerminationCore)
+        if sub_w == 0:
+            # do not draw substrate contact.
+            inst = self.add_instance(res_master, inst_name='XRES', loc=(0, 0), unit_mode=True)
+            for port_name in inst.port_names_iter():
+                self.reexport(inst.get_port(port_name), show=show_pins)
+        else:
+            # draw contact and move array up
+            top_layer, nx_arr, ny_arr = res_master.size
+            w_pitch, h_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
+            sub_params = dict(
+                top_layer=top_layer,
+                lch=sub_lch,
+                w=sub_w,
+                sub_type=sub_type,
+                threshold=self.params['threshold'],
+                well_width=res_master.get_well_width(),
+                show_pins=False,
+                is_passive=True,
+                tot_width_parity=nx_arr % 2,
+            )
+            sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
+            sub_box = sub_master.bound_box
+            ny_shift = -(-sub_box.height_unit // h_pitch)
 
-        # draw contact and move array up
-        top_layer, nx_arr, ny_arr = res_master.size
-        w_pitch, h_pitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
-        sub_params = dict(
-            top_layer=top_layer,
-            lch=sub_lch,
-            w=sub_w,
-            sub_type=sub_type,
-            threshold=self.params['threshold'],
-            well_width=res_master.get_well_width(),
-            show_pins=False,
-            is_passive=True,
-            tot_width_parity=nx_arr % 2,
-        )
-        sub_master = self.new_template(params=sub_params, temp_cls=SubstrateContact)
-        sub_box = sub_master.bound_box
-        ny_shift = -(-sub_box.height_unit // h_pitch)
+            # compute substrate X coordinate so substrate is on its own private horizontal pitch
+            sub_x_pitch, _ = sub_master.grid.get_size_pitch(sub_master.size[0], unit_mode=True)
+            sub_x = ((w_pitch * nx_arr - sub_box.width_unit) // 2 // sub_x_pitch) * sub_x_pitch
 
-        # compute substrate X coordinate so substrate is on its own private horizontal pitch
-        sub_x_pitch, _ = sub_master.grid.get_size_pitch(sub_master.size[0], unit_mode=True)
-        sub_x = ((w_pitch * nx_arr - sub_box.width_unit) // 2 // sub_x_pitch) * sub_x_pitch
+            bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(sub_x, 0), unit_mode=True)
+            res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0, ny_shift * h_pitch), unit_mode=True)
+            top_yo = (ny_arr + 2 * ny_shift) * h_pitch
+            top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(sub_x, top_yo),
+                                         orient='MX', unit_mode=True)
 
-        bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(sub_x, 0), unit_mode=True)
-        res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0, ny_shift * h_pitch), unit_mode=True)
-        top_yo = (ny_arr + 2 * ny_shift) * h_pitch
-        top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(sub_x, top_yo), orient='MX', unit_mode=True)
+            # connect implant layers of resistor array and substrate contact together
+            for lay in self.grid.tech_info.get_implant_layers(sub_type, res_type=res_type):
+                self.add_rect(lay, self.get_rect_bbox(lay))
 
-        # connect implant layers of resistor array and substrate contact together
-        for lay in self.grid.tech_info.get_implant_layers(sub_type, res_type=res_type):
-            self.add_rect(lay, self.get_rect_bbox(lay))
+            # export supplies and recompute array_box/size
+            port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
+            self.reexport(bot_inst.get_port(port_name), show=show_pins)
+            self.reexport(top_inst.get_port(port_name), show=show_pins)
+            self.size = top_layer, nx_arr, ny_arr + 2 * ny_shift
+            self.array_box = bot_inst.array_box.merge(top_inst.array_box)
+            self.add_cell_boundary(self.bound_box)
 
-        # export supplies and recompute array_box/size
-        port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
-        self.reexport(bot_inst.get_port(port_name))
-        self.reexport(top_inst.get_port(port_name))
-        self.size = top_layer, nx_arr, ny_arr + 2 * ny_shift
-        self.array_box = bot_inst.array_box.merge(top_inst.array_box)
-        self.add_cell_boundary(self.bound_box)
-
-        for port_name in res_inst.port_names_iter():
-            self.reexport(res_inst.get_port(port_name))
+            for port_name in res_inst.port_names_iter():
+                self.reexport(res_inst.get_port(port_name), show=show_pins)
 
 
 class ResLadderCore(ResArrayBase):
