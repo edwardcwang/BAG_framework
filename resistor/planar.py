@@ -335,6 +335,8 @@ class ResTechPlanarGeneric(ResTech):
         m1_sp = m1_core_x[0][0] * 2
         sp_xl = m1_sp_bnd + m1_w
         sp_xr = wedge + m1_core_x[0][0]
+        if (sp_xr - sp_xl - m1_w) % 2 != 0:
+            sp_xl -= 1
         m1_edge_x = fill_symmetric_const_space(sp_xr - sp_xl, m1_sp_max, m1_w, m1_w, offset=sp_xl)
         if sp_xr - sp_xl >= m1_sp:
             m1_edge_x.insert(0, (m1_sp_bnd, sp_xl))
@@ -405,6 +407,8 @@ class ResTechPlanarGeneric(ResTech):
         m1_sp = m1_core_y[0][0] * 2
         sp_yb = m1_sp_bnd + m1_h
         sp_yt = hedge + m1_core_y[0][0]
+        if (sp_yt - sp_yb - m1_h) % 2 != 0:
+            sp_yb -= 1
         m1_edge_y = fill_symmetric_const_space(sp_yt - sp_yb, m1_sp_max, m1_h, m1_h, offset=sp_yb)
         if sp_yt - sp_yb >= m1_sp:
             m1_edge_y.insert(0, (m1_sp_bnd, sp_yb))
