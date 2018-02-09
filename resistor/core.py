@@ -60,6 +60,13 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         # type: (TechInfo) -> int
         return tech_info.tech_params['layout']['res_tech_class'].get_bot_layer()
 
+    @classmethod
+    def get_top_layer(cls, tech_info, grid_type='standard'):
+        # type: (TechInfo, str) -> int
+        """Returns the top layer ID for the given resistor routing grid setting."""
+        grid_layers = tech_info.tech_params['layout']['analog_res'][grid_type]
+        return grid_layers[-1][0] + 1
+
     @property
     def num_tracks(self):
         # type: () -> Tuple[int, ...]
@@ -259,7 +266,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         if min_tracks is None:
             min_tracks = tuple(min_tracks_default)
         if top_layer is None:
-            top_layer = self.grid.top_private_layer
+            top_layer = max(self._hm_layer + 1, self.grid.top_private_layer)
 
         # find location of the lower-left resistor core
         res = self.grid.resolution
@@ -380,9 +387,11 @@ class TerminationCore(ResArrayBase):
             nx=2,
             ny=1,
             res_type='reference',
+            grid_type='standard',
             em_specs={},
             ext_dir='',
             show_pins=True,
+            top_layer=None,
         )
 
     @classmethod
@@ -405,9 +414,11 @@ class TerminationCore(ResArrayBase):
             nx='number of resistors in a row.  Must be even.',
             ny='number of resistors in a column.',
             res_type='the resistor type.',
+            grid_type='the resistor routing grid type.',
             em_specs='EM specifications for the termination network.',
             ext_dir='resistor core extension direction.',
             show_pins='True to show pins.',
+            top_layer='The top level metal layer.  None for primitive template.',
         )
 
     def draw_layout(self):
@@ -429,7 +440,7 @@ class TerminationCore(ResArrayBase):
             else:
                 div_em_specs[key] = 0.0
 
-        self.draw_array(em_specs=div_em_specs, grid_type='low_res', **self.params)
+        self.draw_array(em_specs=div_em_specs, **self.params)
 
         # connect row resistors
         port_wires = [[], [], []]
@@ -528,6 +539,7 @@ class Termination(TemplateBase):
             ny=1,
             ext_dir='',
             res_type='reference',
+            grid_type='standard',
             em_specs={},
             show_pins=True,
         )
@@ -554,6 +566,7 @@ class Termination(TemplateBase):
             nx='number of resistors in a row.  Must be even.',
             ny='number of resistors in a column.',
             res_type='the resistor type.',
+            grid_type='the resistor routing grid type.',
             em_specs='EM specifications for the termination network.',
             ext_dir='resistor core extension direction.',
             show_pins='True to show pins.',
@@ -564,10 +577,15 @@ class Termination(TemplateBase):
 
         res_params = self.params.copy()
         res_type = res_params['res_type']
+        grid_type = self.params['grid_type']
         sub_lch = res_params.pop('sub_lch')
         sub_w = res_params.pop('sub_w')
         sub_type = self.params['sub_type']
         show_pins = self.params['show_pins']
+
+        # force TerminationCore to be quantized
+        top_layer = ResArrayBase.get_top_layer(self.grid.tech_info, grid_type=grid_type) + 1
+        res_params['top_layer'] = top_layer
 
         res_master = self.new_template(params=res_params, temp_cls=TerminationCore)
         if sub_w == 0:
@@ -575,6 +593,8 @@ class Termination(TemplateBase):
             inst = self.add_instance(res_master, inst_name='XRES', loc=(0, 0), unit_mode=True)
             for port_name in inst.port_names_iter():
                 self.reexport(inst.get_port(port_name), show=show_pins)
+            self.array_box = inst.array_box
+            self.set_size_from_bound_box(res_master.top_layer, res_master.bound_box)
         else:
             # draw contact and move array up
             top_layer, nx_arr, ny_arr = res_master.size
