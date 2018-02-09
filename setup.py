@@ -24,8 +24,6 @@ setup(
         'pyzmq>=15.2.0',
         'scipy>=0.17',
         'matplotlib>=1.5',
-        'openmdao',
-        'future',
         'h5py',
         'pytest',
     ],
