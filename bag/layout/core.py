@@ -6,6 +6,7 @@
 from typing import List, Iterator, Tuple, Optional, Union, Callable, Any
 
 import abc
+import math
 from itertools import chain
 
 import bag
@@ -938,65 +939,64 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         lmin, lmax = self.get_res_length_bounds(res_type)
         min_nsq = self.get_res_min_nsquare(res_type)
 
-        # step 1: estimate number of resistors in parallel from EM specs
-        res_idc, res_irms, res_ipeak = self.get_res_em_specs(res_type, wmax, **kwargs)
-        num_par = 1.0
-        if 0.0 < res_idc < idc:
-            num_par = max(num_par, -(-idc // res_idc))
-        if 0.0 < res_irms < iac_rms:
-            num_par = max(num_par, -(-iac_rms // res_irms))
-        if 0.0 < res_ipeak < iac_peak:
-            num_par = max(num_par, -(-iac_rms // res_ipeak))
-        num_par = int(round(num_par))
-        if num_even and num_par % 2 == 1:
-            num_par += 1
-            num_par_inc = 2
+        wmin_unit = int(round(wmin / resolution))
+        wmax_unit = int(round(wmax / resolution))
+        lmin_unit = int(round(lmin / resolution))
+        lmax_unit = int(round(lmax / resolution))
+        # make sure width is always even
+        wmin_unit = -2 * (-wmin_unit // 2)
+        wmax_unit = 2 * (wmax_unit // 2)
+
+        # step 1: find number of parallel resistors and minimum resistor width.
+        if num_even:
+            npar_iter = BinaryIterator(2, None, step=2)
         else:
-            num_par_inc = 1
-
-        # step 2: find width and length of unit resistor
-        # note: due to possibility of violating lmin, we may need to increase
-        # num_par, so do it in a while loop
-        done = False
-        wopt = lopt = None
-        while not done:
-            cur_res_targ = res_targ * num_par
-            cur_idc = idc / num_par
-            cur_iac_rms = iac_rms / num_par
-            cur_iac_peak = iac_peak / num_par
-
-            # step 3: binary search to find width of resistor.
-            wmin_unit = int(round(wmin / resolution))
-            wmax_unit = int(round(wmax / resolution))
-            bin_iter = BinaryIterator(wmin_unit, wmax_unit + 1)
-            while bin_iter.has_next():
-                wcur = bin_iter.get_next() * resolution
-                res_idc, res_irms, res_ipeak = self.get_res_em_specs(res_type, wcur, **kwargs)
-                if res_idc > cur_idc and res_irms > cur_iac_rms and res_ipeak > cur_iac_peak:
-                    bin_iter.save()
-                    bin_iter.down()
-                else:
-                    bin_iter.up()
-
-            wopt_unit = bin_iter.get_last_save()
-            # use even width
-            if wopt_unit % 2 == 1:
-                wopt_unit += 1
-            wopt = wopt_unit * resolution
-            lopt = round(cur_res_targ / rsq * wopt / resolution) * resolution
-            # print(num_par, wopt, lopt, res_iac_rms, cur_iac_rms, cur_res_targ)
-            if lopt < max(lmin, min_nsq * wopt):
-                # need to increase num_par and recalculate unit resistor dimensions
-                num_par += num_par_inc
+            npar_iter = BinaryIterator(1, None, step=1)
+        while npar_iter.has_next():
+            npar = npar_iter.get_next()
+            res_targ_par = res_targ * npar
+            idc_par = idc / npar
+            iac_rms_par = iac_rms / npar
+            iac_peak_par = iac_peak / npar
+            res_idc, res_irms, res_ipeak = self.get_res_em_specs(res_type, wmax, **kwargs)
+            if 0.0 < res_idc < idc_par or 0.0 < res_irms < iac_rms_par or 0.0 < res_ipeak < iac_peak_par:
+                npar_iter.up()
             else:
-                done = True
+                # This could potentially work, find width solution
+                w_iter = BinaryIterator(wmin_unit, wmax_unit + 1, step=2)
+                while w_iter.has_next():
+                    wcur_unit = w_iter.get_next()
+                    lcur_unit = int(math.ceil(res_targ_par / rsq * wcur_unit))
+                    if lcur_unit < max(lmin_unit, int(math.ceil(min_nsq * wcur_unit))):
+                        w_iter.down()
+                    else:
+                        res_idc, res_irms, res_ipeak = self.get_res_em_specs(res_type, wcur_unit * resolution,
+                                                                             l=lcur_unit * resolution, **kwargs)
+                        if (0.0 < res_idc < idc_par or 0.0 < res_irms < iac_rms_par or
+                                0.0 < res_ipeak < iac_peak_par):
+                            w_iter.up()
+                        else:
+                            w_iter.save_info((wcur_unit, lcur_unit))
+                            w_iter.down()
+
+                w_info = w_iter.get_last_save_info()
+                if w_info is None:
+                    # no solution; we need more parallel resistors
+                    npar_iter.up()
+                else:
+                    # solution!
+                    npar_iter.save_info((npar, w_info[0], w_info[1]))
+                    npar_iter.down()
 
         # step 3: fix maximum length violation by having resistor in series.
-        if lopt > lmax:
-            num_ser = -(-lopt // lmax)
-            lopt = round(lopt / num_ser / resolution) * resolution
+        num_par, wopt_unit, lopt_unit = npar_iter.get_last_save_info()
+        wopt = wopt_unit * resolution
+        if lopt_unit > lmax_unit:
+            num_ser = -(-lopt_unit // lmax_unit)
+            lopt = round(lopt_unit / num_ser / resolution) * resolution
         else:
             num_ser = 1
+            lopt = lopt_unit * resolution
 
         # step 4: return answer
         return num_par, num_ser, wopt * self.layout_unit, lopt * self.layout_unit
