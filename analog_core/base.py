@@ -738,7 +738,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         # setup parameter list
         loc = xc, yc
         lch_unit = int(round(self._lch / self.grid.layout_unit / self.grid.resolution))
-        mos_kwargs['source_parity'] = self._tech_cls.get_mos_conn_modulus(lch_unit)
+        mos_kwargs['source_parity'] = start % self._tech_cls.get_mos_conn_modulus(lch_unit)
         params = dict(
             lch=self._lch,
             w=w,
@@ -915,7 +915,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         loc = xc, yc
         mos_kwargs.update(kwargs)
         lch_unit = int(round(self._lch / self.grid.layout_unit / self.grid.resolution))
-        mos_kwargs['source_parity'] = self._tech_cls.get_mos_conn_modulus(lch_unit)
+        mos_kwargs['source_parity'] = col_idx % self._tech_cls.get_mos_conn_modulus(lch_unit)
         conn_params = dict(
             lch=self._lch,
             w=w,
