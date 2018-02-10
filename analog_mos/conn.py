@@ -96,12 +96,21 @@ class AnalogMOSConn(TemplateBase):
         return self.to_immutable_id((basename, self.grid.get_flip_parity(), self.params['options']))
 
     def draw_layout(self):
-        self._draw_layout_helper(**self.params)
+        lch = self.params['lch']
+        w = self.params['w']
+        fg = self.params['fg']
+        sdir = self.params['sdir']
+        ddir = self.params['ddir']
+        gate_pref_loc = self.params['gate_pre_loc']
+        gate_ext_mode = self.params['gate_ext_mode']
+        min_ds_cap = self.params['min_ds_cap']
+        is_diff = self.params['is_diff']
+        diode_conn = self.params['diode_conn']
+        options = self.params['options']
 
-    def _draw_layout_helper(self, lch, w, fg, sdir, ddir, min_ds_cap, gate_pref_loc,
-                            is_diff, diode_conn, gate_ext_mode, options, **kwargs):
         if options is None:
             options = {}
+
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
         mos_info = self._tech_cls.get_mos_info(lch_unit, w, 'nch', 'standard', fg)
@@ -180,14 +189,19 @@ class AnalogMOSDummy(TemplateBase):
         return self.to_immutable_id((basename, gtr, self.grid.get_flip_parity()))
 
     def draw_layout(self):
-        self._draw_layout_helper(**self.params)
+        lch = self.params['lch']
+        w = self.params['w']
+        fg = self.params['fg']
+        edge_mode = self.params['edge_mode']
+        gate_tracks = self.params['gate_tracks']
+        options = self.params['options']
 
-    def _draw_layout_helper(self, lch, w, fg, edge_mode, gate_tracks, options, **kwargs):
+        if options is None:
+            options = {}
+
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
         mos_info = self._tech_cls.get_mos_info(lch_unit, w, 'nch', 'standard', fg)
-        if options is None:
-            options = {}
         self._tech_cls.draw_dum_connection(self, mos_info, edge_mode, gate_tracks, options)
 
 
@@ -280,14 +294,21 @@ class AnalogMOSDecap(TemplateBase):
         return self.to_immutable_id((self.get_layout_basename(), self.grid.get_flip_parity()))
 
     def draw_layout(self):
-        self._draw_layout_helper(**self.params)
+        lch = self.params['lch']
+        w = self.params['w']
+        fg = self.params['fg']
+        sdir = self.params['sdir']
+        ddir = self.params['ddir']
+        gate_ext_mode = self.params['gate_ext_mode']
+        export_gate = self.params['export_gate']
+        options = self.params['options']
 
-    def _draw_layout_helper(self, lch, w, fg, sdir, ddir, gate_ext_mode, export_gate, options, **kwargs):
+        if options is None:
+            options = {}
+
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
         mos_info = self._tech_cls.get_mos_info(lch_unit, w, 'nch', 'standard', fg)
-        if options is None:
-            options = {}
         self._tech_cls.draw_decap_connection(self, mos_info, sdir, ddir, gate_ext_mode, export_gate, options)
 
 
@@ -313,6 +334,7 @@ class AnalogSubstrateConn(TemplateBase):
             dum_tracks=[],
             is_laygo=False,
             is_guardring=False,
+            sub_parity=0,
         )
 
     @classmethod
@@ -334,6 +356,7 @@ class AnalogSubstrateConn(TemplateBase):
             dum_tracks='Dummy port must contain these track indices.',
             is_laygo='True if this is laygo substrate connection.',
             is_guardring='True if this is guardring substrate connection.',
+            sub_parity='Substrate parity.  Mode flag used to abut AnalogBase substrates.'
         )
 
     def get_layout_basename(self):
