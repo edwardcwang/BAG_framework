@@ -162,7 +162,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             the drain/source code.  1 to draw source, 2 to draw drain, 3 to draw substrate connnection.
             4 to draw substrate connection in guard ring.
 \        **kwargs :
-            optional parameters.
+            optional parameters.  Must support:
+
+            source_parity : int
+                the parity number of the source.  This is used if source/drain connections need to
+                alternate between parity.
+            ud_parity : int
+                the up/down parity.  This is used if the source/drain connections is not symmetric
+                across the middle horizontal line.
 
         Returns
         -------
@@ -1893,8 +1900,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                         self.draw_mos_rect(template, lay, BBox(xl, yb, xr, yt, res, unit_mode=True))
 
     def draw_substrate_connection(self, template, layout_info, port_tracks, dum_tracks, dummy_only,
-                                  is_laygo, is_guardring):
-        # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool, bool, bool) -> bool
+                                  is_laygo, is_guardring, options):
+        # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool, bool, bool, Dict[str, Any]) -> bool
+
+        sub_parity = options.get('sub_parity', 0)
 
         lch_unit = layout_info['lch_unit']
         row_info_list = layout_info['row_info_list']
@@ -1952,7 +1961,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
                 ds_code = 4 if is_guardring else 3
                 dum_warrs, port_warrs = self.draw_ds_connection(template, lch_unit, fg, sd_pitch, xshift, od_y, md_y,
-                                                                dum_x_list, conn_x_list, True, 1, ds_code)
+                                                                dum_x_list, conn_x_list, True, 1, ds_code,
+                                                                ud_parity=sub_parity)
                 template.add_pin(port_name, dum_warrs, show=False)
                 template.add_pin(port_name, port_warrs, show=False)
 
@@ -1997,12 +2007,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         s_x_list = list(range(0, num_seg * wire_pitch + 1, 2 * wire_pitch))
         d_x_list = list(range(wire_pitch, num_seg * wire_pitch + 1, 2 * wire_pitch))
 
+        drain_parity = (source_parity + 1) % mos_conn_modullus
         if diode_conn:
             if fg == 1:
                 raise ValueError('1 finger transistor connection not supported.')
 
             # draw wires
-            drain_parity = (source_parity + 1) % mos_conn_modullus
             _, s_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y, md_y,
                                                  s_x_list, s_x_list, False, sdir, 1, source_parity=source_parity)
             _, d_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y, md_y,
@@ -2036,9 +2046,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
             # draw wires
             _, s_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y, md_y,
-                                                 s_x_list, s_x_list, ds_code == 1, sdir, 1)
+                                                 s_x_list, s_x_list, ds_code == 1, sdir, 1, source_parity=source_parity)
             _, d_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y, md_y,
-                                                 d_x_list, d_x_list, ds_code == 2, ddir, 2)
+                                                 d_x_list, d_x_list, ds_code == 2, ddir, 2, source_parity=drain_parity)
             g_warrs = self.draw_g_connection(template, lch_unit, fg, sd_pitch, 0, od_y, md_y, g_x_list, is_sub=False)
 
             template.add_pin('s', WireArray.list_to_warr(s_warrs), show=False)

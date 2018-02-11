@@ -355,8 +355,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def draw_substrate_connection(self, template, layout_info, port_tracks, dum_tracks, dummy_only,
-                                  is_laygo, is_guardring):
-        # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool, bool, bool) -> bool
+                                  is_laygo, is_guardring, options):
+        # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool, bool, bool, Dict[str, Any]) -> bool
         """Draw substrate connection layout in the given template.
 
         Parameters
@@ -375,6 +375,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             True if this is Laygo substrate connection.
         is_guardring : bool
             True if this is guardring substrate connection.
+        options : Dict[str, Any]
+            additional options.
 
         Returns
         -------

@@ -1367,7 +1367,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     layout_info=conn_layout_info,
                     layout_name=master.get_layout_basename() + '_subconn',
                     is_laygo=False,
-                    sub_parity=sub_parity,
+                    options=dict(sub_parity=sub_parity),
                 )
                 conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
                 conn_inst = self.add_instance(conn_master, loc=inst_loc, orient=orient, unit_mode=True)

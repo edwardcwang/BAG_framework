@@ -1194,8 +1194,8 @@ class MOSTechPlanarGeneric(MOSTech):
             template.add_cell_boundary(bound_box)
 
     def draw_substrate_connection(self, template, layout_info, port_tracks, dum_tracks, dummy_only,
-                                  is_laygo, is_guardring):
-        # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool, bool, bool) -> bool
+                                  is_laygo, is_guardring, options):
+        # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool, bool, bool, Dict[str, Any]) -> bool
         # note: we just export all tracks, as we can draw wires on all of them
 
         blk_type = layout_info['blk_type']

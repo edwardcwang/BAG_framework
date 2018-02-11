@@ -20,7 +20,7 @@ class AnalogMOSConn(TemplateBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(AnalogMOSConn, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
@@ -101,7 +101,7 @@ class AnalogMOSConn(TemplateBase):
         fg = self.params['fg']
         sdir = self.params['sdir']
         ddir = self.params['ddir']
-        gate_pref_loc = self.params['gate_pre_loc']
+        gate_pref_loc = self.params['gate_pref_loc']
         gate_ext_mode = self.params['gate_ext_mode']
         min_ds_cap = self.params['min_ds_cap']
         is_diff = self.params['is_diff']
@@ -137,7 +137,7 @@ class AnalogMOSDummy(TemplateBase):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        super(AnalogMOSDummy, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_dum_conn_layer()
 
@@ -224,7 +224,7 @@ class AnalogMOSDecap(TemplateBase):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        super(AnalogMOSDecap, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
@@ -321,7 +321,7 @@ class AnalogSubstrateConn(TemplateBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(AnalogSubstrateConn, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
         self.has_connection = False
@@ -334,7 +334,7 @@ class AnalogSubstrateConn(TemplateBase):
             dum_tracks=[],
             is_laygo=False,
             is_guardring=False,
-            sub_parity=0,
+            options=None,
         )
 
     @classmethod
@@ -356,7 +356,7 @@ class AnalogSubstrateConn(TemplateBase):
             dum_tracks='Dummy port must contain these track indices.',
             is_laygo='True if this is laygo substrate connection.',
             is_guardring='True if this is guardring substrate connection.',
-            sub_parity='Substrate parity.  Mode flag used to abut AnalogBase substrates.'
+            options='Additional substrate connection options.'
         )
 
     def get_layout_basename(self):
@@ -371,8 +371,9 @@ class AnalogSubstrateConn(TemplateBase):
         is_laygo = self.params['is_laygo']
         is_guardring = self.params['is_guardring']
         flip_parity = self.grid.get_flip_parity()
+        options = self.params['options']
         return self.to_immutable_id((basename, port_tracks, dum_tracks, layout_info, flip_parity,
-                                     is_laygo, is_guardring, dummy_only))
+                                     is_laygo, is_guardring, dummy_only, options))
 
     def draw_layout(self):
         layout_info = self.params['layout_info']
@@ -381,6 +382,11 @@ class AnalogSubstrateConn(TemplateBase):
         dum_tracks = self.params['dum_tracks']
         is_laygo = self.params['is_laygo']
         is_guardring = self.params['is_guardring']
+        options = self.params['options']
+
+        if options is None:
+            options = {}
+
         self.has_connection = self._tech_cls.draw_substrate_connection(self, layout_info, port_tracks,
                                                                        dum_tracks, dummy_only, is_laygo,
-                                                                       is_guardring)
+                                                                       is_guardring, options)
