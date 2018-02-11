@@ -266,7 +266,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         if min_tracks is None:
             min_tracks = tuple(min_tracks_default)
         if top_layer is None:
-            top_layer = max(self._hm_layer + 1, self.grid.top_private_layer)
+            top_layer = max(self.grid.top_private_layer, self._hm_layer + len(min_tracks) - 1)
 
         # find location of the lower-left resistor core
         res = self.grid.resolution
