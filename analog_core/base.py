@@ -366,6 +366,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         self._mos_kwargs_list = None
         self._layout_info = None
         self._sub_parity = 0
+        self._sub_integ_htr = False
         self._dum_conn_pitch = self._tech_cls.get_dum_conn_pitch()
         if self._dum_conn_pitch != 1 and self._dum_conn_pitch != 2:
             raise ValueError('Current only support dum_conn_pitch = 1 or 2, but it is %d' % self._dum_conn_pitch)
@@ -976,7 +977,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 sub_type=sub_type,
                 threshold=th_list[0],
                 top_layer=None,
-                options=dict(guard_ring_nf=guard_ring_nf),
+                options=dict(guard_ring_nf=guard_ring_nf, integ_htr=self._sub_integ_htr),
             )
             master_list.append(self.new_template(params=sub_params, temp_cls=AnalogSubstrate))
             track_spec_list.append(('R0', -1, -1))
@@ -1013,7 +1014,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 sub_type=sub_type,
                 threshold=th_list[-1],
                 top_layer=None,
-                options=dict(guard_ring_nf=guard_ring_nf),
+                options=dict(guard_ring_nf=guard_ring_nf, integ_htr=self._sub_integ_htr),
             )
             master_list.append(self.new_template(params=sub_params, temp_cls=AnalogSubstrate))
             track_spec_list.append(('MX', -1, -1))
@@ -1462,7 +1463,6 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         self.add_cell_boundary(self.bound_box)
 
-    # noinspection PyUnusedLocal
     def draw_base(self,  # type: AnalogBase
                   lch,  # type: float
                   fg_tot,  # type: int
@@ -1555,7 +1555,12 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             adjacent AnalogBase cells.  Should be either 0 or 1.
         **kwargs:
             Other optional arguments.
+
+            sub_integ_htr : bool
+                True if substrate row must contain integer number of horizontal tracks.
         """
+        sub_integ_htr = kwargs.get('sub_integ_htr', False)
+
         numn = len(nw_list)
         nump = len(pw_list)
         # error checking
@@ -1577,6 +1582,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         self._sd_yc_list = []
         self._mos_kwargs_list = []
         self._sub_parity = sub_parity
+        self._sub_integ_htr = sub_integ_htr
 
         self._n_intvs = [IntervalSet() for _ in range(numn)]
         self._p_intvs = [IntervalSet() for _ in range(nump)]
