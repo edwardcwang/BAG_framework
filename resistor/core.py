@@ -170,7 +170,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         Parameters
         ----------
         layer_id : int
-            the horizontal layer ID.
+            the layer ID.
         cell_idx : int
             the row or column index.  0 is the bottom row/left-most column.
         tr_idx : Union[int, float]
