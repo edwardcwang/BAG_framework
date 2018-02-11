@@ -199,7 +199,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
                    nx=1,  # type: int
                    ny=1,  # type: int
                    min_tracks=None,  # type: Optional[Tuple[int, ...]]
-                   res_type='reference',  # type: str
+                   res_type='standard',  # type: str
                    em_specs=None,  # type: Optional[Dict[str, Any]]
                    grid_type='standard',  # type: str
                    ext_dir='',  # type: str
@@ -386,7 +386,7 @@ class TerminationCore(ResArrayBase):
         return dict(
             nx=2,
             ny=1,
-            res_type='reference',
+            res_type='standard',
             grid_type='standard',
             em_specs={},
             ext_dir='',
@@ -538,7 +538,7 @@ class Termination(TemplateBase):
             nx=2,
             ny=1,
             ext_dir='',
-            res_type='reference',
+            res_type='standard',
             grid_type='standard',
             em_specs={},
             show_pins=True,
@@ -681,7 +681,7 @@ class ResLadderCore(ResArrayBase):
             nx=2,
             ny=2,
             ndum=1,
-            res_type='reference',
+            res_type='standard',
         )
 
     @classmethod
@@ -1025,7 +1025,7 @@ class ResLadder(TemplateBase):
         """
         return dict(
             ndum=1,
-            res_type='reference',
+            res_type='standard',
         )
 
     @classmethod
