@@ -1004,7 +1004,7 @@ class RoutingGrid(object):
                 else:
                     bbox = BBox(0.0, 0.0, width, bot_w, res, unit_mode=True)
                 vinfo = self.tech_info.get_via_info(bbox, bot_layer_name, layer_name, bot_dir, **kwargs)
-                if idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or iac_peak > vinfo['iac_peak']:
+                if vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or iac_peak > vinfo['iac_peak']:
                     bin_iter.up()
                     continue
             if top_w > 0 and top_dir != tr_dir:
@@ -1013,7 +1013,7 @@ class RoutingGrid(object):
                 else:
                     bbox = BBox(0.0, 0.0, width, top_w, res, unit_mode=True)
                 vinfo = self.tech_info.get_via_info(bbox, layer_name, top_layer_name, tr_dir, **kwargs)
-                if idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or iac_peak > vinfo['iac_peak']:
+                if vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or iac_peak > vinfo['iac_peak']:
                     bin_iter.up()
                     continue
 
