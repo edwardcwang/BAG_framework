@@ -356,8 +356,8 @@ class ResTech(object, metaclass=abc.ABCMeta):
             else:
                 min_w = max(min_w, min_dim)
 
-            cur_layer += 1
             prev_width = grid.get_track_width(cur_layer, cur_width, unit_mode=True)
+            cur_layer += 1
 
         # get block size
         wblk, hblk = grid.get_block_size(cur_layer - 1, unit_mode=True, include_private=True)
