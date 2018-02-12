@@ -68,8 +68,8 @@ class TemplateDB(MasterDB):
     def __init__(self, lib_defs, routing_grid, lib_name, prj=None, name_prefix='', name_suffix='',
                  use_cybagoa=False, flatten=False, **kwargs):
         # type: (str, RoutingGrid, str, Optional[BagProject], str, str, bool, bool, **kwargs) -> None
-        super(TemplateDB, self).__init__(lib_name, lib_defs=lib_defs,
-                                         name_prefix=name_prefix, name_suffix=name_suffix)
+        MasterDB.__init__(self, lib_name, lib_defs=lib_defs,
+                          name_prefix=name_prefix, name_suffix=name_suffix)
 
         pure_oa = kwargs.get('pure_oa', False)
 
@@ -320,7 +320,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             hidden_params = {}
         hidden_params['flip_parity'] = None
 
-        super(TemplateBase, self).__init__(temp_db, lib_name, params, used_names, hidden_params=hidden_params)
+        DesignMaster.__init__(self, temp_db, lib_name, params, used_names, hidden_params=hidden_params)
         # update RoutingGrid
         fp_dict = self.params['flip_parity']
         if fp_dict is not None:
@@ -340,7 +340,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def populate_params(self, table, params_info, default_params, **kwargs):
         # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **kwargs) -> None
         """Fill params dictionary with values from table and default_params"""
-        super(TemplateBase, self).populate_params(table, params_info, default_params, **kwargs)
+        DesignMaster.populate_params(self, table, params_info, default_params, **kwargs)
 
         # add hidden parameters
         hidden_params = kwargs.get('hidden_params', {})
@@ -431,7 +431,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self.children = self._layout.get_masters_set()
 
         # call super finalize routine
-        super(TemplateBase, self).finalize()
+        DesignMaster.finalize(self)
 
     @property
     def template_db(self):
@@ -1475,6 +1475,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         mom_cap_dict = tech_info.tech_params['layout']['mom_cap']
         cap_margins = mom_cap_dict['margins']
         cap_info = mom_cap_dict['width_space']
+        port_sp_min = mom_cap_dict['port_sp_min']
 
         via_ext_dict = {lay: 0 for lay in range(bot_layer, top_layer + 1)}
         # get via extensions on each layer
@@ -1501,7 +1502,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         cap_bounds = {}
         cap_exts = {}
         for cur_layer in range(bot_layer, top_layer + 1):
+            # mark bounding box as used.
+            self.mark_bbox_used(cur_layer, cap_box)
+
             cur_port_width = port_widths[cur_layer]
+            cur_port_space = self.grid.get_num_space_tracks(cur_layer, cur_port_width, half_space=True)
             if self.grid.get_direction(cur_layer) == 'x':
                 cur_lower, cur_upper = cap_box.bottom_unit, cap_box.top_unit
             else:
@@ -1522,8 +1527,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 tr_upper = self.grid.find_next_track(cur_layer, cur_upper - adj_via_ext, tr_width=cur_port_width,
                                                      half_track=True, mode=-1, unit_mode=True)
 
-            tll, tlu = self.grid.get_wire_bounds(cur_layer, tr_lower, width=cur_port_width, unit_mode=True)
-            tul, tuu = self.grid.get_wire_bounds(cur_layer, tr_upper, width=cur_port_width, unit_mode=True)
+            port_delta = cur_port_width + max(port_sp_min[cur_layer], cur_port_space)
+            if tr_lower + port_delta >= tr_upper - port_delta:
+                raise ValueError('Cannot draw MOM cap; area too small.')
+
+            ll0, lu0 = self.grid.get_wire_bounds(cur_layer, tr_lower, width=cur_port_width, unit_mode=True)
+            ll1, lu1 = self.grid.get_wire_bounds(cur_layer, tr_lower + port_delta,
+                                                 width=cur_port_width, unit_mode=True)
+            ul0, uu0 = self.grid.get_wire_bounds(cur_layer, tr_upper - port_delta,
+                                                 width=cur_port_width, unit_mode=True)
+            ul1, uu1 = self.grid.get_wire_bounds(cur_layer, tr_upper, width=cur_port_width, unit_mode=True)
 
             # compute space from MOM cap wires to port wires
             lay_name = tech_info.get_layer_name(cur_layer)
@@ -1531,11 +1544,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 lay_name = lay_name[0]
             lay_type = tech_info.get_layer_type(lay_name)
             cur_margin = int(round(cap_margins[cur_layer] / res))
-            cur_margin = max(cur_margin, tech_info.get_min_space(lay_type, tlu - tll, unit_mode=True))
+            cur_margin = max(cur_margin, tech_info.get_min_space(lay_type, lu0 - ll0, unit_mode=True))
 
-            port_tracks[cur_layer] = (tr_lower, tr_upper)
-            cap_bounds[cur_layer] = (tlu + cur_margin, tul - cur_margin)
-            cap_exts[cur_layer] = (tll, tuu)
+            port_tracks[cur_layer] = ([tr_lower, tr_lower + port_delta], [tr_upper - port_delta, tr_upper])
+            cap_bounds[cur_layer] = (lu1 + cur_margin, ul0 - cur_margin)
+            cap_exts[cur_layer] = (ll0, uu1)
 
         port_dict = {}
         cap_wire_dict = {}
@@ -1556,17 +1569,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             upper += via_ext
 
             # draw lower and upper ports
-            tr_lower, tr_upper = port_tracks[cur_layer]
-            lwarr = self.add_wires(cur_layer, tr_lower, lower, upper, width=cur_port_width,
-                                   fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
-            uwarr = self.add_wires(cur_layer, tr_upper, lower, upper, width=cur_port_width,
-                                   fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
+            (tr_l0, tr_l1), (tr_u0, tr_u1) = port_tracks[cur_layer]
+            lwarr0 = self.add_wires(cur_layer, tr_l0, lower, upper, width=cur_port_width,
+                                    fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
+            lwarr1 = self.add_wires(cur_layer, tr_l1, lower, upper, width=cur_port_width,
+                                    fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
+            uwarr0 = self.add_wires(cur_layer, tr_u0, lower, upper, width=cur_port_width,
+                                    fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
+            uwarr1 = self.add_wires(cur_layer, tr_u1, lower, upper, width=cur_port_width,
+                                    fill_margin=fill_margin, fill_type=fill_type, unit_mode=True)
 
             # assign port wires to positive/negative terminals
             plist, nlist = [], []
             lpar, upar = port_parity[cur_layer]
-            cur_num_ports = 2 if lpar != upar else 1
-            for par, warr in zip((lpar, upar), (lwarr, uwarr)):
+            if lpar == upar:
+                raise ValueError('Port parity must be different.')
+            for par, warr in zip((lpar, upar, lpar, upar), (lwarr0, lwarr1, uwarr0, uwarr1)):
                 if par == 0:
                     plist.append(warr)
                 else:
@@ -1584,11 +1602,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                             self.add_via_on_grid(cur_layer - 1, bot_tid, cur_tid, bot_width=bot_w,
                                                  top_width=cur_w)
 
-            # mark all in-between tracks as used
-            fake_warr = WireArray(TrackID(cur_layer, tr_lower + 1, num=int(tr_upper - tr_lower) + 1, pitch=1),
-                                  lower * res, upper * res)
-            self._used_tracks.add_wire_arrays(fake_warr)
-
             # draw cap wires
             cap_lower, cap_upper = cap_bounds[cur_layer]
             cap_tot_space = cap_upper - cap_lower
@@ -1597,8 +1610,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             cap_sp = int(round(cap_sp / res))
             cap_pitch = cap_w + cap_sp
             num_cap_wires = cap_tot_space // cap_pitch
-            if (num_cap_wires + cur_num_ports) % 2 != 0:
-                # number of cap wires and number of ports on this layer should have same parity
+            if num_cap_wires % 2 != 0:
+                # number of cap wires should be even
                 num_cap_wires -= 1
             cap_lower += (cap_tot_space - (num_cap_wires * cap_pitch - cap_sp)) // 2
 
@@ -1616,7 +1629,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             # find layer names for even/odd cap wires
             if isinstance(lay_name, tuple) or isinstance(lay_name, list):
                 if len(lay_name) != 2:
-                    # TODO: support triple+ patterning layers?
                     raise ValueError('Only double patterning is supported.')
 
                 lay_name0, lay_name1 = lay_name
@@ -1633,7 +1645,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 self.add_rect(lay_name0, wbox, nx=num1, spx=pitch_capw)
                 self.add_rect(lay_name1, wbox2, nx=num2, spx=pitch_capw)
             # assign cap wires to ports
-            if lpar == 1:
+            if lpar == 0:
                 cap_wire_dict[cur_layer] = [(lay_name0, wbox, num1),
                                             (lay_name1, wbox2, num2)], pitch_capw
             else:
@@ -1655,13 +1667,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
             info_iter = zip(cur_infos, next_infos, cur_ports, next_ports)
             for (cur_name, cur_box, cur_num), (next_name, next_box, next_num), cplist, nplist in info_iter:
-                # connect cap wire to cap wire
-                vbox = cur_box.intersect(next_box)
                 if is_horizontal:
                     nx, ny = next_num, cur_num
                 else:
                     nx, ny = cur_num, next_num
-                self.add_via(vbox, cur_name, next_name, cur_dir, nx=nx, ny=ny, spx=spx, spy=spy)
                 # connect cap wire to port
                 for npwarr in nplist:
                     port_lay_name = self.grid.get_layer_name(cur_layer + 1, npwarr.track_id.base_index)
@@ -1679,6 +1688,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     else:
                         self.add_via(vbox, port_lay_name, next_name, cur_dir, ny=ny, spy=spy)
 
+        # remove inner ports
+        for p_list, n_list in port_dict.values():
+            if p_list[0].track_id.base_index < n_list[0].track_id.base_index:
+                del p_list[1]
+                del n_list[0]
+            else:
+                del p_list[0]
+                del n_list[1]
         return port_dict
 
     def reserve_tracks(self,  # type: TemplateBase
@@ -2722,9 +2739,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                             inst_box = inst.get_bound_box_of(row=ridx, col=cidx)
                             for lay_id in range(template_bot_layer, bot_layer):
                                 if lay_id in self.grid.layers:
-                                    self._mark_bbox_used(lay_id, inst_box)
+                                    self.mark_bbox_used(lay_id, inst_box)
 
-    def _mark_bbox_used(self, layer_id, bbox):
+    def mark_bbox_used(self, layer_id, bbox):
+        # type: (int, BBox) -> None
+        """Marks the given bounding-box region as used in this Template."""
         if self.grid.get_direction(layer_id) == 'x':
             lower, upper = bbox.left, bbox.right
             tl, tu = bbox.bottom_unit, bbox.top_unit
