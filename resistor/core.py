@@ -42,7 +42,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(ResArrayBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         tech_params = self.grid.tech_info.tech_params
         self._tech_cls = tech_params['layout']['res_tech_class']  # type: ResTech
         self._bot_port = None  # type: Port
@@ -366,7 +366,7 @@ class TerminationCore(ResArrayBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(TerminationCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        ResArrayBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
@@ -517,7 +517,7 @@ class Termination(TemplateBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(Termination, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
@@ -660,7 +660,7 @@ class ResLadderCore(ResArrayBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(ResLadderCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        ResArrayBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
@@ -1006,7 +1006,7 @@ class ResLadder(TemplateBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(ResLadder, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_default_param_values(cls):
