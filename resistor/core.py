@@ -9,6 +9,7 @@ import abc
 from typing import Dict, Set, Tuple, Union, Any, Optional
 from itertools import chain
 
+from bag.layout.util import BBox
 from bag.layout.routing import TrackID, WireArray, Port
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.core import TechInfo
@@ -294,7 +295,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
             offset = dy if self.grid.get_direction(lay_id) == 'x' else dx
             self.grid.set_track_offset(lay_id, offset, unit_mode=True)
 
-        self._core_offset = w_edge + dx, h_edge + dy
+        self._core_offset = dx + w_edge, dy + h_edge
         self._core_pitch = w_core, h_core
         self._num_tracks = tuple(res_info['num_tracks'])
         self._num_corner_tracks = tuple(res_info['num_corner_tracks'])
@@ -314,7 +315,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         for row in range(ny):
             for col in range(nx):
                 cur_name = 'XCORE%d' % (col + nx * row)
-                cur_loc = (w_edge + col * w_core, h_edge + row * h_core)
+                cur_loc = (dx + w_edge + col * w_core, dy + h_edge + row * h_core)
                 self.add_instance(core_master, inst_name=cur_name, loc=cur_loc, unit_mode=True)
                 if row == 0 and col == 0:
                     self._bot_port = core_master.get_port('bot')
@@ -322,34 +323,34 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
 
         # place boundaries
         # bottom-left corner
-        inst_bl = self.add_instance(corner_master, inst_name='XBL')
+        inst_bl = self.add_instance(corner_master, inst_name='XBL', loc=(dx, dy), unit_mode=True)
         # bottom edge
-        self.add_instance(tb_master, inst_name='XB', loc=(w_edge, 0), nx=nx, spx=w_core, unit_mode=True)
+        self.add_instance(tb_master, inst_name='XB', loc=(dx + w_edge, dy), nx=nx, spx=w_core, unit_mode=True)
         # bottom-right corner
-        loc = (2 * w_edge + nx * w_core, 0)
+        loc = (dx + 2 * w_edge + nx * w_core, dy)
         self.add_instance(corner_master, inst_name='XBR', loc=loc, orient='MY', unit_mode=True)
         # left edge
-        loc = (0, h_edge)
+        loc = (dx, dy + h_edge)
         well_xl = lr_master.get_well_left(unit_mode=True)
         self.add_instance(lr_master, inst_name='XL', loc=loc, ny=ny, spy=h_core, unit_mode=True)
         # right edge
-        loc = (2 * w_edge + nx * w_core, h_edge)
+        loc = (dx + 2 * w_edge + nx * w_core, dy + h_edge)
         well_xr = loc[0] - well_xl
         self._well_width = well_xr - well_xl
         self.add_instance(lr_master, inst_name='XR', loc=loc, orient='MY', ny=ny, spy=h_core, unit_mode=True)
         # top-left corner
-        loc = (0, 2 * h_edge + ny * h_core)
+        loc = (dx, dy + 2 * h_edge + ny * h_core)
         self.add_instance(corner_master, inst_name='XTL', loc=loc, orient='MX', unit_mode=True)
         # top edge
-        loc = (w_edge, 2 * h_edge + ny * h_core)
+        loc = (dx + w_edge, dy + 2 * h_edge + ny * h_core)
         self.add_instance(tb_master, inst_name='XT', loc=loc, orient='MX', nx=nx, spx=w_core, unit_mode=True)
         # top-right corner
-        loc = (2 * w_edge + nx * w_core, 2 * h_edge + ny * h_core)
+        loc = (dx + 2 * w_edge + nx * w_core, dy + 2 * h_edge + ny * h_core)
         inst_tr = self.add_instance(corner_master, inst_name='XTR', loc=loc, orient='R180', unit_mode=True)
 
         # set array box and size
         self.array_box = inst_bl.array_box.merge(inst_tr.array_box)
-        bnd_box = inst_bl.bound_box.merge(inst_tr.bound_box)
+        bnd_box = BBox(0, 0, wtot, htot, res, unit_mode=True)
         if self.grid.size_defined(top_layer):
             self.set_size_from_bound_box(top_layer, bnd_box)
         else:
