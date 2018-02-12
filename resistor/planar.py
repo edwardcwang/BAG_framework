@@ -602,7 +602,9 @@ class ResTechPlanarGeneric(ResTech):
                 rpo_yt = rpo_yb + l
                 rpo_name = res_layer_table['RPO']
                 rpo_xl = w_edge + bnd_spx - rpo_extx
-                template.add_rect(rpo_name, BBox(rpo_xl, rpo_yb, w_edge, rpo_yt, res, unit_mode=True))
+                rpo_box = BBox(rpo_xl, rpo_yb, w_edge, rpo_yt, res, unit_mode=True)
+                if rpo_box.is_physical():
+                    template.add_rect(rpo_name, rpo_box)
             m1_x_list = edge_lr_info['m1_edge_x']
             m1_y_list = core_info['m1_core_y']
         elif boundary_type == 'tb':
