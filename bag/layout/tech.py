@@ -256,7 +256,7 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
                 return l_unit
             l_unit = max(l_unit, len_min, -(-area // w_unit))
 
-        return l_unit
+        return -(-l_unit // 2) * 2
 
     def get_min_length(self, layer_type, width):
         res = self.resolution
