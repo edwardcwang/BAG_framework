@@ -92,8 +92,11 @@ class ResTechPlanarGeneric(ResTech):
                           unit_mode=True)
 
         varr_w = num_co * (co_w + co_sp) - co_sp
-        m1_xl = xc - (varr_w // 2) - m1_co_encx
-        m1_xr = m1_xl + 2 * m1_co_encx + varr_w
+        m1_type = self.tech_info.get_layer_type(layer_table[1])
+        m1_min_len = self.tech_info.get_min_length_unit(m1_type, m1_h)
+        m1_w = max(2 * m1_co_encx + varr_w, m1_min_len)
+        m1_xl = xc - m1_w // 2
+        m1_xr = m1_xl + m1_w
         m1_yb = yc - m1_h // 2
         m1_yt = m1_yb + m1_h
 
@@ -222,6 +225,8 @@ class ResTechPlanarGeneric(ResTech):
         m1_name = layer_table[1]
         m2_name = layer_table[2]
         m2_h = grid.get_track_width(bot_layer, m2_w, unit_mode=True)
+        m2_type = self.tech_info.get_layer_type(m2_name)
+        m2_len_min = self.tech_info.get_min_length_unit(m2_type, m2_h)
         res = grid.resolution
         port_info = []
         for port_name, yc, m2_tr in (('bot', bot_yc, bot_tr), ('top', top_yc, top_tr)):
@@ -233,6 +238,7 @@ class ResTechPlanarGeneric(ResTech):
             via1_info = grid.tech_info.get_via_info(v1_box, m1_name, m2_name, 'y')
             m1_box = m1_box.merge(via1_info['bot_box'])
             m2_box = via1_info['top_box']
+            m2_box = m2_box.expand(dx=max(0, (m2_len_min - m2_box.width_unit) // 2), unit_mode=True)
             via1_params = via1_info['params']
             via1_params['via_type'] = via1_params.pop('id')
             port_info.append((port_name, via0_params, via1_params, m1_box, m2_box))
