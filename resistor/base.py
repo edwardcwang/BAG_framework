@@ -306,7 +306,8 @@ class ResTech(object, metaclass=abc.ABCMeta):
     def get_core_track_info(self,  # type: ResTech
                             grid,  # type: RoutingGrid
                             min_tracks,  # type: Tuple[int, ...]
-                            em_specs  # type: Dict[str, Any]
+                            em_specs,  # type: Dict[str, Any]
+                            connect_up=False,  # type: bool
                             ):
         # type: (...) -> Tuple[List[int], List[Union[int, float]], Tuple[int, int], Tuple[int, int]]
         """Calculate resistor core size/track information based on given specs.
@@ -323,6 +324,10 @@ class ResTech(object, metaclass=abc.ABCMeta):
             minimum number of tracks on each layer.
         em_specs : Dict[str, Any]
             EM specification dictionary.
+        connect_up : bool
+            True if the last used layer needs to be able to connect to the layer above.
+            This options will make sure that the width of the last track is wide enough to support
+            the inter-layer via.
 
         Returns
         -------
@@ -340,9 +345,18 @@ class ResTech(object, metaclass=abc.ABCMeta):
         prev_width = -1
         min_w = min_h = 0
         cur_layer = self.get_bot_layer()
-        for min_num_tr in min_tracks:
+        for idx, min_num_tr in enumerate(min_tracks):
+            # make sure that current layer can connect to next layer
+            next_layer = cur_layer + 1
+            next_width = grid.get_track_width(next_layer, 1, unit_mode=True)
+            if idx < len(min_tracks) - 1 or connect_up:
+                top_w = next_width
+            else:
+                top_w = -1
+
             tr_p = grid.get_track_pitch(cur_layer, unit_mode=True)
-            cur_width = grid.get_min_track_width(cur_layer, bot_w=prev_width, unit_mode=True, **em_specs)
+            cur_width = grid.get_min_track_width(cur_layer, bot_w=prev_width, top_w=top_w,
+                                                 unit_mode=True, **em_specs)
             cur_space = grid.get_num_space_tracks(cur_layer, cur_width, half_space=True)
             track_widths.append(cur_width)
             track_spaces.append(cur_space)
@@ -357,7 +371,7 @@ class ResTech(object, metaclass=abc.ABCMeta):
                 min_w = max(min_w, min_dim)
 
             prev_width = grid.get_track_width(cur_layer, cur_width, unit_mode=True)
-            cur_layer += 1
+            cur_layer = next_layer
 
         # get block size
         wblk, hblk = grid.get_block_size(cur_layer - 1, unit_mode=True, include_private=True)
@@ -535,6 +549,7 @@ class ResTech(object, metaclass=abc.ABCMeta):
                      em_specs,  # type: Dict[str, Any]
                      ext_dir,  # type: Optional[str]
                      max_blk_ext=100,  # type: int
+                     connect_up=False,  # type: bool
                      options=None,  # type: Optional[Dict[str, Any]]
                      ):
         # type: (...) -> Dict[str, Any]
@@ -568,6 +583,10 @@ class ResTech(object, metaclass=abc.ABCMeta):
         max_blk_ext : int
             number of block pitches we can extend the resistor core/edge size by.  If we cannot
             find a valid core size by extending this many block pitches, we declare failure.
+        connect_up : bool
+            True if the last used layer needs to be able to connect to the layer above.
+            This options will make sure that the width of the last track is wide enough to support
+            the inter-layer via.
         options : Optional[Dict[str, Any]]
             dictionary of optional parameters.
 
@@ -583,7 +602,8 @@ class ResTech(object, metaclass=abc.ABCMeta):
             pass
 
         # step 1: get track/size parameters
-        track_widths, track_spaces, min_size, blk_pitch = self.get_core_track_info(grid, min_tracks, em_specs)
+        track_widths, track_spaces, min_size, blk_pitch = self.get_core_track_info(grid, min_tracks, em_specs,
+                                                                                   connect_up=connect_up)
         params = dict(
             l=l,
             w=w,

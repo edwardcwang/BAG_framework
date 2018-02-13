@@ -206,6 +206,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
                    max_blk_ext=100,  # type: int
                    options=None,  # type: Optional[Dict[str, Any]]
                    top_layer=None,  # type: Optional[int]
+                   connect_up=False,  # type: bool
                    **kwargs
                    ):
         # type: (...) -> None
@@ -244,12 +245,16 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         options : Optional[Dict[str, Any]]
             custom options for resistor primitives.
         top_layer : Optional[int]
-            The top metal layer this block will use.  Defaults to the last layer if it is on the global
+            The top metal layer this block is quantized by.  Defaults to the last layer if it is on the global
             routing grid, or the layer above that if otherwise.
             If the top metal layer is only one layer above the private routing grid, then this will
             be a primitive template; self.size will be None, and only one dimension is quantized.
             Otherwise, this will be a standard template, and both width and height will be quantized
             according to the block size.
+        connect_up : bool
+            True if the last used layer needs to be able to connect to the layer above.
+            This options will make sure that the width of the last track is wide enough to support
+            the inter-layer via.
         **kwargs :
             optional arguments.
         """
@@ -279,7 +284,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         w_unit = int(round(w / lay_unit / res))
         res_info = self._tech_cls.get_res_info(self.grid, l_unit, w_unit, res_type, sub_type, threshold,
                                                min_tracks, em_specs, ext_dir, max_blk_ext=max_blk_ext,
-                                               options=options)
+                                               connect_up=connect_up, options=options)
         w_edge, h_edge = res_info['w_edge'], res_info['h_edge']
         w_core, h_core = res_info['w_core'], res_info['h_core']
 
