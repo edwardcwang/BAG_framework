@@ -37,13 +37,13 @@ class Figure(object, metaclass=abc.ABCMeta):
         self._destroyed = False
 
     @abc.abstractmethod
-    def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False, copy=False):
+    def transform(self, loc=(0, 0), orient='R0', unit_mode=False, copy=False):
         # type: (Tuple[ldim, ldim], str, bool, bool) -> Figure
         """Transform this figure."""
         pass
 
     @abc.abstractmethod
-    def move_by(self, dx=0.0, dy=0.0, unit_mode=False):
+    def move_by(self, dx=0, dy=0, unit_mode=False):
         # type: (ldim, ldim, bool) -> None
         """Move this path by the given amount.
 
@@ -339,7 +339,7 @@ class InstanceInfo(dict):
         # type: (Optional[Dict[str, Any]]) -> None
         self['params'] = new_params
 
-    def move_by(self, dx=0.0, dy=0.0):
+    def move_by(self, dx=0, dy=0):
         # type: (float, float) -> None
         """Move this instance by the given amount.
 
@@ -701,7 +701,7 @@ class Instance(Arrayable):
         """Returns True if this instance has the given port."""
         return self._master.has_port(port_name)
 
-    def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False, copy=False):
+    def transform(self, loc=(0, 0), orient='R0', unit_mode=False, copy=False):
         # type: (Tuple[ldim, ldim], str, bool, bool) -> Optional[Figure]
         """Transform this figure."""
         if not unit_mode:
@@ -741,7 +741,7 @@ class Rect(Arrayable):
         True if layout dimensions are specified in resolution units.
     """
 
-    def __init__(self, layer, bbox, nx=1, ny=1, spx=0.0, spy=0.0, unit_mode=False):
+    def __init__(self, layer, bbox, nx=1, ny=1, spx=0, spy=0, unit_mode=False):
         # python 2/3 compatibility: convert raw bytes to string.
         layer = bag.io.fix_string(layer)
         if isinstance(layer, str):
@@ -810,7 +810,7 @@ class Rect(Arrayable):
 
         return content
 
-    def move_by(self, dx=0.0, dy=0.0, unit_mode=False):
+    def move_by(self, dx=0, dy=0, unit_mode=False):
         """Move the base rectangle by the given amount.
 
         Parameters
@@ -836,7 +836,7 @@ class Rect(Arrayable):
         """
         self._bbox = self._bbox.extend(x=x, y=y)
 
-    def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False, copy=False):
+    def transform(self, loc=(0, 0), orient='R0', unit_mode=False, copy=False):
         # type: (Tuple[ldim, ldim], str, bool, bool) -> Optional[Figure]
         """Transform this figure."""
         new_box = self._bbox.transform(loc=loc, orient=orient, unit_mode=unit_mode)
@@ -962,7 +962,7 @@ class Path(Figure):
                        )
         return content
 
-    def move_by(self, dx=0.0, dy=0.0, unit_mode=False):
+    def move_by(self, dx=0, dy=0, unit_mode=False):
         # type: (ldim, ldim, bool) -> None
         """Move this path by the given amount.
 
@@ -980,7 +980,7 @@ class Path(Figure):
             dy = int(round(dy / self._res))
         self._points += np.array([dx, dy])
 
-    def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False, copy=False):
+    def transform(self, loc=(0, 0), orient='R0', unit_mode=False, copy=False):
         # type: (Tuple[ldim, ldim], str, bool, bool) -> Figure
         """Transform this figure."""
         res = self.resolution
@@ -1019,7 +1019,7 @@ class PathCollection(Figure):
         super(PathCollection, self).__init__(resolution)
         self._paths = paths
 
-    def move_by(self, dx=0.0, dy=0.0, unit_mode=False):
+    def move_by(self, dx=0, dy=0, unit_mode=False):
         # type: (ldim, ldim, bool) -> None
         """Move this path by the given amount.
 
@@ -1035,7 +1035,7 @@ class PathCollection(Figure):
         for path in self._paths:
             path.move_by(dx=dx, dy=dy, unit_mode=unit_mode)
 
-    def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False, copy=True):
+    def transform(self, loc=(0, 0), orient='R0', unit_mode=False, copy=True):
         # type: (Tuple[ldim, ldim], str, bool, bool) -> PathCollection
         """Transform this figure."""
         if copy:
@@ -1215,14 +1215,14 @@ class Polygon(Figure):
                        )
         return content
 
-    def move_by(self, dx=0.0, dy=0.0, unit_mode=False):
+    def move_by(self, dx=0, dy=0, unit_mode=False):
         # type: (ldim, ldim, bool) -> None
         if not unit_mode:
             dx = int(round(dx / self._res))
             dy = int(round(dy / self._res))
         self._points += np.array([dx, dy])
 
-    def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False, copy=False):
+    def transform(self, loc=(0, 0), orient='R0', unit_mode=False, copy=False):
         # type: (Tuple[ldim, ldim], str, bool, bool) -> Figure
         """Transform this figure."""
         res = self.resolution
@@ -1414,14 +1414,14 @@ class ViaInfo(dict):
     @property
     def arr_spx(self):
         # type: () -> float
-        return self.get('arr_spx', 0.0)
+        return self.get('arr_spx', 0)
 
     @property
     def arr_spy(self):
         # type: () -> float
-        return self.get('arr_spy', 0.0)
+        return self.get('arr_spy', 0)
 
-    def move_by(self, dx=0.0, dy=0.0):
+    def move_by(self, dx=0, dy=0):
         # type: (float, float) -> None
         """Move this instance by the given amount.
 
@@ -1473,7 +1473,7 @@ class Via(Arrayable):
     """
 
     def __init__(self, tech, bbox, bot_layer, top_layer, bot_dir,
-                 nx=1, ny=1, spx=0.0, spy=0.0, extend=True, top_dir=None, unit_mode=False):
+                 nx=1, ny=1, spx=0, spy=0, extend=True, top_dir=None, unit_mode=False):
         if isinstance(bbox, BBoxArray):
             self._bbox = bbox.base
             Arrayable.__init__(self, tech.resolution, nx=bbox.nx, ny=bbox.ny,
@@ -1605,7 +1605,7 @@ class Via(Arrayable):
 
         return content
 
-    def move_by(self, dx=0.0, dy=0.0, unit_mode=False):
+    def move_by(self, dx=0, dy=0, unit_mode=False):
         # type: (ldim, ldim, bool) -> None
         """Move this path by the given amount.
 
@@ -1623,7 +1623,7 @@ class Via(Arrayable):
         self._info['bot_box'] = self._info['bot_box'].move_by(dx=dx, dy=dy, unit_mode=unit_mode)
         self._info['params']['loc'] = [self._bbox.xc, self._bbox.yc]
 
-    def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False, copy=False):
+    def transform(self, loc=(0, 0), orient='R0', unit_mode=False, copy=False):
         # type: (Tuple[ldim, ldim], str, bool, bool) -> Figure
         """Transform this figure."""
         new_box = self._bbox.transform(loc=loc, orient=orient, unit_mode=unit_mode)
@@ -1682,7 +1682,7 @@ class PinInfo(dict):
         # type: () -> bool
         return self['make_rect']
 
-    def move_by(self, dx=0.0, dy=0.0):
+    def move_by(self, dx=0, dy=0):
         # type: (float, float) -> None
         """Move this instance by the given amount.
 
