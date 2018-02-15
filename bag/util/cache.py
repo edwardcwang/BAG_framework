@@ -234,6 +234,8 @@ class DesignMaster(abc.ABC):
             return tuple((cls.to_immutable_id(item) for item in val))
         elif isinstance(val, dict):
             return tuple(((k, cls.to_immutable_id(val[k])) for k in sorted(val.keys())))
+        elif isinstance(val, set):
+            return tuple((k for k in sorted(val)))
         elif hasattr(val, 'get_immutable_key') and callable(val.get_immutable_key):
             return val.get_immutable_key()
         else:
