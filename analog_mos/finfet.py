@@ -1758,6 +1758,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         left_blk_info = layout_info['left_blk_info']
         right_blk_info = layout_info['right_blk_info']
         no_po_region = layout_info.get('no_po_region', set())
+        no_md_region = layout_info.get('no_md_region', set())
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
@@ -1873,16 +1874,17 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # draw MD
             if md_yt > md_yb and fg > 0:
                 for idx in range(fg + 1):
-                    md_xl = idx * sd_pitch - md_w // 2
-                    md_xr = md_xl + md_w
-                    md_box = BBox(md_xl, md_yb, md_xr, md_yt, res, unit_mode=True)
-                    if md_on_od[idx]:
-                        self.draw_mos_rect(template, md_lay_cur, md_box)
-                    else:
-                        if (0 < idx < fg or
-                                idx == 0 and 'md' in left_blk_info.draw_layers or
-                                idx == fg and 'md' in right_blk_info.draw_layers):
-                            self.draw_mos_rect(template, md_dum_lay, md_box)
+                    if idx not in no_md_region:
+                        md_xl = idx * sd_pitch - md_w // 2
+                        md_xr = md_xl + md_w
+                        md_box = BBox(md_xl, md_yb, md_xr, md_yt, res, unit_mode=True)
+                        if md_on_od[idx]:
+                            self.draw_mos_rect(template, md_lay_cur, md_box)
+                        else:
+                            if (0 < idx < fg or
+                                    idx == 0 and 'md' in left_blk_info.draw_layers or
+                                    idx == fg and 'md' in right_blk_info.draw_layers):
+                                self.draw_mos_rect(template, md_dum_lay, md_box)
 
         # draw other layers
         for imp_lay, xl, yb, yt in lay_info_list:
