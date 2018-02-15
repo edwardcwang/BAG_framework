@@ -1735,6 +1735,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         adj_row_list = layout_info['adj_row_list']
         left_blk_info = layout_info['left_blk_info']
         right_blk_info = layout_info['right_blk_info']
+        no_po_region = layout_info.get('no_po_region', set())
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
@@ -1810,40 +1811,42 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # draw PO/PODE
             if row_y[1] > row_y[0]:
                 for idx in range(fg):
-                    po_xl = po_xc + idx * sd_pitch - lch_unit // 2
-                    po_xr = po_xl + lch_unit
-                    is_edge = po_is_edge[idx]
-                    pode_y = row_info.od_y
-                    if po_on_od[idx]:
-                        cur_od_type = od_type
-                    else:
-                        if idx == 0:
-                            cur_od_type = left_blk_info.od_type
-                            is_edge = True
-                            pode_y = left_blk_info.y_intv.get('od', row_info.od_y)
-                        elif idx == fg - 1:
-                            cur_od_type = right_blk_info.od_type
-                            is_edge = True
-                            pode_y = right_blk_info.y_intv.get('od', row_info.od_y)
+                    if idx not in no_po_region:
+                        po_xl = po_xc + idx * sd_pitch - lch_unit // 2
+                        po_xr = po_xl + lch_unit
+                        is_edge = po_is_edge[idx]
+                        pode_y = row_info.od_y
+                        if po_on_od[idx]:
+                            cur_od_type = od_type
                         else:
-                            cur_od_type = None
+                            if idx == 0:
+                                cur_od_type = left_blk_info.od_type
+                                is_edge = True
+                                pode_y = left_blk_info.y_intv.get('od', row_info.od_y)
+                            elif idx == fg - 1:
+                                cur_od_type = right_blk_info.od_type
+                                is_edge = True
+                                pode_y = right_blk_info.y_intv.get('od', row_info.od_y)
+                            else:
+                                cur_od_type = None
 
-                    if is_edge and cur_od_type is not None:
-                        if cur_od_type == 'dum':
-                            lay = 'PO_edge_dummy'
+                        if is_edge and cur_od_type is not None:
+                            if cur_od_type == 'dum':
+                                lay = 'PO_edge_dummy'
+                            elif cur_od_type == 'sub':
+                                lay = 'PO_edge_sub'
+                            else:
+                                lay = 'PO_edge'
+                        elif cur_od_type == 'mos':
+                            lay = 'PO'
                         elif cur_od_type == 'sub':
-                            lay = 'PO_edge_sub'
+                            lay = 'PO_sub'
+                        elif cur_od_type == 'dum':
+                            lay = 'PO_gate_dummy'
                         else:
-                            lay = 'PO_edge'
-                    elif cur_od_type == 'mos':
-                        lay = 'PO'
-                    elif cur_od_type == 'sub':
-                        lay = 'PO_sub'
-                    elif cur_od_type == 'dum':
-                        lay = 'PO_gate_dummy'
-                    else:
-                        lay = 'PO_dummy'
-                    self.draw_poly(template, lay, (po_xl, po_xr), row_y, po_y, pode_y)
+                            lay = 'PO_dummy'
+
+                        self.draw_poly(template, lay, (po_xl, po_xr), row_y, po_y, pode_y)
 
             # draw MD
             if md_yt > md_yb and fg > 0:
