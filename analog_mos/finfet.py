@@ -1878,9 +1878,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             po_y = adj_info.po_y
             if row_y[1] > row_y[0]:
                 for idx, po_type in enumerate(adj_info.po_types):
-                    po_xl = po_xc + idx * sd_pitch - lch_unit // 2
-                    po_xr = po_xl + lch_unit
-                    self.draw_poly(template, po_type, (po_xl, po_xr), row_y, po_y, (po_y[0], po_y[0]))
+                    if idx not in no_po_region:
+                        po_xl = po_xc + idx * sd_pitch - lch_unit // 2
+                        po_xr = po_xl + lch_unit
+                        self.draw_poly(template, po_type, (po_xl, po_xr), row_y, po_y, (po_y[0], po_y[0]))
 
         # set size and add PR boundary
         arr_box = BBox(0, arr_yb, blk_w, arr_yt, res, unit_mode=True)
