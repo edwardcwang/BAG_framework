@@ -235,15 +235,18 @@ class RoutingGrid(object):
         """helper method for updating block pitch."""
         pitch_list = []
         for lay in lay_list:
-            cur_blk_pitch = self.get_track_pitch(lay, unit_mode=True) // 2
+            cur_bp = self.get_track_pitch(lay, unit_mode=True)
+            cur_bp2 = cur_bp // 2
             cur_dir = self.dir_tracks[lay]
             if pitch_list:
                 # the pitch of each layer = LCM of all layers below with same direction
-                bot_pitch_iter = (p for play, p in zip(lay_list, pitch_list) if
-                                  self.dir_tracks[play] == cur_dir)
-                cur_blk_pitch = lcm(bot_pitch_iter, init=cur_blk_pitch)
-            pitch_list.append(cur_blk_pitch)
-            self.block_pitch[lay] = cur_blk_pitch
+                for play, (bp, bp2) in zip(lay_list, pitch_list):
+                    if self.dir_tracks[play] == cur_dir:
+                        cur_bp = lcm([cur_bp, bp])
+                        cur_bp2 = lcm([cur_bp2, bp2])
+            result = (cur_bp, cur_bp2)
+            pitch_list.append(result)
+            self.block_pitch[lay] = result
 
     def get_direction(self, layer_id):
         # type: (int) -> str
@@ -609,8 +612,9 @@ class RoutingGrid(object):
         idx_list = ((hidx_arr - 1) / 2.0).tolist()  # type: List[float]
         return idx_list
 
-    def get_block_size(self, layer_id, unit_mode=False, include_private=False):
-        # type: (int, bool, bool) -> Tuple[Union[float, int], Union[float, int]]
+    def get_block_size(self, layer_id, unit_mode=False, include_private=False,
+                       half_blk_x=True, half_blk_y=True):
+        # type: (int, bool, bool, bool, bool) -> Tuple[Union[float, int], Union[float, int]]
         """Returns unit block size given the top routing layer.
 
         Parameters
@@ -621,6 +625,10 @@ class RoutingGrid(object):
             True to return block dimension in resolution units.
         include_private : bool
             True to include private layers in block size calculation.
+        half_blk_x : bool
+            True to allow half-block widths.
+        half_blk_y : bool
+            True to allow half-block heights.
 
         Returns
         -------
@@ -638,7 +646,7 @@ class RoutingGrid(object):
             bot_layer -= 1
 
         if bot_layer not in self.dir_tracks:
-            bot_pitch = 1
+            bot_pitch = (2, 1)
         else:
             bot_pitch = self.block_pitch[bot_layer]
 
@@ -646,13 +654,15 @@ class RoutingGrid(object):
 
         if layer_id > top_private_layer >= bot_layer and not include_private:
             # if top layer not private but bottom layer is, then bottom is not quantized.
-            bot_pitch = 1
+            bot_pitch = (2, 1)
 
         if top_dir == 'y':
             w_pitch, h_pitch = top_pitch, bot_pitch
         else:
             w_pitch, h_pitch = bot_pitch, top_pitch
 
+        w_pitch = w_pitch[1] if half_blk_x else w_pitch[0]
+        h_pitch = h_pitch[1] if half_blk_y else h_pitch[0]
         if unit_mode:
             return w_pitch, h_pitch
         else:
@@ -701,6 +711,8 @@ class RoutingGrid(object):
                        height,  # type: Union[float, int]
                        round_up=False,  # type: bool
                        unit_mode=False,  # type: bool
+                       half_blk_x=True,  # type: bool
+                       half_blk_y=True,  # type: bool
                        ):
         # type: (...) -> Tuple[int, Union[float, int], Union[float, int]]
         """Compute the size tuple corresponding to the given width and height from block pitch.
@@ -716,7 +728,11 @@ class RoutingGrid(object):
         round_up : bool
             True to round up instead of raising an error if the given width and height are not on pitch.
         unit_mode : bool
-            True if the given layout
+            True if the given layout dimensions are in resolution units.
+        half_blk_x : bool
+            True to allow half-block widths.
+        half_blk_y : bool
+            True to allow half-block heights.
 
         Returns
         -------
@@ -731,7 +747,8 @@ class RoutingGrid(object):
 
         w_pitch, h_pitch = self.get_size_pitch(layer_id, unit_mode=True)
 
-        wblk, hblk = self.get_block_size(layer_id, unit_mode=True)
+        wblk, hblk = self.get_block_size(layer_id, unit_mode=True,
+                                         half_blk_x=half_blk_x, half_blk_y=half_blk_y)
         if width % wblk != 0:
             if round_up:
                 width = -(-width // wblk) * wblk
