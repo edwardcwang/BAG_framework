@@ -190,7 +190,6 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         return self.grid.coord_to_nearest_track(layer_id, coord, half_track=True,
                                                 mode=mode, unit_mode=True)
 
-    # noinspection PyUnusedLocal
     def draw_array(self,  # type: ResArrayBase
                    l,  # type: float
                    w,  # type: float
@@ -256,8 +255,16 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
             This options will make sure that the width of the last track is wide enough to support
             the inter-layer via.
         **kwargs :
-            optional arguments.
+            optional arguments.  Right now support:
+
+            half_blk_x : bool
+                True to allow half-block width.  Defaults to True.
+            half_blk_y : bool
+                True to allow half-block height.  Defaults to True.
         """
+        half_blk_x = kwargs.get('half_blk_x', True)
+        half_blk_y = kwargs.get('half_blk_y', True)
+
         if em_specs is None:
             em_specs = {}
         # modify resistor layer routing grid.
@@ -289,7 +296,8 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         w_core, h_core = res_info['w_core'], res_info['h_core']
 
         # compute template quantization and coordinates
-        wblk, hblk = self.grid.get_block_size(top_layer, unit_mode=True)
+        wblk, hblk = self.grid.get_block_size(top_layer, unit_mode=True, half_blk_x=half_blk_x,
+                                              half_blk_y=half_blk_y)
         warr = w_edge * 2 + w_core * nx
         harr = h_edge * 2 + h_core * ny
         wtot = -(-warr // wblk) * wblk
