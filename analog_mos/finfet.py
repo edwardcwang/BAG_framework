@@ -456,6 +456,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fg_outer_min = mos_constants['fg_outer_min']
         cpo_po_extx = mos_constants['cpo_po_extx']
         po_od_extx = mos_constants['po_od_extx']
+        fg_outer_gr = mos_constants.get('fg_outer_gr', 0)
 
         if 0 < guard_ring_nf < fg_gr_min:
             raise ValueError('guard_ring_nf = %d < %d' % (guard_ring_nf, fg_gr_min))
@@ -485,7 +486,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 fg_gr_sep = -(-edge_margin // sd_pitch)
             else:
                 fg_gr_sep = fg_od_margin
-            fg_outer = 0
+            fg_outer = fg_outer_gr
             fg_gr_sub = guard_ring_nf + 2 * fg_od_margin
 
         # compute edge margin and cpo_xl
@@ -1368,6 +1369,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     def get_outer_edge_info(self, guard_ring_nf, layout_info, is_end, adj_blk_info):
         # type: (int, Dict[str, Any], bool, Optional[Any]) -> Dict[str, Any]
         mos_layer_table = self.config['mos_layer_table']
+        imp_layers_info_struct = self.mos_config['imp_layers']
+        thres_layers_info_struct = self.mos_config['thres_layers']
 
         lch_unit = layout_info['lch_unit']
         arr_y = layout_info['arr_y']
@@ -1400,8 +1403,27 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 else:
                     new_lay_list.append((lay, 0, yb, yt))
         else:
-            # in guard ring mode, only draw CPO
-            new_lay_list = [(lay, cpo_xl, yb, yt) for lay, _, yb, yt in lay_info_list if lay == cpo_lay]
+            # we need to convert implant layers to substrate implants
+            # first, get CPO layers
+            new_lay_list = []
+            for lay, _, yb, yt in lay_info_list:
+                if lay == cpo_lay:
+                    new_lay_list.append((lay, cpo_xl, yb, yt))
+            # get new implant layers
+            for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
+                sub_type = 'ptap' if mtype == 'nch' or mtype == 'ptap' else 'ntap'
+                imp_layers_info = imp_layers_info_struct[sub_type]
+                thres_layers_info = thres_layers_info_struct[sub_type][thres]
+                for cur_yb, cur_yt, lay_info in [(imp_yb, imp_yt, imp_layers_info),
+                                                 (thres_yb, thres_yt, thres_layers_info)]:
+                    if cur_yt > cur_yb:
+                        for lay_name in lay_info:
+                            if lay_name in imp_edge_dx:
+                                offset, lch_scale, sd_scale = imp_edge_dx[lay_name]
+                                cur_xl = offset + int(round(lch_scale * lch_unit)) + int(round(sd_scale * sd_pitch))
+                                new_lay_list.append((lay_name, cur_xl, cur_yb, cur_yt))
+                            else:
+                                new_lay_list.append((lay_name, 0, cur_yb, cur_yt))
 
         # compute new row_info_list
         # noinspection PyProtectedMember
