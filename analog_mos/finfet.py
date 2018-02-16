@@ -1058,28 +1058,44 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # compute implant and threshold layer information
         # figure out where to separate top/bottom implant/threshold.
-        add_po_yb = add_po_yt = 0
+        add_row_yb = add_row_yt = add_po_yb = add_po_yt = 0
         if bot_imp == top_imp:
             sub_type = 'ptap' if bot_imp == 'nch' else 'ntap'
             if bot_tran != top_tran:
                 # case 1
                 if bot_tran:
                     if substrate_planar:
-                        cpo_yb = cpo_yc_list[0] - (cpo_h // 2)
+                        cpo_yb = cpo_yc_list[-1] - (cpo_h // 2)
                         cpo_yt = cpo_yb + cpo_h_end
-                        add_po_yb = 0
-                        add_po_yt = cpo_yb + cpo_po_ency
-                        imp_ysep = thres_ysep = max(add_po_yt, (cpo_yb + cpo_yt) // 2)
+                        if one_cpo:
+                            add_row_yb = 0
+                            add_po_yb = -cpo_h // 2
+                            add_po_yt = cpo_yb
+                        else:
+                            add_row_yb = cpo_yc_list[-1]
+                            add_po_yb = add_po_yt = 0
+                        add_row_yt = cpo_yb + cpo_po_ency
+                        adj_edgel_infos = [bot_ext_info.edgel_info]
+                        adj_edger_infos = [bot_ext_info.edger_info]
+                        imp_ysep = thres_ysep = max(add_row_yt, (cpo_yb + cpo_yt) // 2)
                     else:
                         imp_ysep = imp_split_y[1]
                         thres_ysep = thres_split_y[1]
                 else:
                     if substrate_planar:
-                        cpo_yt = cpo_yc_list[-1] + cpo_h // 2
+                        cpo_yt = cpo_yc_list[0] + cpo_h // 2
                         cpo_yb = cpo_yt - cpo_h_end
-                        add_po_yb = cpo_yt - cpo_po_ency
-                        add_po_yt = yt
-                        imp_ysep = thres_ysep = min(add_po_yb, (cpo_yb + cpo_yt) // 2)
+                        if one_cpo:
+                            add_row_yt = yt
+                            add_po_yt = yt + (cpo_h // 2)
+                            add_po_yb = cpo_yt
+                        else:
+                            add_row_yt = cpo_yc_list[0]
+                            add_po_yb = add_po_yt = 0
+                        add_row_yb = cpo_yt - cpo_po_ency
+                        adj_edgel_infos = [top_ext_info.edgel_info]
+                        adj_edger_infos = [top_ext_info.edger_info]
+                        imp_ysep = thres_ysep = min(add_row_yb, (cpo_yb + cpo_yt) // 2)
                     else:
                         imp_ysep = imp_split_y[0]
                         thres_ysep = thres_split_y[0]
@@ -1103,11 +1119,19 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 # case 5
                 if bot_tran:
                     if substrate_planar:
-                        cpo_yb = cpo_yc_list[0] - (cpo_h // 2)
+                        cpo_yb = cpo_yc_list[-1] - (cpo_h // 2)
                         cpo_yt = cpo_yb + cpo_h_end
-                        add_po_yb = 0
-                        add_po_yt = cpo_yb + cpo_po_ency
-                        imp_ysep = thres_ysep = max(add_po_yt, (cpo_yb + cpo_yt) // 2)
+                        if one_cpo:
+                            add_row_yb = 0
+                            add_po_yb = -cpo_h // 2
+                            add_po_yt = cpo_yb
+                        else:
+                            add_row_yb = cpo_yc_list[-1]
+                            add_po_yb = add_po_yt = 0
+                        add_row_yt = cpo_yb + cpo_po_ency
+                        adj_edgel_infos = [bot_ext_info.edgel_info]
+                        adj_edger_infos = [bot_ext_info.edger_info]
+                        imp_ysep = thres_ysep = max(add_row_yt, (cpo_yb + cpo_yt) // 2)
                     else:
                         top_mtype = bot_imp
                         top_thres = bot_thres
@@ -1115,11 +1139,19 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                         thres_ysep = thres_split_y[1]
                 else:
                     if substrate_planar:
-                        cpo_yt = cpo_yc_list[-1] + cpo_h // 2
+                        cpo_yt = cpo_yc_list[0] + cpo_h // 2
                         cpo_yb = cpo_yt - cpo_h_end
-                        add_po_yt = yt
-                        add_po_yb = cpo_yt - cpo_po_ency
-                        imp_ysep = thres_ysep = min(add_po_yb, (cpo_yb + cpo_yt) // 2)
+                        if one_cpo:
+                            add_row_yt = yt
+                            add_po_yt = yt + (cpo_h // 2)
+                            add_po_yb = cpo_yt
+                        else:
+                            add_row_yt = cpo_yc_list[0]
+                            add_po_yb = add_po_yt = 0
+                        add_row_yb = cpo_yt - cpo_po_ency
+                        adj_edgel_infos = [top_ext_info.edgel_info]
+                        adj_edger_infos = [top_ext_info.edger_info]
+                        imp_ysep = thres_ysep = min(add_row_yb, (cpo_yb + cpo_yt) // 2)
                     else:
                         bot_mtype = top_imp
                         bot_thres = top_thres
@@ -1158,11 +1190,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # find next CPO coordinates
             if substrate_planar:
                 if idx == 0 and not bot_tran:
-                    cur_cpo_yb = cpo_yc - cpo_h // 2
-                    cur_cpo_yt = cur_cpo_yb + cpo_h_end
-                elif idx == len(cpo_yc_list) - 1 and not top_tran:
                     cur_cpo_yt = cpo_yc + cpo_h // 2
                     cur_cpo_yb = cur_cpo_yt - cpo_h_end
+                elif idx == len(cpo_yc_list) - 1 and not top_tran:
+                    cur_cpo_yb = cpo_yc - cpo_h // 2
+                    cur_cpo_yt = cur_cpo_yb + cpo_h_end
                 else:
                     cur_cpo_yb = cpo_yc - cpo_h // 2
                     cur_cpo_yt = cpo_yc + cpo_h // 2
@@ -1173,8 +1205,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # modify adjacent row geometries if substrate planar is true
         if substrate_planar:
-            if add_po_yt > add_po_yb:
-                adj_row_list = [AdjRowInfo(row_y=(add_po_yb, add_po_yt), po_y=(0, 0), po_types=('PO',) * fg)]
+            if add_row_yt > add_row_yb:
+                po_type = 'PO' if one_cpo else 'PO_dummy'
+                adj_row_list = [AdjRowInfo(row_y=(add_row_yb, add_row_yt), po_y=(add_po_yb, add_po_yt),
+                                           po_types=(po_type,) * fg)]
             else:
                 adj_row_list = adj_edgel_infos = adj_edger_infos = []
 
