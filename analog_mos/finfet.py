@@ -1041,9 +1041,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 cpo_yc_list = [0, yt]
                 thres_split_y = imp_split_y = 0, yt
         else:
-            if substrate_planar and (not top_tran or not bot_tran):
-                # TODO: Figure out how to do this...
-                raise ValueError("Can't figure out man, this technology sucks.")
             # has dummy OD
             # get OD horizontal partitioning
             if od_fill_w_max is None or fg == 1:
@@ -1746,7 +1743,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             arr_y=arr_y,
             draw_od=True,
             row_info_list=new_row_list,
-            lay_info_list=lay_info_list,
+            lay_info_list=new_lay_list,
             # TODO: figure out how to compute fill information
             fill_info_list=[],
             # adjacent block information list
