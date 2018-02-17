@@ -2007,7 +2007,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                 od_yt = arr_yt
                         od_box = BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True)
                         self.draw_od(template, od_name, od_box)
-            elif substrate_planar and blk_type == 'gr_sub':
+            elif substrate_planar and blk_type == 'gr_sub' and arr_yt > arr_yb:
                 od_start, od_stop = od_x_list[0]
                 od_xl = po_xc - lch_unit // 2 + od_start * sd_pitch - po_od_extx
                 od_xr = po_xc + lch_unit // 2 + (od_stop - 1) * sd_pitch + po_od_extx
