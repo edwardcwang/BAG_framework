@@ -1777,6 +1777,25 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """
         template.add_rect(layer, bbox)
 
+    def draw_od(self, template, od_type, bbox):
+        # type: (TemplateBase, str, BBox) -> None
+        """This method draws a transistor OD.
+
+        By default, this method just calls draw_mos_rect() on the OD layer.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the template.
+        od_type : str
+            the OD type.
+        bbox : BBox
+            the geometry bounding box.
+        """
+        mos_layer_table = self.config['mos_layer_table']
+        layer = mos_layer_table[od_type]
+        self.draw_mos_rect(template, layer, bbox)
+
     # noinspection PyUnusedLocal
     def draw_poly(self, template, po_type, po_x, row_y, po_y, od_y):
         # type: (TemplateBase, str, Tuple[int, int], Tuple[int, int], Tuple[int, int], Tuple[int, int]) -> None
@@ -1936,8 +1955,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         blk_w = fg * sd_pitch
 
         # figure out transistor layout settings
-        od_lay = mos_layer_table['OD']
-        od_dum_lay = mos_layer_table['OD_dummy']
         md_lay = mos_layer_table['MD']
         md_dum_lay = mos_layer_table['MD_dummy']
         finbound_lay = mos_layer_table['FB']
@@ -1947,10 +1964,13 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         for row_info in row_info_list:
             od_type = row_info.od_type[0]
             if od_type == 'dum' or od_type is None:
-                od_lay_cur = od_dum_lay
+                od_name = 'OD_dummy'
                 md_lay_cur = md_dum_lay
+            elif od_type == 'sub':
+                od_name = 'OD_sub'
+                md_lay_cur = md_lay
             else:
-                od_lay_cur = od_lay
+                od_name = 'OD'
                 md_lay_cur = md_lay
             od_x_list = row_info.od_x_list
             od_yb, od_yt = row_info.od_y
@@ -1980,20 +2000,19 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                         if substrate_planar:
                             # modify OD geometry inside planar guard ring
                             if blk_type == 'gr_sub_sub':
-                                self.draw_mos_rect(template, od_lay_cur,
-                                                   BBox(od_xl, od_yt, od_xr, arr_yt, res, unit_mode=True))
+                                self.draw_od(template, od_name, BBox(od_xl, od_yt, od_xr, arr_yt, res, unit_mode=True))
                                 od_xr = po_xc + lch_unit // 2 + (fg - 1) * sd_pitch + po_od_extx
                             elif blk_type == 'gr_sub':
                                 od_yb = 0
                                 od_yt = arr_yt
                         od_box = BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True)
-                        self.draw_mos_rect(template, od_lay_cur, od_box)
+                        self.draw_od(template, od_name, od_box)
             elif substrate_planar and blk_type == 'gr_sub':
                 od_start, od_stop = od_x_list[0]
                 od_xl = po_xc - lch_unit // 2 + od_start * sd_pitch - po_od_extx
                 od_xr = po_xc + lch_unit // 2 + (od_stop - 1) * sd_pitch + po_od_extx
                 od_box = BBox(od_xl, arr_yb, od_xr, arr_yt, res, unit_mode=True)
-                self.draw_mos_rect(template, od_lay_cur, od_box)
+                self.draw_od(template, od_name, od_box)
 
             # draw PO/PODE
             if row_y[1] > row_y[0]:
