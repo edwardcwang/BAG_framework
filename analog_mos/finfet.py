@@ -524,7 +524,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         substrate_planar = mos_constants.get('substrate_planar', False)
 
         is_sub = (mos_type == sub_type)
-        od_type = 'sub' if is_sub else 'mos'
+        blk_type = 'sub' if is_sub else 'mos'
+        od_type = 'mos_fake' if ds_dummy else blk_type
 
         if is_sub:
             yloc_info = self.get_sub_yloc_info(lch_unit, w, **kwargs)
@@ -581,7 +582,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                    y_intv_list=info[1]) for layer, info in fill_info.items()]
 
         layout_info = dict(
-            blk_type=od_type,
+            blk_type=blk_type,
             lch_unit=lch_unit,
             fg=fg,
             arr_y=(blk_yb, blk_yt),
@@ -2037,7 +2038,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                 cur_od_type = None
 
                         if is_edge and cur_od_type is not None:
-                            if cur_od_type == 'dum':
+                            if cur_od_type == 'mos_fake':
+                                lay = 'PO_dummy'
+                            elif cur_od_type == 'dum':
                                 lay = 'PO_edge_dummy'
                             elif cur_od_type == 'sub':
                                 lay = 'PO_edge_sub'
