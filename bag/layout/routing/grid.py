@@ -48,8 +48,16 @@ class RoutingGrid(object):
         all layers), our a list to specify maximum width per layer.
     """
 
-    def __init__(self, tech_info, layers, spaces, widths, bot_dir, max_num_tr=100):
-        # type: (TechInfo, Sequence[int], Sequence[float], Sequence[float], str, Union[int, Sequence[int]]) -> None
+    def __init__(self,  # type: RoutingGrid
+                 tech_info,  # type: TechInfo
+                 layers,  # type: Sequence[int]
+                 spaces,  # type: Sequence[float]
+                 widths,  # type: Sequence[float]
+                 bot_dir,  # type: str
+                 max_num_tr=1000,  # type: Union[int, Sequence[int]]
+                 width_override=None,  # type: Dict[int, Dict[int, float]]
+                 ):
+        # type: (...) -> None
         # error checking
         num_layer = len(layers)
         if len(spaces) != num_layer:
@@ -82,6 +90,12 @@ class RoutingGrid(object):
             cur_dir = 'y' if cur_dir == 'x' else 'x'
 
         self.update_block_pitch()
+
+        # add width overrides
+        if width_override is not None:
+            for layer_id, w_info in width_override.items():
+                for width_ntr, tr_w in w_info.items():
+                    self.add_width_override(layer_id, width_ntr, tr_w)
 
     def __contains__(self, layer):
         # type: (int) -> bool
@@ -1624,4 +1638,7 @@ class RoutingGrid(object):
         if not unit_mode:
             tr_width = int(round(tr_width / self.resolution))
 
-        self.w_override[layer_id][width_ntr] = tr_width
+        if layer_id not in self.w_override:
+            self.w_override[layer_id] = {width_ntr: tr_width}
+        else:
+            self.w_override[layer_id][width_ntr] = tr_width
