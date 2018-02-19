@@ -1635,6 +1635,9 @@ class RoutingGrid(object):
         unit_mode : bool
             True if tr_width is in resolution units.
         """
+        if width_ntr == 1:
+            raise ValueError('Cannot override width_ntr=1.')
+
         if not unit_mode:
             tr_width = int(round(tr_width / self.resolution))
 
