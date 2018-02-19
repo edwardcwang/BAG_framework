@@ -38,6 +38,7 @@ class LaygoIntvSet(object):
     default_end_info : Any
         the default left/right edge layout information object to use.
     """
+
     def __init__(self, default_end_info):
         # type: (Any) -> None
         self._intv = IntervalSet()
@@ -174,6 +175,7 @@ class LaygoBaseInfo(object):
     num_col : Optional[int]
         number of columns in this LaygoBase.  This must be specified if draw_boundaries is True.
     """
+
     def __init__(self, grid, config, top_layer=None, guard_ring_nf=0, draw_boundaries=False, end_mode=0, num_col=None):
         # type: (RoutingGrid, Dict[str, Any], Optional[int], int, bool, int, Optional[int]) -> None
         self._tech_cls = grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
@@ -291,8 +293,8 @@ class LaygoBaseInfo(object):
     def tot_width(self):
         if self._edge_margins is None:
             raise ValueError('Edge margins is not defined.  Did you set number of columns?')
-        return self._edge_margins[0] + self._edge_margins[1] + self._edge_widths[0] + self._edge_widths[1] + \
-               self._num_col * self._col_width
+        return (self._edge_margins[0] + self._edge_margins[1] + self._edge_widths[0] + self._edge_widths[1] +
+                self._num_col * self._col_width)
 
     def get_placement_info(self, num_col):
         left_end = (self.end_mode & 4) != 0
