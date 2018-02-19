@@ -779,18 +779,22 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 min_row_height = max(min_row_height, num_tr * tr_pitch)
                 row_pitch = lcm([row_pitch, tr_pitch])
 
-            row_specs.append((row_type, row_orient, row_info, min_row_height, row_pitch, (ng, ngb, nds)))
+            row_specs.append((row_type, row_orient, row_info, min_row_height, row_pitch, (ng, ngb, nds), kwargs))
 
         return row_specs
 
     def _place_with_num_tracks(self, row_info, row_orient, ytop_prev, yt_vm_prev, hm_layer,
-                               hm_width, via_exty, vm_sple, mos_pitch, ng, ngb, nds):
+                               hm_width, via_exty, vm_sple, mos_pitch, ng, ngb, nds, **kwargs):
+        ignore_conn_sple_g = kwargs.get('place_ignore_conn_sple_g', False)
+        ignore_conn_sple_ds = kwargs.get('place_ignore_conn_sple_ds', False)
+
         # get bottom port Y intervals and number of horizontal tracks needed
         if row_orient == 'R0':
             # gate tracks on bottom
             num_tr1 = num_tr2 = ng
             conn_yb1, conn_yt1 = row_info.get('g_conn_y', (0, 0))
             conn_yb2, conn_yt2 = conn_yb1, conn_yt1
+            ignore_sple = ignore_conn_sple_g
         else:
             # drain/source tracks on bottom
             num_tr1, num_tr2 = ngb, nds
@@ -799,11 +803,14 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             blk_height = row_info['arr_y'][1]
             conn_yb1, conn_yt1 = blk_height - conn_yt1, blk_height - conn_yb1
             conn_yb2, conn_yt2 = blk_height - conn_yt2, blk_height - conn_yb2
+            ignore_sple = ignore_conn_sple_ds
 
         # find minimum Y coordinate of this row
         ycur = ytop_prev
         # get center Y coordinate of bottom track that is DRC clean from previous row
-        y_btr = max(yt_vm_prev + vm_sple + via_exty, ytop_prev + hm_width // 2)
+        y_btr = ytop_prev + hm_width // 2
+        if not ignore_sple:
+            y_btr = max(yt_vm_prev + vm_sple + via_exty, y_btr)
         tr0 = self.grid.coord_to_nearest_track(hm_layer, y_btr, half_track=True, mode=1, unit_mode=True)
         for ntr, cyb, cyt in ((num_tr1, conn_yb1, conn_yt1),
                               (num_tr2, conn_yb2, conn_yt2)):
@@ -882,7 +889,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         prev_ext_h = 0
         ytop_prev = ybot
         yt_vm_prev = ytop_prev - vm_sple // 2
-        for idx, (row_type, row_orient, row_info, min_row_height, row_pitch, (ng, ngb, nds)) in enumerate(row_specs):
+        for idx, (row_type, row_orient, row_info, min_row_height, row_pitch, (ng, ngb, nds), kwargs) in \
+                enumerate(row_specs):
             row_thres = row_info['threshold']
 
             # get information dictionary
@@ -906,7 +914,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 # step A: find bottom connection Y coordinate and number of tracks
                 ng_cur = 0 if is_sub else ng
                 ycur = self._place_with_num_tracks(row_info, row_orient, ytop_prev, yt_vm_prev, hm_layer,
-                                                   hm_width, via_exty, vm_sple, mos_pitch, ng_cur, ngb, nds)
+                                                   hm_width, via_exty, vm_sple, mos_pitch, ng_cur, ngb, nds, **kwargs)
                 cur_bot_ext_h = (ycur - ytop_prev) // mos_pitch
                 # step D: make sure extension constraints is met
                 if idx != 0:
@@ -970,7 +978,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                     test_orient = 'R0' if row_orient == 'MX' else 'MX'
                     test_y0 = 0  # use 0 because we know the top edge is LCM of horizontal track pitches.
                     ydelta = self._place_with_num_tracks(row_info, test_orient, test_y0, -vm_sple // 2, hm_layer,
-                                                         hm_width, via_exty, vm_sple, mos_pitch, ng, ngb, nds)
+                                                         hm_width, via_exty, vm_sple, mos_pitch, ng, ngb, nds, **kwargs)
                     # step 2: make sure ydelta can satisfy extension constraints.
                     cur_top_ext_h, self._top_sub_extw = self._place_mirror_or_sub(row_type, row_thres, lch_unit,
                                                                                   mos_pitch, ydelta, ext_top_info)
