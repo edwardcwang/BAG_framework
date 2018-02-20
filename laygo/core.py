@@ -1145,7 +1145,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         x0 = self._laygo_info.col_to_coord(col_idx, 's', unit_mode=True)
         if flip:
-            x0 += col_width
+            x0 += master.bound_box.width_unit
 
         _, ycur, ytop, _ = self._row_y[row_idx]
         if row_orient == 'R0':
