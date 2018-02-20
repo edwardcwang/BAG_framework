@@ -38,6 +38,7 @@ class LaygoIntvSet(object):
     default_end_info : Any
         the default left/right edge layout information object to use.
     """
+
     def __init__(self, default_end_info):
         # type: (Any) -> None
         self._intv = IntervalSet()
@@ -174,6 +175,7 @@ class LaygoBaseInfo(object):
     num_col : Optional[int]
         number of columns in this LaygoBase.  This must be specified if draw_boundaries is True.
     """
+
     def __init__(self, grid, config, top_layer=None, guard_ring_nf=0, draw_boundaries=False, end_mode=0, num_col=None):
         # type: (RoutingGrid, Dict[str, Any], Optional[int], int, bool, int, Optional[int]) -> None
         self._tech_cls = grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
@@ -291,8 +293,8 @@ class LaygoBaseInfo(object):
     def tot_width(self):
         if self._edge_margins is None:
             raise ValueError('Edge margins is not defined.  Did you set number of columns?')
-        return self._edge_margins[0] + self._edge_margins[1] + self._edge_widths[0] + self._edge_widths[1] + \
-               self._num_col * self._col_width
+        return (self._edge_margins[0] + self._edge_margins[1] + self._edge_widths[0] + self._edge_widths[1] +
+                self._num_col * self._col_width)
 
     def get_placement_info(self, num_col):
         left_end = (self.end_mode & 4) != 0
@@ -777,18 +779,22 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 min_row_height = max(min_row_height, num_tr * tr_pitch)
                 row_pitch = lcm([row_pitch, tr_pitch])
 
-            row_specs.append((row_type, row_orient, row_info, min_row_height, row_pitch, (ng, ngb, nds)))
+            row_specs.append((row_type, row_orient, row_info, min_row_height, row_pitch, (ng, ngb, nds), kwargs))
 
         return row_specs
 
     def _place_with_num_tracks(self, row_info, row_orient, ytop_prev, yt_vm_prev, hm_layer,
-                               hm_width, via_exty, vm_sple, mos_pitch, ng, ngb, nds):
+                               hm_width, via_exty, vm_sple, mos_pitch, ng, ngb, nds, **kwargs):
+        ignore_conn_sple_g = kwargs.get('place_ignore_conn_sple_g', False)
+        ignore_conn_sple_ds = kwargs.get('place_ignore_conn_sple_ds', False)
+
         # get bottom port Y intervals and number of horizontal tracks needed
         if row_orient == 'R0':
             # gate tracks on bottom
             num_tr1 = num_tr2 = ng
             conn_yb1, conn_yt1 = row_info.get('g_conn_y', (0, 0))
             conn_yb2, conn_yt2 = conn_yb1, conn_yt1
+            ignore_sple = ignore_conn_sple_g
         else:
             # drain/source tracks on bottom
             num_tr1, num_tr2 = ngb, nds
@@ -797,11 +803,14 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             blk_height = row_info['arr_y'][1]
             conn_yb1, conn_yt1 = blk_height - conn_yt1, blk_height - conn_yb1
             conn_yb2, conn_yt2 = blk_height - conn_yt2, blk_height - conn_yb2
+            ignore_sple = ignore_conn_sple_ds
 
         # find minimum Y coordinate of this row
         ycur = ytop_prev
         # get center Y coordinate of bottom track that is DRC clean from previous row
-        y_btr = max(yt_vm_prev + vm_sple + via_exty, ytop_prev + hm_width // 2)
+        y_btr = ytop_prev + hm_width // 2
+        if not ignore_sple:
+            y_btr = max(yt_vm_prev + vm_sple + via_exty, y_btr)
         tr0 = self.grid.coord_to_nearest_track(hm_layer, y_btr, half_track=True, mode=1, unit_mode=True)
         for ntr, cyb, cyt in ((num_tr1, conn_yb1, conn_yt1),
                               (num_tr2, conn_yb2, conn_yt2)):
@@ -880,7 +889,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         prev_ext_h = 0
         ytop_prev = ybot
         yt_vm_prev = ytop_prev - vm_sple // 2
-        for idx, (row_type, row_orient, row_info, min_row_height, row_pitch, (ng, ngb, nds)) in enumerate(row_specs):
+        for idx, (row_type, row_orient, row_info, min_row_height, row_pitch, (ng, ngb, nds), kwargs) in \
+                enumerate(row_specs):
             row_thres = row_info['threshold']
 
             # get information dictionary
@@ -904,7 +914,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 # step A: find bottom connection Y coordinate and number of tracks
                 ng_cur = 0 if is_sub else ng
                 ycur = self._place_with_num_tracks(row_info, row_orient, ytop_prev, yt_vm_prev, hm_layer,
-                                                   hm_width, via_exty, vm_sple, mos_pitch, ng_cur, ngb, nds)
+                                                   hm_width, via_exty, vm_sple, mos_pitch, ng_cur, ngb, nds, **kwargs)
                 cur_bot_ext_h = (ycur - ytop_prev) // mos_pitch
                 # step D: make sure extension constraints is met
                 if idx != 0:
@@ -968,7 +978,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                     test_orient = 'R0' if row_orient == 'MX' else 'MX'
                     test_y0 = 0  # use 0 because we know the top edge is LCM of horizontal track pitches.
                     ydelta = self._place_with_num_tracks(row_info, test_orient, test_y0, -vm_sple // 2, hm_layer,
-                                                         hm_width, via_exty, vm_sple, mos_pitch, ng, ngb, nds)
+                                                         hm_width, via_exty, vm_sple, mos_pitch, ng, ngb, nds, **kwargs)
                     # step 2: make sure ydelta can satisfy extension constraints.
                     cur_top_ext_h, self._top_sub_extw = self._place_mirror_or_sub(row_type, row_thres, lch_unit,
                                                                                   mos_pitch, ydelta, ext_top_info)
@@ -1135,7 +1145,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         x0 = self._laygo_info.col_to_coord(col_idx, 's', unit_mode=True)
         if flip:
-            x0 += col_width
+            x0 += master.bound_box.width_unit
 
         _, ycur, ytop, _ = self._row_y[row_idx]
         if row_orient == 'R0':

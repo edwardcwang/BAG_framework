@@ -236,6 +236,9 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             self._ext_params.append((row_idx + 1, w * 2, ycur - w * mos_pitch))
             ycur += self._row_height
 
+        if num_col is not None:
+            self.set_digital_size(num_col=num_col)
+
     def set_digital_size(self, num_col=None):
         if self._dig_size is None:
             if num_col is None:
@@ -392,13 +395,14 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def _draw_end_substrates(self, port_cols):
         laygo_info = self._laygo_info
-
-        num_col = self._dig_size[0]
+        emargin_l, emargin_r = laygo_info.edge_margins
         top_layer = laygo_info.top_layer
         guard_ring_nf = laygo_info.guard_ring_nf
         end_mode = laygo_info.end_mode
-        xr = self.bound_box.right_unit
         tech_cls = laygo_info.tech_cls
+
+        num_col = self._dig_size[0]
+        xr = self.bound_box.right_unit
 
         left_end = (end_mode & 4) != 0
         right_end = (end_mode & 8) != 0
@@ -435,7 +439,8 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             endr = master.get_right_edge_info()
             rinfo = master.row_info
             test_blk_info = tech_cls.get_laygo_blk_info('fg2d', rinfo['w_max'], rinfo)
-            for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
+            for x, is_end, flip_lr, end_flag in ((emargin_l, left_end, False, endl),
+                                                 (xr - emargin_r, right_end, True, endr)):
                 edge_params = dict(
                     top_layer=top_layer,
                     guard_ring_nf=guard_ring_nf,
@@ -454,14 +459,18 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         return edge_infos, bot_warrs, top_warrs
 
     def _draw_boundary_cells(self, port_cols):
-        if self._laygo_info.draw_boundaries:
+        laygo_info = self._laygo_info
+
+        if laygo_info.draw_boundaries:
             if self._dig_size is None:
                 raise ValueError('digital_size must be set before drawing boundaries.')
 
+            end_mode = laygo_info.end_mode
+            emargin_l, emargin_r = laygo_info.edge_margins
+            tech_cls = laygo_info.tech_cls
+
             # compute row edge information
             num_col = self._dig_size[0]
-            end_mode = self._laygo_info.end_mode
-            tech_cls = self._laygo_info.tech_cls
             xr = self.bound_box.right_unit
 
             left_end = (end_mode & 4) != 0
@@ -478,10 +487,10 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             for y, orient, edge_params in self._ext_edge_infos:
                 tmp_copy = edge_params.copy()
                 if orient == 'R0':
-                    x = 0
+                    x = emargin_l
                     tmp_copy['is_end'] = left_end
                 else:
-                    x = xr
+                    x = xr - emargin_r
                     tmp_copy['is_end'] = right_end
                 edge_infos.append((x, y, orient, tmp_copy))
 
@@ -497,10 +506,10 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                 for y, orient, ee_params in ext_edge_infos:
                     tmp_copy = ee_params.copy()
                     if orient == 'R0':
-                        x = 0
+                        x = emargin_l
                         tmp_copy['is_end'] = left_end
                     else:
-                        x = xr
+                        x = xr - emargin_r
                         tmp_copy['is_end'] = right_end
                     if yscale < 0:
                         orient = self._flip_ud(orient)
@@ -509,7 +518,8 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                 for (y, row_orient, re_params), endl, endr in zip(row_edge_infos, endl_list, endr_list):
                     cur_row_info = re_params['row_info']
                     test_blk_info = tech_cls.get_laygo_blk_info('fg2d', cur_row_info['w_max'], cur_row_info)
-                    for x, is_end, flip_lr, end_flag in ((0, left_end, False, endl), (xr, right_end, True, endr)):
+                    for x, is_end, flip_lr, end_flag in ((emargin_l, left_end, False, endl),
+                                                         (xr - emargin_r, right_end, True, endr)):
                         edge_params = re_params.copy()
                         del edge_params['row_info']
                         edge_params['is_end'] = is_end
@@ -525,7 +535,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                         edge_infos.append((x, yscale * y + yoff, eorient, edge_params))
 
             yt = self.bound_box.top_unit
-            gr_vdd_warrs, gr_vss_warrs = tech_cls.draw_boundaries(self, self._laygo_info, num_col, yt,
+            gr_vdd_warrs, gr_vss_warrs = tech_cls.draw_boundaries(self, laygo_info, num_col, yt,
                                                                   self._bot_end_master, self._top_end_master,
                                                                   edge_infos)
 

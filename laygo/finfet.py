@@ -191,8 +191,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         po_types = (po_type, po_type)
         lr_edge_info = EdgeInfo(od_type='sub' if is_sub else 'mos', draw_layers={}, y_intv={})
         ext_top_info = ExtInfo(margins=top_margins,
-                               od_w=w_max,
-                               imp_min_w=0,
+                               od_h=w_max,
+                               imp_min_h=0,
                                mtype=mtype,
                                thres=threshold,
                                po_types=po_types,
@@ -200,8 +200,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                                edger_info=lr_edge_info,
                                )
         ext_bot_info = ExtInfo(margins=bot_margins,
-                               od_w=w_max,
-                               imp_min_w=0,
+                               od_h=w_max,
+                               imp_min_h=0,
                                mtype=mtype,
                                thres=threshold,
                                po_types=po_types,
