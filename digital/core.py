@@ -236,6 +236,9 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             self._ext_params.append((row_idx + 1, w * 2, ycur - w * mos_pitch))
             ycur += self._row_height
 
+        if num_col is not None:
+            self.set_digital_size(num_col=num_col)
+
     def set_digital_size(self, num_col=None):
         if self._dig_size is None:
             if num_col is None:
