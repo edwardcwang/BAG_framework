@@ -2167,8 +2167,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                wire_array,  # type: Union[WireArray, List[WireArray]]
                                track_id,  # type: TrackID
                                tr_w_list=None,  # type: Optional[List[int]]
-                               tr_mode_list=None,  # type: Optional[List[int]]
-                               min_len_mode_list=None,  # type: Optional[List[int]]
+                               tr_mode_list=None,  # type: Optional[Union[int, List[int]]]
+                               min_len_mode_list=None,  # type: Optional[Union[int, List[int]]]
                                fill_margin=0,  # type: Union[int, float]
                                fill_type='',  # type: str
                                unit_mode=False,  # type: bool
@@ -2189,10 +2189,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the TrackID to connect to.
         tr_w_list : Optional[List[int]]
             the track widths to use on each layer.  If not specified, will compute automatically.
-        tr_mode_list : Optional[List[int]]
+        tr_mode_list : Optional[Union[int, List[int]]]
             If tracks on intermediate layers do not line up nicely,
             the track mode flags determine whether to pick upper or lower tracks
-        min_len_mode_list : Optional[List[int]]
+        min_len_mode_list : Optional[Union[int, List[int]]]
             minimum length mode flags on each layer.
         fill_margin : Union[int, float]
             minimum margin between wires and fill.
@@ -2242,11 +2242,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         if tr_mode_list is None:
             tr_mode_list = [0] * num_connections
+        elif isinstance(tr_mode_list, int):
+            tr_mode_list = [tr_mode_list] * num_connections
         elif len(tr_mode_list) != num_connections:
             raise ValueError('tr_mode_list must have exactly %d elements.' % num_connections)
 
         if min_len_mode_list is None:
             min_len_mode_list = [None] * num_connections
+        elif isinstance(min_len_mode_list, int):
+            min_len_mode_list = [min_len_mode_list] * num_connections
         elif len(min_len_mode_list) != num_connections:
             raise ValueError('min_len_mode_list must have exactly %d elements.' % num_connections)
 
