@@ -13,6 +13,228 @@ from .digital import Flop
 from .amp import ClkAmp, ClkNorGate
 
 
+
+class ClkAmp(TemplateBase):
+    """one data path of DDR burst mode RX core.
+
+    Parameters
+    ----------
+    temp_db : TemplateDB
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : Dict[str, Any]
+        the parameter values.
+    used_names : Set[str]
+        a set of already used cell names.
+    **kwargs
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(ClkAmp, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        self.inv_num_fingers = None
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            res_params='resistor array parameters',
+            amp_params='amplifier parameters.',
+            cap_params='cap parameters',
+        )
+
+    def draw_layout(self):
+        res_params = self.params['res_params']
+        amp_params = self.params['amp_params']
+        cap_params = self.params['cap_params']
+
+        res_master = self.new_template(params=res_params, temp_cls=ResFeedback)
+        top_layer, res_nxblk, res_nyblk = res_master.size
+        blk_w, blk_h = self.grid.get_block_size(top_layer)
+
+        amp_params['top_layer'] = top_layer
+        amp_params['blk_width'] = res_nxblk
+        invamp_master = self.new_template(params=amp_params, temp_cls=InvAmp)
+        invamp_nyblk = invamp_master.size[2]
+
+        cap_master = self.new_template(params=cap_params, temp_cls=BBCapUnitCell_basic)
+
+        #cap_x = cap_master.size[2]
+        #import pdb
+        #pdb.set_trace()
+
+        wire_room_x = 4 * blk_w
+        num_blks_cap_separation = 8
+        num_res_space = 4
+        x_offset = 12 * blk_w
+
+        cap_x = x_offset + cap_master.array_box.width + wire_room_x # array box width
+        cap_y = cap_master.array_box.height # array box height
+
+
+        print(wire_room_x, blk_h, cap_x, cap_y)
+        total_height = (blk_h * (invamp_nyblk * 2 + res_nyblk + 2*num_res_space))
+
+        cap_offset =  (total_height - (2 * cap_y)) / 2
+        cap_offset = (math.floor(cap_offset / blk_h)-num_blks_cap_separation) * blk_h
+        cap_bottom = self.add_instance(cap_master, 'X_CAP1', loc=(x_offset, cap_offset))
+        cap_top = self.add_instance(cap_master, 'X_CAP2', loc=(x_offset,-1*cap_offset +  total_height), orient='MX')
+
+
+        bot_amp = self.add_instance(invamp_master, 'X1', loc=(cap_x, 0))
+        res_arr = self.add_instance(res_master, 'XR', loc=(cap_x, blk_h * (invamp_nyblk+num_res_space)))
+        top_amp = self.add_instance(invamp_master, 'X2', loc=(cap_x, total_height),
+                                    orient='MX')
+
+        res_box = res_arr.array_box
+        bot_vdd = bot_amp.get_all_port_pins('VDD')[0]
+        top_vdd = top_amp.get_all_port_pins('VDD')[0]
+        self.add_pin('VDD', bot_vdd, label='VDD:')
+        self.add_pin('VDD', top_vdd, label='VDD:')
+
+        bot_vss = bot_amp.get_all_port_pins('VSS')[0]
+        top_vss = top_amp.get_all_port_pins('VSS')[0]
+        self.add_pin('VSS', bot_vss, label='VSS:')
+        self.add_pin('VSS', top_vss, label='VSS:')
+
+        yb = self.grid.track_to_coord(bot_vdd.layer_id, bot_vdd.track_id.base_index)
+        yt = self.grid.track_to_coord(top_vdd.layer_id, top_vdd.track_id.base_index)
+        res_box = res_box.extend(y=yb).extend(y=yt)
+        self.add_rect('NW', res_box)
+
+        width = cap_x + top_amp.array_box.width
+        height = total_height
+
+        blkw, blkh = self.grid.get_block_size(top_layer, unit_mode=True)
+        nxblk = -(-width // blkw)
+        nyblk = -(-height // blkh)
+        self.size = top_layer, width, height
+        res = self.grid.resolution
+        self.array_box = BBox(0, 0, width, height, res, unit_mode=True)
+
+
+        res_port1 = res_arr.get_port('in1').get_pins(layer=top_layer)[0]
+        inv1_in = bot_amp.get_port('in').get_pins()[0]
+        inv1_out = bot_amp.get_port('out').get_pins()[0]
+        inv2_in = top_amp.get_port('in').get_pins()[0]
+        inv2_out = top_amp.get_port('out').get_pins()[0]
+        res_port2 = res_arr.get_port('in2').get_pins(layer=top_layer)[0]
+        res_port3 = res_arr.get_port('in3').get_pins(layer=top_layer)[0]
+        res_port4 = res_arr.get_port('in4').get_pins(layer=top_layer)[0]
+        #vl_id = self.grid.coord_to_nearest_track(ym_layer, ports_bottom_left[con_par].middle, mode=-1, half_track=True)
+        #t_id = self.grid.coord_to_nearest_track(top_layer, res_port1[0].middle, mode=-1, half_track=True)
+        #t_id = res_port1[0].track_id
+        #warr_test2 = self.connect_to_tracks(res_port1[0], t_id)
+        #print(t_id)
+        #import pdb
+        #pdb.set_trace()
+        cap_top_port1 = cap_top.get_port('side1').get_pins()[0]
+        cap_top_port2 = cap_top.get_port('side2').get_pins()[0]
+
+        cap_bot_port1 = cap_bottom.get_port('side1').get_pins()[0]
+        cap_bot_port2 = cap_bottom.get_port('side2').get_pins()[0]
+
+        myTrackleft = res_port1.track_id
+        myTrackright = res_port2.track_id
+
+        warr_bottom_left = self.connect_to_tracks(inv1_in, myTrackleft)
+        warr1 = self.connect_wires([res_port1, warr_bottom_left])
+
+        warr_bottom_right = self.connect_to_tracks(inv1_out, myTrackright)
+        warr2 = self.connect_wires([res_port2, warr_bottom_right])
+
+        myTrackleft = res_port3.track_id
+        myTrackright = res_port4.track_id
+
+        warr_top_left = self.connect_to_tracks(inv2_in, myTrackleft)
+        warr3 = self.connect_wires([res_port3, warr_top_left])[0]
+
+        warr_top_right = self.connect_to_tracks(inv2_out, myTrackright)
+        warr4 = self.connect_wires([res_port4, warr_top_right])[0]
+
+        warr_in_top = self.connect_to_tracks(warr3, cap_top_port1.track_id)
+
+        warr_in_top_final = self.connect_wires([warr_in_top, cap_top_port1])
+
+        warr_in_bot = self.connect_to_tracks(warr1, cap_bot_port1.track_id)
+
+        warr_in_bot_final = self.connect_wires([warr_in_bot, cap_bot_port1])
+
+        #warr_in_top = self.connect_wires([warr3, cap_top_port2])
+        #warr_in_bot = self.connect_wires([warr1, cap_bot_port2])
+
+        metal_res_layer = cap_top_port2.layer_id
+
+        track_info_phys = self._temp_db.grid.get_track_info(metal_res_layer)
+        w_phys = track_info_phys[0]
+        min_space_mres = self.grid.get_min_length(metal_res_layer, cap_params['w_side'])
+
+        print(cap_top_port2.get_bbox_array(self.grid).nx)
+        w_metal_res_phys = cap_params['w_side'] *  min_space_mres # the physical width of the metal resistor in um
+        l_metal_res_phys = blk_w  # the physical length of the metal resistor in um
+        w_metal_res = str(int(w_metal_res_phys*1e3)) + 'n'
+        #l_metal_res = str(int(l_metal_res_phys*1e3)) + 'n'
+        l_metal_res = '168n' # hardcoded for 16nm right now
+
+        metal_res_params = dict(w=w_metal_res, l=l_metal_res, HardCons=False)
+        #import pdb
+        #pdb.set_trace()
+
+        metal_res_bot_id = cap_bot_port2.track_id.base_index
+        metal_res_bot_track = TrackID(metal_res_layer, metal_res_bot_id)
+        metal_res_top_id = cap_top_port2.track_id.base_index
+        metal_res_top_track = TrackID(metal_res_layer, metal_res_top_id)
+
+
+        metal_res_bot_height = self.grid.track_to_coord(metal_res_layer, metal_res_bot_id)
+        metal_res_top_height = self.grid.track_to_coord(metal_res_layer, metal_res_top_id)
+
+        yb_top, yt_top = self.grid.get_wire_bounds(cap_top_port2.layer_id, cap_top_port2.track_id.base_index, cap_top_port2.track_id.width)
+        metal_res_params['w'] = bag.float_to_si_string(yt_top - yb_top)
+
+        yb_bot, yt_bot = self.grid.get_wire_bounds(cap_bot_port2.layer_id, cap_bot_port2.track_id.base_index, cap_bot_port2.track_id.width)
+        self.add_instance_primitive(lib_name='tsmcN16', cell_name='rm'+str(metal_res_layer)+'w', loc=(blk_w, yb_bot), view_name = 'layout',
+                                    inst_name = 'mres_bot', orient = "R0", nx = 1, ny = 1, spx = 1, spy = 0.0, params = metal_res_params)
+
+
+        self.add_instance_primitive(lib_name='tsmcN16', cell_name='rm'+str(metal_res_layer)+'w', loc=(blk_w, yb_top), view_name = 'layout',
+                                    inst_name = 'mres_top', orient = "R0", nx = 1, ny = 1, spx = 1, spy = 0.0, params = metal_res_params)
+
+
+
+        self.connect_wires([cap_bot_port2, cap_top_port2], lower=0)
+        tid_bot = cap_bot_port2.track_id
+        wa_bot = self.add_wires(cap_bot_port2.layer_id, tid_bot.base_index, 0, blk_w, width=tid_bot.width)
+
+        self.add_pin(self.get_pin_name('IN_BOT'), wa_bot)
+
+        tid_top = cap_top_port2.track_id
+        wa_top = self.add_wires(cap_top_port2.layer_id, tid_top.base_index, 0, blk_w, width=tid_top.width)
+
+        self.add_pin(self.get_pin_name('IN_TOP'), wa_top)
+
+
+        self.add_pin(self.get_pin_name('OUT_TOP'), warr4)
+        self.add_pin(self.get_pin_name('OUT_BOT'), warr2)
+
+        inv_num_fingers = invamp_master.num_fingers
+
+        self.inv_num_fingers = inv_num_fingers
+
+
+
 class GatedClockRx(TemplateBase):
     """one data path of DDR burst mode RX core.
 
@@ -55,34 +277,13 @@ class GatedClockRx(TemplateBase):
         )
 
     def draw_layout(self):
-        parent_grid = self.grid
-        self.grid = parent_grid.copy()
-        self.grid.add_new_layer(3, 0.058, 0.032, 'y')
-        self.grid.update_block_pitch()
-
         clkrx_params = self.params['clkrx_params']
-        io_width_ntr = self.params['io_width_ntr']
-        # res_params = self.params['res_params']
-        # amp_params = self.params['amp_params']
-        # cap_params = self.params['cap_params']
-
-        # top_params = dict(
-        #    clkrx_params=layout_params,
-        #    nor_params=amp_params,
-        # )
         nor_params = self.params['nor_params']
+        io_width_ntr = self.params['io_width_ntr']
 
-        clkrx_master = self.new_template(params=clkrx_params, temp_cls=ClkAmp, grid=parent_grid)
-        top_layer, clkrx_nxblk, clkrx_nyblk = clkrx_master.size
-        blk_w, blk_h = self.grid.get_block_size(top_layer)
-
-        nor_master = self.new_template(params=nor_params, temp_cls=clkNorGate)
-        nor_nyblk = nor_master.size[2]
-        nor_nxblk = nor_master.size[1]
-
+        clkrx_master = self.new_template(params=clkrx_params, temp_cls=ClkAmp)
+        nor_master = self.new_template(params=nor_params, temp_cls=ClkNorGate)
         clkrx_inst = self.add_instance(clkrx_master, 'X0', loc=(0, 0))
-
-        layer_rx, clkrx_x, clkrx_y = clkrx_master.size
 
         # clkrx_x = nor_nxblk
         num_space_vert = 4
@@ -337,34 +538,3 @@ class GatedClockRx(TemplateBase):
         self.add_pin('RST', warr_en_vert)
 
         self.num_transistors_row = nor_master.num_transistors_row
-
-
-if __name__ == '__main__':
-    impl_lib = 'AAAFOO'
-
-    local_dict = locals()
-    if 'bprj' not in local_dict:
-        print('creating BAG project')
-        bprj = bag.BagProject()
-        temp = 70.0
-        # layers = [4, 5, 6]
-        # spaces = [0.08, 0.100, 0.08]
-        # widths = [0.080, 0.080, 0.080]
-        # bot_dir = 'x'
-        #
-        # routing_grid = RoutingGrid(bprj.tech_info, layers, spaces, widths, bot_dir)
-
-        layers = [4, 5, 6]  # the layers for the cap
-        # loading the technology min space and width from tech_config.yaml
-        tech_config_yaml = bag.io.read_yaml(bprj.bag_config['tech_config_path'])
-        min_space = tech_config_yaml['layout']['routing_grid_min']['space']
-        min_width = tech_config_yaml['layout']['routing_grid_min']['space']
-        spaces = min_space * np.ones_like(layers)
-        widths = min_width * np.ones_like(layers)
-        bot_dir = 'x'  # bottom layer direction ('x' for horizontal, 'y' for vertical)
-
-        routing_grid = RoutingGrid(bprj.tech_info, layers, spaces, widths, bot_dir)
-
-        tdb = TemplateDB('template_libs.def', routing_grid, impl_lib, use_cybagoa=False)
-    else:
-        print('loading BAG project')
