@@ -1201,8 +1201,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 cur_cpo_yt = cpo_yc + cpo_h // 2
             lay_info_list.append((cpo_lay, 0, cur_cpo_yb, cur_cpo_yt))
 
-        # modify adjacent row geometries if substrate planar is true
-        if substrate_planar:
+        # modify adjacent row geometries if substrate planar is true, and we are next to a substrate row.
+        if substrate_planar and (not bot_tran or not top_tran):
             if add_row_yt > add_row_yb:
                 po_type = 'PO' if one_cpo else 'PO_dummy'
                 adj_row_list = [AdjRowInfo(row_y=(add_row_yb, add_row_yt), po_y=(add_po_yb, add_po_yt),
