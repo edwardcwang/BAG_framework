@@ -1245,6 +1245,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         return dict(
             layout_info=layout_info,
+            sub_ysep=(imp_ysep, thres_ysep),
             left_edge_info=(lr_edge_info, adj_edgel_infos),
             right_edge_info=(lr_edge_info, adj_edger_infos),
         )
@@ -1389,7 +1390,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     lay_info_list.append((lay, 0, yb, yt))
         else:
             # we just draw CPO
-            arr_yt = 0
+            imp_yb = arr_yt = 0
             if substrate_planar:
                 lay_info_list = []
             else:
@@ -1420,6 +1421,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         ans = dict(
             layout_info=layout_info,
+            sub_ysep=(imp_yb, imp_yb),
             left_edge_info=(lr_edge_info, adj_edge_infos),
             right_edge_info=(lr_edge_info, adj_edge_infos),
         )
