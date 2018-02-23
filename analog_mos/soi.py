@@ -254,8 +254,10 @@ class MOSTechSOIGenericBC(MOSTech):
 
             blk_type='ext',
         )
+        # doesn't matter what substrate Y coordinate is
         return dict(
             layout_info=layout_info,
+            sub_ysep=(0, 0),
             left_edge_info=None,
             right_edge_info=None,
         )
@@ -331,6 +333,7 @@ class MOSTechSOIGenericBC(MOSTech):
 
         return dict(
             layout_info=layout_info,
+            sub_ysep=(0, 0),
             left_edge_info=None,
             right_edge_info=None,
         )
