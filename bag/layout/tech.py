@@ -60,6 +60,10 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
             return table.get((bmtype, tmtype), default)
         return default
 
+    def is_well_layer(self, layer):
+        # type: (Tuple[str, str]) -> bool
+        return layer in self.config['well_layers']
+
     def get_implant_layers(self, mos_type, res_type=None):
         # type: (str, Optional[str]) -> List[Tuple[str, str]]
         if res_type is None:
