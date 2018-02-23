@@ -1,40 +1,40 @@
 # -*- coding: utf-8 -*-
 
-"""This module defines abstract analog mosfet template classes.
+"""This module defines analog mosfet primitive template classes.
 """
 
-from typing import Dict, Any, Set
+from typing import TYPE_CHECKING, Dict, Any, Set, Tuple, Optional
 
 from bag import float_to_si_string
-from bag.layout.template import TemplateBase, TemplateDB
+from bag.layout.template import TemplateBase
 
 from .core import MOSTech
 
+if TYPE_CHECKING:
+    from bag.layout.template import TemplateDB
+
 
 class AnalogMOSBase(TemplateBase):
-    """An abstract template for analog mosfet.
-
-    Must have parameters mos_type, lch, w, threshold, fg.
-    Instantiates a transistor with minimum G/D/S connections.
+    """A primitive template of a transistor row.
 
     Parameters
     ----------
-    temp_db : :class:`bag.layout.template.TemplateDB`
+    temp_db : TemplateDB
             the template database.
     lib_name : str
         the layout library name.
-    params : dict[str, any]
+    params : Dict[str, Any]
         the parameter values.
-    used_names : set[str]
+    used_names : Set[str]
         a set of already used cell names.
-    kwargs : dict[str, any]
+    kwargs : Dict[str, Any]
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(AnalogMOSBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
@@ -49,40 +49,40 @@ class AnalogMOSBase(TemplateBase):
         self._sd_yc = None
 
     def get_g_conn_y(self):
+        # type: () -> Tuple[int, int]
         return self._g_conn_y
 
     def get_d_conn_y(self):
+        # type: () -> Tuple[int, int]
         return self._d_conn_y
 
     def get_ext_top_info(self):
+        # type: () -> Any
         return self._ext_top_info
 
     def get_ext_bot_info(self):
+        # type: () -> Any
         return self._ext_bot_info
 
     def get_left_edge_info(self):
+        # type: () -> Any
         return self._left_edge_info
 
     def get_right_edge_info(self):
+        # type: () -> Any
         return self._right_edge_info
 
     def get_sd_yc(self):
+        # type: () -> int
         return self._sd_yc
 
     def get_edge_layout_info(self):
+        # type: () -> Dict[str, Any]
         return self._layout_info
 
     @classmethod
     def get_params_info(cls):
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : dict[str, str]
-            dictionary from parameter name to description.
-        """
+        # type: () -> Dict[str, str]
         return dict(
             lch='channel length, in meters.',
             fg='number of fingers.',
@@ -132,15 +132,26 @@ class AnalogMOSBase(TemplateBase):
 
 
 class AnalogMOSExt(TemplateBase):
-    """The abstract base class for finfet layout classes.
+    """A primitive template of the geometry between transistor/substrate rows.
 
-    This class provides the draw_foundation() method, which draws the poly array
-    and implantation layers.
+    Parameters
+    ----------
+    temp_db : TemplateDB
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : Dict[str, Any]
+        the parameter values.
+    used_names : Set[str]
+        a set of already used cell names.
+    kwargs : Dict[str, Any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(AnalogMOSExt, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self._layout_info = None
         if self.params['is_laygo']:
@@ -149,31 +160,28 @@ class AnalogMOSExt(TemplateBase):
             self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
         self._left_edge_info = None
         self._right_edge_info = None
+        self._sub_ysep = None
 
-    @classmethod
-    def get_default_param_values(cls):
-        return dict(is_laygo=False)
+    @property
+    def sub_ysep(self):
+        # type: () -> Tuple[Optional[int], Optional[int]]
+        return self._sub_ysep
 
     def get_edge_layout_info(self):
+        # type: () -> Dict[str, Any]
         return self._layout_info
 
     def get_left_edge_info(self):
+        # type: () -> Any
         return self._left_edge_info
 
     def get_right_edge_info(self):
+        # type: () -> Any
         return self._right_edge_info
 
     @classmethod
     def get_params_info(cls):
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : dict[str, str]
-            dictionary from parameter name to description.
-        """
+        # type: () -> Dict[str, str]
         return dict(
             lch='channel length, in meters.',
             w='extension width, in resolution units/number of fins.',
@@ -182,6 +190,11 @@ class AnalogMOSExt(TemplateBase):
             bot_ext_info='bottom extension info.',
             is_laygo='True if this extension is used in LaygoBase.',
         )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(is_laygo=False)
 
     def get_layout_basename(self):
         fmt = 'ext_l%s_w%s_fg%d'
@@ -211,18 +224,33 @@ class AnalogMOSExt(TemplateBase):
         self._layout_info = ext_info['layout_info']
         self._left_edge_info = ext_info['left_edge_info']
         self._right_edge_info = ext_info['right_edge_info']
+        self._sub_ysep = ext_info.get('sub_ysep', (None, None))
         self._tech_cls.draw_mos(self, self._layout_info)
 
 
 class SubRingExt(TemplateBase):
-    """The abstract base class for finfet layout classes.
+    """A primitive template of the geometry inside a substrate ring.
 
-    This class provides the draw_foundation() method, which draws the poly array
-    and implantation layers.
+    This template is just empty, but it contains the information needed to draw the left/right
+    edges of a substrate ring.
+
+    Parameters
+    ----------
+    temp_db : TemplateDB
+            the template database.
+    lib_name : str
+        the layout library name.
+    params : Dict[str, Any]
+        the parameter values.
+    used_names : Set[str]
+        a set of already used cell names.
+    kwargs : Dict[str, Any]
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         super(SubRingExt, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
@@ -231,29 +259,20 @@ class SubRingExt(TemplateBase):
         self._right_edge_info = None
 
     def get_edge_layout_info(self):
+        # type: () -> Dict[str, Any]
         return self._layout_info
 
     def get_left_edge_info(self):
+        # type: () -> Any
         return self._left_edge_info
 
     def get_right_edge_info(self):
+        # type: () -> Any
         return self._right_edge_info
 
     @classmethod
-    def get_default_param_values(cls):
-        return dict(options={}, )
-
-    @classmethod
     def get_params_info(cls):
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : dict[str, str]
-            dictionary from parameter name to description.
-        """
+        # type: () -> Dict[str, str]
         return dict(
             sub_type='substrate type.  Either ptap or ntap.',
             height='extension width, in resolution units.',
@@ -261,6 +280,11 @@ class SubRingExt(TemplateBase):
             end_ext_info='substrate ring inner end row extension info.',
             options='Optional layout parameters.',
         )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(options={}, )
 
     def get_layout_basename(self):
         fmt = 'subringext_%s_h%d_fg%d'
