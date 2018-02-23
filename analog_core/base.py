@@ -1470,6 +1470,13 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 ext_edger_master = self.new_template(params=ext_edger_params, temp_cls=AnalogEdge)
 
                 yo = inst.array_box.top_unit
+                # record substrate Y coordinate in extension block
+                y_imp, y_thres = ext_master.sub_ysep
+                if y_imp is not None:
+                    y_imp += yo
+                if y_thres is not None:
+                    y_thres += yo
+                sub_y_list.append((y_imp, y_thres))
                 if not ext_master.is_empty:
                     self.add_instance(ext_master, loc=(inst_loc[0], yo), unit_mode=True)
                 if not ext_edgel_master.is_empty:
