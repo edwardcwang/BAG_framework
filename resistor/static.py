@@ -121,7 +121,7 @@ class ResTechStatic(ResTech):
         template.array_box = template.prim_bound_box
         template.prim_top_layer = self.get_bot_layer()
 
-    def get_res_info(self,
+    def get_res_info(self,  # type: ResTechStatic
                      grid,  # type: RoutingGrid
                      l,  # type: int
                      w,  # type: int
@@ -140,11 +140,12 @@ class ResTechStatic(ResTech):
         wedge, hedge = self.res_config['edge_size']
         well_xl = self.res_config.get('well_xl', 0)
 
+        track_widths, track_spaces, _, _ = self.get_core_track_info(grid, min_tracks, em_specs,
+                                                                    connect_up=connect_up)
+
         core_info = {}
         edge_lr_info = {}
         edge_tb_info = {}
-        track_widths = [1] * len(min_tracks)
-        track_spaces = [0] * len(min_tracks)
 
         bot_layer = self.get_bot_layer()
         num_tracks = []
