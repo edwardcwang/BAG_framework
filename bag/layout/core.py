@@ -53,10 +53,10 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         self.tech_params = process_params
 
     @abc.abstractmethod
-    def is_well_layer(self, layer):
-        # type: (Tuple[str, str]) -> bool
-        """Returns True if the given layer represents a well layer."""
-        return False
+    def get_well_layers(self, sub_type):
+        # type: (str) -> List[Tuple[str, str]]
+        """Returns a list of well layers associated with the given substrate type."""
+        return []
 
     @abc.abstractmethod
     def get_implant_layers(self, mos_type, res_type=None):
