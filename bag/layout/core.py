@@ -53,6 +53,12 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         self.tech_params = process_params
 
     @abc.abstractmethod
+    def is_well_layer(self, layer):
+        # type: (Tuple[str, str]) -> bool
+        """Returns True if the given layer represents a well layer."""
+        return False
+
+    @abc.abstractmethod
     def get_implant_layers(self, mos_type, res_type=None):
         # type: (str, Optional[str]) -> List[Tuple[str, str]]
         """Returns a list of implant layers associated with the given transistor/substrate/resistor type.
