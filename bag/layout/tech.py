@@ -13,11 +13,12 @@ if TYPE_CHECKING:
 
 class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
     """An implementation of TechInfo that implements most methods with a technology file."""
-    def __init__(self, config, tech_params):
+    def __init__(self, config, tech_params, mos_entry_name='mos'):
         TechInfo.__init__(self, config['resolution'], config['layout_unit'],
                           config['tech_lib'], tech_params)
 
         self.config = config
+        self._mos_entry_name = mos_entry_name
         self.idc_temp = tech_params['layout']['em']['dc_temp']
         self.irms_dt = tech_params['layout']['em']['rms_dt']
 
@@ -67,7 +68,7 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
     def get_implant_layers(self, mos_type, res_type=None):
         # type: (str, Optional[str]) -> List[Tuple[str, str]]
         if res_type is None:
-            table = self.config['mos']
+            table = self.config[self._mos_entry_name]
         else:
             table = self.config['resistor']
 
@@ -79,7 +80,7 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
 
     def get_dnw_layers(self):
         # type: () -> List[Tuple[str, str]]
-        return self.config['mos']['dnw_layers']
+        return self.config[self._mos_entry_name]['dnw_layers']
 
     def get_res_metal_layers(self, layer_id):
         # type: (int) -> List[Tuple[str, str]]
