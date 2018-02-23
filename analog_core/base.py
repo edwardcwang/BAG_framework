@@ -73,6 +73,7 @@ class AnalogBaseInfo(object):
             top_layer = self.mconn_port_layer + 1
         self.top_layer = top_layer
         self.end_mode = end_mode
+        self._place_kwargs = kwargs
         self._min_fg_sep = max(min_fg_sep, self._tech_cls.get_min_fg_sep(lch_unit))
         self.min_fg_decap = self._tech_cls.get_min_fg_decap(lch_unit)
         self.num_fg_per_sd = self._tech_cls.get_num_fingers_per_sd(lch_unit)
@@ -80,11 +81,12 @@ class AnalogBaseInfo(object):
 
         self._fg_tot = None
         self._sd_xc_unit = None
-        self.set_fg_tot(fg_tot, **kwargs)
+        self.set_fg_tot(fg_tot)
 
     @property
     def vertical_pitch_unit(self):
-        blk_pitch = self.grid.get_block_size(self.top_layer, unit_mode=True)[1]
+        half_blk_y = self._place_kwargs.get('half_blk_y', True)
+        blk_pitch = self.grid.get_block_size(self.top_layer, unit_mode=True, half_blk_y=half_blk_y)[1]
         return lcm([blk_pitch, self._tech_cls.get_mos_pitch(unit_mode=True)])
 
     @property
@@ -114,10 +116,10 @@ class AnalogBaseInfo(object):
     def fg_tot(self):
         return self._fg_tot
 
-    def set_fg_tot(self, new_fg_tot, **kwargs):
+    def set_fg_tot(self, new_fg_tot):
         if new_fg_tot is not None:
             self._fg_tot = new_fg_tot
-            place_info = self.get_placement_info(new_fg_tot, **kwargs)
+            place_info = self.get_placement_info(new_fg_tot)
             left_margin = place_info.edge_margins[0]
             self._sd_xc_unit = left_margin + place_info.edge_widths[0]
             self.grid.set_track_offset(self.mconn_port_layer, left_margin, unit_mode=True)
@@ -130,11 +132,12 @@ class AnalogBaseInfo(object):
     def sd_xc_unit(self):
         return self._sd_xc_unit
 
-    def get_placement_info(self, fg_tot, **kwargs):
+    def get_placement_info(self, fg_tot):
         left_end = (self.end_mode & 4) != 0
         right_end = (self.end_mode & 8) != 0
         return self._tech_cls.get_placement_info(self.grid, self.top_layer, fg_tot, self._lch_unit,
-                                                 self.guard_ring_nf, left_end, right_end, False, **kwargs)
+                                                 self.guard_ring_nf, left_end, right_end, False,
+                                                 **self._place_kwargs)
 
     def get_total_width(self, fg_tot):
         # type: (int) -> int
@@ -319,7 +322,6 @@ class AnalogBaseInfo(object):
         return q
 
 
-# noinspection PyAbstractClass
 class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
     """The amplifier abstract template class
 
@@ -349,7 +351,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
         tech_params = self.grid.tech_info.tech_params
@@ -367,6 +369,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         self._layout_info = None
         self._sub_parity = 0
         self._sub_integ_htr = False
+        self._top_sub_bndy = None
+        self._bot_sub_bndy = None
+        self._sub_bndx = None
         self._dum_conn_pitch = self._tech_cls.get_dum_conn_pitch()
         if self._dum_conn_pitch != 1 and self._dum_conn_pitch != 2:
             raise ValueError('Current only support dum_conn_pitch = 1 or 2, but it is %d' % self._dum_conn_pitch)
@@ -934,6 +939,30 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         return {key: conn_inst.get_port(key).get_pins(self.mos_conn_layer)[0]
                 for key in conn_inst.port_names_iter()}
 
+    def get_substrate_box(self, bottom=True):
+        # type: (bool) -> Tuple[Optional[BBox], Optional[BBox]]
+        """Returns the substrate tap bounding box."""
+        if bottom:
+            (imp_yb, imp_yt), (thres_yb, thres_yt) = self._bot_sub_bndy
+        else:
+            (imp_yb, imp_yt), (thres_yb, thres_yt) = self._top_sub_bndy
+
+        xl, xr = self._sub_bndx
+        if xl is None or xr is None:
+            return None, None
+
+        res = self.grid.resolution
+        if imp_yb is None or imp_yt is None:
+            imp_box = None
+        else:
+            imp_box = BBox(xl, imp_yb, xr, imp_yt, res, unit_mode=True)
+        if thres_yb is None or thres_yt is None:
+            thres_box = None
+        else:
+            thres_box = BBox(xl, thres_yb, xr, thres_yt, res, unit_mode=True)
+
+        return imp_box, thres_box
+
     def _make_masters(self, fg_tot, mos_type, lch, bot_sub_w, top_sub_w, w_list, th_list,
                       g_tracks, ds_tracks, orientations, mos_kwargs, row_offset, guard_ring_nf):
 
@@ -1329,6 +1358,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         track_spec_list.insert(0, ('R0', 0, 0))
         track_spec_list.append(('MX', 0, 0))
         # draw
+        sub_y_list = []
         for row_idx, (ybot, ext_info, master, track_spec) in \
                 enumerate(zip(y_list, ext_list, master_list, track_spec_list)):
             if master.is_empty and master.bound_box.height_unit == 0:
@@ -1346,11 +1376,25 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             edge_inst_list = []
             edgel_master = self.new_template(params=edgel_params, temp_cls=AnalogEdge)
             edgel_width = edgel_master.bound_box.width_unit
-            inst = self.add_instance(master, orient=orient)
-            cur_box = inst.bound_box
-            yo = ybot - cur_box.bottom_unit
-            inst.move_by(dx=edgel_x0 + edgel_width, dy=yo, unit_mode=True)
+
+            yo = ybot if orient == 'R0' else ybot + master.bound_box.height_unit
             inst_loc = (edgel_x0 + edgel_width, yo)
+            inst = self.add_instance(master, loc=inst_loc, orient=orient, unit_mode=True)
+            # record substrate Y coordinates
+            if hasattr(master, 'sub_ysep'):
+                y_imp, y_thres = master.sub_ysep
+                if orient == 'R0':
+                    if y_imp is not None:
+                        y_imp += yo
+                    if y_thres is not None:
+                        y_thres += yo
+                else:
+                    if y_imp is not None:
+                        y_imp = yo - y_imp
+                    if y_thres is not None:
+                        y_thres = yo - y_thres
+                sub_y_list.append((y_imp, y_thres))
+
             if edgel_master.is_empty:
                 array_box = array_box.merge(inst.array_box)
                 top_bound_box = top_bound_box.merge(inst.bound_box)
@@ -1443,6 +1487,22 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 if inst.has_port('VSS'):
                     gr_vss_warrs.extend(inst.get_all_port_pins('VSS', layer=mconn_layer))
                     gr_vss_dum_warrs.extend(inst.get_all_port_pins('VSS', layer=dum_layer))
+
+        # get top/bottom substrate Y boundaries
+        self._bot_sub_bndy = (sub_y_list[0][0], sub_y_list[1][0]), (sub_y_list[0][1], sub_y_list[1][1])
+        self._top_sub_bndy = (sub_y_list[-2][0], sub_y_list[-1][0]), (sub_y_list[-2][1], sub_y_list[-1][1])
+
+        # get left/right substrate coordinates
+        tot_imp_box = BBox.get_invalid_bbox()
+        for lay in self.grid.tech_info.get_implant_layers('ptap'):
+            tot_imp_box = tot_imp_box.merge(self.get_rect_bbox(lay))
+        for lay in self.grid.tech_info.get_implant_layers('ntap'):
+            tot_imp_box = tot_imp_box.merge(self.get_rect_bbox(lay))
+
+        if not tot_imp_box.is_physical():
+            self._sub_bndx = None, None
+        else:
+            self._sub_bndx = tot_imp_box.left_unit, tot_imp_box.right_unit
 
         # connect body guard rings together
         self._gr_vdd_warrs = self.connect_wires(gr_vdd_warrs)
@@ -1560,6 +1620,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 True if substrate row must contain integer number of horizontal tracks.
         """
         sub_integ_htr = kwargs.get('sub_integ_htr', False)
+        half_blk_x = kwargs.get('half_blk_x', True)
+        half_blk_y = kwargs.get('half_blk_y', True)
 
         numn = len(nw_list)
         nump = len(pw_list)
@@ -1571,7 +1633,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         # make AnalogBaseInfo object.  Also update routing grid.
         self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, top_layer=top_layer,
-                                           end_mode=end_mode, min_fg_sep=min_fg_sep, fg_tot=fg_tot)
+                                           end_mode=end_mode, min_fg_sep=min_fg_sep, fg_tot=fg_tot,
+                                           half_blk_x=half_blk_x, half_blk_y=half_blk_y)
         self.grid = self._layout_info.grid
 
         # initialize private attributes.

@@ -930,12 +930,16 @@ class MOSTech(object, metaclass=abc.ABCMeta):
                 True if this is a substrate ring edge.
             dnw_mode : str
                 the deep N-well mode string, empty to disable.
+            half_blk_x : bool
+                True to allow half-block width.  Defaults to True.
 
         Returns
         -------
         place_info : PlaceInfo
             the placement information named tuple.
         """
+        half_blk_x = kwargs.get('half_blk_x', True)
+
         sd_pitch = self.get_sd_pitch(lch_unit)
         edgel_info = self.get_edge_info(lch_unit, guard_ring_nf, left_end, **kwargs)
         edgel_num_fg = edgel_info['edge_num_fg']
@@ -954,13 +958,13 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         if top_layer <= prim_layer:
             # use private layer for horizontal quantization so that
             # array box can be defined.
-            blk_w = grid.get_block_size(top_vm_layer, unit_mode=True)[0]
+            blk_w = grid.get_block_size(top_vm_layer, unit_mode=True, half_blk_x=half_blk_x)[0]
             edgel_margin = -(-edgel_margin // blk_w) * blk_w
             edger_margin = -(-edger_margin // blk_w) * blk_w
             arr_dxl = edgel_margin
             arr_dxr = edger_margin
         else:
-            blk_w = grid.get_block_size(top_layer, unit_mode=True)[0]
+            blk_w = grid.get_block_size(top_layer, unit_mode=True, half_blk_x=half_blk_x)[0]
             arr_dxl = 0
             arr_dxr = 0
 

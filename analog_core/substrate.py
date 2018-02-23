@@ -2,7 +2,7 @@
 
 """This module defines various substrate related classes."""
 
-from typing import Dict, Any, Set, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Any, Set, Tuple, Optional
 
 from bag.util.search import BinaryIterator
 from bag.layout.template import TemplateBase, TemplateDB
@@ -41,8 +41,10 @@ class SubstrateContact(TemplateBase):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(SubstrateContact, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        self._sub_bndx = None
+        self._sub_bndy = None
 
     @property
     def port_name(self):
@@ -93,6 +95,27 @@ class SubstrateContact(TemplateBase):
             is_passive='True if this substrate is used as substrate contact for passive devices.',
             tot_width_parity='width parity.  Used to guarantee templates will be centered.',
         )
+
+    def get_substrate_box(self):
+        # type: () -> Tuple[Optional[BBox], Optional[BBox]]
+        """Returns the substrate tap bounding box."""
+        (imp_yb, imp_yt), (thres_yb, thres_yt) = self._sub_bndy
+
+        xl, xr = self._sub_bndx
+        if xl is None or xr is None:
+            return None, None
+
+        res = self.grid.resolution
+        if imp_yb is None or imp_yt is None:
+            imp_box = None
+        else:
+            imp_box = BBox(xl, imp_yb, xr, imp_yt, res, unit_mode=True)
+        if thres_yb is None or thres_yt is None:
+            thres_box = None
+        else:
+            thres_box = BBox(xl, thres_yb, xr, thres_yt, res, unit_mode=True)
+
+        return imp_box, thres_box
 
     def draw_layout(self):
         # type: () -> None
@@ -215,6 +238,22 @@ class SubstrateContact(TemplateBase):
         sub_conn = self.add_instance(conn_master, inst_name='XSUBCONN', loc=(x1, y1), unit_mode=True)
         instrt = self.add_instance(end_edge_master, inst_name='XRTE', orient='R180', loc=(x2, y2), unit_mode=True)
 
+        # calculate substrate Y coordinates
+        imp_y, thres_y = end_row_master.sub_ysep
+        self._sub_bndy = (imp_y, y2 - imp_y), (thres_y, y2 - thres_y)
+
+        # get left/right substrate coordinates
+        tot_imp_box = BBox.get_invalid_bbox()
+        for lay in self.grid.tech_info.get_implant_layers('ptap'):
+            tot_imp_box = tot_imp_box.merge(self.get_rect_bbox(lay))
+        for lay in self.grid.tech_info.get_implant_layers('ntap'):
+            tot_imp_box = tot_imp_box.merge(self.get_rect_bbox(lay))
+
+        if not tot_imp_box.is_physical():
+            self._sub_bndx = None, None
+        else:
+            self._sub_bndx = tot_imp_box.left_unit, tot_imp_box.right_unit
+
         # set array box and size
         arr_box = instlb.array_box.merge(instrt.array_box)
         self.array_box = BBox(arr_box_x[0], arr_box.bottom_unit, arr_box_x[1], arr_box.top_unit, res, unit_mode=True)
@@ -254,8 +293,8 @@ class SubstrateRing(TemplateBase):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(SubstrateRing, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self._blk_loc = None
 
@@ -311,16 +350,17 @@ class SubstrateRing(TemplateBase):
 
         # create layout masters
         box_w, box_h = bound_box.width_unit, bound_box.height_unit
-        layout_info = AnalogBaseInfo(self.grid, lch, fg_side, top_layer=top_layer, end_mode=sub_end_mode)
+        layout_info = AnalogBaseInfo(self.grid, lch, fg_side, top_layer=top_layer, end_mode=sub_end_mode,
+                                     is_sub_ring=True, dnw_mode=dnw_mode)
         sd_pitch = layout_info.sd_pitch_unit
         mtop_lay = layout_info.mconn_port_layer + 1
 
         fg_tot = -(-box_w // sd_pitch)
-        place_info = layout_info.get_placement_info(fg_tot, is_sub_ring=True, dnw_mode=dnw_mode)
+        place_info = layout_info.get_placement_info(fg_tot)
         wtot = place_info.tot_width
         dx = place_info.edge_margins[0]
         arr_box_x = place_info.arr_box_x
-        layout_info.set_fg_tot(fg_tot, is_sub_ring=True, dnw_mode=dnw_mode)
+        layout_info.set_fg_tot(fg_tot)
         self.grid = layout_info.grid
 
         if top_layer < mtop_lay:
