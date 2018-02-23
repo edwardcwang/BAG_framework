@@ -341,6 +341,9 @@ class MOSTechPlanarGeneric(MOSTech):
         meet OD maximum spacing rule and OD minimum density rule, if possible.  All spacing DRC
         rules are also considered.
         """
+        if yblk == 0:
+            return []
+
         mos_constants = self.get_mos_tech_constants(lch_unit)
         od_w_min, od_w_max = mos_constants['od_fill_w']
         sp_od_max = mos_constants['sp_od_max']
@@ -433,33 +436,14 @@ class MOSTechPlanarGeneric(MOSTech):
         yt = w * mos_pitch
         yc = yt // 2
 
-        if w == 0:
-            # empty extension
-            top_mtype, top_row_type = top_ext_info.mtype
-            bot_mtype, bot_row_type = bot_ext_info.mtype
-            bot_sub = 'ptap' if (bot_row_type == 'nch' or bot_row_type == 'ptap') else 'ntap'
-            top_sub = 'ptap' if (top_row_type == 'nch' or top_row_type == 'ptap') else 'ntap'
-            layout_info = dict(
-                blk_type='ext',
-                lch_unit=lch_unit,
-                sd_pitch=sd_pitch,
-                fg=fg,
-                arr_y=(0, 0),
-                draw_od=True,
-                row_info_list=[],
-                lay_info_list=[],
-                # edge parameters
-                sub_type=bot_sub if bot_sub == top_sub else None,
-                imp_params=None,
-                is_sub_ring=False,
-                dnw_mode='',
-            )
-
-            return dict(
-                layout_info=layout_info,
-                left_edge_info=None,
-                right_edge_info=None,
-            )
+        top_mtype, top_row_type = top_ext_info.mtype
+        bot_mtype, bot_row_type = bot_ext_info.mtype
+        top_thres = top_ext_info.thres
+        bot_thres = bot_ext_info.thres
+        bot_tran = (bot_row_type == 'nch' or bot_row_type == 'pch')
+        top_tran = (top_row_type == 'nch' or top_row_type == 'pch')
+        bot_imp = 'nch' if bot_row_type == 'nch' or bot_row_type == 'ptap' else 'pch'
+        top_imp = 'nch' if top_row_type == 'nch' or top_row_type == 'ptap' else 'pch'
 
         po_y_list = self._get_dummy_po_y_list(lch_unit, bot_ext_info, top_ext_info, yt)
 
@@ -500,14 +484,6 @@ class MOSTechPlanarGeneric(MOSTech):
                                                        max(od_yt + imp_od_ency, po_yt + imp_po_ency))
 
         # compute implant and threshold layer information
-        top_mtype, top_row_type = top_ext_info.mtype
-        top_thres = top_ext_info.thres
-        bot_mtype, bot_row_type = bot_ext_info.mtype
-        bot_thres = bot_ext_info.thres
-        bot_imp = 'nch' if (bot_row_type == 'nch' or bot_row_type == 'ptap') else 'pch'
-        top_imp = 'nch' if (top_row_type == 'nch' or top_row_type == 'ptap') else 'pch'
-        bot_tran = (bot_row_type == 'nch' or bot_row_type == 'pch')
-        top_tran = (top_row_type == 'nch' or top_row_type == 'pch')
         # figure out where to separate top/bottom implant/threshold.
         if bot_imp == top_imp:
             sub_type = 'ptap' if bot_imp == 'nch' else 'ntap'
@@ -587,6 +563,7 @@ class MOSTechPlanarGeneric(MOSTech):
 
         return dict(
             layout_info=layout_info,
+            sub_ysep=(imp_ysep, thres_ysep),
             left_edge_info=None,
             right_edge_info=None,
         )
@@ -767,21 +744,24 @@ class MOSTechPlanarGeneric(MOSTech):
             ds_conn_y=(d_mx_yb, d_mx_yt),
         )
 
-    def get_analog_end_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
+    def _get_end_blk_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
         # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
         """Just draw nothing, but compute height so edge margin is met."""
 
-        dnw_margins = self.config['dnw_margins']
-
         is_sub_ring = kwargs.get('is_sub_ring', False)
         dnw_mode = kwargs.get('dnw_mode', '')
+        end_ext_info = kwargs.get('end_ext_info', None)
+
+        dnw_margins = self.config['dnw_margins']
+        is_sub_ring_end = (end_ext_info is not None)
 
         mos_pitch = self.get_mos_pitch(unit_mode=True)
         mos_constants = self.get_mos_tech_constants(lch_unit)
-        nw_dnw_ext = mos_constants['nw_dnw_ext']
         sd_pitch = mos_constants['sd_pitch']
         edge_margin = mos_constants['edge_margin']
-        if dnw_mode:
+        nw_dnw_ext = mos_constants['nw_dnw_ext']
+
+        if dnw_mode and not is_sub_ring_end:
             edge_margin = dnw_margins[dnw_mode] - nw_dnw_ext
 
         if is_end:
@@ -792,8 +772,26 @@ class MOSTechPlanarGeneric(MOSTech):
             # allow substrate row abutment
             arr_yt = 0
 
+        if is_sub_ring_end:
+            blk_type = 'end_subring'
+            imp_params = [(sub_type, threshold, 0, arr_yt, 0, arr_yt), ]
+            ext_info = ExtInfo(
+                od_margin=arr_yt + end_ext_info.od_margin,
+                po_margin=arr_yt + end_ext_info.po_margin,
+                mx_margin=arr_yt + end_ext_info.mx_margin,
+                mtype=end_ext_info.mtype,
+                thres=threshold,
+                imp_min_w=0,
+                m1_sub_w=0,
+                od_w=end_ext_info.od_w,
+            )
+        else:
+            blk_type = 'end'
+            imp_params = None
+            ext_info = None
+
         layout_info = dict(
-            blk_type='end',
+            blk_type=blk_type,
             lch_unit=lch_unit,
             sd_pitch=sd_pitch,
             fg=fg,
@@ -803,66 +801,37 @@ class MOSTechPlanarGeneric(MOSTech):
             lay_info_list=[],
             # edge parameters
             sub_type=sub_type,
-            imp_params=None,
+            imp_params=imp_params,
             is_sub_ring=is_sub_ring,
             dnw_mode=dnw_mode,
         )
 
-        return dict(
+        ans = dict(
             layout_info=layout_info,
+            sub_ysep=(arr_yt, arr_yt),
             left_edge_info=None,
             right_edge_info=None,
         )
+        if ext_info is not None:
+            ans['ext_info'] = ext_info
+
+        return ans
+
+    def get_analog_end_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
+        # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
+        """Just draw nothing, but compute height so edge margin is met."""
+        return self._get_end_blk_info(lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs)
 
     def get_sub_ring_end_info(self, sub_type, threshold, fg, end_ext_info, **kwargs):
         # type: (str, str, int, ExtInfo, **kwargs) -> Dict[str, Any]
         """Empty block, just reserve space for margin."""
 
-        mos_pitch = self.get_mos_pitch(unit_mode=True)
         lch = self.get_substrate_ring_lch()
         lch_unit = int(round(lch / self.config['layout_unit'] / self.res))
 
-        mos_constants = self.get_mos_tech_constants(lch_unit)
-        sd_pitch = mos_constants['sd_pitch']
-        edge_margin = mos_constants['edge_margin']
-
-        dnw_mode = kwargs.get('dnw_mode', '')
-
-        arr_yt = -(-edge_margin // mos_pitch) * mos_pitch
-
-        ext_info = ExtInfo(
-            od_margin=arr_yt + end_ext_info.od_margin,
-            po_margin=arr_yt + end_ext_info.po_margin,
-            mx_margin=arr_yt + end_ext_info.mx_margin,
-            mtype=end_ext_info.mtype,
-            thres=threshold,
-            imp_min_w=0,
-            m1_sub_w=0,
-            od_w=end_ext_info.od_w,
-        )
-
-        layout_info = dict(
-            blk_type='end_subring',
-            lch_unit=lch_unit,
-            sd_pitch=sd_pitch,
-            fg=fg,
-            arr_y=(0, arr_yt),
-            draw_od=True,
-            row_info_list=[],
-            lay_info_list=[],
-            # edge parameters
-            sub_type=sub_type,
-            imp_params=[(sub_type, threshold, 0, arr_yt, 0, arr_yt), ],
-            is_sub_ring=True,
-            dnw_mode=dnw_mode,
-        )
-
-        return dict(
-            layout_info=layout_info,
-            left_edge_info=None,
-            right_edge_info=None,
-            ext_info=ext_info,
-        )
+        kwargs['is_sub_ring'] = True
+        kwargs['end_ext_info'] = end_ext_info
+        return self._get_end_blk_info(lch_unit, sub_type, threshold, fg, True, 1, **kwargs)
 
     def get_outer_edge_info(self, guard_ring_nf, layout_info, is_end, adj_blk_info):
         # type: (int, Dict[str, Any], bool, Optional[Any]) -> Dict[str, Any]
