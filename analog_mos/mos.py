@@ -20,7 +20,7 @@ class AnalogMOSBase(TemplateBase):
     Parameters
     ----------
     temp_db : TemplateDB
-            the template database.
+        the template database.
     lib_name : str
         the layout library name.
     params : Dict[str, Any]
@@ -137,7 +137,7 @@ class AnalogMOSExt(TemplateBase):
     Parameters
     ----------
     temp_db : TemplateDB
-            the template database.
+        the template database.
     lib_name : str
         the layout library name.
     params : Dict[str, Any]
@@ -237,7 +237,7 @@ class SubRingExt(TemplateBase):
     Parameters
     ----------
     temp_db : TemplateDB
-            the template database.
+        the template database.
     lib_name : str
         the layout library name.
     params : Dict[str, Any]
