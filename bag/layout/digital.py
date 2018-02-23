@@ -16,7 +16,6 @@ from .objects import Instance
 from .routing import TrackID, WireArray
 
 
-# noinspection PyAbstractClass
 class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
     """The base class of all micro templates.
 
@@ -43,7 +42,7 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
         self._cells = self._config['cells']
         self._spaces = self._config['spaces']
         self._bound_params = self._config['boundaries']
-        super(StdCellBase, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._std_size = None
         self._std_size_bare = None
         self._draw_boundaries = False
@@ -433,7 +432,7 @@ class StdCellTemplate(StdCellBase):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(StdCellTemplate, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+        StdCellBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -458,6 +457,12 @@ class StdCellTemplate(StdCellBase):
     def compute_unique_key(self):
         cell_params = self.get_cell_params(self.params['cell_name'])
         return 'stdcell_%s_%s' % (cell_params['lib_name'], cell_params['cell_name'])
+
+    def get_sch_master_info(self):
+        # type: () -> Tuple[str, str]
+        """Returns the schematic master library/cell name tuple."""
+        cell_params = self.get_cell_params(self.params['cell_name'])
+        return cell_params['lib_name'], cell_params['cell_name']
 
     def draw_layout(self):
         # type: () -> None
