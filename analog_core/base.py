@@ -1055,7 +1055,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         return track_spec_list, master_list, mos_kwargs, w_list_final, th_list_final
 
     def _place_helper(self, fg_tot, bot_ext_w, track_spec_list, master_list, gds_space, hm_layer,
-                      mos_pitch, tot_pitch, dy):
+                      mos_pitch, tot_pitch, dy, merge_row_tracks):
 
         # based on line-end spacing, find the number of horizontal tracks
         # needed between routing tracks of adjacent blocks.
@@ -1127,11 +1127,16 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                                                                      mode=-1, unit_mode=True),
                                     tr_ds_bot + cur_nds - 1)
                     # compute lowest DRC clean track upper row can use
-                    tr_ds_top_y = self.grid.track_to_coord(hm_layer, tr_ds_top, unit_mode=True)
-                    tr_next_clean_y = max(tr_ds_top_y + 2 * conn_delta + vm_le_sp,
-                                          d_conn_yt + vm_le_sp + conn_delta)
-                    tr_next_clean = self.grid.coord_to_nearest_track(hm_layer, tr_next_clean_y, half_track=True,
-                                                                     mode=1, unit_mode=True)
+                    tr_next_clean_y = d_conn_yt + vm_le_sp + conn_delta
+                    if idx in merge_row_tracks:
+                        tr_next_clean = self.grid.coord_to_nearest_track(hm_layer, tr_next_clean_y, half_track=True,
+                                                                         mode=1, unit_mode=True)
+                        tr_next_clean = max(tr_next_clean, tr_ds_top + 1)
+                    else:
+                        tr_ds_top_y = self.grid.track_to_coord(hm_layer, tr_ds_top, unit_mode=True)
+                        tr_next_clean_y = max(tr_next_clean_y, tr_ds_top_y + 2 * conn_delta + vm_le_sp)
+                        tr_next_clean = self.grid.coord_to_nearest_track(hm_layer, tr_next_clean_y, half_track=True,
+                                                                         mode=1, unit_mode=True)
                     gtr_intv.append((tr_g_bot, tr_g_top + 1))
                     dtr_intv.append((tr_ds_bot, tr_ds_top + 1))
                     cur_top_ntr = tr_ds_top + 1 - tr_ds_bot
@@ -1158,11 +1163,16 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                                                                     mode=-1, unit_mode=True),
                                    tr_g_bot + cur_ng - 1)
                     # compute lowest DRC clean track upper row can use
-                    tr_g_top_y = self.grid.track_to_coord(hm_layer, tr_g_top, unit_mode=True)
-                    tr_next_clean_y = max(tr_g_top_y + 2 * conn_delta + vm_le_sp,
-                                          g_conn_yb + vm_le_sp + conn_delta)
-                    tr_next_clean = self.grid.coord_to_nearest_track(hm_layer, tr_next_clean_y, half_track=True,
-                                                                     mode=1, unit_mode=True)
+                    tr_next_clean_y = g_conn_yb + vm_le_sp + conn_delta
+                    if idx in merge_row_tracks:
+                        tr_next_clean = self.grid.coord_to_nearest_track(hm_layer, tr_next_clean_y, half_track=True,
+                                                                         mode=1, unit_mode=True)
+                        tr_next_clean = max(tr_next_clean, tr_g_top + 1)
+                    else:
+                        tr_g_top_y = self.grid.track_to_coord(hm_layer, tr_g_top, unit_mode=True)
+                        tr_next_clean_y = max(tr_next_clean_y, tr_g_top_y + 2 * conn_delta + vm_le_sp)
+                        tr_next_clean = self.grid.coord_to_nearest_track(hm_layer, tr_next_clean_y, half_track=True,
+                                                                         mode=1, unit_mode=True)
                     dtr_intv.append((tr_ds_bot, tr_ds_top + 1))
                     gtr_intv.append((tr_g_bot, tr_g_top + 1))
                     cur_top_ntr = tr_g_top + 1 - tr_g_bot
@@ -1260,7 +1270,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         return y_list, ext_info_list, tr_next, gtr_intv, dtr_intv
 
     def _place(self, fg_tot, track_spec_list, master_list, gds_space, guard_ring_nf, top_layer,
-               left_end, right_end, bot_end, top_end):
+               left_end, right_end, bot_end, top_end, merge_row_tracks):
         """
         Placement strategy: make overall block match mos_pitch and horizontal track pitch, try to
         center everything between the top and bottom substrates.
@@ -1298,7 +1308,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         # use binary search to shorten search.
         # run first iteration out of the while loop to get minimum bottom extension.
         tmp_result = self._place_helper(fg_tot, 0, track_spec_list, master_list,
-                                        gds_space, hm_layer, mos_pitch, tot_pitch, dy)
+                                        gds_space, hm_layer, mos_pitch, tot_pitch, dy, merge_row_tracks)
         y_list, ext_list, tot_ntr, gtr_intv, dtr_intv = tmp_result
         ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
         print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
@@ -1309,7 +1319,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         while bot_ext_w_iter.has_next():
             bot_ext_w = bot_ext_w_iter.get_next()
             tmp_result = self._place_helper(fg_tot, bot_ext_w, track_spec_list, master_list,
-                                            gds_space, hm_layer, mos_pitch, tot_pitch, dy)
+                                            gds_space, hm_layer, mos_pitch, tot_pitch, dy, merge_row_tracks)
             y_list, ext_list, tot_ntr, gtr_intv, dtr_intv = tmp_result
             ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
             print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
@@ -1328,7 +1338,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         bot_ext_w_best = bot_ext_w_iter.get_last_save()
         tmp_result = self._place_helper(fg_tot, bot_ext_w_best, track_spec_list, master_list,
-                                        gds_space, hm_layer, mos_pitch, tot_pitch, dy)
+                                        gds_space, hm_layer, mos_pitch, tot_pitch, dy, merge_row_tracks)
         y_list, ext_list, tot_ntr, gtr_intv, dtr_intv = tmp_result
         ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
         print('final: ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
@@ -1629,6 +1639,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         sub_integ_htr = kwargs.get('sub_integ_htr', False)
         half_blk_x = kwargs.get('half_blk_x', True)
         half_blk_y = kwargs.get('half_blk_y', True)
+        merge_row_tracks = kwargs.get('merge_row_tracks', [])
 
         numn = len(nw_list)
         nump = len(pw_list)
@@ -1708,7 +1719,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         # place masters according to track specifications.  Try to center transistors
         self._place(fg_tot, track_spec_list, master_list, gds_space, guard_ring_nf, top_layer,
-                    left_end != 0, right_end != 0, bot_sub_end != 0, top_sub_end != 0)
+                    left_end != 0, right_end != 0, bot_sub_end != 0, top_sub_end != 0, merge_row_tracks)
 
         # draw device blockages
         self.grid.tech_info.draw_device_blockage(self)
