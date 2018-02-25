@@ -455,6 +455,15 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         """Returns the transistor source/drain pitch."""
         return self._layout_info.sd_pitch_unit
 
+    def set_layout_info(self, layout_info):
+        # type: (AnalogBaseInfo) -> None
+        """Sets the layout information object associated with this class.
+
+        NOTE: this method should only be used when sub-classing AnalogBase.
+        """
+        self._layout_info = layout_info
+        self.grid = layout_info.grid
+
     def _find_row_index(self, mos_type, row_idx):
         ridx_list = self._ridx_lookup[mos_type]
         if row_idx < 0 or row_idx >= len(ridx_list):
@@ -1650,10 +1659,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             raise ValueError('ntap/ptap widths must be positive')
 
         # make AnalogBaseInfo object.  Also update routing grid.
-        self._layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, top_layer=top_layer,
-                                           end_mode=end_mode, min_fg_sep=min_fg_sep, fg_tot=fg_tot,
-                                           half_blk_x=half_blk_x, half_blk_y=half_blk_y)
-        self.grid = self._layout_info.grid
+        if self._layout_info is not None:
+            self.set_layout_info(AnalogBaseInfo(self.grid, lch, guard_ring_nf, top_layer=top_layer,
+                                                end_mode=end_mode, min_fg_sep=min_fg_sep, fg_tot=fg_tot,
+                                                half_blk_x=half_blk_x, half_blk_y=half_blk_y))
 
         # initialize private attributes.
         self._lch = lch
