@@ -463,16 +463,22 @@ class TrackManager(object):
         dictionary from wire types to its width on each layer.
     tr_spaces : Dict[Union[str, Tuple[str, str]], Dict[int, Union[float, int]]]
         dictionary from wire types to its spaces on each layer.
+    **kwargs :
+        additional options.
     """
     def __init__(self,
                  grid,  # type: RoutingGrid
                  tr_widths,  # type: Dict[str, Dict[int, int]]
                  tr_spaces,  # type: Dict[Union[str, Tuple[str, str]], Dict[int, Union[float, int]]]
+                 **kwargs,
                  ):
         # type: (...) -> None
+        half_space = kwargs.get('half_space', False)
+
         self._grid = grid
         self._tr_widths = tr_widths
         self._tr_spaces = tr_spaces
+        self._half_space = half_space
 
     def get_width(self, layer_id, wire_name):
         # type: (int, str) -> int
@@ -502,8 +508,10 @@ class TrackManager(object):
             If a tuple of two strings are given, will return the specific spacing between those two
             track types if specified.  Otherwise, returns the maximum of all the valid spacing.
         **kwargs:
-            keyword arguments for get_num_space_tracks() method of RoutingGrid.
+            optional parameters for get_num_space_tracks() method of RoutingGrid.
         """
+        half_space = kwargs.get('half_space', self._half_space)
+
         if isinstance(name_tuple, tuple):
             # if two specific wires are given, first check if any specific ruels exist
             if name_tuple in self._tr_spaces:
@@ -519,7 +527,7 @@ class TrackManager(object):
                     cur_space = self._tr_spaces[name].get(layer_id, 0)
                 else:
                     cur_space = 0
-                ans = max(ans, cur_space, self._grid.get_num_space_tracks(layer_id, cur_width, **kwargs))
+                ans = max(ans, cur_space, self._grid.get_num_space_tracks(layer_id, cur_width, half_space=half_space))
             return ans
         else:
             cur_width = self.get_width(layer_id, name_tuple)
@@ -527,10 +535,10 @@ class TrackManager(object):
                 cur_space = self._tr_spaces[name_tuple].get(layer_id, 0)
             else:
                 cur_space = 0
-            return max(cur_space, self._grid.get_num_space_tracks(layer_id, cur_width, **kwargs))
+            return max(cur_space, self._grid.get_num_space_tracks(layer_id, cur_width, half_space=half_space))
 
-    def place_wires(self, layer_id, name_list, start_idx=0):
-        # type: (int, Sequence[str], Union[float, int]) -> Tuple[Union[float, int], List[Union[float, int]]]
+    def place_wires(self, layer_id, name_list, start_idx=0, **kwargs):
+        # type: (int, Sequence[str], Union[float, int], **kwargs) -> Tuple[Union[float, int], List[Union[float, int]]]
         """Place the given wires next to each other, then return the number of tracks used and center track locations.
 
         Parameters
@@ -541,6 +549,8 @@ class TrackManager(object):
             list of wire types.
         start_idx : Union[float, int]
             the starting track index.
+        **kwargs:
+            optional parameters for get_num_space_tracks() method of RoutingGrid.
 
         Returns
         -------
@@ -562,7 +572,7 @@ class TrackManager(object):
             if idx != num_wires - 1:
                 next_name = name_list[idx + 1]
                 # figure out the current spacing
-                cur_space = self.get_space(layer_id, (name, next_name))
+                cur_space = self.get_space(layer_id, (name, next_name), **kwargs)
 
                 num_tracks += cur_space
                 # advance marker
@@ -576,8 +586,8 @@ class TrackManager(object):
 
         return num_tracks, answer
 
-    def align_wires(self, layer_id, name_list, tot_ntr, alignment=0, start_idx=0):
-        # type: (int, Sequence[str], Union[float, int], int, int) -> List[Union[float, int]]
+    def align_wires(self, layer_id, name_list, tot_ntr, alignment=0, start_idx=0, **kwargs):
+        # type: (int, Sequence[str], Union[float, int], int, int, **kwargs) -> List[Union[float, int]]
         """Place the given wires in the given space with the specified alignment.
 
         Parameters
@@ -594,13 +604,15 @@ class TrackManager(object):
             If alignment == 1, will "right adjust" the wires.
         start_idx : Union[float, int]
             the starting track index.
+        **kwargs:
+            optional parameters for get_num_space_tracks() method of RoutingGrid.
 
         Returns
         -------
         locations : List[Union[float, int]]
             the center track index of each wire.
         """
-        num_used, idx_list = self.place_wires(layer_id, name_list, start_idx=start_idx)
+        num_used, idx_list = self.place_wires(layer_id, name_list, start_idx=start_idx, **kwargs)
         if num_used > tot_ntr:
             raise ValueError('Given tracks occupy more space than given.')
 
