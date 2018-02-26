@@ -399,6 +399,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         self._gtr_intv = None
         self._dstr_intv = None
         self._wire_info = None
+        self._tr_manager = None
 
         # substrate parameters
         self._ntap_list = None
@@ -568,6 +569,49 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         """
         tid = self.get_track_index(mos_type, row_idx, tr_type, tr_idx)
         return TrackID(self.mos_conn_layer + 1, tid, width=width, num=num, pitch=pitch)
+
+    def get_wire_id(self, mos_type, row_idx, tr_type, wire_idx=0, wire_name=''):
+        # type: (str, int, str, int, str) -> TrackID
+        """Returns the TrackID representing the given wire.
+
+        Parameters
+        ----------
+        mos_type : str
+            the row type, one of 'nch', 'pch', 'ntap', or 'ptap'.
+        row_idx : int
+            the center row index.  0 is the bottom-most row.
+        tr_type : str
+            the type of the track.  Either 'g' or 'ds'.
+        wire_idx : int
+            the wire index.  If wire_name is not given, returns the (wire_idx)th wire.
+            If wire_name is given, returns the (wire_idx)th wire with the given name.
+        wire_name : str
+            name of the wire.
+
+        Returns
+        -------
+        tr_id : TrackID
+            TrackID representing the specified track.
+        """
+        if self._tr_manager is None:
+            raise ValueError('draw_base() is not called with wire information.')
+
+        row_idx = self._find_row_index(mos_type, row_idx)
+        info_idx = 0 if tr_type == 'g' else 1
+        name_list, loc_list = self._wire_info[row_idx][info_idx]
+        hm_layer = self.mos_conn_layer + 1
+        if wire_name:
+            idx = -1
+            for j in range(wire_idx + 1):
+                idx = name_list.index(wire_name, idx + 1)
+            cur_name = wire_name
+            cur_loc = loc_list[idx]
+        else:
+            cur_name = name_list[wire_idx]
+            cur_loc = loc_list[wire_idx]
+
+        cur_width = self._tr_manager.get_width(hm_layer, cur_name)
+        return TrackID(hm_layer, cur_loc, width=cur_width)
 
     def connect_to_substrate(self, sub_type, warr_list, inner=False, both=False):
         # type: (str, Union[WireArray, List[WireArray]], bool, bool) -> None
@@ -1151,7 +1195,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             y_list.append(y_cur)
             y_top_cur = y_cur + height
             # step 2: find how many tracks current block uses
-            if (wname_list is None) and btr_info < 0:
+            if btr_info == -1:
                 # substrate.  A substrate block only use tracks within its array bounding box.
                 yarr_bot = y_cur + arr_y[0]
                 yarr_top = y_cur + arr_y[1]
@@ -1187,8 +1231,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 bintv, tintv, tr_next, cur_top_ntr, bot_loc, top_loc, widx = tmp_result
                 bot_tr_intv.append(bintv)
                 top_tr_intv.append(tintv)
-                bot_wire_loc.append(bot_loc)
-                top_wire_loc.append(top_loc)
+                bot_wire_loc.append((btr_info, bot_loc))
+                top_wire_loc.append((ttr_info, top_loc))
 
             y_next_min = y_top_cur
             # step 3: compute extension to next master and location of next master
@@ -1204,7 +1248,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 # update y_next_min
                 y_next_min += min_ext_w * mos_pitch
                 next_btr_info = place_info_list[idx + 1][7]
-                if (wname_list is None) and next_btr_info < 0:
+                if next_btr_info == -1:
                     # next row is substrate
                     if idx + 1 == num_master - 1 and cur_top_ntr > 0:
                         # last substrate, place out of current top tracks
@@ -1332,6 +1376,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 else:
                     tr_next += cur_top_ntr
             else:
+                tr_next = max(tr_next, bnd_t_top + 1)
                 cur_top_ntr = 0
                 top_loc = []
 
@@ -1428,6 +1473,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         top_bound_box = BBox.get_invalid_bbox()
         self._gtr_intv = []
         self._dstr_intv = []
+        self._wire_info = []
+        self._tr_manager = tr_manager
         ext_list.append((0, None))
         gr_vss_warrs = []
         gr_vdd_warrs = []
@@ -1443,21 +1490,33 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         orient_list = ['R0']
         orient_list.extend(self._orient_list)
         orient_list.append('MX')
+        bot_wire_loc.insert(0, None)
+        top_wire_loc.insert(0, None)
+        bot_wire_loc.append(None)
+        top_wire_loc.append(None)
         # draw
         sub_y_list = []
-        for row_idx, (ybot, ext_info, master, orient) in \
-                enumerate(zip(y_list, ext_list, master_list, orient_list)):
+        for row_idx, (ybot, ext_info, master, orient, bw_info, tw_info) in \
+                enumerate(zip(y_list, ext_list, master_list, orient_list,
+                              bot_wire_loc, top_wire_loc)):
             if master.is_empty and master.bound_box.height_unit == 0:
                 continue
 
             if row_idx != 0 and row_idx != len(master_list) - 1:
                 # get gate/drain/source interval
                 if orient == 'R0':
-                    self._gtr_intv.append(bot_tr_intv[row_idx - 1])
-                    self._dstr_intv.append(top_tr_intv[row_idx - 1])
+                    gtr_intv = bot_tr_intv[row_idx - 1]
+                    dtr_intv = top_tr_intv[row_idx - 1]
+                    gw_info = bw_info
+                    dw_info = tw_info
                 else:
-                    self._dstr_intv.append(bot_tr_intv[row_idx - 1])
-                    self._gtr_intv.append(top_tr_intv[row_idx - 1])
+                    gtr_intv = top_tr_intv[row_idx - 1]
+                    dtr_intv = bot_tr_intv[row_idx - 1]
+                    gw_info = tw_info
+                    dw_info = bw_info
+                self._gtr_intv.append(gtr_intv)
+                self._dstr_intv.append(dtr_intv)
+                self._wire_info.append((gw_info, dw_info))
 
             edge_layout_info = master.get_edge_layout_info()
             edgel_params = dict(
