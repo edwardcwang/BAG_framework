@@ -1151,7 +1151,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             y_list.append(y_cur)
             y_top_cur = y_cur + height
             # step 2: find how many tracks current block uses
-            if isinstance(btr_info, int) and btr_info < 0:
+            if (wname_list is None) and btr_info < 0:
                 # substrate.  A substrate block only use tracks within its array bounding box.
                 yarr_bot = y_cur + arr_y[0]
                 yarr_top = y_cur + arr_y[1]
@@ -1204,7 +1204,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 # update y_next_min
                 y_next_min += min_ext_w * mos_pitch
                 next_btr_info = place_info_list[idx + 1][7]
-                if isinstance(next_btr_info, int) and next_btr_info < 0:
+                if (wname_list is None) and next_btr_info < 0:
                     # next row is substrate
                     if idx + 1 == num_master - 1 and cur_top_ntr > 0:
                         # last substrate, place out of current top tracks
@@ -1216,10 +1216,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                         y_next = y_next_min
                 else:
                     # next row is transistor.  Get number of bottom tracks of next row
-                    if not isinstance(next_btr_info, int) and next_btr_info:
+                    if (wname_list is not None) and next_btr_info:
                         next_bot_ntr = tr_manager.place_wires(hm_layer, next_btr_info,
                                                               start_idx=tr_next)[0]
-                    elif isinstance(next_btr_info, int):
+                    elif wname_list is None:
                         next_bot_ntr = next_btr_info
                     else:
                         next_bot_ntr = 0
@@ -1293,7 +1293,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                                                      mode=1, unit_mode=True)
         bnd_t_top = self.grid.coord_to_nearest_track(hm_layer, tyt - conn_delta, half_track=True,
                                                      mode=-1, unit_mode=True)
-        if isinstance(btr_info, int):
+        if wname_list is None:
             # bottom b track
             bnd_b_bot = min(bnd_b_bot, bnd_b_top + 1 - btr_info)
             # bottom t track
