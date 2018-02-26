@@ -1185,6 +1185,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                                                             vm_le_sp, btr_info, ttr_info,
                                                             tr_manager, widx, wname_list)
                 bintv, tintv, tr_next, cur_top_ntr, bot_loc, top_loc, widx = tmp_result
+                bot_tr_intv.append(bintv)
+                top_tr_intv.append(tintv)
                 bot_wire_loc.append(bot_loc)
                 top_wire_loc.append(top_loc)
 
