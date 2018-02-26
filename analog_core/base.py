@@ -1354,19 +1354,23 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             bot_loc = top_loc = []
         else:
             # compute bottom/top wire locations
+            sp_betw = 0
+            first_bot_tr = tr_next
             if btr_info:
                 bot_ntr, bot_loc = tr_manager.place_wires(hm_layer, btr_info, start_idx=tr_next)
                 widx += len(btr_info)
                 if widx < len(wname_list):
-                    sp_next = tr_manager.get_space(hm_layer, (wname_list[widx - 1],
+                    sp_betw = tr_manager.get_space(hm_layer, (wname_list[widx - 1],
                                                               wname_list[widx]))
-                    tr_next += bot_ntr + sp_next
+                    tr_next += bot_ntr + sp_betw
                 else:
                     tr_next += bot_ntr
             else:
+                bot_ntr = 0
                 bot_loc = []
             if ttr_info:
                 tr_next = max(tr_next, bnd_t_bot)
+                first_top_tr = tr_next
                 cur_top_ntr, top_loc = tr_manager.place_wires(hm_layer, ttr_info, start_idx=tr_next)
                 widx += len(ttr_info)
                 if widx < len(wname_list):
@@ -1377,8 +1381,15 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     tr_next += cur_top_ntr
             else:
                 tr_next = max(tr_next, bnd_t_top + 1)
+                first_top_tr = tr_next
                 cur_top_ntr = 0
                 top_loc = []
+
+            # check if it's possible to move the bottom tracks up to reduce series resistance
+            if bot_ntr > 0:
+                new_bot_first = min(first_top_tr - sp_betw - bot_ntr, bnd_b_top + 1 - bot_ntr)
+                if new_bot_first > first_bot_tr:
+                    _, bot_loc = tr_manager.place_wires(hm_layer, btr_info, start_idx=new_bot_first)
 
         return ((bnd_b_bot, bnd_b_top + 1), (bnd_t_bot, bnd_t_top + 1),
                 tr_next, cur_top_ntr, bot_loc, top_loc, widx)
@@ -1436,27 +1447,28 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         bot_ext_w_iter = BinaryIterator(ext_first, None)
         bot_ext_w_iter.save_info(tmp_result)
         bot_ext_w_iter.up()
-        while bot_ext_w_iter.has_next():
-            bot_ext_w = bot_ext_w_iter.get_next()
-            tmp_result = self._place_helper(bot_ext_w, place_info_list, lch_unit, fg_tot, hm_layer,
-                                            vm_le_sp, conn_delta, mos_pitch, tot_pitch, dy,
-                                            tr_manager, wname_list)
-            _, ext_list, tot_ntr, _, _, _, _ = tmp_result
-            ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
-            print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
+        if ext_first != ext_last:
+            while bot_ext_w_iter.has_next():
+                bot_ext_w = bot_ext_w_iter.get_next()
+                tmp_result = self._place_helper(bot_ext_w, place_info_list, lch_unit, fg_tot,
+                                                hm_layer, vm_le_sp, conn_delta, mos_pitch,
+                                                tot_pitch, dy, tr_manager, wname_list)
+                _, ext_list, tot_ntr, _, _, _, _ = tmp_result
+                ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
+                print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
 
-            if tot_ntr > tot_ntr_best:
-                bot_ext_w_iter.down()
-            else:
-                tot_ntr_best = tot_ntr
-                if ext_first == ext_last:
-                    bot_ext_w_iter.save_info(tmp_result)
-                    break
-                elif ext_first < ext_last:
-                    bot_ext_w_iter.save_info(tmp_result)
-                    bot_ext_w_iter.up()
-                else:
+                if tot_ntr > tot_ntr_best:
                     bot_ext_w_iter.down()
+                else:
+                    tot_ntr_best = tot_ntr
+                    if ext_first == ext_last:
+                        bot_ext_w_iter.save_info(tmp_result)
+                        break
+                    elif ext_first < ext_last:
+                        bot_ext_w_iter.save_info(tmp_result)
+                        bot_ext_w_iter.up()
+                    else:
+                        bot_ext_w_iter.down()
 
         (y_list, ext_list, tot_ntr, bot_tr_intv, top_tr_intv,
          bot_wire_loc, top_wire_loc) = bot_ext_w_iter.get_last_save_info()
