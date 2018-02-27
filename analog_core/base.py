@@ -1176,14 +1176,17 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         return place_info_list, master_list, mos_kwargs, w_list_final, th_list_final, wname_list
 
     def _place_helper(self, bot_ext_w, place_info_list, lch_unit, fg_tot, hm_layer, vm_le_sp,
-                      conn_delta, mos_pitch, tot_pitch, dy, tr_manager, wname_list):
+                      conn_delta, mos_pitch, tot_pitch, dy, tr_manager, wname_list,
+                      guard_ring_nf):
+        tcls = self._tech_cls
+        grid = self._grid
+        ext_options = dict(guard_ring_nf=guard_ring_nf)
         # place bottom substrate at dy
         widx = 0
         bot_wire_loc = []
         top_wire_loc = []
         y_cur = dy
-        tr_next = self.grid.find_next_track(hm_layer, y_cur, half_track=True,
-                                            mode=2, unit_mode=True)
+        tr_next = grid.find_next_track(hm_layer, y_cur, half_track=True, mode=2, unit_mode=True)
         y_list = []
         ext_info_list = []
         bot_tr_intv = []
@@ -1199,10 +1202,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 # substrate.  A substrate block only use tracks within its array bounding box.
                 yarr_bot = y_cur + arr_y[0]
                 yarr_top = y_cur + arr_y[1]
-                tr_bot = self.grid.find_next_track(hm_layer, yarr_bot, half_track=True,
-                                                   mode=2, unit_mode=True)
-                tr_top = self.grid.find_next_track(hm_layer, yarr_top, half_track=True,
-                                                   mode=-2, unit_mode=True) + 1
+                tr_bot = grid.find_next_track(hm_layer, yarr_bot, half_track=True,
+                                              mode=2, unit_mode=True)
+                tr_top = grid.find_next_track(hm_layer, yarr_top, half_track=True,
+                                              mode=-2, unit_mode=True) + 1
                 cur_ntr_test = int(2 * (tr_top - tr_bot))
                 if cur_ntr_test % 2 == 1:
                     # if not symmetric, R0 substrate supply track is rounded to bottom,
@@ -1239,8 +1242,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             if idx != num_master - 1:
                 # step 3A: figure out minimum extension width
                 top_ext_info = place_info_list[idx + 1][5]
-                ext_w_list = self._tech_cls.get_valid_extension_widths(lch_unit, top_ext_info,
-                                                                       bot_ext_info)
+                ext_w_list = tcls.get_valid_extension_widths(lch_unit, top_ext_info, bot_ext_info,
+                                                             guard_ring_nf=guard_ring_nf)
                 min_ext_w = ext_w_list[0]
                 if idx == 0:
                     # make sure first extension width is at least bot_ext_w
@@ -1252,8 +1255,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     # next row is substrate
                     if idx + 1 == num_master - 1 and cur_top_ntr > 0:
                         # last substrate, place out of current top tracks
-                        y_tr_last_top = self.grid.get_wire_bounds(hm_layer, tr_next - 1,
-                                                                  unit_mode=True)[1]
+                        y_tr_last_top = grid.get_wire_bounds(hm_layer, tr_next - 1,
+                                                             unit_mode=True)[1]
                         y_next = max(y_next_min, -(-y_tr_last_top // mos_pitch) * mos_pitch)
                     else:
                         # guard ring substrate, place as close to current block as possible
@@ -1271,9 +1274,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     if next_bot_ntr > 0:
                         # if next row has bottom tracks,
                         # make sure the next row is placed high enough
-                        y_bot_tr_last_mid = self.grid.track_to_coord(hm_layer,
-                                                                     tr_next + next_bot_ntr - 1,
-                                                                     unit_mode=True)
+                        y_bot_tr_last_mid = grid.track_to_coord(hm_layer,
+                                                                tr_next + next_bot_ntr - 1,
+                                                                unit_mode=True)
                         byt = place_info_list[idx + 1][0][1]
                         y_tmp = -(-(y_bot_tr_last_mid - byt + conn_delta) // mos_pitch) * mos_pitch
                         y_next = max(y_next_min, y_tmp)
@@ -1317,6 +1320,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     fg=fg_tot,
                     top_ext_info=top_ext_info,
                     bot_ext_info=bot_ext_info,
+                    options=ext_options,
                 )
                 ext_info_list.append((ext_w, ext_params))
                 # step 3D: update y_cur
@@ -1439,7 +1443,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         # run first iteration out of the while loop to get minimum bottom extension.
         tmp_result = self._place_helper(0, place_info_list, lch_unit, fg_tot, hm_layer, vm_le_sp,
                                         conn_delta, mos_pitch, tot_pitch, dy, tr_manager,
-                                        wname_list)
+                                        wname_list, guard_ring_nf)
         _, ext_list, tot_ntr, _, _, _, _ = tmp_result
         ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
         print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
@@ -1452,7 +1456,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 bot_ext_w = bot_ext_w_iter.get_next()
                 tmp_result = self._place_helper(bot_ext_w, place_info_list, lch_unit, fg_tot,
                                                 hm_layer, vm_le_sp, conn_delta, mos_pitch,
-                                                tot_pitch, dy, tr_manager, wname_list)
+                                                tot_pitch, dy, tr_manager, wname_list,
+                                                guard_ring_nf)
                 _, ext_list, tot_ntr, _, _, _, _ = tmp_result
                 ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
                 print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))

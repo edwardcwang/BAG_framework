@@ -35,7 +35,8 @@ class AnalogMOSBase(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self._tech_cls = self.grid.tech_info.tech_params['layout'][
+            'mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
         self._layout_info = None
@@ -152,7 +153,8 @@ class AnalogMOSExt(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self._tech_cls = self.grid.tech_info.tech_params['layout'][
+            'mos_tech_class']  # type: MOSTech
         self._layout_info = None
         if self.params['is_laygo']:
             self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
@@ -189,12 +191,13 @@ class AnalogMOSExt(TemplateBase):
             top_ext_info='top extension info.',
             bot_ext_info='bottom extension info.',
             is_laygo='True if this extension is used in LaygoBase.',
+            options='Additional options.',
         )
 
     @classmethod
     def get_default_param_values(cls):
         # type: () -> Dict[str, Any]
-        return dict(is_laygo=False)
+        return dict(is_laygo=False, options=None)
 
     def get_layout_basename(self):
         fmt = 'ext_l%s_w%s_fg%d'
@@ -207,7 +210,8 @@ class AnalogMOSExt(TemplateBase):
         return ans
 
     def compute_unique_key(self):
-        key = self.get_layout_basename(), self.params['top_ext_info'], self.params['bot_ext_info']
+        key = (self.get_layout_basename(), self.params['top_ext_info'],
+               self.params['bot_ext_info'], self.params['options'])
         return self.to_immutable_id(key)
 
     def draw_layout(self):
@@ -216,11 +220,15 @@ class AnalogMOSExt(TemplateBase):
         fg = self.params['fg']
         top_ext_info = self.params['top_ext_info']
         bot_ext_info = self.params['bot_ext_info']
+        options = self.params['options']
+        if options is None:
+            options = {}
 
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        ext_info = self._tech_cls.get_ext_info(lch_unit, w, fg, top_ext_info, bot_ext_info)
+        ext_info = self._tech_cls.get_ext_info(lch_unit, w, fg, top_ext_info, bot_ext_info,
+                                               **options)
         self._layout_info = ext_info['layout_info']
         self._left_edge_info = ext_info['left_edge_info']
         self._right_edge_info = ext_info['right_edge_info']
@@ -252,7 +260,8 @@ class SubRingExt(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         super(SubRingExt, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self._tech_cls = self.grid.tech_info.tech_params['layout'][
+            'mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
         self._layout_info = None
         self._left_edge_info = None
