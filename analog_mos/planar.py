@@ -244,7 +244,7 @@ class MOSTechPlanarGeneric(MOSTech):
             d_conn_y=d_y_list[-1],
         )
 
-    def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info):
+    def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info, **kwargs):
         # type: (int, ExtInfo, ExtInfo) -> List[int]
         """Compute a list of valid extension widths.
 
@@ -389,8 +389,8 @@ class MOSTechPlanarGeneric(MOSTech):
         fill_info = po_area_iter.get_last_save_info()
         return fill_symmetric_interval(*fill_info[0][2], offset=po_area_offset, invert=fill_info[1])[0]
 
-    def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info):
-        # type: (int, int, int, ExtInfo, ExtInfo) -> Dict[str, Any]
+    def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info, **kwargs):
+        # type: (int, int, int, ExtInfo, ExtInfo, **kwargs) -> Dict[str, Any]
         """Draw extension block.
 
         extension block has zero or more rows of dummy transistors, which are

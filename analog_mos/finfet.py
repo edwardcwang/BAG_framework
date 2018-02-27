@@ -626,8 +626,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         sub_type = 'ptap' if mos_type == 'nch' else 'ntap'
         return self._get_mos_blk_info(lch_unit, fg, w, mos_type, sub_type, threshold, **kwargs)
 
-    def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info):
-        # type: (int, ExtInfo, ExtInfo) -> List[int]
+    def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info, **kwargs):
+        # type: (int, ExtInfo, ExtInfo, **kwargs) -> List[int]
         """Compute a list of valid extension widths.
 
         The DRC rules that we consider are:
@@ -954,8 +954,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         return adj_row_list, adj_edgel_infos, adj_edger_infos, thres_split_y, imp_split_y
 
-    def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info):
-        # type: (int, int, int, ExtInfo, ExtInfo) -> Dict[str, Any]
+    def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info, **kwargs):
+        # type: (int, int, int, ExtInfo, ExtInfo, **kwargs) -> Dict[str, Any]
         """Draw extension block.
 
         extension block has zero or more rows of dummy transistors, which are

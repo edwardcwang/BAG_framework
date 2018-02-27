@@ -123,8 +123,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         return {}
 
     @abc.abstractmethod
-    def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info):
-        # type: (int, Any, Any) -> List[int]
+    def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info, **kwargs):
+        # type: (int, Any, Any, **kwargs) -> List[int]
         """Returns a list of valid extension widths in mos_pitch units.
 
         the list should be sorted in increasing order, and any extension widths greater than
@@ -140,12 +140,14 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             layout information about the top block.
         bot_ext_info : Any
             layout information about the bottom block.
+        **kwargs :
+            optional parameters.
         """
         return [0]
 
     @abc.abstractmethod
-    def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info):
-        # type: (int, int, int, Any, Any) -> Dict[str, Any]
+    def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info, **kwargs):
+        # type: (int, int, int, Any, Any, **kwargs) -> Dict[str, Any]
         """Returns the extension layout information dictionary.
 
         Parameters
@@ -160,6 +162,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             layout information about the top block.
         bot_ext_info : Any
             layout information about the bottom block.
+        **kwargs :
+            optional parameters.
 
         Returns
         -------

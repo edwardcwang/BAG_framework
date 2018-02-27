@@ -187,7 +187,7 @@ class MOSTechSOIGenericBC(MOSTech):
             d_conn_y=d_y_list[-1],
         )
 
-    def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info):
+    def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info, **kwargs):
         # type: (int, ExtInfo, ExtInfo) -> List[int]
 
         # get implant spacing info
@@ -220,7 +220,7 @@ class MOSTechSOIGenericBC(MOSTech):
 
         return [w_min]
 
-    def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info):
+    def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info, **kwargs):
         # type: (int, int, int, ExtInfo, ExtInfo) -> Dict[str, Any]
 
         # get implant spacing info
