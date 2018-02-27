@@ -1451,7 +1451,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         bot_ext_w_iter = BinaryIterator(ext_first, None)
         bot_ext_w_iter.save_info(tmp_result)
         bot_ext_w_iter.up()
-        if ext_first != ext_last:
+        if ext_first < ext_last:
             while bot_ext_w_iter.has_next():
                 bot_ext_w = bot_ext_w_iter.get_next()
                 tmp_result = self._place_helper(bot_ext_w, place_info_list, lch_unit, fg_tot,
