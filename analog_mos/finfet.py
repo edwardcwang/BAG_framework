@@ -655,10 +655,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         #. Compute the minimum extension width that we can draw DRC clean dummy OD.
         #. Return the list of valid extension widths
         """
+        guard_ring_nf = kwargs.get('guard_ring_nf', 0)
+
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_p = mos_constants['mos_pitch']  # type: int
         od_spy_dum = mos_constants.get('od_spy_dum', mos_constants['od_spy'])
-        od_spy_max = mos_constants['od_spy_max']
         od_nfin_min = mos_constants['od_fill_h'][0]
         imp_od_ency = mos_constants['imp_od_ency']
         cpo_h = mos_constants['cpo_h']
@@ -667,6 +668,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         md_h_min = mos_constants['md_h_min']
         md_od_exty = mos_constants['md_od_exty']
         md_spy = mos_constants['md_spy']
+        if guard_ring_nf == 0 or 'od_spy_max_gr' not in mos_constants:
+            od_spy_max = mos_constants['od_spy_max']
+        else:
+            od_spy_max = mos_constants['od_spy_max_gr']
 
         od_spy_nfin_max = self.get_od_spy_nfin(lch_unit, od_spy_max, round_up=False)
 
@@ -726,17 +731,22 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             width_list.append(min_ext_w_od)
             return width_list
 
-    def _get_dummy_od_yloc(self, lch_unit, bot_ext_info, top_ext_info, yblk):
+    def _get_dummy_od_yloc(self, lch_unit, bot_ext_info, top_ext_info, yblk, **kwargs):
         """Compute dummy OD Y intervals in extension block.
 
         This method use fill algorithm to make sure both maximum OD spacing and
         minimum OD density rules are met.
         """
+        guard_ring_nf = kwargs.get('guard_ring_nf', 0)
+
         mos_constants = self.get_mos_tech_constants(lch_unit)
         od_nfin_min, od_nfin_max = mos_constants['od_fill_h']
         od_spy = mos_constants['od_spy']
-        od_spy_max = mos_constants['od_spy_max']
         od_min_density = mos_constants['od_min_density']
+        if guard_ring_nf == 0 or 'od_spy_max_gr' not in mos_constants:
+            od_spy_max = mos_constants['od_spy_max']
+        else:
+            od_spy_max = mos_constants['od_spy_max_gr']
 
         od_spy_nfin_min = self.get_od_spy_nfin(lch_unit, od_spy, round_up=True)
         od_spy_nfin_max = self.get_od_spy_nfin(lch_unit, od_spy_max, round_up=False)
@@ -792,7 +802,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return [(self.get_od_edge(lch_unit, start, False),
                  self.get_od_edge(lch_unit, stop, True)) for start, stop in od_intv_list]
 
-    def _get_dummy_yloc(self, lch_unit, bot_ext_info, top_ext_info, yblk):
+    def _get_dummy_yloc(self, lch_unit, bot_ext_info, top_ext_info, yblk, **kwargs):
         """Compute dummy OD/MD/PO/CPO Y intervals in extension block.
 
         This method gets OD coordinates from _get_dummy_od_yloc(), then modify the results
@@ -814,7 +824,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         top_md_yb = yblk + top_ext_info.margins['md'][0]
 
         # get dummy OD/MD intervals
-        od_y_list = self._get_dummy_od_yloc(lch_unit, bot_ext_info, top_ext_info, yblk)
+        od_y_list = self._get_dummy_od_yloc(lch_unit, bot_ext_info, top_ext_info, yblk, **kwargs)
         if not od_y_list:
             return [], [], [(0, yblk)], [(cpo_h // 2, yblk - cpo_h // 2)], [0, yblk]
 
@@ -1028,7 +1038,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         lr_edge_info = EdgeInfo(od_type='dum', draw_layers={}, y_intv={})
 
         # get dummy fill locations
-        tmp = self._get_dummy_yloc(lch_unit, bot_ext_info, top_ext_info, yt)
+        tmp = self._get_dummy_yloc(lch_unit, bot_ext_info, top_ext_info, yt, **kwargs)
         od_y_list, md_y_list, row_y_list, po_y_list, cpo_yc_list = tmp
         # get adjacent block/split information
         tmp = self._get_ext_adj_split_info(lch_unit, w, bot_ext_info, top_ext_info,
