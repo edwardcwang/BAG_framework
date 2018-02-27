@@ -1035,8 +1035,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         bot_imp = 'nch' if bot_row_type == 'nch' or bot_row_type == 'ptap' else 'pch'
         top_imp = 'nch' if top_row_type == 'nch' or top_row_type == 'ptap' else 'pch'
 
-        lr_edge_info = EdgeInfo(od_type='dum', draw_layers={}, y_intv={})
-
         # get dummy fill locations
         tmp = self._get_dummy_yloc(lch_unit, bot_ext_info, top_ext_info, yt, **kwargs)
         od_y_list, md_y_list, row_y_list, po_y_list, cpo_yc_list = tmp
@@ -1054,6 +1052,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         cpo_lay = mos_layer_table['CPO']
         if not od_y_list:
             # no dummy OD
+            lr_edge_info = EdgeInfo(od_type=None, draw_layers={}, y_intv={})
             od_x_list = []
             od_y_list = md_y_list = [(0, 0)]
             if one_cpo:
@@ -1064,6 +1063,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 thres_split_y = imp_split_y = 0, yt
         else:
             # has dummy OD
+            lr_edge_info = EdgeInfo(od_type='dum', draw_layers={}, y_intv={})
             # get OD horizontal partitioning
             if od_fill_w_max is None or fg == 1:
                 # force dummy OD if 1 finger, so that Laygo extensions will have dummy OD.
