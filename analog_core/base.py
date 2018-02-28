@@ -1177,7 +1177,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def _place_helper(self, bot_ext_w, place_info_list, lch_unit, fg_tot, hm_layer, vm_le_sp,
                       conn_delta, mos_pitch, tot_pitch, dy, tr_manager, wname_list,
-                      guard_ring_nf):
+                      guard_ring_nf, min_height):
         tcls = self._tech_cls
         grid = self._grid
         ext_options = dict(guard_ring_nf=guard_ring_nf)
@@ -1289,7 +1289,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     # this is the last block.  Place it such that the overall
                     # height is multiples of tot_pitch.
                     next_height = place_info_list[idx + 1][3]
-                    y_top_min = y_next + next_height
+                    y_top_min = max(y_next + next_height, min_height)
                     y_top = -(-y_top_min // tot_pitch) * tot_pitch
                     y_next = y_top - next_height
                     # make sure we both have valid extension width and last block is on tot_pitch.
@@ -1399,7 +1399,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 tr_next, cur_top_ntr, bot_loc, top_loc, widx)
 
     def _place(self, fg_tot, place_info_list, master_list, guard_ring_nf, top_layer,
-               left_end, right_end, bot_end, top_end, tr_manager, wname_list):
+               left_end, right_end, bot_end, top_end, tr_manager, wname_list, min_height):
         """
         Placement strategy: make overall block match mos_pitch and horizontal track pitch, try to
         center everything between the top and bottom substrates.
@@ -1437,13 +1437,15 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         top_end_master = self.new_template(params=top_end_params, temp_cls=AnalogEndRow)
         # compute Y coordinate shift from adding end row
         dy = bot_end_master.array_box.height_unit
+        h_top = top_end_master.array_box.height_unit
+        min_height -= h_top
 
         # find bot_ext_w such that we place blocks as close to center as possible,
         # use binary search to shorten search.
         # run first iteration out of the while loop to get minimum bottom extension.
         tmp_result = self._place_helper(0, place_info_list, lch_unit, fg_tot, hm_layer, vm_le_sp,
                                         conn_delta, mos_pitch, tot_pitch, dy, tr_manager,
-                                        wname_list, guard_ring_nf)
+                                        wname_list, guard_ring_nf, min_height)
         _, ext_list, tot_ntr, _, _, _, _ = tmp_result
         ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
         print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
@@ -1457,7 +1459,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 tmp_result = self._place_helper(bot_ext_w, place_info_list, lch_unit, fg_tot,
                                                 hm_layer, vm_le_sp, conn_delta, mos_pitch,
                                                 tot_pitch, dy, tr_manager, wname_list,
-                                                guard_ring_nf)
+                                                guard_ring_nf, min_height)
                 _, ext_list, tot_ntr, _, _, _, _ = tmp_result
                 ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
                 print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
@@ -1796,11 +1798,22 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         sub_parity : str
             the substrate orientation.  When set properly, this flag makes sure that you can
             overlap substrate with adjacent AnalogBase cells.  Should be either 0 or 1.
-        **kwargs:
-            Other optional arguments.
+        **kwargs :
+            Other optional arguments.  Currently supports:
 
             sub_integ_htr : bool
-                True if substrate row must contain integer number of horizontal tracks.
+                True if substrate row must contain integer number of horizontal tracks.  Defaults
+                to False.
+            half_blk_x : bool
+                True to allow half-block width.  Defaults to True.
+            half_blk_y : bool
+                True to allow half-block height.  Defaults to True.
+            wire_names : Dict[str, List[Dict[str, List[str]]]]
+                specify gate/drain wire types instead of specifying number of tracks.
+            tr_manager : TrackManager
+                the TrackManager used to plac wires.
+            min_height : int
+                the minimum height, in resolution units.
         """
         if 'gds_space' in kwargs:
             print('WARNING: gds_space parameter is no longer supported '
@@ -1811,6 +1824,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         half_blk_y = kwargs.get('half_blk_y', True)
         tr_manager = kwargs.get('tr_manager', None)
         wire_names = kwargs.get('wire_names', None)
+        min_height = kwargs.get('min_height', 0)
 
         numn = len(nw_list)
         nump = len(pw_list)
@@ -1899,7 +1913,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             wire_list = None
         self._place(fg_tot, place_info_list, master_list, guard_ring_nf, top_layer,
                     left_end != 0, right_end != 0, bot_sub_end != 0, top_sub_end != 0,
-                    tr_manager, wire_list)
+                    tr_manager, wire_list, min_height)
 
         # draw device blockages
         self.grid.tech_info.draw_device_blockage(self)
