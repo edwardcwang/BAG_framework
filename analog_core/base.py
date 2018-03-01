@@ -137,6 +137,18 @@ class AnalogBaseInfo(object):
     def sd_xc_unit(self):
         return self._sd_xc_unit
 
+    def get_fg_sep_from_hm_space(self, hm_width, round_even=True):
+        # type: (int) -> int
+        hm_layer = self.mconn_port_layer + 1
+        sp = self.grid.get_line_end_space(hm_layer, hm_width, unit_mode=True)  # type: int
+        _, via_ext = self.grid.get_via_extensions(hm_layer - 1, 1, hm_width, unit_mode=True)
+        vm_width = self.grid.get_track_width(hm_layer - 1, 1, unit_mode=True)  # type: int
+        sp0 = self.sd_pitch_unit - vm_width - 2 * via_ext  # type: int
+        ans = max(0, -(-(sp - sp0) // self.sd_pitch_unit)) + 1
+        if round_even and ans % 2 == 1:
+            ans += 1
+        return ans
+
     def get_placement_info(self, fg_tot):
         left_end = (self.end_mode & 4) != 0
         right_end = (self.end_mode & 8) != 0
