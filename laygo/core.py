@@ -486,7 +486,7 @@ class LaygoBaseInfo(object):
 
 class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
 
         hidden_params = kwargs.pop('hidden_params', {}).copy()
         hidden_params['laygo_endl_infos'] = None

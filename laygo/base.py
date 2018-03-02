@@ -13,23 +13,24 @@ class LaygoPrimitive(TemplateBase):
 
     Parameters
     ----------
-    temp_db : :class:`bag.layout.template.TemplateDB`
+    temp_db : TemplateDB
             the template database.
     lib_name : str
         the layout library name.
-    params : dict[str, any]
+    params : Dict[str, Any]
         the parameter values.
-    used_names : set[str]
+    used_names : Set[str]
         a set of already used cell names.
-    kwargs : dict[str, any]
+    kwargs :
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
+        tech_info = self.grid.tech_info
+        self._tech_cls = tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         self._num_col = 1
         self._blk_info = None
@@ -52,19 +53,12 @@ class LaygoPrimitive(TemplateBase):
 
     @classmethod
     def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
         return dict(options=None)
 
     @classmethod
     def get_params_info(cls):
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : dict[str, str]
-            dictionary from parameter name to description.
-        """
+        # type: () -> Dict[str, str]
         return dict(
             blk_type="digital block type.",
             w='transistor width, in meters/number of fins.',
@@ -105,23 +99,24 @@ class LaygoSubstrate(TemplateBase):
 
     Parameters
     ----------
-    temp_db : :class:`bag.layout.template.TemplateDB`
+    temp_db : TemplateDB
             the template database.
     lib_name : str
         the layout library name.
-    params : dict[str, any]
+    params : Dict[str, Any]
         the parameter values.
-    used_names : set[str]
+    used_names : Set[str]
         a set of already used cell names.
-    kwargs : dict[str, any]
+    kwargs :
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
+        tech_info = self.grid.tech_info
+        self._tech_cls = tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         self._blk_info = None
         self._num_col = 1
@@ -148,19 +143,12 @@ class LaygoSubstrate(TemplateBase):
 
     @classmethod
     def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
         return dict(options=None)
 
     @classmethod
     def get_params_info(cls):
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : dict[str, str]
-            dictionary from parameter name to description.
-        """
+        # type: () -> Dict[str, str]
         return dict(
             row_info='laygo row information dictionary.',
             options="additional substrate options.",
@@ -198,23 +186,24 @@ class LaygoEndRow(TemplateBase):
 
     Parameters
     ----------
-    temp_db : :class:`bag.layout.template.TemplateDB`
+    temp_db : TemplateDB
             the template database.
     lib_name : str
         the layout library name.
-    params : dict[str, any]
+    params : Dict[str, Any]
         the parameter values.
-    used_names : set[str]
+    used_names : Set[str]
         a set of already used cell names.
-    kwargs : dict[str, any]
+    kwargs :
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
+        tech_info = self.grid.tech_info
+        self._tech_cls = tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         self._end_info = None
 
@@ -226,15 +215,7 @@ class LaygoEndRow(TemplateBase):
 
     @classmethod
     def get_params_info(cls):
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : dict[str, str]
-            dictionary from parameter name to description.
-        """
+        # type: () -> Dict[str, str]
         return dict(
             lch='channel length, in meters.',
             mos_type="thetransistor type, one of 'pch', 'nch', 'ptap', or 'ntap'.",
@@ -265,7 +246,8 @@ class LaygoEndRow(TemplateBase):
         top_layer = self.params['top_layer']
 
         blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
-        self._end_info = self._tech_cls.get_laygo_end_info(lch_unit, mos_type, threshold, 1, is_end, blk_pitch)
+        self._end_info = self._tech_cls.get_laygo_end_info(lch_unit, mos_type, threshold, 1,
+                                                           is_end, blk_pitch)
         self._tech_cls.draw_mos(self, self._end_info['layout_info'])
 
 
@@ -274,23 +256,24 @@ class LaygoSpace(TemplateBase):
 
     Parameters
     ----------
-    temp_db : :class:`bag.layout.template.TemplateDB`
+    temp_db : TemplateDB
             the template database.
     lib_name : str
         the layout library name.
-    params : dict[str, any]
+    params : Dict[str, Any]
         the parameter values.
-    used_names : set[str]
+    used_names : Set[str]
         a set of already used cell names.
-    kwargs : dict[str, any]
+    kwargs :
         dictionary of optional parameters.  See documentation of
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
+        tech_info = self.grid.tech_info
+        self._tech_cls = tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         self._num_blk = self.params['num_blk']
         self._blk_info = None
@@ -313,15 +296,7 @@ class LaygoSpace(TemplateBase):
 
     @classmethod
     def get_params_info(cls):
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : dict[str, str]
-            dictionary from parameter name to description.
-        """
+        # type: () -> Dict[str, str]
         return dict(
             row_info='the Laygo row information dictionary.',
             num_blk='number of space blocks.',
@@ -341,7 +316,9 @@ class LaygoSpace(TemplateBase):
         left_blk_info = self.params['left_blk_info']
         right_blk_info = self.params['right_blk_info']
 
-        self._blk_info = self._tech_cls.get_laygo_space_info(row_info, num_blk, left_blk_info, right_blk_info)
+        self._blk_info = self._tech_cls.get_laygo_space_info(row_info, num_blk, left_blk_info,
+                                                             right_blk_info)
         # draw transistor
         self._tech_cls.draw_mos(self, self._blk_info['layout_info'])
-        self._tech_cls.draw_laygo_space_connection(self, self._blk_info, left_blk_info, right_blk_info)
+        self._tech_cls.draw_laygo_space_connection(self, self._blk_info, left_blk_info,
+                                                   right_blk_info)
