@@ -166,7 +166,8 @@ class TrackID(object):
 
         delta = loc[1] if is_x else loc[0]
         delta = grid.coord_to_track(layer_id, delta, unit_mode=unit_mode) + 0.5
-        return TrackID(layer_id, (base_hidx - 1) / 2 + delta, width=self._w, num=self._n, pitch=self.pitch)
+        return TrackID(layer_id, (base_hidx - 1) / 2 + delta, width=self._w,
+                       num=self._n, pitch=self.pitch)
 
 
 class WireArray(object):
@@ -189,7 +190,8 @@ class WireArray(object):
         self._upper = upper
 
     def __repr__(self):
-        return '%s(%s, %.4g, %.4g)' % (self.__class__.__name__, self._track_id, self._lower, self._upper)
+        return '%s(%s, %.4g, %.4g)' % (self.__class__.__name__, self._track_id,
+                                       self._lower, self._upper)
 
     def __str__(self):
         return repr(self)
@@ -353,7 +355,8 @@ class WireArray(object):
             lower, upper = self._lower, self._upper
 
         delta = loc[0] if is_x else loc[1]
-        return WireArray(self.track_id.transform(grid, loc=loc, orient=orient), lower + delta, upper + delta)
+        return WireArray(self.track_id.transform(grid, loc=loc, orient=orient),
+                         lower + delta, upper + delta)
 
 
 class Port(object):
@@ -480,6 +483,10 @@ class TrackManager(object):
         self._tr_spaces = tr_spaces
         self._half_space = half_space
 
+    @property
+    def grid(self):
+        return self._grid
+
     def get_width(self, layer_id, wire_name):
         # type: (int, str) -> int
         """Returns the track width.
@@ -504,9 +511,10 @@ class TrackManager(object):
         layer_id : int
             the track layer ID.
         name_tuple : Union[str, Tuple[str, str]]
-            If a single string is given, will return the minimum spacing needed around that track type.
-            If a tuple of two strings are given, will return the specific spacing between those two
-            track types if specified.  Otherwise, returns the maximum of all the valid spacing.
+            If a single string is given, will return the minimum spacing needed around that track
+            type.  If a tuple of two strings are given, will return the specific spacing between
+            those two track types if specified.  Otherwise, returns the maximum of all the
+            valid spacing.
         **kwargs:
             optional parameters for get_num_space_tracks() method of RoutingGrid.
         """
@@ -527,7 +535,8 @@ class TrackManager(object):
                     cur_space = self._tr_spaces[name].get(layer_id, 0)
                 else:
                     cur_space = 0
-                ans = max(ans, cur_space, self._grid.get_num_space_tracks(layer_id, cur_width, half_space=half_space))
+                ans = max(ans, cur_space, self._grid.get_num_space_tracks(layer_id, cur_width,
+                                                                          half_space=half_space))
             return ans
         else:
             cur_width = self.get_width(layer_id, name_tuple)
@@ -535,11 +544,16 @@ class TrackManager(object):
                 cur_space = self._tr_spaces[name_tuple].get(layer_id, 0)
             else:
                 cur_space = 0
-            return max(cur_space, self._grid.get_num_space_tracks(layer_id, cur_width, half_space=half_space))
+            return max(cur_space, self._grid.get_num_space_tracks(layer_id, cur_width,
+                                                                  half_space=half_space))
 
-    def place_wires(self, layer_id, name_list, start_idx=0, **kwargs):
-        # type: (int, Sequence[str], Union[float, int], **kwargs) -> Tuple[Union[float, int], List[Union[float, int]]]
-        """Place the given wires next to each other, then return the number of tracks used and center track locations.
+    def place_wires(self,
+                    layer_id,  # type: int
+                    name_list,  # type: Sequence[str]
+                    start_idx=0,  # type: Union[float, int]
+                    **kwargs):
+        # type: (...) -> Tuple[Union[float, int], List[Union[float, int]]]
+        """Place the given wires next to each other.
 
         Parameters
         ----------
@@ -567,7 +581,8 @@ class TrackManager(object):
             cur_width = self.get_width(layer_id, name)
             num_tracks += cur_width
             cur_center_htr = marker_htr + cur_width - 1
-            cur_center = (cur_center_htr - 1) // 2 if cur_center_htr % 2 == 1 else (cur_center_htr - 1) / 2
+            cur_center = (cur_center_htr - 1) // 2 if cur_center_htr % 2 == 1 \
+                else (cur_center_htr - 1) / 2
             answer.append(cur_center)
             if idx != num_wires - 1:
                 next_name = name_list[idx + 1]
@@ -586,8 +601,14 @@ class TrackManager(object):
 
         return num_tracks, answer
 
-    def align_wires(self, layer_id, name_list, tot_ntr, alignment=0, start_idx=0, **kwargs):
-        # type: (int, Sequence[str], Union[float, int], int, int, **kwargs) -> List[Union[float, int]]
+    def align_wires(self,
+                    layer_id,  # type: int
+                    name_list,  # type: Sequence[str]
+                    tot_ntr,  # type: Union[float, int]
+                    alignment=0,  # type: int
+                    start_idx=0,  # type: int
+                    **kwargs):
+        # type: (...) -> List[Union[float, int]]
         """Place the given wires in the given space with the specified alignment.
 
         Parameters
@@ -599,7 +620,7 @@ class TrackManager(object):
         tot_ntr : Union[float, int]
             total available space in number of tracks.
         alignment : int
-            If alignment == -1, will "left adjust" the wires (left is the lower track index direction).
+            If alignment == -1, will "left adjust" the wires (left is the lower index direction).
             If alignment == 0, will center the wires in the middle.
             If alignment == 1, will "right adjust" the wires.
         start_idx : Union[float, int]
