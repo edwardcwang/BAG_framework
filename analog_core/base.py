@@ -1191,7 +1191,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                       conn_delta, mos_pitch, tot_pitch, dy, tr_manager, wname_list,
                       guard_ring_nf, min_height):
         tcls = self._tech_cls
-        grid = self._grid
+        grid = self.grid
         ext_options = dict(guard_ring_nf=guard_ring_nf)
         # place bottom substrate at dy
         widx = 0
