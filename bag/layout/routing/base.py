@@ -485,7 +485,13 @@ class TrackManager(object):
 
     @property
     def grid(self):
+        # type: () -> RoutingGrid
         return self._grid
+
+    @property
+    def half_space(self):
+        # type: () -> bool
+        return self._half_space
 
     def get_width(self, layer_id, wire_name):
         # type: (int, str) -> int
