@@ -638,9 +638,14 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         self._set_endlr_infos(self._num_rows)
 
     def set_row_types(self, row_types, row_widths, row_orientations, row_thresholds,
-                      draw_boundaries, end_mode, num_g_tracks, num_gb_tracks, num_ds_tracks,
-                      row_min_tracks=None, top_layer=None, guard_ring_nf=0, row_kwargs=None,
-                      num_col=None, row_sub_widths=None):
+                      draw_boundaries, end_mode, num_g_tracks=None, num_gb_tracks=None,
+                      num_ds_tracks=None, row_min_tracks=None, top_layer=None,
+                      guard_ring_nf=0, row_kwargs=None, num_col=None, row_sub_widths=None,
+                      **kwargs):
+
+        tr_manager = kwargs.get('tr_manager', None)
+        wire_names = kwargs.get('wire_names', None)
+        min_height = kwargs.get('min_height', 0)
 
         # error checking
         if (row_types[0] == 'ptap' or row_types[0] == 'ntap') and row_orientations[0] != 'R0':
@@ -717,14 +722,16 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             )
             self._top_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
             ybot = self._bot_end_master.bound_box.height_unit
+            min_height -= self._top_end_master.bound_box.height_unit
         else:
             ybot = 0
 
-        row_specs = self._get_row_specs(row_types, row_widths, row_sub_widths, row_orientations,
-                                        row_thresholds, row_min_tracks, row_kwargs, num_g_tracks,
-                                        num_gb_tracks, num_ds_tracks)
+        pinfo_list = self._get_place_info(row_types, row_widths, row_sub_widths, row_orientations,
+                                          row_thresholds, row_min_tracks, row_kwargs, num_g_tracks,
+                                          num_gb_tracks, num_ds_tracks, wire_names)
 
-        result = self._place_rows(ybot, tot_height_pitch, row_specs)
+        result = self._place_rows(ybot, tot_height_pitch, pinfo_list, tr_manager, wire_names,
+                                  min_height)
 
         # set remaining row information
         self._row_infos, self._ext_params, self._row_y = result
@@ -762,20 +769,19 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         )
         return ans
 
-    def _get_row_specs(self, row_types, row_widths, row_sub_widths, row_orientations,
-                       row_thresholds, row_min_tracks, row_kwargs, num_g_tracks,
-                       num_gb_tracks, num_ds_tracks):
+    def _get_place_info(self, row_types, row_widths, row_sub_widths, row_orientations,
+                        row_thresholds, row_min_tracks, row_kwargs, num_g_tracks,
+                        num_gb_tracks, num_ds_tracks, wire_names):
         lch = self._laygo_info.lch
         lch_unit = int(round(lch / self.grid.layout_unit / self.grid.resolution))
         mos_pitch = self._laygo_info.mos_pitch
         tcls = self._tech_cls
 
-        row_specs = []
+        pinfo_list = []
         for row_idx, (row_type, row_w, row_wsub, row_orient,
-                      row_thres, min_tracks, kwargs, ng, ngb, nds) in \
+                      row_thres, min_tracks, kwargs) in \
                 enumerate(zip(row_types, row_widths, row_sub_widths, row_orientations,
-                              row_thresholds, row_min_tracks, row_kwargs, num_g_tracks,
-                              num_gb_tracks, num_ds_tracks)):
+                              row_thresholds, row_min_tracks, row_kwargs)):
             if row_idx == 0:
                 bot_row_type = row_type
             else:
@@ -799,59 +805,152 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             else:
                 raise ValueError('Unknown row type: %s' % row_type)
 
+            # get row pitch
             row_pitch = min_row_height = mos_pitch
-            for layer, num_tr in min_tracks:
+            for layer, num_tr in min_tracks.items():
                 tr_pitch = self.grid.get_track_pitch(layer, unit_mode=True)
                 min_row_height = max(min_row_height, num_tr * tr_pitch)
-                row_pitch = lcm([row_pitch, tr_pitch])
+                row_pitch = lcm([row_pitch, tr_pitch // 2])
 
-            row_specs.append((row_type, row_orient, row_info, min_row_height,
-                              row_pitch, (ng, ngb, nds), kwargs))
+            # get bottom/top Y coordinates
+            g_conn_y = row_info.get('g_conn_y', (0, 0))
+            if row_orient == 'R0':
+                bot_conn_y = (g_conn_y, )
+                top_conn_y = (row_info['gb_conn_y'], row_info['ds_conn_y'])
+                bext_info = row_info['ext_bot_info']
+                text_info = row_info['ext_top_info']
+                if wire_names is None:
+                    ng = num_g_tracks[row_idx]
+                    ngb = num_gb_tracks[row_idx]
+                    nds = num_ds_tracks[row_idx]
+                    bot_wires = (ng, )
+                    top_wires = (ngb, nds)
+                else:
+                    wnames = wire_names[row_idx]
+                    bot_wires = (wnames['g'], )
+                    top_wires = (wnames['gb'], wnames['ds'])
+            else:
+                bot_conn_y = (row_info['gb_conn_y'], row_info['ds_conn_y'])
+                top_conn_y = (g_conn_y, )
+                bext_info = row_info['ext_top_info']
+                text_info = row_info['ext_bot_info']
+                if wire_names is None:
+                    ng = num_g_tracks[row_idx]
+                    ngb = num_gb_tracks[row_idx]
+                    nds = num_ds_tracks[row_idx]
+                    top_wires = (ng, )
+                    bot_wires = (ngb, nds)
+                else:
+                    wnames = wire_names[row_idx]
+                    top_wires = (wnames['g'], )
+                    bot_wires = (wnames['gb'], wnames['ds'])
 
-        return row_specs
+            pinfo_list.append((bot_conn_y, top_conn_y, row_info['arr_y'][1], row_orient,
+                               bext_info, text_info, bot_wires, top_wires, row_type, row_info,
+                               min_row_height, row_pitch, kwargs))
 
-    def _place_with_num_tracks(self, row_info, row_orient, ytop_prev, yt_vm_prev, hm_layer,
-                               hm_width, via_exty, vm_sple, mos_pitch, ng, ngb, nds, **kwargs):
-        ignore_conn_sple_g = kwargs.get('place_ignore_conn_sple_g', False)
-        ignore_conn_sple_ds = kwargs.get('place_ignore_conn_sple_ds', False)
+        return pinfo_list
 
-        # get bottom port Y intervals and number of horizontal tracks needed
-        if row_orient == 'R0':
-            # gate tracks on bottom
-            num_tr1 = num_tr2 = ng
-            conn_yb1, conn_yt1 = row_info.get('g_conn_y', (0, 0))
-            conn_yb2, conn_yt2 = conn_yb1, conn_yt1
-            ignore_sple = ignore_conn_sple_g
-        else:
-            # drain/source tracks on bottom
-            num_tr1, num_tr2 = ngb, nds
-            conn_yb1, conn_yt1 = row_info['gb_conn_y']
-            conn_yb2, conn_yt2 = row_info['ds_conn_y']
-            blk_height = row_info['arr_y'][1]
-            conn_yb1, conn_yt1 = blk_height - conn_yt1, blk_height - conn_yb1
-            conn_yb2, conn_yt2 = blk_height - conn_yt2, blk_height - conn_yb2
-            ignore_sple = ignore_conn_sple_ds
+    def _place_with_num_tracks(self, tr_next, hm_layer, bot_conn_y, bot_wires, ytop_prev,
+                               conn_delta, mos_pitch, tr_manager, last_track):
 
-        # find minimum Y coordinate of this row
+        # determine block placement
         ycur = ytop_prev
-        # get center Y coordinate of bottom track that is DRC clean from previous row
-        y_btr = ytop_prev + hm_width // 2
-        if not ignore_sple:
-            y_btr = max(yt_vm_prev + vm_sple + via_exty, y_btr)
-        tr0 = self.grid.coord_to_nearest_track(hm_layer, y_btr, half_track=True, mode=1,
-                                               unit_mode=True)
-        for ntr, cyb, cyt in ((num_tr1, conn_yb1, conn_yt1),
-                              (num_tr2, conn_yb2, conn_yt2)):
-            # ignore number-of-tracks constraints if we have less than 1 track.
-            if ntr >= 1:
-                # get center Y coordinate of top track
-                y_ttr = self.grid.track_to_coord(hm_layer, tr0 + ntr - 1, unit_mode=True)
-                # make sure we can connect top top horizontal track
-                ycur = max(ycur, y_ttr - cyt + via_exty)
+        tr_last_info = []
+        for btr_info, (yb, yt) in zip(bot_wires, bot_conn_y):
+            if isinstance(btr_info, int) or isinstance(btr_info, float):
+                bot_ntr = btr_info
+                if bot_ntr >= 1:
+                    tr_last_info.append(tr_next + bot_ntr - 1)
+            else:
+                if btr_info:
+                    bot_ntr, bot_loc = tr_manager.place_wires(hm_layer, btr_info, start_idx=tr_next)
+                    tr_last_info.append((bot_loc[-1], btr_info[-1]))
+                else:
+                    bot_ntr = 0
 
-        # step C: round Y coordinate to mos_pitch
+            if bot_ntr >= 1:
+                y_ttr = self.grid.track_to_coord(hm_layer, tr_next + bot_ntr - 1, unit_mode=True)
+                ycur = max(ycur, y_ttr - yt + conn_delta)
+
+        if not tr_last_info:
+            tr_last_info = last_track
+
+        # round Y coordinate to mos_pitch
         ycur = -(-ycur // mos_pitch) * mos_pitch
-        return ycur
+        return ycur, tr_last_info
+
+    def _compute_ytop(self, tr_next, ycur, ytop, hm_layer, top_conn_y, top_wires, last_track,
+                      conn_delta, vm_le_sp, row_pitch, tr_manager, next_wires, tr_sp_top):
+        grid = self.grid
+
+        if last_track:
+            # update tr_next to account for space between bottom and top tracks
+            for ltr in last_track:
+                if isinstance(ltr, int) or isinstance(ltr, float):
+                    tr_next = max(tr_next, ltr + 1)
+                else:
+                    has_top = False
+                    for ttr_info in top_wires:
+                        if ttr_info:
+                            has_top = True
+                            _, loc = tr_manager.place_wires(hm_layer, [ltr[1], ttr_info[0]])
+                            tidx = loc[1] + ltr[0] - loc[0]
+                            t_w = tr_manager.get_width(hm_layer, ttr_info[0])
+                            tr_next = max(tr_next, tidx - (t_w - 1) / 2)
+                    if not has_top and next_wires is not None:
+                        for nw in next_wires:
+                            _, loc = tr_manager.place_wires(hm_layer, [ltr[1], nw])
+                            tidx = loc[1] + ltr[0] - loc[0]
+                            t_w = tr_manager.get_width(hm_layer, nw)
+                            tr_next = max(tr_next, tidx - (t_w - 1) / 2)
+
+        tr_next_new = tr_next
+        last_track_new = []
+        for ttr_info, (yb, yt) in zip(top_wires, top_conn_y):
+            ybtr = ycur + yb + conn_delta
+            yttr = ycur + yt - conn_delta
+            tr0 = max(tr_next, grid.coord_to_nearest_track(hm_layer, ybtr, half_track=True,
+                                                           mode=1, unit_mode=True))
+            tr1 = grid.coord_to_nearest_track(hm_layer, yttr, half_track=True,
+                                              mode=-1, unit_mode=True)
+            if isinstance(ttr_info, int) or isinstance(ttr_info, float):
+                tr1 = max(tr1, tr0 + ttr_info - 1)
+                tr1_y = grid.track_to_coord(hm_layer, tr1, unit_mode=True)
+                tny = max(ycur + yt + vm_le_sp + conn_delta,
+                          tr1_y + vm_le_sp + 2 * conn_delta)
+                tn = grid.coord_to_nearest_track(hm_layer, tny, half_track=True,
+                                                 mode=1, unit_mode=True)
+                tn = max(tn, tr1 + tr_sp_top)
+                tny = grid.track_to_coord(hm_layer, tn, unit_mode=True)
+                ytop = max(ytop, (tny + tr1_y) // 2)
+                tr_next_new = max(tr_next_new, tn)
+                last_track_new.append(tr1)
+            else:
+                if ttr_info:
+                    top_ntr, locs = tr_manager.place_wires(hm_layer, ttr_info, start_idx=tr0)
+                    last_track_new.append((locs[-1], ttr_info[-1]))
+                    if next_wires is None:
+                        tr1 = max(tr1, tr0 + top_ntr - 1)
+                        ytop = max(ytop, grid.track_to_coord(hm_layer, tr1 + 0.5, unit_mode=True))
+                        tr_next_new = max(tr_next_new, tr1 + 1)
+                    else:
+                        for nw in next_wires:
+                            t_w1 = tr_manager.get_width(hm_layer, ttr_info[-1])
+                            t_w2 = tr_manager.get_width(hm_layer, nw)
+                            _, locs = tr_manager.place_wires(hm_layer, ttr_info + [nw],
+                                                             start_idx=tr0)
+                            t_idx1 = locs[-2] + (t_w1 - 1) / 2
+                            t_idx2 = locs[-1] - (t_w2 - 1) / 2
+                            tr_next_new = max(tr_next_new, t_idx2)
+                            ya = grid.track_to_coord(hm_layer, t_idx1, unit_mode=True)
+                            yb = grid.track_to_coord(hm_layer, t_idx2, unit_mode=True)
+                            ytop = max(ytop, (ya + yb) // 2)
+
+        if not last_track_new:
+            last_track_new = last_track
+
+        return -(-ytop // row_pitch) * row_pitch, tr_next_new, last_track_new
 
     def _place_mirror_or_sub(self, row_type, row_thres, lch_unit, mos_pitch, ydelta, ext_info):
         # find substrate parameters
@@ -902,52 +1001,128 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         return ext_w, sub_extw
 
-    def _place_rows(self, ybot, tot_height_pitch, row_specs):
+    @classmethod
+    def _get_next_wires(cls, idx, wire_names, pinfo_list):
+        if wire_names is None:
+            return None
+
+        next_wires = []
+        for i in range(idx + 1, len(pinfo_list)):
+            for w_list in (pinfo_list[i][6], pinfo_list[i][7]):
+                has_wire = False
+                for tr_info in w_list:
+                    if tr_info:
+                        has_wire = True
+                        next_wires.append(tr_info[0])
+                if has_wire:
+                    return next_wires
+
+        return None
+
+    @classmethod
+    def _get_last_wires(cls, wire_names, pinfo_list):
+        if wire_names is None:
+            return None
+
+        next_wires = []
+        for i in range(len(pinfo_list), -1, -1):
+            for w_list in (pinfo_list[i][7], pinfo_list[i][6]):
+                has_wire = False
+                for tr_info in w_list:
+                    if tr_info:
+                        has_wire = True
+                        next_wires.append(tr_info[-1])
+                if has_wire:
+                    return next_wires
+
+        return None
+
+    def _place_rows(self, ybot, tot_height_pitch, pinfo_list, tr_manager, wire_names, min_htot):
         lch_unit = self._laygo_info.lch_unit
+
+        tcls = self._tech_cls
+        grid = self.grid
+
+        mos_pitch = tcls.get_mos_pitch(unit_mode=True)
+        conn_layer = tcls.get_dig_conn_layer()
+        hm_layer = conn_layer + 1
+
+        via_ext = grid.get_via_extensions(conn_layer, 1, 1, unit_mode=True)[0]
+        hm_w = grid.get_track_width(hm_layer, 1, unit_mode=True)
+        vm_le_sp = grid.get_line_end_space(conn_layer, 1, unit_mode=True)
+
+        conn_delta = via_ext + hm_w // 2
+
+        # get first useable track
+        bot_row_type = pinfo_list[0][8]
+        if bot_row_type != 'ptap' and bot_row_type != 'ntap':
+            # bottom is pmos/nmos, get first track that satisfies mirror spacing
+            next_wires = self._get_next_wires(0, wire_names, pinfo_list)
+            if next_wires is None:
+                tr_next = 0
+            else:
+                num_sp = 0
+                for nw1 in next_wires:
+                    for nw2 in next_wires:
+                        num_sp = max(num_sp, tr_manager.get_space(hm_layer, nw1, nw2))
+                num_sp2 = int(round(num_sp * 2))
+                if num_sp2 % 4 == 0:
+                    tr_next = num_sp2 // 4
+                elif num_sp2 % 2 == 0:
+                    tr_next = num_sp2 / 4
+                else:
+                    tr_next = (num_sp2 + 1) / 4
+        else:
+            tr_next = grid.find_next_track(hm_layer, ybot, half_track=True, mode=1, unit_mode=True)
+
+        # get number of space needed at top
+        top_row_type = pinfo_list[-1][8]
+        if top_row_type != 'ptap' and top_row_type != 'ntap':
+            # top is pmos/nmos, get mirror space
+            last_wires = self._get_last_wires(wire_names, pinfo_list)
+            if last_wires is None:
+                tr_sp_top = 0
+            else:
+                num_sp = 0
+                for nw1 in last_wires:
+                    for nw2 in last_wires:
+                        num_sp = max(num_sp, tr_manager.get_space(hm_layer, nw1, nw2))
+                num_sp2 = int(round(num_sp * 2))
+                if num_sp2 % 4 == 0:
+                    tr_sp_top = num_sp2 // 4
+                elif num_sp2 % 2 == 0:
+                    tr_sp_top = num_sp2 / 4
+                else:
+                    tr_sp_top = (num_sp2 + 1) / 4
+        else:
+            tr_sp_top = 0
 
         ext_params_list = []
         row_infos = []
         row_y = []
-        conn_layer = self._tech_cls.get_dig_conn_layer()
-        hm_layer = conn_layer + 1
-        via_ency = self.grid.get_via_extensions(conn_layer, 1, 1, unit_mode=True)[0]
-        hm_width, hm_space = self.grid.get_track_info(hm_layer, unit_mode=True)
-        vm_sple = self.grid.get_line_end_space(conn_layer, 1, unit_mode=True)
-        mos_pitch = self._tech_cls.get_mos_pitch(unit_mode=True)
-        via_exty = hm_width // 2 + via_ency
         prev_ext_info = None
         prev_ext_h = 0
         ytop_prev = ybot
-        yt_vm_prev = ytop_prev - vm_sple // 2
-        for idx, (row_type, row_orient, row_info, min_row_height,
-                  row_pitch, (ng, ngb, nds), kwargs) in enumerate(row_specs):
-            row_thres = row_info['threshold']
+        last_track = []
+        for idx, (bot_conn_y, top_conn_y, blk_height, row_orient, ext_bot_info, ext_top_info,
+                  bot_wires, top_wires, row_type, row_info, min_row_height,
+                  row_pitch, kwargs) in enumerate(pinfo_list):
 
-            # get information dictionary
+            row_thres = row_info['threshold']
             is_sub = (row_type == 'ptap' or row_type == 'ntap')
 
-            # get extension information
-            if row_orient == 'R0':
-                ext_bot_info = row_info['ext_bot_info']
-                ext_top_info = row_info['ext_top_info']
-            else:
-                ext_top_info = row_info['ext_bot_info']
-                ext_bot_info = row_info['ext_top_info']
-
-            blk_height = row_info['arr_y'][1]
-            # step 1: find Y coordinate
+            # find Y coordinate of current block from track/mirror placement constraints
             if idx == 0 and is_sub:
                 # bottom substrate has orientation R0, just abut to bottom.
                 ycur = ytop_prev
                 cur_bot_ext_h = 0
             else:
-                # step A: find bottom connection Y coordinate and number of tracks
-                ng_cur = 0 if is_sub else ng
-                ycur = self._place_with_num_tracks(row_info, row_orient, ytop_prev, yt_vm_prev,
-                                                   hm_layer, hm_width, via_exty, vm_sple,
-                                                   mos_pitch, ng_cur, ngb, nds, **kwargs)
+                # find bottom connection Y coordinate and number of tracks
+                ycur, last_track = self._place_with_num_tracks(tr_next, hm_layer, bot_conn_y,
+                                                               bot_wires, ytop_prev, conn_delta,
+                                                               mos_pitch, tr_manager, last_track)
                 cur_bot_ext_h = (ycur - ytop_prev) // mos_pitch
-                # step D: make sure extension constraints is met
+                # make sure extension constraints is met
                 if idx != 0:
                     valid_widths = self._tech_cls.get_valid_extension_widths(lch_unit, ext_bot_info,
                                                                              prev_ext_info)
@@ -964,11 +1139,12 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
                 ycur = ytop_prev + cur_bot_ext_h * mos_pitch
 
-            # at this point, ycur and cur_ext_h are determined
+            # at this point, ycur, ltr_info, and cur_bot_ext_h are determined
+            # compute top row boundary
             if idx == self._num_rows - 1 and is_sub:
-                # we need to quantize row height, total height, and substrate just abut to top edge.
-                ytop = ycur + blk_height
-                ytop = max(ytop, ytop_prev + min_row_height)
+                # we need to quantize row height, total height, and substrate just
+                # abut to top edge.
+                ytop = max(ycur + blk_height, ytop_prev + min_row_height, min_htot)
                 ytop = -(-ytop // row_pitch) * row_pitch
                 tot_height = -(-(ytop - ybot) // tot_height_pitch) * tot_height_pitch
                 ytop = ybot + tot_height
@@ -976,52 +1152,38 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 cur_bot_ext_h = (ycur - ytop_prev) // mos_pitch
                 cur_top_ext_h = 0
             else:
+                # determine top coordinate
+                ytop = max(ycur + blk_height, ytop_prev + min_row_height)
+                next_wires = self._get_next_wires(idx, wire_names, pinfo_list)
+                cur_sp_top = tr_sp_top if idx == self._num_rows - 1 else 0
+                tmp = self._compute_ytop(tr_next, ycur, ytop, hm_layer, top_conn_y, top_wires,
+                                         last_track, conn_delta, vm_le_sp, row_pitch,
+                                         tr_manager, next_wires, cur_sp_top)
+                ytop, tr_next_new, last_track = tmp
                 if idx != self._num_rows - 1:
-                    if row_orient == 'MX':
-                        # gate tracks on top
-                        num_tr1 = num_tr2 = 0 if is_sub else ng
-                        conn_yb1, conn_yt1 = row_info['g_conn_y']
-                        conn_yb1, conn_yt1 = blk_height - conn_yt1, blk_height - conn_yb1
-                        conn_yb2, conn_yt2 = conn_yb1, conn_yt1
-                    else:
-                        # drain/source tracks on top
-                        num_tr1, num_tr2 = ngb, nds
-                        conn_yb1, conn_yt1 = row_info['gb_conn_y']
-                        conn_yb2, conn_yt2 = row_info['ds_conn_y']
-
-                    # compute top extension from constraints
-                    ytop = max(ycur + blk_height, ytop_prev + min_row_height)
-                    for ntr, cyb, cyt in ((num_tr1, conn_yb1, conn_yt1),
-                                          (num_tr2, conn_yb2, conn_yt2)):
-                        if ntr > 0:
-                            ybtr = ycur + cyb + via_exty
-                            tr0 = self.grid.coord_to_nearest_track(hm_layer, ybtr, half_track=True,
-                                                                   mode=1, unit_mode=True)
-                            yttr = ycur + cyt - via_exty
-                            tr1 = self.grid.coord_to_nearest_track(hm_layer, yttr, half_track=True,
-                                                                   mode=-1, unit_mode=True)
-                            tr1 = max(tr1, tr0 + ntr - 1)
-                            ytr1 = self.grid.track_to_coord(hm_layer, tr1, unit_mode=True)
-                            ytop = max(ytop, ytr1 + hm_width // 2)
-
-                    ytop = -(-ytop // row_pitch) * row_pitch
                     cur_top_ext_h = (ytop - ycur - blk_height) // mos_pitch
                 else:
                     # nmos/pmos at top row.
-                    # step 1: compute distance of row from top edge
-                    test_orient = 'R0' if row_orient == 'MX' else 'MX'
-                    test_y0 = 0  # use 0 because top edge is LCM of horizontal track pitches.
-                    ydelta = self._place_with_num_tracks(row_info, test_orient, test_y0,
-                                                         -vm_sple // 2, hm_layer,
-                                                         hm_width, via_exty, vm_sple, mos_pitch,
-                                                         ng, ngb, nds, **kwargs)
+                    # compute distance of row from top edge
+                    if row_orient == 'R0':
+                        test_bcony = top_conn_y
+                        test_bwires = top_wires
+                    else:
+                        test_bcony = bot_conn_y
+                        test_bwires = bot_wires
+                    ydelta, _ = self._place_with_num_tracks(tr_sp_top, hm_layer, test_bcony,
+                                                            test_bwires, 0, conn_delta,
+                                                            mos_pitch, tr_manager, [])
+                    # update distance of row from top edge with previous ytop
+                    ydelta = max(ydelta, ytop - ycur - blk_height)
                     # step 2: make sure ydelta can satisfy extension constraints.
                     tmp = self._place_mirror_or_sub(row_type, row_thres, lch_unit, mos_pitch,
                                                     ydelta, ext_top_info)
                     cur_top_ext_h, self._top_sub_extw = tmp
                     ydelta = cur_top_ext_h * mos_pitch
+                    # TODO: Here, need to handle space between bottom and top connections
                     # step 3: compute row height given ycur and ydelta, round to row_pitch
-                    ytop = max(ycur + blk_height + ydelta, ytop_prev + min_row_height)
+                    ytop = max(ycur + blk_height + ydelta, ytop, min_htot)
                     ytop = -(-ytop // row_pitch) * row_pitch
                     # step 4: round to total height pitch
                     tot_height = -(-(ytop - ybot) // tot_height_pitch) * tot_height_pitch
@@ -1049,7 +1211,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
             # update previous row information
             ytop_prev = ytop
-            yt_vm_prev = yt_vm_cur
             prev_ext_info = ext_top_info
             prev_ext_h = cur_top_ext_h
 
