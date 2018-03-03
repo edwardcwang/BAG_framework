@@ -4,6 +4,8 @@
 
 from typing import TYPE_CHECKING, Optional, List, Union, Tuple
 
+import bisect
+
 if TYPE_CHECKING:
     from bag.layout.routing import TrackManager
 
@@ -65,11 +67,8 @@ class WireGroup(object):
         # type: (WireGroup) -> None
         self._children.append(wire_grp)
 
-    def place_child(self, wire_grp):
-        # type: (WireGroup) -> Union[int, float]
-        name1, idx1, _ = self.last_track
-        name2, _, _ = wire_grp.first_track
-
+    def _get_space(self, wire_grp, name1, name2):
+        # type: (WireGroup, str, str) -> Union[int, float]
         if name1 is None:
             space = self.space
             if name2 is None:
@@ -82,7 +81,16 @@ class WireGroup(object):
             else:
                 space = self._tr_manager.get_space(self._layer, (name1, name2))
 
-        return self._tr_off + self._num_tr + space
+        return space
+
+    def get_mirror_space(self, wire_grp):
+        # type: (WireGroup) -> Union[int, float]
+        return self._get_space(wire_grp, self.first_track[0], wire_grp.first_track[0])
+
+    def place_child(self, wire_grp):
+        # type: (WireGroup) -> Union[int, float]
+        sp = self._get_space(wire_grp, self.last_track[0], wire_grp.first_track[0])
+        return self._tr_off + self._num_tr + sp
 
     def set_parents(self, parents):
         # type: (List[WireGroup]) -> None
@@ -114,5 +122,36 @@ class WireGroup(object):
                         child.move_propagate(new_tr_off - cur_tr_off, propagate=True)
 
 
-class TrackCollection(object):
-    pass
+class WireTree(object):
+    def __init__(self, wire_groups, wire_id, mirror=False):
+        # type: (List[WireGroup], Tuple[int, int], bool) -> None
+        self._wire_list = [wire_groups]
+        self._wire_ids = [wire_id]
+        if mirror:
+            for w1 in wire_groups:
+                sp = 0
+                for w2 in wire_groups:
+                    sp = max(sp, w1.get_mirror_space(w2))
+
+                sp2 = int(round(2 * sp))
+                vtest = sp2 % 4
+                if vtest == 0 or vtest == 3:
+                    sp = (sp2 + 1) // 4
+                else:
+                    sp = ((sp2 + 1) // 2) / 2
+                w1.move_by(sp)
+
+    def add_wires(self, wire_groups, wire_id):
+        # type: (List[WireGroup], Tuple[int, int]) -> None
+        for wg in wire_groups:
+            wg.set_parents(self._wire_list[-1])
+        self._wire_ids.append(wire_id)
+        self._wire_list.append(wire_groups)
+
+    def get_wire_group(self, wire_id):
+        # type: (Tuple[int, int]) -> Optional[List[WireGroup]]
+        idx = bisect.bisect_left(self._wire_ids, wire_id)
+        if self._wire_ids[idx] == wire_id:
+            return self._wire_list[idx]
+        else:
+            return None
