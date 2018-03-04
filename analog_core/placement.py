@@ -14,14 +14,12 @@ class WireGroup(object):
     """A group of horizontal wires associated with a transistor row."""
     def __init__(self,
                  layer_id,  # type: int
-                 num_tr,  # type: Union[float, int]
+                 num_tr=0,  # type: Union[float, int]
                  space=0,  # type: Union[float, int]
                  tr_manager=None,  # type: Optional[TrackManager]
                  name_list=None,  # type: Optional[List[str]]
                  ):
         # type: (...) -> None
-        if num_tr < 1:
-            raise ValueError('Cannot create WireGroup with < 1 track.')
         self.space = space
         self._layer = layer_id
         self._tr_manager = tr_manager
@@ -33,13 +31,25 @@ class WireGroup(object):
             self._names = name_list
             self._num_tr, self._locs = tr_manager.place_wires(layer_id, name_list)
 
+        if self._num_tr < 1:
+            raise ValueError('Cannot create WireGroup with < 1 track.')
         self._tr_off = 0
         self._children = []
+
+    @property
+    def tr_manager(self):
+        # type: () -> TrackManager
+        return self._tr_manager
 
     @property
     def track_offset(self):
         # type: () -> Union[float, int]
         return self._tr_off
+
+    @property
+    def num_track(self):
+        # type: () -> Union[float, int]
+        return self._num_tr
 
     @property
     def first_track(self):
@@ -56,12 +66,17 @@ class WireGroup(object):
     def last_track(self):
         # type: () -> Tuple[Optional[str], Union[float, int], int]
         if self._names is None:
-            return None, self._tr_off + self._num_tr - 1, 1
+            return None, self.last_used_track, 1
 
         name = self._names[-1]
         idx = self._locs[-1] + self._tr_off
         width = self._tr_manager.get_width(self._layer, name)
         return name, idx, width
+
+    @property
+    def last_used_track(self):
+        # type: () -> Union[int, float]
+        return self._tr_off + self._num_tr - 1
 
     def add_child(self, wire_grp):
         # type: (WireGroup) -> None
@@ -74,7 +89,7 @@ class WireGroup(object):
             if name2 is None:
                 space = max(space, wire_grp.space)
             else:
-                space = max(space, self._tr_manager.get_space(self._layer, name2))
+                space = max(space, wire_grp.tr_manager.get_space(self._layer, name2))
         else:
             if name2 is None:
                 space = max(self._tr_manager.get_space(self._layer, name1), wire_grp.space)
@@ -83,9 +98,11 @@ class WireGroup(object):
 
         return space
 
-    def get_mirror_space(self, wire_grp):
-        # type: (WireGroup) -> Union[int, float]
-        return self._get_space(wire_grp, self.first_track[0], wire_grp.first_track[0])
+    def get_mirror_space(self, wire_grp, first=True):
+        # type: (WireGroup, bool) -> Union[int, float]
+        if first:
+            return self._get_space(wire_grp, self.first_track[0], wire_grp.first_track[0])
+        return self._get_space(wire_grp, self.last_track[0], wire_grp.last_track[0])
 
     def place_child(self, wire_grp):
         # type: (WireGroup) -> Union[int, float]
@@ -96,19 +113,12 @@ class WireGroup(object):
         # type: (List[WireGroup]) -> None
 
         new_tr_off = -float('inf')
-        new_parents = []
         for parent_wg in parents:
             cur_tr_off = parent_wg.place_child(self)
-            if cur_tr_off > new_tr_off:
-                del new_parents[:]
-                new_tr_off = cur_tr_off
-                new_parents.append(parent_wg)
-            elif cur_tr_off == new_tr_off:
-                new_parents.append(parent_wg)
+            parent_wg.add_child(self)
+            new_tr_off = max(new_tr_off, cur_tr_off)
 
         self._tr_off = new_tr_off
-        for parent_wg in new_parents:
-            parent_wg.add_child(self)
 
     def move_by(self, delta, propagate=True):
         # type: (Union[float, int], bool) -> None
@@ -119,39 +129,72 @@ class WireGroup(object):
                     cur_tr_off = child.track_offset
                     new_tr_off = self.place_child(child)
                     if new_tr_off > cur_tr_off:
-                        child.move_propagate(new_tr_off - cur_tr_off, propagate=True)
+                        child.move_by(new_tr_off - cur_tr_off, propagate=True)
 
 
 class WireTree(object):
-    def __init__(self, wire_groups, wire_id, mirror=False):
-        # type: (List[WireGroup], Tuple[int, int], bool) -> None
-        self._wire_list = [wire_groups]
-        self._wire_ids = [wire_id]
-        if mirror:
-            for w1 in wire_groups:
-                sp = 0
-                for w2 in wire_groups:
-                    sp = max(sp, w1.get_mirror_space(w2))
+    def __init__(self, mirror=False):
+        # type: (bool) -> None
+        self._wire_list = []
+        self._wire_ids = []
+        self._mirror = mirror
 
-                sp2 = int(round(2 * sp))
-                vtest = sp2 % 4
-                if vtest == 0 or vtest == 3:
-                    sp = (sp2 + 1) // 4
-                else:
-                    sp = ((sp2 + 1) // 2) / 2
-                w1.move_by(sp)
+    @classmethod
+    def _get_half_space(cls, sp):
+        # type: (Union[float, int]) -> Union[float, int]
+        sp2 = int(round(2 * sp))
+        vtest = sp2 % 4
+        if vtest == 0 or vtest == 3:
+            return (sp2 + 1) // 4
+        else:
+            return ((sp2 + 1) // 2) / 2
 
     def add_wires(self, wire_groups, wire_id):
         # type: (List[WireGroup], Tuple[int, int]) -> None
-        for wg in wire_groups:
-            wg.set_parents(self._wire_list[-1])
-        self._wire_ids.append(wire_id)
-        self._wire_list.append(wire_groups)
+        if self._wire_list:
+            last_wg = self._wire_list[-1]
+            for wg in wire_groups:
+                wg.set_parents(last_wg)
+            self._wire_ids.append(wire_id)
+            self._wire_list.append(wire_groups)
+        else:
+            self._wire_ids.append(wire_id)
+            self._wire_list.append(wire_groups)
+            if self._mirror:
+                for w1 in wire_groups:
+                    sp = 0
+                    for w2 in wire_groups:
+                        sp = max(sp, w1.get_mirror_space(w2))
 
-    def get_wire_group(self, wire_id):
+                    w1.move_by(self._get_half_space(sp))
+
+    def get_wire_groups(self, wire_id, get_next=False):
         # type: (Tuple[int, int]) -> Optional[List[WireGroup]]
         idx = bisect.bisect_left(self._wire_ids, wire_id)
-        if self._wire_ids[idx] == wire_id:
+        if self._wire_ids[idx] == wire_id or get_next:
             return self._wire_list[idx]
         else:
             return None
+
+    def get_top_tr(self):
+        # type: () -> Optional[Union[float, int]]
+        top_tr = None
+        if not self._wire_list:
+            return top_tr
+        wire_groups = self._wire_list[-1]
+        if self._mirror:
+            for w1 in wire_groups:
+                sp = 0
+                for w2 in wire_groups:
+                    sp = max(sp, w1.get_mirror_space(w2, first=False))
+
+                last_tr = w1.last_used_track + 0.5 + self._get_half_space(sp)
+                if top_tr is None or last_tr > top_tr:
+                    top_tr = last_tr
+        else:
+            for wg in self._wire_list[-1]:
+                last_tr = wg.last_used_track + 0.5
+                if top_tr is None or last_tr > top_tr:
+                    top_tr = last_tr
+
+        return top_tr
