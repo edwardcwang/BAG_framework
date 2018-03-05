@@ -124,20 +124,27 @@ class TrackSet(object):
             hidx_shift = int(2 * grid.coord_to_track(layer_id, dx, unit_mode=True)) + 1
             intv_shift = dy
 
-        hidx_scale = intv_scale = 1
-        if orient == 'R180':
+        if orient == 'R0':
+            hidx_scale = intv_scale = 1
+        elif orient == 'R180':
             hidx_scale = -1
             intv_scale = -1
         elif orient == 'MX':
             if is_x:
                 hidx_scale = -1
+                intv_scale = 1
             else:
+                hidx_scale = 1
                 intv_scale = -1
         elif orient == 'MY':
             if is_x:
+                hidx_scale = 1
                 intv_scale = -1
             else:
                 hidx_scale = -1
+                intv_scale = 1
+        else:
+            raise ValueError('Unsupported orientation: %s' % orient)
 
         new_tracks = {}
         for hidx, intv_set in self._tracks.items():
@@ -240,8 +247,15 @@ class UsedTracks(object):
                 hidx = base_hidx + idx * step
                 track_set.add_track(hidx, intv, width, value=(fill_margin, fill_type))
 
-    def transform(self, grid, bot_layer, top_layer, loc=(0, 0), orient='R0', unit_mode=False):
-        # type: (RoutingGrid, int, int, Tuple[Union[float, int], Union[float, int]], str, bool) -> UsedTracks
+    def transform(self,
+                  grid,  # type: RoutingGrid
+                  bot_layer,  # type: int
+                  top_layer,  # type: int
+                  loc=(0, 0),  # type: Tuple[Union[float, int], Union[float, int]]
+                  orient='R0',  # type: str
+                  unit_mode=False,  # type: bool
+                  ):
+        # type: (...) -> UsedTracks
         """Return a new transformed UsedTracks on the given layers.
 
         Parameters
@@ -268,7 +282,8 @@ class UsedTracks(object):
         new_track_sets = {}
         for layer_id, track_set in self._track_sets.items():
             if bot_layer <= layer_id <= top_layer:
-                new_track_sets[layer_id] = track_set.transform(grid, layer_id, dx, dy, orient=orient)
+                new_track_sets[layer_id] = track_set.transform(grid, layer_id, dx, dy,
+                                                               orient=orient)
 
         return UsedTracks(self._res, init_track_sets=new_track_sets)
 
@@ -310,7 +325,8 @@ def get_available_tracks(grid,  # type: RoutingGrid
     # subtract used tracks.
     for hidx, intv_set in track_set.items():
         for (wstart, wstop), (wwidth, (fmargin, fill_type)) in intv_set.items():
-            cbeg, cend = grid.get_wire_bounds(layer_id, (hidx - 1) / 2, width=wwidth, unit_mode=True)
+            cbeg, cend = grid.get_wire_bounds(layer_id, (hidx - 1) / 2,
+                                              width=wwidth, unit_mode=True)
             min_space = tech_info.get_min_space(layer_type, cend - cbeg, unit_mode=True)
             fmargin = max(margin, fmargin, min_space)
 
@@ -383,13 +399,15 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
         for (wstart, wstop), (wwidth, (fmargin, fill_type)) in intv_set.items():
             fmargin = max(fill_margin, fmargin)
             sub_intv = (wstart - fmargin, wstop + fmargin)
-            cbeg, cend = grid.get_wire_bounds(layer_id, (hidx - 1) / 2, width=wwidth, unit_mode=True)
+            cbeg, cend = grid.get_wire_bounds(layer_id, (hidx - 1) / 2,
+                                              width=wwidth, unit_mode=True)
             idx0, idx1 = grid.get_overlap_tracks(layer_id, cbeg - fmargin, cend + fmargin,
                                                  half_track=True, unit_mode=True)
             hidx0 = int(round(2 * idx0 + 1)) - 2 * (sup_width - 1)
             hidx1 = int(round(2 * idx1 + 1)) + 2 * (sup_width - 1)
             if debug:
-                print('Found track: hidx = %d, intv = (%d, %d), fill_type = %s' % (hidx, wstart, wstop, fill_type))
+                print('Found track: hidx = %d, intv = (%d, %d), '
+                      'fill_type = %s' % (hidx, wstart, wstop, fill_type))
                 print('deleting fill in hidx range (inclusive): (%d, %d)' % (hidx0, hidx1))
 
             # substract fill
@@ -478,7 +496,8 @@ def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
     The method draws the minimum number of fill blocks needed to satisfy maximum spacing spec.
     The given area is filled with the following properties:
 
-    1. all spaces are as close to the given space as possible (differ by at most 1), without exceeding it.
+    1. all spaces are as close to the given space as possible (differ by at most 1),
+       without exceeding it.
     2. the filled area is as uniform as possible.
     3. the filled area is symmetric about the center.
     4. fill is drawn as much as possible given the above constraints.
@@ -576,7 +595,8 @@ def fill_symmetric_min_density_info(area, targ_area, n_min, n_max, sp_min,
     sp_min : int
         minimum space between each fill block.
     sp_max : Optional[int]
-        if given, make sure space between blocks does not exceed this value.  Must be greater than sp_min
+        if given, make sure space between blocks does not exceed this value.
+        Must be greater than sp_min
     fill_on_edge : bool
         If True, we put fill blocks on area boundary.  Otherwise, we put space block on
         area boundary.
@@ -660,7 +680,8 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
     sp_min : int
         minimum space between each fill block.
     sp_max : Optional[int]
-        if given, make sure space between blocks does not exceed this value.  Must be greater than sp_min
+        if given, make sure space between blocks does not exceed this value.
+        Must be greater than sp_min
     fill_on_edge : bool
         If True, we put fill blocks on area boundary.  Otherwise, we put space block on
         area boundary.
@@ -714,7 +735,8 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
         def golden_fun2(nfill):
             try:
                 info2, invert2 = _fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
-                                                              fill_on_edge=fill_on_edge, cyclic=cyclic)
+                                                              fill_on_edge=fill_on_edge,
+                                                              cyclic=cyclic)
                 if invert2:
                     _, sp_cur = _get_min_max_blk_len(info2)
                 else:
@@ -739,9 +761,17 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
     return (fill_area, nfill_opt, info[1]), invert
 
 
-def fill_symmetric_max_density(area, targ_area, n_min, n_max, sp_min, offset=0,
-                               sp_max=None, fill_on_edge=True, cyclic=False):
-    # type: (int, int, int, int, int, int, Optional[int], bool, bool) -> Tuple[List[Tuple[int, int]], int]
+def fill_symmetric_max_density(area,  # type: int
+                               targ_area,  # type: int
+                               n_min,  # type: int
+                               n_max,  # type: int
+                               sp_min,  # type: int
+                               offset=0,  # type: int
+                               sp_max=None,  # type: Optional[int]
+                               fill_on_edge=True,  # type: bool
+                               cyclic=False,  # type: bool
+                               ):
+    # type: (...) -> Tuple[List[Tuple[int, int]], int]
     """Fill the given 1-D area as much as possible.
 
     Compute fill location such that the given area is filled with the following properties:
@@ -766,7 +796,8 @@ def fill_symmetric_max_density(area, targ_area, n_min, n_max, sp_min, offset=0,
     offset : int
         the starting coordinate of the total interval.
     sp_max : Optional[int]
-        if given, make sure space between blocks does not exceed this value.  Must be greater than sp_min
+        if given, make sure space between blocks does not exceed this value.
+        Must be greater than sp_min
     fill_on_edge : bool
         If True, we put fill blocks on area boundary.  Otherwise, we put space block on
         area boundary.
@@ -781,7 +812,8 @@ def fill_symmetric_max_density(area, targ_area, n_min, n_max, sp_min, offset=0,
         total filled area.  May or may not meet minimum density requirement.
     """
     max_result = fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
-                                                 sp_max=sp_max, fill_on_edge=fill_on_edge, cyclic=cyclic)
+                                                 sp_max=sp_max, fill_on_edge=fill_on_edge,
+                                                 cyclic=cyclic)
     (fill_area, _, args), invert = max_result
     return fill_symmetric_interval(*args, offset=offset, invert=invert)[0], fill_area
 
@@ -806,7 +838,8 @@ class EmptyRegionError(ValueError):
     pass
 
 
-def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_edge=True, cyclic=False):
+def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min,
+                                 fill_on_edge=True, cyclic=False):
     # type: (int, int, int, int, int, bool, bool) -> Tuple[Tuple[Any, ...], bool]
     """Fill the given 1-D area as much as possible with given number of fill blocks.
 
@@ -814,7 +847,8 @@ def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_
 
     1. the area is as uniform as possible.
     2. the area is symmetric with respect to the center
-    3. the area is filled as much as possible with exactly nfill blocks, with lengths between n_min and n_max.
+    3. the area is filled as much as possible with exactly nfill blocks,
+       with lengths between n_min and n_max.
     4. all fill blocks are at least sp_min apart.
 
     Parameters
@@ -852,7 +886,8 @@ def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_
 
     if nfill == 0:
         # no fill at all
-        return _fill_symmetric_info(tot_area, 0, tot_area, inc_sp=False, fill_on_edge=False, cyclic=False), False
+        return _fill_symmetric_info(tot_area, 0, tot_area, inc_sp=False,
+                                    fill_on_edge=False, cyclic=False), False
 
     # check no solution
     sp_delta = 0 if cyclic else (-1 if fill_on_edge else 1)
@@ -862,7 +897,8 @@ def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_
 
     # first, try drawing nfill blocks without block length constraint.
     # may throw exception if no solution
-    info = _fill_symmetric_info(tot_area, nfill, sp_min, inc_sp=True, fill_on_edge=fill_on_edge, cyclic=cyclic)
+    info = _fill_symmetric_info(tot_area, nfill, sp_min, inc_sp=True,
+                                fill_on_edge=fill_on_edge, cyclic=cyclic)
     bmin, bmax = _get_min_max_blk_len(info)
     if bmin < n_min:
         # could get here if cyclic = True, fill_on_edge = True, n_min is odd
@@ -872,16 +908,19 @@ def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min, fill_on_
         # we satisfy block length constraint, just return
         return info, False
 
-    # we broke maximum block length constraint, so we flip space and fill to have better control on fill length
+    # we broke maximum block length constraint, so we flip
+    # space and fill to have better control on fill length
     if nsp == 0 and n_max != tot_area and n_max - 1 != tot_area:
-        # we get here only if nfill = 1 and fill_on_edge is True.  In this case there's no way to draw
-        # only one fill and abut both edges
+        # we get here only if nfill = 1 and fill_on_edge is True.
+        # In this case there's no way to draw only one fill and abut both edges
         raise NoFillAbutEdgeError('Cannot draw only one fill abutting both edges.')
-    info = _fill_symmetric_info(tot_area, nsp, n_max, inc_sp=False, fill_on_edge=not fill_on_edge, cyclic=cyclic)
+    info = _fill_symmetric_info(tot_area, nsp, n_max, inc_sp=False,
+                                fill_on_edge=not fill_on_edge, cyclic=cyclic)
     num_diff_sp = info[1][2]
     if num_diff_sp > 0 and n_min == n_max:
         # no solution with same fill length, but we must have same fill length everywhere.
-        raise NoFillChoiceError('Cannot draw %d fill blocks with n_min = n_max = %d' % (nfill, n_min))
+        raise NoFillChoiceError('Cannot draw %d fill blocks with '
+                                'n_min = n_max = %d' % (nfill, n_min))
     return info, True
 
 
@@ -991,7 +1030,8 @@ def _fill_symmetric_info(tot_area, num_blk_tot, sp, inc_sp=True, fill_on_edge=Tr
                 num_blk1 += num_blk_tot
         if num_blk1 % 2 == 1:
             # the only way we get here is if cyclic and fill_on_edge is True.
-            # in this case, we need to add one to fill unit to account for edge fill double counting.
+            # in this case, we need to add one to fill unit to account
+            # for edge fill double counting.
             num_blk1 += 1
 
         # get number of half fill intervals
@@ -1067,8 +1107,8 @@ def _get_min_max_blk_len(fill_info):
     return min(blk0, blk1, blkm), max(blk0, blk1, blkm)
 
 
-def fill_symmetric_interval(tot_area, sp, num_diff_sp, sp_edge, blk0, blk1, k, m, mid_blk_len, mid_sp_len,
-                            fill_on_edge, cyclic, offset=0, invert=False):
+def fill_symmetric_interval(tot_area, sp, num_diff_sp, sp_edge, blk0, blk1, k, m, mid_blk_len,
+                            mid_sp_len, fill_on_edge, cyclic, offset=0, invert=False):
     """Helper function, construct interval list from output of _fill_symmetric_info().
 
     num_diff_sp = number of space blocks that has length different than sp

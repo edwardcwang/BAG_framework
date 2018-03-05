@@ -144,8 +144,14 @@ class RoutingGrid(object):
 
         return my_bot_layer
 
-    def get_flip_parity_at(self, bot_layer, top_layer, loc, orient, unit_mode=False):
-        # type: (int, int, Tuple[Union[int, float], Union[int, float]], str, bool) -> Dict[int, bool]
+    def get_flip_parity_at(self,  # type: RoutingGrid
+                           bot_layer,  # type: int
+                           top_layer,  # type: int
+                           loc,  # type: Tuple[Union[int, float], Union[int, float]]
+                           orient,  # type: str
+                           unit_mode=False,  # type: bool
+                           ):
+        # type: (...) -> Dict[int, bool]
         """Compute the flip parity dictionary for an instance placed at the given location.
 
         Parameters
@@ -183,13 +189,12 @@ class RoutingGrid(object):
             if lay in self.layers:
                 tdir = self.dir_tracks[lay]
 
-                # step 1: find the track in top level that corresponds to the track at instance origin
+                # find the track in top level that corresponds to the track at instance origin
                 if tdir == 'y':
                     coord, scale = xo, yscale
                 else:
                     coord, scale = yo, xscale
 
-                # tr_idx = self.coord_to_nearest_track(lay, coord, half_track=True, mode=1, unit_mode=True)
                 tr_idx = self.coord_to_track(lay, coord, unit_mode=True)
                 offset_htr = int(round(tr_idx * 2 + 1))
 
@@ -459,7 +464,8 @@ class RoutingGrid(object):
         layer_type = self.tech_info.get_layer_type(layer_name)
 
         width = self.get_track_width(layer_id, width_ntr, unit_mode=True)
-        sp_min_unit = self.tech_info.get_min_space(layer_type, width, unit_mode=True, same_color=same_color)
+        sp_min_unit = self.tech_info.get_min_space(layer_type, width, unit_mode=True,
+                                                   same_color=same_color)
         w_unit = self.w_tracks[layer_id]
         sp_unit = self.sp_tracks[layer_id]
         # if this width is overridden, we may have extra space
@@ -609,7 +615,6 @@ class RoutingGrid(object):
             list of track indices.  0 is the left-most track.
         """
         if half_end_space:
-            # half indices = round((2 * k + 1) * N / (2 * m)) = floor(((2 * k + 1) * N + m) / (2 * m))
             tot_space_htr = 2 * tot_space
             scale = 2 * tot_space_htr
             offset = tot_space_htr + num_tracks
@@ -740,7 +745,8 @@ class RoutingGrid(object):
         height : Union[float, int]
             height of the block, in layout units.
         round_up : bool
-            True to round up instead of raising an error if the given width and height are not on pitch.
+            True to round up instead of raising an error if the given width and height
+            are not on pitch.
         unit_mode : bool
             True if the given layout dimensions are in resolution units.
         half_blk_x : bool
@@ -752,7 +758,8 @@ class RoutingGrid(object):
         -------
         size : Tuple[int, int, int]
             the size tuple.  the first element is the top layer ID, second element is the width in
-            number of vertical tracks, and third element is the height in number of horizontal tracks.
+            number of vertical tracks, and third element is the height in number of
+            horizontal tracks.
         """
         if not unit_mode:
             res = self._resolution
@@ -778,8 +785,11 @@ class RoutingGrid(object):
         h_size = height // h_pitch if height % h_pitch == 0 else height / h_pitch
         return layer_id, w_size, h_size
 
-    def get_size_dimension(self, size, unit_mode=False):
-        # type: (Tuple[int, Union[float, int], Union[float, int]]) -> Tuple[Union[float, int], Union[float, int]]
+    def get_size_dimension(self,  # type: RoutingGrid
+                           size,  # type: Tuple[int, Union[float, int], Union[float, int]]
+                           unit_mode=False,  # type: bool
+                           ):
+        # type: (...) -> Tuple[Union[float, int], Union[float, int]]
         """Compute width and height from given size.
 
         Parameters
@@ -797,8 +807,8 @@ class RoutingGrid(object):
             the height in layout units.
         """
         w_pitch, h_pitch = self.get_size_pitch(size[0], unit_mode=True)
-        w_unit, h_unit = int(round(size[1] * 2)) * w_pitch // 2, int(round(size[2] * 2)) * h_pitch // 2
-
+        w_unit = int(round(size[1] * 2)) * w_pitch // 2
+        h_unit = int(round(size[2] * 2)) * h_pitch // 2
         if unit_mode:
             return w_unit, h_unit
         else:
@@ -1023,7 +1033,8 @@ class RoutingGrid(object):
         while bin_iter.has_next():
             ntr = bin_iter.get_next()
             width = self.get_track_width(layer_id, ntr, unit_mode=True)
-            idc_max, irms_max, ipeak_max = self.tech_info.get_metal_em_specs(layer_name, width * res,
+            idc_max, irms_max, ipeak_max = self.tech_info.get_metal_em_specs(layer_name,
+                                                                             width * res,
                                                                              l=l * res, **kwargs)
             if idc > idc_max or iac_rms > irms_max or iac_peak > ipeak_max:
                 # check metal satisfies EM spec
@@ -1034,8 +1045,10 @@ class RoutingGrid(object):
                     bbox = BBox(0.0, 0.0, bot_w, width, res, unit_mode=True)
                 else:
                     bbox = BBox(0.0, 0.0, width, bot_w, res, unit_mode=True)
-                vinfo = self.tech_info.get_via_info(bbox, bot_layer_name, layer_name, bot_dir, **kwargs)
-                if vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or iac_peak > vinfo['iac_peak']:
+                vinfo = self.tech_info.get_via_info(bbox, bot_layer_name, layer_name,
+                                                    bot_dir, **kwargs)
+                if (vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or
+                        iac_peak > vinfo['iac_peak']):
                     bin_iter.up()
                     continue
             if top_w > 0 and top_dir != tr_dir:
@@ -1043,8 +1056,10 @@ class RoutingGrid(object):
                     bbox = BBox(0.0, 0.0, top_w, width, res, unit_mode=True)
                 else:
                     bbox = BBox(0.0, 0.0, width, top_w, res, unit_mode=True)
-                vinfo = self.tech_info.get_via_info(bbox, layer_name, top_layer_name, tr_dir, **kwargs)
-                if vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or iac_peak > vinfo['iac_peak']:
+                vinfo = self.tech_info.get_via_info(bbox, layer_name, top_layer_name,
+                                                    tr_dir, **kwargs)
+                if (vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or
+                        iac_peak > vinfo['iac_peak']):
                     bin_iter.up()
                     continue
 
@@ -1174,13 +1189,20 @@ class RoutingGrid(object):
             upper = int(round(upper / self._resolution))
 
         wtr = self.w_tracks[layer_id]
-        lower_tr = self.find_next_track(layer_id, lower - wtr, half_track=half_track, mode=1, unit_mode=True)
-        upper_tr = self.find_next_track(layer_id, upper + wtr, half_track=half_track, mode=-1, unit_mode=True)
+        lower_tr = self.find_next_track(layer_id, lower - wtr, half_track=half_track,
+                                        mode=1, unit_mode=True)
+        upper_tr = self.find_next_track(layer_id, upper + wtr, half_track=half_track,
+                                        mode=-1, unit_mode=True)
 
         return lower_tr, upper_tr
 
-    def get_via_extensions_dim(self, bot_layer_id, bot_dim, top_dim, unit_mode=False):
-        # type: (int, Union[float, int], Union[float, int], bool) -> Tuple[Union[float, int], Union[float, int]]
+    def get_via_extensions_dim(self,  # type: RoutingGrid
+                               bot_layer_id,  # type: int
+                               bot_dim,  # type: Union[float, int]
+                               top_dim,  # type: Union[float, int]
+                               unit_mode=False,  # type: bool
+                               ):
+        # type: (...) -> Tuple[Union[float, int], Union[float, int]]
         """Returns the via extension.
 
         Parameters
@@ -1290,7 +1312,8 @@ class RoutingGrid(object):
         else:
             raise ValueError('coordinate %.4g is not on track.' % coord)
 
-    def find_next_track(self, layer_id, coord, tr_width=1, half_track=False, mode=1, unit_mode=False):
+    def find_next_track(self, layer_id, coord, tr_width=1, half_track=False,
+                        mode=1, unit_mode=False):
         # type: (int, Union[float, int], int, bool, int, bool) -> Union[float, int]
         """Find the track such that its edges are on the same side w.r.t. the given coordinate.
 
@@ -1393,8 +1416,15 @@ class RoutingGrid(object):
         else:
             return q / 2
 
-    def transform_track(self, layer_id, track_idx, dx=0, dy=0, orient='R0', unit_mode=False):
-        # type: (int, Union[float, int], Union[float, int], Union[float, int], str, bool) -> Union[float, int]
+    def transform_track(self,  # type: RoutingGrid
+                        layer_id,  # type: int
+                        track_idx,  # type: Union[float, int]
+                        dx=0,  # type: Union[float, int]
+                        dy=0,  # type: Union[float, int]
+                        orient='R0',  # type: str
+                        unit_mode=False,  # type: bool
+                        ):
+        # type: (...) -> Union[float, int]
         """Transform the given track index.
 
         Parameters
@@ -1427,13 +1457,16 @@ class RoutingGrid(object):
         else:
             hidx_shift = int(2 * self.coord_to_track(layer_id, dx, unit_mode=True)) + 1
 
-        hidx_scale = 1
-        if orient == 'R180':
+        if orient == 'R0':
+            hidx_scale = 1
+        elif orient == 'R180':
             hidx_scale = -1
         elif orient == 'MX' and is_x:
             hidx_scale = -1
         elif orient == 'MY' and not is_x:
             hidx_scale = -1
+        else:
+            raise ValueError('Unsupported orientation: %s' % orient)
 
         old_hidx = int(track_idx * 2 + 1)
         new_hidx = old_hidx * hidx_scale + hidx_shift
@@ -1466,8 +1499,12 @@ class RoutingGrid(object):
             return coord_unit
         return coord_unit * self._resolution
 
-    def interval_to_track(self, layer_id, intv, unit_mode=False):
-        # type: (int, Tuple[Union[float, int], Union[float, int]], bool) -> Tuple[Union[float, int], int]
+    def interval_to_track(self,  # type: RoutingGrid
+                          layer_id,  # type: int
+                          intv,  # type: Tuple[Union[float, int], Union[float, int]]
+                          unit_mode=False,  # type: bool
+                          ):
+        # type: (...) -> Tuple[Union[float, int], int]
         """Convert given coordinates to track number and width.
 
         Parameters
