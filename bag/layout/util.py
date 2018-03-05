@@ -15,26 +15,21 @@ transform_table = {'R0': np.array([[1, 0], [0, 1]], dtype=int),
                    'MX': np.array([[1, 0], [0, -1]], dtype=int),
                    'MY': np.array([[-1, 0], [0, 1]], dtype=int),
                    'R180': np.array([[-1, 0], [0, -1]], dtype=int),
+                   'R90': np.array([[0, -1], [1, 0]], dtype=int),
+                   'MXR90': np.array([[0, 1], [1, 0]], dtype=int),
+                   'MYR90': np.array([[0, -1], [-1, 0]], dtype=int),
+                   'R270': np.array([[0, 1], [-1, 0]], dtype=int),
                    }
-
-orient_code = {'R0': 0b00, 'MX': 0b01, 'MY': 0b10, 'R180': 0b11}
-orient_reverse = ['R0', 'MX', 'MY', 'R180']
 
 
 def transform_point(x, y, loc, orient):
     """Transform the (x, y) point using the given location and orientation."""
     shift = np.asarray(loc)
-    mat = transform_table.get(orient, None)
-    if mat is None:
+    if orient not in transform_table:
         raise ValueError('Unsupported orientation: %s' % orient)
 
+    mat = transform_table[orient]
     return np.dot(mat, np.array([x, y])) + shift
-
-
-def transform_orient(orient, trans_orient):
-    """Returns the new orientation after transforming orient with new_orient."""
-    code_final = orient_code[orient] ^ orient_code[trans_orient]
-    return orient_reverse[code_final]
 
 
 def transform_loc_orient(loc, orient, trans_loc, trans_orient):
@@ -366,29 +361,14 @@ class BBox(object):
         box : BBox
             the new bounding box.
         """
-        if unit_mode:
-            dx, dy = loc[0], loc[1]
-        else:
-            dx = int(round(loc[0] / self._res))
-            dy = int(round(loc[1] / self._res))
-        if orient == 'R0':
-            return BBox(self._left_unit + dx, self._bot_unit + dy,
-                        self._right_unit + dx, self._top_unit + dy,
-                        self._res, unit_mode=True)
-        elif orient == 'MX':
-            return BBox(self._left_unit + dx, -self._top_unit + dy,
-                        self._right_unit + dx, -self._bot_unit + dy,
-                        self._res, unit_mode=True)
-        elif orient == 'MY':
-            return BBox(-self._right_unit + dx, self._bot_unit + dy,
-                        -self._left_unit + dx, self._top_unit + dy,
-                        self._res, unit_mode=True)
-        elif orient == 'R180':
-            return BBox(-self._right_unit + dx, -self._top_unit + dy,
-                        -self._left_unit + dx, -self._bot_unit + dy,
-                        self._res, unit_mode=True)
-        else:
-            raise ValueError('Invalid orientation: ' + orient)
+        if not unit_mode:
+            loc = int(round(loc[0] / self._res)), int(round(loc[1] / self._res))
+
+        p1 = transform_point(self._left_unit, self._bot_unit, loc, orient)
+        p2 = transform_point(self._right_unit, self._top_unit, loc, orient)
+        return BBox(min(p1[0], p2[0]), min(p1[1], p2[1]),
+                    max(p1[0], p2[0]), max(p1[1], p2[1]),
+                    self._res, unit_mode=True)
 
     def move_by(self, dx=0.0, dy=0.0, unit_mode=False):
         # type: (Union[float, int], Union[float, int], bool) -> BBox
@@ -418,7 +398,8 @@ class BBox(object):
     def flip_xy(self):
         # type: () -> BBox
         """Returns a new BBox with X and Y coordinate swapped."""
-        return BBox(self._bot_unit, self._left_unit, self._top_unit, self._right_unit, self._res, unit_mode=True)
+        return BBox(self._bot_unit, self._left_unit, self._top_unit, self._right_unit,
+                    self._res, unit_mode=True)
 
     def with_interval(self, direction, lower, upper, unit_mode=False):
         if not unit_mode:
@@ -457,7 +438,7 @@ class BBox(object):
         return ans[0] * self._res, ans[1] * self._res
 
     def get_bounds(self, unit_mode=False):
-        # type: (bool) -> Tuple[Union[float, int], Union[float, int], Union[float, int], Union[float, int]]
+        # type: (bool) -> Tuple[Union[float, int], ...]
         """Returns the bounds of this bounding box.
 
         Parameters
@@ -467,7 +448,7 @@ class BBox(object):
 
         Returns
         -------
-        bounds : Tuple[Union[float, int], Union[float, int], Union[float, int], Union[float, int]]
+        bounds : Tuple[Union[float, int], ...]
             a tuple of (left, bottom, right, top) coordinates.
         """
         if unit_mode:
@@ -497,7 +478,8 @@ class BBox(object):
 
     def get_immutable_key(self):
         """Returns an immutable key object that can be used to uniquely identify this BBox."""
-        return self.__class__.__name__, self._left_unit, self._bot_unit, self._right_unit, self._top_unit, self._res
+        return (self.__class__.__name__, self._left_unit, self._bot_unit,
+                self._right_unit, self._top_unit, self._res)
 
     def __str__(self):
         return repr(self)
@@ -813,13 +795,15 @@ class BBoxArray(object):
     def __repr__(self):
         precision = max(1, -1 * int(np.floor(np.log10(self._bbox.resolution))))
         fmt_str = '%s(%s, %d, %d, %.{0}f, %.{0}f)'.format(precision)
-        return fmt_str % (self.__class__.__name__, self._bbox, self._nx, self._ny, self.spx, self.spy)
+        return fmt_str % (self.__class__.__name__, self._bbox, self._nx,
+                          self._ny, self.spx, self.spy)
 
 
 class BBoxCollection(object):
     """A collection of bounding boxes.
 
-    To support efficient computation, this class stores bounding boxes as a list of BBoxArray objects.
+    To support efficient computation, this class stores bounding boxes as a list of
+    BBoxArray objects.
 
     Parameters
     ----------
@@ -888,7 +872,8 @@ class BBoxCollection(object):
         """
         box = BBox.get_invalid_bbox()
         for box_arr in self._box_arr_list:
-            all_box = BBox(box_arr.left, box_arr.bottom, box_arr.right, box_arr.top, box_arr.base.resolution)
+            all_box = BBox(box_arr.left, box_arr.bottom, box_arr.right, box_arr.top,
+                           box_arr.base.resolution)
             box = box.merge(all_box)
 
         return box
