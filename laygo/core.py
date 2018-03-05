@@ -504,7 +504,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         self._num_rows = 0
         self._laygo_size = None
         self._row_orientations = None
-        self._row_min_tracks = None
         self._row_infos = None
         self._row_kwargs = None
         self._row_y = None
@@ -569,11 +568,31 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         self._row_orientations = dig_row_info['row_orientations']
         self._num_rows = len(self._row_orientations)
         self._row_kwargs = dig_row_info['row_kwargs']
-        self._row_min_tracks = dig_row_info['row_min_tracks']
         self._used_list = [LaygoIntvSet(default_end_info) for _ in range(self._num_rows)]
         self._row_infos = dig_row_info['row_infos']
         self._ext_params = dig_row_info['ext_params']
         self._row_y = dig_row_info['row_y']
+
+        # set left and right end information list
+        self._set_endlr_infos(self._num_rows)
+
+    def set_rows_analog(self, ana_row_info):
+        default_end_info = self._tech_cls.get_default_end_info()
+
+        # set LaygoInfo
+        self._laygo_info.top_layer = ana_row_info['top_layer']
+        self._laygo_info.guard_ring_nf = ana_row_info['guard_ring_nf']
+        self._laygo_info.draw_boundaries = True
+        self._laygo_info.end_mode = ana_row_info['end_mode']
+
+        # set row information
+        self._row_orientations = ana_row_info['row_orientations']
+        self._num_rows = len(self._row_orientations)
+        self._row_kwargs = ana_row_info['row_kwargs']
+        self._used_list = [LaygoIntvSet(default_end_info) for _ in range(self._num_rows)]
+
+        self._set_row_infos_from_y(ana_row_info['ybot'], ana_row_info['ytop'],
+                                   ana_row_info['row_info'])
 
         # set left and right end information list
         self._set_endlr_infos(self._num_rows)
@@ -628,7 +647,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         self._row_orientations = row_orientations
         self._num_rows = num_rows
         self._row_kwargs = row_kwargs
-        self._row_min_tracks = row_min_tracks
         self._used_list = [LaygoIntvSet(default_end_info) for _ in range(self._num_rows)]
 
         # set left and right end information list
@@ -694,7 +712,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             guard_ring_nf=self._laygo_info.guard_ring_nf,
             row_orientations=self._row_orientations,
             row_kwargs=self._row_kwargs,
-            row_min_tracks=self._row_min_tracks,
             row_infos=self._row_infos,
             ext_params=self._ext_params,
             row_y=self._row_y,
@@ -1033,7 +1050,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                             wg.move_by(idx_targ - tr_idx, propagate=True)
 
             # record information
-            ext_y = 0 if prev_ext_info is None else row_y[-1][2]
+            ext_y = 0 if idx == 0 else row_y[-1][2]
             row_y.append((ytop_prev, ycur, ycur + blk_height, ytop))
             row_infos.append(row_info)
             ext_params_list.append((prev_ext_h + cur_bot_ext_h, ext_y))
@@ -1074,6 +1091,91 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                     row_info[key] = (0, 0)
 
         return row_infos, ext_params_list, row_y
+
+    def _set_row_infos_from_y(self, ybot, ytop, row_info_list):
+        lch_unit = self._laygo_info.lch_unit
+
+        tcls = self._tech_cls
+        mos_pitch = tcls.get_mos_pitch(unit_mode=True)
+        vm_layer = tcls.get_dig_conn_layer()
+        hm_layer = vm_layer + 1
+        via_ext = self.grid.get_via_extensions(vm_layer, 1, 1, unit_mode=True)[0]
+
+        ext_params_list = []
+        row_infos = []
+        row_y = []
+        prev_ext_h = 0
+        ytop_prev = ybot
+        # first pass: determine Y coordinates of each row.
+        for idx, (yb_cur, yt_cur, row_params) in enumerate(row_info_list):
+            row_type = row_params['mos_type']
+            row_w = row_params['w']
+            row_thres = row_params['thres']
+            kwargs = row_params['kwargs']
+            kwargs['analog'] = True
+            row_orient = self._row_orientations[idx]
+
+            if row_type == 'nch' or row_type == 'pch':
+                row_info = tcls.get_laygo_mos_row_info(lch_unit, row_w, row_w, row_type,
+                                                       row_thres, '', '', **kwargs)
+            elif row_type == 'ptap' or row_type == 'ntap':
+                row_info = tcls.get_laygo_sub_row_info(lch_unit, row_w, row_type,
+                                                       row_thres, **kwargs)
+            else:
+                raise ValueError('Unknown row type: %s' % row_type)
+
+            if idx == len(row_info_list - 1):
+                ytop_cur = ytop
+            else:
+                ytop_cur = (yt_cur + row_info_list[idx + 1][1]) // 2
+            # record information
+            ext_y = 0 if idx == 0 else row_y[-1][2]
+            row_y.append((ytop_prev, yb_cur, yt_cur, ytop_cur))
+            row_infos.append(row_info)
+            ext_params_list.append((prev_ext_h + (yb_cur - ytop_prev) // mos_pitch, ext_y))
+
+            # record track intervals
+            btr = self.grid.find_next_track(hm_layer, ytop_prev, half_track=True,
+                                            mode=1, unit_mode=True)
+            ttr = self.grid.find_next_track(hm_layer, ytop_cur, half_track=True,
+                                            mode=-1, unit_mode=True)
+            g_conn_y = row_info.get('g_conn_y', (0, 0))
+            gb_conn_y = row_info['gb_conn_y']
+            ds_conn_y = row_info['ds_conn_y']
+            if row_orient == 'R0':
+                yt_g = yb_cur + g_conn_y[1]
+                yb_gb = yb_cur + gb_conn_y[0]
+                yb_ds = yb_cur + ds_conn_y[0]
+                gtr = self.grid.find_next_track(hm_layer, yt_g - via_ext, half_track=True,
+                                                mode=-1, unit_mode=True)
+                gbtr = self.grid.find_next_track(hm_layer, yb_gb + via_ext, half_track=True,
+                                                 mode=1, unit_mode=True)
+                dstr = self.grid.find_next_track(hm_layer, yb_ds + via_ext, half_track=True,
+                                                 mode=1, unit_mode=True)
+                row_info['g_intv'] = (btr, max(btr, gtr))
+                row_info['gb_intv'] = (gbtr, max(ttr, gbtr))
+                row_info['ds_intv'] = (dstr, max(ttr, dstr))
+            else:
+                yb_g = yt_cur - g_conn_y[1]
+                yt_gb = yt_cur - gb_conn_y[0]
+                yt_ds = yt_cur - ds_conn_y[0]
+                gtr = self.grid.find_next_track(hm_layer, yb_g + via_ext, half_track=True,
+                                                mode=1, unit_mode=True)
+                gbtr = self.grid.find_next_track(hm_layer, yt_gb - via_ext, half_track=True,
+                                                 mode=-1, unit_mode=True)
+                dstr = self.grid.find_next_track(hm_layer, yt_ds - via_ext, half_track=True,
+                                                 mode=-1, unit_mode=True)
+                row_info['g_intv'] = (gtr, max(ttr, gtr))
+                row_info['gb_intv'] = (btr, max(btr, gbtr))
+                row_info['ds_intv'] = (btr, max(btr, dstr))
+
+            # update previous row information
+            ytop_prev = yt_cur
+            prev_ext_h = (ytop_cur - yt_cur) // mos_pitch
+
+        self._row_infos = row_infos
+        self._ext_params = ext_params_list
+        self._row_y = row_y
 
     def get_num_tracks(self, row_idx, tr_type):
         row_info = self._row_infos[row_idx]
@@ -1207,10 +1309,10 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         _, ycur, ytop, _ = self._row_y[row_idx]
         if row_orient == 'R0':
-            y0 = self._row_y[row_idx][1]
+            y0 = ycur
             orient = 'MY' if flip else 'R0'
         else:
-            y0 = self._row_y[row_idx][2]
+            y0 = ytop
             orient = 'R180' if flip else 'MX'
 
         # convert horizontal pitch to resolution units
