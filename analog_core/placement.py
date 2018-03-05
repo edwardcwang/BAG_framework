@@ -14,6 +14,7 @@ class WireGroup(object):
     """A group of horizontal wires associated with a transistor row."""
     def __init__(self,
                  layer_id,  # type: int
+                 wire_type,  # type: str
                  num_tr=0,  # type: Union[float, int]
                  space=0,  # type: Union[float, int]
                  tr_manager=None,  # type: Optional[TrackManager]
@@ -22,6 +23,7 @@ class WireGroup(object):
         # type: (...) -> None
         self.space = space
         self._layer = layer_id
+        self._wire_type = wire_type
         self._tr_manager = tr_manager
         if name_list is None:
             self._num_tr = num_tr
@@ -35,6 +37,15 @@ class WireGroup(object):
             raise ValueError('Cannot create WireGroup with < 1 track.')
         self._tr_off = 0
         self._children = []
+
+    @property
+    def type(self):
+        return self._wire_type
+
+    @property
+    def interval(self):
+        # type: () -> Tuple[Union[float, int], Union[float, int]]
+        return self._tr_off, self._tr_off + self._num_tr
 
     @property
     def tr_manager(self):
@@ -130,6 +141,14 @@ class WireGroup(object):
                     new_tr_off = self.place_child(child)
                     if new_tr_off > cur_tr_off:
                         child.move_by(new_tr_off - cur_tr_off, propagate=True)
+
+    def move_up(self, delta_max=0):
+        # type: (Union[float, int]) -> None
+        delta = delta_max
+        for child in self._children:
+            child_idx = self.place_child(child)
+            delta = min(delta, child.track_offset - child_idx)
+        self._tr_off += delta
 
 
 class WireTree(object):
