@@ -758,6 +758,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 row_pitch = lcm([row_pitch, tr_pitch // 2])
 
             # get bottom/top Y coordinates
+            blk_h = row_info['arr_y'][1]
             g_conn_y = row_info.get('g_conn_y', (0, 0))
             gb_conn_y = row_info['gb_conn_y']
             ds_conn_y = row_info['ds_conn_y']
@@ -795,6 +796,10 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             else:
                 bext_info = row_info['ext_top_info']
                 text_info = row_info['ext_bot_info']
+                g_conn_y = blk_h - g_conn_y[1], blk_h - g_conn_y[0]
+                gb_conn_y = blk_h - gb_conn_y[1], blk_h - gb_conn_y[0]
+                ds_conn_y = blk_h - ds_conn_y[1], blk_h - ds_conn_y[0]
+
                 if wire_names is None:
                     ng = num_g_tracks[row_idx]
                     ngb = num_gb_tracks[row_idx]
@@ -827,7 +832,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 wire_tree.add_wires(bot_wires, (row_idx, 0))
             if top_wires:
                 wire_tree.add_wires(top_wires, (row_idx, 1))
-            pinfo_list.append((bot_conn_y, top_conn_y, row_info['arr_y'][1], row_orient,
+            pinfo_list.append((bot_conn_y, top_conn_y, blk_h, row_orient,
                                bext_info, text_info, row_type, row_info, min_row_height,
                                row_pitch, kwargs))
 
