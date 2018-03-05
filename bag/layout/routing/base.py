@@ -159,10 +159,22 @@ class TrackID(object):
         """returns a transformation of this TrackID."""
         layer_id = self._layer_id
         is_x = grid.get_direction(layer_id) == 'x'
-        if orient == 'R180' or (is_x and orient == 'MX') or (not is_x and orient == 'MY'):
+        if orient == 'R0':
+            base_hidx = self._hidx
+        elif orient == 'MX':
+            if is_x:
+                base_hidx = -self._hidx - (self._n - 1) * self._hpitch
+            else:
+                base_hidx = self._hidx
+        elif orient == 'MY':
+            if is_x:
+                base_hidx = self._hidx
+            else:
+                base_hidx = -self._hidx - (self._n - 1) * self._hpitch
+        elif orient == 'R180':
             base_hidx = -self._hidx - (self._n - 1) * self._hpitch
         else:
-            base_hidx = self._hidx
+            raise ValueError('Unsupported orientation: %s' % orient)
 
         delta = loc[1] if is_x else loc[0]
         delta = grid.coord_to_track(layer_id, delta, unit_mode=unit_mode) + 0.5
@@ -349,10 +361,22 @@ class WireArray(object):
         """
         layer_id = self.layer_id
         is_x = grid.get_direction(layer_id) == 'x'
-        if orient == 'R180' or (is_x and orient == 'MY') or (not is_x and orient == 'MX'):
+        if orient == 'R0':
+            lower, upper = self._lower, self._upper
+        elif orient == 'MX':
+            if is_x:
+                lower, upper = self._lower, self._upper
+            else:
+                lower, upper = -self._upper, -self._lower
+        elif orient == 'MY':
+            if is_x:
+                lower, upper = -self._upper, -self._lower
+            else:
+                lower, upper = self._lower, self._upper
+        elif orient == 'R180':
             lower, upper = -self._upper, -self._lower
         else:
-            lower, upper = self._lower, self._upper
+            raise ValueError('Unsupported orientation: %s' % orient)
 
         delta = loc[0] if is_x else loc[1]
         return WireArray(self.track_id.transform(grid, loc=loc, orient=orient),
