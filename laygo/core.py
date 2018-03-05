@@ -867,78 +867,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         ycur = -(-ycur // mos_pitch) * mos_pitch
         return ycur, tr_last_info
 
-    def _compute_ytop(self, tr_next, ycur, ytop, hm_layer, top_conn_y, top_wires, last_track,
-                      conn_delta, vm_le_sp, row_pitch, tr_manager, next_wires, tr_sp_top):
-        grid = self.grid
-
-        if last_track:
-            # update tr_next to account for space between bottom and top tracks
-            for ltr in last_track:
-                if isinstance(ltr, int) or isinstance(ltr, float):
-                    tr_next = max(tr_next, ltr + 1)
-                else:
-                    has_top = False
-                    for ttr_info in top_wires:
-                        if ttr_info:
-                            has_top = True
-                            _, loc = tr_manager.place_wires(hm_layer, [ltr[1], ttr_info[0]])
-                            tidx = loc[1] + ltr[0] - loc[0]
-                            t_w = tr_manager.get_width(hm_layer, ttr_info[0])
-                            tr_next = max(tr_next, tidx - (t_w - 1) / 2)
-                    if not has_top and next_wires is not None:
-                        for nw in next_wires:
-                            _, loc = tr_manager.place_wires(hm_layer, [ltr[1], nw])
-                            tidx = loc[1] + ltr[0] - loc[0]
-                            t_w = tr_manager.get_width(hm_layer, nw)
-                            tr_next = max(tr_next, tidx - (t_w - 1) / 2)
-
-        tr_next_new = tr_next
-        last_track_new = []
-        for ttr_info, (yb, yt) in zip(top_wires, top_conn_y):
-            ybtr = ycur + yb + conn_delta
-            yttr = ycur + yt - conn_delta
-            tr0 = max(tr_next, grid.coord_to_nearest_track(hm_layer, ybtr, half_track=True,
-                                                           mode=1, unit_mode=True))
-            tr1 = grid.coord_to_nearest_track(hm_layer, yttr, half_track=True,
-                                              mode=-1, unit_mode=True)
-            if isinstance(ttr_info, int) or isinstance(ttr_info, float):
-                tr1 = max(tr1, tr0 + ttr_info - 1)
-                tr1_y = grid.track_to_coord(hm_layer, tr1, unit_mode=True)
-                tny = max(ycur + yt + vm_le_sp + conn_delta,
-                          tr1_y + vm_le_sp + 2 * conn_delta)
-                tn = grid.coord_to_nearest_track(hm_layer, tny, half_track=True,
-                                                 mode=1, unit_mode=True)
-                tn = max(tn, tr1 + tr_sp_top)
-                tny = grid.track_to_coord(hm_layer, tn, unit_mode=True)
-                ytop = max(ytop, (tny + tr1_y) // 2)
-                tr_next_new = max(tr_next_new, tn)
-                last_track_new.append(tr1)
-            else:
-                if ttr_info:
-                    top_ntr, locs = tr_manager.place_wires(hm_layer, ttr_info, start_idx=tr0)
-                    last_track_new.append((locs[-1], ttr_info[-1]))
-                    if next_wires is None:
-                        tr1 = max(tr1, tr0 + top_ntr - 1)
-                        ytop = max(ytop, grid.track_to_coord(hm_layer, tr1 + 0.5, unit_mode=True))
-                        tr_next_new = max(tr_next_new, tr1 + 1)
-                    else:
-                        for nw in next_wires:
-                            t_w1 = tr_manager.get_width(hm_layer, ttr_info[-1])
-                            t_w2 = tr_manager.get_width(hm_layer, nw)
-                            _, locs = tr_manager.place_wires(hm_layer, ttr_info + [nw],
-                                                             start_idx=tr0)
-                            t_idx1 = locs[-2] + (t_w1 - 1) / 2
-                            t_idx2 = locs[-1] - (t_w2 - 1) / 2
-                            tr_next_new = max(tr_next_new, t_idx2)
-                            ya = grid.track_to_coord(hm_layer, t_idx1, unit_mode=True)
-                            yb = grid.track_to_coord(hm_layer, t_idx2, unit_mode=True)
-                            ytop = max(ytop, (ya + yb) // 2)
-
-        if not last_track_new:
-            last_track_new = last_track
-
-        return -(-ytop // row_pitch) * row_pitch, tr_next_new, last_track_new
-
     def _place_mirror_or_sub(self, row_type, row_thres, lch_unit, mos_pitch, ydelta, ext_info):
         # find substrate parameters
         sub_type = 'ntap' if row_type == 'pch' or row_type == 'ntap' else 'ptap'
@@ -987,42 +915,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 ext_w = -(-ext_w_test // 2)
 
         return ext_w, sub_extw
-
-    @classmethod
-    def _get_next_wires(cls, idx, wire_names, pinfo_list):
-        if wire_names is None:
-            return None
-
-        next_wires = []
-        for i in range(idx + 1, len(pinfo_list)):
-            for w_list in (pinfo_list[i][6], pinfo_list[i][7]):
-                has_wire = False
-                for tr_info in w_list:
-                    if tr_info:
-                        has_wire = True
-                        next_wires.append(tr_info[0])
-                if has_wire:
-                    return next_wires
-
-        return None
-
-    @classmethod
-    def _get_last_wires(cls, wire_names, pinfo_list):
-        if wire_names is None:
-            return None
-
-        next_wires = []
-        for i in range(len(pinfo_list), -1, -1):
-            for w_list in (pinfo_list[i][7], pinfo_list[i][6]):
-                has_wire = False
-                for tr_info in w_list:
-                    if tr_info:
-                        has_wire = True
-                        next_wires.append(tr_info[-1])
-                if has_wire:
-                    return next_wires
-
-        return None
 
     def _place_rows(self, ybot, tot_height_pitch, pinfo_list, wire_tree, min_htot):
         lch_unit = self._laygo_info.lch_unit
