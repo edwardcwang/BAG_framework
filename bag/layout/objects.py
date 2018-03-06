@@ -112,7 +112,7 @@ class Arrayable(Figure, metaclass=abc.ABCMeta):
 
     def __init__(self, res, nx=1, ny=1, spx=0, spy=0, unit_mode=False):
         # type: (float, int, int, ldim, ldim, bool) -> None
-        super(Arrayable, self).__init__(res)
+        Figure.__init__(self, res)
         self._nx = nx
         self._ny = ny
         if unit_mode:
@@ -257,7 +257,7 @@ class InstanceInfo(dict):
 
     def __init__(self, res, **kwargs):
         kv_iter = ((key, kwargs[key]) for key in self.param_list)
-        super(InstanceInfo, self).__init__(kv_iter)
+        dict.__init__(self, kv_iter)
         self._resolution = res
         if 'params' in kwargs:
             self.params = kwargs['params']
@@ -448,15 +448,18 @@ class Instance(Arrayable):
         """
         dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
         inst_loc = dx + self._loc_unit[0], dy + self._loc_unit[1]
-        return self._master.get_used_tracks().transform(self._parent_grid, bot_layer, top_layer, inst_loc,
-                                                        self._orient, unit_mode=True)
+        return self._master.get_used_tracks().transform(self._parent_grid, bot_layer, top_layer,
+                                                        inst_loc, self._orient, unit_mode=True)
 
     def get_rect_bbox(self, layer):
         """Returns the overall bounding box of all rectangles on the given layer.
 
         Note: currently this does not check primitive instances or vias.
         """
-        return self.translate_master_box(self._master.get_rect_bbox(layer))
+        bbox = self._master.get_rect_bbox(layer)
+        if not bbox.is_valid():
+            return bbox
+        return self.translate_master_box(bbox)
 
     @property
     def master(self):
@@ -529,7 +532,8 @@ class Instance(Arrayable):
         """Returns the overall bounding box of this instance."""
         box_arr = BBoxArray(self._master.bound_box, nx=self.nx, ny=self.ny,
                             spx=self._spx_unit, spy=self._spy_unit, unit_mode=True)
-        return box_arr.get_overall_bbox().transform(self.location_unit, self.orientation, unit_mode=True)
+        return box_arr.get_overall_bbox().transform(self.location_unit, self.orientation,
+                                                    unit_mode=True)
 
     @property
     def array_box(self):
@@ -541,7 +545,8 @@ class Instance(Arrayable):
 
         box_arr = BBoxArray(master_box, nx=self.nx, ny=self.ny,
                             spx=self._spx_unit, spy=self._spy_unit, unit_mode=True)
-        return box_arr.get_overall_bbox().transform(self.location_unit, self.orientation, unit_mode=True)
+        return box_arr.get_overall_bbox().transform(self.location_unit, self.orientation,
+                                                    unit_mode=True)
 
     def get_bound_box_of(self, row=0, col=0):
         """Returns the bounding box of an instance in this mosaic."""
@@ -585,8 +590,11 @@ class Instance(Arrayable):
         """
         return box.transform(self.location_unit, self.orientation, unit_mode=True)
 
-    def translate_master_location(self, mloc, unit_mode=False):
-        # type: (Tuple[Union[float, int], Union[float, int]], bool) -> Tuple[Union[float, int], Union[float, int]]
+    def translate_master_location(self,
+                                  mloc,  # type: Tuple[Union[float, int], Union[float, int]]
+                                  unit_mode=False,  # type: bool
+                                  ):
+        # type: (...) -> Tuple[Union[float, int], Union[float, int]]
         """Returns the actual location of the given point in master template.
 
         Parameters
@@ -870,11 +878,18 @@ class Path(Figure):
         True if width and points are given as resolution units instead of layout units.
     """
 
-    def __init__(self, resolution, layer, width, points, end_style='truncate', join_style='extend',
-                 unit_mode=False):
-        # type: (float, Union[str, Tuple[str, str]], float, List[Tuple[float, float]], str, str, bool) -> None
+    def __init__(self,
+                 resolution,  # type: float
+                 layer,  # type: Union[str, Tuple[str, str]]
+                 width,  # type: Union[int, float]
+                 points,  # type: List[Tuple[Union[int, float], Union[int, float]]]
+                 end_style='truncate',  # type: str
+                 join_style='extend',  # type: str
+                 unit_mode=False,  # type: bool
+                 ):
+        # type: (...) -> None
         layer = bag.io.fix_string(layer)
-        super(Path, self).__init__(resolution)
+        Figure.__init__(self, resolution)
         if isinstance(layer, str):
             layer = (layer, 'drawing')
 
@@ -915,7 +930,8 @@ class Path(Figure):
                     if cur_len >= 2:
                         # check for collinearity
                         dx0, dy0 = lastx - pt_list[-2][0], lasty - pt_list[-2][1]
-                        if (dx == 0 and dx0 == 0) or (dx != 0 and dx0 != 0 and dy / dx == dy0 / dx0):
+                        if (dx == 0 and dx0 == 0) or (dx != 0 and dx0 != 0 and
+                                                      dy / dx == dy0 / dx0):
                             # collinear, remove middle point
                             del pt_list[-1]
                             cur_len -= 1
@@ -1016,7 +1032,7 @@ class PathCollection(Figure):
     """
 
     def __init__(self, resolution, paths):
-        super(PathCollection, self).__init__(resolution)
+        Figure.__init__(self, resolution)
         self._paths = paths
 
     def move_by(self, dx=0, dy=0, unit_mode=False):
@@ -1102,7 +1118,7 @@ class TLineBus(PathCollection):
         print(delta_list)
 
         paths = self.create_paths(delta_list, resolution)
-        super(TLineBus, self).__init__(resolution, paths)
+        PathCollection.__init__(self, resolution, paths)
 
     def paths_iter(self):
         return iter(self._paths)
@@ -1157,7 +1173,8 @@ class TLineBus(PathCollection):
         print(path_points)
 
         paths = [Path(res, self._layer, w, pp, end_style=self._end_style,
-                      join_style='round', unit_mode=True) for w, pp in zip(self._widths, path_points)]
+                      join_style='round', unit_mode=True)
+                 for w, pp in zip(self._widths, path_points)]
         return paths
 
 
@@ -1176,9 +1193,14 @@ class Polygon(Figure):
     unit_mode : bool
         True if the points are given in resolution units.
     """
-    def __init__(self, resolution, layer, points, unit_mode=False):
-        # type: (float, Union[str, Tuple[str, str]], List[Tuple[Union[float, int], Union[float, int]]], bool) -> None
-        super(Polygon, self).__init__(resolution)
+    def __init__(self,
+                 resolution,  # type: float
+                 layer,  # type: Union[str, Tuple[str, str]]
+                 points,  # type: List[Tuple[Union[float, int], Union[float, int]]]
+                 unit_mode=False,  # type: bool
+                 ):
+        # type: (...) -> None
+        Figure.__init__(self, resolution)
         layer = bag.io.fix_string(layer)
         if isinstance(layer, str):
             layer = (layer, 'drawing')
@@ -1264,7 +1286,7 @@ class Blockage(Polygon):
     """
     def __init__(self, resolution, block_type, block_layer, points, unit_mode=False):
         # type: (float, str, str, List[Tuple[Union[float, int], Union[float, int]]], bool) -> None
-        super(Blockage, self).__init__(resolution, block_layer, points, unit_mode=unit_mode)
+        Polygon.__init__(self, resolution, block_layer, points, unit_mode=unit_mode)
         self._type = block_type
         self._block_layer = block_layer
 
@@ -1308,7 +1330,7 @@ class Boundary(Polygon):
     """
     def __init__(self, resolution, boundary_type, points, unit_mode=False):
         # type: (float, str, List[Tuple[Union[float, int], Union[float, int]]], bool) -> None
-        super(Boundary, self).__init__(resolution, ('', ''), points, unit_mode=unit_mode)
+        Polygon.__init__(self, resolution, ('', ''), points, unit_mode=unit_mode)
         self._type = boundary_type
 
     @property
@@ -1336,7 +1358,7 @@ class ViaInfo(dict):
 
     def __init__(self, res, **kwargs):
         kv_iter = ((key, kwargs[key]) for key in self.param_list)
-        super(ViaInfo, self).__init__(kv_iter)
+        dict.__init__(self, kv_iter)
         for opt_par in ['cut_width', 'cut_height', 'arr_nx', 'arr_ny', 'arr_spx', 'arr_spy']:
             if opt_par in kwargs:
                 self[opt_par] = kwargs[opt_par]
@@ -1499,14 +1521,16 @@ class Via(Arrayable):
         self._bot_dir = bot_dir
         self._top_dir = top_dir
         self._extend = extend
-        self._info = self._tech.get_via_info(self._bbox, bot_layer, top_layer, bot_dir, top_dir=top_dir, extend=extend)
+        self._info = self._tech.get_via_info(self._bbox, bot_layer, top_layer, bot_dir,
+                                             top_dir=top_dir, extend=extend)
         if self._info is None:
             raise ValueError('Cannot make via with bounding box %s' % self._bbox)
 
     def _update(self):
         """Update via parameters."""
         self._info = self._tech.get_via_info(self.bbox, self.bot_layer, self.top_layer,
-                                             self.bottom_direction, top_dir=self.top_direction, extend=self.extend)
+                                             self.bottom_direction, top_dir=self.top_direction,
+                                             extend=self.extend)
 
     @property
     def top_box(self):
@@ -1633,8 +1657,10 @@ class Via(Arrayable):
                        unit_mode=True)
         else:
             self._bbox = new_box
-            self._info['top_box'] = self._info['top_box'].transform(loc=loc, orient=orient, unit_mode=unit_mode)
-            self._info['bot_box'] = self._info['bot_box'].transform(loc=loc, orient=orient, unit_mode=unit_mode)
+            self._info['top_box'] = self._info['top_box'].transform(loc=loc, orient=orient,
+                                                                    unit_mode=unit_mode)
+            self._info['bot_box'] = self._info['bot_box'].transform(loc=loc, orient=orient,
+                                                                    unit_mode=unit_mode)
             self._info['params']['loc'] = [self._bbox.xc, self._bbox.yc]
 
 
@@ -1646,7 +1672,7 @@ class PinInfo(dict):
 
     def __init__(self, res, **kwargs):
         kv_iter = ((key, kwargs[key]) for key in self.param_list)
-        super(PinInfo, self).__init__(kv_iter)
+        dict.__init__(self, kv_iter)
 
         self._resolution = res
 
@@ -1675,7 +1701,8 @@ class PinInfo(dict):
     def bbox(self):
         # type: () -> BBox
         bbox_list = self['bbox']
-        return BBox(bbox_list[0][0], bbox_list[0][1], bbox_list[1][0], bbox_list[1][1], self._resolution)
+        return BBox(bbox_list[0][0], bbox_list[0][1], bbox_list[1][0], bbox_list[1][1],
+                    self._resolution)
 
     @property
     def make_rect(self):
