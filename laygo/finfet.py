@@ -209,7 +209,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                                edger_info=lr_edge_info,
                                )
 
-        lay_info_list = [(lay, 0, blk_yb, blk_yt) for lay in self.get_mos_layers(mos_type, threshold)]
+        lay_info_list = [(lay, 0, blk_yb, blk_yt)
+                         for lay in self.get_mos_layers(mos_type, threshold)]
         imp_params = [(mos_type, threshold, blk_yb, blk_yt, blk_yb, blk_yt)],
 
         fill_info_list = [FillInfo(layer=layer, exc_layer=info[0], x_intv_list=[],
@@ -286,7 +287,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                 fg = self.get_sub_columns(lch_unit)
                 od_intv = (2, fg - 2)
                 edgel_info = edger_info = EdgeInfo(od_type=None, draw_layers={}, y_intv=y_intv)
-                po_types = ('PO_dummy', 'PO_edge_sub') + ('PO_sub',) * (fg - 4) + ('PO_edge_sub', 'PO_dummy',)
+                po_types = ('PO_dummy', 'PO_edge_sub') + ('PO_sub',) * (fg - 4) + \
+                           ('PO_edge_sub', 'PO_dummy',)
         else:
             mtype = (row_type, row_type)
             od_type = 'mos'
@@ -340,7 +342,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
 
     def get_laygo_end_info(self, lch_unit, mos_type, threshold, fg, is_end, blk_pitch, **kwargs):
         # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
-        return self.get_analog_end_info(lch_unit, mos_type, threshold, fg, is_end, blk_pitch, **kwargs)
+        return self.get_analog_end_info(lch_unit, mos_type, threshold, fg, is_end,
+                                        blk_pitch, **kwargs)
 
     def get_laygo_space_info(self, row_info, num_blk, left_blk_info, right_blk_info):
         # type: (Dict[str, Any], int, Any, Any) -> Dict[str, Any]
@@ -372,7 +375,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         area = num_blk - 2 * od_spx_fg
         if area > 0:
             od_x_list = fill_symmetric_max_density(area, area, 2, od_fg_max, od_spx_fg,
-                                                   offset=od_spx_fg, fill_on_edge=True, cyclic=False)[0]
+                                                   offset=od_spx_fg, fill_on_edge=True,
+                                                   cyclic=False)[0]
         else:
             od_x_list = []
         # get row OD list
@@ -460,7 +464,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
     def get_row_extension_info(self, bot_ext_list, top_ext_list):
         # type: (List[ExtInfo], List[ExtInfo]) -> List[Tuple[int, ExtInfo, ExtInfo]]
 
-        # merge list of bottom and top extension informations into a list of bottom/top extension tuples
+        # merge list of bottom and top extension informations into a list of
+        # bottom/top extension tuples
         bot_idx = top_idx = 0
         bot_len = len(bot_ext_list)
         top_len = len(top_ext_list)
@@ -476,10 +481,11 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
             stop_idx = min(bot_stop, top_stop)
 
             # create new bottom/top extension information objects for the current overlapping block
+            fg_stop = stop_idx - bot_off
             # noinspection PyProtectedMember
-            cur_bot_info = bot_info._replace(po_types=bot_ptype[cur_fg - bot_off:stop_idx - bot_off])
+            cur_bot_info = bot_info._replace(po_types=bot_ptype[cur_fg - bot_off:fg_stop])
             # noinspection PyProtectedMember
-            cur_top_info = top_info._replace(po_types=top_ptype[cur_fg - top_off:stop_idx - top_off])
+            cur_top_info = top_info._replace(po_types=top_ptype[cur_fg - top_off:fg_stop])
             # append tuples of current number of fingers and bottom/top extension information object
             ext_groups.append((stop_idx - cur_fg, cur_bot_info, cur_top_info))
 
