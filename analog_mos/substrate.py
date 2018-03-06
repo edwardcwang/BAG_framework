@@ -6,27 +6,17 @@ from bag import float_to_si_string
 from bag.math import lcm
 from bag.layout.template import TemplateBase, TemplateDB
 
-from .core import MOSTech
-
 
 class AnalogSubstrateCore(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(AnalogSubstrateCore, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
     @classmethod
     def get_params_info(cls):
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : dict[str, str]
-            dictionary from parameter name to description.
-        """
+        # type: () -> Dict[str, str]
         return dict(
             layout_name='name of the layout cell.',
             layout_info='the layout information dictionary.',
@@ -47,9 +37,9 @@ class AnalogSubstrateCore(TemplateBase):
 
 class AnalogSubstrate(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(AnalogSubstrate, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
         self._layout_info = None
         self._ext_top_info = None
@@ -84,15 +74,7 @@ class AnalogSubstrate(TemplateBase):
 
     @classmethod
     def get_params_info(cls):
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : dict[str, str]
-            dictionary from parameter name to description.
-        """
+        # type: () -> Dict[str, str]
         return dict(
             lch='channel length, in meters.',
             w='transistor width, in meters/number of fins.',
@@ -102,6 +84,22 @@ class AnalogSubstrate(TemplateBase):
             top_layer='The top routing layer.  Used to determine vertical pitch.',
             options='Optional layout parameters.',
         )
+
+    @classmethod
+    def get_block_pitch(cls, grid, top_layer, **kwargs):
+        integ_htr = kwargs.get('integ_htr', False)
+
+        if top_layer is not None:
+            blk_pitch = grid.get_block_size(top_layer, unit_mode=True)[1]
+            if integ_htr:
+                hm_layer = top_layer
+                while grid.get_direction(hm_layer) != 'x':
+                    hm_layer -= 1
+                blk_pitch = lcm([blk_pitch, grid.get_track_pitch(hm_layer, unit_mode=True)])
+        else:
+            blk_pitch = 1
+
+        return blk_pitch
 
     def get_layout_basename(self):
         fmt = '%s_l%s_w%s_%s_lay%d_fg%d'
@@ -131,21 +129,12 @@ class AnalogSubstrate(TemplateBase):
         top_layer = self.params['top_layer']
         options = self.params['options']
 
-        integ_htr = options.get('integ_htr', False)
-
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
-        if top_layer is not None:
-            blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
-            if integ_htr:
-                hm_layer = top_layer
-                while self.grid.get_direction(hm_layer) != 'x':
-                    hm_layer -= 1
-                blk_pitch = lcm([blk_pitch, self.grid.get_track_pitch(hm_layer, unit_mode=True)])
-        else:
-            blk_pitch = 1
-        info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg, blk_pitch=blk_pitch, **options)
+        blk_pitch = self.get_block_pitch(self.grid, top_layer, **options)
+        info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg,
+                                                 blk_pitch=blk_pitch, **options)
         self._layout_info = info['layout_info']
         self._sd_yc = info['sd_yc']
         self._ext_top_info = info['ext_top_info']
