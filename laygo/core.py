@@ -579,13 +579,16 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
     def set_rows_analog(self, analog_info, num_col=None):
         default_end_info = self._tech_cls.get_default_end_info()
 
+        top_layer = analog_info['top_layer']
         row_info_list = analog_info['row_info_list']
+        guard_ring_nf = analog_info['guard_ring_nf']
+        end_mode = analog_info['end_mode']
 
         # set LaygoInfo
-        self._laygo_info.top_layer = analog_info['top_layer']
-        self._laygo_info.guard_ring_nf = analog_info['guard_ring_nf']
+        self._laygo_info.top_layer = top_layer
+        self._laygo_info.guard_ring_nf = guard_ring_nf
         self._laygo_info.draw_boundaries = True
-        self._laygo_info.end_mode = analog_info['end_mode']
+        self._laygo_info.end_mode = end_mode
         self._laygo_info.set_num_col(num_col)
 
         # set row information
@@ -595,6 +598,13 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         for kwargs in self._row_kwargs:
             kwargs['analog'] = True
         self._used_list = [LaygoIntvSet(default_end_info) for _ in range(self._num_rows)]
+
+        # make end masters
+        bot_type = row_info_list[0]['mos_type']
+        top_type = row_info_list[-1]['mos_type']
+        bot_thres = row_info_list[0]['threshold']
+        top_thres = row_info_list[-1]['threshold']
+        self._create_end_masters(end_mode, bot_type, top_type, bot_thres, top_thres, top_layer, 0)
 
         self._set_row_infos_from_y(analog_info['ybot'], analog_info['ytop'],
                                    row_info_list)
@@ -664,33 +674,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         # compute remaining row information
         tot_height_pitch = self._laygo_info.tot_height_pitch
         if draw_boundaries:
-            bot_end = (end_mode & 1) != 0
-            top_end = (end_mode & 2) != 0
-
-            if row_types[0] != 'ntap' and row_types[0] != 'ptap':
-                raise ValueError('Bottom row must be substrate.')
-            if row_types[-1] != 'ntap' and row_types[-1] != 'ptap':
-                raise ValueError('Top row must be substrate.')
-
-            # create boundary masters
-            params = dict(
-                lch=self._laygo_info.lch,
-                mos_type=row_types[0],
-                threshold=row_thresholds[0],
-                is_end=bot_end,
-                top_layer=top_layer,
-            )
-            self._bot_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
-            params = dict(
-                lch=self._laygo_info.lch,
-                mos_type=row_types[-1],
-                threshold=row_thresholds[-1],
-                is_end=top_end,
-                top_layer=top_layer,
-            )
-            self._top_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
-            ybot = self._bot_end_master.bound_box.height_unit
-            min_height -= self._top_end_master.bound_box.height_unit
+            ybot, min_height = self._create_end_masters(end_mode, row_types[0], row_types[-1],
+                                                        row_thresholds[0], row_thresholds[-1],
+                                                        top_layer, min_height)
         else:
             ybot = 0
 
@@ -707,6 +693,37 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         # compute laygo size if we know the number of columns
         if num_col is not None:
             self.set_laygo_size(num_col)
+
+    def _create_end_masters(self, end_mode, bot_row_type, top_row_type, bot_row_thres,
+                            top_row_thres, top_layer, min_height):
+        bot_end = (end_mode & 1) != 0
+        top_end = (end_mode & 2) != 0
+
+        if bot_row_type != 'ntap' and bot_row_type != 'ptap':
+            raise ValueError('Bottom row must be substrate.')
+        if top_row_type != 'ntap' and top_row_type != 'ptap':
+            raise ValueError('Top row must be substrate.')
+
+        # create boundary masters
+        params = dict(
+            lch=self._laygo_info.lch,
+            mos_type=bot_row_type,
+            threshold=bot_row_thres,
+            is_end=bot_end,
+            top_layer=top_layer,
+        )
+        self._bot_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
+        params = dict(
+            lch=self._laygo_info.lch,
+            mos_type=top_row_type,
+            threshold=top_row_thres,
+            is_end=top_end,
+            top_layer=top_layer,
+        )
+        self._top_end_master = self.new_template(params=params, temp_cls=LaygoEndRow)
+        ybot = self._bot_end_master.bound_box.height_unit
+
+        return ybot, min_height - self._top_end_master.bound_box.height_unit
 
     def get_digital_row_info(self):
         if not self.finalized:
@@ -1133,10 +1150,10 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             else:
                 raise ValueError('Unknown row type: %s' % row_type)
 
-            if idx == len(row_info_list - 1):
+            if idx == len(row_info_list) - 1:
                 ytop_cur = ytop
             else:
-                ytop_cur = (yt_cur + row_info_list[idx + 1][1]) // 2
+                ytop_cur = (yt_cur + row_info_list[idx + 1]['row_y'][0]) // 2
             # record information
             ext_y = 0 if idx == 0 else row_y[-1][2]
             row_y.append((ytop_prev, yb_cur, yt_cur, ytop_cur))
