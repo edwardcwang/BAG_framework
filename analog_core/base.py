@@ -1300,7 +1300,6 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             row_y.append(ycur)
             if idx > 0:
                 ext_h = (ycur - ytop_prev) // mos_pitch
-                print(idx, ytop_prev, ycur, ext_h)
                 ext_params = dict(
                     lch=self._lch,
                     w=ext_h,
@@ -1479,8 +1478,6 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                         gtr_intv, dtr_intv = dtr_intv, gtr_intv
                         gw_info, dw_info = dw_info, gw_info
 
-                    print(gtr_intv, dtr_intv)
-                    print(gw_info, dw_info)
                     self._gtr_intv.append(gtr_intv)
                     self._dstr_intv.append(dtr_intv)
                     self._wire_info.append((gw_info, dw_info))
