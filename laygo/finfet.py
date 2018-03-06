@@ -368,15 +368,18 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         od_spx = mos_constants['od_spx']
         od_fill_w_max = mos_constants['od_fill_w_max']
 
-        od_fg_max = (od_fill_w_max - lch_unit) // sd_pitch - 1
         od_spx_fg = -(-(od_spx - sd_pitch + lch_unit) // sd_pitch) + 2
 
         # get OD fill X interval
         area = num_blk - 2 * od_spx_fg
         if area > 0:
-            od_x_list = fill_symmetric_max_density(area, area, 2, od_fg_max, od_spx_fg,
-                                                   offset=od_spx_fg, fill_on_edge=True,
-                                                   cyclic=False)[0]
+            if od_fill_w_max is None:
+                od_x_list = [(od_spx_fg, num_blk - od_spx_fg)]
+            else:
+                od_fg_max = (od_fill_w_max - lch_unit) // sd_pitch - 1
+                od_x_list = fill_symmetric_max_density(area, area, 2, od_fg_max, od_spx_fg,
+                                                       offset=od_spx_fg, fill_on_edge=True,
+                                                       cyclic=False)[0]
         else:
             od_x_list = []
         # get row OD list
@@ -396,8 +399,9 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
             po_types.append('PO_edge_dummy')
         else:
             po_types.append('PO_dummy')
+        po_types.extend(('PO_dummy' for _ in range(od_spx_fg - 1)))
         od_intv_idx = 0
-        for cur_idx in range(od_spx_fg, od_spx_fg + num_blk - 2):
+        for cur_idx in range(od_spx_fg, num_blk - od_spx_fg):
             if od_intv_idx < len(od_x_list):
                 cur_od_intv = od_x_list[od_intv_idx]
                 if cur_od_intv[1] == cur_idx:
@@ -413,7 +417,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                     po_types.append('PO_dummy')
             else:
                 po_types.append('PO_dummy')
-        po_types.extend(('PO_dummy' for _ in range(num_blk - 2)))
+        po_types.extend(('PO_dummy' for _ in range(od_spx_fg - 1)))
         rod_type = right_blk_info[0].od_type
         if rod_type == 'mos':
             po_types.append('PO_edge')
