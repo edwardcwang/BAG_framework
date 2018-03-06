@@ -576,7 +576,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         # set left and right end information list
         self._set_endlr_infos(self._num_rows)
 
-    def set_rows_analog(self, analog_info):
+    def set_rows_analog(self, analog_info, num_col=None):
         default_end_info = self._tech_cls.get_default_end_info()
 
         row_info_list = analog_info['row_info_list']
@@ -586,6 +586,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         self._laygo_info.guard_ring_nf = analog_info['guard_ring_nf']
         self._laygo_info.draw_boundaries = True
         self._laygo_info.end_mode = analog_info['end_mode']
+        self._laygo_info.set_num_col(num_col)
 
         # set row information
         self._row_orientations = [rinfo['orient'] for rinfo in row_info_list]
@@ -600,6 +601,10 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         # set left and right end information list
         self._set_endlr_infos(self._num_rows)
+
+        # compute laygo size if we know the number of columns
+        if num_col is not None:
+            self.set_laygo_size(num_col)
 
     def set_row_types(self, row_types, row_widths, row_orientations, row_thresholds,
                       draw_boundaries, end_mode, num_g_tracks=None, num_gb_tracks=None,
