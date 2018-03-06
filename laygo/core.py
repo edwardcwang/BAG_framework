@@ -1130,7 +1130,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         ext_params_list = []
         row_infos = []
         row_y = []
-        prev_ext_h = 0
         ytop_prev = ybot
         # first pass: determine Y coordinates of each row.
         for idx, row_params in enumerate(row_info_list):
@@ -1155,10 +1154,10 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             else:
                 ytop_cur = (yt_cur + row_info_list[idx + 1]['row_y'][0]) // 2
             # record information
-            ext_y = 0 if idx == 0 else row_y[-1][2]
+            ext_y = ybot if idx == 0 else row_y[-1][2]
             row_y.append((ytop_prev, yb_cur, yt_cur, ytop_cur))
             row_infos.append(row_info)
-            ext_params_list.append((prev_ext_h + (yb_cur - ytop_prev) // mos_pitch, ext_y))
+            ext_params_list.append(((yb_cur - ext_y) // mos_pitch, ext_y))
 
             # record track intervals
             btr = self.grid.find_next_track(hm_layer, ytop_prev, half_track=True,
@@ -1196,8 +1195,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 row_info['ds_intv'] = (btr, max(btr, dstr))
 
             # update previous row information
-            ytop_prev = yt_cur
-            prev_ext_h = (ytop_cur - yt_cur) // mos_pitch
+            ytop_prev = ytop_cur
 
         self._row_infos = row_infos
         self._ext_params = ext_params_list
