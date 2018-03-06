@@ -576,23 +576,27 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         # set left and right end information list
         self._set_endlr_infos(self._num_rows)
 
-    def set_rows_analog(self, ana_row_info):
+    def set_rows_analog(self, analog_info):
         default_end_info = self._tech_cls.get_default_end_info()
 
+        row_info_list = analog_info['row_info_list']
+
         # set LaygoInfo
-        self._laygo_info.top_layer = ana_row_info['top_layer']
-        self._laygo_info.guard_ring_nf = ana_row_info['guard_ring_nf']
+        self._laygo_info.top_layer = analog_info['top_layer']
+        self._laygo_info.guard_ring_nf = analog_info['guard_ring_nf']
         self._laygo_info.draw_boundaries = True
-        self._laygo_info.end_mode = ana_row_info['end_mode']
+        self._laygo_info.end_mode = analog_info['end_mode']
 
         # set row information
-        self._row_orientations = ana_row_info['row_orientations']
+        self._row_orientations = [rinfo['orient'] for rinfo in row_info_list]
         self._num_rows = len(self._row_orientations)
-        self._row_kwargs = ana_row_info['row_kwargs']
+        self._row_kwargs = [rinfo['kwargs'].copy() for rinfo in row_info_list]
+        for kwargs in self._row_kwargs:
+            kwargs['analog'] = True
         self._used_list = [LaygoIntvSet(default_end_info) for _ in range(self._num_rows)]
 
-        self._set_row_infos_from_y(ana_row_info['ybot'], ana_row_info['ytop'],
-                                   ana_row_info['row_info'])
+        self._set_row_infos_from_y(analog_info['ybot'], analog_info['ytop'],
+                                   row_info_list)
 
         # set left and right end information list
         self._set_endlr_infos(self._num_rows)
@@ -1107,13 +1111,13 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         prev_ext_h = 0
         ytop_prev = ybot
         # first pass: determine Y coordinates of each row.
-        for idx, (yb_cur, yt_cur, row_params) in enumerate(row_info_list):
+        for idx, row_params in enumerate(row_info_list):
+            yb_cur, yt_cur = row_params['row_y']
+            row_orient = row_params['orient']
             row_type = row_params['mos_type']
             row_w = row_params['w']
-            row_thres = row_params['thres']
-            kwargs = row_params['kwargs']
-            kwargs['analog'] = True
-            row_orient = self._row_orientations[idx]
+            row_thres = row_params['threshold']
+            kwargs = self._row_kwargs[idx]
 
             if row_type == 'nch' or row_type == 'pch':
                 row_info = tcls.get_laygo_mos_row_info(lch_unit, row_w, row_w, row_type,

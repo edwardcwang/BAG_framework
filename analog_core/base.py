@@ -381,12 +381,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         # initialize parameters
         # layout information parameters
         self._lch = None
-        self._w_list = None
-        self._th_list = None
-        self._orient_list = None
+        self._row_info_list = None
         self._fg_tot = None
         self._sd_yc_list = None
-        self._mos_kwargs_list = None
         self._layout_info = None
         self._sub_parity = 0
         self._sub_integ_htr = False
@@ -407,7 +404,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         self._capn_wires = {-1: [], 1: []}
         self._n_netmap = None
         self._p_netmap = None
-        self._analog_row_info = None
+        self._analog_info = None
 
         # track calculation parameters
         self._ridx_lookup = None
@@ -480,6 +477,11 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         """Returns the transistor source/drain pitch."""
         return self._layout_info.sd_pitch_unit
 
+    @property
+    def analog_info(self):
+        """Returns the analog placement information dictionary."""
+        return self._analog_info
+
     def set_layout_info(self, layout_info):
         # type: (AnalogBaseInfo) -> None
         """Sets the layout information object associated with this class.
@@ -551,7 +553,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         if tr_idx >= ntr:
             raise ValueError('track_index %d out of bounds: [0, %d)' % (tr_idx, ntr))
 
-        if self._orient_list[row_idx] == 'R0':
+        if self._row_info_list[row_idx]['orient'] == 'R0':
             return tr_intv[0] + tr_idx
         else:
             return tr_intv[1] - 1 - tr_idx
@@ -721,8 +723,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     net_map = self._n_netmap[row_idx]
 
                 ridx = self._ridx_lookup[mos_type][row_idx]
-                w = self._w_list[ridx]
-                th = self._th_list[ridx]
+                w = self._row_info_list[ridx]['w']
+                th = self._row_info_list[ridx]['threshold']
 
                 # substrate decap transistors from dummies
                 temp_intv = intv_set.copy()
@@ -792,9 +794,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         """
         # get orientation, width, and source/drain center
         ridx = self._ridx_lookup[mos_type][row_idx]
-        orient = self._orient_list[ridx]
-        mos_kwargs = self._mos_kwargs_list[ridx].copy()
-        w = self._w_list[ridx]
+        row_info = self._row_info_list[ridx]
+        orient = row_info['orient']
+        mos_kwargs = row_info['kwargs']
+        w = row_info['w']
         xc, yc = self._layout_info.sd_xc_unit, self._sd_yc_list[ridx]
         xc += start * self.sd_pitch_unit
         fg = stop - start
@@ -890,8 +893,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             net_map[intv[0]] = net_map[intv[1]] = ''
 
         ridx = self._ridx_lookup[mos_type][row_idx]
-        orient = self._orient_list[ridx]
-        w = self._w_list[ridx]
+        row_info = self._row_info_list[ridx]
+        orient = row_info['orient']
+        w = row_info['w']
         xc, yc = self._layout_info.sd_xc_unit, self._sd_yc_list[ridx]
         xc += col_idx * self.sd_pitch_unit
 
@@ -993,9 +997,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         sd_pitch = self.sd_pitch_unit
         ridx = self._ridx_lookup[mos_type][row_idx]
-        orient = self._orient_list[ridx]
-        mos_kwargs = self._mos_kwargs_list[ridx].copy()
-        w = self._w_list[ridx]
+        row_info = self._row_info_list[ridx]
+        orient = row_info['orient']
+        mos_kwargs = row_info['kwargs']
+        w = row_info['w']
         xc, yc = self._layout_info.sd_xc_unit, self._sd_yc_list[ridx]
         xc += col_idx * sd_pitch
 
@@ -1050,7 +1055,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def _make_masters(self, fg_tot, mos_type, lch, bot_sub_w, top_sub_w, w_list, th_list,
                       g_tracks, ds_tracks, orientations, mos_kwargs, row_offset,
-                      guard_ring_nf, wire_names, tr_manager, wire_tree):
+                      guard_ring_nf, wire_names, tr_manager, wire_tree, master_list,
+                      place_info_list, row_info_list):
 
         # error checking + set default values.
         num_tran = len(w_list)
@@ -1083,18 +1089,13 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         if not w_list:
             # do nothing
-            return [], [], [], [], [], []
+            return
 
         vm_layer = self.mos_conn_layer
         hm_layer = vm_layer + 1
         le_sp_tr = self.grid.get_line_end_space_tracks(vm_layer, hm_layer, 1, half_space=True)
 
         sub_type = 'ptap' if mos_type == 'nch' else 'ntap'
-        master_list = []
-        place_info_list = []
-        wname_list = []
-        w_list_final = []
-        th_list_final = []
         # make bottom substrate
         if bot_sub_w > 0:
             sub_params = dict(
@@ -1112,10 +1113,15 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             place_info_list.append(((0, 0), (0, 0), height,
                                     'R0', master.get_ext_bot_info(),
                                     master.get_ext_top_info(), sub_type))
+            row_info_list.append(dict(
+                mos_type=sub_type,
+                w=bot_sub_w,
+                threshold=th_list[0],
+                orient='R0',
+                kwargs=sub_params['options'],
+            ))
             self._ridx_lookup[sub_type].append(row_offset)
             row_offset += 1
-            w_list_final.append(bot_sub_w)
-            th_list_final.append(th_list[0])
 
         # make transistors
         for w, th, gtr, dstr, orient, mkwargs, wnames in zip(w_list, th_list, g_tracks, ds_tracks,
@@ -1177,11 +1183,16 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
             place_info_list.append((bot_conn_y, top_conn_y, height, orient,
                                     ext_bot_info, ext_top_info, mos_type))
+            row_info_list.append(dict(
+                mos_type=mos_type,
+                w=w,
+                threshold=th,
+                orient=orient,
+                kwargs=mkwargs,
+            ))
 
             self._ridx_lookup[mos_type].append(row_offset)
             row_offset += 1
-            w_list_final.append(w)
-            th_list_final.append(th)
 
         # make top substrate
         if top_sub_w > 0:
@@ -1199,12 +1210,14 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             height = master.bound_box.height_unit
             place_info_list.append(((0, 0), (0, 0), height, 'MX', master.get_ext_top_info(),
                                     master.get_ext_bot_info(), sub_type))
+            row_info_list.append(dict(
+                mos_type=sub_type,
+                w=top_sub_w,
+                threshold=th_list[-1],
+                orient='MX',
+                kwargs=sub_params['options'],
+            ))
             self._ridx_lookup[sub_type].append(row_offset)
-            w_list_final.append(top_sub_w)
-            th_list_final.append(th_list[-1])
-
-        mos_kwargs = [{}] + mos_kwargs + [{}]
-        return place_info_list, master_list, mos_kwargs, w_list_final, th_list_final, wname_list
 
     def _place_helper(self, bot_ext_w, place_info_list, lch_unit, fg_tot, hm_layer,
                       mos_pitch, tot_height_pitch, ybot, guard_ring_nf, min_htot, wire_tree):
@@ -1411,6 +1424,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
         print('final: ext_w0 = %d, ext_wend=%d, ytop=%d' % (ext_first, ext_last, ytop))
 
+        self._analog_info['ybot'] = dy
+        self._analog_info['ytop'] = ytop
+
         # at this point we've found the optimal placement.  Place instances
         place_info = self._layout_info.get_placement_info(fg_tot)
         edgel_x0 = place_info.edge_margins[0]
@@ -1436,7 +1452,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         master_list.insert(0, bot_end_master)
         master_list.append(top_end_master)
         orient_list = ['R0']
-        orient_list.extend(self._orient_list)
+        orient_list.extend((row_info['orient'] for row_info in self._row_info_list))
         orient_list.append('MX')
         # draw
         sub_y_list = []
@@ -1449,6 +1465,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             is_sub = isinstance(master, AnalogSubstrate)
 
             if row_idx != 0 and row_idx != len(master_list) - 1:
+                self._row_info_list[row_idx - 1]['row_y'] = (ybot, ybot + height)
                 # get gate/drain/source interval
                 if is_sub:
                     bot_tr = self.grid.find_next_track(hm_layer, ybot, half_track=True, mode=1,
@@ -1788,11 +1805,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         # initialize private attributes.
         self._lch = lch
-        self._w_list = []
-        self._th_list = []
         self._fg_tot = fg_tot
         self._sd_yc_list = []
-        self._mos_kwargs_list = []
         self._sub_parity = sub_parity
         self._sub_integ_htr = sub_integ_htr
 
@@ -1821,39 +1835,33 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         # place transistor blocks
         wire_tree = WireTree()
-        wire_list = []
         master_list = []
         place_info_list = []
+        row_info_list = []
         bot_sub_end = end_mode % 2
         top_sub_end = (end_mode & 2) >> 1
         left_end = (end_mode & 4) >> 2
         right_end = (end_mode & 8) >> 3
         top_layer = self._layout_info.top_layer
         # make NMOS substrate/transistor masters.
-        tmp_result = self._make_masters(fg_tot, 'nch', self._lch, ptap_w, ngr_w, nw_list, nth_list,
-                                        ng_tracks, nds_tracks, n_orientations, n_kwargs, 0,
-                                        guard_ring_nf, wire_names, tr_manager, wire_tree)
-        pinfo_list, m_list, n_kwargs, nw_list, nth_list, wname_list = tmp_result
-        master_list.extend(m_list)
-        place_info_list.extend(pinfo_list)
-        self._mos_kwargs_list.extend(n_kwargs)
-        self._w_list.extend(nw_list)
-        self._th_list.extend(nth_list)
-        wire_list.extend(wname_list)
+        self._make_masters(fg_tot, 'nch', self._lch, ptap_w, ngr_w, nw_list, nth_list, ng_tracks,
+                           nds_tracks, n_orientations, n_kwargs, 0, guard_ring_nf, wire_names,
+                           tr_manager, wire_tree, master_list, place_info_list, row_info_list)
         # make PMOS substrate/transistor masters.
-        tmp_result = self._make_masters(fg_tot, 'pch', self._lch, pgr_w, ntap_w, pw_list, pth_list,
-                                        pg_tracks, pds_tracks, p_orientations, p_kwargs,
-                                        len(m_list), guard_ring_nf, wire_names, tr_manager,
-                                        wire_tree)
-        pinfo_list, m_list, p_kwargs, pw_list, pth_list, wname_list = tmp_result
+        offset = len(master_list)
+        self._make_masters(fg_tot, 'pch', self._lch, pgr_w, ntap_w, pw_list, pth_list, pg_tracks,
+                           pds_tracks, p_orientations, p_kwargs, offset, guard_ring_nf, wire_names,
+                           tr_manager, wire_tree, master_list, place_info_list, row_info_list)
 
-        master_list.extend(m_list)
-        place_info_list.extend(pinfo_list)
-        self._mos_kwargs_list.extend(p_kwargs)
-        self._w_list.extend(pw_list)
-        self._th_list.extend(pth_list)
-        wire_list.extend(wname_list)
-        self._orient_list = [item[3] for item in place_info_list]
+        self._row_info_list = row_info_list
+
+        # record analog row info
+        self._analog_info = dict(
+            top_layer=top_layer,
+            guard_ring_nf=guard_ring_nf,
+            end_mode=end_mode,
+            row_info_list=row_info_list,
+        )
 
         # place masters according to track specifications.  Try to center transistors
         self._place(fg_tot, place_info_list, master_list, guard_ring_nf, top_layer,
