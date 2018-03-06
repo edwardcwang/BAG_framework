@@ -21,6 +21,8 @@ from ..analog_mos.substrate import AnalogSubstrate
 from ..analog_mos.edge import AnalogEdge, AnalogEndRow
 from ..analog_mos.conn import AnalogMOSConn, AnalogMOSDecap, AnalogMOSDummy, AnalogSubstrateConn
 
+from .placement import WireGroup, WireTree
+
 if TYPE_CHECKING:
     from bag.layout.template import TemplateDB
     from bag.layout.routing import RoutingGrid
@@ -405,6 +407,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         self._capn_wires = {-1: [], 1: []}
         self._n_netmap = None
         self._p_netmap = None
+        self._analog_row_info = None
 
         # track calculation parameters
         self._ridx_lookup = None
@@ -1047,7 +1050,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def _make_masters(self, fg_tot, mos_type, lch, bot_sub_w, top_sub_w, w_list, th_list,
                       g_tracks, ds_tracks, orientations, mos_kwargs, row_offset,
-                      guard_ring_nf, wire_names):
+                      guard_ring_nf, wire_names, tr_manager, wire_tree):
 
         # error checking + set default values.
         num_tran = len(w_list)
@@ -1082,6 +1085,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             # do nothing
             return [], [], [], [], [], []
 
+        vm_layer = self.mos_conn_layer
+        hm_layer = vm_layer + 1
+        le_sp_tr = self.grid.get_line_end_space_tracks(vm_layer, hm_layer, 1, half_space=True)
+
         sub_type = 'ptap' if mos_type == 'nch' else 'ntap'
         master_list = []
         place_info_list = []
@@ -1101,10 +1108,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             )
             master = self.new_template(params=sub_params, temp_cls=AnalogSubstrate)
             master_list.append(master)
-            place_info_list.append(((0, 0), (0, 0),
-                                    master.array_box.get_interval('y', unit_mode=True),
-                                    master.bound_box.height_unit, 'R0', master.get_ext_bot_info(),
-                                    master.get_ext_top_info(), -1, -1))
+            height = master.bound_box.height_unit
+            place_info_list.append(((0, 0), (0, 0), height,
+                                    'R0', master.get_ext_bot_info(),
+                                    master.get_ext_top_info(), sub_type))
             self._ridx_lookup[sub_type].append(row_offset)
             row_offset += 1
             w_list_final.append(bot_sub_w)
@@ -1128,34 +1135,48 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             height = master.bound_box.height_unit
             g_conn_y = master.get_g_conn_y()
             d_conn_y = master.get_d_conn_y()
-            arr_y = master.array_box.get_interval('y', unit_mode=True)
             ext_bot_info = master.get_ext_bot_info()
             ext_top_info = master.get_ext_top_info()
+            bot_wires, top_wires = [], []
             if orient == 'R0':
                 bot_conn_y = g_conn_y
                 top_conn_y = d_conn_y
-                nbot, ntop = gtr, dstr
+                if wnames is None:
+                    if gtr >= 1:
+                        bot_wires.append(WireGroup(hm_layer, 'g', gtr, space=le_sp_tr))
+                    if dstr >= 1:
+                        top_wires.append(WireGroup(hm_layer, 'ds', dstr, space=le_sp_tr))
+                else:
+                    if wnames['g']:
+                        bot_wires.append(WireGroup(hm_layer, 'g', tr_manager=tr_manager,
+                                                   name_list=wnames['g']))
+                    if wnames['ds']:
+                        top_wires.append(WireGroup(hm_layer, 'ds', tr_manager=tr_manager,
+                                                   name_list=wnames['ds']))
             else:
                 bot_conn_y = height - d_conn_y[1], height - d_conn_y[0]
                 top_conn_y = height - g_conn_y[1], height - g_conn_y[0]
-                arr_y = height - arr_y[1], height - arr_y[0]
                 ext_bot_info, ext_top_info = ext_top_info, ext_bot_info
-                nbot, ntop = dstr, gtr
-
-            if wnames is None:
-                place_info_list.append((bot_conn_y, top_conn_y, arr_y, height, orient,
-                                        ext_bot_info, ext_top_info, nbot, ntop))
-            else:
-                if orient == 'R0':
-                    bot_wires = wnames['g']
-                    top_wires = wnames['ds']
+                if wnames is None:
+                    if gtr >= 1:
+                        top_wires.append(WireGroup(hm_layer, 'g', gtr, space=le_sp_tr))
+                    if dstr >= 1:
+                        bot_wires.append(WireGroup(hm_layer, 'ds', dstr, space=le_sp_tr))
                 else:
-                    bot_wires = wnames['ds']
-                    top_wires = wnames['g']
-                wname_list.extend(bot_wires)
-                wname_list.extend(top_wires)
-                place_info_list.append((bot_conn_y, top_conn_y, arr_y, height, orient,
-                                        ext_bot_info, ext_top_info, bot_wires, top_wires))
+                    if wnames['g']:
+                        top_wires.append(WireGroup(hm_layer, 'g', tr_manager=tr_manager,
+                                                   name_list=wnames['g']))
+                    if wnames['ds']:
+                        bot_wires.append(WireGroup(hm_layer, 'ds', tr_manager=tr_manager,
+                                                   name_list=wnames['ds']))
+
+            if bot_wires:
+                wire_tree.add_wires(bot_wires, (row_offset, 0))
+            if top_wires:
+                wire_tree.add_wires(top_wires, (row_offset, 1))
+
+            place_info_list.append((bot_conn_y, top_conn_y, height, orient,
+                                    ext_bot_info, ext_top_info, mos_type))
 
             self._ridx_lookup[mos_type].append(row_offset)
             row_offset += 1
@@ -1175,11 +1196,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             )
             master = self.new_template(params=sub_params, temp_cls=AnalogSubstrate)
             master_list.append(master)
-            arr_y = master.array_box.get_interval('y', unit_mode=True)
             height = master.bound_box.height_unit
-            arr_y = height - arr_y[1], height - arr_y[0]
-            place_info_list.append(((0, 0), (0, 0), arr_y, height, 'MX', master.get_ext_top_info(),
-                                    master.get_ext_bot_info(), -1, -1))
+            place_info_list.append(((0, 0), (0, 0), height, 'MX', master.get_ext_top_info(),
+                                    master.get_ext_bot_info(), sub_type))
             self._ridx_lookup[sub_type].append(row_offset)
             w_list_final.append(top_sub_w)
             th_list_final.append(th_list[-1])
@@ -1187,231 +1206,137 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         mos_kwargs = [{}] + mos_kwargs + [{}]
         return place_info_list, master_list, mos_kwargs, w_list_final, th_list_final, wname_list
 
-    def _place_helper(self, bot_ext_w, place_info_list, lch_unit, fg_tot, hm_layer, vm_le_sp,
-                      conn_delta, mos_pitch, tot_pitch, dy, tr_manager, wname_list,
-                      guard_ring_nf, min_height):
+    def _place_helper(self, bot_ext_w, place_info_list, lch_unit, fg_tot, hm_layer,
+                      mos_pitch, tot_height_pitch, ybot, guard_ring_nf, min_htot, wire_tree):
         tcls = self._tech_cls
         grid = self.grid
-        ext_options = dict(guard_ring_nf=guard_ring_nf)
-        # place bottom substrate at dy
-        widx = 0
-        bot_wire_loc = []
-        top_wire_loc = []
-        y_cur = dy
-        tr_next = grid.find_next_track(hm_layer, y_cur, half_track=True, mode=2, unit_mode=True)
-        y_list = []
-        ext_info_list = []
-        bot_tr_intv = []
-        top_tr_intv = []
+        wire_tree = wire_tree.copy()
+
+        vm_layer = hm_layer - 1
         num_master = len(place_info_list)
-        for idx, (bot_conn_y, top_conn_y, arr_y, height, orient, _, bot_ext_info,
-                  btr_info, ttr_info) in enumerate(place_info_list):
-            # step 1: place current master
-            y_list.append(y_cur)
-            y_top_cur = y_cur + height
-            # step 2: find how many tracks current block uses
-            if btr_info == -1:
-                # substrate.  A substrate block only use tracks within its array bounding box.
-                yarr_bot = y_cur + arr_y[0]
-                yarr_top = y_cur + arr_y[1]
-                tr_bot = grid.find_next_track(hm_layer, yarr_bot, half_track=True,
-                                              mode=2, unit_mode=True)
-                tr_top = grid.find_next_track(hm_layer, yarr_top, half_track=True,
-                                              mode=-2, unit_mode=True) + 1
-                cur_ntr_test = int(2 * (tr_top - tr_bot))
-                if cur_ntr_test % 2 == 1:
-                    # if not symmetric, R0 substrate supply track is rounded to bottom,
-                    # MX substrate supply track is rounded to top.
-                    if orient == 'MX':
-                        tr_bot += 0.5
-                cur_ntr = cur_ntr_test // 2
-                if orient == 'R0':
-                    top_tr_intv.append((tr_bot, tr_bot + cur_ntr))
-                    bot_tr_intv.append((tr_top, tr_top))
-                else:
-                    bot_tr_intv.append((tr_bot, tr_bot + cur_ntr))
-                    top_tr_intv.append((tr_top, tr_top))
-                bot_wire_loc.append(None)
-                top_wire_loc.append(None)
-                cur_top_ntr = cur_ntr
-                tr_next = tr_top
-            else:
-                # transistor.  find bottom/top connection Y coordinates
-                by = y_cur + bot_conn_y[0], y_cur + bot_conn_y[1]
-                ty = y_cur + top_conn_y[0], y_cur + top_conn_y[1]
-                # get track intervals
-                tmp_result = self._place_helper_get_tr_intv(tr_next, hm_layer, by, ty, conn_delta,
-                                                            vm_le_sp, btr_info, ttr_info,
-                                                            tr_manager, widx, wname_list)
-                bintv, tintv, tr_next, cur_top_ntr, bot_loc, top_loc, widx = tmp_result
-                bot_tr_intv.append(bintv)
-                top_tr_intv.append(tintv)
-                bot_wire_loc.append((btr_info, bot_loc))
-                top_wire_loc.append((ttr_info, top_loc))
+        ext_options = dict(guard_ring_nf=guard_ring_nf)
 
-            y_next_min = y_top_cur
-            # step 3: compute extension to next master and location of next master
-            if idx != num_master - 1:
-                # step 3A: figure out minimum extension width
-                top_ext_info = place_info_list[idx + 1][5]
-                ext_w_list = tcls.get_valid_extension_widths(lch_unit, top_ext_info, bot_ext_info,
-                                                             guard_ring_nf=guard_ring_nf)
-                min_ext_w = ext_w_list[0]
-                if idx == 0:
+        ytop = ytop_prev = ycur = ybot
+        row_y = []
+        prev_ext_info = None
+        ext_info_list = []
+        for idx, (bot_conn_y, top_conn_y, blk_height, orient,
+                  ext_bot_info, ext_top_info, row_type) in enumerate(place_info_list):
+            update_ytop = True
+            if idx + 1 < num_master - 1:
+                next_row_type = place_info_list[idx + 1][6]
+                if next_row_type == 'ptap' or next_row_type == 'ntap':
+                    # we can draw top tracks over guard ring row, so in that case, we don't want to
+                    # update ytop to include top tracks
+                    update_ytop = False
+
+            # find Y coordinate of current block
+            if idx != 0:
+                if idx == 1:
                     # make sure first extension width is at least bot_ext_w
-                    min_ext_w = max(min_ext_w, bot_ext_w)
-                # update y_next_min
-                y_next_min += min_ext_w * mos_pitch
-                next_btr_info = place_info_list[idx + 1][7]
-                if next_btr_info == -1:
-                    # next row is substrate
-                    if idx + 1 == num_master - 1 and cur_top_ntr > 0:
-                        # last substrate, place out of current top tracks
-                        y_tr_last_top = grid.get_wire_bounds(hm_layer, tr_next - 1,
-                                                             unit_mode=True)[1]
-                        y_next = max(y_next_min, -(-y_tr_last_top // mos_pitch) * mos_pitch)
-                    else:
-                        # guard ring substrate, place as close to current block as possible
-                        y_next = y_next_min
-                else:
-                    # next row is transistor.  Get number of bottom tracks of next row
-                    if (wname_list is not None) and next_btr_info:
-                        next_bot_ntr = tr_manager.place_wires(hm_layer, next_btr_info,
-                                                              start_idx=tr_next)[0]
-                    elif wname_list is None:
-                        next_bot_ntr = next_btr_info
-                    else:
-                        next_bot_ntr = 0
+                    ycur += bot_ext_w * mos_pitch
+                # find Y coordinate that allows us to connect to top bottom track
+                wire_groups = wire_tree.get_wire_groups((idx, 0))
+                if wire_groups is not None:
+                    yt = bot_conn_y[1]
+                    for wg in wire_groups:
+                        _, tr_idx, tr_w = wg.last_track
+                        via_ext = grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
+                        y_ttr = grid.get_wire_bounds(hm_layer, tr_idx, width=tr_w,
+                                                     unit_mode=True)[1]
+                        ycur = max(ycur, y_ttr + via_ext - yt)
+                    ycur = -(-ycur // mos_pitch) * mos_pitch
 
-                    if next_bot_ntr > 0:
-                        # if next row has bottom tracks,
-                        # make sure the next row is placed high enough
-                        y_bot_tr_last_mid = grid.track_to_coord(hm_layer,
-                                                                tr_next + next_bot_ntr - 1,
-                                                                unit_mode=True)
-                        byt = place_info_list[idx + 1][0][1]
-                        y_tmp = -(-(y_bot_tr_last_mid - byt + conn_delta) // mos_pitch) * mos_pitch
-                        y_next = max(y_next_min, y_tmp)
-                    else:
-                        # otherwise, place next row as close to this row as possible.
-                        y_next = y_next_min
+                # make sure extension constraints is met
+                valid_widths = tcls.get_valid_extension_widths(lch_unit, ext_bot_info,
+                                                               prev_ext_info)
+                ext_h = (ycur - ytop_prev) // mos_pitch
+                if ext_h < valid_widths[-1] and ext_h not in valid_widths:
+                    # make sure extension height is valid
+                    ext_h = valid_widths[bisect.bisect_left(valid_widths, ext_h)]
 
-                # if next row is the last row, need to round to tot_pitch
-                if idx + 1 == num_master - 1:
-                    # this is the last block.  Place it such that the overall
-                    # height is multiples of tot_pitch.
-                    next_height = place_info_list[idx + 1][3]
-                    y_top_min = max(y_next + next_height, min_height)
-                    y_top = -(-y_top_min // tot_pitch) * tot_pitch
-                    y_next = y_top - next_height
-                    # make sure we both have valid extension width and last block is on tot_pitch.
-                    # Iterate until we get it
-                    ext_w = (y_next - y_top_cur) // mos_pitch
-                    while ext_w < ext_w_list[-1] and ext_w not in ext_w_list:
-                        # find next extension block
-                        ext_w = ext_w_list[bisect.bisect_left(ext_w_list, ext_w)]
-                        # update y_next
-                        y_next = y_top_cur + ext_w * mos_pitch
-                        # place last block such that it is on tot_pitch
-                        y_top_min = y_next + next_height
-                        y_top = -(-y_top_min // tot_pitch) * tot_pitch
-                        y_next = y_top - next_height
-                        # recalculate ext_w
-                        ext_w = (y_next - y_top_cur) // mos_pitch
-                else:
-                    # make sure ext_w is a valid width
-                    ext_w = (y_next - y_top_cur) // mos_pitch
-                    if ext_w < ext_w_list[-1] and ext_w not in ext_w_list:
-                        ext_w = ext_w_list[bisect.bisect_left(ext_w_list, ext_w)]
-                        # update y_next
-                        y_next = y_top_cur + ext_w * mos_pitch
+                ycur = ytop_prev + ext_h * mos_pitch
 
+            # move top tracks and find top coordinate
+            ytop = ycur + blk_height
+            wire_groups = wire_tree.get_wire_groups((idx, 1))
+            if wire_groups is not None:
+                yb = top_conn_y[0]
+                # move the top tracks so we can connect to them
+                for wg in wire_groups:
+                    _, tr_idx, tr_w = wg.first_track
+                    via_ext = grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
+                    idx_targ = grid.find_next_track(hm_layer, ycur + yb + via_ext,
+                                                    tr_width=tr_w, half_track=True,
+                                                    mode=1, unit_mode=True)
+                    if tr_idx < idx_targ:
+                        wg.move_by(idx_targ - tr_idx, propagate=True)
+                    # update ytop
+                    _, last_idx, last_w = wg.last_track
+                    if update_ytop:
+                        ytop = max(ytop, self.grid.get_wire_bounds(hm_layer, last_idx,
+                                                                   width=last_w, unit_mode=True)[1])
+
+            if idx == num_master - 1:
+                # this is the last row, quantize total height
+                ytop = max(ytop, min_htot)
+                tot_height = -(-(ytop - ybot) // tot_height_pitch) * tot_height_pitch
+                ytop = ybot + tot_height
+                ycur = ytop - blk_height
+            else:
+                # this is not the last row, move the next tracks outside of this row
+                wire_groups = wire_tree.get_wire_groups((idx + 1, 0))
+                if wire_groups is not None:
+                    for wg in wire_groups:
+                        _, tr_idx, tr_w = wg.first_track
+                        idx_targ = self.grid.find_next_track(hm_layer, ytop,
+                                                             tr_width=tr_w,
+                                                             half_track=True,
+                                                             mode=1, unit_mode=True)
+                        if tr_idx < idx_targ:
+                            wg.move_by(idx_targ - tr_idx, propagate=True)
+
+            # record information
+            row_y.append(ycur)
+            if idx > 0:
+                ext_h = (ycur - ytop_prev) // mos_pitch
+                print(idx, ytop_prev, ycur, ext_h)
                 ext_params = dict(
                     lch=self._lch,
-                    w=ext_w,
+                    w=ext_h,
                     fg=fg_tot,
-                    top_ext_info=top_ext_info,
-                    bot_ext_info=bot_ext_info,
+                    top_ext_info=ext_bot_info,
+                    bot_ext_info=prev_ext_info,
                     options=ext_options,
                 )
-                ext_info_list.append((ext_w, ext_params))
-                # step 3D: update y_cur
-                y_cur = y_next
+                ext_info_list.append((ext_h, ext_params))
+
+            ytop_prev = ycur + blk_height
+            ycur = ytop
+            prev_ext_info = ext_top_info
+
+        # second pass: move tracks to minimize resistance, then record track intervals.
+        for idx in range(num_master - 1, -1, -1):
+            bot_conn_y = place_info_list[idx][0]
+            ycur = row_y[idx]
+
+            bot_wire_groups = wire_tree.get_wire_groups((idx, 0))
+            if bot_wire_groups is not None:
+                yt = bot_conn_y[1]
+                for wg in bot_wire_groups:
+                    _, tr_idx, tr_w = wg.last_track
+                    via_ext = self.grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
+                    idx_max = self.grid.find_next_track(hm_layer, ycur + yt - via_ext,
+                                                        tr_width=tr_w, half_track=True,
+                                                        mode=-1, unit_mode=True)
+                    if idx_max > tr_idx:
+                        wg.move_up(idx_max - tr_idx)
 
         # return placement result.
-        return y_list, ext_info_list, tr_next, bot_tr_intv, top_tr_intv, bot_wire_loc, top_wire_loc
-
-    def _place_helper_get_tr_intv(self, tr_next, hm_layer, by, ty, conn_delta, vm_le_sp, btr_info,
-                                  ttr_info, tr_manager, widx, wname_list):
-        byb, byt = by
-        tyb, tyt = ty
-        bnd_b_bot = self.grid.coord_to_nearest_track(hm_layer, byb + conn_delta, half_track=True,
-                                                     mode=1, unit_mode=True)
-        bnd_b_top = self.grid.coord_to_nearest_track(hm_layer, byt - conn_delta, half_track=True,
-                                                     mode=-1, unit_mode=True)
-        bnd_t_bot = self.grid.coord_to_nearest_track(hm_layer, tyb + conn_delta, half_track=True,
-                                                     mode=1, unit_mode=True)
-        bnd_t_top = self.grid.coord_to_nearest_track(hm_layer, tyt - conn_delta, half_track=True,
-                                                     mode=-1, unit_mode=True)
-        if wname_list is None:
-            # bottom b track
-            bnd_b_bot = min(bnd_b_bot, bnd_b_top + 1 - btr_info)
-            # bottom t track
-            bnd_t_bot = max(bnd_t_bot, bnd_b_top + 1)
-            # top ds track
-            bnd_t_top = max(bnd_t_top, bnd_t_bot + ttr_info - 1)
-            # compute lowest DRC clean track upper row can use
-            tr_t_top_y = self.grid.track_to_coord(hm_layer, bnd_t_top, unit_mode=True)
-            tr_next_y = max(tyt + vm_le_sp + conn_delta,
-                            tr_t_top_y + 2 * conn_delta + vm_le_sp)
-            tr_next = self.grid.coord_to_nearest_track(hm_layer, tr_next_y, half_track=True,
-                                                       mode=1, unit_mode=True)
-            cur_top_ntr = bnd_t_top + 1 - bnd_t_bot
-            bot_loc = top_loc = []
-        else:
-            # compute bottom/top wire locations
-            sp_betw = 0
-            first_bot_tr = tr_next
-            if btr_info:
-                bot_ntr, bot_loc = tr_manager.place_wires(hm_layer, btr_info, start_idx=tr_next)
-                widx += len(btr_info)
-                if widx < len(wname_list):
-                    sp_betw = tr_manager.get_space(hm_layer, (wname_list[widx - 1],
-                                                              wname_list[widx]))
-                    tr_next += bot_ntr + sp_betw
-                else:
-                    tr_next += bot_ntr
-            else:
-                bot_ntr = 0
-                bot_loc = []
-            if ttr_info:
-                tr_next = max(tr_next, bnd_t_bot)
-                first_top_tr = tr_next
-                cur_top_ntr, top_loc = tr_manager.place_wires(hm_layer, ttr_info, start_idx=tr_next)
-                widx += len(ttr_info)
-                if widx < len(wname_list):
-                    sp_next = tr_manager.get_space(hm_layer, (wname_list[widx - 1],
-                                                              wname_list[widx]))
-                    tr_next += cur_top_ntr + sp_next
-                else:
-                    tr_next += cur_top_ntr
-            else:
-                tr_next = max(tr_next, bnd_t_top + 1)
-                first_top_tr = tr_next
-                cur_top_ntr = 0
-                top_loc = []
-
-            # check if it's possible to move the bottom tracks up to reduce series resistance
-            if bot_ntr > 0:
-                new_bot_first = min(first_top_tr - sp_betw - bot_ntr, bnd_b_top + 1 - bot_ntr)
-                if new_bot_first > first_bot_tr:
-                    _, bot_loc = tr_manager.place_wires(hm_layer, btr_info, start_idx=new_bot_first)
-
-        return ((bnd_b_bot, bnd_b_top + 1), (bnd_t_bot, bnd_t_top + 1),
-                tr_next, cur_top_ntr, bot_loc, top_loc, widx)
+        return row_y, ext_info_list, ytop, wire_tree
 
     def _place(self, fg_tot, place_info_list, master_list, guard_ring_nf, top_layer,
-               left_end, right_end, bot_end, top_end, tr_manager, wname_list, min_height):
+               left_end, right_end, bot_end, top_end, tr_manager, min_height, wire_tree):
         """
         Placement strategy: make overall block match mos_pitch and horizontal track pitch, try to
         center everything between the top and bottom substrates.
@@ -1422,10 +1347,6 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         hm_layer = mconn_layer + 1
         mos_pitch = self._tech_cls.get_mos_pitch(unit_mode=True)
         tot_pitch = self._layout_info.vertical_pitch_unit
-        vm_le_sp = self.grid.get_line_end_space(hm_layer - 1, 1, unit_mode=True)
-        via_ext = self.grid.get_via_extensions(hm_layer - 1, 1, 1, unit_mode=True)[0]
-        hm_w = self.grid.get_track_width(hm_layer, 1, unit_mode=True)
-        conn_delta = via_ext + hm_w // 2
         lch_unit = int(round(self._lch / self.grid.layout_unit / self.grid.resolution))
 
         # make end rows
@@ -1455,13 +1376,12 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         # find bot_ext_w such that we place blocks as close to center as possible,
         # use binary search to shorten search.
         # run first iteration out of the while loop to get minimum bottom extension.
-        tmp_result = self._place_helper(0, place_info_list, lch_unit, fg_tot, hm_layer, vm_le_sp,
-                                        conn_delta, mos_pitch, tot_pitch, dy, tr_manager,
-                                        wname_list, guard_ring_nf, min_height)
-        _, ext_list, tot_ntr, _, _, _, _ = tmp_result
+        tmp_result = self._place_helper(0, place_info_list, lch_unit, fg_tot, hm_layer, mos_pitch,
+                                        tot_pitch, dy, guard_ring_nf, min_height, wire_tree)
+        _, ext_list, ytop, _ = tmp_result
         ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
-        print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
-        tot_ntr_best = tot_ntr
+        print('ext_w0 = %d, ext_wend=%d, ytop=%d' % (ext_first, ext_last, ytop))
+        ytop_best = ytop
         bot_ext_w_iter = BinaryIterator(ext_first, None)
         bot_ext_w_iter.save_info(tmp_result)
         bot_ext_w_iter.up()
@@ -1469,17 +1389,16 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             while bot_ext_w_iter.has_next():
                 bot_ext_w = bot_ext_w_iter.get_next()
                 tmp_result = self._place_helper(bot_ext_w, place_info_list, lch_unit, fg_tot,
-                                                hm_layer, vm_le_sp, conn_delta, mos_pitch,
-                                                tot_pitch, dy, tr_manager, wname_list,
-                                                guard_ring_nf, min_height)
-                _, ext_list, tot_ntr, _, _, _, _ = tmp_result
+                                                hm_layer, mos_pitch, tot_pitch, dy, guard_ring_nf,
+                                                min_height, wire_tree)
+                _, ext_list, ytop, _ = tmp_result
                 ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
-                print('ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
+                print('ext_w0 = %d, ext_wend=%d, ytop=%d' % (ext_first, ext_last, ytop))
 
-                if tot_ntr > tot_ntr_best:
+                if ytop > ytop_best:
                     bot_ext_w_iter.down()
                 else:
-                    tot_ntr_best = tot_ntr
+                    ytop_best = ytop
                     if ext_first == ext_last:
                         bot_ext_w_iter.save_info(tmp_result)
                         break
@@ -1489,10 +1408,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     else:
                         bot_ext_w_iter.down()
 
-        (y_list, ext_list, tot_ntr, bot_tr_intv, top_tr_intv,
-         bot_wire_loc, top_wire_loc) = bot_ext_w_iter.get_last_save_info()
+        y_list, ext_list, ytop, wire_tree = bot_ext_w_iter.get_last_save_info()
         ext_first, ext_last = ext_list[0][0], ext_list[-1][0]
-        print('final: ext_w0 = %d, ext_wend=%d, tot_ntr=%d' % (ext_first, ext_last, tot_ntr))
+        print('final: ext_w0 = %d, ext_wend=%d, ytop=%d' % (ext_first, ext_last, ytop))
 
         # at this point we've found the optimal placement.  Place instances
         place_info = self._layout_info.get_placement_info(fg_tot)
@@ -1506,7 +1424,6 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         self._dstr_intv = []
         self._wire_info = []
         self._tr_manager = tr_manager
-        ext_list.append((0, None))
         gr_vss_warrs = []
         gr_vdd_warrs = []
         gr_vss_dum_warrs = []
@@ -1516,38 +1433,57 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         y_list.append(y_list[-1] + master_list[-1].array_box.height_unit)
         ext_list.insert(0, (0, None))
         ext_list.append((0, None))
+        ext_list.append((0, None))
         master_list.insert(0, bot_end_master)
         master_list.append(top_end_master)
         orient_list = ['R0']
         orient_list.extend(self._orient_list)
         orient_list.append('MX')
-        bot_wire_loc.insert(0, None)
-        top_wire_loc.insert(0, None)
-        bot_wire_loc.append(None)
-        top_wire_loc.append(None)
         # draw
         sub_y_list = []
-        for row_idx, (ybot, ext_info, master, orient, bw_info, tw_info) in \
-                enumerate(zip(y_list, ext_list, master_list, orient_list,
-                              bot_wire_loc, top_wire_loc)):
-            if master.is_empty and master.bound_box.height_unit == 0:
+        for row_idx, (ybot, ext_info, master, orient) in \
+                enumerate(zip(y_list, ext_list, master_list, orient_list)):
+            height = master.bound_box.height_unit
+            if master.is_empty and height == 0:
                 continue
+
+            is_sub = isinstance(master, AnalogSubstrate)
 
             if row_idx != 0 and row_idx != len(master_list) - 1:
                 # get gate/drain/source interval
-                if orient == 'R0':
-                    gtr_intv = bot_tr_intv[row_idx - 1]
-                    dtr_intv = top_tr_intv[row_idx - 1]
-                    gw_info = bw_info
-                    dw_info = tw_info
+                if is_sub:
+                    bot_tr = self.grid.find_next_track(hm_layer, ybot, half_track=True, mode=1,
+                                                       unit_mode=True)
+                    top_tr = self.grid.find_next_track(hm_layer, ybot + height, half_track=True,
+                                                       mode=-1, unit_mode=True)
+                    self._gtr_intv.append(None)
+                    self._dstr_intv.append((bot_tr, top_tr + 1))
+                    self._wire_info.append((None, None))
                 else:
-                    gtr_intv = top_tr_intv[row_idx - 1]
-                    dtr_intv = bot_tr_intv[row_idx - 1]
-                    gw_info = tw_info
-                    dw_info = bw_info
-                self._gtr_intv.append(gtr_intv)
-                self._dstr_intv.append(dtr_intv)
-                self._wire_info.append((gw_info, dw_info))
+                    bot_wg = wire_tree.get_wire_groups((row_idx - 1, 0))
+                    top_wg = wire_tree.get_wire_groups((row_idx - 1, 1))
+                    if bot_wg is None:
+                        gtr_intv = (0, 0)
+                        gw_info = (None, None)
+                    else:
+                        gtr_intv = bot_wg[0].interval
+                        gw_info = (bot_wg[0].names, bot_wg[0].locations)
+                    if top_wg is None:
+                        dtr_intv = (0, 0)
+                        dw_info = (None, None)
+                    else:
+                        dtr_intv = top_wg[0].interval
+                        dw_info = (top_wg[0].names, top_wg[0].locations)
+
+                    if orient != 'R0':
+                        gtr_intv, dtr_intv = dtr_intv, gtr_intv
+                        gw_info, dw_info = dw_info, gw_info
+
+                    print(gtr_intv, dtr_intv)
+                    print(gw_info, dw_info)
+                    self._gtr_intv.append(gtr_intv)
+                    self._dstr_intv.append(dtr_intv)
+                    self._wire_info.append((gw_info, dw_info))
 
             edge_layout_info = master.get_edge_layout_info()
             edgel_params = dict(
@@ -1561,7 +1497,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             edgel_master = self.new_template(params=edgel_params, temp_cls=AnalogEdge)
             edgel_width = edgel_master.bound_box.width_unit
 
-            yo = ybot if orient == 'R0' else ybot + master.bound_box.height_unit
+            yo = ybot if orient == 'R0' else ybot + height
             inst_loc = (edgel_x0 + edgel_width, yo)
             inst = self.add_instance(master, loc=inst_loc, orient=orient, unit_mode=True)
             # record substrate Y coordinates
@@ -1589,7 +1525,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 top_bound_box = top_bound_box.merge(edgel.bound_box)
                 edge_inst_list.append(edgel)
 
-            if isinstance(master, AnalogSubstrate):
+            if is_sub:
                 conn_layout_info = edge_layout_info.copy()
                 conn_layout_info['fg'] = fg_tot
                 sub_parity = self._sub_parity if row_idx == 0 or row_idx == len(y_list) - 1 else 0
@@ -1887,6 +1823,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             pgr_w = 0 if nw_list else ntap_w
 
         # place transistor blocks
+        wire_tree = WireTree()
         wire_list = []
         master_list = []
         place_info_list = []
@@ -1898,7 +1835,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         # make NMOS substrate/transistor masters.
         tmp_result = self._make_masters(fg_tot, 'nch', self._lch, ptap_w, ngr_w, nw_list, nth_list,
                                         ng_tracks, nds_tracks, n_orientations, n_kwargs, 0,
-                                        guard_ring_nf, wire_names)
+                                        guard_ring_nf, wire_names, tr_manager, wire_tree)
         pinfo_list, m_list, n_kwargs, nw_list, nth_list, wname_list = tmp_result
         master_list.extend(m_list)
         place_info_list.extend(pinfo_list)
@@ -1909,7 +1846,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         # make PMOS substrate/transistor masters.
         tmp_result = self._make_masters(fg_tot, 'pch', self._lch, pgr_w, ntap_w, pw_list, pth_list,
                                         pg_tracks, pds_tracks, p_orientations, p_kwargs,
-                                        len(m_list), guard_ring_nf, wire_names)
+                                        len(m_list), guard_ring_nf, wire_names, tr_manager,
+                                        wire_tree)
         pinfo_list, m_list, p_kwargs, pw_list, pth_list, wname_list = tmp_result
 
         master_list.extend(m_list)
@@ -1918,14 +1856,12 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         self._w_list.extend(pw_list)
         self._th_list.extend(pth_list)
         wire_list.extend(wname_list)
-        self._orient_list = [item[4] for item in place_info_list]
+        self._orient_list = [item[3] for item in place_info_list]
 
         # place masters according to track specifications.  Try to center transistors
-        if wire_names is None:
-            wire_list = None
         self._place(fg_tot, place_info_list, master_list, guard_ring_nf, top_layer,
                     left_end != 0, right_end != 0, bot_sub_end != 0, top_sub_end != 0,
-                    tr_manager, wire_list, min_height)
+                    tr_manager, min_height, wire_tree)
 
         # draw device blockages
         self.grid.tech_info.draw_device_blockage(self)

@@ -19,6 +19,8 @@ class WireGroup(object):
                  space=0,  # type: Union[float, int]
                  tr_manager=None,  # type: Optional[TrackManager]
                  name_list=None,  # type: Optional[List[str]]
+                 track_offset=0,  # type: int
+                 children=None,  # type: Optional[List[WireGroup]]
                  ):
         # type: (...) -> None
         self.space = space
@@ -35,8 +37,26 @@ class WireGroup(object):
 
         if self._num_tr < 1:
             raise ValueError('Cannot create WireGroup with < 1 track.')
-        self._tr_off = 0
-        self._children = []
+        self._tr_off = track_offset
+        if children is None:
+            self._children = []
+        else:
+            self._children = children
+
+    def copy(self):
+        return WireGroup(self._layer, self._wire_type, num_tr=self._num_tr,
+                         space=self.space, tr_manager=self._tr_manager, name_list=self._names,
+                         track_offset=self._tr_off, children=list(self._children))
+
+    @property
+    def names(self):
+        return self._names
+
+    @property
+    def locations(self):
+        if self._locs is None:
+            return None
+        return [l + self._tr_off for l in self._locs]
 
     @property
     def type(self):
@@ -152,11 +172,22 @@ class WireGroup(object):
 
 
 class WireTree(object):
-    def __init__(self, mirror=False):
+    def __init__(self, mirror=False, wire_list=None, wire_ids=None):
         # type: (bool) -> None
-        self._wire_list = []
-        self._wire_ids = []
+        if wire_list is None:
+            self._wire_list = []
+        else:
+            self._wire_list = wire_list
+        if wire_ids is None:
+            self._wire_ids = []
+        else:
+            self._wire_ids = wire_ids
         self._mirror = mirror
+
+    def copy(self):
+        new_wire_list = [wg.copy() for wg in self._wire_list]
+        new_wire_ids = list(self._wire_ids)
+        return WireTree(mirror=self._mirror, wire_list=new_wire_list, wire_ids=new_wire_ids)
 
     @classmethod
     def _get_half_space(cls, sp):
@@ -190,6 +221,8 @@ class WireTree(object):
     def get_wire_groups(self, wire_id, get_next=False):
         # type: (Tuple[int, int]) -> Optional[List[WireGroup]]
         idx = bisect.bisect_left(self._wire_ids, wire_id)
+        if idx == len(self._wire_ids):
+            return None
         if self._wire_ids[idx] == wire_id or get_next:
             return self._wire_list[idx]
         else:
