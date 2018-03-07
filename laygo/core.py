@@ -557,7 +557,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             self._endr_infos = [default_end_info] * num_rows
 
     @property
-    def layout_info(self):
+    def row_layout_info(self):
         if not self.finalized:
             raise ValueError('Can only compute digital row info if this block is finalized.')
 
