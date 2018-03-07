@@ -278,7 +278,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def get_row_extension_info(self, bot_ext_list, top_ext_list):
         # type: (List[Any], List[Any]) -> List[Tuple[int, Any, Any]]
-        """Compute the list of bottom/top extension information pair needed to create Laygo extension row.
+        """Compute the list of bottom/top extension information pair to create Laygo extension row.
 
         Parameters
         ----------
@@ -290,7 +290,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         Returns
         -------
         ext_combo_list : List[Tuple[int, Any, Any]]
-            list of number of fingers and bottom/top extension information objects for each extension primitive.
+            list of number of fingers and bottom/top extension information objects for each
+            extension primitive.
         """
         return []
 
@@ -466,8 +467,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                 template.add_instance(ext_master, loc=(curx, yext), unit_mode=True)
                 curx += ext_master.prim_bound_box.width_unit
 
-                if idx == 0 or idx == num_ext - 1:
-                    adj_blk_info = ext_master.get_left_edge_info() if idx == 0 else ext_master.get_right_edge_info()
+                if idx == 0:
+                    adj_blk_info = ext_master.get_left_edge_info()
                     # compute edge parameters
                     cur_ext_edge_params = dict(
                         top_layer=top_layer,
@@ -477,7 +478,20 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                         adj_blk_info=adj_blk_info,
                         is_laygo=True,
                     )
-                    edge_orient = 'R0' if idx == 0 else 'MY'
+                    edge_orient = 'R0'
+                    ext_edges.append((yext, edge_orient, cur_ext_edge_params))
+                if idx == num_ext - 1:
+                    adj_blk_info = ext_master.get_right_edge_info()
+                    # compute edge parameters
+                    cur_ext_edge_params = dict(
+                        top_layer=top_layer,
+                        guard_ring_nf=guard_ring_nf,
+                        name_id=ext_master.get_layout_basename(),
+                        layout_info=ext_master.get_edge_layout_info(),
+                        adj_blk_info=adj_blk_info,
+                        is_laygo=True,
+                    )
+                    edge_orient = 'MY'
                     ext_edges.append((yext, edge_orient, cur_ext_edge_params))
 
         return ext_edges
@@ -540,7 +554,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         edge_inst_list = []
         xr = laygo_info.tot_width
         for orient, y, master in (('R0', 0, bot_end_master), ('MX', yt, top_end_master)):
-            for x, is_end, flip_lr in ((emargin_l, left_end, False), (xr - emargin_r, right_end, True)):
+            for x, is_end, flip_lr in ((emargin_l, left_end, False),
+                                       (xr - emargin_r, right_end, True)):
                 edge_params = dict(
                     is_end=is_end,
                     guard_ring_nf=guard_ring_nf,
@@ -554,12 +569,14 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                     eorient = 'MY' if orient == 'R0' else 'R180'
                 else:
                     eorient = orient
-                edge_inst_list.append(template.add_instance(edge_master, orient=eorient, loc=(x, y), unit_mode=True))
+                edge_inst_list.append(template.add_instance(edge_master, orient=eorient,
+                                                            loc=(x, y), unit_mode=True))
 
         # draw edge blocks
         for x, y, orient, edge_params in edge_infos:
             edge_master = template.new_template(params=edge_params, temp_cls=AnalogEdge)
-            edge_inst_list.append(template.add_instance(edge_master, orient=orient, loc=(x, y), unit_mode=True))
+            edge_inst_list.append(template.add_instance(edge_master, orient=orient,
+                                                        loc=(x, y), unit_mode=True))
 
         gr_vss_warrs = []
         gr_vdd_warrs = []
