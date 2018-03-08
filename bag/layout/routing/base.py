@@ -571,7 +571,7 @@ class TrackManager(object):
             # no specific rules, so return max of wire spacings.
             ans = 0
             for name in name_tuple:
-                cur_space = self._get_space_from_str(layer_id, name_tuple, sp_override)
+                cur_space = self._get_space_from_str(layer_id, name, sp_override)
                 cur_width = self.get_width(layer_id, name)
                 ans = max(ans, cur_space, self._grid.get_num_space_tracks(layer_id, cur_width,
                                                                           half_space=half_space))
@@ -601,7 +601,7 @@ class TrackManager(object):
             return self._tr_spaces[name].get(layer_id, 0)
         return 0
 
-    def place_wires(self,
+    def place_wires(self,  # type: TrackManager
                     layer_id,  # type: int
                     name_list,  # type: Sequence[str]
                     start_idx=0,  # type: Union[float, int]
@@ -632,7 +632,7 @@ class TrackManager(object):
         answer = []
         num_tracks = 0
         for idx, name in enumerate(name_list):
-            cur_width = self.get_width(layer_id, name, **kwargs)
+            cur_width = self.get_width(layer_id, name)
             num_tracks += cur_width
             cur_center_htr = marker_htr + cur_width - 1
             cur_center = (cur_center_htr - 1) // 2 if cur_center_htr % 2 == 1 \
@@ -642,7 +642,6 @@ class TrackManager(object):
                 next_name = name_list[idx + 1]
                 # figure out the current spacing
                 cur_space = self.get_space(layer_id, (name, next_name), **kwargs)
-
                 num_tracks += cur_space
                 # advance marker
                 cur_space_htr = int(cur_space * 2 + 1)
@@ -755,8 +754,9 @@ class TrackManager(object):
             new_sp = bin_iter.get_next()
             if new_sp > 2 * max_sp:
                 break
-            sp_override[sp_name_tuple][layer_id] = new_sp / 2
-            tmp = self.place_wires(layer_id, name_list, start_idx=start_idx)
+            sp_override[sp_name_tuple][layer_id] = new_sp / 2 if new_sp % 2 == 1 else new_sp // 2
+            tmp = self.place_wires(layer_id, name_list, start_idx=start_idx,
+                                   sp_override=sp_override)
             if tmp[0] > tot_ntr:
                 bin_iter.down()
             else:
