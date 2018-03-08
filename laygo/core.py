@@ -1147,9 +1147,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                                                  mode=1, unit_mode=True)
                 dstr = self.grid.find_next_track(hm_layer, yb_ds + via_ext, half_track=True,
                                                  mode=1, unit_mode=True)
-                row_info['g_intv'] = (btr, max(btr, gtr))
-                row_info['gb_intv'] = (gbtr, max(ttr, gbtr))
-                row_info['ds_intv'] = (dstr, max(ttr, dstr))
+                row_info['g_intv'] = (btr, max(btr, gtr + 1))
+                row_info['gb_intv'] = (gbtr, max(ttr + 1, gbtr))
+                row_info['ds_intv'] = (dstr, max(ttr + 1, dstr))
             else:
                 yb_g = yt_cur - g_conn_y[1]
                 yt_gb = yt_cur - gb_conn_y[0]
@@ -1160,9 +1160,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                                                  mode=-1, unit_mode=True)
                 dstr = self.grid.find_next_track(hm_layer, yt_ds - via_ext, half_track=True,
                                                  mode=-1, unit_mode=True)
-                row_info['g_intv'] = (gtr, max(ttr, gtr))
-                row_info['gb_intv'] = (btr, max(btr, gbtr))
-                row_info['ds_intv'] = (btr, max(btr, dstr))
+                row_info['g_intv'] = (gtr, max(ttr + 1, gtr))
+                row_info['gb_intv'] = (btr, max(btr, gbtr + 1))
+                row_info['ds_intv'] = (btr, max(btr, dstr + 1))
 
         return ext_params_list, rinfo_list
 
