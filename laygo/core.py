@@ -13,7 +13,7 @@ from bag.util.interval import IntervalSet
 from bag.layout.util import BBox
 from bag.layout.template import TemplateBase
 from bag.layout.objects import Instance
-from bag.layout.routing import TrackID
+from bag.layout.routing import TrackID, WireArray
 
 from .tech import LaygoTech
 from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow, LaygoSpace
@@ -1247,6 +1247,70 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             self.set_size_from_bound_box(top_layer, bound_box)
             self.add_cell_boundary(bound_box)
 
+    def add_laygo_mos(self, row_idx, col_idx, seg, gate_loc='d',
+                      stack=False, is_sub=False, **kwargs):
+        row_info = self._row_info_list[row_idx]
+        row_type = row_info['row_type']
+
+        if gate_loc != 'd' and gate_loc != 's':
+            raise ValueError("gate_loc must be 'd' or 's'.")
+
+        ports = {}
+        if is_sub or row_type == 'ntap' or row_type == 'ptap':
+            if seg % 2 == 1:
+                raise ValueError('Cannot draw odd segments of substrate connection.')
+            nx = seg // 2
+            inst = self.add_laygo_primitive('sub', loc=(col_idx, row_idx), nx=nx, spx=2, **kwargs)
+            port_name = 'VDD' if row_type == 'ntap' or row_type == 'pch' else 'VSS'
+            for name in (port_name, port_name + 's', port_name + 'd'):
+                ports[name] = WireArray.list_to_warr(inst.get_all_port_pins(name))
+        else:
+            if stack:
+                blk_type = 'stack2' + gate_loc
+                num2 = seg
+                num1 = False
+            else:
+                blk_type = 'fg2' + gate_loc
+                num2 = seg // 2
+                num1 = (seg % 2 == 1)
+
+            ne = (num2 + 1) // 2
+            no = num2 - ne
+            inst = [self.add_laygo_primitive(blk_type, loc=(col_idx, row_idx), nx=ne, spx=4,
+                                             **kwargs)]
+            if no > 0:
+                inst.append(self.add_laygo_primitive(blk_type, loc=(col_idx + 2, row_idx),
+                                                     flip=True, nx=no, spx=4, **kwargs))
+            if num1:
+                col = col_idx + num2 * 2
+                blk_type = 'fg1' + gate_loc
+                inst1 = self.add_laygo_primitive(blk_type, loc=(col, row_idx), **kwargs)
+            else:
+                inst1 = None
+
+            if gate_loc == 's':
+                names = ['s', 'd', 'g', 'g0', 'g1']
+            else:
+                names = ['s', 'd', 'g']
+
+            for name in names:
+                pins = inst[0].get_all_port_pins(name)
+                if len(inst) > 1:
+                    pins.extend(inst[1].get_all_port_pins(name))
+                if inst1 is not None:
+                    if name == 'g0' or name == 'g1':
+                        if num2 % 2 == 0:
+                            pins.extend(inst1.get_all_port_pins(name))
+                        else:
+                            name1 = 'g1' if name == 'g0' else 'g0'
+                            pins.extend(inst1.get_all_port_pins(name1))
+                    else:
+                        pins.extend(inst1.get_all_port_pins(name))
+
+                ports[name] = WireArray.list_to_warr(pins)
+
+        return ports
+
     def add_laygo_primitive(self, blk_type, loc=(0, 0), flip=False, nx=1, spx=0, **kwargs):
         # type: (str, Tuple[int, int], bool, int, int, **kwargs) -> Instance
 
@@ -1254,7 +1318,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         if row_idx < 0 or row_idx >= self.num_rows:
             raise ValueError('Cannot add primitive at row %d' % row_idx)
 
-        row_info = self._row_info_list[loc[1]]
+        row_info = self._row_info_list[row_idx]
         row_type = row_info['row_type']
         wblk = kwargs.pop('w', row_info['w_max'])
 
