@@ -49,7 +49,7 @@ def get_sch_libraries(mod_name, mod_info):
     bag_modules = mod_info.get('lib_path', 'BagModules')
     root_dir = os.path.realpath(os.path.join(mod_name, bag_modules))
     if not os.path.isdir(root_dir):
-        raise ValueError('Directory %s not found.' % root_dir)
+        return []
     return [name for name in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, name))]
 
 
