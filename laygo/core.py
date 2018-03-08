@@ -1177,12 +1177,20 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         intv = row_info['%s_intv' % tr_type]
         ntr = intv[1] - intv[0]
         if tr_idx >= ntr:
-            raise ValueError('tr_idx = %d >= %d' % (tr_idx, ntr))
+            raise IndexError('tr_idx = %d >= %d' % (tr_idx, ntr))
+        if tr_idx < 0:
+            tr_idx += ntr
+        if tr_idx < 0:
+            raise IndexError('index out of range.')
 
         if orient == 'R0':
             return intv[0] + tr_idx
         else:
             return intv[1] - 1 - tr_idx
+
+    def get_track_interval(self, row_idx, tr_type):
+        row_info = self._row_info_list[row_idx]
+        return row_info['%s_intv' % tr_type]
 
     def make_track_id(self, row_idx, tr_type, tr_idx, width=1, num=1, pitch=0.0):
         tid = self.get_track_index(row_idx, tr_type, tr_idx)
