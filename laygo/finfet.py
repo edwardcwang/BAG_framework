@@ -390,19 +390,21 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         cur_edge_info = EdgeInfo(od_type=None, draw_layers={}, y_intv=dict(od=od_y, md=md_y))
         # figure out poly types per finger
         po_types = []
-        lod_type = left_blk_info[0].od_type
-        if lod_type == 'mos':
-            po_types.append('PO_edge')
-        elif lod_type == 'sub':
-            po_types.append('PO_edge_sub')
-        elif lod_type == 'dum':
-            po_types.append('PO_edge_dummy')
-        else:
-            po_types.append('PO_dummy')
-        po_types.extend(('PO_dummy' for _ in range(od_spx_fg - 1)))
         od_intv_idx = 0
-        for cur_idx in range(od_spx_fg, num_blk - od_spx_fg):
-            if od_intv_idx < len(od_x_list):
+        for cur_idx in range(num_blk):
+            if cur_idx == 0 or cur_idx == num_blk - 1:
+                od_type = left_blk_info[0].od_type if cur_idx == 0 else right_blk_info[0].od_type
+                if od_type == 'mos':
+                    po_types.append('PO_edge')
+                elif od_type == 'sub':
+                    po_types.append('PO_edge_sub')
+                elif od_type == 'dum':
+                    po_types.append('PO_edge_dummy')
+                else:
+                    po_types.append('PO_dummy')
+            elif cur_idx < od_spx_fg or cur_idx >= num_blk - od_spx_fg:
+                po_types.append('PO_dummy')
+            elif od_intv_idx < len(od_x_list):
                 cur_od_intv = od_x_list[od_intv_idx]
                 if cur_od_intv[1] == cur_idx:
                     po_types.append('PO_edge_dummy')
@@ -417,16 +419,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                     po_types.append('PO_dummy')
             else:
                 po_types.append('PO_dummy')
-        po_types.extend(('PO_dummy' for _ in range(od_spx_fg - 1)))
-        rod_type = right_blk_info[0].od_type
-        if rod_type == 'mos':
-            po_types.append('PO_edge')
-        elif rod_type == 'sub':
-            po_types.append('PO_edge_sub')
-        elif rod_type == 'dum':
-            po_types.append('PO_edge_dummy')
-        else:
-            po_types.append('PO_dummy')
+
         # noinspection PyProtectedMember
         ext_top_info = row_ext_top._replace(po_types=po_types, edgel_info=cur_edge_info,
                                             edger_info=cur_edge_info)
