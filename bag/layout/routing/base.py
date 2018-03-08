@@ -5,6 +5,7 @@
 
 from typing import Tuple, Union, Generator, Dict, List, Sequence
 
+from ...util.search import BinaryIterator
 from ..util import BBox, BBoxArray
 from .grid import RoutingGrid
 
@@ -554,36 +555,51 @@ class TrackManager(object):
             those two track types if specified.  Otherwise, returns the maximum of all the
             valid spacing.
         **kwargs:
-            optional parameters for get_num_space_tracks() method of RoutingGrid.
+            optional parameters.
         """
         half_space = kwargs.get('half_space', self._half_space)
+        sp_override = kwargs.get('sp_override', None)
 
         if isinstance(name_tuple, tuple):
-            # if two specific wires are given, first check if any specific ruels exist
-            if name_tuple in self._tr_spaces:
-                return self._tr_spaces[name_tuple][layer_id]
-            name_tuple = (name_tuple[1], name_tuple[0])
-            if name_tuple in self._tr_spaces:
-                return self._tr_spaces[name_tuple][layer_id]
+            # if two specific wires are given, first check if any specific rules exist
+            ans = self._get_space_from_tuple(layer_id, name_tuple, sp_override)
+            if ans is not None:
+                return ans
+            ans = self._get_space_from_tuple(layer_id, name_tuple, self._tr_spaces)
+            if ans is not None:
+                return ans
             # no specific rules, so return max of wire spacings.
             ans = 0
             for name in name_tuple:
+                cur_space = self._get_space_from_str(layer_id, name_tuple, sp_override)
                 cur_width = self.get_width(layer_id, name)
-                if name in self._tr_spaces:
-                    cur_space = self._tr_spaces[name].get(layer_id, 0)
-                else:
-                    cur_space = 0
                 ans = max(ans, cur_space, self._grid.get_num_space_tracks(layer_id, cur_width,
                                                                           half_space=half_space))
             return ans
         else:
+            cur_space = self._get_space_from_str(layer_id, name_tuple, sp_override)
             cur_width = self.get_width(layer_id, name_tuple)
-            if name_tuple in self._tr_spaces:
-                cur_space = self._tr_spaces[name_tuple].get(layer_id, 0)
-            else:
-                cur_space = 0
             return max(cur_space, self._grid.get_num_space_tracks(layer_id, cur_width,
                                                                   half_space=half_space))
+
+    @classmethod
+    def _get_space_from_tuple(cls, layer_id, ntup, sp_dict):
+        if sp_dict is not None and ntup in sp_dict:
+            if ntup in sp_dict:
+                return sp_dict[ntup].get(layer_id, None)
+            ntup = (ntup[1], ntup[0])
+            if ntup in sp_dict:
+                return sp_dict[ntup].get(layer_id, None)
+        return None
+
+    def _get_space_from_str(self, layer_id, name, sp_override):
+        if sp_override is not None and name in sp_override:
+            test = sp_override[name]
+            if layer_id in test:
+                return test[layer_id]
+        if name in self._tr_spaces:
+            return self._tr_spaces[name].get(layer_id, 0)
+        return 0
 
     def place_wires(self,
                     layer_id,  # type: int
@@ -616,7 +632,7 @@ class TrackManager(object):
         answer = []
         num_tracks = 0
         for idx, name in enumerate(name_list):
-            cur_width = self.get_width(layer_id, name)
+            cur_width = self.get_width(layer_id, name, **kwargs)
             num_tracks += cur_width
             cur_center_htr = marker_htr + cur_width - 1
             cur_center = (cur_center_htr - 1) // 2 if cur_center_htr % 2 == 1 \
@@ -639,7 +655,22 @@ class TrackManager(object):
 
         return num_tracks, answer
 
-    def align_wires(self,
+    @classmethod
+    def _get_align_delta(cls, tot_ntr, num_used, alignment):
+        if alignment == -1 or num_used == tot_ntr:
+            # we already aligned to left
+            return 0
+        elif alignment == 0:
+            # center tracks
+            delta_htr = int((tot_ntr - num_used) * 2) // 2
+            return delta_htr / 2 if delta_htr % 2 == 1 else delta_htr // 2
+        elif alignment == 1:
+            # align to right
+            return tot_ntr - num_used
+        else:
+            raise ValueError('Unknown alignment code: %d' % alignment)
+
+    def align_wires(self,  # type: TrackManager
                     layer_id,  # type: int
                     name_list,  # type: Sequence[str]
                     tot_ntr,  # type: Union[float, int]
@@ -664,7 +695,7 @@ class TrackManager(object):
         start_idx : Union[float, int]
             the starting track index.
         **kwargs:
-            optional parameters for get_num_space_tracks() method of RoutingGrid.
+            optional parameters for place_wires().
 
         Returns
         -------
@@ -675,17 +706,63 @@ class TrackManager(object):
         if num_used > tot_ntr:
             raise ValueError('Given tracks occupy more space than given.')
 
-        if alignment == -1 or num_used == tot_ntr:
-            # we already aligned to left
-            return idx_list
-        elif alignment == 0:
-            # center tracks
-            delta_htr = int((tot_ntr - num_used) * 2) // 2
-            delta = delta_htr / 2 if delta_htr % 2 == 1 else delta_htr // 2
-        elif alignment == 1:
-            # align to right
-            delta = tot_ntr - num_used
-        else:
-            raise ValueError('Unknown alignment code: %d' % alignment)
+        delta = self._get_align_delta(tot_ntr, num_used, alignment)
+        return [idx + delta for idx in idx_list]
 
+    def spread_wires(self,  # type: TrackManager
+                     layer_id,  # type: int
+                     name_list,  # type: Sequence[str]
+                     tot_ntr,  # type: Union[float, int]
+                     sp_name_tuple,  # type: Union[str, Tuple[str, str]]
+                     alignment=0,  # type: int
+                     start_idx=0,  # type: int
+                     max_sp=10000,  # type: int
+                     ):
+        # type: (...) -> List[Union[float, int]]
+        """Spread out the given wires in the given space.
+
+        This method tries to spread out wires by increasing the space around the given
+        wire/combination of wires.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer of the tracks.
+        name_list : Sequence[str]
+            list of wire types.
+        tot_ntr : Union[float, int]
+            total available space in number of tracks.
+        sp_name_tuple : Union[str, Tuple[str, str]]
+            The space to increase.
+        alignment : int
+            If alignment == -1, will "left adjust" the wires (left is the lower index direction).
+            If alignment == 0, will center the wires in the middle.
+            If alignment == 1, will "right adjust" the wires.
+        start_idx : Union[float, int]
+            the starting track index.
+        max_sp : int
+            maximum space.
+
+        Returns
+        -------
+        locations : List[Union[float, int]]
+            the center track index of each wire.
+        """
+        sp_override = {sp_name_tuple: {layer_id: 0}}
+        cur_sp = int(round(2 * self.get_space(layer_id, sp_name_tuple)))
+        bin_iter = BinaryIterator(cur_sp, None)
+        while bin_iter.has_next():
+            new_sp = bin_iter.get_next()
+            if new_sp > 2 * max_sp:
+                break
+            sp_override[sp_name_tuple][layer_id] = new_sp / 2
+            tmp = self.place_wires(layer_id, name_list, start_idx=start_idx)
+            if tmp[0] > tot_ntr:
+                bin_iter.down()
+            else:
+                bin_iter.save_info(tmp)
+                bin_iter.up()
+
+        num_used, idx_list = bin_iter.get_last_save_info()
+        delta = self._get_align_delta(tot_ntr, num_used, alignment)
         return [idx + delta for idx in idx_list]
