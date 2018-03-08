@@ -635,6 +635,24 @@ class BBoxArray(object):
         """top-most edge coordinate."""
         return self._bbox.top_unit + self._spy_unit * (self._ny - 1)
 
+    @property
+    def xc(self):
+        return self.xc_unit * self._bbox.resolution
+
+    @property
+    def xc_unit(self):
+        # type: () -> int
+        return (self.left_unit + self.right_unit) // 2
+
+    @property
+    def yc(self):
+        return self.yc_unit * self._bbox.resolution
+
+    @property
+    def yc_unit(self):
+        # type: () -> int
+        return (self.bottom_unit + self.top_unit) // 2
+
     def as_bbox_collection(self):
         # type: () -> 'BBoxCollection'
         """Cast this BBoxArray as a BBoxCollection."""
