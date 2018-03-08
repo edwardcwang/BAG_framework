@@ -1248,7 +1248,36 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             self.add_cell_boundary(bound_box)
 
     def add_laygo_mos(self, row_idx, col_idx, seg, gate_loc='d',
-                      stack=False, is_sub=False, **kwargs):
+                      stack=False, is_sub=False, flip=False, **kwargs):
+        # type: (int, int, int, str, bool, bool, bool, **kwargs) -> Dict[str, WireArray]
+        """Adds a laygo transistor at the given location.
+
+        Parameters
+        ----------
+        row_idx : int
+            the row index.
+        col_idx : int
+            the left-most column index.
+        seg : int
+            number of segments.  For stacked transistors,
+            number of fingers = 2 * number of segments.
+        gate_loc : str
+            gate alignment location.  Either 'd' or 's'.
+        stack : bool
+            True to draw a 2-stack transistor.
+        is_sub : bool
+            True to draw a substrate contact.
+        flip : bool
+            True to flip source/drain/gate left and right.  Useful if this transistor should
+            be a mirror image.
+        **kwargs :
+            optional Laygo primitive arguments.
+
+        Returns
+        -------
+        ports : Dict[str, WireArray]
+            a dictionary from port names to port WireArray objects.
+        """
         row_info = self._row_info_list[row_idx]
         row_type = row_info['row_type']
 
@@ -1262,7 +1291,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             nx = seg // 2
             inst = self.add_laygo_primitive('sub', loc=(col_idx, row_idx), nx=nx, spx=2, **kwargs)
             port_name = 'VDD' if row_type == 'ntap' or row_type == 'pch' else 'VSS'
-            for name in (port_name, port_name + 's', port_name + 'd'):
+            for name in (port_name, port_name + '_s', port_name + '_d'):
                 ports[name] = WireArray.list_to_warr(inst.get_all_port_pins(name))
         else:
             if stack:
@@ -1294,18 +1323,32 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 names = ['s', 'd', 'g']
 
             for name in names:
-                pins = inst[0].get_all_port_pins(name)
-                if len(inst) > 1:
-                    pins.extend(inst[1].get_all_port_pins(name))
-                if inst1 is not None:
-                    if name == 'g0' or name == 'g1':
-                        if num2 % 2 == 0:
-                            pins.extend(inst1.get_all_port_pins(name))
-                        else:
-                            name1 = 'g1' if name == 'g0' else 'g0'
-                            pins.extend(inst1.get_all_port_pins(name1))
+                if flip:
+                    if name == 'd':
+                        cur_name = 's'
+                    elif name == 's':
+                        cur_name = 'd'
+                    elif name == 'g0':
+                        cur_name = 'g1'
+                    elif name == 'g1':
+                        cur_name = 'g0'
                     else:
-                        pins.extend(inst1.get_all_port_pins(name))
+                        cur_name = name
+                else:
+                    cur_name = name
+
+                pins = inst[0].get_all_port_pins(cur_name)
+                if len(inst) > 1:
+                    pins.extend(inst[1].get_all_port_pins(cur_name))
+                if inst1 is not None:
+                    if cur_name == 'g0' or cur_name == 'g1':
+                        if num2 % 2 == 0:
+                            name1 = cur_name
+                        else:
+                            name1 = 'g1' if cur_name == 'g0' else 'g0'
+                        pins.extend(inst1.get_all_port_pins(name1))
+                    else:
+                        pins.extend(inst1.get_all_port_pins(cur_name))
 
                 ports[name] = WireArray.list_to_warr(pins)
 
