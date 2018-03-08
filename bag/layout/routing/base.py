@@ -238,19 +238,27 @@ class WireArray(object):
 
     @classmethod
     def list_to_warr(cls, warr_list):
+        # type: (List[WireArray]) -> WireArray
         """Convert a list of WireArrays to a single WireArray.
 
-        Right now this method only works if all WireArrays in the list have only
-        one wire, and the spacing between adjacent wires are equal.
+        this method assumes all WireArrays have the same layer and lower and upper coordinates.
+        Overlapping WireArrays will be compacted.
         """
         if len(warr_list) == 1:
             return warr_list[0]
 
-        layer = warr_list[0].track_id.layer_id
+        layer = warr_list[0].layer_id
         lower, upper = warr_list[0].lower, warr_list[0].upper
-        base_idx = warr_list[0].track_id.base_index
-        pitch = warr_list[1].track_id.base_index - base_idx
-        return WireArray(TrackID(layer, base_idx, num=len(warr_list), pitch=pitch), lower, upper)
+        tid_list = sorted(set((int(idx * 2) for warr in warr_list for idx in warr.track_id)))
+        base_idx2 = tid_list[0]
+        diff = tid_list[1] - tid_list[0]
+        for idx in range(1, len(tid_list) - 1):
+            if tid_list[idx + 1] - tid_list[idx] != diff:
+                raise ValueError('pitch mismatch.')
+        base_idx = base_idx2 // 2 if base_idx2 % 2 == 0 else base_idx2 / 2
+        pitch = diff // 2 if diff % 2 == 0 else diff / 2
+
+        return WireArray(TrackID(layer, base_idx, num=len(tid_list), pitch=pitch), lower, upper)
 
     def to_warr_list(self):
         tid = self._track_id
