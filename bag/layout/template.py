@@ -2216,6 +2216,66 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                           unit_mode=True)
         return result
 
+    def connect_to_track_wires(self,  # type: TemplateBase
+                               wire_arr_list,  # type: Union[WireArray, List[WireArray]]
+                               track_wires,  # type: Union[WireArray, List[WireArray]]
+                               fill_margin=0,  # type: Union[int, float]
+                               fill_type='',  # type: str
+                               unit_mode=False,  # type: bool
+                               min_len_mode=None,  # type: Optional[int]
+                               debug=False,  # type: bool
+                               ):
+        # type: (...) -> Union[WireArray, List[WireArray]]
+        """Connect all given WireArrays to the given WireArrays on adjacent layer.
+
+        Parameters
+        ----------
+        wire_arr_list : Union[WireArray, List[WireArray]]
+            list of WireArrays to connect to track.
+        track_wires : Union[WireArray, List[WireArray]]
+            list of tracks as WireArrays.
+        fill_margin : Union[int, float]
+            minimum margin between wires and fill.
+        fill_type : str
+            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
+        unit_mode : bool
+            True if track_lower/track_upper/fill_margin is given in resolution units.
+        min_len_mode : Optional[int]
+            If not None, will extend track so it satisfy minimum length requirement.
+            Use -1 to extend lower bound, 1 to extend upper bound, 0 to extend both equally.
+        debug : bool
+            True to print debug messages.
+
+        Returns
+        -------
+        wire_arr : Union[WireArray, List[WireArray]]
+            WireArray representing the tracks created.  None if nothing to do.
+        """
+        res = self.grid.resolution
+
+        if not unit_mode:
+            fill_margin = int(round(fill_margin / res))
+
+        ans = []
+        if not isinstance(track_wires, WireArray):
+            ans_is_list = False
+            track_wires = [track_wires]
+        else:
+            ans_is_list = True
+
+        for warr in track_wires:
+            track_lower = int(round(warr.lower / res))
+            track_upper = int(round(warr.upper / res))
+            tr = self.connect_to_tracks(wire_arr_list, warr.track_id,
+                                        track_lower=track_lower, track_upper=track_upper,
+                                        fill_margin=fill_margin, fill_type=fill_type,
+                                        unit_mode=True, min_len_mode=min_len_mode, debug=debug)
+            ans.append(tr)
+
+        if not ans_is_list:
+            return ans[0]
+        return ans
+
     def connect_with_via_stack(self,  # type: TemplateBase
                                wire_array,  # type: Union[WireArray, List[WireArray]]
                                track_id,  # type: TrackID
