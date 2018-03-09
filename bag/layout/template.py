@@ -2257,7 +2257,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             fill_margin = int(round(fill_margin / res))
 
         ans = []
-        if not isinstance(track_wires, WireArray):
+        if isinstance(track_wires, WireArray):
             ans_is_list = False
             track_wires = [track_wires]
         else:
