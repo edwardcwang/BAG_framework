@@ -478,11 +478,12 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
             stop_idx = min(bot_stop, top_stop)
 
             # create new bottom/top extension information objects for the current overlapping block
-            fg_stop = stop_idx - bot_off
+            bot_po_types = bot_ptype[cur_fg - bot_off:stop_idx - bot_off]
+            top_po_types = top_ptype[cur_fg - top_off:stop_idx - top_off]
             # noinspection PyProtectedMember
-            cur_bot_info = bot_info._replace(po_types=bot_ptype[cur_fg - bot_off:fg_stop])
+            cur_bot_info = bot_info._replace(po_types=bot_po_types)
             # noinspection PyProtectedMember
-            cur_top_info = top_info._replace(po_types=top_ptype[cur_fg - top_off:fg_stop])
+            cur_top_info = top_info._replace(po_types=top_po_types)
             # append tuples of current number of fingers and bottom/top extension information object
             ext_groups.append((stop_idx - cur_fg, cur_bot_info, cur_top_info))
 
