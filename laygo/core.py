@@ -335,7 +335,7 @@ class LaygoBaseInfo(object):
 
         ans = self._edge_margins[0] + self._edge_widths[0] + col_idx * self._col_width
         if ds_type == 'd':
-            ans += self._col_width // 2
+            ans += self._col_width
 
         if unit_mode:
             return ans
