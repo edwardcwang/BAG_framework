@@ -102,6 +102,18 @@ class RoutingGrid(object):
         """Returns True if this RoutingGrid contains the given layer. """
         return layer in self.sp_tracks
 
+    @classmethod
+    def get_middle_track(cls, tr1, tr2, round_up=False):
+        # type: (Union[float, int], Union[float, int], bool) -> Union[float, int]
+        test = int(round((tr1 + tr2) * 2))
+        if test % 4 == 0:
+            return test // 4
+        if test % 4 == 1:
+            return (test + 1) / 4 if round_up else (test - 1) // 4
+        if test % 4 == 2:
+            return test / 4
+        return (test + 1) // 4 if round_up else (test - 1) / 4
+
     def _get_track_offset(self, layer_id):
         # type: (int) -> int
         """Returns the track offset in resolution units on the given layer."""
