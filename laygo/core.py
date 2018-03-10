@@ -574,6 +574,11 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             ext_edge_infos=self._ext_edge_infos,
         )
 
+    def get_row_info(self, row_idx):
+        # type : (int) -> Dict[str, Any]
+        """Returns the row layout information dictionary."""
+        return self._row_info_list[row_idx]
+
     def set_rows_direct(self, layout_info, num_col=None):
         default_end_info = self._tech_cls.get_default_end_info()
 
