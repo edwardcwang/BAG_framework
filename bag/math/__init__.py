@@ -8,7 +8,7 @@ from typing import Iterable
 import numpy as np
 from . import interpolate
 
-__all__ = ['lcm', 'interpolate', 'float_to_si_string', 'si_string_to_float']
+__all__ = ['lcm', 'gcd', 'interpolate', 'float_to_si_string', 'si_string_to_float']
 
 
 si_mag = [-18, -15, -12, -9, -6, -3, 0, 3, 6, 9, 12]
