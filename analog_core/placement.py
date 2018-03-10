@@ -20,7 +20,6 @@ class WireGroup(object):
                  tr_manager=None,  # type: Optional[TrackManager]
                  name_list=None,  # type: Optional[List[str]]
                  track_offset=0,  # type: int
-                 children=None,  # type: Optional[List[WireGroup]]
                  ):
         # type: (...) -> None
         self.space = space
@@ -38,15 +37,13 @@ class WireGroup(object):
         if self._num_tr < 1:
             raise ValueError('Cannot create WireGroup with < 1 track.')
         self._tr_off = track_offset
-        if children is None:
-            self._children = []
-        else:
-            self._children = children
+        self._children = []
 
     def copy(self):
+        """Returns a copy of this wire group.  Note: children will not be copied."""
         return WireGroup(self._layer, self._wire_type, num_tr=self._num_tr,
                          space=self.space, tr_manager=self._tr_manager, name_list=self._names,
-                         track_offset=self._tr_off, children=list(self._children))
+                         track_offset=self._tr_off)
 
     @property
     def names(self):
@@ -172,22 +169,18 @@ class WireGroup(object):
 
 
 class WireTree(object):
-    def __init__(self, mirror=False, wire_list=None, wire_ids=None):
+    def __init__(self, mirror=False):
         # type: (bool) -> None
-        if wire_list is None:
-            self._wire_list = []
-        else:
-            self._wire_list = wire_list
-        if wire_ids is None:
-            self._wire_ids = []
-        else:
-            self._wire_ids = wire_ids
+        self._wire_list = []
+        self._wire_ids = []
         self._mirror = mirror
 
     def copy(self):
-        new_wire_list = [wg.copy() for wg in self._wire_list]
-        new_wire_ids = list(self._wire_ids)
-        return WireTree(mirror=self._mirror, wire_list=new_wire_list, wire_ids=new_wire_ids)
+        new_tree = WireTree(mirror=self._mirror)
+        for wg, wid in zip(self._wire_list, self._wire_ids):
+            new_wg = [w.copy() for w in wg]
+            new_tree.add_wires(new_wg, wid)
+        return new_tree
 
     @classmethod
     def _get_half_space(cls, sp):
