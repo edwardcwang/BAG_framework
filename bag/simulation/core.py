@@ -180,8 +180,16 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
     env_list : Sequence[str]
         simulation environments list.
     """
-    def __init__(self, data_dir, meas_name, impl_lib, specs, wrapper_lookup, sim_view_list, env_list):
-        # type: (str, str, str, Dict[str, Any], Dict[str, str], Sequence[Tuple[str, str]], Sequence[str]) -> None
+    def __init__(self,  # type: MeasurementManager
+                 data_dir,  # type: str
+                 meas_name,  # type: str
+                 impl_lib,  # type: str
+                 specs,  # type: Dict[str, Any]
+                 wrapper_lookup,  # type: Dict[str, str]
+                 sim_view_list,  # type: Sequence[Tuple[str, str]]
+                 env_list,  # type: Sequence[str]
+                 ):
+        # type: (...) -> None
         self.data_dir = os.path.abspath(data_dir)
         self.impl_lib = impl_lib
         self.meas_name = meas_name
@@ -199,8 +207,11 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
         return ''
 
     # noinspection PyUnusedLocal
-    def get_testbench_info(self, state, prev_output):
-        # type: (str, Optional[Dict[str, Any]]) -> Tuple[str, str, Dict[str, Any], Optional[Dict[str, Any]]]
+    def get_testbench_info(self,  # type: MeasurementManager
+                           state,  # type: str
+                           prev_output,  # type: Optional[Dict[str, Any]]
+                           ):
+        # type: (...) -> Tuple[str, str, Dict[str, Any], Optional[Dict[str, Any]]]
         """Get information about the next testbench.
 
         Override this method to perform more complex operations.
@@ -289,7 +300,8 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
 
         while not done:
             # create and setup testbench
-            tb_name, tb_type, tb_specs, tb_sch_params = self.get_testbench_info(cur_state, prev_output)
+            tb_name, tb_type, tb_specs, tb_sch_params = self.get_testbench_info(cur_state,
+                                                                                prev_output)
 
             tb_package = tb_specs['tb_package']
             tb_cls_name = tb_specs['tb_class']
@@ -301,7 +313,8 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
                                 self.sim_view_list, self.env_list)
 
             if load_from_file:
-                print('Measurement %s in state %s, load sim data from file.' % (self.meas_name, cur_state))
+                print('Measurement %s in state %s, '
+                      'load sim data from file.' % (self.meas_name, cur_state))
                 if os.path.isfile(raw_data_fname):
                     cur_results = load_sim_file(raw_data_fname)
                 else:
@@ -311,7 +324,8 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
                 cur_results = await tb_manager.setup_and_simulate(prj, tb_sch_params)
 
             # process and save simulation data
-            print('Measurement %s in state %s, processing data from %s' % (self.meas_name, cur_state, tb_name))
+            print('Measurement %s in state %s, '
+                  'processing data from %s' % (self.meas_name, cur_state, tb_name))
             done, next_state, prev_output = self.process_output(cur_state, cur_results, tb_manager)
             with open_file(os.path.join(self.data_dir, '%s.yaml' % cur_state), 'w') as f:
                 yaml.dump(prev_output, f)
@@ -383,23 +397,14 @@ class DesignManager(object):
 
         if os.path.isfile(spec_file):
             self._specs = read_yaml(spec_file)
-            root_dir = os.path.abspath(self._specs['root_dir'])
-            save_spec_file = os.path.join(root_dir, 'specs.yaml')
+            self._root_dir = os.path.abspath(self._specs['root_dir'])
         elif os.path.isdir(spec_file):
-            root_dir = os.path.abspath(spec_file)
-            save_spec_file = spec_file = os.path.join(root_dir, 'specs.yaml')
-            self._specs = read_yaml(spec_file)
+            self._root_dir = os.path.abspath(spec_file)
+            self._specs = read_yaml(os.path.join(self._root_dir, 'specs.yaml'))
         else:
             raise ValueError('%s is neither data directory or specification file.' % spec_file)
 
         self._swp_var_list = tuple(sorted(self._specs['sweep_params'].keys()))
-
-        # save root_dir as absolute path, in this way everything will still work
-        # if the user start python from a different directory.
-        self._specs['root_dir'] = root_dir
-        os.makedirs(root_dir, exist_ok=True)
-        with open_file(save_spec_file, 'w') as f:
-            yaml.dump(self._specs, f)
 
     @classmethod
     def load_state(cls, prj, root_dir):
@@ -463,7 +468,8 @@ class DesignManager(object):
             raise ValueError('LVS failed for %s.  Log file: %s' % (dsn_name, lvs_log))
 
         print('Running RCX on %s' % dsn_name)
-        rcx_passed, rcx_log = await self.prj.async_run_rcx(lib_name, dsn_name, rcx_params=rcx_params)
+        rcx_passed, rcx_log = await self.prj.async_run_rcx(lib_name, dsn_name,
+                                                           rcx_params=rcx_params)
         print('RCX passed on %s' % dsn_name)
         if not rcx_passed:
             raise ValueError('RCX failed for %s.  Log file: %s' % (dsn_name, rcx_log))
@@ -483,7 +489,6 @@ class DesignManager(object):
         """
         meas_list = self.specs['measurements']
         summary_fname = self.specs['summary_fname']
-        root_dir = os.path.join(self.specs['root_dir'], dsn_name)
         view_name = self.specs['view_name']
         env_list = self.specs['env_list']
         wrapper_list = self.specs['dut_wrappers']
@@ -508,17 +513,19 @@ class DesignManager(object):
             meas_manager = meas_cls(data_dir, meas_name, lib_name, meas_specs,
                                     wrapper_lookup, [(dsn_name, view_name)], env_list)
             print('Performing measurement %s on %s' % (meas_name, dsn_name))
-            meas_results = await meas_manager.async_measure_performance(self.prj, load_from_file=load_from_file)
+            meas_res = await meas_manager.async_measure_performance(self.prj,
+                                                                    load_from_file=load_from_file)
             print('Measurement %s finished on %s' % (meas_name, dsn_name))
 
-            with open_file(os.path.join(root_dir, out_fname), 'w') as f:
-                yaml.dump(meas_results, f)
-            result_summary[meas_type] = meas_results
+            with open_file(os.path.join(self._root_dir, out_fname), 'w') as f:
+                yaml.dump(meas_res, f)
+            result_summary[meas_type] = meas_res
 
-        with open_file(os.path.join(root_dir, summary_fname), 'w') as f:
+        with open_file(os.path.join(self._root_dir, summary_fname), 'w') as f:
             yaml.dump(result_summary, f)
 
-    async def main_task(self, lib_name, dsn_name, rcx_params, extract=True, measure=True, load_from_file=False):
+    async def main_task(self, lib_name, dsn_name, rcx_params, extract=True,
+                        measure=True, load_from_file=False):
         # type: (str, str, Optional[Dict[str, Any]], bool, bool, bool) -> None
         """The main coroutine."""
         if extract:
@@ -575,7 +582,7 @@ class DesignManager(object):
         result : Dict[str, Any]
             the result dictionary.
         """
-        fname = os.path.join(self.specs['root_dir'], dsn_name, self.specs['summary_fname'])
+        fname = os.path.join(self._root_dir, dsn_name, self.specs['summary_fname'])
         with open_file(fname, 'r') as f:
             summary = yaml.load(f)
 
@@ -623,7 +630,8 @@ class DesignManager(object):
             sch_params_list = self.create_dut_layouts(lay_params_list, dsn_name_list, temp_db)
         else:
             print('schematic simulation, skipping layouts.')
-            sch_params_list = [self.get_schematic_params(combo_list) for combo_list in self.get_combinations_iter()]
+            sch_params_list = [self.get_schematic_params(combo_list)
+                               for combo_list in self.get_combinations_iter()]
 
         print('creating all schematics.')
         self.create_dut_schematics(sch_params_list, dsn_name_list, gen_wrappers=True)
@@ -672,7 +680,7 @@ class DesignManager(object):
 
     def get_measurement_directory(self, dsn_name, meas_type):
         meas_name = self.get_measurement_name(dsn_name, meas_type)
-        return os.path.join(self.specs['root_dir'], dsn_name, meas_name)
+        return os.path.join(self._root_dir, dsn_name, meas_name)
 
     def make_tdb(self):
         # type: () -> TemplateDB
