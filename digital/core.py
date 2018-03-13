@@ -245,10 +245,11 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
 
             width = self._laygo_info.tot_width
             height = self._ytop[1]
-
             bound_box = BBox(0, 0, width, height, self.grid.resolution, unit_mode=True)
             self.set_size_from_bound_box(top_layer, bound_box)
             self.add_cell_boundary(bound_box)
+            if not self._laygo_info.draw_boundaries:
+                self.array_box = bound_box
 
     def add_digital_block(self, master, loc=(0, 0), flip=False, nx=1, spx=0):
         col_idx, row_idx = loc
@@ -536,10 +537,10 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                         edge_infos.append((x, yscale * y + yoff, eorient, edge_params))
 
             yt = self.bound_box.top_unit
-            gr_vdd_warrs, gr_vss_warrs = tech_cls.draw_boundaries(self, laygo_info, num_col, yt,
-                                                                  self._bot_end_master,
-                                                                  self._top_end_master, edge_infos)
-
+            tmp = tech_cls.draw_boundaries(self, laygo_info, num_col, yt, self._bot_end_master,
+                                           self._top_end_master, edge_infos)
+            arr_box, gr_vdd_warrs, gr_vss_warrs = tmp
+            self.array_box = arr_box
             return bot_warrs, top_warrs, gr_vdd_warrs, gr_vss_warrs
 
         return [], [], [], []

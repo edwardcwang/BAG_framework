@@ -1258,6 +1258,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 height += self._top_end_master.bound_box.height_unit
             bound_box = BBox(0, 0, width, height, self.grid.resolution, unit_mode=True)
             self.set_size_from_bound_box(top_layer, bound_box)
+            if not draw_boundaries:
+                self.array_box = self.bound_box
             self.add_cell_boundary(bound_box)
 
     def add_laygo_mos(self, row_idx, col_idx, seg, gate_loc='d',
@@ -1566,10 +1568,11 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                     edge_infos.append((x, y, eorient, edge_params))
 
             yt = self.bound_box.top_unit
-            vdd_warrs, vss_warrs = tcls.draw_boundaries(self, self._laygo_info, self._laygo_size[0],
-                                                        yt, self._bot_end_master,
-                                                        self._top_end_master, edge_infos)
-
+            arr_box, vdd_warrs, vss_warrs = tcls.draw_boundaries(self, self._laygo_info,
+                                                                 self._laygo_size[0],
+                                                                 yt, self._bot_end_master,
+                                                                 self._top_end_master, edge_infos)
+            self.array_box = arr_box
             return vdd_warrs, vss_warrs
 
         return [], []

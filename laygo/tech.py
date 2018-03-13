@@ -15,6 +15,7 @@ from ..analog_mos.mos import AnalogMOSExt
 from ..analog_mos.edge import AnalogEdge
 
 if TYPE_CHECKING:
+    from bag.layout.util import BBox
     from bag.layout.tech import TechInfoConfig
     from .base import LaygoEndRow
     from .core import LaygoBaseInfo
@@ -505,7 +506,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                         top_end_master,  # type: LaygoEndRow
                         edge_infos,  # type: List[Tuple[int, int, str, Dict[str, Any]]]
                         ):
-        # type: (...) -> Tuple[List[WireArray], List[WireArray]]
+        # type: (...) -> Tuple[BBox, List[WireArray], List[WireArray]]
         """Draw boundaries for LaygoBase/DigitalBase.
 
         Parameters
@@ -527,6 +528,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
 
         Returns
         -------
+        arr_box : BBox
+            the array box.
         vdd_warrs : List[WireArray]
             any VDD wires in the edge block due to guard ring.
         vss_warrs : List[WireArray]
@@ -544,10 +547,13 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         xoffset = emargin_l + ewidth_l
 
         # draw top and bottom end row
-        template.add_instance(bot_end_master, inst_name='XRBOT', loc=(xoffset, 0),
-                              nx=nx, spx=spx, unit_mode=True)
-        template.add_instance(top_end_master, inst_name='XRBOT', loc=(xoffset, yt),
-                              orient='MX', nx=nx, spx=spx, unit_mode=True)
+
+        inst = template.add_instance(bot_end_master, inst_name='XRBOT', loc=(xoffset, 0),
+                                     nx=nx, spx=spx, unit_mode=True)
+        arr_box = inst.array_box
+        inst = template.add_instance(top_end_master, inst_name='XRBOT', loc=(xoffset, yt),
+                                     orient='MX', nx=nx, spx=spx, unit_mode=True)
+        arr_box = arr_box.merge(inst.array_box)
         # draw corners
         left_end = (end_mode & 4) != 0
         right_end = (end_mode & 8) != 0
@@ -586,9 +592,10 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                 gr_vdd_warrs.extend(inst.get_all_port_pins('VDD', layer=conn_layer))
             elif inst.has_port('VSS'):
                 gr_vss_warrs.extend(inst.get_all_port_pins('VSS', layer=conn_layer))
+            arr_box = arr_box.merge(inst.array_box)
 
         # connect body guard rings together
         gr_vdd_warrs = template.connect_wires(gr_vdd_warrs)
         gr_vss_warrs = template.connect_wires(gr_vss_warrs)
 
-        return gr_vdd_warrs, gr_vss_warrs
+        return arr_box, gr_vdd_warrs, gr_vss_warrs
