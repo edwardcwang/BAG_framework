@@ -491,6 +491,11 @@ class Port(object):
 class TrackManager(object):
     """A class that makes it easy to compute track locations.
 
+    This class provides many helper methods for computing track locations and spacing when
+    each track could have variable width.  All methods in this class accepts a "track_type",
+    which is either a string in the track dictionary or an integer representing the track
+    width.
+
     Parameters
     ----------
     grid : RoutingGrid
@@ -526,33 +531,38 @@ class TrackManager(object):
         # type: () -> bool
         return self._half_space
 
-    def get_width(self, layer_id, wire_name):
-        # type: (int, str) -> int
+    def get_width(self, layer_id, track_type):
+        # type: (int, Union[str, int]) -> int
         """Returns the track width.
 
         Parameters
         ----------
         layer_id : int
             the track layer ID.
-        wire_name : str
+        track_type : Union[str, int]
             the track type.
         """
-        if wire_name not in self._tr_widths:
+        if isinstance(track_type, int):
+            return track_type
+        if track_type not in self._tr_widths:
             return 1
-        return self._tr_widths[wire_name].get(layer_id, 1)
+        return self._tr_widths[track_type].get(layer_id, 1)
 
-    def get_space(self, layer_id, name_tuple, **kwargs):
-        # type: (int, Union[str, Tuple[str, str]], **kwargs) -> Union[int, float]
+    def get_space(self,  # type: TrackManager
+                  layer_id,  # type: int
+                  type_tuple,  # type: Union[str, int, Tuple[Union[str, int], Union[str, int]]]
+                  **kwargs):
+        # type: (...) -> Union[int, float]
         """Returns the track spacing.
 
         Parameters
         ----------
         layer_id : int
             the track layer ID.
-        name_tuple : Union[str, Tuple[str, str]]
-            If a single string is given, will return the minimum spacing needed around that track
-            type.  If a tuple of two strings are given, will return the specific spacing between
-            those two track types if specified.  Otherwise, returns the maximum of all the
+        type_tuple : Union[str, int, Tuple[Union[str, int], Union[str, int]]]
+            If a single track type is given, will return the minimum spacing needed around that
+            track type.  If a tuple of two types are given, will return the specific spacing
+            between those two track types if specified.  Otherwise, returns the maximum of all the
             valid spacing.
         **kwargs:
             optional parameters.
@@ -560,25 +570,25 @@ class TrackManager(object):
         half_space = kwargs.get('half_space', self._half_space)
         sp_override = kwargs.get('sp_override', None)
 
-        if isinstance(name_tuple, tuple):
+        if isinstance(type_tuple, tuple):
             # if two specific wires are given, first check if any specific rules exist
-            ans = self._get_space_from_tuple(layer_id, name_tuple, sp_override)
+            ans = self._get_space_from_tuple(layer_id, type_tuple, sp_override)
             if ans is not None:
                 return ans
-            ans = self._get_space_from_tuple(layer_id, name_tuple, self._tr_spaces)
+            ans = self._get_space_from_tuple(layer_id, type_tuple, self._tr_spaces)
             if ans is not None:
                 return ans
             # no specific rules, so return max of wire spacings.
             ans = 0
-            for name in name_tuple:
-                cur_space = self._get_space_from_str(layer_id, name, sp_override)
-                cur_width = self.get_width(layer_id, name)
+            for wtype in type_tuple:
+                cur_space = self._get_space_from_type(layer_id, wtype, sp_override)
+                cur_width = self.get_width(layer_id, wtype)
                 ans = max(ans, cur_space, self._grid.get_num_space_tracks(layer_id, cur_width,
                                                                           half_space=half_space))
             return ans
         else:
-            cur_space = self._get_space_from_str(layer_id, name_tuple, sp_override)
-            cur_width = self.get_width(layer_id, name_tuple)
+            cur_space = self._get_space_from_type(layer_id, type_tuple, sp_override)
+            cur_width = self.get_width(layer_id, type_tuple)
             return max(cur_space, self._grid.get_num_space_tracks(layer_id, cur_width,
                                                                   half_space=half_space))
 
@@ -592,18 +602,58 @@ class TrackManager(object):
                 return sp_dict[ntup].get(layer_id, None)
         return None
 
-    def _get_space_from_str(self, layer_id, name, sp_override):
-        if sp_override is not None and name in sp_override:
-            test = sp_override[name]
+    def _get_space_from_type(self, layer_id, wtype, sp_override):
+        if sp_override is not None and wtype in sp_override:
+            test = sp_override[wtype]
             if layer_id in test:
                 return test[layer_id]
-        if name in self._tr_spaces:
-            return self._tr_spaces[name].get(layer_id, 0)
+        if wtype in self._tr_spaces:
+            return self._tr_spaces[wtype].get(layer_id, 0)
         return 0
+
+    def get_next_track(self,  # type: TrackManager
+                       layer_id,  # type: int
+                       cur_idx,  # type: Union[float, int]
+                       cur_type,  # type: Union[str, int]
+                       next_type,  # type: Union[str, int]
+                       up=True,  # type: bool
+                       **kwargs):
+        # type: (...) -> Union[float, int]
+        """Compute the track location of a wire next to a given one.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer ID.
+        cur_idx : Union[float, int]
+            the current wire track index.
+        cur_type : Union[str, int]
+            the current wire type.
+        next_type : Union[str, int]
+            the next wire type.
+        up : bool
+            True to return the next track index that is larger than cur_idx.
+        **kwargs :
+            optional parameters.
+
+        Returns
+        -------
+        next_int : Union[float, int]
+            the next track index.
+        """
+        cur_width = self.get_width(layer_id, cur_type)
+        next_width = self.get_width(layer_id, next_type)
+        space = self.get_space(layer_id, (cur_type, next_type), **kwargs)
+        if up:
+            par_test = int(round(2 * cur_idx + 2 * space + cur_width + next_width))
+        else:
+            par_test = int(round(2 * cur_idx - 2 * space - cur_width - next_width))
+
+        return par_test // 2 if par_test % 2 == 0 else par_test / 2
 
     def place_wires(self,  # type: TrackManager
                     layer_id,  # type: int
-                    name_list,  # type: Sequence[str]
+                    type_list,  # type: Sequence[Union[str, int]]
                     start_idx=0,  # type: Union[float, int]
                     **kwargs):
         # type: (...) -> Tuple[Union[float, int], List[Union[float, int]]]
@@ -613,7 +663,7 @@ class TrackManager(object):
         ----------
         layer_id : int
             the layer of the tracks.
-        name_list : Sequence[str]
+        type_list : Sequence[Union[str, int]]
             list of wire types.
         start_idx : Union[float, int]
             the starting track index.
@@ -627,32 +677,23 @@ class TrackManager(object):
         locations : List[Union[float, int]]
             the center track index of each wire.
         """
-        num_wires = len(name_list)
-        marker_htr = int(start_idx * 2 + 1)
-        answer = []
-        num_tracks = 0
-        for idx, name in enumerate(name_list):
-            cur_width = self.get_width(layer_id, name)
-            num_tracks += cur_width
-            cur_center_htr = marker_htr + cur_width - 1
-            cur_center = (cur_center_htr - 1) // 2 if cur_center_htr % 2 == 1 \
-                else (cur_center_htr - 1) / 2
-            answer.append(cur_center)
-            if idx != num_wires - 1:
-                next_name = name_list[idx + 1]
-                # figure out the current spacing
-                cur_space = self.get_space(layer_id, (name, next_name), **kwargs)
-                num_tracks += cur_space
-                # advance marker
-                cur_space_htr = int(cur_space * 2 + 1)
-                marker_htr += 2 * cur_width - 1 + cur_space_htr
+        if not type_list:
+            return 0, []
 
-        # make sure num_tracks is integer type if we use integer number of tracks.
-        num_tracks_half = int(2 * num_tracks)
-        if num_tracks_half % 2 == 0:
-            num_tracks = num_tracks_half // 2
+        prev_type = type_list[0]
+        w0 = self.get_width(layer_id, prev_type)
+        par_test = int(round(2 * start_idx + w0 - 1))
+        mid_idx = par_test // 2 if par_test % 2 == 0 else par_test / 2
+        ans = [mid_idx]
+        for idx in range(1, len(type_list)):
+            ans.append(self.get_next_track(layer_id, ans[-1], type_list[idx - 1],
+                                           type_list[idx], up=True, **kwargs))
 
-        return num_tracks, answer
+        w1 = self.get_width(layer_id, type_list[-1])
+        par_test = int(round(w0 + w1 + 2 * (ans[-1] - ans[0])))
+        ntr = par_test // 2 if par_test % 2 == 0 else par_test / 2
+
+        return ntr, ans
 
     @classmethod
     def _get_align_delta(cls, tot_ntr, num_used, alignment):
@@ -671,7 +712,7 @@ class TrackManager(object):
 
     def align_wires(self,  # type: TrackManager
                     layer_id,  # type: int
-                    name_list,  # type: Sequence[str]
+                    type_list,  # type: Sequence[Union[str, int]]
                     tot_ntr,  # type: Union[float, int]
                     alignment=0,  # type: int
                     start_idx=0,  # type: int
@@ -683,7 +724,7 @@ class TrackManager(object):
         ----------
         layer_id : int
             the layer of the tracks.
-        name_list : Sequence[str]
+        type_list : Sequence[Union[str, int]]
             list of wire types.
         tot_ntr : Union[float, int]
             total available space in number of tracks.
@@ -701,7 +742,7 @@ class TrackManager(object):
         locations : List[Union[float, int]]
             the center track index of each wire.
         """
-        num_used, idx_list = self.place_wires(layer_id, name_list, start_idx=start_idx, **kwargs)
+        num_used, idx_list = self.place_wires(layer_id, type_list, start_idx=start_idx, **kwargs)
         if num_used > tot_ntr:
             raise ValueError('Given tracks occupy more space than given.')
 
@@ -710,9 +751,9 @@ class TrackManager(object):
 
     def spread_wires(self,  # type: TrackManager
                      layer_id,  # type: int
-                     name_list,  # type: Sequence[str]
+                     type_list,  # type: Sequence[Union[str, int]]
                      tot_ntr,  # type: Union[float, int]
-                     sp_name_tuple,  # type: Union[str, Tuple[str, str]]
+                     sp_type,  # type: Union[str, int, Tuple[Union[str, int], Union[str, int]]]
                      alignment=0,  # type: int
                      start_idx=0,  # type: int
                      max_sp=10000,  # type: int
@@ -727,11 +768,11 @@ class TrackManager(object):
         ----------
         layer_id : int
             the layer of the tracks.
-        name_list : Sequence[str]
+        type_list : Sequence[Union[str, int]]
             list of wire types.
         tot_ntr : Union[float, int]
             total available space in number of tracks.
-        sp_name_tuple : Union[str, Tuple[str, str]]
+        sp_type : Union[str, Tuple[str, str]]
             The space to increase.
         alignment : int
             If alignment == -1, will "left adjust" the wires (left is the lower index direction).
@@ -747,15 +788,15 @@ class TrackManager(object):
         locations : List[Union[float, int]]
             the center track index of each wire.
         """
-        sp_override = {sp_name_tuple: {layer_id: 0}}
-        cur_sp = int(round(2 * self.get_space(layer_id, sp_name_tuple)))
+        sp_override = {sp_type: {layer_id: 0}}
+        cur_sp = int(round(2 * self.get_space(layer_id, sp_type)))
         bin_iter = BinaryIterator(cur_sp, None)
         while bin_iter.has_next():
             new_sp = bin_iter.get_next()
             if new_sp > 2 * max_sp:
                 break
-            sp_override[sp_name_tuple][layer_id] = new_sp / 2 if new_sp % 2 == 1 else new_sp // 2
-            tmp = self.place_wires(layer_id, name_list, start_idx=start_idx,
+            sp_override[sp_type][layer_id] = new_sp / 2 if new_sp % 2 == 1 else new_sp // 2
+            tmp = self.place_wires(layer_id, type_list, start_idx=start_idx,
                                    sp_override=sp_override)
             if tmp[0] > tot_ntr:
                 bin_iter.down()
