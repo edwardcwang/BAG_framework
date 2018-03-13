@@ -5,6 +5,7 @@
 
 from typing import Dict, Any, Tuple, List, TYPE_CHECKING
 
+from bag.layout.util import BBox
 from bag.layout.template import TemplateBase
 from bag.layout.routing import WireArray
 
@@ -15,7 +16,6 @@ from ..analog_mos.mos import AnalogMOSExt
 from ..analog_mos.edge import AnalogEdge
 
 if TYPE_CHECKING:
-    from bag.layout.util import BBox
     from bag.layout.tech import TechInfoConfig
     from .base import LaygoEndRow
     from .core import LaygoBaseInfo
@@ -598,4 +598,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         gr_vdd_warrs = template.connect_wires(gr_vdd_warrs)
         gr_vss_warrs = template.connect_wires(gr_vss_warrs)
 
+        arr_box_x = laygo_info.get_placement_info(num_col).arr_box_x
+        arr_box = BBox(arr_box_x[0], arr_box.bottom_unit, arr_box_x[1], arr_box.top_unit,
+                       arr_box.resolution, unit_mode=True)
         return arr_box, gr_vdd_warrs, gr_vss_warrs

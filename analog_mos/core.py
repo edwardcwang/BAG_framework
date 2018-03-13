@@ -15,7 +15,8 @@ from bag.layout.template import TemplateBase
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfoConfig
 
-PlaceInfo = namedtuple('PlaceInfo', ['tot_width', 'core_width', 'edge_margins', 'edge_widths', 'arr_box_x', ])
+PlaceInfo = namedtuple('PlaceInfo', ['tot_width', 'core_fg', 'core_width', 'edge_margins',
+                                     'edge_widths', 'arr_box_x', ])
 
 
 class MOSTech(object, metaclass=abc.ABCMeta):
@@ -358,9 +359,17 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def draw_substrate_connection(self, template, layout_info, port_tracks, dum_tracks, dummy_only,
-                                  is_laygo, is_guardring, options):
-        # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool, bool, bool, Dict[str, Any]) -> bool
+    def draw_substrate_connection(self,  # type: MOSTech
+                                  template,  # type: TemplateBase
+                                  layout_info,  # type: Dict[str, Any]
+                                  port_tracks,  # type: List[int]
+                                  dum_tracks,  # type: List[int]
+                                  dummy_only,  # type: bool
+                                  is_laygo,  # type: bool
+                                  is_guardring,  # type: bool
+                                  options,  # type: Dict[str, Any]
+                                  ):
+        # type: (...) -> bool
         """Draw substrate connection layout in the given template.
 
         Parameters
@@ -390,9 +399,19 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def draw_mos_connection(self, template, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
-                            min_ds_cap, is_diff, diode_conn, options):
-        # type: (TemplateBase, Dict[str, Any], int, int, str, int, bool, bool, bool, Dict[str, Any]) -> None
+    def draw_mos_connection(self,  # type: MOSTech
+                            template,  # type: TemplateBase
+                            mos_info,  # type: Dict[str, Any]
+                            sdir,  # type: int
+                            ddir,  # type: int
+                            gate_pref_loc,  # type: str
+                            gate_ext_mode,  # type: int
+                            min_ds_cap,  # type: bool
+                            is_diff,  # type: bool
+                            diode_conn,  # type: bool
+                            options,  # type: Dict[str, Any]
+                            ):
+        # type: (...) -> None
         """Draw transistor connection layout in the given template.
 
         Parameters
@@ -446,7 +465,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
+    def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode,
+                              export_gate, options):
         # type: (TemplateBase, Dict[str, Any], int, int, int, bool, Dict[str, Any]) -> None
         """Draw decoupling cap connection layout in the given template.
 
@@ -514,8 +534,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         conn_info = {}
         layers = range(bot_layer, bot_layer + len(dirs))
         for lay, w, direction, vdim, vble, vtle in \
-            zip(layers, widths, dirs, via_info['dim'],
-                via_info['bot_enc_le'], via_info['top_enc_le']):
+                zip(layers, widths, dirs, via_info['dim'],
+                    via_info['bot_enc_le'], via_info['top_enc_le']):
             vdim_le = vdim[0] if direction == 'x' else vdim[1]
             top_ext = vdim_le // 2 + vtle
             lay_name = self.tech_info.get_layer_name(lay)
@@ -622,7 +642,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             # handle default parameters
             if 'po_od_extx' not in ans:
                 offset, lch_scale, sd_pitch_scale = ans.get('po_od_extx_constants', (0, 0, 1))
-                ans['po_od_extx'] = offset + int(round(lch_scale * lch_unit)) + int(round(sd_pitch_scale * sd_pitch))
+                ans['po_od_extx'] = (offset + int(round(lch_scale * lch_unit)) +
+                                     int(round(sd_pitch_scale * sd_pitch)))
 
             self.postprocess_mos_tech_constants(lch_unit, ans)
             self._mos_constants = ans
@@ -958,7 +979,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             top_vm_layer = self.get_mos_conn_layer()
 
         prim_layer = top_vm_layer + 1
-        core_width = (edgel_num_fg + edger_num_fg + fg_tot) * sd_pitch
+        core_fg = edgel_num_fg + edger_num_fg + fg_tot
+        core_width = core_fg * sd_pitch
         if top_layer <= prim_layer:
             # use private layer for horizontal quantization so that
             # array box can be defined.
@@ -983,6 +1005,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         right_margin = space - left_margin
 
         return PlaceInfo(tot_width=tot_width,
+                         core_fg=core_fg,
                          core_width=core_width,
                          edge_margins=(left_margin, right_margin),
                          edge_widths=(sd_pitch * edgel_num_fg, sd_pitch * edger_num_fg),

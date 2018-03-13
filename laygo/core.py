@@ -228,6 +228,7 @@ class LaygoBaseInfo(object):
 
         # set number of columns
         self._num_col = None
+        self._core_col = None
         self._edge_margins = None
         self._edge_widths = None
         self.set_num_col(num_col)
@@ -297,9 +298,19 @@ class LaygoBaseInfo(object):
     @property
     def tot_width(self):
         if self._edge_margins is None:
-            raise ValueError('Edge margins is not defined.  Did you set number of columns?')
+            raise ValueError('number of columns not set; cannot compute total width.')
         return (self._edge_margins[0] + self._edge_margins[1] + self._edge_widths[0] +
                 self._edge_widths[1] + self._num_col * self._col_width)
+
+    @property
+    def core_width(self):
+        if self._edge_widths is None:
+            raise ValueError('number of columns not set; cannot compute core width.')
+        return self._edge_widths[0] + self._edge_widths[1] + self._num_col * self._col_width
+
+    @property
+    def core_col(self):
+        return self._core_col
 
     def get_placement_info(self, num_col):
         left_end = (self.end_mode & 4) != 0
@@ -318,11 +329,14 @@ class LaygoBaseInfo(object):
             if new_num_col is None:
                 self._edge_margins = None
                 self._edge_widths = None
+                self._core_col = None
             else:
-                placement_info = self.get_placement_info(new_num_col)
-                self._edge_margins = placement_info.edge_margins
-                self._edge_widths = placement_info.edge_widths
+                place_info = self.get_placement_info(new_num_col)
+                self._edge_margins = place_info.edge_margins
+                self._edge_widths = place_info.edge_widths
+                self._core_col = place_info.core_fg
         else:
+            self._core_col = new_num_col
             self._edge_margins = (0, 0)
             self._edge_widths = (0, 0)
 
@@ -579,14 +593,15 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         """Returns the row layout information dictionary."""
         return self._row_info_list[row_idx]
 
-    def set_rows_direct(self, layout_info, num_col=None):
+    def set_rows_direct(self, layout_info, num_col=None, end_mode=None):
         default_end_info = self._tech_cls.get_default_end_info()
 
         top_layer = layout_info['top_layer']
         guard_ring_nf = layout_info['guard_ring_nf']
         draw_boundaries = layout_info['draw_boundaries']
-        end_mode = layout_info['end_mode']
         row_prop_list = layout_info['row_prop_list']
+        if end_mode is None:
+            end_mode = layout_info['end_mode']
 
         num_rows = len(row_prop_list)
 

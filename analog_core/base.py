@@ -86,6 +86,7 @@ class AnalogBaseInfo(object):
         self._sd_pitch_unit = self._tech_cls.get_sd_pitch(lch_unit)
 
         self._fg_tot = None
+        self._place_info = None
         self._sd_xc_unit = None
         self.set_fg_tot(fg_tot)
 
@@ -123,16 +124,35 @@ class AnalogBaseInfo(object):
     def fg_tot(self):
         return self._fg_tot
 
+    @property
+    def fg_core(self):
+        if self._place_info is None:
+            raise ValueError('number of fingers not set; cannot compute total width.')
+        return self._place_info.core_fg
+
+    @property
+    def tot_width(self):
+        if self._place_info is None:
+            raise ValueError('number of fingers not set; cannot compute total width.')
+        return self._place_info.tot_width
+
+    @property
+    def core_width(self):
+        if self._place_info is None:
+            raise ValueError('number of fingers not set; cannot compute core width.')
+        return self._place_info.core_width
+
     def set_fg_tot(self, new_fg_tot):
         if new_fg_tot is not None:
             self._fg_tot = new_fg_tot
-            place_info = self.get_placement_info(new_fg_tot)
-            left_margin = place_info.edge_margins[0]
-            self._sd_xc_unit = left_margin + place_info.edge_widths[0]
+            self._place_info = self.get_placement_info(new_fg_tot)
+            left_margin = self._place_info.edge_margins[0]
+            self._sd_xc_unit = left_margin + self._place_info.edge_widths[0]
             self.grid.set_track_offset(self.mconn_port_layer, left_margin, unit_mode=True)
             self.grid.set_track_offset(self.dum_port_layer, left_margin, unit_mode=True)
         else:
             self._fg_tot = None
+            self._place_info = None
             self._sd_xc_unit = None
 
     @property
