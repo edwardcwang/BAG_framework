@@ -1313,6 +1313,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     if update_ytop:
                         ytop = max(ytop, self.grid.get_wire_bounds(hm_layer, last_idx,
                                                                    width=last_w, unit_mode=True)[1])
+                ytop = -(-ytop // mos_pitch) * mos_pitch
 
             if idx == num_master - 1:
                 # this is the last row, quantize total height
