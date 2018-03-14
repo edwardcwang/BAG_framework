@@ -1308,6 +1308,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         ports : Dict[str, WireArray]
             a dictionary from port names to port WireArray objects.
         """
+        if seg <= 0:
+            raise ValueError('Cannot draw non-positive segments.')
+
         row_info = self._row_info_list[row_idx]
         row_type = row_info['row_type']
 
@@ -1335,11 +1338,15 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
             ne = (num2 + 1) // 2
             no = num2 - ne
-            inst = [self.add_laygo_primitive(blk_type, loc=(col_idx, row_idx), nx=ne, spx=4,
-                                             **kwargs)]
-            if no > 0:
-                inst.append(self.add_laygo_primitive(blk_type, loc=(col_idx + 2, row_idx),
-                                                     flip=True, nx=no, spx=4, **kwargs))
+            if num2 > 0:
+                inst = [self.add_laygo_primitive(blk_type, loc=(col_idx, row_idx), nx=ne, spx=4,
+                                                 **kwargs)]
+                if no > 0:
+                    inst.append(self.add_laygo_primitive(blk_type, loc=(col_idx + 2, row_idx),
+                                                         flip=True, nx=no, spx=4, **kwargs))
+            else:
+                inst = []
+
             if num1:
                 col = col_idx + num2 * 2
                 blk_type = 'fg1' + gate_loc
@@ -1367,20 +1374,22 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 else:
                     cur_name = name
 
-                pins = inst[0].get_all_port_pins(cur_name)
-                if len(inst) > 1:
-                    pins.extend(inst[1].get_all_port_pins(cur_name))
+                if inst:
+                    pins = inst[0].get_all_port_pins(cur_name)
+                    if len(inst) > 1:
+                        pins.extend(inst[1].get_all_port_pins(cur_name))
+                else:
+                    pins = []
+
                 if inst1 is not None:
                     if cur_name == 'g0' or cur_name == 'g1':
-                        if num2 % 2 == 0:
-                            name1 = cur_name
-                        else:
-                            name1 = 'g1' if cur_name == 'g0' else 'g0'
-                        pins.extend(inst1.get_all_port_pins(name1))
+                        if num2 % 2 == 0 and cur_name == 'g0' or num2 % 2 == 1 and cur_name == 'g1':
+                            pins.extend(inst1.get_all_port_pins('g'))
                     else:
                         pins.extend(inst1.get_all_port_pins(cur_name))
 
-                ports[name] = WireArray.list_to_warr(pins)
+                if pins:
+                    ports[name] = WireArray.list_to_warr(pins)
 
         return ports
 
