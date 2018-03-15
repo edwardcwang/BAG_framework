@@ -582,12 +582,20 @@ class TrackManager(object):
             ans = 0
             for wtype in type_tuple:
                 cur_space = self._get_space_from_type(layer_id, wtype, sp_override)
+                if cur_space is None:
+                    cur_space = self._get_space_from_type(layer_id, wtype, self._tr_spaces)
+                if cur_space is None:
+                    cur_space = 0
                 cur_width = self.get_width(layer_id, wtype)
                 ans = max(ans, cur_space, self._grid.get_num_space_tracks(layer_id, cur_width,
                                                                           half_space=half_space))
             return ans
         else:
             cur_space = self._get_space_from_type(layer_id, type_tuple, sp_override)
+            if cur_space is None:
+                cur_space = self._get_space_from_type(layer_id, type_tuple, self._tr_spaces)
+            if cur_space is None:
+                cur_space = 0
             cur_width = self.get_width(layer_id, type_tuple)
             return max(cur_space, self._grid.get_num_space_tracks(layer_id, cur_width,
                                                                   half_space=half_space))
@@ -602,14 +610,26 @@ class TrackManager(object):
                 return sp_dict[ntup].get(layer_id, None)
         return None
 
-    def _get_space_from_type(self, layer_id, wtype, sp_override):
-        if sp_override is not None and wtype in sp_override:
-            test = sp_override[wtype]
-            if layer_id in test:
-                return test[layer_id]
-        if wtype in self._tr_spaces:
-            return self._tr_spaces[wtype].get(layer_id, 0)
-        return 0
+    @classmethod
+    def _get_space_from_type(cls, layer_id, wtype, sp_dict):
+        if sp_dict is None:
+            return None
+        if wtype in sp_dict:
+            test = sp_dict[wtype]
+        else:
+            key = (wtype, '')
+            if key in sp_dict:
+                test = sp_dict[key]
+            else:
+                key = ('', wtype)
+                if key in sp_dict:
+                    test = sp_dict[key]
+                else:
+                    test = None
+
+        if test is None:
+            return None
+        return test.get(layer_id, None)
 
     def get_next_track(self,  # type: TrackManager
                        layer_id,  # type: int
