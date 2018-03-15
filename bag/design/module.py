@@ -857,8 +857,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             else:
                 self.delete_instance(inst_name)
 
-    def design_dummy_transistors(self, dum_info, inst_name, vdd_name, vss_name):
-        # type: (List[Tuple[Any]], str, str, str) -> None
+    def design_dummy_transistors(self, dum_info, inst_name, vdd_name, vss_name, net_map=None):
+        # type: (List[Tuple[Any]], str, str, str, Optional[Dict[str, str]]) -> None
         """Convenience function for generating dummy transistor schematic.
 
         Given dummy information (computed by AnalogBase) and a BAG transistor instance,
@@ -875,6 +875,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             VDD net name.  Used for PMOS dummies.
         vss_name : str
             VSS net name.  Used for NMOS dummies.
+        net_map : Optional[Dict[str, str]]
+            optional net name transformation mapping.
         """
         if not dum_info:
             self.delete_instance(inst_name)
@@ -890,6 +892,9 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 else:
                     cell_name = 'nmos4_standard'
                     sup_name = vss_name
+                if net_map is not None:
+                    s_net = net_map.get(s_net, s_net)
+                    d_net = net_map.get(d_net, d_net)
                 s_name = s_net if s_net else sup_name
                 d_name = d_net if d_net else sup_name
 
