@@ -39,9 +39,12 @@ class ModuleDB(MasterDB):
     lib_path : str
         path to create generated library in.
     """
-    def __init__(self, lib_defs, tech_info, sch_exc_libs, prj=None, name_prefix='', name_suffix='', lib_path=''):
+
+    def __init__(self, lib_defs, tech_info, sch_exc_libs, prj=None, name_prefix='',
+                 name_suffix='', lib_path=''):
         # type: (str, TechInfo, List[str], Optional[BagProject], str, str, str) -> None
-        super(ModuleDB, self).__init__('', lib_defs=lib_defs, name_prefix=name_prefix, name_suffix=name_suffix)
+        super(ModuleDB, self).__init__('', lib_defs=lib_defs, name_prefix=name_prefix,
+                                       name_suffix=name_suffix)
 
         self._prj = prj
         self._tech_info = tech_info
@@ -142,6 +145,7 @@ class SchInstance(object):
     parameters : Optional[Dict[str, Any]]
         If given, set the instance parameters to this dictionary.
     """
+
     def __init__(self,
                  database,  # type: MasterDB
                  gen_lib_name,  # type: str
@@ -203,7 +207,8 @@ class SchInstance(object):
         if self._static:
             return True
         if self._master is None:
-            raise ValueError('Instance %s has no master.  Did you forget to call design()?' % self._name)
+            raise ValueError('Instance %s has no master.  '
+                             'Did you forget to call design()?' % self._name)
         return self._master.is_primitive()
 
     @property
@@ -289,7 +294,8 @@ class SchInstance(object):
         else:
             key = None
         self._master = self._db.new_master(self._gen_lib_name, self._gen_cell_name,
-                                           params=kwargs, design_args=key, design_fun=design_fun)  # type: Module
+                                           params=kwargs, design_args=key,
+                                           design_fun=design_fun)  # type: Module
         if self._master.is_primitive():
             self.parameters.update(self._master.get_schematic_parameters())
 
@@ -319,7 +325,8 @@ class SchInstance(object):
             additional arguments.
         """
         if 'erase' in kwargs:
-            print('DEPRECATED WARNING: erase is no longer supported in implement_design() and has no effect')
+            print('DEPRECATED WARNING: erase is no longer supported '
+                  'in implement_design() and has no effect')
 
         debug = kwargs.get('debug', False)
         rename_dict = kwargs.get('rename_dict', None)
@@ -394,7 +401,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             lib_name = inst_attr['lib_name']
             cell_name = inst_attr['cell_name']
             static = database.is_lib_excluded(lib_name)
-            self.instances[inst_name] = SchInstance(database, lib_name, cell_name, inst_name, static=static)
+            self.instances[inst_name] = SchInstance(database, lib_name, cell_name, inst_name,
+                                                    static=static)
 
         # fill in pin map
         for pin in self.sch_info['pins']:
@@ -667,10 +675,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         static : bool
             True if we're replacing instance with a static schematic instead of a design module.
         index : Optional[int]
-            If index is not None and the child instance has been arrayed, this is the instance array index
-            that we are replacing.
-            If index is None, the entire child instance (whether arrayed or not) will be replaced by
-            a single new instance.
+            If index is not None and the child instance has been arrayed, this is the instance
+            array index that we are replacing.
+            If index is None, the entire child instance (whether arrayed or not) will be replaced
+            by a single new instance.
         """
         if inst_name not in self.instances:
             raise ValueError('Cannot find instance with name: %s' % inst_name)
@@ -679,7 +687,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         if index is not None and isinstance(self.instances[inst_name], list):
             self.instances[inst_name][index].change_generator(lib_name, cell_name, static=static)
         else:
-            self.instances[inst_name] = SchInstance(self.master_db, lib_name, cell_name, inst_name, static=static)
+            self.instances[inst_name] = SchInstance(self.master_db, lib_name, cell_name, inst_name,
+                                                    static=static)
 
     def reconnect_instance_terminal(self, inst_name, term_name, net_name, index=None):
         """Reconnect the instance terminal to a new net.
@@ -705,7 +714,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             if isinstance(term_name, str) and isinstance(net_name, str):
                 self.instances[inst_name][index].connections[term_name] = net_name
             else:
-                raise ValueError('If index is not None, both term_name and net_name must be string.')
+                raise ValueError('If index is not None, '
+                                 'both term_name and net_name must be string.')
         else:
             # modify terminal connection for all instances in the array
             cur_inst_list = self.instances[inst_name]
@@ -766,17 +776,23 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         self.instances[inst_name] = [orig_inst.copy(iname, connections=iterm)
                                      for iname, iterm in zip(inst_name_list, term_list)]
 
-    def design_dc_bias_sources(self, vbias_dict, ibias_dict, vinst_name, iinst_name, define_vdd=True):
-        # type: (Optional[Dict[str, List[str]]], Optional[Dict[str, List[str]]], str, str, bool) -> None
+    def design_dc_bias_sources(self,  # type: Module
+                               vbias_dict,  # type: Optional[Dict[str, List[str]]]
+                               ibias_dict,  # type: Optional[Dict[str, List[str]]]
+                               vinst_name,  # type: str
+                               iinst_name,  # type: str
+                               define_vdd=True,  # type: bool
+                               ):
+        # type: (...) -> None
         """Convenience function for generating DC bias sources.
 
-        Given DC voltage/current bias sources information, array the given voltage/current bias sources
-        and configure the voltage/current.
+        Given DC voltage/current bias sources information, array the given voltage/current bias
+        sources and configure the voltage/current.
 
-        Each bias dictionary is a dictionary from bias source name to a 3-element list.  The first two
-        elements are the PLUS/MINUS net names, respectively, and the third element is the DC
-        voltage/current value as a string or float. A variable name can be given to define a testbench
-        parameter.
+        Each bias dictionary is a dictionary from bias source name to a 3-element list.  The first
+        two elements are the PLUS/MINUS net names, respectively, and the third element is the DC
+        voltage/current value as a string or float. A variable name can be given to define a
+        testbench parameter.
 
         Parameters
         ----------
@@ -811,10 +827,12 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                     elif isinstance(bias_val, int) or isinstance(bias_val, float):
                         val_list.append(float_to_si_string(bias_val))
                     else:
-                        raise ValueError('value %s of type %s not supported' % (bias_val, type(bias_val)))
+                        raise ValueError('value %s of type %s '
+                                         'not supported' % (bias_val, type(bias_val)))
 
                 self.array_instance(inst_name, name_list, term_list=term_list)
-                for inst, val, param_dict in zip(self.instances[inst_name], val_list, param_dict_list):
+                for inst, val, param_dict in zip(self.instances[inst_name], val_list,
+                                                 param_dict_list):
                     inst.parameters[param_name] = val
                     if param_dict is not None:
                         for k, v in param_dict.items():
