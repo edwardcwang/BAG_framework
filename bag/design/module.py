@@ -43,8 +43,8 @@ class ModuleDB(MasterDB):
     def __init__(self, lib_defs, tech_info, sch_exc_libs, prj=None, name_prefix='',
                  name_suffix='', lib_path=''):
         # type: (str, TechInfo, List[str], Optional[BagProject], str, str, str) -> None
-        super(ModuleDB, self).__init__('', lib_defs=lib_defs, name_prefix=name_prefix,
-                                       name_suffix=name_suffix)
+        MasterDB.__init__(self, '', lib_defs=lib_defs, name_prefix=name_prefix,
+                          name_suffix=name_suffix)
 
         self._prj = prj
         self._tech_info = tech_info
@@ -387,6 +387,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         self.pin_map = {}
         self.new_pins = []
         self.parameters = {}
+        self._pin_list = None
 
         self._yaml_fname = os.path.abspath(yaml_fname)
         self.sch_info = read_yaml(self._yaml_fname)
@@ -409,7 +410,12 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             self.pin_map[pin] = pin
 
         # initialize schematic master
-        super(Module, self).__init__(database, lib_name, params, used_names)
+        DesignMaster.__init__(self, database, lib_name, params, used_names)
+
+    @property
+    def pin_list(self):
+        # type: () -> List[str]
+        return self._pin_list
 
     @abc.abstractmethod
     def design(self, **kwargs):
@@ -460,6 +466,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 for inst in inst_list:
                     if not inst.is_primitive:
                         self.children.add(inst.master_key)
+
+        # compute pins
+        self._pin_list = [pin_name for pin_name, _ in self.new_pins]
+        self._pin_list.extend((val for val in self.pin_map.values() if val))
 
         # call super finalize routine
         super(Module, self).finalize()
