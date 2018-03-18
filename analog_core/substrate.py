@@ -63,6 +63,7 @@ class SubstrateContact(TemplateBase):
             dictionary of default parameter values.
         """
         return dict(
+            port_width=None,
             well_end_mode=0,
             show_pins=False,
             is_passive=False,
@@ -85,6 +86,7 @@ class SubstrateContact(TemplateBase):
             top_layer='the top layer of the template.',
             lch='channel length, in meters.',
             w='substrate width, in meters/number of fins.',
+            port_width='port width in number of tracks.',
             sub_type='substrate type.',
             threshold='substrate threshold flavor.',
             well_width='Width of the well in layout units.',
@@ -122,6 +124,7 @@ class SubstrateContact(TemplateBase):
         w = self.params['w']
         sub_type = self.params['sub_type']
         threshold = self.params['threshold']
+        port_width = self.params['port_width']
         well_width = self.params['well_width']
         show_pins = self.params['show_pins']
         is_passive = self.params['is_passive']
@@ -272,8 +275,9 @@ class SubstrateContact(TemplateBase):
         # connect to horizontal metal layer.
         hm_pitch = self.grid.get_track_pitch(hm_layer, unit_mode=True)
         ntr = self.array_box.height_unit // hm_pitch  # type: int
-        tr_width = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
-        track_id = TrackID(hm_layer, hm_mid, width=tr_width)
+        if port_width is None:
+            port_width = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
+        track_id = TrackID(hm_layer, hm_mid, width=port_width)
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
         sub_wires = self.connect_to_tracks(sub_conn.get_port(port_name).get_pins(hm_layer - 1),
                                            track_id)
