@@ -158,8 +158,8 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         offsets = []
         for lay in range(bot_layer, bot_layer + len(self._num_tracks)):
             dim = dx if self.grid.get_direction(lay) == 'y' else dy
-            pitch = self.grid.get_track_pitch(lay, unit_mode=True)
-            offsets.append(dim / pitch)
+            pitch2 = self.grid.get_track_pitch(lay, unit_mode=True) // 2
+            offsets.append(self.grid.coord_to_track(lay, dim + pitch2, unit_mode=True))
 
         return tuple(offsets)
 
