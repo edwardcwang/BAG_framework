@@ -229,7 +229,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         ny : int
             number of resistors in a column.
         min_tracks : Optional[Tuple[int, ...]]
-            minimum number of tracks per layer in the resistor unit cell. If None, Defaults to all 1's.
+            minimum number of tracks per layer in the unit cell. If None, Defaults to all 1's.
             This parameter also represents the number of layers that will be used.
         res_type : str
             the resistor type.
@@ -244,8 +244,8 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         options : Optional[Dict[str, Any]]
             custom options for resistor primitives.
         top_layer : Optional[int]
-            The top metal layer this block is quantized by.  Defaults to the last layer if it is on the global
-            routing grid, or the layer above that if otherwise.
+            The top metal layer this block is quantized by.  Defaults to the last layer if it is on
+            the global routing grid, or the layer above that if otherwise.
             If the top metal layer is only one layer above the private routing grid, then this will
             be a primitive template; self.size will be None, and only one dimension is quantized.
             Otherwise, this will be a standard template, and both width and height will be quantized
@@ -289,9 +289,10 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         lay_unit = self.grid.layout_unit
         l_unit = int(round(l / lay_unit / res))
         w_unit = int(round(w / lay_unit / res))
-        res_info = self._tech_cls.get_res_info(self.grid, l_unit, w_unit, res_type, sub_type, threshold,
-                                               min_tracks, em_specs, ext_dir, max_blk_ext=max_blk_ext,
-                                               connect_up=connect_up, options=options)
+        res_info = self._tech_cls.get_res_info(self.grid, l_unit, w_unit, res_type, sub_type,
+                                               threshold, min_tracks, em_specs, ext_dir,
+                                               max_blk_ext=max_blk_ext, connect_up=connect_up,
+                                               options=options)
         w_edge, h_edge = res_info['w_edge'], res_info['h_edge']
         w_core, h_core = res_info['w_core'], res_info['h_core']
 
@@ -338,7 +339,8 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         # bottom-left corner
         inst_bl = self.add_instance(corner_master, inst_name='XBL', loc=(dx, dy), unit_mode=True)
         # bottom edge
-        self.add_instance(tb_master, inst_name='XB', loc=(dx + w_edge, dy), nx=nx, spx=w_core, unit_mode=True)
+        self.add_instance(tb_master, inst_name='XB', loc=(dx + w_edge, dy), nx=nx, spx=w_core,
+                          unit_mode=True)
         # bottom-right corner
         loc = (dx + 2 * w_edge + nx * w_core, dy)
         self.add_instance(corner_master, inst_name='XBR', loc=loc, orient='MY', unit_mode=True)
@@ -350,16 +352,19 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         loc = (dx + 2 * w_edge + nx * w_core, dy + h_edge)
         well_xr = loc[0] - well_xl
         self._well_width = well_xr - well_xl
-        self.add_instance(lr_master, inst_name='XR', loc=loc, orient='MY', ny=ny, spy=h_core, unit_mode=True)
+        self.add_instance(lr_master, inst_name='XR', loc=loc, orient='MY', ny=ny, spy=h_core,
+                          unit_mode=True)
         # top-left corner
         loc = (dx, dy + 2 * h_edge + ny * h_core)
         self.add_instance(corner_master, inst_name='XTL', loc=loc, orient='MX', unit_mode=True)
         # top edge
         loc = (dx + w_edge, dy + 2 * h_edge + ny * h_core)
-        self.add_instance(tb_master, inst_name='XT', loc=loc, orient='MX', nx=nx, spx=w_core, unit_mode=True)
+        self.add_instance(tb_master, inst_name='XT', loc=loc, orient='MX', nx=nx, spx=w_core,
+                          unit_mode=True)
         # top-right corner
         loc = (dx + 2 * w_edge + nx * w_core, dy + 2 * h_edge + ny * h_core)
-        inst_tr = self.add_instance(corner_master, inst_name='XTR', loc=loc, orient='R180', unit_mode=True)
+        inst_tr = self.add_instance(corner_master, inst_name='XTR', loc=loc, orient='R180',
+                                    unit_mode=True)
 
         # set array box and size
         self.array_box = inst_bl.array_box.merge(inst_tr.array_box)
@@ -499,24 +504,27 @@ class TerminationCore(ResArrayBase):
                     # connect all horizontal wires in last layer to one vertical wire
                     for warrs_idx in range(3):
                         cur_warrs = port_wires[warrs_idx]
-                        tidx = self.grid.coord_to_nearest_track(cur_lay, cur_warrs[0].middle, half_track=True)
+                        tidx = self.grid.coord_to_nearest_track(cur_lay, cur_warrs[0].middle,
+                                                                half_track=True)
                         tid = TrackID(cur_lay, tidx, width=cur_w)
                         port_wires[warrs_idx] = [self.connect_to_tracks(cur_warrs, tid)]
                 else:
-                    # draw one horizontal wire in middle of each row, then connect last vertical wire to it
-                    # this way we distribute currents evenly.
+                    # draw one horizontal wire in middle of each row, then connect last vertical
+                    # wire to it.  this way we distribute currents evenly.
                     cur_p = self.num_tracks[lay_idx]
                     # relative base index.  Round down if we have half-integer number of tracks
                     base_idx_rel = (int(round(cur_p * 2)) // 2 - 1) / 2
                     base_idx = self.get_abs_track_index(cur_lay, 0, base_idx_rel)
                     tid = TrackID(cur_lay, base_idx, width=cur_w, num=ny, pitch=cur_p)
                     for warrs_idx in range(3):
-                        port_wires[warrs_idx] = self.connect_to_tracks(port_wires[warrs_idx], tid, min_len_mode=0)
+                        port_wires[warrs_idx] = self.connect_to_tracks(port_wires[warrs_idx], tid,
+                                                                       min_len_mode=0)
             else:
                 # layer direction is the same.  Strap wires to current layer.
                 for warrs_idx in range(3):
                     cur_warrs = port_wires[warrs_idx]
-                    new_warrs = [self.strap_wires(warr, cur_lay, tr_w_list=[cur_w], min_len_mode_list=[0])
+                    new_warrs = [self.strap_wires(warr, cur_lay, tr_w_list=[cur_w],
+                                                  min_len_mode_list=[0])
                                  for warr in cur_warrs]
                     port_wires[warrs_idx] = new_warrs
 
@@ -648,8 +656,10 @@ class Termination(TemplateBase):
             sub_x_pitch, _ = sub_master.grid.get_size_pitch(sub_master.size[0], unit_mode=True)
             sub_x = ((w_pitch * nx_arr - sub_box.width_unit) // 2 // sub_x_pitch) * sub_x_pitch
 
-            bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(sub_x, 0), unit_mode=True)
-            res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0, ny_shift * h_pitch), unit_mode=True)
+            bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(sub_x, 0),
+                                         unit_mode=True)
+            res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0, ny_shift * h_pitch),
+                                         unit_mode=True)
             top_yo = (ny_arr + 2 * ny_shift) * h_pitch
             top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(sub_x, top_yo),
                                          orient='MX', unit_mode=True)
@@ -763,8 +773,8 @@ class ResLadderCore(ResArrayBase):
                         min_tracks=min_tracks, res_type=res_type, grid_type='low_res', ext_dir='x')
 
         # export supplies and recompute array_box/size
-        hcon_idx_list, vcon_idx_list, xm_bot_idx, num_xm_sup = self._draw_metal_tracks(nx, ny, ndum, hcon_space)
-
+        tmp = self._draw_metal_tracks(nx, ny, ndum, hcon_space)
+        hcon_idx_list, vcon_idx_list, xm_bot_idx, num_xm_sup = tmp
         self._connect_ladder(nx, ny, ndum, hcon_idx_list, vcon_idx_list, xm_bot_idx, num_xm_sup)
 
     def _connect_ladder(self, nx, ny, ndum, hcon_idx_list, vcon_idx_list, xm_bot_idx, num_xm_sup):
@@ -774,7 +784,8 @@ class ResLadderCore(ResArrayBase):
         for row_idx in range(ndum, ny + ndum):
             rmod = row_idx - ndum
             for col_idx in range(ndum, nx + ndum):
-                if (col_idx == ndum and rmod % 2 == 1) or (col_idx == nx - 1 + ndum and rmod % 2 == 0):
+                if (col_idx == ndum and rmod % 2 == 1) or \
+                        (col_idx == nx - 1 + ndum and rmod % 2 == 0):
                     mode = 1 if row_idx == ny + ndum - 1 else 0
                     self._connect_tb(row_idx, col_idx, ndum, tp_idx, hcon_idx_list,
                                      vcon_idx_list, xm_bot_idx, mode=mode)
@@ -797,7 +808,8 @@ class ResLadderCore(ResArrayBase):
                 col_iter = chain(range(ndum), range(nx + ndum, nx + 2 * ndum))
             for col_idx in col_iter:
                 conn_tb = col_idx < ndum or col_idx >= nx + ndum
-                self._connect_dummy(row_idx, col_idx, conn_tb, tp_idx, bp_idx, hcon_idx_list, vcon_idx_list)
+                self._connect_dummy(row_idx, col_idx, conn_tb, tp_idx, bp_idx, hcon_idx_list,
+                                    vcon_idx_list)
 
     def _connect_power(self, ny, ndum, hcon_idx_list, vcon_idx_list, xm_bot_idx, num_xm_sup):
         hm_off, vm_off, xm_off, _ = self.get_track_offsets(ny + ndum, ndum)
@@ -837,7 +849,8 @@ class ResLadderCore(ResArrayBase):
             for xm_idx in xm_idx_list:
                 self.add_via_on_grid(vm_layer, vm_idx, xm_idx)
 
-    def _connect_dummy(self, row_idx, col_idx, conn_tb, tp_idx, bp_idx, hcon_idx_list, vcon_idx_list):
+    def _connect_dummy(self, row_idx, col_idx, conn_tb, tp_idx, bp_idx, hcon_idx_list,
+                       vcon_idx_list):
         hm_off, vm_off, _, _ = self.get_track_offsets(row_idx, col_idx)
         hm_layer = self.bot_layer_id
         self.add_via_on_grid(hm_layer, hm_off + tp_idx, vm_off + vcon_idx_list[3])
@@ -1003,7 +1016,8 @@ class ResLadderCore(ResArrayBase):
         for row in range(ny + 2 * ndum):
             tr_off = self.get_track_offsets(row, 0)[2]
             for tidx in range(nx):
-                warr = self.add_wires(xm_layer, tr_off + xm_bot_idx + tidx, lower=xm_lower, upper=xm_upper,
+                warr = self.add_wires(xm_layer, tr_off + xm_bot_idx + tidx, lower=xm_lower,
+                                      upper=xm_upper,
                                       fill_type='VSS', unit_mode=True)
                 if row < ndum or (row == ndum and tidx == 0):
                     net_name = 'VSS'
@@ -1114,8 +1128,10 @@ class ResLadder(TemplateBase):
         nx_shift = (nx_arr - nx_sub) // 2
 
         xpitch, ypitch = self.grid.get_size_pitch(top_layer, unit_mode=True)
-        bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(nx_shift * xpitch, 0), unit_mode=True)
-        res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0, ny_sub * h_pitch), unit_mode=True)
+        bot_inst = self.add_instance(sub_master, inst_name='XBSUB', loc=(nx_shift * xpitch, 0),
+                                     unit_mode=True)
+        res_inst = self.add_instance(res_master, inst_name='XRES', loc=(0, ny_sub * h_pitch),
+                                     unit_mode=True)
         top_yo = (ny_arr + 2 * ny_sub) * h_pitch
         top_inst = self.add_instance(sub_master, inst_name='XTSUB', loc=(nx_shift * xpitch, top_yo),
                                      orient='MX', unit_mode=True)
@@ -1153,7 +1169,9 @@ class ResLadder(TemplateBase):
         while num_sup_tracks % (sup_width + sup_spacing) != 0:
             sup_spacing += 1
 
-        vdd_warrs, vss_warrs = self.do_power_fill(sup_layer, vdd_warrs, vss_warrs, sup_width=sup_width,
-                                                  fill_margin=0.5, edge_margin=0.2, sup_spacing=sup_spacing)
+        vdd_warrs, vss_warrs = self.do_power_fill(sup_layer, vdd_warrs, vss_warrs,
+                                                  sup_width=sup_width,
+                                                  fill_margin=0.5, edge_margin=0.2,
+                                                  sup_spacing=sup_spacing)
         self.add_pin('VDD', vdd_warrs, show=False)
         self.add_pin('VSS', vss_warrs, show=False)
