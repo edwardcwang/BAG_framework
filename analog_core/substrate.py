@@ -2,7 +2,7 @@
 
 """This module defines various substrate related classes."""
 
-from typing import TYPE_CHECKING, Dict, Any, Set, Tuple, Optional
+from typing import Dict, Any, Set, Tuple, Optional
 
 from bag.util.search import BinaryIterator
 from bag.layout.template import TemplateBase, TemplateDB
@@ -15,9 +15,6 @@ from ..analog_mos.mos import SubRingExt
 from ..analog_mos.conn import AnalogSubstrateConn
 
 from .base import AnalogBaseInfo
-
-if TYPE_CHECKING:
-    from ..analog_mos.core import MOSTech
 
 
 class SubstrateContact(TemplateBase):
@@ -163,7 +160,8 @@ class SubstrateContact(TemplateBase):
                 sub_fg_tot -= 1
                 place_info = layout_info.get_placement_info(sub_fg_tot)
             if sub_fg_tot <= 0:
-                raise ValueError('Cannot draw substrate with width = %d, parity = %d' % (well_width, tot_width_parity))
+                raise ValueError('Cannot draw substrate with width = %d, '
+                                 'parity = %d' % (well_width, tot_width_parity))
 
         layout_info.set_fg_tot(sub_fg_tot)
         self.grid = layout_info.grid
@@ -226,17 +224,23 @@ class SubstrateContact(TemplateBase):
         x1 = edgel_x0 + edge_master.prim_bound_box.width_unit
         x2 = x1 + sub_master.prim_bound_box.width_unit + edge_master.prim_bound_box.width_unit
         y1 = end_edge_master.prim_bound_box.height_unit
-        y2 = y1 + edge_master.prim_bound_box.height_unit + end_edge_master.prim_bound_box.height_unit
-        instlb = self.add_instance(end_edge_master, inst_name='XLBE', loc=(edgel_x0, 0), unit_mode=True)
+        y2 = (y1 + edge_master.prim_bound_box.height_unit +
+              end_edge_master.prim_bound_box.height_unit)
+        instlb = self.add_instance(end_edge_master, inst_name='XLBE', loc=(edgel_x0, 0),
+                                   unit_mode=True)
         self.add_instance(edge_master, inst_name='XLE', loc=(edgel_x0, y1), unit_mode=True)
-        self.add_instance(end_edge_master, inst_name='XLTE', orient='MX', loc=(edgel_x0, y2), unit_mode=True)
+        self.add_instance(end_edge_master, inst_name='XLTE', orient='MX', loc=(edgel_x0, y2),
+                          unit_mode=True)
         self.add_instance(end_row_master, inst_name='XB', loc=(x1, 0), unit_mode=True)
         self.add_instance(sub_master, inst_name='XSUB', loc=(x1, y1), unit_mode=True)
         self.add_instance(end_row_master, inst_name='XT', orient='MX', loc=(x1, y2), unit_mode=True)
-        self.add_instance(end_edge_master, inst_name='XRBE', orient='MY', loc=(x2, 0), unit_mode=True)
+        self.add_instance(end_edge_master, inst_name='XRBE', orient='MY', loc=(x2, 0),
+                          unit_mode=True)
         self.add_instance(edge_master, inst_name='XRE', orient='MY', loc=(x2, y1), unit_mode=True)
-        sub_conn = self.add_instance(conn_master, inst_name='XSUBCONN', loc=(x1, y1), unit_mode=True)
-        instrt = self.add_instance(end_edge_master, inst_name='XRTE', orient='R180', loc=(x2, y2), unit_mode=True)
+        sub_conn = self.add_instance(conn_master, inst_name='XSUBCONN', loc=(x1, y1),
+                                     unit_mode=True)
+        instrt = self.add_instance(end_edge_master, inst_name='XRTE', orient='R180', loc=(x2, y2),
+                                   unit_mode=True)
 
         # calculate substrate Y coordinates
         imp_y, thres_y = end_row_master.sub_ysep
@@ -256,7 +260,8 @@ class SubstrateContact(TemplateBase):
 
         # set array box and size
         arr_box = instlb.array_box.merge(instrt.array_box)
-        self.array_box = BBox(arr_box_x[0], arr_box.bottom_unit, arr_box_x[1], arr_box.top_unit, res, unit_mode=True)
+        self.array_box = BBox(arr_box_x[0], arr_box.bottom_unit, arr_box_x[1], arr_box.top_unit,
+                              res, unit_mode=True)
         self.set_size_from_bound_box(top_layer, BBox(0, 0, tot_width, htot, res, unit_mode=True))
         self.add_cell_boundary(self.bound_box)
 
@@ -270,7 +275,8 @@ class SubstrateContact(TemplateBase):
         tr_width = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
         track_id = TrackID(hm_layer, hm_mid, width=tr_width)
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
-        sub_wires = self.connect_to_tracks(sub_conn.get_port(port_name).get_pins(hm_layer - 1), track_id)
+        sub_wires = self.connect_to_tracks(sub_conn.get_port(port_name).get_pins(hm_layer - 1),
+                                           track_id)
         self.add_pin(port_name, sub_wires, show=show_pins)
 
 
@@ -295,7 +301,7 @@ class SubstrateRing(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
         self._blk_loc = None
 
     @property
@@ -350,8 +356,8 @@ class SubstrateRing(TemplateBase):
 
         # create layout masters
         box_w, box_h = bound_box.width_unit, bound_box.height_unit
-        layout_info = AnalogBaseInfo(self.grid, lch, fg_side, top_layer=top_layer, end_mode=sub_end_mode,
-                                     is_sub_ring=True, dnw_mode=dnw_mode)
+        layout_info = AnalogBaseInfo(self.grid, lch, fg_side, top_layer=top_layer,
+                                     end_mode=sub_end_mode, is_sub_ring=True, dnw_mode=dnw_mode)
         sd_pitch = layout_info.sd_pitch_unit
         mtop_lay = layout_info.mconn_port_layer + 1
 
@@ -366,8 +372,9 @@ class SubstrateRing(TemplateBase):
         if top_layer < mtop_lay:
             raise ValueError('top_layer = %d must be at least %d' % (top_layer, mtop_lay))
 
-        htot, master_list, edge_list = self._make_masters(top_layer, mtop_lay, lch, fg_tot, w, fg_side,
-                                                          sub_type, threshold, dnw_mode, box_h)
+        htot, master_list, edge_list = self._make_masters(top_layer, mtop_lay, lch, fg_tot, w,
+                                                          fg_side, sub_type, threshold, dnw_mode,
+                                                          box_h)
 
         # arrange layout masters
         # first, compute edge margins so everything is quantized properly.
@@ -416,14 +423,17 @@ class SubstrateRing(TemplateBase):
                             loc = (xl, yoff - yl)
                         elif orient == 'R180':
                             loc = (xl + master.bound_box.width_unit, yoff - yl)
-                        inst = self.add_instance(master, inst_name=cur_name, loc=loc, orient=orient, unit_mode=True)
+                        inst = self.add_instance(master, inst_name=cur_name, loc=loc,
+                                                 orient=orient, unit_mode=True)
                         if xidx == 0 or xidx == 2:
                             edge_inst_list.append(inst)
                         elif xidx == 1 and yidx == 1:
                             # get supply TrackID
-                            hm_tidx = self.grid.coord_to_track(mtop_lay, inst.bound_box.yc_unit, unit_mode=True)
+                            hm_tidx = self.grid.coord_to_track(mtop_lay, inst.bound_box.yc_unit,
+                                                               unit_mode=True)
                             ntr = inst.bound_box.height_unit // hm_pitch  # type: int
-                            tr_width = self.grid.get_max_track_width(mtop_lay, 1, ntr, half_end_space=False)
+                            tr_width = self.grid.get_max_track_width(mtop_lay, 1, ntr,
+                                                                     half_end_space=False)
                             tid_list.append(TrackID(mtop_lay, hm_tidx, width=tr_width))
                             inst = self.add_instance(m_conn, inst_name=cur_name + '_CONN', loc=loc,
                                                      orient=orient, unit_mode=True)
@@ -432,7 +442,8 @@ class SubstrateRing(TemplateBase):
 
         # add left and right edge
         hsub = e1_h + e2_h + sub_h
-        edge_inst_list.append(self.add_instance(e_ext, inst_name='XEL', loc=(dx, hsub), unit_mode=True))
+        edge_inst_list.append(self.add_instance(e_ext, inst_name='XEL', loc=(dx, hsub),
+                                                unit_mode=True))
         edge_inst_list.append(self.add_instance(e_ext, inst_name='XER', loc=(wtot - dx, hsub),
                                                 orient='MY', unit_mode=True))
 
@@ -470,7 +481,8 @@ class SubstrateRing(TemplateBase):
             sub_wires = self.connect_to_tracks(cur_warrs, tid)
             self.add_pin(port_name, sub_wires, show=show_pins)
 
-    def _make_masters(self, top_layer, mtop_lay, lch, fg_tot, w, fg_side, sub_type, threshold, dnw_mode, box_h):
+    def _make_masters(self, top_layer, mtop_lay, lch, fg_tot, w, fg_side, sub_type, threshold,
+                      dnw_mode, box_h):
         options1 = dict(is_sub_ring=True, dnw_mode=dnw_mode)
         options2 = dict(dnw_mode=dnw_mode)
         options3 = options1.copy()
@@ -508,7 +520,8 @@ class SubstrateRing(TemplateBase):
         end2_master = self.new_template(params=end2_params, temp_cls=SubRingEndRow)
 
         # compute extension height
-        hsub = sub_master.bound_box.height_unit + end1_master.bound_box.height_unit + end2_master.bound_box.height_unit
+        hsub = (sub_master.bound_box.height_unit + end1_master.bound_box.height_unit +
+                end2_master.bound_box.height_unit)
         hmin = 2 * hsub + box_h
         blk_h = self.grid.get_block_size(top_layer, unit_mode=True)[1]
         if box_h % blk_h != 0:
@@ -565,7 +578,7 @@ class DeepNWellRing(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         super(DeepNWellRing, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
         self._blk_loc = None
 
     @property
@@ -598,7 +611,7 @@ class DeepNWellRing(TemplateBase):
             fg_side='number of fingers in vertical substrate ring.',
             threshold='substrate threshold flavor.',
             show_pins='True to show pin labels.',
-            dnw_mode='deep N-well mode string.  This determines the DNW spacing to adjacent blocks.',
+            dnw_mode='deep N-well mode string.  This determines the DNW space to adjacent blocks.',
         )
 
     def draw_layout(self):
