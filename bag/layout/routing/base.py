@@ -735,7 +735,7 @@ class TrackManager(object):
                     type_list,  # type: Sequence[Union[str, int]]
                     tot_ntr,  # type: Union[float, int]
                     alignment=0,  # type: int
-                    start_idx=0,  # type: int
+                    start_idx=0,  # type: Union[float, int]
                     **kwargs):
         # type: (...) -> List[Union[float, int]]
         """Place the given wires in the given space with the specified alignment.
@@ -775,7 +775,7 @@ class TrackManager(object):
                      tot_ntr,  # type: Union[float, int]
                      sp_type,  # type: Union[str, int, Tuple[Union[str, int], Union[str, int]]]
                      alignment=0,  # type: int
-                     start_idx=0,  # type: int
+                     start_idx=0,  # type: Union[float, int]
                      max_sp=10000,  # type: int
                      ):
         # type: (...) -> List[Union[float, int]]
