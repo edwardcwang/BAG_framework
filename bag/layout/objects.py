@@ -2,7 +2,7 @@
 
 """This module defines various layout objects one can add and manipulate in a template.
 """
-from typing import Union, List, Tuple, Optional, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Union, List, Tuple, Optional, Dict, Any, Iterator, Iterable
 
 import abc
 import numpy as np
@@ -667,6 +667,29 @@ class Instance(Arrayable):
         port = self._master.get_port(name)
         return port.transform(self._parent_grid, loc=(xshift, yshift), orient=self.orientation)
 
+    def get_pin(self, name='', layer=-1):
+        # type: (Optional[str], int) -> WireArray
+        """Returns the first pin with the given name.
+
+        This is an efficient method if you know this instance has exactly one pin.
+
+        Parameters
+        ----------
+        name : Optional[str]
+            the port terminal name.  If None or empty, check if this
+            instance has only one port, then return it.
+        layer : int
+            the pin layer.  If negative, check to see if the given port has only one layer.
+            If so then use that layer.
+
+        Returns
+        -------
+        pin : WireArray
+            the first pin associated with the port of given name.
+        """
+        port = self.get_port(name, 0, 0)
+        return port.get_pins(layer)[0]
+
     def get_all_port_pins(self, name='', layer=-1):
         # type: (Optional[str], int) -> List[WireArray]
         """Returns a list of all pins of all ports with the given name in this instance array.
@@ -695,17 +718,43 @@ class Instance(Arrayable):
                 results.extend(port.get_pins(layer))
         return results
 
+    def port_pins_iter(self, name='', layer=-1):
+        # type: (Optional[str], int) -> Iterator[WireArray]
+        """Iterate through all pins of all ports with the given name in this instance array.
+
+        Parameters
+        ----------
+        name : Optional[str]
+            the port terminal name.  If None or empty, check if this
+            instance has only one port, then return it.
+        layer : int
+            the pin layer.  If negative, check to see if the given port has only one layer.
+            If so then use that layer.
+
+        Yields
+        ------
+        pin : WireArray
+            the pin as WireArray.
+        """
+        for col in range(self.nx):
+            for row in range(self.ny):
+                port = self.get_port(name, row, col)
+                for warr in port.get_pins(layer):
+                    yield warr
+
     def port_names_iter(self):
+        # type: () -> Iterable[str]
         """Iterates over port names in this instance.
 
         Yields
         ------
-        port_name : string
+        port_name : str
             name of a port in this instance.
         """
         return self._master.port_names_iter()
 
     def has_port(self, port_name):
+        # type: (str) -> bool
         """Returns True if this instance has the given port."""
         return self._master.has_port(port_name)
 
