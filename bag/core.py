@@ -15,16 +15,20 @@ import yaml
 from .interface import ZMQDealer
 from .interface.database import DbAccess
 from .design import ModuleDB, SchInstance
+from .layout.routing import RoutingGrid
+from .layout.template import TemplateDB
 from .layout.core import DummyTechInfo
 from .io import read_file, sim_data
 from .concurrent.core import batch_async_task
 
 if TYPE_CHECKING:
     from .interface.simulator import SimAccess
+    from .layout.template import TemplateBase
     from .layout.core import TechInfo
     from .design.module import Module
 
     ModuleType = TypeVar('ModuleType', bound=Module)
+    TemplateType = TypeVar('TemplateType', bound=TemplateBase)
 
 
 def _parse_yaml_file(fname):
@@ -564,6 +568,84 @@ class BagProject(object):
             raise Exception('BAG Server is not set up.')
 
         return self.impl_db.get_cells_in_library(lib_name)
+
+    def make_template_db(self, impl_lib, grid_specs, use_cybagoa=True):
+        # type: (str, Dict[str, Any], bool) -> TemplateDB
+        """Create and return a new TemplateDB instance.
+
+        Parameters
+        ----------
+        impl_lib : str
+            the library name to put generated layouts in.
+        grid_specs : Dict[str, Any]
+            the routing grid specification dictionary.
+        use_cybagoa : bool
+            True to enable cybagoa acceleration if available.
+        """
+        layers = grid_specs['layers']
+        widths = grid_specs['widths']
+        spaces = grid_specs['spaces']
+        bot_dir = grid_specs['bot_dir']
+        width_override = grid_specs.get('width_override', None)
+
+        routing_grid = RoutingGrid(self.tech_info, layers, spaces, widths, bot_dir,
+                                   width_override=width_override)
+        tdb = TemplateDB('template_libs.def', routing_grid, impl_lib, use_cybagoa=use_cybagoa)
+
+        return tdb
+
+    def generate_cell(self, specs, temp_cls, gen_sch=False, run_lvs=False,
+                      use_cybagoa=True, debug=False):
+        # type: (Dict[str, Any], Type[TemplateType], bool, bool, bool, bool) -> None
+        """Generate layout/schematic of a given cell from specification file.
+
+        Parameters
+        ----------
+        specs : Dict[str, Any]
+            the specification dictionary.
+        temp_cls : Type[TemplateType]
+            the TemplateBase subclass to instantiate.
+        gen_sch : bool
+            True to generate schematics.
+        run_lvs : bool
+            True to run LVS.
+        use_cybagoa : bool
+            True to enable cybagoa acceleration if available.
+        debug : bool
+            True to print debug messages.
+        """
+        impl_lib = specs['impl_lib']
+        impl_cell = specs['impl_cell']
+        sch_lib = specs['sch_lib']
+        sch_cell = specs['sch_cell']
+        grid_specs = specs['routing_grid']
+        params = specs['params']
+
+        temp_db = self.make_template_db(impl_lib, grid_specs, use_cybagoa=use_cybagoa)
+
+        name_list = [impl_cell]
+        print('computing layout...')
+        temp = temp_db.new_template(params=params, temp_cls=temp_cls, debug=debug)
+        temp_list = [temp]
+        print('creating layout...')
+        temp_db.batch_layout(self, temp_list, name_list)
+        print('layout done.')
+
+        if gen_sch:
+            dsn = self.create_design_module(lib_name=sch_lib, cell_name=sch_cell)
+            print('computing schematic...')
+            dsn.design(**temp.sch_params)
+            print('creating schematic...')
+            dsn.implement_design(impl_lib, top_cell_name=impl_cell)
+            print('schematic done.')
+        if run_lvs:
+            print('running lvs...')
+            lvs_passed, lvs_log = self.run_lvs(impl_lib, impl_cell)
+            print('LVS log: %s' % lvs_log)
+            if lvs_passed:
+                print('LVS passed!')
+            else:
+                print('LVS failed...')
 
     def create_library(self, lib_name, lib_path=''):
         # type: (str, str) -> None
