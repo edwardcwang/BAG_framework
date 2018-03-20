@@ -569,7 +569,7 @@ class BagProject(object):
 
         return self.impl_db.get_cells_in_library(lib_name)
 
-    def make_template_db(self, impl_lib, grid_specs, use_cybagoa=True):
+    def make_template_db(self, impl_lib, grid_specs, use_cybagoa=False):
         # type: (str, Dict[str, Any], bool) -> TemplateDB
         """Create and return a new TemplateDB instance.
 
@@ -595,7 +595,7 @@ class BagProject(object):
         return tdb
 
     def generate_cell(self, specs, temp_cls, gen_sch=False, run_lvs=False,
-                      use_cybagoa=True, debug=False):
+                      use_cybagoa=False, debug=False):
         # type: (Dict[str, Any], Type[TemplateType], bool, bool, bool, bool) -> None
         """Generate layout/schematic of a given cell from specification file.
 
