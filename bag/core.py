@@ -144,8 +144,17 @@ class Testbench(object):
         directory containing the last simulation data.
     """
 
-    def __init__(self, sim, db, lib, cell, parameters, env_list, default_envs, outputs):
-        # type: (SimAccess, DbAccess, str, str, Dict[str, str], Sequence[str], Sequence[str], Dict[str, str]) -> None
+    def __init__(self,  # type: Testbench
+                 sim,  # type: SimAccess
+                 db,  # type: DbAccess
+                 lib,  # type: str
+                 cell,  # type: str
+                 parameters,  # type: Dict[str, str]
+                 env_list,  # type: Sequence[str]
+                 default_envs,  # type: Sequence[str]
+                 outputs,  # type: Dict[str, str]
+                 ):
+        # type: (...) -> None
         """Create a new testbench instance.
         """
         self.sim = sim
@@ -405,8 +414,8 @@ class Testbench(object):
             the save directory path.
         """
         self.save_dir = None
-        self.save_dir = await self.sim.async_load_results(self.lib, self.cell, hist_name, self.outputs,
-                                                          precision=precision)
+        self.save_dir = await self.sim.async_load_results(self.lib, self.cell, hist_name,
+                                                          self.outputs, precision=precision)
         return self.save_dir
 
 
@@ -491,7 +500,7 @@ class BagProject(object):
             # make DbAccess instance.
             dealer = ZMQDealer(port, **dealer_kwargs)
             db_cls = _import_class_from_str(self.bag_config['database']['class'])
-            self.impl_db = db_cls(dealer, bag_tmp_dir, self.bag_config['database'])  # type: Optional[DbAccess]
+            self.impl_db = db_cls(dealer, bag_tmp_dir, self.bag_config['database'])
             self._default_lib_path = self.impl_db.default_lib_path
         else:
             self.impl_db = None  # type: Optional[DbAccess]
@@ -593,7 +602,8 @@ class BagProject(object):
         """
         return SchInstance(self.dsn_db, lib_name, cell_name, 'XTOP', static=False)
 
-    def new_schematic_instance(self, lib_name='', cell_name='', params=None, sch_cls=None, debug=False, **kwargs):
+    def new_schematic_instance(self, lib_name='', cell_name='', params=None, sch_cls=None,
+                               debug=False, **kwargs):
         # type: (str, str, Dict[str, Any], Type[ModuleType], bool, **kwargs) -> SchInstance
         """Create a new schematic instance
 
@@ -739,7 +749,8 @@ class BagProject(object):
             raise Exception('SimAccess is not set up.')
 
         cur_envs, all_envs, params, outputs = self.impl_db.get_testbench_info(tb_lib, tb_cell)
-        return Testbench(self.sim, self.impl_db, tb_lib, tb_cell, params, all_envs, cur_envs, outputs)
+        return Testbench(self.sim, self.impl_db, tb_lib, tb_cell, params, all_envs,
+                         cur_envs, outputs)
 
     def instantiate_layout_pcell(self, lib_name, cell_name, inst_lib, inst_cell, params,
                                  pin_mapping=None, view_name='layout'):
