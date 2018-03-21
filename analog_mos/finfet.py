@@ -390,7 +390,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
-        po_od_exty = mos_constants['po_od_exty']
+        po_od_exty = mos_constants['po_od_extx']
 
         return -(-(sp + 2 * po_od_exty + lch_unit - 3 * sd_pitch) // sd_pitch)
 
