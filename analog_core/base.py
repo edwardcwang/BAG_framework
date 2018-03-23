@@ -1948,10 +1948,23 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         for row_idx, subinst in zip(row_idx_list, sub_list):
             # Create substrate TrackID
             sub_row_idx = self._find_row_index(sub_type, row_idx)
-            dtr_intv = self._dstr_intv[sub_row_idx]
-            ntr = int(dtr_intv[1] - dtr_intv[0])
+            if sub_row_idx + 1 < len(self._dstr_intv):
+                top_tr_idx = self._dstr_intv[sub_row_idx + 1][0] - 1
+            else:
+                top_tr_idx = self._dstr_intv[sub_row_idx][1] - 1
+            if sub_row_idx - 1 >= 0:
+                bot_tr_idx = self._dstr_intv[sub_row_idx - 1][1] + 1
+            else:
+                bot_tr_idx = self._dstr_intv[sub_row_idx][0]
+            round_up = (subinst.orientation == 'MX')
+            ntr = int(top_tr_idx - bot_tr_idx + 1)
             sub_w = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
-            track_id = TrackID(hm_layer, dtr_intv[0] + (ntr - 1) / 2, width=sub_w)
+            num_sp = self.grid.get_num_space_tracks(hm_layer, sub_w, half_space=True)
+            if round_up:
+                mid_tidx = top_tr_idx - (num_sp + (sub_w - 1) / 2)
+            else:
+                mid_tidx = bot_tr_idx + num_sp + (sub_w - 1) / 2
+            track_id = TrackID(hm_layer, mid_tidx, width=sub_w)
 
             # get all wires to connect to supply.
             warr_iter_list = [subinst.get_port(port_name).get_pins(self.mos_conn_layer)]
