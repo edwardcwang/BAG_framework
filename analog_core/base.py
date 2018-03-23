@@ -1949,11 +1949,19 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             # Create substrate TrackID
             sub_row_idx = self._find_row_index(sub_type, row_idx)
             if sub_row_idx + 1 < len(self._dstr_intv):
-                top_tr_idx = self._dstr_intv[sub_row_idx + 1][0] - 1
+                ngintv = self._gtr_intv[sub_row_idx + 1]
+                if ngintv is None:
+                    top_tr_idx = self._dstr_intv[sub_row_idx + 1][0] - 1
+                else:
+                    top_tr_idx = min(ngintv[0], self._dstr_intv[sub_row_idx + 1][0]) - 1
             else:
                 top_tr_idx = self._dstr_intv[sub_row_idx][1] - 1
             if sub_row_idx - 1 >= 0:
-                bot_tr_idx = self._dstr_intv[sub_row_idx - 1][1] + 1
+                ngintv = self._gtr_intv[sub_row_idx - 1]
+                if ngintv is None:
+                    bot_tr_idx = self._dstr_intv[sub_row_idx - 1][1]
+                else:
+                    bot_tr_idx = max(ngintv[1], self._dstr_intv[sub_row_idx - 1][1])
             else:
                 bot_tr_idx = self._dstr_intv[sub_row_idx][0]
             round_up = (subinst.orientation == 'MX')
