@@ -1368,7 +1368,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             else:
                 cur_upper = max(upper, wupper)
 
-            new_warr = WireArray(warr.track_id, cur_lower * res, cur_upper * res)
+            new_warr = WireArray(warr.track_id, cur_lower, cur_upper, res=res, unit_mode=True)
             for layer_name, bbox_arr in new_warr.wire_arr_iter(self.grid):
                 self.add_rect(layer_name, bbox_arr)
 
@@ -1422,18 +1422,19 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the added WireArray object.
         """
         res = self.grid.resolution
-        if unit_mode:
-            lower *= res
-            upper *= res
+        if not unit_mode:
+            lower = int(round(lower / res))
+            upper = int(round(upper / res))
+            fill_margin = int(round(fill_margin / res))
 
         tid = TrackID(layer_id, track_idx, width=width, num=num, pitch=pitch)
-        warr = WireArray(tid, lower, upper)
+        warr = WireArray(tid, lower, upper, res=res, unit_mode=True)
 
         for layer_name, bbox_arr in warr.wire_arr_iter(self.grid):
             self.add_rect(layer_name, bbox_arr)
 
         self._used_tracks.add_wire_arrays(warr, fill_margin=fill_margin, fill_type=fill_type,
-                                          unit_mode=unit_mode)
+                                          unit_mode=True)
 
         return warr
 
@@ -1771,10 +1772,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         bnd_box = self.bound_box
         tid = TrackID(layer_id, track_idx, width=width, num=num, pitch=pitch)
         if self.grid.get_direction(layer_id) == 'x':
-            upper = bnd_box.width
+            upper = bnd_box.width_unit
         else:
-            upper = bnd_box.height
-        warr = WireArray(tid, 0.0, upper)
+            upper = bnd_box.height_unit
+        warr = WireArray(tid, 0, upper, res=self.grid.resolution, unit_mode=True)
 
         self._used_tracks.add_wire_arrays(warr, fill_margin=fill_margin, fill_type=fill_type,
                                           unit_mode=unit_mode)
@@ -1902,7 +1903,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                         tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv,
                                                                   unit_mode=True)
                         track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
-                        warr = WireArray(track_id, base_range[0] * res, base_range[1] * res)
+                        warr = WireArray(track_id, base_range[0], base_range[1],
+                                         res=res, unit_mode=True)
                         for layer_name, bbox_arr in warr.wire_arr_iter(grid):
                             self.add_rect(layer_name, bbox_arr)
                         new_warr_list.append(warr)
@@ -1915,7 +1917,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     # length/width does not match, add cumulated wires and start anew
                     tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv, unit_mode=True)
                     track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
-                    warr = WireArray(track_id, base_range[0] * res, base_range[1] * res)
+                    warr = WireArray(track_id, base_range[0], base_range[1], res=res,
+                                     unit_mode=True)
                     for layer_name, bbox_arr in warr.wire_arr_iter(grid):
                         self.add_rect(layer_name, bbox_arr)
                     new_warr_list.append(warr)
@@ -1931,7 +1934,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # add last wires
         tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv, unit_mode=True)
         track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
-        warr = WireArray(track_id, base_range[0] * res, base_range[1] * res)
+        warr = WireArray(track_id, base_range[0], base_range[1], res=res, unit_mode=True)
         for layer_name, bbox_arr in warr.wire_arr_iter(grid):
             self.add_rect(layer_name, bbox_arr)
         new_warr_list.append(warr)
@@ -2073,7 +2076,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                                    tl_unit=tl_unit, tu_unit=tu_unit)
 
         # draw tracks
-        result = WireArray(track_id, tl_unit * res, tu_unit * res)
+        result = WireArray(track_id, tl_unit, tu_unit, res=res, unit_mode=True)
         for layer_name, bbox_arr in result.wire_arr_iter(self.grid):
             self.add_rect(layer_name, bbox_arr)
 
@@ -2208,7 +2211,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     track_upper += (ext - ext // 2)
 
         # draw tracks
-        result = WireArray(track_id, track_lower * res, track_upper * res)
+        result = WireArray(track_id, track_lower, track_upper, res=res, unit_mode=True)
         for layer_name, bbox_arr in result.wire_arr_iter(grid):
             self.add_rect(layer_name, bbox_arr)
 
@@ -2869,10 +2872,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # type: (int, BBox) -> None
         """Marks the given bounding-box region as used in this Template."""
         if self.grid.get_direction(layer_id) == 'x':
-            lower, upper = bbox.left, bbox.right
+            lower, upper = bbox.left_unit, bbox.right_unit
             tl, tu = bbox.bottom_unit, bbox.top_unit
         else:
-            lower, upper = bbox.bottom, bbox.top
+            lower, upper = bbox.bottom_unit, bbox.top_unit
             tl, tu = bbox.left_unit, bbox.right_unit
 
         tr_w2 = self.grid.get_track_width(layer_id, 1, unit_mode=True) // 2
@@ -2884,7 +2887,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                                  mode=-1, unit_mode=True)
         htr0 = int(round(tidx0 * 2 + 1))
         htr1 = int(round(tidx1 * 2 + 1))
-        warr = WireArray(TrackID(layer_id, tidx0, num=htr1 - htr0 + 1, pitch=0.5), lower, upper)
+        warr = WireArray(TrackID(layer_id, tidx0, num=htr1 - htr0 + 1, pitch=0.5), lower, upper,
+                         res=self.grid.resolution, unit_mode=True)
         self._used_tracks.add_wire_arrays(warr)
 
     def get_available_tracks(self,  # type: TemplateBase

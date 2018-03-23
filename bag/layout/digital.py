@@ -481,6 +481,7 @@ class StdCellTemplate(StdCellBase):
         self.set_std_size(size)
 
         # add pins
+        res = self.grid.resolution
         for port_name, pin_list in ports.items():
             for pin in pin_list:
                 port_lay_id = pin['layer']
@@ -493,5 +494,6 @@ class StdCellTemplate(StdCellBase):
                     intv = bbox[0], bbox[2]
                     lower, upper = bbox[1], bbox[3]
                 tr_idx, tr_w = self.grid.interval_to_track(port_lay_id, intv)
-                warr = WireArray(TrackID(port_lay_id, tr_idx, width=tr_w), lower, upper)
+                warr = WireArray(TrackID(port_lay_id, tr_idx, width=tr_w), lower, upper,
+                                 res=res, unit_mode=False)
                 self.add_pin(port_name, warr, show=False)
