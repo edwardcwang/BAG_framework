@@ -652,7 +652,8 @@ class MOSTechSOIGenericBC(MOSTech):
         # add body ports
         dum_layer = self.get_dum_conn_layer()
         for tidx in gate_tracks:
-            warr = WireArray(TrackID(dum_layer, tidx), m1_box.bottom, m1_box.top)
+            warr = WireArray(TrackID(dum_layer, tidx), m1_box.bottom_unit, m1_box.top_unit,
+                             res=res, unit_mode=True)
             template.add_pin('dummy', warr, show=False)
 
     def _draw_vertical_vias(self, template, lch_unit, x0, num, pitch, mx_yb, mx_yt, start_layer, end_layer=None):
@@ -704,7 +705,7 @@ class MOSTechSOIGenericBC(MOSTech):
     def _get_wire_array(self, layer_id, tr0, num, lower, upper, pitch=1):
         res = self.config['resolution']
         tid = TrackID(layer_id, tr0, num=num, pitch=pitch)
-        return WireArray(tid, lower * res, upper * res)
+        return WireArray(tid, lower, upper, res=res, unit_mode=True)
 
     def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
         # type: (TemplateBase, Dict[str, Any], int, int, int, bool, Dict[str, Any]) -> None

@@ -658,8 +658,9 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
             tr_bbox = rect_list[-1]['bbox']
             port_tr = grid.coord_to_track(bot_layer, tr_bbox.yc_unit, unit_mode=True)
-            template.add_pin(port_name, WireArray(TrackID(bot_layer, port_tr, width=track_widths[0]),
-                                                  tr_bbox.left, tr_bbox.right), show=False)
+            pin_warr = WireArray(TrackID(bot_layer, port_tr, width=track_widths[0]),
+                                 tr_bbox.left_unit, tr_bbox.right_unit, res=res, unit_mode=True)
+            template.add_pin(port_name, pin_warr, show=False)
 
         # draw dummies
         self._draw_dummies(template, 0, lr_fg, lr_od_loc)

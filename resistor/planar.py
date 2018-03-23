@@ -522,8 +522,9 @@ class ResTechPlanarGeneric(ResTech):
             template.add_via_primitive(**v0_params)
             template.add_via_primitive(**v1_params)
             m2_tr = grid.coord_to_track(bot_layer, m2_box.yc_unit, unit_mode=True)
-            template.add_pin(port_name, WireArray(TrackID(bot_layer, m2_tr, width=track_widths[0]),
-                                                  m2_box.left, m2_box.right), show=False)
+            pin_warr = WireArray(TrackID(bot_layer, m2_tr, width=track_widths[0]),
+                                 m2_box.left_unit, m2_box.right_unit, res=res, unit_mode=True)
+            template.add_pin(port_name, pin_warr, show=False)
 
         # draw dummies
         po_y_list = [(po_yb, po_yt)]

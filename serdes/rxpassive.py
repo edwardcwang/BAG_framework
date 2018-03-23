@@ -395,7 +395,8 @@ class BiasBusIO(TemplateBase):
                 w = self.add_wires(bus_layer, cur_tr_idx, 0, mid, width=track_width, unit_mode=True)
                 w_in = self.connect_to_tracks(w, TrackID(lay, track, width=width), min_len_mode=0)
                 pin_w = WireArray(TrackID(bus_layer, cur_tr_idx, width=track_width), 0,
-                                  self.grid.get_min_length(bus_layer, 1))
+                                  self.grid.get_min_length(bus_layer, 1, unit_mode=True),
+                                  res=self.grid.resolution, unit_mode=True)
                 self.add_pin(name, pin_w, show=show_pins)
                 self.add_pin(name + '_in', w_in, show=show_pins)
 

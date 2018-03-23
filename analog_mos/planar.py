@@ -1562,4 +1562,4 @@ class MOSTechPlanarGeneric(MOSTech):
 
     def _get_wire_array(self, layer_id, tr0, num, lower, upper, pitch=1):
         tid = TrackID(layer_id, tr0, num=num, pitch=pitch)
-        return WireArray(tid, lower * self.res, upper * self.res)
+        return WireArray(tid, lower, upper, res=self.res, unit_mode=True)

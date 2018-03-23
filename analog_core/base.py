@@ -1965,12 +1965,13 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                                                 track_upper=upper, unit_mode=unit_mode)
             sub_warr_list.append(track_warr)
             if sup_wires is not None:
-                wlower, wupper = warr_list[0].lower, warr_list[0].upper
+                wlower, wupper = warr_list[0].lower_unit, warr_list[0].upper_unit
                 for conn_warr in sup_wires:
                     if conn_warr.layer_id != hm_layer:
                         raise ValueError('vdd/vss wires must be on layer %d' % hm_layer)
-                    tmin, tmax = self.grid.get_overlap_tracks(hm_layer - 1, conn_warr.lower,
-                                                              conn_warr.upper, half_track=True)
+                    tmin, tmax = self.grid.get_overlap_tracks(hm_layer - 1, conn_warr.lower_unit,
+                                                              conn_warr.upper_unit,
+                                                              half_track=True, unit_mode=True)
                     new_warr_list = []
                     for warr in warr_list:
                         for tid in warr.track_id:
@@ -1979,7 +1980,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                             elif tmin <= tid:
                                 if not self.mos_conn_track_used(tid, margin=sup_margin):
                                     warr_tmp = WireArray(TrackID(hm_layer - 1, tid), lower=wlower,
-                                                         upper=wupper)
+                                                         upper=wupper, res=self.grid.resolution,
+                                                         unit_mode=True)
                                     new_warr_list.append(warr_tmp)
                     self.connect_to_tracks(new_warr_list, conn_warr.track_id)
 
