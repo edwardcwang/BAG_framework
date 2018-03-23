@@ -946,8 +946,8 @@ class RoutingGrid(object):
         else:
             return lower * self._resolution, upper * self._resolution
 
-    def get_bbox(self, layer_id, tr_idx, lower, upper, width=1):
-        # type: (int, Union[int, float], float, float, int) -> BBox
+    def get_bbox(self, layer_id, tr_idx, lower, upper, width=1, unit_mode=False):
+        # type: (int, Union[int, float], Union[int, float], Union[int, float], int, bool) -> BBox
         """Compute bounding box for the given wire.
 
         Parameters
@@ -956,23 +956,29 @@ class RoutingGrid(object):
             the layer ID.
         tr_idx : Union[int, float]
             the center track index.
-        lower : float
+        lower : Union[int, float]
             the lower coordinate along track direction.
-        upper : float
+        upper : Union[int, float]
             the upper coordinate along track direction.
         width : int
             width of wire in number of tracks.
+        unit_mode : bool
+            True if lower and upper are specified in resolution units.
 
         Returns
         -------
         bbox : bag.layout.util.BBox
             the bounding box.
         """
-        cl, cu = self.get_wire_bounds(layer_id, tr_idx, width=width)
+        if not unit_mode:
+            lower = int(round(lower / self._resolution))
+            upper = int(round(upper / self._resolution))
+
+        cl, cu = self.get_wire_bounds(layer_id, tr_idx, width=width, unit_mode=True)
         if self.get_direction(layer_id) == 'x':
-            bbox = BBox(lower, cl, upper, cu, self._resolution)
+            bbox = BBox(lower, cl, upper, cu, self._resolution, unit_mode=True)
         else:
-            bbox = BBox(cl, lower, cu, upper, self._resolution)
+            bbox = BBox(cl, lower, cu, upper, self._resolution, unit_mode=True)
 
         return bbox
 

@@ -483,7 +483,7 @@ def get_power_fill_tracks(grid,  # type: RoutingGrid
 
         w_list = vdd_warr_list if cur_type == 'VDD' else vss_warr_list
         tid = TrackID(layer_id, (hidx - 1) / 2, width=sup_width)
-        w_list.extend(WireArray(tid, intv[0] * res, intv[1] * res)
+        w_list.extend(WireArray(tid, intv[0], intv[1], res=res, unit_mode=True)
                       for intv in fill_track_set[hidx].intervals())
 
     return vdd_warr_list, vss_warr_list

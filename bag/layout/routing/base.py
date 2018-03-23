@@ -194,32 +194,60 @@ class WireArray(object):
         the lower coordinate along the track direction.
     upper : float
         the upper coordinate along the track direction.
+    res : float
+        the resolution unit.
+    unit_mode : bool
+        True if lower/upper are specified in resolution units.
     """
 
-    def __init__(self, track_id, lower, upper):
-        # type: (TrackID, float, float) -> None
+    def __init__(self, track_id, lower, upper, res=None, unit_mode=False):
+        # type: (TrackID, float, float, float) -> None
+        if res is None:
+            raise ValueError('Please specify the layout distance resolution.')
+
         self._track_id = track_id
-        self._lower = lower
-        self._upper = upper
+        self._res = res
+        if unit_mode:
+            self._lower_unit = lower
+            self._upper_unit = upper
+        else:
+            self._lower_unit = int(round(lower / res))
+            self._upper_unit = int(round(upper / res))
 
     def __repr__(self):
-        return '%s(%s, %.4g, %.4g)' % (self.__class__.__name__, self._track_id,
-                                       self._lower, self._upper)
+        return '%s(%s, %.d, %.d, %.4g)' % (self.__class__.__name__, self._track_id,
+                                           self._lower_unit, self._upper_unit, self._res)
 
     def __str__(self):
         return repr(self)
 
     @property
+    def resolution(self):
+        return self._res
+
+    @property
     def lower(self):
-        return self._lower
+        return self._lower_unit * self._res
 
     @property
     def upper(self):
-        return self._upper
+        return self._upper_unit * self._res
 
     @property
     def middle(self):
-        return (self._lower + self._upper) / 2
+        return (self._lower_unit + self._upper_unit) // 2 * self._res
+
+    @property
+    def lower_unit(self):
+        return self._lower_unit
+
+    @property
+    def upper_unit(self):
+        return self._upper_unit
+
+    @property
+    def middle_unit(self):
+        return (self._lower_unit + self._upper_unit) // 2
 
     @property
     def track_id(self):
@@ -249,7 +277,8 @@ class WireArray(object):
             return warr_list[0]
 
         layer = warr_list[0].layer_id
-        lower, upper = warr_list[0].lower, warr_list[0].upper
+        res = warr_list[0].resolution
+        lower, upper = warr_list[0].lower_unit, warr_list[0].upper_unit
         tid_list = sorted(set((int(idx * 2) for warr in warr_list for idx in warr.track_id)))
         base_idx2 = tid_list[0]
         diff = tid_list[1] - tid_list[0]
@@ -259,13 +288,15 @@ class WireArray(object):
         base_idx = base_idx2 // 2 if base_idx2 % 2 == 0 else base_idx2 / 2
         pitch = diff // 2 if diff % 2 == 0 else diff / 2
 
-        return WireArray(TrackID(layer, base_idx, num=len(tid_list), pitch=pitch), lower, upper)
+        return WireArray(TrackID(layer, base_idx, num=len(tid_list), pitch=pitch), lower, upper,
+                         res=res, unit_mode=True)
 
     def to_warr_list(self):
         tid = self._track_id
         layer = tid.layer_id
         width = tid.width
-        return [WireArray(TrackID(layer, tr, width=width), self._lower, self._upper) for tr in tid]
+        return [WireArray(TrackID(layer, tr, width=width), self._lower_unit,
+                          self._upper_unit, res=self._res, unit_mode=True) for tr in tid]
 
     def get_bbox_array(self, grid):
         # type: ('RoutingGrid') -> BBoxArray
@@ -288,7 +319,8 @@ class WireArray(object):
         num = track_id.num
         pitch = track_id.pitch
 
-        base_box = grid.get_bbox(layer_id, base_idx, self._lower, self._upper, width=tr_w)
+        base_box = grid.get_bbox(layer_id, base_idx, self._lower_unit, self._upper_unit,
+                                 width=tr_w, unit_mode=True)
         if grid.get_direction(layer_id) == 'x':
             return BBoxArray(base_box, ny=num, spy=pitch * grid.get_track_pitch(layer_id))
         else:
@@ -313,7 +345,8 @@ class WireArray(object):
         layer_id = self.layer_id
         for tr_idx in self.track_id:
             layer_name = grid.get_layer_name(layer_id, tr_idx)
-            bbox = grid.get_bbox(layer_id, tr_idx, self._lower, self._upper, width=tr_w)
+            bbox = grid.get_bbox(layer_id, tr_idx, self._lower_unit, self._upper_unit,
+                                 width=tr_w, unit_mode=True)
             yield layer_name, bbox
 
     def wire_arr_iter(self, grid):
@@ -333,13 +366,11 @@ class WireArray(object):
         bbox : :class:`bag.layout.util.BBoxArray`
             the wire bounding boxes.
         """
+        res = self._res
         tid = self.track_id
         layer_id = tid.layer_id
         tr_width = tid.width
         track_pitch = grid.get_track_pitch(layer_id, unit_mode=True)
-        res = grid.resolution
-        lower_unit = int(round(self._lower / res))
-        upper_unit = int(round(self._upper / res))
         is_x = grid.get_direction(layer_id) == 'x'
         for track_idx in tid.sub_tracks_iter(grid):
             base_idx = track_idx.base_index
@@ -348,48 +379,54 @@ class WireArray(object):
             wire_pitch = track_idx.pitch * track_pitch
             tl, tu = grid.get_wire_bounds(layer_id, base_idx, width=tr_width, unit_mode=True)
             if is_x:
-                base_box = BBox(lower_unit, tl, upper_unit, tu, res, unit_mode=True)
+                base_box = BBox(self._lower_unit, tl, self._upper_unit, tu, res, unit_mode=True)
                 box_arr = BBoxArray(base_box, ny=cur_num, spy=wire_pitch, unit_mode=True)
             else:
-                base_box = BBox(tl, lower_unit, tu, upper_unit, res, unit_mode=True)
+                base_box = BBox(tl, self._lower_unit, tu, self._upper_unit, res, unit_mode=True)
                 box_arr = BBoxArray(base_box, nx=cur_num, spx=wire_pitch, unit_mode=True)
 
             yield cur_layer, box_arr
 
-    def transform(self, grid, loc=(0, 0), orient='R0'):
+    def transform(self, grid, loc=(0, 0), orient='R0', unit_mode=False):
         """Return a new transformed WireArray.
 
         Parameters
         ----------
         grid : :class:`bag.layout.routing.RoutingGrid`
             the RoutingGrid of this WireArray.
-        loc : tuple(float, float)
+        loc : Tuple[Union[float, int], Union[float, int]]
             the X/Y coordinate shift.
-        orient : string
+        orient : str
             the new orientation.
+        unit_mode : bool
+            True if location is given in unit mode.
         """
+        res = self._res
+        if not unit_mode:
+            loc = int(round(loc[0] / res)), int(round(loc[1] / res))
+
         layer_id = self.layer_id
         is_x = grid.get_direction(layer_id) == 'x'
         if orient == 'R0':
-            lower, upper = self._lower, self._upper
+            lower, upper = self._lower_unit, self._upper_unit
         elif orient == 'MX':
             if is_x:
-                lower, upper = self._lower, self._upper
+                lower, upper = self._lower_unit, self._upper_unit
             else:
-                lower, upper = -self._upper, -self._lower
+                lower, upper = -self._upper_unit, -self._lower_unit
         elif orient == 'MY':
             if is_x:
-                lower, upper = -self._upper, -self._lower
+                lower, upper = -self._upper_unit, -self._lower_unit
             else:
-                lower, upper = self._lower, self._upper
+                lower, upper = self._lower_unit, self._upper_unit
         elif orient == 'R180':
-            lower, upper = -self._upper, -self._lower
+            lower, upper = -self._upper_unit, -self._lower_unit
         else:
             raise ValueError('Unsupported orientation: %s' % orient)
 
         delta = loc[0] if is_x else loc[1]
-        return WireArray(self.track_id.transform(grid, loc=loc, orient=orient),
-                         lower + delta, upper + delta)
+        return WireArray(self.track_id.transform(grid, loc=loc, orient=orient, unit_mode=True),
+                         lower + delta, upper + delta, res=res, unit_mode=True)
 
 
 class Port(object):
@@ -507,6 +544,7 @@ class TrackManager(object):
     **kwargs :
         additional options.
     """
+
     def __init__(self,
                  grid,  # type: RoutingGrid
                  tr_widths,  # type: Dict[str, Dict[int, int]]
