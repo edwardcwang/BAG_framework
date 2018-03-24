@@ -1967,11 +1967,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             round_up = (subinst.orientation == 'MX')
             ntr = int(top_tr_idx - bot_tr_idx + 1)
             sub_w = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
-            num_sp = self.grid.get_num_space_tracks(hm_layer, sub_w, half_space=True)
-            if round_up:
-                mid_tidx = top_tr_idx - (num_sp + (sub_w - 1) / 2)
-            else:
-                mid_tidx = bot_tr_idx + num_sp + (sub_w - 1) / 2
+            mid_tidx = self.grid.get_middle_track(bot_tr_idx, top_tr_idx, round_up=round_up)
             track_id = TrackID(hm_layer, mid_tidx, width=sub_w)
 
             # get all wires to connect to supply.
