@@ -8,6 +8,7 @@ from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable
 import sys
 import os
 import time
+import numbers
 import importlib
 import abc
 from collections import OrderedDict
@@ -146,7 +147,8 @@ class ClassImporter(object):
         """
 
         if lib_name not in self.libraries:
-            raise Exception("Library %s not listed in definition file %s" % (lib_name, self.lib_defs))
+            raise Exception("Library %s not listed in definition "
+                            "file %s" % (lib_name, self.lib_defs))
 
         module_name = '%s.%s' % (lib_name, cell_name)
         module_cls = '%s__%s' % (lib_name, cell_name)
@@ -228,7 +230,7 @@ class DesignMaster(abc.ABC):
         # python 2/3 compatibility: convert raw bytes to string
         val = fix_string(val)
 
-        if val is None or isinstance(val, int) or isinstance(val, str) or isinstance(val, float):
+        if val is None or isinstance(val, numbers.Number) or isinstance(val, str):
             return val
         elif isinstance(val, list) or isinstance(val, tuple):
             return tuple((cls.to_immutable_id(item) for item in val))
@@ -335,7 +337,7 @@ class DesignMaster(abc.ABC):
     @property
     def prelim_key(self):
         # type: () -> Any
-        """Returns a preliminary unique key.  For compatibility purposes with old schematic generators."""
+        """Returns a preliminary unique key.  For compatibility with old schematic generators."""
         return self._prelim_key
 
     def _get_qualified_name(self):
@@ -378,7 +380,8 @@ class MasterDB(abc.ABC):
     lib_name : str
         the cadence library to put all generated templates in.
     lib_defs : str
-        generator library definition file path.  If empty, then assume user supplies Python class directly.
+        generator library definition file path.  If empty, then assume user supplies
+        Python class directly.
     name_prefix : str
         generated master name prefix.
     name_suffix : str
@@ -525,7 +528,8 @@ class MasterDB(abc.ABC):
             the location of the library, or None if library not defined.
         """
         if self._importer is None:
-            raise ValueError('Cannot get generator library path; library definition file not specified.')
+            raise ValueError('Cannot get generator library path; '
+                             'library definition file not specified.')
 
         return self._importer.get_library_path(lib_name)
 
@@ -550,8 +554,14 @@ class MasterDB(abc.ABC):
 
         return self._importer.get_class(lib_name, cell_name)
 
-    def new_master(self, lib_name='', cell_name='', params=None, gen_cls=None, debug=False, **kwargs):
-        # type: (str, str, Optional[Dict[str, Any]], Optional[Type[MasterType]], bool, **kwargs) -> MasterType
+    def new_master(self,  # type: MasterDB
+                   lib_name='',  # type: str
+                   cell_name='',  # type: str
+                   params=None,  # type: Optional[Dict[str, Any]]
+                   gen_cls=None,  # type: Optional[Type[MasterType]]
+                   debug=False,  # type: bool
+                   **kwargs):
+        # type: (...) -> MasterType
         """Create a generator instance.
 
         Parameters
@@ -566,7 +576,7 @@ class MasterDB(abc.ABC):
             the generator class to instantiate.  Overrides lib_name and cell_name.
         debug : bool
             True to print debug messages.
-        **kwargs
+        **kwargs :
             optional arguments for generator.
 
         Returns
@@ -580,7 +590,8 @@ class MasterDB(abc.ABC):
         if gen_cls is None:
             gen_cls = self.get_generator_class(lib_name, cell_name)
 
-        master = self.create_master_instance(gen_cls, self._lib_name, params, self._used_cell_names, **kwargs)
+        master = self.create_master_instance(gen_cls, self._lib_name, params,
+                                             self._used_cell_names, **kwargs)
         key = master.key
 
         if key is None:
@@ -661,7 +672,8 @@ class MasterDB(abc.ABC):
             for key, val in rename_dict.items():
                 if key != val:
                     if val in reverse_rename:
-                        raise ValueError('Both %s and %s are renamed to %s' % (key, reverse_rename[val], val))
+                        raise ValueError('Both %s and %s are renamed '
+                                         'to %s' % (key, reverse_rename[val], val))
                     rename[key] = val
                     reverse_rename[val] = key
 
@@ -669,7 +681,8 @@ class MasterDB(abc.ABC):
             if name is not None and name != master.cell_name:
                 cur_name = master.cell_name
                 if name in reverse_rename:
-                    raise ValueError('Both %s and %s are renamed to %s' % (cur_name, reverse_rename[name], name))
+                    raise ValueError('Both %s and %s are renamed '
+                                     'to %s' % (cur_name, reverse_rename[name], name))
                 rename[cur_name] = name
                 reverse_rename[name] = cur_name
 
@@ -694,7 +707,8 @@ class MasterDB(abc.ABC):
         if not lib_name:
             raise ValueError('master library name is not specified.')
 
-        content_list = [master.get_content(lib_name, self.format_cell_name) for master in info_dict.values()]
+        content_list = [master.get_content(lib_name, self.format_cell_name)
+                        for master in info_dict.values()]
 
         if debug:
             print('master content retrieval took %.4g seconds' % (end - start))
