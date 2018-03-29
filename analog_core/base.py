@@ -2,10 +2,12 @@
 
 """This module defines AnalogBase, a base template class for generic analog layout topologies."""
 
-import abc
-from itertools import chain
 from typing import TYPE_CHECKING, List, Union, Optional, Dict, Any, Set, Tuple
+
+import abc
 import bisect
+import numbers
+from itertools import chain
 
 from bag.math import lcm
 from bag.util.interval import IntervalSet
@@ -976,11 +978,11 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             a dictionary of ports as WireArrays.  The keys are 'g', 'd', and 's'.
         """
         # sanity checking
-        if not isinstance(fg, int):
+        if not isinstance(fg, numbers.Integral):
             raise ValueError('number of fingers must be integer.')
-        if not isinstance(row_idx, int):
+        if not isinstance(row_idx, numbers.Integral):
             raise ValueError('row_idx must be integer.')
-        if not isinstance(col_idx, int):
+        if not isinstance(col_idx, numbers.Integral):
             raise ValueError('col_idx must be integer')
 
         # mark transistors as connected
