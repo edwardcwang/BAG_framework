@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import TYPE_CHECKING, Dict, Any, List, Optional
+from typing import TYPE_CHECKING, Dict, Any, List, Optional, Union
 from itertools import chain
 from collections import namedtuple
 
@@ -76,7 +76,8 @@ class MOSTechSOIGenericBC(MOSTech):
         w_unit = int(round(w / layout_unit / res))
 
         # get minimum metal lengths
-        g_min_len = max((info['min_len'] for info in g_drc_info.values() if info['direction'] == 'y'))
+        g_min_len = max((info['min_len'] for info in g_drc_info.values()
+                         if info['direction'] == 'y'))
         d_min_len = max((info['min_len'] for info in d_drc_info.values()))
 
         # compute gate location
@@ -149,7 +150,8 @@ class MOSTechSOIGenericBC(MOSTech):
         bag_purpose = 'bag_' + mos_type
         top_imp_margins[od_name] = top_imp_margins[(od_name[0], bag_purpose)] = arr_y[1] - b_od_yt
         bot_imp_margins[od_name] = bot_imp_margins[(od_name[0], bag_purpose)] = d_od_yb
-        for imp_name, (bot_enc, top_enc) in chain(imp_layers_info.items(), thres_layers_info.items()):
+        for imp_name, (bot_enc, top_enc) in chain(imp_layers_info.items(),
+                                                  thres_layers_info.items()):
             bot_type, bot_idx, bot_delta = bot_enc
             top_type, top_idx, top_delta = top_enc
             imp_yb = y_lookup[bot_type][bot_idx][0] - bot_delta
@@ -160,8 +162,10 @@ class MOSTechSOIGenericBC(MOSTech):
 
         top_mx_margin = arr_y[1] - d_y_list[-1][-1]
         bot_mx_margin = g_y_list[-1][0]
-        ext_top_info = ExtInfo(mx_margin=top_mx_margin, imp_margins=top_imp_margins, mtype=mos_type, thres=threshold)
-        ext_bot_info = ExtInfo(mx_margin=bot_mx_margin, imp_margins=bot_imp_margins, mtype=mos_type, thres=threshold)
+        ext_top_info = ExtInfo(mx_margin=top_mx_margin, imp_margins=top_imp_margins, mtype=mos_type,
+                               thres=threshold)
+        ext_bot_info = ExtInfo(mx_margin=bot_mx_margin, imp_margins=bot_imp_margins, mtype=mos_type,
+                               thres=threshold)
 
         layout_info = dict(
             lch_unit=lch_unit,
@@ -404,9 +408,18 @@ class MOSTechSOIGenericBC(MOSTech):
             m1_name = self.config['layer_name'][1]
             template.add_rect(m1_name, sub_box)
 
-    def draw_substrate_connection(self, template, layout_info, port_tracks, dum_tracks, dummy_only,
-                                  is_laygo, is_guardring, options):
-        # type: (TemplateBase, Dict[str, Any], List[int], List[int], bool, bool, bool, Dict[str, Any]) -> bool
+    def draw_substrate_connection(self,  # type: MOSTechSOIGenericBC
+                                  template,  # type: TemplateBase
+                                  layout_info,  # type: Dict[str, Any]
+                                  port_tracks,  # type: List[Union[float, int]]
+                                  dum_tracks,  # type: List[Union[float, int]]
+                                  exc_tracks,  # type: List[Union[float, int]]
+                                  dummy_only,  # type: bool
+                                  is_laygo,  # type: bool
+                                  is_guardring,  # type: bool
+                                  options,  # type: Dict[str, Any]
+                                  ):
+        # type: (...) -> bool
 
         # note: we just export all tracks, as we can draw wires on all of them
         lch_unit = layout_info['lch_unit']
@@ -429,15 +442,26 @@ class MOSTechSOIGenericBC(MOSTech):
                 template.add_pin(port_name, mos_warrs, show=False)
 
             # draw vias
-            self._draw_vertical_vias(template, lch_unit, 0, fg + 1, sd_pitch, mx_yb, mx_yt, 1, end_layer=end_layer)
+            self._draw_vertical_vias(template, lch_unit, 0, fg + 1, sd_pitch, mx_yb, mx_yt, 1,
+                                     end_layer=end_layer)
 
             return True
 
         return False
 
-    def draw_mos_connection(self, template, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
-                            min_ds_cap, is_diff, diode_conn, options):
-        # type: (TemplateBase, Dict[str, Any], int, int, str, int, bool, bool, bool, Dict[str, Any]) -> None
+    def draw_mos_connection(self,  # type: MOSTechSOIGenericBC
+                            template,  # type: TemplateBase
+                            mos_info,  # type: Dict[str, Any]
+                            sdir,  # type: int
+                            ddir,  # type: int
+                            gate_pref_loc,  # type: str
+                            gate_ext_mode,  # type: int
+                            min_ds_cap,  # type: bool
+                            is_diff,  # type: bool
+                            diode_conn,  # type: bool
+                            options,  # type: Dict[str, Any]
+                            ):
+        # type: (...) -> None
 
         # note: ignore gate_ext_mode, min_ds_cap, is_diff
         if diode_conn:
@@ -532,8 +556,9 @@ class MOSTechSOIGenericBC(MOSTech):
         via_enc2 = (m1_w_g - via_h) // 2
         enc1 = [via_enc_le, via_enc_le, via_enc1, via_enc1]
         enc2 = [via_enc_le, via_enc_le, via_enc2, via_enc2]
-        template.add_via_primitive(via_type, loc=[via_xc, via_yc - sd_yc], num_cols=fg - 1, sp_cols=sd_pitch - via_w,
-                                   enc1=enc1, enc2=enc2, cut_width=via_w, cut_height=via_h, unit_mode=True)
+        template.add_via_primitive(via_type, loc=[via_xc, via_yc - sd_yc], num_cols=fg - 1,
+                                   sp_cols=sd_pitch - via_w, enc1=enc1, enc2=enc2, cut_width=via_w,
+                                   cut_height=via_h, unit_mode=True)
         # draw gate M1 bar
         m1_bbox = BBox(0, -m1_w_g // 2, width, m1_w_g // 2, res, unit_mode=True)
         m1_bbox = m1_bbox.move_by(dy=via_yc - sd_yc, unit_mode=True)
@@ -563,8 +588,9 @@ class MOSTechSOIGenericBC(MOSTech):
         enc1 = [via_enc_le1, via_enc_le1, via_enc1, via_enc1]
         enc2 = [via_enc2, via_enc2, via_enc_top2, via_enc_bot2]
         via_type = via_id_table[(m1_name, m2_name)]
-        template.add_via_primitive(via_type, loc=[g_x0, via_yc - sd_yc], enc1=enc1, enc2=enc2, cut_width=via_w,
-                                   cut_height=via_h, nx=num_g, spx=2 * sd_pitch, unit_mode=True)
+        template.add_via_primitive(via_type, loc=[g_x0, via_yc - sd_yc], enc1=enc1, enc2=enc2,
+                                   cut_width=via_w, cut_height=via_h, nx=num_g, spx=2 * sd_pitch,
+                                   unit_mode=True)
         # draw gate vias to connection layer
         self._draw_vertical_vias(template, lch_unit, g_x0, num_g, 2 * sd_pitch,
                                  g_y_list[2][0] - sd_yc, g_y_list[2][1] - sd_yc, 2)
@@ -582,9 +608,10 @@ class MOSTechSOIGenericBC(MOSTech):
         enc2 = b_via_info['enc2']
         b_m1_yb, b_m1_yt = b_y_list[1]
         via_yc = (b_m1_yb + b_m1_yt) // 2
-        template.add_via_primitive(via_type, loc=[sd_pitch // 2, via_yc - sd_yc], num_rows=num_via_body,
-                                   sp_rows=via_sp, enc1=enc1, enc2=enc2, cut_width=via_w,
-                                   cut_height=via_h, nx=fg, spx=sd_pitch, unit_mode=True)
+        template.add_via_primitive(via_type, loc=[sd_pitch // 2, via_yc - sd_yc],
+                                   num_rows=num_via_body, sp_rows=via_sp, enc1=enc1, enc2=enc2,
+                                   cut_width=via_w, cut_height=via_h, nx=fg, spx=sd_pitch,
+                                   unit_mode=True)
         # draw body M1 bar
         m1_box = BBox(0, b_m1_yb, width, b_m1_yt, res, unit_mode=True)
         m1_box = m1_box.move_by(dy=-sd_yc, unit_mode=True)
@@ -594,9 +621,12 @@ class MOSTechSOIGenericBC(MOSTech):
         mos_conn_layer = self.get_mos_conn_layer()
         gtr0 = template.grid.coord_to_track(mos_conn_layer, g_x0, unit_mode=True)
         g_yb, g_yt = g_y_list[-1]
-        g_warrs = self._get_wire_array(mos_conn_layer, gtr0, num_g, g_yb - sd_yc, g_yt - sd_yc, pitch=2)
-        s_warrs = self._get_wire_array(mos_conn_layer, -0.5, num_s, d_yb - sd_yc, d_yt - sd_yc, pitch=2)
-        d_warrs = self._get_wire_array(mos_conn_layer, 0.5, num_d, d_yb - sd_yc, d_yt - sd_yc, pitch=2)
+        g_warrs = self._get_wire_array(mos_conn_layer, gtr0, num_g, g_yb - sd_yc, g_yt - sd_yc,
+                                       pitch=2)
+        s_warrs = self._get_wire_array(mos_conn_layer, -0.5, num_s, d_yb - sd_yc, d_yt - sd_yc,
+                                       pitch=2)
+        d_warrs = self._get_wire_array(mos_conn_layer, 0.5, num_d, d_yb - sd_yc, d_yt - sd_yc,
+                                       pitch=2)
 
         template.add_pin('g', g_warrs, show=False)
         template.add_pin('d', d_warrs, show=False)
@@ -656,7 +686,8 @@ class MOSTechSOIGenericBC(MOSTech):
                              res=res, unit_mode=True)
             template.add_pin('dummy', warr, show=False)
 
-    def _draw_vertical_vias(self, template, lch_unit, x0, num, pitch, mx_yb, mx_yt, start_layer, end_layer=None):
+    def _draw_vertical_vias(self, template, lch_unit, x0, num, pitch, mx_yb, mx_yt, start_layer,
+                            end_layer=None):
         # type: (TemplateBase, int, int, int, int, int, int, int, int) -> None
 
         d_via_info = self.config['mos_analog']['d_via']
@@ -681,8 +712,10 @@ class MOSTechSOIGenericBC(MOSTech):
                 via_type = via_id_table[(od_name, m1_name)]
                 via_enc_le = d_via_info['top_enc_le'][bot_lay_id]
             else:
-                via_type = via_id_table[(lay_name_table[bot_lay_id], lay_name_table[bot_lay_id + 1])]
-                via_enc_le = max(d_via_info['bot_enc_le'][bot_lay_id], d_via_info['top_enc_le'][bot_lay_id])
+                via_type = via_id_table[(lay_name_table[bot_lay_id],
+                                         lay_name_table[bot_lay_id + 1])]
+                via_enc_le = max(d_via_info['bot_enc_le'][bot_lay_id],
+                                 d_via_info['top_enc_le'][bot_lay_id])
 
             w_bot = md_w if bot_lay_id == 0 else d_conn_w[bot_lay_id - d_bot_layer]
             w_top = d_conn_w[bot_lay_id + 1 - d_bot_layer]
@@ -707,6 +740,7 @@ class MOSTechSOIGenericBC(MOSTech):
         tid = TrackID(layer_id, tr0, num=num, pitch=pitch)
         return WireArray(tid, lower, upper, res=res, unit_mode=True)
 
-    def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate, options):
+    def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate,
+                              options):
         # type: (TemplateBase, Dict[str, Any], int, int, int, bool, Dict[str, Any]) -> None
         raise ValueError('Decap connection is not supported in this technology.')

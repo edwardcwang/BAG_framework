@@ -362,8 +362,9 @@ class MOSTech(object, metaclass=abc.ABCMeta):
     def draw_substrate_connection(self,  # type: MOSTech
                                   template,  # type: TemplateBase
                                   layout_info,  # type: Dict[str, Any]
-                                  port_tracks,  # type: List[int]
-                                  dum_tracks,  # type: List[int]
+                                  port_tracks,  # type: List[Union[float, int]]
+                                  dum_tracks,  # type: List[Union[float, int]]
+                                  exc_tracks,  # type: List[Union[float, int]]
                                   dummy_only,  # type: bool
                                   is_laygo,  # type: bool
                                   is_guardring,  # type: bool
@@ -378,10 +379,12 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             the TemplateBase object to draw layout in.
         layout_info : Dict[str, Any]
             the substrate layout information dictionary.
-        port_tracks : List[int]
+        port_tracks : List[Union[float, int]]
             list of port track indices that must be drawn on transistor connection layer.
-        dum_tracks : List[int]
+        dum_tracks : List[Union[float, int]]
             list of dummy port track indices that must be drawn on dummy connection layer.
+        exc_tracks : List[Union[float, int]]
+            list of track indices to exclude on transistor connection layer.
         dummy_only : bool
             True to only draw connections up to dummy connection layer.
         is_laygo : bool

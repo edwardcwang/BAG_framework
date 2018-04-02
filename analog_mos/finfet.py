@@ -2159,8 +2159,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     def draw_substrate_connection(self,  # type: MOSTechFinfetBase
                                   template,  # type: TemplateBase
                                   layout_info,  # type: Dict[str, Any]
-                                  port_tracks,  # type: List[int]
-                                  dum_tracks,  # type: List[int]
+                                  port_tracks,  # type: List[Union[float, int]]
+                                  dum_tracks,  # type: List[Union[float, int]]
+                                  exc_tracks,  # type: List[Union[float, int]]
                                   dummy_only,  # type: bool
                                   is_laygo,  # type: bool
                                   is_guardring,  # type: bool

@@ -8,8 +8,6 @@ from typing import Dict, Any, Set
 from bag import float_to_si_string
 from bag.layout.template import TemplateBase, TemplateDB
 
-from .core import MOSTech
-
 
 class AnalogMOSConn(TemplateBase):
     """The abstract base class for finfet layout classes.
