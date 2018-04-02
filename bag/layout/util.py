@@ -29,7 +29,8 @@ def transform_point(x, y, loc, orient):
         raise ValueError('Unsupported orientation: %s' % orient)
 
     mat = transform_table[orient]
-    return np.dot(mat, np.array([x, y])) + shift
+    ans = np.dot(mat, np.array([x, y])) + shift
+    return ans.item(0), ans.item(1)
 
 
 def transform_loc_orient(loc, orient, trans_loc, trans_orient):
@@ -41,7 +42,7 @@ def transform_loc_orient(loc, orient, trans_loc, trans_orient):
 
     for key, val in transform_table.items():
         if np.allclose(new_mat, val):
-            return (new_loc[0], new_loc[1]), key
+            return (new_loc.item(0), new_loc.item(1)), key
 
 
 class PortSpec(object):

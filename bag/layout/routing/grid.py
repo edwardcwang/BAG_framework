@@ -1589,6 +1589,27 @@ class RoutingGrid(object):
 
         return result
 
+    def remove_layers_under(self, layer_id):
+        # type: (int) -> None
+        """Remove all routing layers under the given layer.
+
+        Parameters
+        ----------
+        layer_id : int
+            all layers under and including this layer will be removed.
+        """
+        while self.layers and self.layers[0] <= layer_id:
+            rm_layer = self.layers[0]
+            del self.layers[0]
+            del self.sp_tracks[rm_layer]
+            del self.w_tracks[rm_layer]
+            del self.dir_tracks[rm_layer]
+            del self.block_pitch[rm_layer]
+            self._flip_parity.pop(rm_layer, None)
+            self.offset_tracks.pop(rm_layer, None)
+            self.max_num_tr_tracks.pop(rm_layer, None)
+            self.w_override.pop(rm_layer, None)
+
     def add_new_layer(self, layer_id, tr_space, tr_width, direction,
                       max_num_tr=100, override=False, unit_mode=False, is_private=True):
         # type: (int, float, float, str, int, bool, bool, bool) -> None
