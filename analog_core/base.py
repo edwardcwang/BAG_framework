@@ -1920,7 +1920,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                            upper=None,  # type: Optional[Union[float, int]]
                            sup_wires=None,  # type: Optional[Union[WireArray, List[WireArray]]]
                            sup_margin=0,  # type: int
-                           unit_mode=False  # type: bool
+                           unit_mode=False,  # type: bool
+                           sup_width=None,  # type: Optional[int]
                            ):
         """Connect all given substrates to horizontal tracks
 
@@ -1942,6 +1943,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             supply wires mconn layer connection horizontal margin in number of tracks.
         unit_mode : bool
             True if lower/upper is specified in resolution units.
+        sup_width : Optional[int]
+            If given, will use this as the wire width.
 
         Returns
         -------
@@ -1977,8 +1980,11 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             else:
                 bot_tr_idx = self._dstr_intv[sub_row_idx][0]
             round_up = (subinst.orientation == 'MX')
-            ntr = int(top_tr_idx - bot_tr_idx + 1)
-            sub_w = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
+            if sup_width is None:
+                ntr = int(top_tr_idx - bot_tr_idx + 1)
+                sub_w = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
+            else:
+                sub_w = sup_width
             mid_tidx = self.grid.get_middle_track(bot_tr_idx, top_tr_idx, round_up=round_up)
             track_id = TrackID(hm_layer, mid_tidx, width=sub_w)
 
@@ -2022,7 +2028,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                    vdd_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
                    vss_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
                    sup_margin=0,  # type: int
-                   unit_mode=False  # type: bool
+                   unit_mode=False,  # type: bool
+                   vdd_width=None,  # type: Optional[int]
+                   vss_width=None,  # type: Optional[int]
                    ):
         # type: (...) -> Tuple[List[WireArray], List[WireArray]]
         """Draw dummy/separator on all unused transistors.
@@ -2043,6 +2051,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             vdd/vss wires mos conn layer margin in number of tracks.
         unit_mode : bool
             True if lower/upper are specified in resolution units.
+        vdd_width : Optional[int]
+            If given, will use this width for drawing VDD wire.
+        vss_width : Optional[int]
+            If given, will use this width for drawing VSS wire.
 
         Returns
         -------
@@ -2088,12 +2100,14 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list,
                                                      list(range(len(self._ptap_list))),
                                                      lower=lower, upper=upper, sup_wires=vss_warrs,
-                                                     sup_margin=sup_margin, unit_mode=unit_mode)
+                                                     sup_margin=sup_margin, unit_mode=unit_mode,
+                                                     sup_width=vss_width)
         elif self._ptap_list:
             # NMOS exists, only connect bottom substrate to upper level metal
             ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list[:1], [0],
                                                      lower=lower, upper=upper, sup_wires=vss_warrs,
-                                                     sup_margin=sup_margin, unit_mode=unit_mode)
+                                                     sup_margin=sup_margin, unit_mode=unit_mode,
+                                                     sup_width=vss_width)
         else:
             ptap_wire_arrs = []
 
@@ -2103,13 +2117,15 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list,
                                                      list(range(len(self._ntap_list))),
                                                      lower=lower, upper=upper, sup_wires=vdd_warrs,
-                                                     sup_margin=sup_margin, unit_mode=unit_mode)
+                                                     sup_margin=sup_margin, unit_mode=unit_mode,
+                                                     sup_width=vdd_width)
         elif self._ntap_list:
             # PMOS exists, only connect top substrate to upper level metal
             ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list[-1:],
                                                      [len(self._ntap_list) - 1],
                                                      lower=lower, upper=upper, sup_wires=vdd_warrs,
-                                                     sup_margin=sup_margin, unit_mode=unit_mode)
+                                                     sup_margin=sup_margin, unit_mode=unit_mode,
+                                                     sup_width=vdd_width)
         else:
             ntap_wire_arrs = []
 
