@@ -738,7 +738,10 @@ class Instance(Arrayable):
         """
         for col in range(self.nx):
             for row in range(self.ny):
-                port = self.get_port(name, row, col)
+                try:
+                    port = self.get_port(name, row, col)
+                except KeyError:
+                    return
                 for warr in port.get_pins(layer):
                     yield warr
 
