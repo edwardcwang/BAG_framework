@@ -1485,6 +1485,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             if master.is_empty and height == 0:
                 continue
 
+            yo = ybot if orient == 'R0' else ybot + height
             is_sub = isinstance(master, AnalogSubstrate)
 
             if row_idx != 0 and row_idx != len(master_list) - 1:
@@ -1507,13 +1508,25 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     bot_wg = wire_tree.get_wire_groups((row_idx - 1, 0))
                     top_wg = wire_tree.get_wire_groups((row_idx - 1, 1))
                     if bot_wg is None:
-                        gtr_intv = (0, 0)
+                        if orient == 'R0':
+                            ygb = yo + master.get_g_conn_y()[0]
+                        else:
+                            ygb = yo - master.get_g_conn_y()[1]
+                        gtr = self.grid.find_next_track(hm_layer, ygb, half_track=True, mode=1,
+                                                        unit_mode=True)
+                        gtr_intv = (gtr, gtr)
                         gw_info = (None, None)
                     else:
                         gtr_intv = bot_wg[0].interval
                         gw_info = (bot_wg[0].names, bot_wg[0].locations)
                     if top_wg is None:
-                        dtr_intv = (0, 0)
+                        if orient == 'R0':
+                            ydb = yo + master.get_d_conn_y()[0]
+                        else:
+                            ydb = yo - master.get_d_conn_y()[1]
+                        dtr = self.grid.find_next_track(hm_layer, ydb, half_track=True, mode=1,
+                                                        unit_mode=True)
+                        dtr_intv = (dtr, dtr)
                         dw_info = (None, None)
                     else:
                         dtr_intv = top_wg[0].interval
@@ -1539,7 +1552,6 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             edgel_master = self.new_template(params=edgel_params, temp_cls=AnalogEdge)
             edgel_width = edgel_master.bound_box.width_unit
 
-            yo = ybot if orient == 'R0' else ybot + height
             inst_loc = (edgel_x0 + edgel_width, yo)
             inst = self.add_instance(master, loc=inst_loc, orient=orient, unit_mode=True)
             # record substrate Y coordinates
