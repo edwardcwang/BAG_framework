@@ -499,6 +499,7 @@ class DesignManager(object):
             wrapper_lookup[wrapper_type] = self.get_wrapper_name(dsn_name, wrapper_type)
 
         result_summary = {}
+        dsn_data_dir = os.path.join(self._root_dir, dsn_name)
         for meas_specs in meas_list:
             meas_type = meas_specs['meas_type']
             meas_package = meas_specs['meas_package']
@@ -517,11 +518,11 @@ class DesignManager(object):
                                                                     load_from_file=load_from_file)
             print('Measurement %s finished on %s' % (meas_name, dsn_name))
 
-            with open_file(os.path.join(self._root_dir, out_fname), 'w') as f:
+            with open_file(os.path.join(data_dir, out_fname), 'w') as f:
                 yaml.dump(meas_res, f)
             result_summary[meas_type] = meas_res
 
-        with open_file(os.path.join(self._root_dir, summary_fname), 'w') as f:
+        with open_file(os.path.join(dsn_data_dir, summary_fname), 'w') as f:
             yaml.dump(result_summary, f)
 
     async def main_task(self, lib_name, dsn_name, rcx_params, extract=True,
