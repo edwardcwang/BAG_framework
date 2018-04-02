@@ -865,7 +865,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         conn_inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
 
         if dum_tr_list:
-            warr = conn_inst.get_port().get_pins(dum_layer)[0]
+            warr = conn_inst.get_pin(layer=dum_layer)
             res = self.grid.resolution
             yb = int(round(warr.lower / res))
             yt = int(round(warr.upper / res))
@@ -1046,7 +1046,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         conn_master = self.new_template(params=conn_params, temp_cls=AnalogMOSConn)
         conn_inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
 
-        return {key: conn_inst.get_port(key).get_pins(self.mos_conn_layer)[0]
+        return {key: conn_inst.get_pin(name=key, layer=self.mos_conn_layer)
                 for key in conn_inst.port_names_iter()}
 
     def get_substrate_box(self, bottom=True):
@@ -1989,13 +1989,12 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             track_id = TrackID(hm_layer, mid_tidx, width=sub_w)
 
             # get all wires to connect to supply.
-            warr_iter_list = [subinst.get_port(port_name).get_pins(self.mos_conn_layer)]
+            warr_list = subinst.get_all_port_pins(name=port_name, layer=self.mos_conn_layer)
             if port_name == 'VDD':
-                warr_iter_list.append(self._gr_vdd_warrs)
+                warr_list.extend(self._gr_vdd_warrs)
             else:
-                warr_iter_list.append(self._gr_vss_warrs)
+                warr_list.extend(self._gr_vss_warrs)
 
-            warr_list = list(chain(*warr_iter_list))
             track_warr = self.connect_to_tracks(warr_list, track_id, track_lower=lower,
                                                 track_upper=upper, unit_mode=unit_mode)
             sub_warr_list.append(track_warr)
@@ -2296,11 +2295,11 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         if bot_sub_inst is not None:
             bot_dum_tracks.extend((htr - 1) / 2 for htr in bot_dhtr[0])
             bot_dum_tracks.sort()
-            self._export_supplies(bot_dum_tracks, bot_tracks, bot_sub_inst, bot_dum_only)
+            self._export_supplies(port_name, bot_dum_tracks, bot_tracks, bot_sub_inst, bot_dum_only)
         if top_sub_inst is not None:
             top_dum_tracks.extend((htr - 1) / 2 for htr in top_dhtr[0])
             top_dum_tracks.sort()
-            self._export_supplies(top_dum_tracks, top_tracks, top_sub_inst, top_dum_only)
+            self._export_supplies(port_name, top_dum_tracks, top_tracks, top_sub_inst, top_dum_only)
 
     def _select_dummy_connections(self,  # type: AnalogBase
                                   conn_list,  # type: List[IntervalSet]
@@ -2437,7 +2436,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             else:
                 conn_list.append(intv_set.get_intersection(conn_list[-1]))
 
-        # subtract adjacent Intervalsets in conn_list
+        # subtract adjacent Intervalsets in conn_listconn
         for idx in range(len(conn_list) - 1):
             cur_intvs, next_intvs = conn_list[idx], conn_list[idx + 1]
             for intv in next_intvs:
@@ -2445,11 +2444,16 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         return conn_list
 
-    def _export_supplies(self, dum_tracks, port_tracks, sub_inst, dum_only):
+    def _export_supplies(self, port_name, dum_tracks, port_tracks, sub_inst, dum_only):
+        sub_port = sub_inst.get_port(port_name)
+        sub_box = sub_port.get_bounding_box(self.grid, self.mos_conn_layer)
+        yb, yt = sub_box.bottom_unit, sub_box.top_unit
+        exc_tracks = self.get_occupied_tracks(self.mos_conn_layer, yb, yt, unit_mode=True)
+
         x0 = self._layout_info.sd_xc_unit
         dum_tr_offset = self.grid.coord_to_track(self.dum_conn_layer, x0, unit_mode=True) + 0.5
         mconn_tr_offset = self.grid.coord_to_track(self.mos_conn_layer, x0, unit_mode=True) + 0.5
         dum_tracks = [tr - dum_tr_offset for tr in dum_tracks]
         port_tracks = [tr - mconn_tr_offset for tr in port_tracks]
         sub_inst.new_master_with(dum_tracks=dum_tracks, port_tracks=port_tracks,
-                                 dummy_only=dum_only)
+                                 dummy_only=dum_only, exc_tracks=exc_tracks)
