@@ -977,6 +977,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         ports : Dict[str, WireArray]
             a dictionary of ports as WireArrays.  The keys are 'g', 'd', and 's'.
         """
+        stack = kwargs.get('stack', 1)
+
         # sanity checking
         if not isinstance(fg, numbers.Integral):
             raise ValueError('number of fingers must be integer.')
@@ -984,6 +986,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             raise ValueError('row_idx must be integer.')
         if not isinstance(col_idx, numbers.Integral):
             raise ValueError('col_idx must be integer')
+        if fg % stack != 0:
+            raise ValueError('number of fingers must be divisible by the stack number')
+        seg = fg // stack
 
         # mark transistors as connected
         if mos_type == 'pch':
@@ -1016,7 +1021,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             raise ValueError(msg % (mos_type, row_idx, intv[0], intv[1]))
 
         net_map[intv[0]] = s_net
-        net_map[intv[1]] = s_net if fg % 2 == 0 else d_net
+        net_map[intv[1]] = s_net if seg % 2 == 0 else d_net
 
         sd_pitch = self.sd_pitch_unit
         ridx = self._ridx_lookup[mos_type][row_idx]
