@@ -390,9 +390,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         """
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
-        po_od_exty = mos_constants['po_od_extx']
+        po_od_extx = mos_constants['po_od_extx']
 
-        return -(-(sp + 2 * po_od_exty + lch_unit - 3 * sd_pitch) // sd_pitch)
+        return -(-(sp + 2 * po_od_extx + lch_unit - 3 * sd_pitch) // sd_pitch)
 
     def get_fin_idx(self, lch_unit, od_y, top_edge, round_up=None):
         # type: (int, int, bool, Optional[bool]) -> int
@@ -662,9 +662,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_spy_dum = mos_constants.get('od_spy_dum', mos_constants['od_spy'])
         od_nfin_min = mos_constants['od_fill_h'][0]
         imp_od_ency = mos_constants['imp_od_ency']
+        has_cpo = mos_constants['has_cpo']
         cpo_h = mos_constants['cpo_h']
         cpo_od_sp = mos_constants['cpo_od_sp']
         cpo_spy = mos_constants['cpo_spy']
+        po_spy = mos_constants['po_spy']
+        po_od_exty = mos_constants['po_od_exty']
         md_h_min = mos_constants['md_h_min']
         md_od_exty = mos_constants['md_od_exty']
         md_spy = mos_constants['md_spy']
@@ -699,7 +702,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # get od_yb_max1, round to fin grid.
         dum_md_yb = -bot_ext_info.margins['md'][0] + md_spy
-        od_yb_max1 = max(dum_md_yb + md_od_exty, cpo_h // 2 + cpo_od_sp, od_bot_yt + od_spy_dum)
+        od_edge_spy = cpo_h // 2 + cpo_od_sp if has_cpo else po_spy // 2 + po_od_exty
+        od_yb_max1 = max(od_edge_spy, dum_md_yb + md_od_exty, od_bot_yt + od_spy_dum)
         od_yb_max1 = self.snap_od_edge(lch_unit, od_yb_max1, False, True)
         # get od_yb_max2, round to fin grid.
         od_yb_max = bot_imp_min_h + imp_od_ency
@@ -707,7 +711,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # get od_yt_min1 assuming yt = 0, round to fin grid.
         dum_md_yt = top_ext_info.margins['md'][0] - md_spy
-        od_yt_min1 = min(dum_md_yt - md_od_exty, -(cpo_h // 2) - cpo_od_sp, od_top_yb - od_spy_dum)
+        od_yt_min1 = min(-od_edge_spy, dum_md_yt - md_od_exty, od_top_yb - od_spy_dum)
         od_yt_min1 = self.snap_od_edge(lch_unit, od_yt_min1, True, False)
         # get od_yt_min2, round to fin grid.
         od_yt_min = -top_imp_min_h - imp_od_ency
@@ -716,7 +720,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # get minimum extension width from OD related spacing rules
         min_ext_w_od = max(0, self.get_od_h(lch_unit, od_nfin_min) - (od_yt_min - od_yb_max))
         # check to see CPO spacing rule is satisfied
-        min_ext_w_od = max(min_ext_w_od, cpo_spy + cpo_h)
+        if has_cpo:
+            min_ext_w_od = max(min_ext_w_od, cpo_spy + cpo_h)
         # check to see MD minimum height rule is satisfied
         min_ext_w_od = max(min_ext_w_od, md_h_min - (dum_md_yt - dum_md_yb))
         # round min_ext_w_od to fin grid.
@@ -740,14 +745,20 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         guard_ring_nf = kwargs.get('guard_ring_nf', 0)
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
-        od_nfin_min, od_nfin_max = mos_constants['od_fill_h']
         od_spy = mos_constants['od_spy']
         od_min_density = mos_constants['od_min_density']
+        od_nfin_min, od_nfin_max = mos_constants['od_fill_h']
+        has_cpo = mos_constants['has_cpo']
+        po_spy = mos_constants['po_spy']
+        po_od_exty = mos_constants['po_od_exty']
+
         if guard_ring_nf == 0 or 'od_spy_max_gr' not in mos_constants:
             od_spy_max = mos_constants['od_spy_max']
         else:
             od_spy_max = mos_constants['od_spy_max_gr']
 
+        if not has_cpo:
+            od_spy = max(od_spy, 2 * po_od_exty + po_spy)
         od_spy_nfin_min = self.get_od_spy_nfin(lch_unit, od_spy, round_up=True)
         od_spy_nfin_max = self.get_od_spy_nfin(lch_unit, od_spy_max, round_up=False)
 
@@ -814,8 +825,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         md_h_min = mos_constants['md_h_min']
         md_od_exty = mos_constants['md_od_exty']
         md_spy = mos_constants['md_spy']
+        has_cpo = mos_constants['has_cpo']
         cpo_h = mos_constants['cpo_h']
         cpo_od_sp = mos_constants['cpo_od_sp']
+        po_od_exty = mos_constants['po_od_exty']
 
         od_h_min = self.get_od_h(lch_unit, od_nfin_min)
 
@@ -826,7 +839,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # get dummy OD/MD intervals
         od_y_list = self._get_dummy_od_yloc(lch_unit, bot_ext_info, top_ext_info, yblk, **kwargs)
         if not od_y_list:
-            return [], [], [(0, yblk)], [(cpo_h // 2, yblk - cpo_h // 2)], [0, yblk]
+            po_y_list = [(cpo_h // 2, yblk - cpo_h // 2)] if has_cpo else []
+            return [], [], [(0, yblk)], po_y_list, [0, yblk]
 
         md_y_list = []
         for od_yb, od_yt in od_y_list:
@@ -834,55 +848,56 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             md_yb = (od_yb + od_yt - md_h) // 2
             md_y_list.append((md_yb, md_yb + md_h))
 
-        # check and fix MD spacing violation
-        cpo_bot_yt = cpo_h // 2
-        cpo_top_yb = yblk - cpo_h // 2
-        if md_y_list[0][0] < bot_md_yt + md_spy or od_y_list[0][0] < cpo_bot_yt + cpo_od_sp:
-            od_yt = od_y_list[0][1]
-            od_bot_correct = max(cpo_bot_yt + cpo_od_sp, bot_md_yt + md_spy + md_od_exty)
-            od_yb = self.snap_od_edge(lch_unit, od_bot_correct, False, True)
-            od_yt = max(od_yb + od_h_min, od_yt)
-            od_y_list[0] = od_yb, od_yt
-            md_h = max(md_h_min, od_yt - od_yb + 2 * md_od_exty)
-            md_yb = max((od_yb + od_yt - md_h) // 2, bot_md_yt + md_spy)
-            md_y_list[0] = md_yb, md_yb + md_h
-        if md_y_list[-1][1] > top_md_yb - md_spy or od_y_list[-1][1] > cpo_top_yb - cpo_od_sp:
-            od_yb = od_y_list[-1][0]
-            od_top_correct = min(cpo_top_yb - cpo_od_sp, top_md_yb - md_spy - md_od_exty)
-            od_yt = self.snap_od_edge(lch_unit, od_top_correct, True, False)
-            od_yb = min(od_yt - od_h_min, od_yb)
-            od_y_list[-1] = od_yb, od_yt
-            md_h = max(md_h_min, od_yt - od_yb + 2 * md_od_exty)
-            md_yt = min((od_yb + od_yt + md_h) // 2, top_md_yb - md_spy)
-            md_yb = md_yt - md_h
-            # here actually MD bottom spacing could be violated again
-            if bot_md_yt + md_spy > md_yb:
-                # first check if it's even possible to solve
-                if (md_h > top_md_yb - bot_md_yt - 2 * md_spy or
-                        bot_md_yt + md_spy > od_yb - md_od_exty):
-                    raise ValueError(
-                        'Cannot draw dummy OD and meet MD spacing constraints.  See developer.')
-                md_yb = bot_md_yt + md_spy
-                md_yt = md_yb + md_h
-            md_y_list[0] = md_yb, md_yt
+        # check and fix MD spacing violation, which can only occur if we have CPO
+        if has_cpo:
+            cpo_bot_yt = cpo_h // 2
+            cpo_top_yb = yblk - cpo_h // 2
+            if md_y_list[0][0] < bot_md_yt + md_spy or od_y_list[0][0] < cpo_bot_yt + cpo_od_sp:
+                od_yt = od_y_list[0][1]
+                od_bot_correct = max(cpo_bot_yt + cpo_od_sp, bot_md_yt + md_spy + md_od_exty)
+                od_yb = self.snap_od_edge(lch_unit, od_bot_correct, False, True)
+                od_yt = max(od_yb + od_h_min, od_yt)
+                od_y_list[0] = od_yb, od_yt
+                md_h = max(md_h_min, od_yt - od_yb + 2 * md_od_exty)
+                md_yb = max((od_yb + od_yt - md_h) // 2, bot_md_yt + md_spy)
+                md_y_list[0] = md_yb, md_yb + md_h
+            if md_y_list[-1][1] > top_md_yb - md_spy or od_y_list[-1][1] > cpo_top_yb - cpo_od_sp:
+                od_yb = od_y_list[-1][0]
+                od_top_correct = min(cpo_top_yb - cpo_od_sp, top_md_yb - md_spy - md_od_exty)
+                od_yt = self.snap_od_edge(lch_unit, od_top_correct, True, False)
+                od_yb = min(od_yt - od_h_min, od_yb)
+                od_y_list[-1] = od_yb, od_yt
+                md_h = max(md_h_min, od_yt - od_yb + 2 * md_od_exty)
+                md_yt = min((od_yb + od_yt + md_h) // 2, top_md_yb - md_spy)
+                md_yb = md_yt - md_h
+                # here actually MD bottom spacing could be violated again
+                if bot_md_yt + md_spy > md_yb:
+                    # first check if it's even possible to solve
+                    if (md_h > top_md_yb - bot_md_yt - 2 * md_spy or
+                            bot_md_yt + md_spy > od_yb - md_od_exty):
+                        raise ValueError(
+                            'Cannot draw dummy OD and meet MD spacing constraints.  See developer.')
+                    md_yb = bot_md_yt + md_spy
+                    md_yt = md_yb + md_h
+                md_y_list[0] = md_yb, md_yt
 
-        if md_y_list[0][0] < bot_md_yt + md_spy or od_y_list[0][0] < cpo_bot_yt + cpo_od_sp:
-            # bottom MD spacing rule violated.  This only happens if we have exactly
-            # one dummy OD, and there is no solution that works for both top and bottom
-            # MD spacing rules.
-            raise ValueError(
-                'Cannot draw dummy OD and meet MD spacing constraints.  See developer.')
-        if len(md_y_list) > 1:
-            # check inner MD and OD spacing rules are met.
-            # I don't think these rules will ever be broken, so I'm not fixing it now.
-            # However, if there does need to be a fix, you probably need to recompute
-            # inner dummy OD Y coordinates.
-            if (md_y_list[0][1] + md_spy > md_y_list[1][0] or
-                    md_y_list[-2][1] + md_spy > md_y_list[-1][0]):
-                raise ValueError('inner dummy MD spacing rule not met.  See developer.')
-            if (od_y_list[0][1] + od_spy > od_y_list[1][0] or
-                    od_y_list[-2][1] + od_spy > od_y_list[1][0]):
-                raise ValueError('inner dummy OD spacing rule not met.  See developer.')
+            if md_y_list[0][0] < bot_md_yt + md_spy or od_y_list[0][0] < cpo_bot_yt + cpo_od_sp:
+                # bottom MD spacing rule violated.  This only happens if we have exactly
+                # one dummy OD, and there is no solution that works for both top and bottom
+                # MD spacing rules.
+                raise ValueError(
+                    'Cannot draw dummy OD and meet MD spacing constraints.  See developer.')
+            if len(md_y_list) > 1:
+                # check inner MD and OD spacing rules are met.
+                # I don't think these rules will ever be broken, so I'm not fixing it now.
+                # However, if there does need to be a fix, you probably need to recompute
+                # inner dummy OD Y coordinates.
+                if (md_y_list[0][1] + md_spy > md_y_list[1][0] or
+                        md_y_list[-2][1] + md_spy > md_y_list[-1][0]):
+                    raise ValueError('inner dummy MD spacing rule not met.  See developer.')
+                if (od_y_list[0][1] + od_spy > od_y_list[1][0] or
+                        od_y_list[-2][1] + od_spy > od_y_list[1][0]):
+                    raise ValueError('inner dummy OD spacing rule not met.  See developer.')
 
         # get PO/CPO locations
         cpo_yc = 0
@@ -896,7 +911,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 next_cpo_yc = yblk
             # record coordinates
             row_y_list.append((cpo_yc, next_cpo_yc))
-            po_y_list.append((cpo_yc + cpo_h // 2, next_cpo_yc - cpo_h // 2))
+            if has_cpo:
+                po_y_list.append((cpo_yc + cpo_h // 2, next_cpo_yc - cpo_h // 2))
+            else:
+                po_y_list.append((od_yb - po_od_exty, od_yt + po_od_exty))
             cpo_yc_list.append(cpo_yc)
             cpo_yc = next_cpo_yc
         # add last CPO
@@ -911,6 +929,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fin_p = mos_constants['mos_pitch']
         cpo_spy = mos_constants['cpo_spy']
         imp_od_ency = mos_constants['imp_od_ency']
+        has_cpo = mos_constants['has_cpo']
         cpo_h = mos_constants['cpo_h']
         no_sub_dummy = mos_constants.get('no_sub_dummy', False)
 
@@ -923,7 +942,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # check if we draw one or two CPO.  Compute threshold split Y coordinates accordingly.
         cpo2_w = -(-(cpo_spy + cpo_h) // fin_p)  # type: int
-        one_cpo = (w < cpo2_w)
+        one_cpo = has_cpo and (w < cpo2_w)
 
         num_dod = len(od_y_list)
         if not od_y_list:
@@ -1014,6 +1033,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         imp_layers_info_struct = mos_constants['imp_layers']
         thres_layers_info_struct = mos_constants['thres_layers']
         fin_p = mos_constants['mos_pitch']
+        has_cpo = mos_constants['has_cpo']
         cpo_spy = mos_constants['cpo_spy']
         cpo_h = mos_constants['cpo_h']
         cpo_h_end = mos_constants['cpo_h_end']
@@ -1043,9 +1063,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                            od_y_list, cpo_yc_list)
         adj_row_list, adj_edgel_infos, adj_edger_infos, thres_split_y, imp_split_y = tmp
 
-        # check if we draw one or two CPO.  Compute threshold split Y coordinates accordingly.
+        # check if we draw one or two CPO
         cpo2_w = -(-(cpo_spy + cpo_h) // fin_p)  # type: int
-        one_cpo = (w < cpo2_w)
+        one_cpo = has_cpo and (w < cpo2_w)
 
         lay_info_list = []
         num_dod = len(od_y_list)
@@ -1205,22 +1225,23 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     lay_info_list.append((lay_name, 0, cur_yb, cur_yt))
 
         # add CPO layers
-        for idx, cpo_yc in enumerate(cpo_yc_list):
-            # find next CPO coordinates
-            if substrate_planar:
-                if idx == 0 and not bot_tran:
-                    cur_cpo_yt = cpo_yc + cpo_h // 2
-                    cur_cpo_yb = cur_cpo_yt - cpo_h_end
-                elif idx == len(cpo_yc_list) - 1 and not top_tran:
-                    cur_cpo_yb = cpo_yc - cpo_h // 2
-                    cur_cpo_yt = cur_cpo_yb + cpo_h_end
+        if has_cpo:
+            for idx, cpo_yc in enumerate(cpo_yc_list):
+                # find next CPO coordinates
+                if substrate_planar:
+                    if idx == 0 and not bot_tran:
+                        cur_cpo_yt = cpo_yc + cpo_h // 2
+                        cur_cpo_yb = cur_cpo_yt - cpo_h_end
+                    elif idx == len(cpo_yc_list) - 1 and not top_tran:
+                        cur_cpo_yb = cpo_yc - cpo_h // 2
+                        cur_cpo_yt = cur_cpo_yb + cpo_h_end
+                    else:
+                        cur_cpo_yb = cpo_yc - cpo_h // 2
+                        cur_cpo_yt = cpo_yc + cpo_h // 2
                 else:
                     cur_cpo_yb = cpo_yc - cpo_h // 2
                     cur_cpo_yt = cpo_yc + cpo_h // 2
-            else:
-                cur_cpo_yb = cpo_yc - cpo_h // 2
-                cur_cpo_yt = cpo_yc + cpo_h // 2
-            lay_info_list.append((cpo_lay, 0, cur_cpo_yb, cur_cpo_yt))
+                lay_info_list.append((cpo_lay, 0, cur_cpo_yb, cur_cpo_yt))
 
         # modify adjacent row geometries if substrate planar is true,
         # and we are next to a substrate row.
@@ -1351,9 +1372,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
         fin_p = mos_constants['mos_pitch']
-        cpo_po_ency = mos_constants['cpo_po_ency']
+        has_cpo = mos_constants['has_cpo']
         cpo_h = mos_constants['cpo_h']
         cpo_h_end = mos_constants['cpo_h_end']
+        cpo_po_ency = mos_constants['cpo_po_ency']
         nw_dnw_ext = mos_constants['nw_dnw_ext']
         edge_margin = mos_constants['edge_margin']
         substrate_planar = mos_constants.get('substrate_planar', False)
@@ -1369,7 +1391,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         if is_end:
             blk_pitch = lcm([blk_pitch, fin_p])
             # first assume top Y coordinate is 0
-            if substrate_planar:
+            if substrate_planar or not has_cpo:
                 arr_yt = -(-edge_margin // blk_pitch) * blk_pitch
                 imp_yb = arr_yt
                 finbound_yb = arr_yt - fin_p2 - fin_h2
@@ -1417,7 +1439,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         else:
             # we just draw CPO
             imp_yb = arr_yt = 0
-            if substrate_planar:
+            if substrate_planar or not has_cpo:
                 lay_info_list = []
             else:
                 lay_info_list = [(cpo_lay, 0, -cpo_h // 2, cpo_h // 2)]
@@ -1833,6 +1855,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     # noinspection PyUnusedLocal
     def draw_poly(self,  # type: MOSTechFinfetBase
                   template,  # type: TemplateBase
+                  mos_constants,  # type: Dict[str, Any]
                   po_type,  # type: str
                   po_x,  # type: Tuple[int, int]
                   row_y,  # type: Tuple[int, int]
@@ -1851,6 +1874,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         ----------
         template : TemplateBase
             the template.
+        mos_constants : Dict[str, Any]
+            the transistor constants dictionary
         po_type : str
             the PO type.
         po_x : Tuple[int, int]
@@ -1863,12 +1888,17 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             the OD Y bounds that intersects this PO.
         """
         mos_layer_table = self.config['mos_layer_table']
+        has_cpo = mos_constants['has_cpo']
 
         po_lay = mos_layer_table[po_type]
         res = template.grid.resolution
 
         po_xl, po_xr = po_x
-        template.add_rect(po_lay, BBox(po_xl, row_y[0], po_xr, row_y[1], res, unit_mode=True))
+        if has_cpo:
+            template.add_rect(po_lay, BBox(po_xl, row_y[0], po_xr, row_y[1], res, unit_mode=True))
+        else:
+            template.add_rect(po_lay, BBox(po_xl, po_y[0], po_xr, po_y[1], res, unit_mode=True))
+
         od_yb, od_yt = od_y
         if od_yt > od_yb and ('sub' in po_type or
                               ('edge' in po_type and po_type != 'PO_edge_dummy')):
@@ -2097,7 +2127,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                         else:
                             lay = 'PO_dummy'
 
-                        self.draw_poly(template, lay, (po_xl, po_xr), row_y, po_y, pode_y)
+                        self.draw_poly(template, mos_constants, lay, (po_xl, po_xr), row_y,
+                                       po_y, pode_y)
 
             # draw MD
             if md_yt > md_yb and fg > 0:
@@ -2133,8 +2164,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     if idx not in no_po_region:
                         po_xl = po_xc + idx * sd_pitch - lch_unit // 2
                         po_xr = po_xl + lch_unit
-                        self.draw_poly(template, po_type, (po_xl, po_xr), row_y, po_y,
-                                       (po_y[0], po_y[0]))
+                        self.draw_poly(template, mos_constants, po_type, (po_xl, po_xr), row_y,
+                                       po_y, (po_y[0], po_y[0]))
 
         # set size and add PR boundary
         arr_box = BBox(0, arr_yb, blk_w, arr_yt, res, unit_mode=True)
