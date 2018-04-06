@@ -2451,12 +2451,20 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         sub_port = sub_inst.get_port(port_name)
         sub_box = sub_port.get_bounding_box(self.grid, self.mos_conn_layer)
         yb, yt = sub_box.bottom_unit, sub_box.top_unit
-        exc_tracks = self.get_occupied_tracks(self.mos_conn_layer, yb, yt, unit_mode=True)
 
         x0 = self._layout_info.sd_xc_unit
         dum_tr_offset = self.grid.coord_to_track(self.dum_conn_layer, x0, unit_mode=True) + 0.5
         mconn_tr_offset = self.grid.coord_to_track(self.mos_conn_layer, x0, unit_mode=True) + 0.5
         dum_tracks = [tr - dum_tr_offset for tr in dum_tracks]
-        port_tracks = [tr - mconn_tr_offset for tr in port_tracks]
-        sub_inst.new_master_with(dum_tracks=dum_tracks, port_tracks=port_tracks,
+        new_port_tracks, port_htr = [], []
+        for tr in port_tracks:
+            cur_htr = int(2 * (tr - mconn_tr_offset) + 1)
+            port_htr.append(cur_htr)
+            new_port_tracks.append((cur_htr - 1) / 2)
+        occu_tracks = self.get_occupied_tracks(self.mos_conn_layer, yb, yt, unit_mode=True,
+                                               half_index=True)
+        mconn_off2 = int(round(2 * mconn_tr_offset))
+        exc_tracks = [(htr - mconn_off2 - 1) / 2 for htr in occu_tracks
+                      if htr - mconn_off2 not in port_htr]
+        sub_inst.new_master_with(dum_tracks=dum_tracks, port_tracks=new_port_tracks,
                                  dummy_only=dum_only, exc_tracks=exc_tracks)

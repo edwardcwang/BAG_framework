@@ -430,7 +430,7 @@ class MOSTechSOIGenericBC(MOSTech):
 
         if mx_yt > mx_yb:
             sd_pitch2 = sd_pitch // 2
-            exc_htr = sorted((int(2 * v + 1) for v in exc_tracks))
+            exc_htr = [int(2 * v + 1) for v in exc_tracks]
             exc_htr.append(2 * fg + 2)
             # add pins
             dum_conn_layer = self.get_dum_conn_layer()
@@ -450,7 +450,7 @@ class MOSTechSOIGenericBC(MOSTech):
                     template.add_pin(port_name, mos_warrs, show=False)
                     self._draw_vertical_vias(template, lch_unit, x0, num, sd_pitch, mx_yb, mx_yt,
                                              dum_conn_layer, end_layer=mos_layer)
-                    cur_htr = -(-(htr + 2) // 2)
+                    cur_htr = -(-(htr + 2) // 2) * 2
 
             return True
 
