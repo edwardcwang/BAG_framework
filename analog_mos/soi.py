@@ -445,11 +445,12 @@ class MOSTechSOIGenericBC(MOSTech):
                 for htr in exc_htr:
                     tr0 = (cur_htr - 1) / 2
                     num = (htr - cur_htr) // 2
-                    x0 = cur_htr * sd_pitch2
-                    mos_warrs = self._get_wire_array(mos_layer, tr0, num, mx_yb, mx_yt)
-                    template.add_pin(port_name, mos_warrs, show=False)
-                    self._draw_vertical_vias(template, lch_unit, x0, num, sd_pitch, mx_yb, mx_yt,
-                                             dum_conn_layer, end_layer=mos_layer)
+                    if num > 0:
+                        x0 = cur_htr * sd_pitch2
+                        mos_warrs = self._get_wire_array(mos_layer, tr0, num, mx_yb, mx_yt)
+                        template.add_pin(port_name, mos_warrs, show=False)
+                        self._draw_vertical_vias(template, lch_unit, x0, num, sd_pitch, mx_yb,
+                                                 mx_yt, dum_conn_layer, end_layer=mos_layer)
                     cur_htr = -(-(htr + 2) // 2) * 2
 
             return True
