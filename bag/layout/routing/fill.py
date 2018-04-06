@@ -94,6 +94,32 @@ class TrackSet(object):
             # TODO: add more robust checking?
             intv_set.add(intv, val=[width, value], merge=True)
 
+    def get_occupied_tracks(self, intv, half_index=True):
+        # type: (Tuple[int, int], bool) -> List[Union[float, int]]
+        """Returns all track indices which has wire overlapping the given interval.
+
+        Parameters
+        ----------
+        intv : Tuple[int, int]
+            the wire interval in resolution units.
+        half_index : bool
+            True to return half-track indices.
+
+        Returns
+        -------
+        occupied_tracks : List[Union[float, int]]
+            list of occupied track indices.
+        """
+        occupied_tracks = []
+        for hidx, intv_set in self._tracks.items():
+            if intv_set.has_overlap(intv):
+                if half_index:
+                    occupied_tracks.append(hidx)
+                else:
+                    val = (hidx - 1) // 2 if hidx % 2 == 1 else (hidx - 1) / 2
+                    occupied_tracks.append(val)
+        return occupied_tracks
+
     def transform(self, grid, layer_id, dx, dy, orient='R0'):
         # type: (RoutingGrid, int, int, int, str) -> TrackSet
         """Return a new transformed TrackSet.

@@ -542,6 +542,37 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """Returns data structure of used tracks on the given layers."""
         return self._used_tracks
 
+    def get_occupied_tracks(self, layer_id, lower, upper, unit_mode=False, half_index=False):
+        # type: (int, Union[float, int], Union[float, int], bool, bool) -> List[Union[float, int]]
+        """Returns all track indices which has a wire overlapping the given interval.
+
+        Parameters
+        ----------
+        layer_id : int
+            the wire layer ID.
+        lower : Union[float, int]
+            the lower coordinate, in layout or resolution units.
+        upper : Union[float, int]
+            the upper coordinate, in layout or resolution units.
+        unit_mode : bool
+            True if lower/upper are in resolution units.
+        half_index : bool
+            True to return half-track indices.
+
+        Returns
+        -------
+        occupied_tracks : List[Union[float, int]]
+            list of occupied track indices.
+        """
+        res = self.grid.resolution
+        if not unit_mode:
+            lower = int(round(lower / res))
+            upper = int(round(upper / res))
+        track_set = self._used_tracks.get_tracks_info(layer_id)
+        ans = track_set.get_occupied_tracks((lower, upper), half_index=half_index)
+        ans.sort()
+        return ans
+
     def get_rect_bbox(self, layer):
         # type: (Union[str, Tuple[str, str]]) -> BBox
         """Returns the overall bounding box of all rectangles on the given layer.
