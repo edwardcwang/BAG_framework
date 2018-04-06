@@ -3,7 +3,7 @@
 """This module defines the base template class.
 """
 
-from typing import List, Iterator, Tuple, Optional, Union, Callable, Any
+from typing import Dict, List, Iterator, Tuple, Optional, Union, Callable, Any
 
 import abc
 import math
@@ -61,14 +61,14 @@ class TechInfo(object, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def get_implant_layers(self, mos_type, res_type=None):
         # type: (str, Optional[str]) -> List[Tuple[str, str]]
-        """Returns a list of implant layers associated with the given transistor/substrate/resistor type.
+        """Returns a list of implant layers associated with the given device type.
 
         Parameters
         ----------
         mos_type : str
             one of 'nch', 'pch', 'ntap', or 'ptap'
         res_type : Optional[str]
-            If given, the return implant layers will be for the substrate of the given resistor type.
+            If given, the return layers will be for the substrate of the given resistor type.
 
         Returns
         -------
@@ -675,9 +675,10 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                     w_arr = nx * (spx + dim[0]) - spx
                     h_arr = ny * (spy + dim[1]) - spy
                     mdim_list = [None, None]
-                    # check if at least one enclosure rule is satisfied for both top and bottom layer
+                    # check at least one enclosure rule is satisfied for both top and bottom layer
                     for idx, (mdir, tot_enc_list, arr_enc, arr_test) in \
-                            enumerate([(bot_dir, encb, arr_encb, arr_testb), (top_dir, enct, arr_enct, arr_testt)]):
+                            enumerate([(bot_dir, encb, arr_encb, arr_testb),
+                                       (top_dir, enct, arr_enct, arr_testt)]):
                         # check if array enclosure rule applies
                         if arr_test is not None and arr_test(ny, nx):
                             tot_enc_list = tot_enc_list + arr_enc
@@ -840,7 +841,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         if not top_dir:
             top_dir = 'x' if bot_dir == 'y' else 'y'
 
-        via_result = self.get_best_via_array(vname, bmtype, tmtype, bot_dir, top_dir, bbox.width, bbox.height, extend)
+        via_result = self.get_best_via_array(vname, bmtype, tmtype, bot_dir, top_dir,
+                                             bbox.width, bbox.height, extend)
         if via_result is None:
             # no solution found
             return None
@@ -873,8 +875,10 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         top_xl_norm = xc_norm - wtop_norm // 2
         top_yb_norm = yc_norm - htop_norm // 2
 
-        bot_box = BBox(bot_xl_norm, bot_yb_norm, bot_xl_norm + wbot_norm, bot_yb_norm + hbot_norm, res, unit_mode=True)
-        top_box = BBox(top_xl_norm, top_yb_norm, top_xl_norm + wtop_norm, top_yb_norm + htop_norm, res, unit_mode=True)
+        bot_box = BBox(bot_xl_norm, bot_yb_norm, bot_xl_norm + wbot_norm,
+                       bot_yb_norm + hbot_norm, res, unit_mode=True)
+        top_box = BBox(top_xl_norm, top_yb_norm, top_xl_norm + wtop_norm,
+                       top_yb_norm + htop_norm, res, unit_mode=True)
 
         idc, irms, ipeak = self.get_via_em_specs(vname, bot_layer, top_layer, via_type=vtype,
                                                  bm_dim=(bw, bot_len), tm_dim=(tw, top_len),
@@ -965,7 +969,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             iac_rms_par = iac_rms / npar
             iac_peak_par = iac_peak / npar
             res_idc, res_irms, res_ipeak = self.get_res_em_specs(res_type, wmax, **kwargs)
-            if 0.0 < res_idc < idc_par or 0.0 < res_irms < iac_rms_par or 0.0 < res_ipeak < iac_peak_par:
+            if (0.0 < res_idc < idc_par or 0.0 < res_irms < iac_rms_par or
+                    0.0 < res_ipeak < iac_peak_par):
                 npar_iter.up()
             else:
                 # This could potentially work, find width solution
@@ -976,8 +981,9 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                     if lcur_unit < max(lmin_unit, int(math.ceil(min_nsq * wcur_unit))):
                         w_iter.down()
                     else:
-                        res_idc, res_irms, res_ipeak = self.get_res_em_specs(res_type, wcur_unit * resolution,
-                                                                             l=lcur_unit * resolution, **kwargs)
+                        tmp = self.get_res_em_specs(res_type, wcur_unit * resolution,
+                                                    l=lcur_unit * resolution, **kwargs)
+                        res_idc, res_irms, res_ipeak = tmp
                         if (0.0 < res_idc < idc_par or 0.0 < res_irms < iac_rms_par or
                                 0.0 < res_ipeak < iac_peak_par):
                             w_iter.up()
@@ -1019,6 +1025,9 @@ class DummyTechInfo(TechInfo):
 
     def __init__(self, tech_params):
         TechInfo.__init__(self, 0.001, 1e-6, '', tech_params)
+
+    def get_well_layers(self, sub_type):
+        return []
 
     def get_implant_layers(self, mos_type, res_type=None):
         return []
@@ -1233,8 +1242,12 @@ class BagLayout(object):
         self._used_inst_names.add(inst_name)
         return content
 
-    def get_content(self, lib_name, cell_name, rename_fun):
-        # type: (str, str, Callable[[str], str]) -> Union[List[Any], Tuple[str, 'cybagoa.PyOALayout']]
+    def get_content(self,  # type: BagLayout
+                    lib_name,  # type: str
+                    cell_name,  # type: str
+                    rename_fun,  # type: Callable[[str], str]
+                    ):
+        # type: (...) -> Union[List[Any], Tuple[str, 'cybagoa.PyOALayout']]
         """returns a list describing geometries in this layout.
 
         Parameters
@@ -1243,7 +1256,7 @@ class BagLayout(object):
             the layout library name.
         cell_name : str
             the layout top level cell name.
-        rename_fun : Callable[str, str]
+        rename_fun : Callable[[str], str]
             the layout cell renaming function.
 
         Returns
@@ -1332,11 +1345,21 @@ class BagLayout(object):
                          self._polygon_list):
             obj.move_by(dx=dx, dy=dy, unit_mode=unit_mode)
 
-    def add_instance_primitive(self, lib_name, cell_name, loc,
-                               view_name='layout', inst_name=None, orient="R0",
-                               num_rows=1, num_cols=1, sp_rows=0.0, sp_cols=0.0,
-                               params=None, **kwargs):
-
+    def add_instance_primitive(self,  # type: BagLayout
+                               lib_name,  # type: str
+                               cell_name,  # type: str
+                               loc,  # type: Tuple[Union[float, int], Union[float, int]]
+                               view_name='layout',  # type: str
+                               inst_name=None,  # type: Optional[str]
+                               orient="R0",  # type: str
+                               num_rows=1,  # type: int
+                               num_cols=1,  # type: int
+                               sp_rows=0,  # type: Union[float, int]
+                               sp_cols=0,  # type: Union[float, int]
+                               params=None,  # type: Optional[Dict[str, Any]]
+                               unit_mode=False,  # type: bool
+                               **kwargs  # type: **kwargs
+                               ):
         """Adds a new (arrayed) primitive instance to this layout.
 
         Parameters
@@ -1345,11 +1368,11 @@ class BagLayout(object):
             instance library name.
         cell_name : str
             instance cell name.
-        loc : tuple(float, float)
+        loc : Tuple[Union[float, int], Union[float, int]]
             instance location.
         view_name : str
             instance view name.  Defaults to 'layout'.
-        inst_name : str or None
+        inst_name : Optional[str]
             instance name.  If None or an instance with this name already exists,
             a generated unique name is used.
         orient : str
@@ -1358,17 +1381,30 @@ class BagLayout(object):
             number of rows.  Must be positive integer.
         num_cols : int
             number of columns.  Must be positive integer.
-        sp_rows : float
+        sp_rows : Union[float, int]
             row spacing.  Used for arraying given instance.
-        sp_cols : float
+        sp_cols : Union[float, int]
             column spacing.  Used for arraying given instance.
-        params : dict[str, any]
+        params : Optional[Dict[str, Any]]
             the parameter dictionary.  Used for adding pcell instance.
-        **kwargs
+        unit_mode : bool
+            True if distances are specified in resolution units.
+        **kwargs :
             additional arguments.  Usually implementation specific.
         """
         if self._finalized:
             raise Exception('Layout is already finalized.')
+
+        res = self._res
+        if not unit_mode:
+            loc = [round(loc[0] / res) * res,
+                   round(loc[1] / res) * res]
+            sp_rows = round(sp_rows / res) * res
+            sp_cols = round(sp_cols / res) * res
+        else:
+            loc = [loc[0] * res, loc[0] * res]
+            sp_rows *= res
+            sp_cols *= res
 
         # get unique instance name
         inst_name = self._get_unused_inst_name(inst_name)
@@ -1378,13 +1414,12 @@ class BagLayout(object):
                                  cell=cell_name,
                                  view=view_name,
                                  name=inst_name,
-                                 loc=[round(loc[0] / self._res) * self._res,
-                                      round(loc[1] / self._res) * self._res],
+                                 loc=loc,
                                  orient=orient,
                                  num_rows=num_rows,
                                  num_cols=num_cols,
-                                 sp_rows=round(sp_rows / self._res) * self._res,
-                                 sp_cols=round(sp_cols / self._res) * self._res)
+                                 sp_rows=sp_rows,
+                                 sp_cols=sp_cols)
 
         # if isinstance(num_rows, float) or isinstance(num_cols, float):
         #     raise Exception('float nx/ny')
@@ -1503,9 +1538,11 @@ class BagLayout(object):
         sp_cols : float
             spacing between via cut columns.
         enc1 : list[float]
-            a list of left, right, top, and bottom enclosure values on bottom layer.  Defaults to all 0.
+            a list of left, right, top, and bottom enclosure values on bottom layer.
+            Defaults to all 0.
         enc2 : list[float]
-            a list of left, right, top, and bottom enclosure values on top layer.  Defaults. to all 0.
+            a list of left, right, top, and bottom enclosure values on top layer.
+            Defaults. to all 0.
         orient : str
             orientation of the via.
         cut_width : float or None
@@ -1533,7 +1570,8 @@ class BagLayout(object):
             # if isinstance(arr_nx, float) or isinstance(arr_ny, float):
             #     raise Exception('float nx/ny')
 
-            par = ViaInfo(self._res, id=via_type, loc=loc, orient=orient, num_rows=num_rows, num_cols=num_cols,
+            par = ViaInfo(self._res, id=via_type, loc=loc, orient=orient, num_rows=num_rows,
+                          num_cols=num_cols,
                           sp_rows=sp_rows, sp_cols=sp_cols, enc1=enc1, enc2=enc2, )
             if cut_width is not None:
                 par['cut_width'] = cut_width
