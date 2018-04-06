@@ -845,15 +845,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def add_instance_primitive(self,  # type: TemplateBase
                                lib_name,  # type: str
                                cell_name,  # type: str
-                               loc,  # type: Tuple[float, float]
+                               loc,  # type: Tuple[Union[float, int], Union[float, int]]
                                view_name='layout',  # type: str
                                inst_name=None,  # type: Optional[str]
                                orient="R0",  # type: str
                                nx=1,  # type: int
                                ny=1,  # type: int
-                               spx=0.0,  # type: float
-                               spy=0.0,  # type: float
+                               spx=0,  # type: Union[float, int]
+                               spy=0,  # type: Union[float, int]
                                params=None,  # type: Optional[Dict[str, Any]]
+                               unit_mode=False,  # type: bool
                                **kwargs  # type: **kwargs
                                ):
         # type: (...) -> None
@@ -865,7 +866,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             instance library name.
         cell_name : str
             instance cell name.
-        loc : Tuple[float, float]
+        loc : Tuple[Union[float, int], Union[float, int]]
             instance location.
         view_name : str
             instance view name.  Defaults to 'layout'.
@@ -878,12 +879,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             number of columns.  Must be positive integer.
         ny : int
             number of rows.  Must be positive integer.
-        spx : float
+        spx : Union[float, int]
             column pitch.  Used for arraying given instance.
-        spy : float
+        spy : Union[float, int]
             row pitch.  Used for arraying given instance.
         params : Optional[Dict[str, Any]]
             the parameter dictionary.  Used for adding pcell instance.
+        unit_mode : bool
+            True if distances are specified in resolution units.
         **kwargs
             additional arguments.  Usually implementation specific.
         """
@@ -891,7 +894,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                             view_name=view_name, inst_name=inst_name,
                                             orient=orient, num_rows=ny, num_cols=nx,
                                             sp_rows=spy, sp_cols=spx,
-                                            params=params, **kwargs)
+                                            params=params, unit_mode=unit_mode, **kwargs)
 
     def add_rect(self,  # type: TemplateBase
                  layer,  # type: Union[str, Tuple[str, str]]
