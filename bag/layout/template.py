@@ -2045,9 +2045,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                unit_mode=False  # type: bool
                                ):
         # type: (...) -> WireArray
-        """Connect the given lower layer to given tracks.
-
-        This method is used to connect layer below RoutingGrid to RoutingGrid.
+        """Connect the given primitive wire to given tracks.
 
         Parameters
         ----------
@@ -2078,11 +2076,18 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         else:
             pass
 
-        res = self.grid.resolution
+        grid = self.grid
+        res = grid.resolution
+        if not unit_mode:
+            fill_margin = int(round(fill_margin / res))
+            if track_lower is not None:
+                track_lower = int(round(track_lower / res))
+            if track_upper is not None:
+                track_upper = int(round(track_upper / res))
 
         # extend bounding boxes to tracks
-        tl, tu = track_id.get_bounds(self.grid, unit_mode=True)
-        tr_dir = self.grid.get_direction(track_id.layer_id)
+        tl, tu = track_id.get_bounds(grid, unit_mode=True)
+        tr_dir = grid.get_direction(track_id.layer_id)
         base = box_arr.base
         if tr_dir == 'x':
             self.add_rect(layer_name,
@@ -2094,21 +2099,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           nx=box_arr.nx, ny=box_arr.ny, spx=box_arr.spx, spy=box_arr.spy)
 
         # draw vias
-        tl_unit = track_lower
-        tu_unit = track_upper
-        if not unit_mode:
-            fill_margin = int(round(fill_margin / res))
-            if track_lower is not None:
-                tl_unit = int(round(track_lower / res))
-            if track_upper is not None:
-                tu_unit = int(round(track_upper / res))
-
         tl_unit, tu_unit = self._draw_via_on_track(layer_name, box_arr, track_id,
-                                                   tl_unit=tl_unit, tu_unit=tu_unit)
+                                                   tl_unit=track_lower, tu_unit=track_upper)
 
         # draw tracks
         result = WireArray(track_id, tl_unit, tu_unit, res=res, unit_mode=True)
-        for layer_name, bbox_arr in result.wire_arr_iter(self.grid):
+        for layer_name, bbox_arr in result.wire_arr_iter(grid):
             self.add_rect(layer_name, bbox_arr)
 
         self._used_tracks.add_wire_arrays(result, fill_margin=fill_margin, fill_type=fill_type,
