@@ -1203,6 +1203,10 @@ class MOSTechPlanarGeneric(MOSTech):
         dum_conn_layer = self.get_dum_conn_layer()
         mos_conn_layer = self.get_mos_conn_layer()
 
+        if exc_tracks:
+            # TODO: fix this
+            raise ValueError('exc_tracks options not current supported in this technology')
+
         if mx_yt > mx_yb:
             if sub_type is None:
                 raise ValueError('Cannot draw substrate connection if substrate type is unknown')

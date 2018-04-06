@@ -2179,6 +2179,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         sd_pitch2 = sd_pitch // 2
 
+        exc_set = set(int(2 * v + 1) for v in exc_tracks)
+
         has_od = False
         for row_info in row_info_list:
             od_y = row_info.od_y
@@ -2216,11 +2218,17 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     # add as many dummy tracks as possible to port tracks
                     for d in dum_htr_set:
                         if d + 2 not in conn_htr_set and d - 2 not in conn_htr_set:
-                            conn_htr_set.add(d)
+                            if d in exc_set:
+                                dum_htr_set.add(d)
+                            else:
+                                conn_htr_set.add(d)
                     # add as many unused tracks as possible to port tracks
                     for htr in range(od_start * 2, 2 * od_stop + 1, 2):
                         if htr + 2 not in conn_htr_set and htr - 2 not in conn_htr_set:
-                            conn_htr_set.add(htr)
+                            if htr in exc_set:
+                                dum_htr_set.add(htr)
+                            else:
+                                conn_htr_set.add(htr)
                     # add all port sets to dummy set
                     dum_htr_set.update(conn_htr_set)
                     # find X coordinates

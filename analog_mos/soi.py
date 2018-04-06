@@ -429,21 +429,28 @@ class MOSTechSOIGenericBC(MOSTech):
         port_name = layout_info['port_name']
 
         if mx_yt > mx_yb:
+            sd_pitch2 = sd_pitch // 2
+            exc_htr = sorted((int(2 * v + 1) for v in exc_tracks))
+            exc_htr.append(2 * fg + 2)
             # add pins
             dum_conn_layer = self.get_dum_conn_layer()
             dum_warrs = self._get_wire_array(dum_conn_layer, -0.5, fg + 1, mx_yb, mx_yt)
             template.add_pin(port_name, dum_warrs, show=False)
-
-            if dummy_only:
-                end_layer = dum_conn_layer
-            else:
-                end_layer = self.get_mos_conn_layer()
-                mos_warrs = self._get_wire_array(end_layer, -0.5, fg + 1, mx_yb, mx_yt)
-                template.add_pin(port_name, mos_warrs, show=False)
-
-            # draw vias
             self._draw_vertical_vias(template, lch_unit, 0, fg + 1, sd_pitch, mx_yb, mx_yt, 1,
-                                     end_layer=end_layer)
+                                     end_layer=dum_conn_layer)
+
+            if not dummy_only:
+                mos_layer = self.get_mos_conn_layer()
+                cur_htr = 0
+                for htr in exc_htr:
+                    tr0 = (cur_htr - 1) / 2
+                    num = (htr - cur_htr) // 2
+                    x0 = cur_htr * sd_pitch2
+                    mos_warrs = self._get_wire_array(mos_layer, tr0, num, mx_yb, mx_yt)
+                    template.add_pin(port_name, mos_warrs, show=False)
+                    self._draw_vertical_vias(template, lch_unit, x0, num, sd_pitch, mx_yb, mx_yt,
+                                             dum_conn_layer, end_layer=mos_layer)
+                    cur_htr = -(-(htr + 2) // 2)
 
             return True
 
