@@ -87,6 +87,9 @@ class TrackID(object):
             return self._hpitch // 2
         return self._hpitch / 2
 
+    def get_immutable_key(self):
+        return self.__class__.__name__, self._layer_id, self._hidx, self._w, self._n, self._hpitch
+
     def get_bounds(self, grid, unit_mode=False):
         # type: (RoutingGrid, bool) -> Tuple[Union[float, int], Union[float, int]]
         """Calculate the track bounds coordinate.
@@ -290,6 +293,10 @@ class WireArray(object):
 
         return WireArray(TrackID(layer, base_idx, num=len(tid_list), pitch=pitch), lower, upper,
                          res=res, unit_mode=True)
+
+    def get_immutable_key(self):
+        return (self.__class__.__name__, self._track_id.get_immutable_key(), self._lower_unit,
+                self._upper_unit, self._res)
 
     def to_warr_list(self):
         tid = self._track_id
