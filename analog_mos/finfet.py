@@ -620,6 +620,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             left_edge_info=(lr_edge_info, []),
             right_edge_info=(lr_edge_info, []),
             sd_yc=od_yc,
+            po_y=po_yloc,
+            od_y=od_yloc,
             g_conn_y=g_conn_y,
             d_conn_y=d_conn_y,
         )

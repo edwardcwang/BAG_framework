@@ -187,6 +187,8 @@ class MOSTechSOIGenericBC(MOSTech):
             left_edge_info=None,
             right_edge_info=None,
             sd_yc=d_od_yc,
+            po_y=(g_po_yb, g_po_yt),
+            od_y=(d_od_yb, d_od_yt),
             g_conn_y=g_y_list[-1],
             d_conn_y=d_y_list[-1],
         )

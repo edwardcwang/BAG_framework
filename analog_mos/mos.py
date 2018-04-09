@@ -47,6 +47,8 @@ class AnalogMOSBase(TemplateBase):
 
         self._g_conn_y = None
         self._d_conn_y = None
+        self._od_y = None
+        self._po_y = None
         self._sd_yc = None
 
     def get_g_conn_y(self):
@@ -56,6 +58,14 @@ class AnalogMOSBase(TemplateBase):
     def get_d_conn_y(self):
         # type: () -> Tuple[int, int]
         return self._d_conn_y
+
+    def get_od_y(self):
+        # type: () -> Tuple[int, int]
+        return self._od_y
+
+    def get_po_y(self):
+        # type: () -> Tuple[int, int]
+        return self._po_y
 
     def get_ext_top_info(self):
         # type: () -> Any
@@ -127,6 +137,8 @@ class AnalogMOSBase(TemplateBase):
         self._sd_yc = mos_info['sd_yc']
         self._g_conn_y = mos_info['g_conn_y']
         self._d_conn_y = mos_info['d_conn_y']
+        self._od_y = mos_info['od_y']
+        self._po_y = mos_info['po_y']
 
         # draw transistor
         self._tech_cls.draw_mos(self, self._layout_info)

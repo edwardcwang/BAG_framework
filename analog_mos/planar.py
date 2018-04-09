@@ -211,6 +211,8 @@ class MOSTechPlanarGeneric(MOSTech):
             od_w=od_yt - od_yb,
         )
 
+        od_y = (od_yb, od_yt)
+        po_y = (po_yb, po_yt)
         sub_type = 'ptap' if mos_type == 'nch' else 'ntap'
         layout_info = dict(
             blk_type='mos',
@@ -220,9 +222,9 @@ class MOSTechPlanarGeneric(MOSTech):
             arr_y=arr_y,
             draw_od=not ds_dummy,
             row_info_list=[RowInfo(od_x=(0, fg),
-                                   od_y=(od_yb, od_yt),
+                                   od_y=od_y,
                                    od_type=('mos', sub_type),
-                                   po_y=(po_yb, po_yt), )],
+                                   po_y=po_y, )],
             lay_info_list=lay_info_list,
             # edge parameters
             sub_type=sub_type,
@@ -241,6 +243,8 @@ class MOSTechPlanarGeneric(MOSTech):
             left_edge_info=None,
             right_edge_info=None,
             sd_yc=od_yc,
+            po_y=po_y,
+            od_y=od_y,
             g_conn_y=g_y_list[-1],
             d_conn_y=d_y_list[-1],
         )
