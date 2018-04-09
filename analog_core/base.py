@@ -2009,7 +2009,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 if ngintv is None:
                     top_tr_idx = next_tr_intv['ds'][0] - 1
                 else:
-                    top_tr_idx = min(ngintv[0], next_tr_intv['ds2'][0]) - 1
+                    top_tr_idx = min(ngintv[0], next_tr_intv['g'][0],
+                                     next_tr_intv['ds2'][0], next_tr_intv['ds'][0]) - 1
             else:
                 top_tr_idx = self._tr_intvs[sub_row_idx]['ds'][1] - 1
             if sub_row_idx - 1 >= 0:
@@ -2018,7 +2019,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 if pgintv is None:
                     bot_tr_idx = prev_tr_intv['ds'][1]
                 else:
-                    bot_tr_idx = max(prev_tr_intv['ds2'][1], pgintv[1])
+                    bot_tr_idx = max(prev_tr_intv['ds'][1], prev_tr_intv['ds2'][1],
+                                     prev_tr_intv['g'][1], pgintv[1])
             else:
                 bot_tr_idx = self._tr_intvs[sub_row_idx]['ds'][0]
             round_up = (subinst.orientation == 'MX')
