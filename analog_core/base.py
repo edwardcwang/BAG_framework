@@ -1182,8 +1182,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                         top_wires.append(WireGroup(hm_layer, 'ds', dstr, space=le_sp_tr))
                 else:
                     w_g2 = wnames.get('g2', False)
-                    w_g = wnames['g']
-                    w_ds = wnames['ds']
+                    w_g = wnames.get('g', False)
+                    w_ds = wnames.get('ds', False)
                     w_ds2 = wnames.get('ds2', False)
                     if w_g2:
                         bot2_wires.append(WireGroup(hm_layer, 'g2', tr_manager=tr_manager,
@@ -1210,8 +1210,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                         bot_wires.append(WireGroup(hm_layer, 'ds', dstr, space=le_sp_tr))
                 else:
                     w_g2 = wnames.get('g2', False)
-                    w_g = wnames['g']
-                    w_ds = wnames['ds']
+                    w_g = wnames.get('g', False)
+                    w_ds = wnames.get('ds', False)
                     w_ds2 = wnames.get('ds2', False)
                     if w_ds2:
                         bot2_wires.append(WireGroup(hm_layer, 'ds2', tr_manager=tr_manager,
