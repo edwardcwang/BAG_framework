@@ -524,6 +524,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         nw_dnw_ovl = mos_constants['nw_dnw_ovl']
         dnw_layers = mos_constants['dnw_layers']
         substrate_planar = mos_constants.get('substrate_planar', False)
+        has_cpo = mos_constants['has_cpo']
+        cpo_h = mos_constants['cpo_h']
 
         is_sub = (mos_type == sub_type)
         blk_type = 'sub' if is_sub else 'mos'
@@ -613,6 +615,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             layout_info['no_po_region'] = set(range(fg))
 
         # step 8: return results
+        if has_cpo:
+            po_y = (blk_yb - cpo_h // 2, blk_yt + cpo_h // 2)
+        else:
+            po_y = po_yloc
         return dict(
             layout_info=layout_info,
             ext_top_info=ext_top_info,
@@ -620,7 +626,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             left_edge_info=(lr_edge_info, []),
             right_edge_info=(lr_edge_info, []),
             sd_yc=od_yc,
-            po_y=po_yloc,
+            po_y=po_y,
             od_y=od_yloc,
             g_conn_y=g_conn_y,
             d_conn_y=d_conn_y,
