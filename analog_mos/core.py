@@ -969,12 +969,18 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         half_blk_x = kwargs.get('half_blk_x', True)
 
         sd_pitch = self.get_sd_pitch(lch_unit)
-        edgel_info = self.get_edge_info(lch_unit, guard_ring_nf, left_end, **kwargs)
-        edgel_num_fg = edgel_info['edge_num_fg']
-        edgel_margin = edgel_info['edge_margin']
-        edger_info = self.get_edge_info(lch_unit, guard_ring_nf, right_end, **kwargs)
-        edger_num_fg = edger_info['edge_num_fg']
-        edger_margin = edger_info['edge_margin']
+        if left_end:
+            edgel_info = self.get_edge_info(lch_unit, guard_ring_nf, left_end, **kwargs)
+            edgel_num_fg = edgel_info['edge_num_fg']
+            edgel_margin = edgel_info['edge_margin']
+        else:
+            edgel_num_fg = edgel_margin = 0
+        if right_end:
+            edger_info = self.get_edge_info(lch_unit, guard_ring_nf, right_end, **kwargs)
+            edger_num_fg = edger_info['edge_num_fg']
+            edger_margin = edger_info['edge_margin']
+        else:
+            edger_num_fg = edger_margin = 0
 
         if is_laygo:
             top_vm_layer = self.get_dig_top_layer()
