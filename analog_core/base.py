@@ -1487,6 +1487,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         orient_list.append('MX')
         # draw
         sub_y_list = []
+        edge_inst_list = []
         for row_idx, (ybot, ext_info, master, orient) in \
                 enumerate(zip(y_list, ext_list, master_list, orient_list)):
             height = master.bound_box.height_unit
@@ -1549,19 +1550,29 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     self._wire_info.append((gw_info, dw_info))
 
             edge_layout_info = master.get_edge_layout_info()
-            edgel_params = dict(
-                is_end=left_end,
-                guard_ring_nf=guard_ring_nf,
-                name_id=master.get_layout_basename(),
-                layout_info=edge_layout_info,
-                adj_blk_info=master.get_left_edge_info(),
-            )
-            edge_inst_list = []
-            edgel_master = self.new_template(params=edgel_params, temp_cls=AnalogEdge)
-            edgel_width = edgel_master.bound_box.width_unit
+            if left_end:
+                edge_params = dict(
+                    is_end=True,
+                    guard_ring_nf=guard_ring_nf,
+                    name_id=master.get_layout_basename(),
+                    layout_info=edge_layout_info,
+                    adj_blk_info=master.get_left_edge_info(),
+                )
+                edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
+                edge_width = edge_master.bound_box.width_unit
+                if not edge_master.is_empty:
+                    edge_inst = self.add_instance(edge_master, loc=(edgel_x0, yo),
+                                                  orient=orient, unit_mode=True)
+                    array_box = array_box.merge(edge_inst.array_box)
+                    top_bound_box = top_bound_box.merge(edge_inst.bound_box)
+                    edge_inst_list.append(edge_inst)
+            else:
+                edge_width = 0
 
-            inst_loc = (edgel_x0 + edgel_width, yo)
+            inst_loc = (edgel_x0 + edge_width, yo)
             inst = self.add_instance(master, loc=inst_loc, orient=orient, unit_mode=True)
+            array_box = array_box.merge(inst.array_box)
+            top_bound_box = top_bound_box.merge(inst.bound_box)
             # record substrate Y coordinates
             if hasattr(master, 'sub_ysep'):
                 y_imp, y_thres = master.sub_ysep
@@ -1576,16 +1587,6 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     if y_thres is not None:
                         y_thres = yo - y_thres
                 sub_y_list.append((y_imp, y_thres))
-
-            if edgel_master.is_empty:
-                array_box = array_box.merge(inst.array_box)
-                top_bound_box = top_bound_box.merge(inst.bound_box)
-            else:
-                edgel = self.add_instance(edgel_master, loc=(edgel_x0, yo),
-                                          orient=orient, unit_mode=True)
-                array_box = array_box.merge(edgel.array_box)
-                top_bound_box = top_bound_box.merge(edgel.bound_box)
-                edge_inst_list.append(edgel)
 
             if is_sub:
                 conn_layout_info = edge_layout_info.copy()
@@ -1617,43 +1618,29 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 orient_r = 'MY'
             else:
                 orient_r = 'R180'
-            edger_params = dict(
-                is_end=right_end,
-                guard_ring_nf=guard_ring_nf,
-                name_id=master.get_layout_basename(),
-                layout_info=edge_layout_info,
-                adj_blk_info=master.get_right_edge_info(),
-            )
-            edger_master = self.new_template(params=edger_params, temp_cls=AnalogEdge)
-            edger_width = edger_master.bound_box.width_unit
-            edger_xo = inst.array_box.right_unit + edger_width
-            if not edger_master.is_empty:
-                edger = self.add_instance(edger_master, loc=(edger_xo, yo),
-                                          orient=orient_r, unit_mode=True)
-                array_box = array_box.merge(edger.array_box)
-                top_bound_box = top_bound_box.merge(edger.bound_box)
-                edge_inst_list.append(edger)
+
+            if right_end:
+                edge_params = dict(
+                    is_end=True,
+                    guard_ring_nf=guard_ring_nf,
+                    name_id=master.get_layout_basename(),
+                    layout_info=edge_layout_info,
+                    adj_blk_info=master.get_right_edge_info(),
+                )
+                edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
+                edge_width = edge_master.bound_box.width_unit
+                edger_xo = inst.array_box.right_unit + edge_width
+                if not edge_master.is_empty:
+                    edge_inst = self.add_instance(edge_master, loc=(edger_xo, yo),
+                                                  orient=orient_r, unit_mode=True)
+                    array_box = array_box.merge(edge_inst.array_box)
+                    top_bound_box = top_bound_box.merge(edge_inst.bound_box)
+                    edge_inst_list.append(edge_inst)
+            else:
+                edger_xo = inst.array_box.right_unit
 
             if ext_info[1] is not None:
                 ext_master = self.new_template(params=ext_info[1], temp_cls=AnalogMOSExt)
-                ext_edge_layout_info = ext_master.get_edge_layout_info()
-                ext_edgel_params = dict(
-                    is_end=left_end,
-                    guard_ring_nf=guard_ring_nf,
-                    name_id=ext_master.get_layout_basename(),
-                    layout_info=ext_edge_layout_info,
-                    adj_blk_info=ext_master.get_left_edge_info(),
-                )
-                ext_edgel_master = self.new_template(params=ext_edgel_params, temp_cls=AnalogEdge)
-                ext_edger_params = dict(
-                    is_end=right_end,
-                    guard_ring_nf=guard_ring_nf,
-                    name_id=ext_master.get_layout_basename(),
-                    layout_info=ext_edge_layout_info,
-                    adj_blk_info=ext_master.get_right_edge_info(),
-                )
-                ext_edger_master = self.new_template(params=ext_edger_params, temp_cls=AnalogEdge)
-
                 yo = inst.array_box.top_unit
                 # record substrate Y coordinate in extension block
                 y_imp, y_thres = ext_master.sub_ysep
@@ -1664,22 +1651,43 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 sub_y_list.append((y_imp, y_thres))
                 if not ext_master.is_empty:
                     self.add_instance(ext_master, loc=(inst_loc[0], yo), unit_mode=True)
-                if not ext_edgel_master.is_empty:
-                    edgel = self.add_instance(ext_edgel_master, loc=(edgel_x0, yo), unit_mode=True)
-                    edge_inst_list.append(edgel)
-                if not ext_edger_master.is_empty:
-                    edger = self.add_instance(ext_edger_master, loc=(edger_xo, yo),
-                                              orient='MY', unit_mode=True)
-                    edge_inst_list.append(edger)
 
-            # gather guard ring ports
-            for inst in edge_inst_list:
-                if inst.has_port('VDD'):
-                    gr_vdd_warrs.extend(inst.get_all_port_pins('VDD', layer=mconn_layer))
-                    gr_vdd_dum_warrs.extend(inst.get_all_port_pins('VDD', layer=dum_layer))
-                if inst.has_port('VSS'):
-                    gr_vss_warrs.extend(inst.get_all_port_pins('VSS', layer=mconn_layer))
-                    gr_vss_dum_warrs.extend(inst.get_all_port_pins('VSS', layer=dum_layer))
+                ext_edge_layout_info = ext_master.get_edge_layout_info()
+                if left_end:
+                    edge_params = dict(
+                        is_end=True,
+                        guard_ring_nf=guard_ring_nf,
+                        name_id=ext_master.get_layout_basename(),
+                        layout_info=ext_edge_layout_info,
+                        adj_blk_info=ext_master.get_left_edge_info(),
+                    )
+                    edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
+                    if not edge_master.is_empty:
+                        edge_inst = self.add_instance(edge_master, loc=(edgel_x0, yo),
+                                                      unit_mode=True)
+                        edge_inst_list.append(edge_inst)
+                if right_end:
+                    edge_params = dict(
+                        is_end=True,
+                        guard_ring_nf=guard_ring_nf,
+                        name_id=ext_master.get_layout_basename(),
+                        layout_info=ext_edge_layout_info,
+                        adj_blk_info=ext_master.get_right_edge_info(),
+                    )
+                    edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
+                    if not edge_master.is_empty:
+                        edge_inst = self.add_instance(edge_master, loc=(edger_xo, yo),
+                                                      orient='MY', unit_mode=True)
+                        edge_inst_list.append(edge_inst)
+
+        # gather guard ring ports
+        for inst in edge_inst_list:
+            if inst.has_port('VDD'):
+                gr_vdd_warrs.extend(inst.get_all_port_pins('VDD', layer=mconn_layer))
+                gr_vdd_dum_warrs.extend(inst.get_all_port_pins('VDD', layer=dum_layer))
+            if inst.has_port('VSS'):
+                gr_vss_warrs.extend(inst.get_all_port_pins('VSS', layer=mconn_layer))
+                gr_vss_dum_warrs.extend(inst.get_all_port_pins('VSS', layer=dum_layer))
 
         # get top/bottom substrate Y boundaries
         self._bot_sub_bndy = ((sub_y_list[0][0], sub_y_list[1][0]),
