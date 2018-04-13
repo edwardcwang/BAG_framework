@@ -1563,12 +1563,15 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             for y, orient, edge_params in self._ext_edge_infos:
                 tmp_copy = edge_params.copy()
                 if orient == 'R0':
-                    x = emargin_l
-                    tmp_copy['is_end'] = left_end
+                    if left_end:
+                        x = emargin_l
+                        tmp_copy['is_end'] = True
+                        edge_infos.append((x, y, orient, tmp_copy))
                 else:
-                    x = xr - emargin_r
-                    tmp_copy['is_end'] = right_end
-                edge_infos.append((x, y, orient, tmp_copy))
+                    if right_end:
+                        x = xr - emargin_r
+                        tmp_copy['is_end'] = True
+                        edge_infos.append((x, y, orient, tmp_copy))
 
             # compute row edge information
             row_edge_infos = self._get_row_edge_infos()
@@ -1579,17 +1582,18 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 endl, endr = self._get_end_info_row(ridx)
                 for x, is_end, flip_lr, end_info in ((emargin_l, left_end, False, endl),
                                                      (xr - emargin_r, right_end, True, endr)):
-                    edge_params = re_params.copy()
-                    del edge_params['row_info']
-                    edge_params['is_end'] = is_end
-                    edge_params['name_id'] = cur_row_info['row_name_id']
-                    edge_params['layout_info'] = test_blk_info['layout_info']
-                    edge_params['adj_blk_info'] = end_info
-                    if flip_lr:
-                        eorient = 'MY' if orient == 'R0' else 'R180'
-                    else:
-                        eorient = orient
-                    edge_infos.append((x, y, eorient, edge_params))
+                    if is_end:
+                        edge_params = re_params.copy()
+                        del edge_params['row_info']
+                        edge_params['is_end'] = True
+                        edge_params['name_id'] = cur_row_info['row_name_id']
+                        edge_params['layout_info'] = test_blk_info['layout_info']
+                        edge_params['adj_blk_info'] = end_info
+                        if flip_lr:
+                            eorient = 'MY' if orient == 'R0' else 'R180'
+                        else:
+                            eorient = orient
+                        edge_infos.append((x, y, eorient, edge_params))
 
             yt = self.bound_box.top_unit
             arr_box, vdd_warrs, vss_warrs = tcls.draw_boundaries(self, self._laygo_info,

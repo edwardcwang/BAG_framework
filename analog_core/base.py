@@ -405,6 +405,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         # layout information parameters
         self._lch = None
         self._row_prop_list = None
+        self._left_edge_info = None
+        self._right_edge_info = None
         self._fg_tot = None
         self._sd_yc_list = None
         self._layout_info = None
@@ -503,6 +505,12 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
     def row_layout_info(self):
         """Returns the analog placement information dictionary."""
         return self._row_layout_info
+
+    def get_left_edge_info(self):
+        return self._left_edge_info
+
+    def get_right_edge_info(self):
+        return self._right_edge_info
 
     def set_layout_info(self, layout_info):
         # type: (AnalogBaseInfo) -> None
@@ -1497,6 +1505,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         top_bound_box = BBox.get_invalid_bbox()
         self._tr_intvs = []
         self._wire_info = []
+        self._left_edge_info = []
+        self._right_edge_info = []
         self._tr_manager = tr_manager
         gr_vss_warrs = []
         gr_vdd_warrs = []
@@ -1526,8 +1536,12 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
             yo = ybot if no_flip else ybot + height
             is_sub = isinstance(master, AnalogSubstrate)
+            ledge_info = master.get_left_edge_info()
+            redge_info = master.get_right_edge_info()
 
             if row_idx != 0 and row_idx != len(master_list) - 1:
+                self._left_edge_info.append(ledge_info)
+                self._right_edge_info.append(redge_info)
                 cur_tr_intvs = {}
                 cur_wire_info = {}
                 self._tr_intvs.append(cur_tr_intvs)
@@ -1582,7 +1596,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     guard_ring_nf=guard_ring_nf,
                     name_id=master.get_layout_basename(),
                     layout_info=edge_layout_info,
-                    adj_blk_info=master.get_left_edge_info(),
+                    adj_blk_info=ledge_info,
                 )
                 edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
                 edge_width = edge_master.bound_box.width_unit
@@ -1651,7 +1665,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     guard_ring_nf=guard_ring_nf,
                     name_id=master.get_layout_basename(),
                     layout_info=edge_layout_info,
-                    adj_blk_info=master.get_right_edge_info(),
+                    adj_blk_info=redge_info,
                 )
                 edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
                 edge_width = edge_master.bound_box.width_unit
