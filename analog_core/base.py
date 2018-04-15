@@ -2531,3 +2531,100 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                       if htr - mconn_off2 not in port_htr]
         sub_inst.new_master_with(dum_tracks=dum_tracks, port_tracks=new_port_tracks,
                                  dummy_only=dum_only, exc_tracks=exc_tracks)
+
+
+class AnalogBaseEnd(TemplateBase):
+    """The end row of AnalogBase."""
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        return dict(
+            lch='channel length, in meters.',
+            fg='number of fingers.',
+            sub_type="substrate type, either 'ptap' or 'ntap'.",
+            threshold='transistor threshold flavor.',
+            top_layer='The top routing layer.  Used to determine vertical pitch.',
+            end_mode='right/left end mode flag.',
+            guard_ring_nf='Number of fingers in guard ring.  0 to disable.',
+            options='AnalogBase options.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(
+            guard_ring_nf=0,
+            options=None,
+        )
+
+    def draw_layout(self):
+        end_params = self.params.copy()
+        end_mode = end_params.pop('end_mode')
+        guard_ring_nf = end_params.pop('guard_ring_nf')
+        lch = end_params['lch']
+        fg_tot = end_params['fg']
+        top_layer = end_params['top_layer']
+        options = end_params['options']
+
+        res = self.grid.resolution
+
+        end_params['is_end'] = True
+        end_master = self.new_template(params=end_params, temp_cls=AnalogEndRow)
+
+        info_end_mode = (end_mode << 2) | 0b11
+        layout_info = AnalogBaseInfo(self.grid, lch, guard_ring_nf, top_layer=top_layer,
+                                     end_mode=info_end_mode, fg_tot=fg_tot, **options)
+        place_info = layout_info.get_placement_info(fg_tot)
+        tot_width = place_info.tot_width
+        xcur = place_info.edge_margins[0]
+
+        array_box = BBox.get_invalid_bbox()
+        left_end = (end_mode & 1) != 0
+        name_id = end_master.get_layout_basename()
+        edge_layout_info = end_master.get_edge_layout_info()
+        if left_end:
+            edge_info = end_master.get_left_edge_info()
+            edge_params = dict(
+                is_end=True,
+                guard_ring_nf=guard_ring_nf,
+                name_id=name_id,
+                layout_info=edge_layout_info,
+                adj_blk_info=edge_info,
+            )
+            edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
+            if not edge_master.is_empty:
+                edge_inst = self.add_instance(edge_master, loc=(xcur, 0), unit_mode=True)
+                array_box = array_box.merge(edge_inst.array_box)
+                xcur = edge_inst.array_box.right_unit
+
+        inst = self.add_instance(end_master, loc=(xcur, 0), unit_mode=True)
+        array_box = array_box.merge(inst.array_box)
+        xcur = inst.array_box.right_unit
+
+        right_end = (end_mode & 2) != 0
+        if right_end:
+            edge_info = end_master.get_right_edge_info()
+            edge_params = dict(
+                is_end=True,
+                guard_ring_nf=guard_ring_nf,
+                name_id=name_id,
+                layout_info=edge_layout_info,
+                adj_blk_info=edge_info,
+            )
+            edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
+            if not edge_master.is_empty:
+                xcur += edge_master.array_box.right_unit
+                edge_inst = self.add_instance(edge_master, loc=(xcur, 0), orient='MY',
+                                              unit_mode=True)
+                array_box = array_box.merge(edge_inst.array_box)
+
+        top_bound_box = BBox(0, 0, tot_width, inst.bound_box.top_unit, res, unit_mode=True)
+        self.set_size_from_bound_box(top_layer, top_bound_box)
+        self.array_box = array_box
+
+        self.add_cell_boundary(self.bound_box)
