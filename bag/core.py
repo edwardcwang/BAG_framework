@@ -640,7 +640,7 @@ class BagProject(object):
 
         if gen_lay:
             print('creating layout...')
-            temp_db.batch_layout(self, temp_list, name_list)
+            temp_db.batch_layout(self, temp_list, name_list, debug=debug)
             print('layout done.')
         if gen_sch:
             dsn = self.create_design_module(lib_name=sch_lib, cell_name=sch_cell)
