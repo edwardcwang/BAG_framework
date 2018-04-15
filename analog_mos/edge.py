@@ -39,7 +39,8 @@ class AnalogEndRow(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        tech_info = self.grid.tech_info
+        self._tech_cls = tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
         self._layout_info = None
         self._left_edge_info = None
@@ -111,7 +112,8 @@ class AnalogEndRow(TemplateBase):
             options = {}
 
         blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
-        end_info = self._tech_cls.get_analog_end_info(lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **options)
+        end_info = self._tech_cls.get_analog_end_info(lch_unit, sub_type, threshold, fg, is_end,
+                                                      blk_pitch, **options)
 
         self._layout_info = end_info['layout_info']
         self._left_edge_info = end_info['left_edge_info']
@@ -141,7 +143,8 @@ class SubRingEndRow(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        tech_info = self.grid.tech_info
+        self._tech_cls = tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
         self._layout_info = None
         self._left_edge_info = None
@@ -207,7 +210,8 @@ class SubRingEndRow(TemplateBase):
         if options is None:
             options = {}
 
-        end_info = self._tech_cls.get_sub_ring_end_info(sub_type, threshold, fg, end_ext_info, **options)
+        end_info = self._tech_cls.get_sub_ring_end_info(sub_type, threshold, fg, end_ext_info,
+                                                        **options)
 
         self._layout_info = end_info['layout_info']
         self._left_edge_info = end_info['left_edge_info']
@@ -238,7 +242,8 @@ class AnalogOuterEdge(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        tech_info = self.grid.tech_info
+        self._tech_cls = tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
 
     @classmethod
     def get_params_info(cls):
@@ -280,7 +285,8 @@ class AnalogGuardRingSep(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        tech_info = self.grid.tech_info
+        self._tech_cls = tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
 
     @classmethod
     def get_params_info(cls):
@@ -324,7 +330,8 @@ class AnalogEdge(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
+        tech_info = self.grid.tech_info
+        self._tech_cls = tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
         if self.params['is_laygo']:
             self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
         else:
@@ -373,7 +380,8 @@ class AnalogEdge(TemplateBase):
         else:
             outer_adj_blk = adj_blk_info
 
-        out_info = self._tech_cls.get_outer_edge_info(guard_ring_nf, layout_info, is_end, outer_adj_blk)
+        out_info = self._tech_cls.get_outer_edge_info(guard_ring_nf, layout_info, is_end,
+                                                      outer_adj_blk)
         # add outer edge
         out_params = dict(
             layout_name='%s_outer' % basename,
@@ -421,4 +429,5 @@ class AnalogEdge(TemplateBase):
             master = self.new_template(params=sep_params, temp_cls=AnalogGuardRingSep)
             inst = self.add_instance(master, 'XSEP', loc=(x0, 0), unit_mode=True)
             self.array_box = self.array_box.merge(inst.array_box)
-            self.prim_bound_box = self.prim_bound_box.merge(inst.translate_master_box(master.prim_bound_box))
+            self.prim_bound_box = self.prim_bound_box.merge(
+                inst.translate_master_box(master.prim_bound_box))
