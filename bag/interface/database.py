@@ -281,8 +281,15 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         return [], [], {}, {}
 
     @abc.abstractmethod
-    def update_testbench(self, lib, cell, parameters, sim_envs, config_rules, env_parameters):
-        # type: (str, str, Dict[str, str], Sequence[str], List[List[str]], List[List[Tuple[str, str]]]) -> None
+    def update_testbench(self,  # type: DbAccess
+                         lib,  # type: str
+                         cell,  # type: str
+                         parameters,  # type: Dict[str, str]
+                         sim_envs,  # type: Sequence[str]
+                         config_rules,  # type: Sequence[List[str]]
+                         env_parameters,  # type: Sequence[List[Tuple[str, str]]]
+                         ):
+        # type: (...) -> None
         """Update the given testbench configuration.
 
         Parameters
@@ -295,9 +302,9 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             testbench parameters.
         sim_envs : Sequence[str]
             list of enabled simulation environments.
-        config_rules : List[List[str]]
+        config_rules : Sequence[List[str]]
             config view mapping rules, list of (lib, cell, view) rules.
-        env_parameters : List[List[Tuple[str, str]]]
+        env_parameters : Sequence[List[Tuple[str, str]]]
             list of param/value list for each simulation environment.
         """
         pass
@@ -346,13 +353,14 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def release_write_locks(self, lib_name, cell_view_list):
+        # type: (str, Sequence[Tuple[str, str]]) -> None
         """Release write locks from all the given cells.
 
         Parameters
         ----------
-        lib_name : string
+        lib_name : str
             the library name.
-        cell_view_list : List[(string, string)]
+        cell_view_list : Sequence[Tuple[str, str]]
             list of cell/view name tuples.
         """
         pass
@@ -508,7 +516,8 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         if self.checker is None:
             raise Exception('layout export is disabled.')
 
-        return await self.checker.async_export_layout(lib_name, cell_name, out_file, *args, **kwargs)
+        return await self.checker.async_export_layout(lib_name, cell_name, out_file,
+                                                      *args, **kwargs)
 
     def import_design_library(self, lib_name, dsn_db, new_lib_path):
         """Import all design templates in the given library from CAD database.
