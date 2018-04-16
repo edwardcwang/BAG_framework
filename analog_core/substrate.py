@@ -161,7 +161,7 @@ class SubstrateContact(TemplateBase):
             blkw = self.grid.get_block_size(top_layer, unit_mode=True)[0]
             place_info = bin_iter.get_last_save_info()
             cur_nxblk = place_info.tot_width // blkw
-            while sub_fg_tot > 0 and cur_nxblk > max_nxblk or (max_nxblk - cur_nxblk) % 2 != 0:
+            while sub_fg_tot > 0 and (cur_nxblk > max_nxblk or (max_nxblk - cur_nxblk) % 2 != 0):
                 sub_fg_tot -= 1
                 place_info = layout_info.get_placement_info(sub_fg_tot)
                 cur_nxblk = place_info.tot_width // blkw
@@ -268,8 +268,13 @@ class SubstrateContact(TemplateBase):
         arr_box = instlb.array_box.merge(instrt.array_box)
         self.array_box = BBox(arr_box_x[0], arr_box.bottom_unit, arr_box_x[1], arr_box.top_unit,
                               res, unit_mode=True)
-        self.set_size_from_bound_box(top_layer, BBox(0, 0, tot_width, htot, res, unit_mode=True))
-        self.add_cell_boundary(self.bound_box)
+        bound_box = BBox(0, 0, tot_width, htot, res, unit_mode=True)
+        if self.grid.size_defined(top_layer):
+            self.set_size_from_bound_box(top_layer, bound_box)
+        else:
+            self.prim_bound_box = bound_box
+            self.prim_top_layer = top_layer
+        self.add_cell_boundary(bound_box)
 
         # find center track index
         hm_layer = layout_info.mconn_port_layer + 1
