@@ -30,10 +30,6 @@ class ResArrayBaseInfo(object):
     ----------
     grid : RoutingGrid
         the RoutingGrid object.
-    l : float
-        unit resistor length, in meters.
-    w : float
-        unit resistor width, in meters.
     sub_type : str
         the substrate type.  Either 'ptap' or 'ntap'.
     threshold : str
@@ -73,8 +69,8 @@ class ResArrayBaseInfo(object):
             True to allow half-block height.  Defaults to True.
     """
 
-    def __init__(self, grid, l, w, sub_type, threshold, **kwargs):
-        # type: (RoutingGrid, float, float, str, str, **kwargs) -> None
+    def __init__(self, grid, sub_type, threshold, **kwargs):
+        # type: (RoutingGrid, str, str, **kwargs) -> None
         min_tracks = kwargs.get('min_tracks', None)
         em_specs = kwargs.get('em_specs', None)
         grid_type = kwargs.get('grid_type', 'standard')
@@ -121,16 +117,8 @@ class ResArrayBaseInfo(object):
         else:
             self.top_layer = top_layer
 
-        # get resistor primitives information
-        res = self.grid.resolution
-        lay_unit = self.grid.layout_unit
-        self.l_unit = int(round(l / lay_unit / res))
-        self.w_unit = int(round(w / lay_unit / res))
-
-    def get_res_info(self, **kwargs):
-        # type: (**kwargs) -> Dict[str, Any]
-        l_unit = kwargs.get('l_unit', self.l_unit)
-        w_unit = kwargs.get('w_unit', self.w_unit)
+    def get_res_info(self, l_unit, w_unit, **kwargs):
+        # type: (int, int, **kwargs) -> Dict[str, Any]
         res_type = kwargs.get('res_type', self.res_type)
         sub_type = kwargs.get('sub_type', self.sub_type)
         threshold = kwargs.get('threshold', self.threshold)
@@ -145,16 +133,29 @@ class ResArrayBaseInfo(object):
                                            max_blk_ext=max_blk_ext, connect_up=connect_up,
                                            options=options)
 
-    def get_place_info(self, nx, ny, update_grid=False):
-        res_info = self.get_res_info()
+    def get_place_info(self,
+                       l_unit,  # type: int
+                       w_unit,  # type: int
+                       nx,  # type: int
+                       ny,  # type: int
+                       min_width=0,  # type: int
+                       min_height=0,  # type: int
+                       update_grid=False,  # type: bool
+                       **kwargs):
+        # type: (...) -> Tuple[int, int, int, int, Dict[str, Any]]
+        top_layer = kwargs.get('top_layer', self.top_layer)
+        half_blk_x = kwargs.get('half_blk_x', self.half_blk_x)
+        half_blk_y = kwargs.get('half_blk_y', self.half_blk_y)
+
+        res_info = self.get_res_info(l_unit, w_unit, **kwargs)
         w_edge, h_edge = res_info['w_edge'], res_info['h_edge']
         w_core, h_core = res_info['w_core'], res_info['h_core']
 
-        wblk, hblk = self.grid.get_block_size(self.top_layer, unit_mode=True,
-                                              half_blk_x=self.half_blk_x,
-                                              half_blk_y=self.half_blk_y)
-        warr = w_edge * 2 + w_core * nx
-        harr = h_edge * 2 + h_core * ny
+        wblk, hblk = self.grid.get_block_size(top_layer, unit_mode=True,
+                                              half_blk_x=half_blk_x,
+                                              half_blk_y=half_blk_y)
+        warr = max(min_width, w_edge * 2 + w_core * nx)
+        harr = max(min_height, h_edge * 2 + h_core * ny)
         wtot = -(-warr // wblk) * wblk
         htot = -(-harr // hblk) * hblk
         dx = (wtot - warr) // 2
@@ -166,6 +167,14 @@ class ResArrayBaseInfo(object):
                 self.grid.set_track_offset(lay_id, offset, unit_mode=True)
 
         return dx, dy, wtot, htot, res_info
+
+    def get_res_length_bounds(self, **kwargs):
+        # type: (**kwargs) -> Tuple[int, int]
+        res_type = kwargs.get('res_type', self.res_type)
+
+        lmin, lmax = self.grid.tech_info.get_res_length_bounds(res_type)
+        res = self.grid.resolution
+        return int(round(lmin / res)), int(round(lmax / res))
 
 
 class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
@@ -393,14 +402,26 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
                 True to allow half-block width.  Defaults to True.
             half_blk_y : bool
                 True to allow half-block height.  Defaults to True.
+            min_width : int
+               Minimum ResArrayBase width, in resolution units.
+            min_height : int
+                Minimum ResArraybase height, in resolution units.
         """
+        min_width = kwargs.pop('min_width', 0)
+        min_height = kwargs.pop('min_height', 0)
+
         # create ResArrayBaseInfo object, and update RoutingGrid
-        self._layout_info = ResArrayBaseInfo(self.grid, l, w, sub_type, threshold, **kwargs)
-        self.grid = self._layout_info.grid
         res = self.grid.resolution
+        lay_unit = self.grid.layout_unit
+        l_unit = int(round(l / lay_unit / res))
+        w_unit = int(round(w / lay_unit / res))
+        self._layout_info = ResArrayBaseInfo(self.grid, sub_type, threshold, **kwargs)
+        self.grid = self._layout_info.grid
 
         # compute template quantization and coordinates
-        dx, dy, wtot, htot, res_info = self._layout_info.get_place_info(nx, ny, update_grid=True)
+        tmp = self._layout_info.get_place_info(l_unit, w_unit, nx, ny, min_width=min_width,
+                                               min_height=min_height, update_grid=True)
+        dx, dy, wtot, htot, res_info = tmp
         w_edge, h_edge = res_info['w_edge'], res_info['h_edge']
         w_core, h_core = res_info['w_core'], res_info['h_core']
 
