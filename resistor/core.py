@@ -90,7 +90,7 @@ class ResArrayBaseInfo(object):
         else:
             self.em_specs = em_specs
 
-        tech_params = self.grid.tech_info.tech_params
+        tech_params = grid.tech_info.tech_params
         self._grid_layers = tech_params['layout']['analog_res'][grid_type]
         self._tech_cls = tech_params['layout']['res_tech_class']  # type: ResTech
         self.bot_layer = self._tech_cls.get_bot_layer()
@@ -108,7 +108,8 @@ class ResArrayBaseInfo(object):
         else:
             self.min_tracks = min_tracks
 
-        min_top_layer = max(self.grid.top_private_layer + 1, self.bot_layer + len(min_tracks) - 1)
+        min_top_layer = max(self.grid.top_private_layer + 1,
+                            self.bot_layer + len(self.min_tracks) - 1)
 
         if top_layer is None:
             self.top_layer = min_top_layer
@@ -154,10 +155,10 @@ class ResArrayBaseInfo(object):
         wblk, hblk = self.grid.get_block_size(top_layer, unit_mode=True,
                                               half_blk_x=half_blk_x,
                                               half_blk_y=half_blk_y)
-        warr = max(min_width, w_edge * 2 + w_core * nx)
-        harr = max(min_height, h_edge * 2 + h_core * ny)
-        wtot = -(-warr // wblk) * wblk
-        htot = -(-harr // hblk) * hblk
+        warr = w_edge * 2 + w_core * nx
+        harr = h_edge * 2 + h_core * ny
+        wtot = -(-max(min_width, warr) // wblk) * wblk
+        htot = -(-max(min_height, harr) // hblk) * hblk
         dx = (wtot - warr) // 2
         dy = (htot - harr) // 2
 
