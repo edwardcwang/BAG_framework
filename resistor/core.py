@@ -5,17 +5,167 @@
 This module also define some simple subclasses of ResArrayBase.
 """
 
+from typing import TYPE_CHECKING, Dict, Set, Tuple, Union, Any
+
 import abc
-from typing import Dict, Set, Tuple, Union, Any, Optional
 from itertools import chain
 
 from bag.layout.util import BBox
-from bag.layout.routing import TrackID, WireArray, Port
-from bag.layout.template import TemplateBase, TemplateDB
-from bag.layout.core import TechInfo
+from bag.layout.routing import TrackID, WireArray
+from bag.layout.template import TemplateBase
 
 from .base import ResTech, AnalogResCore, AnalogResBoundary
 from ..analog_core.substrate import SubstrateContact
+
+if TYPE_CHECKING:
+    from bag.layout.routing import RoutingGrid, Port
+    from bag.layout.template import TemplateDB
+    from bag.layout.core import TechInfo
+
+
+class ResArrayBaseInfo(object):
+    """A class that provides information to assist in AnalogBase layout calculations.
+
+    Parameters
+    ----------
+    grid : RoutingGrid
+        the RoutingGrid object.
+    l : float
+        unit resistor length, in meters.
+    w : float
+        unit resistor width, in meters.
+    sub_type : str
+        the substrate type.  Either 'ptap' or 'ntap'.
+    threshold : str
+        the substrate threshold flavor.
+    **kwargs :
+        optional arguments.  Right now support:
+
+        min_tracks : Optional[Tuple[int, ...]]
+            minimum number of tracks per layer in the unit cell. If None, Defaults to all 1's.
+            This parameter also represents the number of layers that will be used.
+        em_specs : Optional[Dict[str, Any]]
+            resistor EM specifications dictionary.
+        grid_type : str
+            the resistor private routing grid name.
+        top_layer : Optional[int]
+            The top metal layer this block is quantized by.  Defaults to the last layer if it is on
+            the global routing grid, or the layer above that if otherwise.
+            If the top metal layer is only one layer above the private routing grid, then this will
+            be a primitive template; self.size will be None, and only one dimension is quantized.
+            Otherwise, this will be a standard template, and both width and height will be quantized
+            according to the block size.
+        res_type : str
+            the resistor type.
+        ext_dir : str
+            resistor core extension direction.
+        max_blk_ext : int
+            maximum number of block pitches we can extend for primitives.
+        options : Optional[Dict[str, Any]]
+            custom options for resistor primitives.
+        connect_up : bool
+            True if the last used layer needs to be able to connect to the layer above.
+            This options will make sure that the width of the last track is wide enough to support
+            the inter-layer via.
+        half_blk_x : bool
+            True to allow half-block width.  Defaults to True.
+        half_blk_y : bool
+            True to allow half-block height.  Defaults to True.
+    """
+
+    def __init__(self, grid, l, w, sub_type, threshold, **kwargs):
+        # type: (RoutingGrid, float, float, str, str, **kwargs) -> None
+        min_tracks = kwargs.get('min_tracks', None)
+        em_specs = kwargs.get('em_specs', None)
+        grid_type = kwargs.get('grid_type', 'standard')
+        top_layer = kwargs.get('top_layer', None)
+        self.res_type = kwargs.get('res_type', 'standard')
+        self.ext_dir = kwargs.get('ext_dir', '')
+        self.max_blk_ext = kwargs.get('max_blk_ext', 100)
+        self.options = kwargs.get('options', None)
+        self.connect_up = kwargs.get('connect_up', False)
+        self.half_blk_x = kwargs.get('half_blk_x', True)
+        self.half_blk_y = kwargs.get('half_blk_y', True)
+        self.sub_type = sub_type
+        self.threshold = threshold
+
+        if em_specs is None:
+            self.em_specs = {}
+        else:
+            self.em_specs = em_specs
+
+        tech_params = self.grid.tech_info.tech_params
+        self._grid_layers = tech_params['layout']['analog_res'][grid_type]
+        self._tech_cls = tech_params['layout']['res_tech_class']  # type: ResTech
+        self.bot_layer = self._tech_cls.get_bot_layer()
+
+        # modify resistor layer routing grid.
+        self.grid = grid.copy()
+        min_tracks_default = []
+        for lay_id, tr_w, tr_sp, tr_dir in self._grid_layers:
+            self.grid.add_new_layer(lay_id, tr_sp, tr_w, tr_dir, override=True)
+            min_tracks_default.append(1)
+        self.grid.update_block_pitch()
+
+        if min_tracks is None:
+            self.min_tracks = tuple(min_tracks_default)
+        else:
+            self.min_tracks = min_tracks
+
+        min_top_layer = max(self.grid.top_private_layer + 1, self.bot_layer + len(min_tracks) - 1)
+
+        if top_layer is None:
+            self.top_layer = min_top_layer
+        elif top_layer < min_top_layer:
+            raise ValueError('Cannot set top_layer below %d' % min_top_layer)
+        else:
+            self.top_layer = top_layer
+
+        # get resistor primitives information
+        res = self.grid.resolution
+        lay_unit = self.grid.layout_unit
+        self.l_unit = int(round(l / lay_unit / res))
+        self.w_unit = int(round(w / lay_unit / res))
+
+    def get_res_info(self, **kwargs):
+        # type: (**kwargs) -> Dict[str, Any]
+        l_unit = kwargs.get('l_unit', self.l_unit)
+        w_unit = kwargs.get('w_unit', self.w_unit)
+        res_type = kwargs.get('res_type', self.res_type)
+        sub_type = kwargs.get('sub_type', self.sub_type)
+        threshold = kwargs.get('threshold', self.threshold)
+        min_tracks = kwargs.get('min_tracks', self.min_tracks)
+        em_specs = kwargs.get('em_specs', self.em_specs)
+        ext_dir = kwargs.get('ext_dir', self.ext_dir)
+        max_blk_ext = kwargs.get('max_blk_ext', self.max_blk_ext)
+        connect_up = kwargs.get('connect_up', self.connect_up)
+        options = kwargs.get('options', self.options)
+        return self._tech_cls.get_res_info(self.grid, l_unit, w_unit, res_type, sub_type,
+                                           threshold, min_tracks, em_specs, ext_dir,
+                                           max_blk_ext=max_blk_ext, connect_up=connect_up,
+                                           options=options)
+
+    def get_place_info(self, nx, ny, update_grid=False):
+        res_info = self.get_res_info()
+        w_edge, h_edge = res_info['w_edge'], res_info['h_edge']
+        w_core, h_core = res_info['w_core'], res_info['h_core']
+
+        wblk, hblk = self.grid.get_block_size(self.top_layer, unit_mode=True,
+                                              half_blk_x=self.half_blk_x,
+                                              half_blk_y=self.half_blk_y)
+        warr = w_edge * 2 + w_core * nx
+        harr = h_edge * 2 + h_core * ny
+        wtot = -(-warr // wblk) * wblk
+        htot = -(-harr // hblk) * hblk
+        dx = (wtot - warr) // 2
+        dy = (htot - harr) // 2
+
+        if update_grid:
+            for lay_id, tr_w, tr_sp, tr_dir in self._grid_layers:
+                offset = dy if self.grid.get_direction(lay_id) == 'x' else dx
+                self.grid.set_track_offset(lay_id, offset, unit_mode=True)
+
+        return dx, dy, wtot, htot, res_info
 
 
 class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
@@ -41,10 +191,9 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        tech_params = self.grid.tech_info.tech_params
-        self._tech_cls = tech_params['layout']['res_tech_class']  # type: ResTech
+        self._layout_info = None  # type: ResArrayBaseInfo
         self._bot_port = None  # type: Port
         self._top_port = None  # type: Port
         self._core_offset = None  # type: Tuple[int, int]
@@ -52,7 +201,6 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         self._num_tracks = None  # type: Tuple[int, ...]
         self._num_corner_tracks = None  # type: Tuple[int, ...]
         self._w_tracks = None  # type: Tuple[int, ...]
-        self._hm_layer = self._tech_cls.get_bot_layer()
         self._well_width = None
 
     @classmethod
@@ -77,7 +225,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
     def bot_layer_id(self):
         # type: () -> int
         """Returns the bottom resistor routing layer ID."""
-        return self._hm_layer
+        return self._layout_info.bot_layer
 
     @property
     def w_tracks(self):
@@ -190,25 +338,8 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         return self.grid.coord_to_nearest_track(layer_id, coord, half_track=True,
                                                 mode=mode, unit_mode=True)
 
-    def draw_array(self,  # type: ResArrayBase
-                   l,  # type: float
-                   w,  # type: float
-                   sub_type,  # type: str
-                   threshold,  # type: str
-                   nx=1,  # type: int
-                   ny=1,  # type: int
-                   min_tracks=None,  # type: Optional[Tuple[int, ...]]
-                   res_type='standard',  # type: str
-                   em_specs=None,  # type: Optional[Dict[str, Any]]
-                   grid_type='standard',  # type: str
-                   ext_dir='',  # type: str
-                   max_blk_ext=100,  # type: int
-                   options=None,  # type: Optional[Dict[str, Any]]
-                   top_layer=None,  # type: Optional[int]
-                   connect_up=False,  # type: bool
-                   **kwargs
-                   ):
-        # type: (...) -> None
+    def draw_array(self, l, w, sub_type, threshold, nx=1, ny=1, **kwargs):
+        # type: (float, float, str, str, int, int, **kwargs) -> None
         """Draws the resistor array.
 
         This method updates the RoutingGrid with resistor routing layers, then add
@@ -228,86 +359,50 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
             number of resistors in a row.
         ny : int
             number of resistors in a column.
-        min_tracks : Optional[Tuple[int, ...]]
-            minimum number of tracks per layer in the unit cell. If None, Defaults to all 1's.
-            This parameter also represents the number of layers that will be used.
-        res_type : str
-            the resistor type.
-        em_specs : Optional[Dict[str, Any]]
-            resistor EM specifications dictionary.
-        grid_type : str
-            the resistor private routing grid name.
-        ext_dir : str
-            resistor core extension direction.
-        max_blk_ext : int
-            maximum number of block pitches we can extend for primitives.
-        options : Optional[Dict[str, Any]]
-            custom options for resistor primitives.
-        top_layer : Optional[int]
-            The top metal layer this block is quantized by.  Defaults to the last layer if it is on
-            the global routing grid, or the layer above that if otherwise.
-            If the top metal layer is only one layer above the private routing grid, then this will
-            be a primitive template; self.size will be None, and only one dimension is quantized.
-            Otherwise, this will be a standard template, and both width and height will be quantized
-            according to the block size.
-        connect_up : bool
-            True if the last used layer needs to be able to connect to the layer above.
-            This options will make sure that the width of the last track is wide enough to support
-            the inter-layer via.
         **kwargs :
             optional arguments.  Right now support:
 
+            min_tracks : Optional[Tuple[int, ...]]
+                minimum number of tracks per layer in the unit cell. If None, Defaults to all 1's.
+                This parameter also represents the number of layers that will be used.
+            em_specs : Optional[Dict[str, Any]]
+                resistor EM specifications dictionary.
+            grid_type : str
+                the resistor private routing grid name.
+            top_layer : Optional[int]
+                The top metal layer this block is quantized by.  Defaults to the last layer if it
+                is on the global routing grid, or the layer above that if otherwise.
+                If the top metal layer is only one layer above the private routing grid, then this
+                will be a primitive template; self.size will be None, and only one dimension is
+                quantized.
+                Otherwise, this will be a standard template, and both width and height will be
+                quantized according to the block size.
+            res_type : str
+                the resistor type.
+            ext_dir : str
+                resistor core extension direction.
+            max_blk_ext : int
+                maximum number of block pitches we can extend for primitives.
+            options : Optional[Dict[str, Any]]
+                custom options for resistor primitives.
+            connect_up : bool
+                True if the last used layer needs to be able to connect to the layer above.
+                This options will make sure that the width of the last track is wide enough to
+                support the inter-layer via.
             half_blk_x : bool
                 True to allow half-block width.  Defaults to True.
             half_blk_y : bool
                 True to allow half-block height.  Defaults to True.
         """
-        half_blk_x = kwargs.get('half_blk_x', True)
-        half_blk_y = kwargs.get('half_blk_y', True)
-
-        if em_specs is None:
-            em_specs = {}
-        # modify resistor layer routing grid.
-        grid_layers = self.grid.tech_info.tech_params['layout']['analog_res'][grid_type]
-        min_tracks_default = []
-        for lay_id, tr_w, tr_sp, tr_dir in grid_layers:
-            self.grid.add_new_layer(lay_id, tr_sp, tr_w, tr_dir, override=True)
-            min_tracks_default.append(1)
-
-        self.grid.update_block_pitch()
-
-        if min_tracks is None:
-            min_tracks = tuple(min_tracks_default)
-        min_top_layer = max(self.grid.top_private_layer + 1, self._hm_layer + len(min_tracks) - 1)
-        if top_layer is None:
-            top_layer = min_top_layer
-        elif top_layer < min_top_layer:
-            raise ValueError('Cannot set top_layer below %d' % min_top_layer)
-
-        # get resistor primitives information
+        # create ResArrayBaseInfo object, and update RoutingGrid
+        self._layout_info = ResArrayBaseInfo(self.grid, l, w, sub_type, threshold, **kwargs)
+        self.grid = self._layout_info.grid
         res = self.grid.resolution
-        lay_unit = self.grid.layout_unit
-        l_unit = int(round(l / lay_unit / res))
-        w_unit = int(round(w / lay_unit / res))
-        res_info = self._tech_cls.get_res_info(self.grid, l_unit, w_unit, res_type, sub_type,
-                                               threshold, min_tracks, em_specs, ext_dir,
-                                               max_blk_ext=max_blk_ext, connect_up=connect_up,
-                                               options=options)
-        w_edge, h_edge = res_info['w_edge'], res_info['h_edge']
-        w_core, h_core = res_info['w_core'], res_info['h_core']
 
         # compute template quantization and coordinates
-        wblk, hblk = self.grid.get_block_size(top_layer, unit_mode=True, half_blk_x=half_blk_x,
-                                              half_blk_y=half_blk_y)
-        warr = w_edge * 2 + w_core * nx
-        harr = h_edge * 2 + h_core * ny
-        wtot = -(-warr // wblk) * wblk
-        htot = -(-harr // hblk) * hblk
-        dx = (wtot - warr) // 2
-        dy = (htot - harr) // 2
-        for lay_id, tr_w, tr_sp, tr_dir in grid_layers:
-            offset = dy if self.grid.get_direction(lay_id) == 'x' else dx
-            self.grid.set_track_offset(lay_id, offset, unit_mode=True)
+        dx, dy, wtot, htot, res_info = self._layout_info.get_place_info(nx, ny, update_grid=True)
+        w_edge, h_edge = res_info['w_edge'], res_info['h_edge']
+        w_core, h_core = res_info['w_core'], res_info['h_core']
 
         self._core_offset = dx + w_edge, dy + h_edge
         self._core_pitch = w_core, h_core
@@ -367,6 +462,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
                                     unit_mode=True)
 
         # set array box and size
+        top_layer = self._layout_info.top_layer
         self.array_box = inst_bl.array_box.merge(inst_tr.array_box)
         bnd_box = BBox(0, 0, wtot, htot, res, unit_mode=True)
         if self.grid.size_defined(top_layer):
