@@ -612,8 +612,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self.template_db.new_template(params=new_params, temp_cls=self.__class__,
                                              grid=self.grid)
 
-    def set_size_from_bound_box(self, top_layer_id, bbox, round_up=False):
-        # type: (int, BBox, bool) -> None
+    def set_size_from_bound_box(self, top_layer_id, bbox, round_up=False,
+                                half_blk_x=True, half_blk_y=True):
+        # type: (int, BBox, bool, bool, bool) -> None
         """Compute the size from overall bounding box.
 
         Parameters
@@ -624,6 +625,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the overall bounding box
         round_up: bool
             True to round up bounding box if not quantized properly
+        half_blk_x : bool
+            True to allow half-block widths.
+        half_blk_y : bool
+            True to allow half-block heights.
         """
         grid = self.grid
 
@@ -631,7 +636,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             raise ValueError('lower-left corner of overall bounding box must be (0, 0).')
 
         self.size = grid.get_size_tuple(top_layer_id, bbox.width_unit, bbox.height_unit,
-                                        round_up=round_up, unit_mode=True)
+                                        round_up=round_up, unit_mode=True, half_blk_x=half_blk_x,
+                                        half_blk_y=half_blk_y)
 
     def set_size_from_array_box(self, top_layer_id):
         # type: (int) -> None
