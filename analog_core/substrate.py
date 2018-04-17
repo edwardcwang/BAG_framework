@@ -107,6 +107,7 @@ class SubstrateContact(TemplateBase):
             end_mode='The substrate end mode.',
             is_passive='True if this substrate is used as substrate contact for passive devices.',
             max_nxblk='Maximum width in number of blocks.  Negative to disable',
+            port_tid='Substrate port (tr_idx, tr_width) tuple.',
             show_pins='True to show pin labels.',
 
         )
@@ -120,6 +121,7 @@ class SubstrateContact(TemplateBase):
             end_mode=15,
             is_passive=False,
             max_nxblk=-1,
+            port_tid=None,
             show_pins=False,
         )
 
@@ -155,9 +157,10 @@ class SubstrateContact(TemplateBase):
         port_width = self.params['port_width']
         well_width = self.params['well_width']
         end_mode = self.params['end_mode']
-        show_pins = self.params['show_pins']
         is_passive = self.params['is_passive']
         max_nxblk = self.params['max_nxblk']
+        port_tid = self.params['port_tid']
+        show_pins = self.params['show_pins']
 
         res = self.grid.resolution
         well_width = int(round(well_width / res))
@@ -309,19 +312,23 @@ class SubstrateContact(TemplateBase):
             self.prim_top_layer = top_layer
         self.add_cell_boundary(bound_box)
 
-        # find center track index
         hm_layer = layout_info.mconn_port_layer + 1
-        hm_mid = self.grid.coord_to_nearest_track(hm_layer, self.array_box.yc_unit, mode=0,
-                                                  half_track=True, unit_mode=True)
-        # connect to horizontal metal layer.
-        hm_pitch = self.grid.get_track_pitch(hm_layer, unit_mode=True)
-        ntr = self.array_box.height_unit // hm_pitch  # type: int
-        if port_width is None:
-            port_width = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
-        track_id = TrackID(hm_layer, hm_mid, width=port_width)
+        if port_tid is None:
+            # find center track index
+            hm_mid = self.grid.coord_to_nearest_track(hm_layer, self.array_box.yc_unit, mode=0,
+                                                      half_track=True, unit_mode=True)
+            # connect to horizontal metal layer.
+            hm_pitch = self.grid.get_track_pitch(hm_layer, unit_mode=True)
+            ntr = self.array_box.height_unit // hm_pitch  # type: int
+            if port_width is None:
+                port_width = self.grid.get_max_track_width(hm_layer, 1, ntr, half_end_space=False)
+            port_tid = TrackID(hm_layer, hm_mid, width=port_width)
+        else:
+            port_tid = TrackID(hm_layer, port_tid[0], width=port_tid[1])
+
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
         sub_wires = self.connect_to_tracks(sub_conn.get_port(port_name).get_pins(hm_layer - 1),
-                                           track_id)
+                                           port_tid)
         self.add_pin(port_name, sub_wires, show=show_pins)
 
         self._fg_tot = sub_fg_tot
