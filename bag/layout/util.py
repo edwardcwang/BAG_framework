@@ -113,6 +113,7 @@ class BBox(object):
 
     @classmethod
     def get_invalid_bbox(cls):
+        # type: () -> BBox
         """Returns a default invalid bounding box.
 
         Returns
