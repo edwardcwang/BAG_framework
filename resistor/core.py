@@ -91,9 +91,13 @@ class ResArrayBaseInfo(object):
             self.em_specs = em_specs
 
         tech_params = grid.tech_info.tech_params
-        self._grid_layers = tech_params['layout']['analog_res'][grid_type]
         self._tech_cls = tech_params['layout']['res_tech_class']  # type: ResTech
         self.bot_layer = self._tech_cls.get_bot_layer()
+        if grid_type is None:
+            w_tr, sp_tr = grid.get_track_info(self.bot_layer, unit_mode=False)
+            self._grid_layers = [[self.bot_layer, w_tr, sp_tr, 'x']]
+        else:
+            self._grid_layers = tech_params['layout']['analog_res'][grid_type]
 
         # modify resistor layer routing grid.
         self.grid = grid.copy()
