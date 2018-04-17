@@ -44,8 +44,13 @@ class SubstrateContact(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        self._fg_tot = None
         self._sub_bndx = None
         self._sub_bndy = None
+
+    @property
+    def fg_tot(self):
+        return self._fg_tot
 
     @property
     def port_name(self):
@@ -318,6 +323,8 @@ class SubstrateContact(TemplateBase):
         sub_wires = self.connect_to_tracks(sub_conn.get_port(port_name).get_pins(hm_layer - 1),
                                            track_id)
         self.add_pin(port_name, sub_wires, show=show_pins)
+
+        self._fg_tot = sub_fg_tot
 
 
 class SubstrateRing(TemplateBase):
