@@ -15,15 +15,15 @@ si_mag = [-18, -15, -12, -9, -6, -3, 0, 3, 6, 9, 12]
 si_pre = ['a', 'f', 'p', 'n', 'u', 'm', '', 'k', 'M', 'G', 'T']
 
 
-def float_to_si_string(num, precision=3):
+def float_to_si_string(num, precision=6):
     """Converts the given floating point number to a string using SI prefix.
 
     Parameters
     ----------
     num : float
         the number to convert.
-    precision : 3
-        number of significant digits, defaults to 3.
+    precision : int
+        number of significant digits, defaults to 6.
 
     Returns
     -------
