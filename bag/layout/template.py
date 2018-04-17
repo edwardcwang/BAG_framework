@@ -428,13 +428,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # construct port objects
         for net_name, port_params in self._port_params.items():
             pin_dict = port_params['pins']
+            label = port_params['label']
             if port_params['show']:
                 label = port_params['label']
                 for wire_arr_list in pin_dict.values():
                     for wire_arr in wire_arr_list:  # type: WireArray
                         for layer_name, bbox in wire_arr.wire_iter(self.grid):
                             self._layout.add_pin(net_name, layer_name, bbox, label=label)
-            self._ports[net_name] = Port(net_name, pin_dict)
+            self._ports[net_name] = Port(net_name, pin_dict, label=label)
 
         # finalize layout
         self._layout.finalize()
@@ -1073,7 +1074,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             True if fill_margin is given in resolution units.
         """
         net_name = net_name or port.net_name
-        label = label or net_name
+        label = label or port.label
 
         if net_name not in self._port_params:
             self._port_params[net_name] = dict(label=label, pins={}, show=show)
