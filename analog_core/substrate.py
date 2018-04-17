@@ -2,10 +2,10 @@
 
 """This module defines various substrate related classes."""
 
-from typing import Dict, Any, Set, Tuple, Optional
+from typing import TYPE_CHECKING, Dict, Any, Set, Tuple, Optional, Union
 
 from bag.util.search import BinaryIterator
-from bag.layout.template import TemplateBase, TemplateDB
+from bag.layout.template import TemplateBase
 from bag.layout.routing import TrackID
 from bag.layout.util import BBox
 
@@ -15,6 +15,10 @@ from ..analog_mos.mos import SubRingExt
 from ..analog_mos.conn import AnalogSubstrateConn
 
 from .base import AnalogBaseInfo
+
+if TYPE_CHECKING:
+    from bag.layout.routing import RoutingGrid
+    from bag.layout.template import TemplateDB
 
 
 class SubstrateContact(TemplateBase):
@@ -45,43 +49,48 @@ class SubstrateContact(TemplateBase):
 
     @property
     def port_name(self):
+        # type: () -> str
         return 'VDD' if self.params['sub_type'] == 'ntap' else 'VSS'
 
     @classmethod
-    def get_default_param_values(cls):
-        # type: () -> Dict[str, Any]
-        """Returns a dictionary containing default parameter values.
+    def get_substrate_height(cls, grid, top_layer, lch, w, sub_type, threshold,
+                             end_mode=15, **kwargs):
+        # type: (RoutingGrid, int, float, Union[int, float], str, str, int, **kwargs) -> int
+        """Compute height of the substrate contact block, given parameters."""
+        fg = 2
 
-        Override this method to define default parameter values.  As good practice,
-        you should avoid defining default values for technology-dependent parameters
-        (such as channel length, transistor width, etc.), but only define default
-        values for technology-independent parameters (such as number of tracks).
+        tech_params = grid.tech_info.tech_params
+        tech_cls = tech_params['layout']['mos_tech_class']
 
-        Returns
-        -------
-        default_params : Dict[str, Any]
-            dictionary of default parameter values.
-        """
-        return dict(
-            port_width=None,
-            well_end_mode=0,
-            show_pins=False,
-            is_passive=False,
-            max_nxblk=-1,
-        )
+        res = grid.resolution
+        lch_unit = int(round(lch / grid.layout_unit / res))
+
+        if top_layer is None:
+            top_layer = tech_cls.get_mos_conn_layer() + 1
+
+        sub_pitch = AnalogSubstrate.get_block_pitch(grid, top_layer, **kwargs)
+        info = tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg,
+                                           blk_pitch=sub_pitch, **kwargs)
+
+        arr_yb, arr_yt = info['layout_info']['arr_y']
+        blk_h = arr_yt - arr_yb
+
+        blk_pitch = grid.get_block_size(top_layer, unit_mode=True)[1]
+        info = tech_cls.get_analog_end_info(lch_unit, sub_type, threshold, fg, True, blk_pitch,
+                                            **kwargs)
+        arr_yb, arr_yt = info['layout_info']['arr_y']
+        end_h = arr_yt - arr_yb
+
+        if end_mode & 1 != 0:
+            blk_h += end_h
+        if end_mode & 2 != 0:
+            blk_h += end_h
+
+        return blk_h
 
     @classmethod
     def get_params_info(cls):
         # type: () -> Dict[str, str]
-        """Returns a dictionary containing parameter descriptions.
-
-        Override this method to return a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : Dict[str, str]
-            dictionary from parameter name to description.
-        """
         return dict(
             top_layer='the top layer of the template.',
             lch='channel length, in meters.',
@@ -90,9 +99,23 @@ class SubstrateContact(TemplateBase):
             sub_type='substrate type.',
             threshold='substrate threshold flavor.',
             well_width='Width of the well in layout units.',
-            show_pins='True to show pin labels.',
+            end_mode='The substrate end mode.',
             is_passive='True if this substrate is used as substrate contact for passive devices.',
             max_nxblk='Maximum width in number of blocks.  Negative to disable',
+            show_pins='True to show pin labels.',
+
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(
+            port_width=None,
+            well_end_mode=0,
+            end_mode=15,
+            is_passive=False,
+            max_nxblk=-1,
+            show_pins=False,
         )
 
     def get_substrate_box(self):
@@ -126,16 +149,20 @@ class SubstrateContact(TemplateBase):
         threshold = self.params['threshold']
         port_width = self.params['port_width']
         well_width = self.params['well_width']
+        end_mode = self.params['end_mode']
         show_pins = self.params['show_pins']
         is_passive = self.params['is_passive']
         max_nxblk = self.params['max_nxblk']
 
-        sub_end_mode = 15
         res = self.grid.resolution
         well_width = int(round(well_width / res))
+        right_end = (end_mode & 8) != 0
+        left_end = (end_mode & 4) != 0
+        top_end = (end_mode & 2) != 0
+        bot_end = (end_mode & 1) != 0
 
         # get layout info, also set RoutingGrid to substrate grid.
-        layout_info = AnalogBaseInfo(self.grid, lch, 0, top_layer=top_layer, end_mode=sub_end_mode)
+        layout_info = AnalogBaseInfo(self.grid, lch, 0, top_layer=top_layer, end_mode=end_mode)
         # compute template width in number of sd pitches
         # find maximum number of fingers we can draw
         bin_iter = BinaryIterator(1, None)
@@ -174,83 +201,86 @@ class SubstrateContact(TemplateBase):
 
         place_info = layout_info.get_placement_info(sub_fg_tot)
         edgel_x0 = place_info.edge_margins[0]
-        arr_box_x = place_info.arr_box_x
         tot_width = place_info.tot_width
 
-        # create substrate
-        params = dict(
-            lch=lch,
-            w=w,
-            sub_type=sub_type,
-            threshold=threshold,
-            fg=sub_fg_tot,
-            top_layer=top_layer,
-            options=dict(is_passive=is_passive),
-        )
-        sub_master = self.new_template(params=params, temp_cls=AnalogSubstrate)
-        edge_layout_info = sub_master.get_edge_layout_info()
-        edge_params = dict(
-            is_end=True,
-            guard_ring_nf=0,
-            name_id=sub_master.get_layout_basename(),
-            layout_info=edge_layout_info,
-            adj_blk_info=sub_master.get_left_edge_info(),
-        )
-        edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
+        # create masters
+        master_list = [
+            self.new_template(params=dict(lch=lch, fg=sub_fg_tot, sub_type=sub_type,
+                                          threshold=threshold, is_end=bot_end,
+                                          top_layer=top_layer,),
+                              temp_cls=AnalogEndRow),
+            self.new_template(params=dict(lch=lch, w=w, sub_type=sub_type, threshold=threshold,
+                                          fg=sub_fg_tot, top_layer=top_layer,
+                                          options=dict(is_passive=is_passive),),
+                              temp_cls=AnalogSubstrate),
+            self.new_template(params=dict(lch=lch, fg=sub_fg_tot, sub_type=sub_type,
+                                          threshold=threshold, is_end=top_end,
+                                          top_layer=top_layer,),
+                              temp_cls=AnalogEndRow), ]
 
-        end_row_params = dict(
-            lch=lch,
-            fg=sub_fg_tot,
-            sub_type=sub_type,
-            threshold=threshold,
-            is_end=True,
-            top_layer=top_layer,
-        )
-        end_row_master = self.new_template(params=end_row_params, temp_cls=AnalogEndRow)
-        end_edge_params = dict(
-            is_end=True,
-            guard_ring_nf=0,
-            name_id=end_row_master.get_layout_basename(),
-            layout_info=end_row_master.get_edge_layout_info(),
-            adj_blk_info=end_row_master.get_left_edge_info(),
-        )
-        end_edge_master = self.new_template(params=end_edge_params, temp_cls=AnalogEdge)
-        conn_params = dict(
-            layout_info=edge_layout_info,
-            layout_name=sub_master.get_layout_basename() + '_subconn',
-            is_laygo=False,
-        )
-        conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
+        ycur = 0
+        array_box = BBox.get_invalid_bbox()
+        sub_conn, inst = None, None
+        for master, orient in zip(master_list, ['R0', 'R0', 'MX']):
+            if orient == 'MX':
+                ycur += master.array_box.top_unit
 
-        # find substrate height and set size
-        hsub = sub_master.prim_bound_box.height_unit
-        hend = end_row_master.prim_bound_box.height_unit
-        htot = hsub + 2 * hend
-        # add substrate and edge at the right locations
-        x1 = edgel_x0 + edge_master.prim_bound_box.width_unit
-        x2 = x1 + sub_master.prim_bound_box.width_unit + edge_master.prim_bound_box.width_unit
-        y1 = end_edge_master.prim_bound_box.height_unit
-        y2 = (y1 + edge_master.prim_bound_box.height_unit +
-              end_edge_master.prim_bound_box.height_unit)
-        instlb = self.add_instance(end_edge_master, inst_name='XLBE', loc=(edgel_x0, 0),
-                                   unit_mode=True)
-        self.add_instance(edge_master, inst_name='XLE', loc=(edgel_x0, y1), unit_mode=True)
-        self.add_instance(end_edge_master, inst_name='XLTE', orient='MX', loc=(edgel_x0, y2),
-                          unit_mode=True)
-        self.add_instance(end_row_master, inst_name='XB', loc=(x1, 0), unit_mode=True)
-        self.add_instance(sub_master, inst_name='XSUB', loc=(x1, y1), unit_mode=True)
-        self.add_instance(end_row_master, inst_name='XT', orient='MX', loc=(x1, y2), unit_mode=True)
-        self.add_instance(end_edge_master, inst_name='XRBE', orient='MY', loc=(x2, 0),
-                          unit_mode=True)
-        self.add_instance(edge_master, inst_name='XRE', orient='MY', loc=(x2, y1), unit_mode=True)
-        sub_conn = self.add_instance(conn_master, inst_name='XSUBCONN', loc=(x1, y1),
-                                     unit_mode=True)
-        instrt = self.add_instance(end_edge_master, inst_name='XRTE', orient='R180', loc=(x2, y2),
-                                   unit_mode=True)
+            name_id = master.get_layout_basename()
+            edge_layout_info = master.get_edge_layout_info()
+            xcur = edgel_x0
+            if left_end:
+                edge_info = master.get_left_edge_info()
+                edge_params = dict(
+                    is_end=True,
+                    guard_ring_nf=0,
+                    name_id=name_id,
+                    layout_info=edge_layout_info,
+                    adj_blk_info=edge_info,
+                )
+                edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
+                if not edge_master.is_empty:
+                    edge_inst = self.add_instance(edge_master, loc=(edgel_x0, ycur),
+                                                  orient=orient, unit_mode=True)
+                    array_box = array_box.merge(edge_inst.array_box)
+                    xcur = edge_inst.array_box.right_unit
+
+            inst = self.add_instance(master, loc=(xcur, ycur), orient=orient, unit_mode=True)
+            array_box = array_box.merge(inst.array_box)
+            if isinstance(master, AnalogSubstrate):
+                conn_params = dict(
+                    layout_info=edge_layout_info,
+                    layout_name=name_id + '_subconn',
+                    is_laygo=False,
+                )
+                conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
+                sub_conn = self.add_instance(conn_master, loc=(xcur, ycur),
+                                             orient=orient, unit_mode=True)
+            xcur = inst.array_box.right_unit
+
+            if right_end:
+                edge_info = master.get_right_edge_info()
+                edge_params = dict(
+                    is_end=True,
+                    guard_ring_nf=0,
+                    name_id=name_id,
+                    layout_info=edge_layout_info,
+                    adj_blk_info=edge_info,
+                )
+                edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
+                if not edge_master.is_empty:
+                    xcur += edge_master.array_box.right_unit
+                    eor = 'MY' if orient == 'R0' else 'R180'
+                    edge_inst = self.add_instance(edge_master, loc=(xcur, ycur), orient=eor,
+                                                  unit_mode=True)
+                    array_box = array_box.merge(edge_inst.array_box)
+
+            if orient == 'R0':
+                ycur += master.array_box.top_unit
 
         # calculate substrate Y coordinates
-        imp_y, thres_y = end_row_master.sub_ysep
-        self._sub_bndy = (imp_y, y2 - imp_y), (thres_y, y2 - thres_y)
+        imp_yb, thres_yb = master_list[0].sub_ysep
+        imp_yt, thres_yt = master_list[2].sub_ysep
+        self._sub_bndy = (imp_yb, ycur - imp_yt), (thres_yb, ycur - thres_yt)
 
         # get left/right substrate coordinates
         tot_imp_box = BBox.get_invalid_bbox()
@@ -265,10 +295,8 @@ class SubstrateContact(TemplateBase):
             self._sub_bndx = tot_imp_box.left_unit, tot_imp_box.right_unit
 
         # set array box and size
-        arr_box = instlb.array_box.merge(instrt.array_box)
-        self.array_box = BBox(arr_box_x[0], arr_box.bottom_unit, arr_box_x[1], arr_box.top_unit,
-                              res, unit_mode=True)
-        bound_box = BBox(0, 0, tot_width, htot, res, unit_mode=True)
+        self.array_box = array_box
+        bound_box = BBox(0, 0, tot_width, inst.bound_box.top_unit, res, unit_mode=True)
         if self.grid.size_defined(top_layer):
             self.set_size_from_bound_box(top_layer, bound_box)
         else:
