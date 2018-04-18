@@ -353,6 +353,29 @@ class InstanceInfo(dict):
         # type: (Optional[Dict[str, Any]]) -> None
         self['params'] = new_params
 
+    @property
+    def angle_reflect(self):
+        # type: () -> Tuple[int, bool]
+        orient = self['orient']
+        if orient == 'R0':
+            return 0, False
+        elif orient == 'R180':
+            return 180, False
+        elif orient == 'MX':
+            return 0, True
+        elif orient == 'MY':
+            return 180, True
+        elif orient == 'R90':
+            return 90, False
+        elif orient == 'MXR90':
+            return 90, True
+        elif orient == 'MYR90':
+            return 270, True
+        elif orient == 'R270':
+            return 270, False
+        else:
+            raise ValueError('Unknown orientation: %s' % orient)
+
     def move_by(self, dx=0, dy=0):
         # type: (float, float) -> None
         """Move this instance by the given amount.
