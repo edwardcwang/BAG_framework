@@ -255,7 +255,7 @@ class InstanceInfo(dict):
     param_list = ['lib', 'cell', 'view', 'name', 'loc', 'orient', 'num_rows',
                   'num_cols', 'sp_rows', 'sp_cols']
 
-    def __init__(self, res, **kwargs):
+    def __init__(self, res, change_orient=True, **kwargs):
         kv_iter = ((key, kwargs[key]) for key in self.param_list)
         dict.__init__(self, kv_iter)
         self._resolution = res
@@ -264,28 +264,29 @@ class InstanceInfo(dict):
 
         # skill/OA array before rotation, while we're doing the opposite.
         # this is supposed to fix it.
-        orient = self['orient']
-        if orient == 'R180':
-            self['sp_rows'] *= -1
-            self['sp_cols'] *= -1
-        elif orient == 'MX':
-            self['sp_rows'] *= -1
-        elif orient == 'MY':
-            self['sp_cols'] *= -1
-        elif orient == 'R90':
-            self['sp_rows'], self['sp_cols'] = self['sp_col'], -self['sp_row']
-            self['num_rows'], self['num_cols'] = self['num_cols'], self['num_rows']
-        elif orient == 'MXR90':
-            self['sp_rows'], self['sp_cols'] = self['sp_col'], self['sp_row']
-            self['num_rows'], self['num_cols'] = self['num_cols'], self['num_rows']
-        elif orient == 'MYR90':
-            self['sp_rows'], self['sp_cols'] = -self['sp_col'], -self['sp_row']
-            self['num_rows'], self['num_cols'] = self['num_cols'], self['num_rows']
-        elif orient == 'R270':
-            self['sp_rows'], self['sp_cols'] = -self['sp_col'], self['sp_row']
-            self['num_rows'], self['num_cols'] = self['num_cols'], self['num_rows']
-        elif orient != 'R0':
-            raise ValueError('Unknown orientation: %s' % orient)
+        if change_orient:
+            orient = self['orient']
+            if orient == 'R180':
+                self['sp_rows'] *= -1
+                self['sp_cols'] *= -1
+            elif orient == 'MX':
+                self['sp_rows'] *= -1
+            elif orient == 'MY':
+                self['sp_cols'] *= -1
+            elif orient == 'R90':
+                self['sp_rows'], self['sp_cols'] = self['sp_col'], -self['sp_row']
+                self['num_rows'], self['num_cols'] = self['num_cols'], self['num_rows']
+            elif orient == 'MXR90':
+                self['sp_rows'], self['sp_cols'] = self['sp_col'], self['sp_row']
+                self['num_rows'], self['num_cols'] = self['num_cols'], self['num_rows']
+            elif orient == 'MYR90':
+                self['sp_rows'], self['sp_cols'] = -self['sp_col'], -self['sp_row']
+                self['num_rows'], self['num_cols'] = self['num_cols'], self['num_rows']
+            elif orient == 'R270':
+                self['sp_rows'], self['sp_cols'] = -self['sp_col'], self['sp_row']
+                self['num_rows'], self['num_cols'] = self['num_cols'], self['num_rows']
+            elif orient != 'R0':
+                raise ValueError('Unknown orientation: %s' % orient)
 
     @property
     def lib(self):
@@ -378,7 +379,7 @@ class InstanceInfo(dict):
 
     def copy(self):
         """Override copy method of dictionary to return an InstanceInfo instead."""
-        return InstanceInfo(self._resolution, **self)
+        return InstanceInfo(self._resolution, change_orient=False, **self)
 
     def move_by(self, dx=0, dy=0):
         # type: (float, float) -> None
