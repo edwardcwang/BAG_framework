@@ -569,8 +569,8 @@ class BagProject(object):
 
         return self.impl_db.get_cells_in_library(lib_name)
 
-    def make_template_db(self, impl_lib, grid_specs, use_cybagoa=False):
-        # type: (str, Dict[str, Any], bool) -> TemplateDB
+    def make_template_db(self, impl_lib, grid_specs, use_cybagoa=False, gds_lay_file=''):
+        # type: (str, Dict[str, Any], bool, str) -> TemplateDB
         """Create and return a new TemplateDB instance.
 
         Parameters
@@ -581,6 +581,8 @@ class BagProject(object):
             the routing grid specification dictionary.
         use_cybagoa : bool
             True to enable cybagoa acceleration if available.
+        gds_lay_file : str
+            the GDS layout information file.
         """
         layers = grid_specs['layers']
         widths = grid_specs['widths']
@@ -590,7 +592,8 @@ class BagProject(object):
 
         routing_grid = RoutingGrid(self.tech_info, layers, spaces, widths, bot_dir,
                                    width_override=width_override)
-        tdb = TemplateDB('template_libs.def', routing_grid, impl_lib, use_cybagoa=use_cybagoa)
+        tdb = TemplateDB('template_libs.def', routing_grid, impl_lib, use_cybagoa=use_cybagoa,
+                         gds_lay_file=gds_lay_file)
 
         return tdb
 
@@ -601,6 +604,7 @@ class BagProject(object):
                       gen_sch=False,  # type: bool
                       run_lvs=False,  # type: bool
                       use_cybagoa=False,  # type: bool
+                      gds_lay_file='',  # type: str
                       debug=False,  # type: bool
                       ):
         # type: (...) -> None
@@ -620,6 +624,8 @@ class BagProject(object):
             True to run LVS.
         use_cybagoa : bool
             True to enable cybagoa acceleration if available.
+        gds_lay_file : str
+            the GDS layout information file.
         debug : bool
             True to print debug messages.
         """
@@ -630,7 +636,8 @@ class BagProject(object):
         grid_specs = specs['routing_grid']
         params = specs['params']
 
-        temp_db = self.make_template_db(impl_lib, grid_specs, use_cybagoa=use_cybagoa)
+        temp_db = self.make_template_db(impl_lib, grid_specs, use_cybagoa=use_cybagoa,
+                                        gds_lay_file=gds_lay_file)
 
         name_list = [impl_cell]
         print('computing layout...')
