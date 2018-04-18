@@ -615,6 +615,8 @@ class BagProject(object):
             the specification dictionary.
         temp_cls : Type[TemplateType]
             the TemplateBase subclass to instantiate.
+        gen_lay : bool
+            True to generate layout.
         gen_sch : bool
             True to generate schematics.
         run_lvs : bool
@@ -638,11 +640,13 @@ class BagProject(object):
         name_list = [impl_cell]
         print('computing layout...')
         temp = temp_db.new_template(params=params, temp_cls=temp_cls, debug=debug)
+        print('computation done.')
         temp_list = [temp]
-        print('creating layout...')
-        temp_db.batch_layout(self, temp_list, name_list)
-        print('layout done.')
 
+        if gen_lay:
+            print('creating layout...')
+            temp_db.batch_layout(self, temp_list, name_list, debug=debug)
+            print('layout done.')
         if gen_sch:
             dsn = self.create_design_module(lib_name=sch_lib, cell_name=sch_cell)
             print('computing schematic...')
