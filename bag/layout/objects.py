@@ -376,6 +376,10 @@ class InstanceInfo(dict):
         else:
             raise ValueError('Unknown orientation: %s' % orient)
 
+    def copy(self):
+        """Override copy method of dictionary to return an InstanceInfo instead."""
+        return InstanceInfo(self._resolution, **self)
+
     def move_by(self, dx=0, dy=0):
         # type: (float, float) -> None
         """Move this instance by the given amount.
