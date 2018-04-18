@@ -314,6 +314,7 @@ class TemplateDB(MasterDB):
 
         out_fname = '%s.gds' % lib_name
         gds_lib = gdspy.GdsLibrary(name=lib_name)
+        cell_dict = gds_lib.cell_dict
         if debug:
             print('Instantiating layout')
 
@@ -322,6 +323,7 @@ class TemplateDB(MasterDB):
             (cell_name, inst_tot_list, rect_list, via_list, pin_list,
              path_list, blockage_list, boundary_list, polygon_list) = content
             gds_cell = gdspy.Cell(cell_name, exclude_from_current=True)
+            gds_lib.add(gds_cell)
 
             # add instances
             for inst_info in inst_tot_list:  # type: InstanceInfo
@@ -331,18 +333,18 @@ class TemplateDB(MasterDB):
                 num_cols = inst_info.num_cols
                 angle, reflect = inst_info.angle_reflect
                 if num_rows > 1 or num_cols > 1:
-                    cur_inst = gdspy.CellArray(inst_info.cell, num_cols, num_rows,
+                    cur_inst = gdspy.CellArray(cell_dict[inst_info.cell], num_cols, num_rows,
                                                (inst_info.sp_cols, inst_info.sp_rows),
                                                origin=inst_info.loc, rotation=angle,
                                                x_reflection=reflect)
                 else:
-                    cur_inst = gdspy.CellReference(inst_info.cell, origin=inst_info.loc,
+                    cur_inst = gdspy.CellReference(cell_dict[inst_info.cell], origin=inst_info.loc,
                                                    rotation=angle, x_reflection=reflect)
                 gds_cell.add(cur_inst)
 
             # add rectangles
             for rect in rect_list:
-                nx, ny = rect['arr_nx'], rect['arr_ny']
+                nx, ny = rect.get('arr_nx', 1), rect.get('arr_ny', 1)
                 (x0, y0), (x1, y1) = rect['bbox']
                 lay_id, purp_id = lay_map[tuple(rect['layer'])]
 
@@ -361,7 +363,7 @@ class TemplateDB(MasterDB):
 
             # add vias
             for via in via_list:  # type: ViaInfo
-                via_lay_info = via_info[via.id]
+                via_lay_info = via_info.get(via.id, None)
 
                 nx, ny = via.arr_nx, via.arr_ny
                 x0, y0 = via.loc
@@ -385,8 +387,8 @@ class TemplateDB(MasterDB):
                                                layer=lay_id, datatype=purp_id)
                     gds_cell.add(cur_rect)
                 angle = 90 if bbox.height_unit > bbox.width_unit else 0
-                cur_lbl = gdspy.Text(label, 12, (bbox.xc, bbox.yc), angle=angle,
-                                     layer=lay_id, datatype=purp_id)
+                cur_lbl = gdspy.Label(label, (bbox.xc, bbox.yc), rotation=angle,
+                                      layer=lay_id, texttype=purp_id)
                 gds_cell.add(cur_lbl)
 
             for path in path_list:
@@ -403,8 +405,6 @@ class TemplateDB(MasterDB):
                 cur_poly = gdspy.Polygon(polygon['points'], layer=lay_id, datatype=purp_id,
                                          verbose=False)
                 gds_cell.add(cur_poly.fracture(precision=res))
-
-            gds_lib.add(gds_cell)
 
         gds_lib.write_gds(out_fname, unit=lay_unit, precision=res * lay_unit)
         end = time.time()
