@@ -604,7 +604,6 @@ class BagProject(object):
                       gen_sch=False,  # type: bool
                       run_lvs=False,  # type: bool
                       use_cybagoa=False,  # type: bool
-                      gds_lay_file='',  # type: str
                       debug=False,  # type: bool
                       ):
         # type: (...) -> None
@@ -622,8 +621,6 @@ class BagProject(object):
             True to run LVS.
         use_cybagoa : bool
             True to enable cybagoa acceleration if available.
-        gds_lay_file : str
-            the GDS layout information file.
         debug : bool
             True to print debug messages.
         """
@@ -631,6 +628,7 @@ class BagProject(object):
         impl_cell = specs['impl_cell']
         sch_lib = specs['sch_lib']
         sch_cell = specs['sch_cell']
+        gds_lay_file = specs.get('gds_lay_file', '')
         grid_specs = specs['routing_grid']
         params = specs['params']
 
