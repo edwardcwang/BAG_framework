@@ -363,7 +363,7 @@ class TemplateDB(MasterDB):
 
             # add vias
             for via in via_list:  # type: ViaInfo
-                via_lay_info = via_info.get(via.id, None)
+                via_lay_info = via_info[via.id]
 
                 nx, ny = via.arr_nx, via.arr_ny
                 x0, y0 = via.loc
@@ -373,9 +373,9 @@ class TemplateDB(MasterDB):
                         xc = x0 + xidx * spx
                         for yidx in range(ny):
                             yc = y0 + yidx * spy
-                            self._add_gds_via(gds_cell, via, via_lay_info, xc, yc)
+                            self._add_gds_via(gds_cell, via, lay_map, via_lay_info, xc, yc)
                 else:
-                    self._add_gds_via(gds_cell, via, via_lay_info, x0, y0)
+                    self._add_gds_via(gds_cell, via, lay_map, via_lay_info, x0, y0)
 
             # add pins
             for pin in pin_list:  # type: PinInfo
@@ -411,8 +411,39 @@ class TemplateDB(MasterDB):
         if debug:
             print('layout instantiation took %.4g seconds' % (end - start))
 
-    def _add_gds_via(self, gds_cell, via, via_lay_info, x0, y0):
-        pass
+    def _add_gds_via(self, gds_cell, via, lay_map, via_lay_info, x0, y0):
+        blay, bpurp = lay_map[via_lay_info['bot_layer']]
+        tlay, tpurp = lay_map[via_lay_info['top_layer']]
+        vlay, vpurp = lay_map[via_lay_info['via_layer']]
+        cw, ch = via.cut_width, via.cut_height
+        if cw < 0:
+            cw = via_lay_info['cut_width']
+        if ch < 0:
+            ch = via_lay_info['cut_height']
+
+        num_cols, num_rows = via.num_cols, via.num_rows
+        sp_cols, sp_rows = via.sp_cols, via.sp_rows
+        w_arr = num_cols * cw + (num_cols - 1) * sp_cols
+        h_arr = num_rows * ch + (num_rows - 1) * sp_rows
+        x0 -= w_arr / 2
+        y0 -= h_arr / 2
+        bl, br, bt, bb = via.enc1
+        tl, tr, tt, tb = via.enc2
+        bot_p0, bot_p1 = (x0 - bl, y0 - bb), (x0 + w_arr + br, y0 + h_arr + bt)
+        top_p0, top_p1 = (x0 - tl, y0 - tb), (x0 + w_arr + tr, y0 + h_arr + tt)
+
+        cur_rect = gdspy.Rectangle(bot_p0, bot_p1, layer=blay, datatype=bpurp)
+        gds_cell.add(cur_rect)
+        cur_rect = gdspy.Rectangle(top_p0, top_p1, layer=tlay, datatype=tpurp)
+        gds_cell.add(cur_rect)
+
+        for xidx in range(num_cols):
+            dx = xidx * (cw + sp_cols)
+            for yidx in range(num_rows):
+                dy = yidx * (ch + sp_rows)
+                cur_rect = gdspy.Rectangle((x0 + dx, y0 + dy), (x0 + cw + dx, y0 + ch + dy),
+                                           layer=vlay, datatype=vpurp)
+                gds_cell.add(cur_rect)
 
 
 class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
