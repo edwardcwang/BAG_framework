@@ -600,13 +600,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # construct port objects
         for net_name, port_params in self._port_params.items():
             pin_dict = port_params['pins']
+            label = port_params['label']
             if port_params['show']:
                 label = port_params['label']
                 for wire_arr_list in pin_dict.values():
                     for wire_arr in wire_arr_list:  # type: WireArray
                         for layer_name, bbox in wire_arr.wire_iter(self.grid):
                             self._layout.add_pin(net_name, layer_name, bbox, label=label)
-            self._ports[net_name] = Port(net_name, pin_dict)
+            self._ports[net_name] = Port(net_name, pin_dict, label=label)
 
         # finalize layout
         self._layout.finalize()
@@ -784,8 +785,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self.template_db.new_template(params=new_params, temp_cls=self.__class__,
                                              grid=self.grid)
 
-    def set_size_from_bound_box(self, top_layer_id, bbox, round_up=False):
-        # type: (int, BBox, bool) -> None
+    def set_size_from_bound_box(self, top_layer_id, bbox, round_up=False,
+                                half_blk_x=True, half_blk_y=True):
+        # type: (int, BBox, bool, bool, bool) -> None
         """Compute the size from overall bounding box.
 
         Parameters
@@ -796,6 +798,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the overall bounding box
         round_up: bool
             True to round up bounding box if not quantized properly
+        half_blk_x : bool
+            True to allow half-block widths.
+        half_blk_y : bool
+            True to allow half-block heights.
         """
         grid = self.grid
 
@@ -803,7 +809,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             raise ValueError('lower-left corner of overall bounding box must be (0, 0).')
 
         self.size = grid.get_size_tuple(top_layer_id, bbox.width_unit, bbox.height_unit,
-                                        round_up=round_up, unit_mode=True)
+                                        round_up=round_up, unit_mode=True, half_blk_x=half_blk_x,
+                                        half_blk_y=half_blk_y)
 
     def set_size_from_array_box(self, top_layer_id):
         # type: (int) -> None
@@ -1239,7 +1246,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             True if fill_margin is given in resolution units.
         """
         net_name = net_name or port.net_name
-        label = label or net_name
+        label = label or port.label
 
         if net_name not in self._port_params:
             self._port_params[net_name] = dict(label=label, pins={}, show=show)

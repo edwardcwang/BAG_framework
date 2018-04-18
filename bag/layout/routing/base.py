@@ -450,9 +450,10 @@ class Port(object):
         a dictionary from layer ID to pin geometries on that layer.
     """
 
-    def __init__(self, term_name, pin_dict):
+    def __init__(self, term_name, pin_dict, label=''):
         self._term_name = term_name
         self._pin_dict = pin_dict
+        self._label = label or term_name
 
     def __iter__(self):
         """Iterate through all pin geometries in this port.
@@ -475,6 +476,11 @@ class Port(object):
     def net_name(self):
         """Returns the net name of this port."""
         return self._term_name
+
+    @property
+    def label(self):
+        """Returns the label of this port."""
+        return self._label
 
     def get_pins(self, layer=-1):
         """Returns the pin geometries on the given layer.
@@ -529,7 +535,7 @@ class Port(object):
         """
         new_pin_dict = {lay: [wa.transform(grid, loc=loc, orient=orient) for wa in wa_list]
                         for lay, wa_list in self._pin_dict.items()}
-        return Port(self.net_name, new_pin_dict)
+        return Port(self._term_name, new_pin_dict, label=self._label)
 
 
 class TrackManager(object):
