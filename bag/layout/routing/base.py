@@ -653,7 +653,7 @@ class TrackManager(object):
 
     @classmethod
     def _get_space_from_tuple(cls, layer_id, ntup, sp_dict):
-        if sp_dict is not None and ntup in sp_dict:
+        if sp_dict is not None:
             if ntup in sp_dict:
                 return sp_dict[ntup].get(layer_id, None)
             ntup = (ntup[1], ntup[0])
