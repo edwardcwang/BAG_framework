@@ -2015,9 +2015,6 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         track_buses : list[bag.layout.routing.WireArray]
             list of substrate tracks buses.
         """
-        if sup_tids is None:
-            sup_tids = [None] * len(sub_list)
-
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
 
         if sup_wires is not None and isinstance(sup_wires, WireArray):
@@ -2138,6 +2135,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         ntap_wire_arrs : List[WireArray]
             list of N-tap substrate WireArrays.
         """
+        if sup_tids is None:
+            sup_tids = [None, None]
+
         # invert PMOS/NMOS IntervalSet to get unconnected dummies
         total_intv = (0, self._fg_tot)
         p_intvs = [intv_set.get_complement(total_intv) for intv_set in self._p_intvs]
