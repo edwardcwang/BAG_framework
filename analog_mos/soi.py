@@ -473,6 +473,8 @@ class MOSTechSOIGenericBC(MOSTech):
                             ):
         # type: (...) -> None
 
+        stack = options.get('stack', 1)
+
         # note: ignore gate_ext_mode, min_ds_cap, is_diff
         if diode_conn:
             raise ValueError('Diode connection not supported yet.')
@@ -506,6 +508,11 @@ class MOSTechSOIGenericBC(MOSTech):
 
         g_drc_info = self.get_conn_drc_info(lch_unit, 'g')
 
+        if fg % stack != 0:
+            raise ValueError('AnalogMosConn: stack = %d must evenly divides fg = %d' % (stack, fg))
+
+        wire_pitch = stack * sd_pitch
+        num_seg = fg // stack
         width = fg * sd_pitch
 
         # draw OD
@@ -576,14 +583,14 @@ class MOSTechSOIGenericBC(MOSTech):
 
         # figure out gate location and number of gate wires
         if sdir == 0:
-            g_x0 = sd_pitch
+            g_x0 = wire_pitch
         elif ddir == 0:
             g_x0 = 0
         else:
-            g_x0 = 0 if gate_pref_loc == 's' else sd_pitch
+            g_x0 = 0 if gate_pref_loc == 's' else wire_pitch
 
-        num_s = fg // 2 + 1
-        num_d = (fg + 1) // 2
+        num_s = num_seg // 2 + 1
+        num_d = (num_seg + 1) // 2
         num_g = num_s if g_x0 == 0 else num_d
 
         # draw gate M1 to M2 vias
@@ -599,15 +606,15 @@ class MOSTechSOIGenericBC(MOSTech):
         enc2 = [via_enc2, via_enc2, via_enc_top2, via_enc_bot2]
         via_type = via_id_table[(m1_name, m2_name)]
         template.add_via_primitive(via_type, loc=[g_x0, via_yc - sd_yc], enc1=enc1, enc2=enc2,
-                                   cut_width=via_w, cut_height=via_h, nx=num_g, spx=2 * sd_pitch,
+                                   cut_width=via_w, cut_height=via_h, nx=num_g, spx=2 * wire_pitch,
                                    unit_mode=True)
         # draw gate vias to connection layer
-        self._draw_vertical_vias(template, lch_unit, g_x0, num_g, 2 * sd_pitch,
+        self._draw_vertical_vias(template, lch_unit, g_x0, num_g, 2 * wire_pitch,
                                  g_y_list[2][0] - sd_yc, g_y_list[2][1] - sd_yc, 2)
 
         # draw drain vias to connection layer
         d_yb, d_yt = d_y_list[-1]
-        self._draw_vertical_vias(template, lch_unit, 0, fg + 1, sd_pitch,
+        self._draw_vertical_vias(template, lch_unit, 0, num_seg + 1, wire_pitch,
                                  d_yb - sd_yc, d_yt - sd_yc, 0)
 
         # draw body vias to M1
@@ -632,11 +639,11 @@ class MOSTechSOIGenericBC(MOSTech):
         gtr0 = template.grid.coord_to_track(mos_conn_layer, g_x0, unit_mode=True)
         g_yb, g_yt = g_y_list[-1]
         g_warrs = self._get_wire_array(mos_conn_layer, gtr0, num_g, g_yb - sd_yc, g_yt - sd_yc,
-                                       pitch=2)
+                                       pitch=2 * stack)
         s_warrs = self._get_wire_array(mos_conn_layer, -0.5, num_s, d_yb - sd_yc, d_yt - sd_yc,
-                                       pitch=2)
-        d_warrs = self._get_wire_array(mos_conn_layer, 0.5, num_d, d_yb - sd_yc, d_yt - sd_yc,
-                                       pitch=2)
+                                       pitch=2 * stack)
+        d_warrs = self._get_wire_array(mos_conn_layer, stack - 0.5, num_d, d_yb - sd_yc,
+                                       d_yt - sd_yc, pitch=2 * stack)
 
         template.add_pin('g', g_warrs, show=False)
         template.add_pin('d', d_warrs, show=False)
