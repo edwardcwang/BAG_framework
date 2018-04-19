@@ -603,7 +603,7 @@ class BagProject(object):
                       gen_lay=True,  # type: bool
                       gen_sch=False,  # type: bool
                       run_lvs=False,  # type: bool
-                      use_cybagoa=False,  # type: bool
+                      use_cybagoa=True,  # type: bool
                       debug=False,  # type: bool
                       ):
         # type: (...) -> None
