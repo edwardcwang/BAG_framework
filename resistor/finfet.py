@@ -333,6 +333,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         if all these pass, return LR edge layout information dictionary.
         """
+        well_end_mode = options.get('well_end_mode', 3)
         edge_margin = self.res_config['edge_margin']
         po_lch = self.res_config['po_lch']
         po_pitch = self.res_config['po_pitch']
@@ -352,6 +353,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         core_top_od_loc = core_info['top_od_loc'][0]
         core_bot_od_loc = core_info['bot_od_loc'][0]
         core_fill_info = core_info['fill_info']
+        if well_end_mode & 2 == 0:
+            edge_margin = self.res_config.get('edge_margin_nowell', edge_margin)
 
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
 
@@ -446,6 +449,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         if all these pass, return TB edge layout information dictionary.
         """
+        well_end_mode = options.get('well_end_mode', 3)
+
         nfin_min, nfin_max = self.res_config['od_fill_h']
         po_od_exty = self.res_config['po_od_exty']
         edge_margin = self.res_config['edge_margin']
@@ -469,6 +474,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         core_tb_dum_w = core_info['tb_dum_w']
         core_lr_od_loc = core_info['lr_od_loc'][0]
         core_fill_info = core_info['fill_info']
+        if well_end_mode & 1 == 0:
+            edge_margin = self.res_config.get('edge_margin_nowell', edge_margin)
 
         wres, lres, wres_lr, lres_tb = self.get_res_dimension(l, w)
 
