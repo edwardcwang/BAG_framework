@@ -31,8 +31,15 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         self.mos_tech = tech_info.tech_params['layout']['mos_tech_class']  # type: MOSTech
 
     @abc.abstractmethod
-    def get_port_info(self, xc, yc, wres, port_yb, port_yt, resolution):
-        # type: (int, int, int, int, int, float) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]
+    def get_port_info(self,  # type: ResTechFinfetBase
+                      xc,  # type: int
+                      yc,  # type: int
+                      wres,  # type: int
+                      port_yb,  # type: int
+                      port_yt,  # type: int
+                      resolution,  # type: float
+                      ):
+        # type: (...) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]
         """Calculate port geometry information.
 
         Parameters
@@ -172,8 +179,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         od_sp = -(-(od_sp + fin_h) // fin_p)
         # compute OD Y coordinates for left/right edge.
         h_core_nfin = height // fin_p
-        core_lr_od_loc = fill_symmetric_max_density(h_core_nfin, h_core_nfin, nfin_min, nfin_max, od_sp,
-                                                    fill_on_edge=False, cyclic=True)[0]
+        core_lr_od_loc = fill_symmetric_max_density(h_core_nfin, h_core_nfin, nfin_min, nfin_max,
+                                                    od_sp, fill_on_edge=False, cyclic=True)[0]
         # compute OD Y coordinates for top/bottom edge.
         # compute fin offset for top edge dummies
         bnd_spy = (height - lres) // 2
@@ -211,10 +218,12 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         num_dummy_half = -(-len(core_tb_od_loc) // 2)
         # top dummy locations
         top_offset = pitch_index * fin_p + fin_p2
-        core_top_od_loc = self._compute_od_y_loc(core_tb_od_loc[:num_dummy_half], fin_p, fin_h, top_offset)
+        core_top_od_loc = self._compute_od_y_loc(core_tb_od_loc[:num_dummy_half], fin_p, fin_h,
+                                                 top_offset)
         core_top_po_bnd = (height - bnd_spy + po_res_spy, height + bnd_spy - po_res_spy)
         # bottom dummy locations
-        core_bot_od_loc = self._compute_od_y_loc(core_tb_od_loc[-num_dummy_half:], fin_p, fin_h, top_offset - height)
+        core_bot_od_loc = self._compute_od_y_loc(core_tb_od_loc[-num_dummy_half:], fin_p, fin_h,
+                                                 top_offset - height)
         core_bot_po_bnd = (-bnd_spy + po_res_spy, bnd_spy - po_res_spy)
 
         # fill layout info with dummy information
@@ -241,19 +250,21 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         bot_pitch = grid.get_track_pitch(bot_layer, unit_mode=True)
         bot_num_tr = height // bot_pitch
         # first, find port tracks such that the top track of this block and the bottom track of
-        # the top adjacent block is track_spaces[0] tracks apart.  the actual tracks cannot exceed these.
+        # the top adjacent block is track_spaces[0] tracks apart.
+        # the actual tracks cannot exceed these.
         top_tr_max = bot_num_tr - (track_widths[0] + track_spaces[0] + 1) / 2
         bot_tr_min = (track_widths[0] + track_spaces[0] + 1) / 2 - 1
         # find port tracks closest to ports
-        top_tr = min(top_tr_max, grid.coord_to_nearest_track(bot_layer, top_yc, half_track=True, mode=1,
-                                                             unit_mode=True))
-        bot_tr = max(bot_tr_min, grid.coord_to_nearest_track(bot_layer, bot_yc, half_track=True, mode=-1,
-                                                             unit_mode=True))
+        top_tr = min(top_tr_max, grid.coord_to_nearest_track(bot_layer, top_yc, half_track=True,
+                                                             mode=1, unit_mode=True))
+        bot_tr = max(bot_tr_min, grid.coord_to_nearest_track(bot_layer, bot_yc, half_track=True,
+                                                             mode=-1, unit_mode=True))
 
         # get port information
         port_info = []
         for port_name, yc, m2_tr in (('bot', bot_yc, bot_tr), ('top', top_yc, top_tr)):
-            port_yb, port_yt = grid.get_wire_bounds(bot_layer, m2_tr, track_widths[0], unit_mode=True)
+            port_yb, port_yt = grid.get_wire_bounds(bot_layer, m2_tr, track_widths[0],
+                                                    unit_mode=True)
             rect_list, via_list = self.get_port_info(xc, yc, wres, port_yb, port_yt, res)
             port_info.append((port_name, rect_list, via_list))
 
@@ -274,9 +285,11 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
                 bot_yb, bot_yt = bot_box.bottom_unit, bot_box.top_unit
                 top_yb, top_yt = top_box.bottom_unit, top_box.top_unit
                 # compute fill Y coordinates between ports inside the cell
-                core_mid_y = fill_symmetric_const_space(top_yb - bot_yt, sp_max, h, h, offset=bot_yt)
+                core_mid_y = fill_symmetric_const_space(top_yb - bot_yt, sp_max, h, h,
+                                                        offset=bot_yt)
                 # compute fill Y coordinates between ports outside the cell
-                core_top_y = fill_symmetric_const_space(bot_yb + height - top_yt, sp_max, h, h, offset=top_yt)
+                core_top_y = fill_symmetric_const_space(bot_yb + height - top_yt, sp_max, h, h,
+                                                        offset=top_yt)
                 # combine fill Y coordinates together in one list
                 fill_len2 = -(-len(core_top_y) // 2)
                 core_y = [(a - height, b - height) for (a, b) in core_top_y[-fill_len2:]]
@@ -358,7 +371,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         if wres_lr * lres > max_res_area:
             return None
 
-        # compute dummy number of fingers for left edge of LREdge block, and also the center X coordinate
+        # number of dummy fingers for left edge of LREdge, also the center X coordinate
         avail_sp_xl = edge_margin + imp_od_encx
         avail_sp_xr = wedge - spx - wres_lr - po_res_spx
         avail_sp = avail_sp_xr - avail_sp_xl
@@ -366,7 +379,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         edge_lr_dum_w = po_lch + (edge_lr_fg - 1) * po_pitch
         edge_lr_xc = avail_sp_xl + edge_lr_dum_w // 2
         edge_lr_dum_xl = avail_sp_xl
-        # compute dummy number of fingers for top/bottom edge of LREdge block, and also the center X coordinate
+        # number of dummy fingers for top/bottom edge of LREdge, also the center X coordinate
         avail_sp_xl = avail_sp_xl + edge_lr_dum_w + po_spx
         avail_sp_xr = wedge - core_lr_dum_w // 2 - po_spx
         edge_tb_xc = (avail_sp_xl + avail_sp_xr) // 2
@@ -378,7 +391,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         for od_w, yloc_list in ((edge_lr_dum_w, core_lr_od_loc), (edge_tb_dum_w, core_top_od_loc),
                                 (edge_tb_dum_w, core_bot_od_loc)):
             for yb, yt in yloc_list:
-                # we do not add OD with bottom Y coordinates less than 0, because of arraying over-counting issues
+                # we do not add OD with bottom Y coordinates less than 0,
+                # because of arraying over-counting issues
                 if yb >= 0:
                     od_area += od_w * (yt - yb)
         # check OD density rule
@@ -478,8 +492,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         top_dummy_bnd = hedge - spy - lres_tb - po_res_spy - po_od_exty
         top_pitch_index = (top_dummy_bnd - fin_p2 - fin_h2) // fin_p
         tot_space = top_pitch_index - bot_pitch_index + 1
-        edge_bot_od_loc = fill_symmetric_max_density(tot_space, tot_space, nfin_min, nfin_max, od_sp,
-                                                     fill_on_edge=True, cyclic=False)[0]
+        edge_bot_od_loc = fill_symmetric_max_density(tot_space, tot_space, nfin_min, nfin_max,
+                                                     od_sp, fill_on_edge=True, cyclic=False)[0]
         # compute fin 0 offset and convert fin location to Y coordinates
         fin_offset = bot_pitch_index * fin_p + fin_p2
         edge_bot_od_loc = self._compute_od_y_loc(edge_bot_od_loc, fin_p, fin_h, fin_offset)
@@ -506,7 +520,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
 
         # compute total OD area
         od_area = 0
-        for od_w, yloc_list in ((core_lr_dum_w + core_tb_dum_w, edge_bot_od_loc), (core_lr_dum_w, edge_lr_od_loc)):
+        for od_w, yloc_list in ((core_lr_dum_w + core_tb_dum_w, edge_bot_od_loc),
+                                (core_lr_dum_w, edge_lr_od_loc)):
             for yb, yt in yloc_list:
                 od_area += od_w * (yt - yb)
         # check OD density rule
@@ -578,7 +593,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
                     mp_xr = od_xr - po_lch // 2
                     mp_yb = od_yb + (od_h - mp_harr) // 2
                     mp_yt = mp_yb + mp_h_dum
-                    template.add_rect(mp_dum_lay, BBox(mp_xl, mp_yb, mp_xr, mp_yt, res, unit_mode=True),
+                    template.add_rect(mp_dum_lay, BBox(mp_xl, mp_yb, mp_xr, mp_yt, res,
+                                                       unit_mode=True),
                                       ny=num_mp, spy=mp_pitch * res)
         elif po_loc is not None:
             # draw dummy PO only
@@ -646,7 +662,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         # draw resistor
         rh_yb = yc - lres // 2
         rh_xl = xc - wres // 2
-        template.add_rect(res_lay, BBox(rh_xl, rh_yb, rh_xl + wres, rh_yb + lres, res, unit_mode=True))
+        template.add_rect(res_lay, BBox(rh_xl, rh_yb, rh_xl + wres, rh_yb + lres, res,
+                                        unit_mode=True))
 
         # draw vias and ports
         bot_layer = self.get_bot_layer()
@@ -741,7 +758,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             # draw RPDMY in left/right edge block
             rpdmy_yb = h_core // 2 - l // 2
             rpdmy_yt = rpdmy_yb + l
-            template.add_rect(rpdmy_lay, BBox(rh_xr, rpdmy_yb, w_edge, rpdmy_yt, res, unit_mode=True))
+            template.add_rect(rpdmy_lay, BBox(rh_xr, rpdmy_yb, w_edge, rpdmy_yt, res,
+                                              unit_mode=True))
             # set implant Y coordinates to 0
             imp_yb = rtop_yb = 0
             fb_yb = -fin_p2 - fin_h2
@@ -805,7 +823,8 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         template.add_cell_boundary(bnd_box)
 
         # draw metal fill
-        for (layer, exc_layer, _, _, _, _, _, _), fill_x, fill_y in zip(core_fill_info, fill_x_list, fill_y_list):
+        for (layer, exc_layer, _, _, _, _, _, _), fill_x, fill_y in zip(core_fill_info, fill_x_list,
+                                                                        fill_y_list):
             template.add_rect(exc_layer, bnd_box)
             for xl, xr in fill_x:
                 for yb, yt in fill_y:
