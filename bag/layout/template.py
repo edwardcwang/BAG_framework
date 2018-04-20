@@ -1696,9 +1696,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     fill_type='',  # type: str
                     unit_mode=False,  # type: bool
                     array=False,  # type: bool
+                    **kwargs,
                     ):
-        # type: (...) -> Dict[int, Tuple[List[WireArray], List[WireArray]]]
+        # type: (...) -> Any
         """Draw mom cap in the defined bounding box."""
+        return_rect = kwargs.get('return_cap_wires', False)
+
         if num_layer <= 1:
             raise ValueError('Must have at least 2 layers for MOM cap.')
 
@@ -1906,46 +1909,59 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             cap_wire_dict[cur_layer] = (lpar, lay_name_list, cur_rect_box, num_cap_wires, cap_pitch)
 
         # draw cap wires and connect to port
-        for cur_layer in range(bot_layer, top_layer):
-            cur_info = cap_wire_dict[cur_layer]
-            next_info = cap_wire_dict[cur_layer + 1]
-            cur_plist, cur_nlist = port_dict[cur_layer]
-            next_plist, next_nlist = port_dict[cur_layer + 1]
+        rect_list = []
+        for cur_layer in range(bot_layer, top_layer + 1):
+            cur_rect_list = []
+            lpar, lay_name_list, cap_base_box, num_cap_wires, cap_pitch = cap_wire_dict[cur_layer]
+            if cur_layer == bot_layer:
+                prev_plist = prev_nlist = None
+            else:
+                prev_plist, prev_nlist = port_dict[cur_layer - 1]
+            if cur_layer == top_layer:
+                next_plist = next_nlist = None
+            else:
+                next_plist, next_nlist = port_dict[cur_layer + 1]
+
             cur_dir = self.grid.get_direction(cur_layer)
             is_horizontal = (cur_dir == 'x')
+            next_dir = 'y' if is_horizontal else 'x'
+            num_lay_names = len(lay_name_list)
+            p_lists = (prev_plist, next_plist)
+            n_lists = (prev_nlist, next_nlist)
+            for idx in range(num_cap_wires):
+                # figure out the port wire to connect this cap wire to
+                if idx % 2 == 0 and lpar == 0 or idx % 2 == 1 and lpar == 1:
+                    ports_list = p_lists
+                else:
+                    ports_list = n_lists
 
-            # draw current cap wire and connect to next port, and
-            # draw next cap wire and connect to current port
-            for info, plist, nlist, go_up in [(cur_info, next_plist, next_nlist, True),
-                                              (next_info, cur_plist, cur_nlist, False)]:
-                lpar, lay_name_list, cap_base_box, num_cap_wires, cap_pitch = info
-                num_lay_names = len(lay_name_list)
-                for idx in range(num_cap_wires):
-                    # figure out the port wire to connect this cap wire to
-                    if idx % 2 == 0 and lpar == 0 or idx % 2 == 1 and lpar == 1:
-                        port_list = plist
-                    else:
-                        port_list = nlist
-                    port_warr = port_list[(idx // 2) % len(port_list)]
+                # draw the cap wire
+                cap_lay_name = lay_name_list[idx % num_lay_names]
+                if is_horizontal:
+                    cap_box = cap_base_box.move_by(dy=cap_pitch * idx, unit_mode=True)
+                else:
+                    cap_box = cap_base_box.move_by(dx=cap_pitch * idx, unit_mode=True)
+                rect = self.add_rect(cap_lay_name, cap_box)
+                cur_rect_list.append(rect)
 
-                    # draw the cap wire
-                    cap_lay_name = lay_name_list[idx % num_lay_names]
-                    if go_up and is_horizontal or not go_up and not is_horizontal:
-                        dx, dy = 0, cap_pitch * idx
-                    else:
-                        dx, dy = cap_pitch * idx, 0
-                    cap_box = cap_base_box.move_by(dx=dx, dy=dy, unit_mode=True)
-                    self.add_rect(cap_lay_name, cap_box)
-                    # connect cap wire to port
-                    port_lay_name = self.grid.get_layer_name(port_warr.layer_id,
-                                                             port_warr.track_id.base_index)
-                    vbox = cap_box.intersect(port_warr.get_bbox_array(self.grid).base)
-                    if go_up:
-                        self.add_via(vbox, cap_lay_name, port_lay_name, cur_dir)
-                    else:
-                        self.add_via(vbox, port_lay_name, cap_lay_name, cur_dir)
+                # connect cap wire to port
+                for pidx, port in enumerate(ports_list):
+                    if port is not None:
+                        port_warr = port[(idx // 2) % len(port)]
+                        port_lay_name = self.grid.get_layer_name(port_warr.layer_id,
+                                                                 port_warr.track_id.base_index)
+                        vbox = cap_box.intersect(port_warr.get_bbox_array(self.grid).base)
+                        if pidx == 1:
+                            self.add_via(vbox, cap_lay_name, port_lay_name, cur_dir)
+                        else:
+                            self.add_via(vbox, port_lay_name, cap_lay_name, next_dir)
 
-        return port_dict
+            rect_list.append(cur_rect_list)
+
+        if return_rect:
+            return port_dict, rect_list
+        else:
+            return port_dict
 
     def reserve_tracks(self,  # type: TemplateBase
                        layer_id,  # type: int
