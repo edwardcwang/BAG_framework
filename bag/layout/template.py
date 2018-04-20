@@ -1246,7 +1246,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             True if fill_margin is given in resolution units.
         """
         net_name = net_name or port.net_name
-        label = label or port.label
+        if not label:
+            if net_name != port.net_name:
+                label = net_name
+            else:
+                label = port.label
 
         if net_name not in self._port_params:
             self._port_params[net_name] = dict(label=label, pins={}, show=show)
