@@ -1291,7 +1291,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         vm_layer = hm_layer - 1
         num_master = len(pinfo_list)
         ext_options = dict(guard_ring_nf=guard_ring_nf)
-
+        vm_le_sp = grid.get_line_end_space(vm_layer, 1, unit_mode=True)
+        ytop_vm_prev = None
         ytop = ytop_prev = ycur = ybot
         row_y = []
         prev_ext_info = None
@@ -1325,6 +1326,11 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                             ycur = max(ycur, y_ttr + via_ext - yt)
                         ycur = -(-ycur // mos_pitch) * mos_pitch
 
+                # if previous row has top wires, make sure vm line-end spacing constraint is met
+                if ytop_vm_prev is not None:
+                    ycur = max(ycur, ytop_vm_prev + vm_le_sp - bot_conn_y[0])
+                    ycur = -(-ycur // mos_pitch) * mos_pitch
+
                 # make sure extension constraints is met
                 valid_widths = tcls.get_valid_extension_widths(lch_unit, ext_bot_info,
                                                                prev_ext_info)
@@ -1335,8 +1341,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
                 ycur = ytop_prev + ext_h * mos_pitch
 
-            # move top tracks and find top coordinate
+            # move top tracks and find top coordinate/top vm wire line-end coordinate
             ytop = ycur + blk_height
+            ytop_vm = None
             for wire_groups, tconn_y in [(wire_tree.get_wire_groups((idx, 2)), top_conn_y),
                                          (wire_tree.get_wire_groups((idx, 3)), top2_conn_y)]:
                 if wire_groups is not None:
@@ -1352,10 +1359,15 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                             wg.move_by(idx_targ - tr_idx, propagate=True)
                         # update ytop
                         _, last_idx, last_w = wg.last_track
+                        ytop_wire_cur = grid.get_wire_bounds(hm_layer, last_idx, width=last_w,
+                                                             unit_mode=True)[1]
+                        via_ext = grid.get_via_extensions(vm_layer, 1, last_w, unit_mode=True)[0]
+                        if ytop_vm is None:
+                            ytop_vm = ytop_wire_cur + via_ext
+                        else:
+                            ytop_vm = max(ytop_vm, ytop_wire_cur + via_ext)
                         if update_ytop:
-                            ytop = max(ytop, self.grid.get_wire_bounds(hm_layer, last_idx,
-                                                                       width=last_w,
-                                                                       unit_mode=True)[1])
+                            ytop = max(ytop, ytop_wire_cur)
                     ytop = -(-ytop // mos_pitch) * mos_pitch
 
             if idx == num_master - 1:
@@ -1395,6 +1407,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
             ytop_prev = ycur + blk_height
             ycur = ytop
+            ytop_vm_prev = ytop_vm
             prev_ext_info = ext_top_info
 
         # second pass: move tracks to minimize resistance
