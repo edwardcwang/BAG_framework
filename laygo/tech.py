@@ -452,7 +452,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         ext_groups = self.get_row_extension_info(bot_ext_list, top_ext_list)
         num_ext = len(ext_groups)
 
-        curx = laygo_info.col_to_coord(0, 's', unit_mode=True)
+        curx = laygo_info.col_to_coord(0, unit_mode=True)
         ext_edges = []
         for idx, (fg, bot_info, top_info) in enumerate(ext_groups):
             if w > 0 or self.draw_zero_extension():

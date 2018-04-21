@@ -276,7 +276,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                 raise ValueError('Cannot add primitive on row %d, '
                                  'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
 
-        x0 = self._laygo_info.col_to_coord(col_idx, 's', unit_mode=True)
+        x0 = self._laygo_info.col_to_coord(col_idx, unit_mode=True)
         if flip:
             x0 += master.digital_size[0]
 
@@ -422,7 +422,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                                                 'MX', 'XTSUB%d')):
             port_name = 'VSS' if m1.has_port('VSS') else 'VDD'
             for col_idx in range(0, num_col, 2):
-                xcur = laygo_info.col_to_coord(col_idx, 's', unit_mode=True)
+                xcur = laygo_info.col_to_coord(col_idx, unit_mode=True)
                 if col_idx in port_cols:
                     inst = self.add_instance(m1, inst_name=name % col_idx, loc=(xcur, y),
                                              orient=orient, unit_mode=True)

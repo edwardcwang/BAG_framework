@@ -343,40 +343,30 @@ class LaygoBaseInfo(object):
     def __getitem__(self, item):
         return self._config[item]
 
-    def col_to_coord(self, col_idx, ds_type, unit_mode=False):
+    def col_to_coord(self, col_idx, unit_mode=False):
         if self._edge_margins is None:
             raise ValueError('Edge margins is not defined.  Did you set number of columns?')
 
         ans = self._edge_margins[0] + self._edge_widths[0] + col_idx * self._col_width
-        if ds_type == 'd':
-            ans += self._col_width
 
         if unit_mode:
             return ans
         return ans * self.grid.resolution
 
-    def col_to_track(self, layer_id, col_idx, ds_type):
+    def col_to_track(self, layer_id, col_idx):
         # error checking
-        dig_top_layer = self._tech_cls.get_dig_top_layer()
-        if layer_id > dig_top_layer:
-            raise ValueError('col_to_track() only works on layer <= %d' % dig_top_layer)
         if self.grid.get_direction(layer_id) == 'x':
             raise ValueError('col_to_track() only works on vertical routing layers.')
 
-        coord = self.col_to_coord(col_idx, ds_type, unit_mode=True)
+        coord = self.col_to_coord(col_idx, unit_mode=True)
         return self.grid.coord_to_track(layer_id, coord, unit_mode=True)
 
-    def col_to_nearest_rel_track(self, layer_id, col_idx, ds_type, half_track=False, mode=0):
+    def col_to_nearest_rel_track(self, layer_id, col_idx, half_track=False, mode=0):
         # error checking
-        dig_top_layer = self._tech_cls.get_dig_top_layer()
-        if layer_id > dig_top_layer:
-            raise ValueError('col_to_nearest_rel_track() only works on layer <= %d' % dig_top_layer)
         if self.grid.get_direction(layer_id) == 'x':
             raise ValueError('col_to_nearest_rel_track() only works on vertical routing layers.')
 
         x_rel = col_idx * self._col_width
-        if ds_type == 'd':
-            x_rel += self._col_width // 2
 
         pitch = self.grid.get_track_pitch(layer_id, unit_mode=True)
         offset = pitch // 2
@@ -412,18 +402,13 @@ class LaygoBaseInfo(object):
         if not unit_mode:
             coord = int(round(coord / self.grid.resolution))
 
-        k = self._col_width // 2
+        col_width = self._col_width
         offset = self._edge_margins[0] + self._edge_widths[0]
-        if (coord - offset) % k != 0:
+        if (coord - offset) % col_width != 0:
             raise ValueError('Coordinate %d is not on pitch.' % coord)
-        col_idx_half = (coord - offset) // k
+        return (coord - offset) // col_width
 
-        if col_idx_half % 2 == 0:
-            return col_idx_half // 2, 's'
-        else:
-            return (col_idx_half - 1) // 2, 'd'
-
-    def coord_to_nearest_col(self, coord, ds_type=None, mode=0, unit_mode=False):
+    def coord_to_nearest_col(self, coord, mode=0, unit_mode=False):
         if self._edge_margins is None:
             raise ValueError('Edge margins is not defined.  Did you set number of columns?')
 
@@ -431,35 +416,24 @@ class LaygoBaseInfo(object):
             coord = int(round(coord / self.grid.resolution))
 
         col_width = self._col_width
-        col_width2 = col_width // 2
         offset = self._edge_margins[0] + self._edge_widths[0]
-        if ds_type == 'd':
-            offset += col_width2
-
-        if ds_type is None:
-            k = col_width2
-        else:
-            k = col_width
 
         coord -= offset
         if mode == 0:
-            n = int(round(coord / k))
+            n = int(round(coord / col_width))
         elif mode > 0:
-            if coord % k == 0 and mode == 2:
+            if coord % col_width == 0 and mode == 2:
                 coord += 1
-            n = -(-coord // k)
+            n = -(-coord // col_width)
         else:
-            if coord % k == 0 and mode == -2:
+            if coord % col_width == 0 and mode == -2:
                 coord -= 1
-            n = coord // k
+            n = coord // col_width
 
-        return self.coord_to_col(n * k + offset, unit_mode=True)
+        return n
 
-    def rel_track_to_nearest_col(self, layer_id, rel_tid, ds_type=None, mode=0):
+    def rel_track_to_nearest_col(self, layer_id, rel_tid, mode=0):
         # error checking
-        dig_top_layer = self._tech_cls.get_dig_top_layer()
-        if layer_id > dig_top_layer:
-            raise ValueError('rel_track_to_nearest_col() only works on layer <= %d' % dig_top_layer)
         if self.grid.get_direction(layer_id) == 'x':
             raise ValueError('rel_track_to_nearest_col() only works on vertical routing layers.')
 
@@ -467,36 +441,19 @@ class LaygoBaseInfo(object):
         x_rel = pitch // 2 + int(round(rel_tid * pitch))
 
         col_width = self.col_width
-        col_width2 = col_width // 2
-        offset = 0
-        if ds_type == 'd':
-            offset += col_width2
 
-        if ds_type is None:
-            k = col_width2
-        else:
-            k = col_width
-
-        x_rel -= offset
         if mode == 0:
-            n = int(round(x_rel / k))
+            n = int(round(x_rel / col_width))
         elif mode > 0:
-            if x_rel % k == 0 and mode == 2:
+            if x_rel % col_width == 0 and mode == 2:
                 x_rel += 1
-            n = -(-x_rel // k)
+            n = -(-x_rel // col_width)
         else:
-            if x_rel % k == 0 and mode == -2:
+            if x_rel % col_width == 0 and mode == -2:
                 x_rel -= 1
-            n = x_rel // k
+            n = x_rel // col_width
 
-        rel_coord = n * k + offset
-        k = col_width2
-        col_idx_half = rel_coord // k
-
-        if col_idx_half % 2 == 0:
-            return col_idx_half // 2, 's'
-        else:
-            return (col_idx_half - 1) // 2, 'd'
+        return n
 
 
 class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
@@ -515,6 +472,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         self._tech_cls = self._laygo_info.tech_cls
 
         # initialize attributes
+        self._tr_manager = None
         self._row_prop_list = None
         self._row_info_list = None
         self._laygo_size = None
@@ -640,7 +598,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                       guard_ring_nf=0, row_kwargs=None, num_col=None, row_sub_widths=None,
                       **kwargs):
 
-        tr_manager = kwargs.get('tr_manager', None)
+        self._tr_manager = kwargs.get('tr_manager', None)
         wire_names = kwargs.get('wire_names', None)
         min_height = kwargs.get('min_height', 0)
 
@@ -697,7 +655,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         tmp = self._get_place_info(row_types, row_widths, row_sub_widths, row_orientations,
                                    row_thresholds, row_min_tracks, row_kwargs, num_g_tracks,
-                                   num_gb_tracks, num_ds_tracks, tr_manager, wire_names)
+                                   num_gb_tracks, num_ds_tracks, self._tr_manager, wire_names)
         self._row_prop_list, self._row_info_list, pinfo_list, wire_tree = tmp
 
         self._ext_params = self._place_rows(ybot, tot_height_pitch, self._row_prop_list,
@@ -809,15 +767,15 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                         top_wires.append(WireGroup(hm_layer, 'ds', nds, space=le_sp_tr))
                 else:
                     wnames = wire_names[row_idx]
-                    if wnames['g']:
+                    if wnames.get('g', False):
                         bot_conn_y.append(g_conn_y)
                         bot_wires.append(WireGroup(hm_layer, 'g', tr_manager=tr_manager,
                                                    name_list=wnames['g']))
-                    if wnames['gb']:
+                    if wnames.get('gb', False):
                         top_conn_y.append(gb_conn_y)
                         top_wires.append(WireGroup(hm_layer, 'gb', tr_manager=tr_manager,
                                                    name_list=wnames['gb']))
-                    if wnames['ds']:
+                    if wnames.get('ds', False):
                         top_conn_y.append(ds_conn_y)
                         top_wires.append(WireGroup(hm_layer, 'ds', tr_manager=tr_manager,
                                                    name_list=wnames['ds']))
@@ -843,15 +801,15 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                         bot_wires.append(WireGroup(hm_layer, 'ds', nds, space=le_sp_tr))
                 else:
                     wnames = wire_names[row_idx]
-                    if wnames['g']:
+                    if wnames.get('g', False):
                         top_conn_y.append(g_conn_y)
                         top_wires.append(WireGroup(hm_layer, 'g', tr_manager=tr_manager,
                                                    name_list=wnames['g']))
-                    if wnames['gb']:
+                    if wnames.get('gb', False):
                         bot_conn_y.append(gb_conn_y)
                         bot_wires.append(WireGroup(hm_layer, 'gb', tr_manager=tr_manager,
                                                    name_list=wnames['gb']))
-                    if wnames['ds']:
+                    if wnames.get('ds', False):
                         bot_conn_y.append(ds_conn_y)
                         bot_wires.append(WireGroup(hm_layer, 'ds', tr_manager=tr_manager,
                                                    name_list=wnames['ds']))
@@ -1090,7 +1048,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             bot_wire_groups = wire_tree.get_wire_groups((idx, 0))
             top_wire_groups = wire_tree.get_wire_groups((idx, 1))
             if bot_wire_groups is not None:
-                for (_, yt), wg in zip(bot_conn_y, bot_wire_groups):
+                for (yb, yt), wg in zip(bot_conn_y, bot_wire_groups):
                     _, tr_idx, tr_w = wg.last_track
                     via_ext = self.grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
                     idx_max = self.grid.find_next_track(hm_layer, ycur + yt - via_ext,
@@ -1099,17 +1057,19 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                     if idx_max > tr_idx:
                         wg.move_up(idx_max - tr_idx)
 
-                    key = '%s_intv' % wg.type
-                    rinfo[key] = wg.interval
+                    rinfo['%s_intv' % wg.type] = wg.interval
+                    rinfo['%s_wires' % wg.type] = (wg.names, wg.locations)
 
             if top_wire_groups is not None:
                 for wg in top_wire_groups:
-                    key = '%s_intv' % wg.type
-                    rinfo[key] = wg.interval
+                    rinfo['%s_intv' % wg.type] = wg.interval
+                    rinfo['%s_wires' % wg.type] = (wg.names, wg.locations)
 
-            for key in ('g_intv', 'gb_intv', 'ds_intv'):
+            for wtype in ('g', 'gb', 'ds'):
+                key = '%s_intv' % wtype
                 if key not in rinfo:
                     rinfo[key] = (0, 0)
+                    rinfo['%s_wires' % wtype] = (None, None)
 
         return ext_params_list
 
@@ -1207,6 +1167,24 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             return intv[0] + tr_idx
         else:
             return intv[1] - 1 - tr_idx
+
+    def get_wire_id(self, row_idx, tr_type, wire_idx=0, wire_name=''):
+        # type: (int, str, int, str) -> TrackID
+        row_info = self._row_info_list[row_idx]
+        name_list, loc_list = row_info['%s_wires' % tr_type]
+        hm_layer = self.conn_layer + 1
+        if wire_name:
+            idx = -1
+            for j in range(wire_idx + 1):
+                idx = name_list.index(wire_name, idx + 1)
+            cur_name = wire_name
+            cur_loc = loc_list[idx]
+        else:
+            cur_name = name_list[wire_idx]
+            cur_loc = loc_list[wire_idx]
+
+        cur_width = self._tr_manager.get_width(hm_layer, cur_name)
+        return TrackID(hm_layer, cur_loc, width=cur_width)
 
     def get_track_interval(self, row_idx, tr_type):
         row_info = self._row_info_list[row_idx]
@@ -1384,9 +1362,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 if inst1 is not None:
                     if cur_name == 'g0' or cur_name == 'g1':
                         if num2 % 2 == 0 and cur_name == 'g0' or num2 % 2 == 1 and cur_name == 'g1':
-                            pins.extend(inst1.get_all_port_pins('g'))
+                            pins.extend(inst1.port_pins_iter('g'))
                     else:
-                        pins.extend(inst1.get_all_port_pins(cur_name))
+                        pins.extend(inst1.port_pins_iter(cur_name))
 
                 if pins:
                     ports[name] = WireArray.list_to_warr(pins)
@@ -1443,7 +1421,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 raise ValueError('Cannot add primitive on row %d, '
                                  'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
 
-        x0 = self._laygo_info.col_to_coord(col_idx, 's', unit_mode=True)
+        x0 = self._laygo_info.col_to_coord(col_idx, unit_mode=True)
         if flip:
             x0 += master.bound_box.width_unit
 
@@ -1519,7 +1497,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             raise ValueError('Cannot add space on row %d, '
                              'column [%d, %d)' % (row_idx, inst_intv[0], inst_intv[1]))
 
-        x0 = self._laygo_info.col_to_coord(col_idx, 's', unit_mode=True)
+        x0 = self._laygo_info.col_to_coord(col_idx, unit_mode=True)
         y0 = row_y[1] if row_orient == 'R0' else row_y[2]
         self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=row_orient,
                           unit_mode=True)
