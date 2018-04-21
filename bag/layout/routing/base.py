@@ -283,6 +283,9 @@ class WireArray(object):
         res = warr_list[0].resolution
         lower, upper = warr_list[0].lower_unit, warr_list[0].upper_unit
         tid_list = sorted(set((int(idx * 2) for warr in warr_list for idx in warr.track_id)))
+        if len(tid_list) < 2:
+            return WireArray(TrackID(layer, tid_list[0]), lower, upper,
+                             res=res, unit_mode=True)
         base_idx2 = tid_list[0]
         diff = tid_list[1] - tid_list[0]
         for idx in range(1, len(tid_list) - 1):
