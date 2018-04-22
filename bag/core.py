@@ -569,7 +569,7 @@ class BagProject(object):
 
         return self.impl_db.get_cells_in_library(lib_name)
 
-    def make_template_db(self, impl_lib, grid_specs, use_cybagoa=False, gds_lay_file=''):
+    def make_template_db(self, impl_lib, grid_specs, use_cybagoa=True, gds_lay_file=''):
         # type: (str, Dict[str, Any], bool, str) -> TemplateDB
         """Create and return a new TemplateDB instance.
 
