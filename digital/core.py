@@ -91,12 +91,32 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         self._endr_infos = None
 
     @property
+    def num_cols(self):
+        # type: () -> int
+        return self._dig_size[0]
+
+    @property
     def digital_size(self):
         return self._dig_size
 
     @property
     def laygo_info(self):
         return self._laygo_info
+
+    @property
+    def row_layout_info(self):
+        return dict(
+            config=self.params['config'],
+            top_layer=self._laygo_info.top_layer,
+            guard_ring_nf=self._laygo_info.guard_ring_nf,
+            draw_boundaries=self._laygo_info.draw_boundaries,
+            end_mode=self._laygo_info.end_mode,
+            row_prop_list=self._row_layout_info['row_prop_list'],
+            bot_sub_extw=self._row_layout_info['bot_sub_extw'],
+            top_sub_extw=self._row_layout_info['top_sub_extw'],
+            row_edge_infos=self._row_layout_info['row_edge_infos'],
+            ext_edge_infos=self._ext_edge_infos,
+        )
 
     def initialize(self, layout_info, num_rows, draw_boundaries, end_mode,
                    guard_ring_nf=0, num_col=None):
@@ -253,39 +273,49 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def add_digital_block(self, master, loc=(0, 0), flip=False, nx=1, spx=0):
         col_idx, row_idx = loc
-        if row_idx < 0 or row_idx >= self._num_rows:
+        num_inst_col, num_inst_row = master.digital_size
+        y0 = row_idx * self._row_height + self._ybot[1]
+        ext_info = master.get_ext_bot_info(), master.get_ext_top_info()
+        inst_endl_iter = master.get_left_edge_info()
+        inst_endr_iter = master.get_right_edge_info()
+        if row_idx % 2 == 0:
+            orient = 'MY' if flip else 'R0'
+            rbot, rtop = row_idx, row_idx + num_inst_row
+        else:
+            inst_endl_iter = reversed(inst_endl_iter)
+            inst_endr_iter = reversed(inst_endr_iter)
+            ext_info = ext_info[1], ext_info[0]
+            y0 += self._row_height
+            orient = 'R180' if flip else 'MX'
+            rbot, rtop = row_idx + 1 - num_inst_row, row_idx + 1
+
+        if rbot < 0 or rtop > self._num_rows:
             raise ValueError('Cannot add block at row %d' % row_idx)
 
         col_width = self._laygo_info.col_width
-
-        intv = self._used_list[row_idx]
-        inst_endl = master.get_left_edge_info()
-        inst_endr = master.get_right_edge_info()
-        if flip:
-            inst_endl, inst_endr = inst_endr, inst_endl
-
-        num_inst_col = master.laygo_size[0]
-        ext_info = master.get_ext_bot_info(), master.get_ext_top_info()
-        if row_idx % 2 == 1:
-            ext_info = ext_info[1], ext_info[0]
-
-        for inst_num in range(nx):
-            intv_offset = col_idx + spx * inst_num
-            inst_intv = intv_offset, intv_offset + num_inst_col
-            if not intv.add(inst_intv, ext_info, inst_endl, inst_endr):
-                raise ValueError('Cannot add primitive on row %d, '
-                                 'column [%d, %d).' % (row_idx, inst_intv[0], inst_intv[1]))
-
         x0 = self._laygo_info.col_to_coord(col_idx, unit_mode=True)
-        if flip:
-            x0 += master.digital_size[0]
 
-        y0 = row_idx * self._row_height + self._ybot[1]
-        if row_idx % 2 == 0:
-            orient = 'MY' if flip else 'R0'
-        else:
-            y0 += self._row_height
-            orient = 'R180' if flip else 'MX'
+        if flip:
+            x0 += num_inst_col
+            inst_endl_iter, inst_endr_iter = inst_endr_iter, inst_endl_iter
+
+        for yidx, inst_endl, inst_endr in zip(range(num_inst_row), inst_endl_iter, inst_endr_iter):
+            intv = self._used_list[rbot + yidx]
+            if yidx == 0:
+                if yidx == num_inst_row - 1:
+                    cur_ext_info = ext_info
+                else:
+                    cur_ext_info = ext_info[0], None
+            elif yidx == num_inst_row - 1:
+                cur_ext_info = None, ext_info[1]
+            else:
+                cur_ext_info = None, None
+            for inst_num in range(nx):
+                intv_offset = col_idx + spx * inst_num
+                inst_intv = intv_offset, intv_offset + num_inst_col
+                if not intv.add(inst_intv, cur_ext_info, inst_endl, inst_endr):
+                    raise ValueError('Cannot add block on row %d, column '
+                                     '[%d, %d).' % (rbot + yidx, inst_intv[0], inst_intv[1]))
 
         # convert horizontal pitch to resolution units
         spx *= col_width

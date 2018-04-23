@@ -488,7 +488,13 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
     @property
     def num_rows(self):
+        # type: () -> int
         return len(self._row_prop_list)
+
+    @property
+    def num_cols(self):
+        # type: () -> int
+        return self._laygo_size[0]
 
     @property
     def laygo_info(self):
@@ -498,6 +504,10 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
     @property
     def laygo_size(self):
         return self._laygo_size
+
+    @property
+    def digital_size(self):
+        return self._laygo_size[0], 1
 
     @property
     def conn_layer(self):
@@ -519,15 +529,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
     def tot_height(self):
         return self._row_prop_list[-1]['row_y'][3]
 
-    def _set_endlr_infos(self, num_rows):
-        default_end_info = self._tech_cls.get_default_end_info()
-        self._endl_infos = self.params['laygo_endl_infos']
-        if self._endl_infos is None:
-            self._endl_infos = [default_end_info] * num_rows
-        self._endr_infos = self.params['laygo_endr_infos']
-        if self._endr_infos is None:
-            self._endr_infos = [default_end_info] * num_rows
-
     @property
     def row_layout_info(self):
         if not self.finalized:
@@ -545,6 +546,15 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             row_edge_infos=self._get_row_edge_infos(),
             ext_edge_infos=self._ext_edge_infos,
         )
+
+    def _set_endlr_infos(self, num_rows):
+        default_end_info = self._tech_cls.get_default_end_info()
+        self._endl_infos = self.params['laygo_endl_infos']
+        if self._endl_infos is None:
+            self._endl_infos = [default_end_info] * num_rows
+        self._endr_infos = self.params['laygo_endr_infos']
+        if self._endr_infos is None:
+            self._endr_infos = [default_end_info] * num_rows
 
     def get_row_info(self, row_idx):
         # type : (int) -> Dict[str, Any]
@@ -1212,7 +1222,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             endl, endr = intv.get_end_info(num_col)
             endl_list.append(endl)
 
-        return endl_list
+        return [endl_list]
 
     def get_right_edge_info(self):
         endr_list = []
@@ -1221,7 +1231,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             endl, endr = intv.get_end_info(num_col)
             endr_list.append(endr)
 
-        return endr_list
+        return [endr_list]
 
     def _get_end_info_row(self, row_idx):
         num_col = self._laygo_size[0]
