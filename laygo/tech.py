@@ -453,8 +453,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         num_ext = len(ext_groups)
 
         ext_edges = []
-        for idx, (fg_off, fg, bot_info, top_info) in enumerate(ext_groups):
-            if w > 0 or self.draw_zero_extension():
+        if w > 0 or self.draw_zero_extension():
+            for idx, (fg_off, fg, bot_info, top_info) in enumerate(ext_groups):
                 ext_params = dict(
                     lch=lch,
                     w=w,

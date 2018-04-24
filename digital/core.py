@@ -305,11 +305,11 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                 if yidx == num_inst_row - 1:
                     cur_ext_info = ext_info
                 else:
-                    cur_ext_info = ext_info[0], None
+                    cur_ext_info = ext_info[0], [num_inst_col]
             elif yidx == num_inst_row - 1:
-                cur_ext_info = None, ext_info[1]
+                cur_ext_info = [num_inst_col], ext_info[1]
             else:
-                cur_ext_info = None, None
+                cur_ext_info = [num_inst_col], [num_inst_col]
             for inst_num in range(nx):
                 intv_offset = col_idx + spx * inst_num
                 inst_intv = intv_offset, intv_offset + num_inst_col
@@ -515,14 +515,18 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
 
             # add extension edge in digital block
             for y, orient, edge_params in self._ext_edge_infos:
-                tmp_copy = edge_params.copy()
                 if orient == 'R0':
-                    x = emargin_l
-                    tmp_copy['is_end'] = left_end
+                    if left_end:
+                        x = emargin_l
+                        tmp_copy = edge_params.copy()
+                        tmp_copy['is_end'] = True
+                        edge_infos.append((x, y, orient, tmp_copy))
                 else:
-                    x = xr - emargin_r
-                    tmp_copy['is_end'] = right_end
-                edge_infos.append((x, y, orient, tmp_copy))
+                    if right_end:
+                        x = xr - emargin_r
+                        tmp_copy = edge_params.copy()
+                        tmp_copy['is_end'] = True
+                        edge_infos.append((x, y, orient, tmp_copy))
 
             for ridx in range(self._num_rows):
                 endl_list, endr_list = self._get_end_info_row(ridx)
@@ -534,16 +538,22 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                     yoff = self._ybot[1] + (ridx + 1) * self._row_height
                 # add extension edges
                 for y, orient, ee_params in ext_edge_infos:
-                    tmp_copy = ee_params.copy()
                     if orient == 'R0':
-                        x = emargin_l
-                        tmp_copy['is_end'] = left_end
+                        if left_end:
+                            x = emargin_l
+                            tmp_copy = ee_params.copy()
+                            tmp_copy['is_end'] = True
+                            if yscale < 0:
+                                orient = self._flip_ud(orient)
+                            edge_infos.append((x, yscale * y + yoff, orient, tmp_copy))
                     else:
-                        x = xr - emargin_r
-                        tmp_copy['is_end'] = right_end
-                    if yscale < 0:
-                        orient = self._flip_ud(orient)
-                    edge_infos.append((x, yscale * y + yoff, orient, tmp_copy))
+                        if right_end:
+                            x = xr - emargin_r
+                            tmp_copy = ee_params.copy()
+                            tmp_copy['is_end'] = True
+                            if yscale < 0:
+                                orient = self._flip_ud(orient)
+                            edge_infos.append((x, yscale * y + yoff, orient, tmp_copy))
                 # add row edges
                 for (y, row_orient, re_params), endl, endr in zip(row_edge_infos, endl_list,
                                                                   endr_list):
@@ -552,19 +562,20 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                                                                 cur_row_info)
                     for x, is_end, flip_lr, end_flag in ((emargin_l, left_end, False, endl),
                                                          (xr - emargin_r, right_end, True, endr)):
-                        edge_params = re_params.copy()
-                        del edge_params['row_info']
-                        edge_params['is_end'] = is_end
-                        edge_params['name_id'] = cur_row_info['row_name_id']
-                        edge_params['layout_info'] = test_blk_info['layout_info']
-                        edge_params['adj_blk_info'] = end_flag
-                        if flip_lr:
-                            eorient = 'MY' if row_orient == 'R0' else 'R180'
-                        else:
-                            eorient = row_orient
-                        if yscale < 0:
-                            eorient = self._flip_ud(eorient)
-                        edge_infos.append((x, yscale * y + yoff, eorient, edge_params))
+                        if is_end:
+                            edge_params = re_params.copy()
+                            del edge_params['row_info']
+                            edge_params['is_end'] = True
+                            edge_params['name_id'] = cur_row_info['row_name_id']
+                            edge_params['layout_info'] = test_blk_info['layout_info']
+                            edge_params['adj_blk_info'] = end_flag
+                            if flip_lr:
+                                eorient = 'MY' if row_orient == 'R0' else 'R180'
+                            else:
+                                eorient = row_orient
+                            if yscale < 0:
+                                eorient = self._flip_ud(eorient)
+                            edge_infos.append((x, yscale * y + yoff, eorient, edge_params))
 
             yt = self.bound_box.top_unit
             tmp = tech_cls.draw_boundaries(self, laygo_info, num_col, yt, self._bot_end_master,
