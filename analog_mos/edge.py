@@ -291,11 +291,11 @@ class AnalogEdge(TemplateBase):
     def get_params_info(cls):
         # type: () -> Dict[str, str]
         return dict(
-            is_end='True if this edge is at the end.',
             guard_ring_nf='number of guard ring fingers.',
             adj_blk_info='data structure storing layout information of adjacent block.',
             name_id='cell name ID.',
             layout_info='the layout information dictionary.',
+            is_end='True if this edge is at the end.',
             is_laygo='True if this extension is used in LaygoBase.',
             tech_cls_name='Technology class name.',
         )
@@ -304,6 +304,7 @@ class AnalogEdge(TemplateBase):
     def get_default_param_values(cls):
         # type: () -> Dict[str, Any]
         return dict(
+            is_end=True,
             is_laygo=False,
             tech_cls_name=None,
         )
@@ -317,11 +318,11 @@ class AnalogEdge(TemplateBase):
         return base
 
     def draw_layout(self):
-        is_end = self.params['is_end']
         guard_ring_nf = self.params['guard_ring_nf']
-        layout_info = self.params['layout_info']
-        is_laygo = self.params['is_laygo']
         adj_blk_info = self.params['adj_blk_info']
+        layout_info = self.params['layout_info']
+        is_end = self.params['is_end']
+        is_laygo = self.params['is_laygo']
         tech_cls_name = self.params['tech_cls_name']
 
         if tech_cls_name is None:
