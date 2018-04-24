@@ -1204,18 +1204,11 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         hm_layer = self._tech_cls.get_dig_conn_layer() + 1
         return TrackID(hm_layer, tid, width=width, num=num, pitch=pitch)
 
-    def get_ext_bot_info(self):
-        return self._edge_infos[3]
-
-    def get_ext_top_info(self):
-        return self._edge_infos[2]
-
-    def _get_ext_info_row(self, row_idx, ext_idx):
-        intv = self._used_list[row_idx]
-        return [ext_info[ext_idx] for ext_info in intv.values()]
+    def get_tb_ext_info(self):
+        return self._edge_infos[2:4]
 
     def get_lr_edge_info(self):
-        return self._edge_infos[1], self._edge_infos[0]
+        return self._edge_infos[0:2]
 
     def _get_lr_edge_master_infos(self, end_mode):
         tcls = self._tech_cls
@@ -1226,9 +1219,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         edgel_infos, edger_infos = [], []
         # compute extension edge information
         if left_end:
-            edgel_infos.extend(self._edge_infos[1][0][0][1])
+            edgel_infos.extend(self._edge_infos[0][0][0][1])
         if right_end:
-            edger_infos.extend(self._edge_infos[0][0][0][1])
+            edger_infos.extend(self._edge_infos[1][0][0][1])
 
         # compute row edge information
         row_edge_infos = self._get_row_edge_infos()
@@ -1468,6 +1461,10 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         return self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=orient,
                                  nx=nx, spx=spx, unit_mode=True)
 
+    def _get_ext_info_row(self, row_idx, ext_idx):
+        intv = self._used_list[row_idx]
+        return [ext_info[ext_idx] for ext_info in intv.values()]
+
     def fill_space(self):
         if self._laygo_size is None:
             raise ValueError('laygo_size must be set before filling spaces.')
@@ -1502,8 +1499,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             endl_list.append(endl)
             endr_list.append(endr)
 
-        self._edge_infos = (([(endr_list, ext_endr_infos)], None),
-                            ([(endl_list, ext_endl_infos)], None),
+        self._edge_infos = (([(endl_list, ext_endl_infos)], None),
+                            ([(endr_list, ext_endr_infos)], None),
                             self._get_ext_info_row(self.num_rows - 1, 1),
                             self._get_ext_info_row(0, 0),
                             )
