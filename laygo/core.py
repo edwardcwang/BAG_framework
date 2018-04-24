@@ -473,6 +473,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         # initialize attributes
         self._tr_manager = None
+        self._row_layout_info = None
         self._row_prop_list = None
         self._row_info_list = None
         self._laygo_size = None
@@ -531,10 +532,27 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
     @property
     def row_layout_info(self):
-        if not self.finalized:
-            raise ValueError('Can only compute digital row info if this block is finalized.')
+        return self._row_layout_info
 
-        return dict(
+    def _set_row_layout_info(self):
+        top_layer = self._laygo_info.top_layer
+        guard_ring_nf = self._laygo_info.guard_ring_nf
+
+        row_edge_infos = []
+        for ridx, (rinfo, rprop) in enumerate(zip(self._row_info_list, self._row_prop_list)):
+            orient = rprop['orient']
+            row_y = rprop['row_y']
+            y = row_y[1] if orient == 'R0' else row_y[2]
+
+            row_edge_params = dict(
+                top_layer=top_layer,
+                guard_ring_nf=guard_ring_nf,
+                row_info=rinfo,
+                is_laygo=True,
+            )
+            row_edge_infos.append((y, orient, row_edge_params))
+
+        self._row_layout_info = dict(
             config=self.params['config'],
             top_layer=self._laygo_info.top_layer,
             guard_ring_nf=self._laygo_info.guard_ring_nf,
@@ -543,7 +561,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             row_prop_list=self._row_prop_list,
             bot_sub_extw=self._bot_sub_extw,
             top_sub_extw=self._top_sub_extw,
-            row_edge_infos=self._get_row_edge_infos(),
+            row_edge_infos=row_edge_infos,
         )
 
     def _set_endlr_infos(self, num_rows):
@@ -554,11 +572,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         self._endr_infos = self.params['laygo_endr_infos']
         if self._endr_infos is None:
             self._endr_infos = [default_end_info] * num_rows
-
-    def get_row_info(self, row_idx):
-        # type : (int) -> Dict[str, Any]
-        """Returns the row layout information dictionary."""
-        return self._row_info_list[row_idx]
 
     def set_rows_direct(self, layout_info, num_col=None, end_mode=None):
         default_end_info = self._tech_cls.get_default_end_info()
@@ -600,6 +613,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         # compute laygo size if we know the number of columns
         if num_col is not None:
             self.set_laygo_size(num_col)
+        self._set_row_layout_info()
 
     def set_row_types(self, row_types, row_widths, row_orientations, row_thresholds,
                       draw_boundaries, end_mode, num_g_tracks=None, num_gb_tracks=None,
@@ -673,6 +687,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         # compute laygo size if we know the number of columns
         if num_col is not None:
             self.set_laygo_size(num_col)
+        self._set_row_layout_info()
 
     def _create_end_masters(self, end_mode, bot_row_type, top_row_type, bot_row_thres,
                             top_row_thres, top_layer, min_height):
@@ -1155,6 +1170,11 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         return ext_params_list, rinfo_list
 
+    def get_row_info(self, row_idx):
+        # type : (int) -> Dict[str, Any]
+        """Returns the row layout information dictionary."""
+        return self._row_info_list[row_idx]
+
     def get_num_tracks(self, row_idx, tr_type):
         row_info = self._row_info_list[row_idx]
         intv = row_info['%s_intv' % tr_type]
@@ -1209,46 +1229,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def get_lr_edge_info(self):
         return self._edge_infos[0:2]
-
-    def _get_lr_edge_master_infos(self, end_mode):
-        tcls = self._tech_cls
-
-        left_end = (end_mode & 4) != 0
-        right_end = (end_mode & 8) != 0
-
-        edgel_infos, edger_infos = [], []
-        # compute extension edge information
-        if left_end:
-            edgel_infos.extend(self._edge_infos[0][0][0][1])
-        if right_end:
-            edger_infos.extend(self._edge_infos[1][0][0][1])
-
-        # compute row edge information
-        row_edge_infos = self._get_row_edge_infos()
-        for ridx, (y, orient, re_params) in enumerate(row_edge_infos):
-            cur_row_info = re_params['row_info']
-            test_blk_info = tcls.get_laygo_blk_info('fg2d', cur_row_info['w_max'], cur_row_info)
-
-            endl, endr = self._get_end_info_row(ridx)
-            if left_end:
-                edge_params = re_params.copy()
-                edge_params['name_id'] = cur_row_info['row_name_id']
-                edge_params['layout_info'] = test_blk_info['layout_info']
-                edge_params['adj_blk_info'] = endl
-                edgel_infos.append((y, orient, edge_params))
-            if right_end:
-                edge_params = re_params.copy()
-                edge_params['name_id'] = cur_row_info['row_name_id']
-                edge_params['layout_info'] = test_blk_info['layout_info']
-                edge_params['adj_blk_info'] = endr
-                edger_infos.append((y, 'MY' if orient == 'R0' else 'R180', edge_params))
-
-        return edgel_infos, edger_infos
-
-    def _get_end_info_row(self, row_idx):
-        num_col = self._laygo_size[0]
-        endl, endr = self._used_list[row_idx].get_end_info(num_col)
-        return endl, endr
 
     def set_laygo_size(self, num_col=None):
         if self._laygo_size is None:
@@ -1476,7 +1456,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 enumerate(zip(self._used_list, self._endl_infos, self._endr_infos)):
             for (start, end), end_info in zip(*intv.get_complement(total_intv, endl_info,
                                                                    endr_info)):
-                self.add_laygo_space(end_info, num_blk=end - start, loc=(start, row_idx))
+                self._add_laygo_space(end_info, num_blk=end - start, loc=(start, row_idx))
 
         # draw extensions
         ext_endl_infos, ext_endr_infos = [], []
@@ -1508,7 +1488,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         # draw boundaries and return guard ring supplies in boundary cells
         return self._draw_boundary_cells()
 
-    def add_laygo_space(self, adj_end_info, num_blk=1, loc=(0, 0), **kwargs):
+    def _add_laygo_space(self, adj_end_info, num_blk=1, loc=(0, 0), **kwargs):
         col_idx, row_idx = loc
         row_info = self._row_info_list[row_idx]
         rprop = self._row_prop_list[row_idx]
@@ -1544,25 +1524,41 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=row_orient,
                           unit_mode=True)
 
-    def _get_row_edge_infos(self):
-        top_layer = self._laygo_info.top_layer
-        guard_ring_nf = self._laygo_info.guard_ring_nf
+    def _get_lr_edge_master_infos(self, end_mode):
+        tcls = self._tech_cls
 
-        row_edge_infos = []
-        for ridx, (rinfo, rprop) in enumerate(zip(self._row_info_list, self._row_prop_list)):
-            orient = rprop['orient']
-            row_y = rprop['row_y']
-            y = row_y[1] if orient == 'R0' else row_y[2]
+        left_end = (end_mode & 4) != 0
+        right_end = (end_mode & 8) != 0
 
-            row_edge_params = dict(
-                top_layer=top_layer,
-                guard_ring_nf=guard_ring_nf,
-                row_info=rinfo,
-                is_laygo=True,
-            )
-            row_edge_infos.append((y, orient, row_edge_params))
+        edgel_infos, edger_infos = [], []
+        # compute extension edge information
+        if left_end:
+            edgel_infos.extend(self._edge_infos[0][0][0][1])
+        if right_end:
+            edger_infos.extend(self._edge_infos[1][0][0][1])
 
-        return row_edge_infos
+        # compute row edge information
+        num_col = self._laygo_size[0]
+        row_edge_infos = self._row_layout_info['row_edge_infos']
+        for intv, (y, orient, re_params) in zip(self._used_list, row_edge_infos):
+            cur_row_info = re_params['row_info']
+            test_blk_info = tcls.get_laygo_blk_info('fg2d', cur_row_info['w_max'], cur_row_info)
+
+            endl, endr = intv.get_end_info(num_col)
+            if left_end:
+                edge_params = re_params.copy()
+                edge_params['name_id'] = cur_row_info['row_name_id']
+                edge_params['layout_info'] = test_blk_info['layout_info']
+                edge_params['adj_blk_info'] = endl
+                edgel_infos.append((y, orient, edge_params))
+            if right_end:
+                edge_params = re_params.copy()
+                edge_params['name_id'] = cur_row_info['row_name_id']
+                edge_params['layout_info'] = test_blk_info['layout_info']
+                edge_params['adj_blk_info'] = endr
+                edger_infos.append((y, 'MY' if orient == 'R0' else 'R180', edge_params))
+
+        return edgel_infos, edger_infos
 
     def _draw_boundary_cells(self):
         if self._laygo_info.draw_boundaries:
