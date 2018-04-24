@@ -58,7 +58,7 @@ class AnalogBaseInfo(object):
     def __init__(self, grid, lch, guard_ring_nf, top_layer=None, end_mode=15, min_fg_sep=0,
                  fg_tot=None, **kwargs):
         # type: (RoutingGrid, float, int, Optional[int], int, int, Optional[int], **kwargs) -> None
-        tech_cls_name = kwargs.get('tech_cls_name', 'mos_tech_class')
+        tech_cls_name = kwargs.get('tech_cls_name', None)
         if tech_cls_name is None:
             self._tech_cls = grid.tech_info.tech_params['layout']['mos_tech_class']
         else:

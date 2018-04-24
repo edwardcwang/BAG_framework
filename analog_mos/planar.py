@@ -1405,9 +1405,6 @@ class MOSTechPlanarGeneric(MOSTech):
                                  mbot_yt=od_yt)
 
         # add pins
-        if gate_tracks == [-0.5, 0.5, 1.5]:
-            import pdb
-            pdb.set_trace()
         template.add_pin('dummy', dum_warrs, show=False)
 
     def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate,
