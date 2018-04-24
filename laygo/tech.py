@@ -421,7 +421,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                         bot_ext_list,  # type: List[Tuple[int, Any]]
                         top_ext_list,  # type: List[Tuple[int, Any]]
                         ):
-        # type: (...) -> Any
+        # type: (...) -> Tuple[Any, Any]
         """Draw extension rows in the given LaygoBase/DigitalBase template.
 
         Parameters
@@ -441,10 +441,10 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        edgesl : List[Tuple[int, str, Dict[str, Any]]]
-            a list of Y coordinate, orientation, and parameters for left edge blocks.
-        edgesr : List[Tuple[int, str, Dict[str, Any]]]
-            a list of Y coordinate, orientation, and parameters for right edge blocks.
+        edgesl : Optional[Tuple[int, str, Dict[str, Any]]]
+            a tuple of Y coordinate, orientation, and parameters for left edge.
+        edgesr : Optional[Tuple[int, str, Dict[str, Any]]]
+            a tuple of Y coordinate, orientation, and parameters for right edge.
         """
         lch = laygo_info.lch
         top_layer = laygo_info.top_layer
@@ -453,7 +453,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         ext_groups = self.get_row_extension_info(bot_ext_list, top_ext_list)
         num_ext = len(ext_groups)
 
-        edgesl, edgesr = [], []
+        edgesl, edgesr = None, None
         if w > 0 or self.draw_zero_extension():
             for idx, (fg_off, fg, bot_info, top_info) in enumerate(ext_groups):
                 ext_params = dict(
@@ -479,8 +479,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                         adj_blk_info=adj_blk_info,
                         is_laygo=True,
                     )
-                    edge_orient = 'R0'
-                    edgesl.append((yext, edge_orient, cur_ext_edge_params))
+                    edgesl = (yext, 'R0', cur_ext_edge_params)
                 if idx == num_ext - 1:
                     adj_blk_info = ext_master.get_right_edge_info()
                     # compute edge parameters
@@ -492,8 +491,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                         adj_blk_info=adj_blk_info,
                         is_laygo=True,
                     )
-                    edge_orient = 'MY'
-                    edgesr.append((yext, edge_orient, cur_ext_edge_params))
+                    edgesr = (yext, 'MY', cur_ext_edge_params)
 
         return edgesl, edgesr
 

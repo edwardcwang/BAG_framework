@@ -480,8 +480,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         self._used_list = None  # type: List[LaygoIntvSet]
         self._bot_end_master = None
         self._top_end_master = None
-        self._ext_edgel_infos = None
-        self._ext_edger_infos = None
+        self._edge_infos = None
         self._bot_sub_extw = 0
         self._top_sub_extw = 0
         self._endl_infos = None
@@ -545,8 +544,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             bot_sub_extw=self._bot_sub_extw,
             top_sub_extw=self._top_sub_extw,
             row_edge_infos=self._get_row_edge_infos(),
-            ext_edgel_infos=self._ext_edgel_infos,
-            ext_edger_infos=self._ext_edger_infos,
         )
 
     def _set_endlr_infos(self, num_rows):
@@ -1208,25 +1205,17 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         return TrackID(hm_layer, tid, width=width, num=num, pitch=pitch)
 
     def get_ext_bot_info(self):
-        return self._get_ext_info_row(0, 0)
+        return self._edge_infos[3]
 
     def get_ext_top_info(self):
-        return self._get_ext_info_row(self.num_rows - 1, 1)
+        return self._edge_infos[2]
 
     def _get_ext_info_row(self, row_idx, ext_idx):
         intv = self._used_list[row_idx]
         return [ext_info[ext_idx] for ext_info in intv.values()]
 
     def get_lr_edge_info(self):
-        endl_list, endr_list = [], []
-        num_col = self._laygo_size[0]
-        for intv in self._used_list:
-            endl, endr = intv.get_end_info(num_col)
-            endl_list.append(endl)
-            endr_list.append(endr)
-
-        edgel_infos, edger_infos = self._get_lr_edge_master_infos(12)
-        return [(endl_list, edgel_infos)], [(endr_list, edger_infos)]
+        return self._edge_infos[1], self._edge_infos[0]
 
     def _get_lr_edge_master_infos(self, end_mode):
         tcls = self._tech_cls
@@ -1237,9 +1226,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         edgel_infos, edger_infos = [], []
         # compute extension edge information
         if left_end:
-            edgel_infos.extend(self._ext_edgel_infos)
+            edgel_infos.extend(self._edge_infos[1][0][0][1])
         if right_end:
-            edger_infos.extend(self._ext_edger_infos)
+            edger_infos.extend(self._edge_infos[0][0][0][1])
 
         # compute row edge information
         row_edge_infos = self._get_row_edge_infos()
@@ -1493,17 +1482,31 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 self.add_laygo_space(end_info, num_blk=end - start, loc=(start, row_idx))
 
         # draw extensions
-        self._ext_edgel_infos, self._ext_edger_infos = [], []
+        ext_endl_infos, ext_endr_infos = [], []
         laygo_info = self._laygo_info
         tech_cls = laygo_info.tech_cls
         for bot_ridx in range(0, self.num_rows - 1):
             w, yext = self._ext_params[bot_ridx + 1]
             bot_ext_list = self._get_ext_info_row(bot_ridx, 1)
             top_ext_list = self._get_ext_info_row(bot_ridx + 1, 0)
-            edgels, edgers = tech_cls.draw_extensions(self, laygo_info, w, yext,
-                                                      bot_ext_list, top_ext_list)
-            self._ext_edgel_infos.extend(edgels)
-            self._ext_edger_infos.extend(edgers)
+            edgel, edger = tech_cls.draw_extensions(self, laygo_info, w, yext,
+                                                    bot_ext_list, top_ext_list)
+            ext_endl_infos.append(edgel)
+            ext_endr_infos.append(edger)
+
+        # set edge information
+        endl_list, endr_list = [], []
+        num_col = self._laygo_size[0]
+        for intv in self._used_list:
+            endl, endr = intv.get_end_info(num_col)
+            endl_list.append(endl)
+            endr_list.append(endr)
+
+        self._edge_infos = (([(endr_list, ext_endr_infos)], None),
+                            ([(endl_list, ext_endl_infos)], None),
+                            self._get_ext_info_row(self.num_rows - 1, 1),
+                            self._get_ext_info_row(0, 0),
+                            )
 
         # draw boundaries and return guard ring supplies in boundary cells
         return self._draw_boundary_cells()
