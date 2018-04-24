@@ -657,6 +657,7 @@ class MOSTechPlanarGeneric(MOSTech):
         sd_pitch = mos_constants['sd_pitch']
         sub_m1_enc_le = mos_constants['sub_m1_enc_le']
         sub_m1_extx = mos_constants['sub_m1_extx']
+        draw_sub_od = mos_constants.get('draw_sub_od', True)
 
         layout_unit = self.config['layout_unit']
         res = self.res
@@ -730,7 +731,7 @@ class MOSTechPlanarGeneric(MOSTech):
             sd_pitch=sd_pitch,
             fg=fg,
             arr_y=(0, blk_yt),
-            draw_od=True,
+            draw_od=draw_sub_od,
             row_info_list=[RowInfo(od_x=(0, fg),
                                    od_y=(od_yb, od_yt),
                                    od_type=('sub', sub_type),
@@ -1206,6 +1207,7 @@ class MOSTechPlanarGeneric(MOSTech):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         via_info = mos_constants['d_via']
+        draw_sub_od = mos_constants.get('draw_sub_od', True)
 
         dum_conn_layer = self.get_dum_conn_layer()
         mos_conn_layer = self.get_mos_conn_layer()
@@ -1233,10 +1235,16 @@ class MOSTechPlanarGeneric(MOSTech):
                 # we need to make sure substrate vias abut with top and bottom row
                 via_yb, via_yt = mx_yb, mx_yt
                 via_abut = True
+            if draw_sub_od:
+                start_layer = 0
+                mbot_yb, mbot_yt = od_yb, od_yt
+            else:
+                start_layer = 1
+                mbot_yb, mbot_yt = m1_yb, m1_yt
             via_drawn = self._draw_vertical_vias(template, lch_unit, x0, num_via, sd_pitch, via_yb,
-                                                 via_yt, 0, drc_info, via_info, top_layer=top_layer,
-                                                 via_abut=via_abut, is_sub=True, mbot_yb=od_yb,
-                                                 mbot_yt=od_yt)
+                                                 via_yt, start_layer, drc_info, via_info,
+                                                 top_layer=top_layer, via_abut=via_abut,
+                                                 is_sub=True, mbot_yb=mbot_yb, mbot_yt=mbot_yt)
 
             # add pins if vias are drawn
             if via_drawn:
