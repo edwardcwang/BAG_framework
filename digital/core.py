@@ -115,11 +115,11 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             bot_sub_extw=self._row_layout_info['bot_sub_extw'],
             top_sub_extw=self._row_layout_info['top_sub_extw'],
             row_edge_infos=self._row_layout_info['row_edge_infos'],
-            ext_edge_infos=self._ext_edge_infos,
+            ext_edge_infos=self._row_layout_info['ext_edge_infos'],
         )
 
-    def initialize(self, layout_info, num_rows, draw_boundaries, end_mode,
-                   guard_ring_nf=0, num_col=None):
+    def initialize(self, layout_info, num_rows, num_cols=None, draw_boundaries=False, end_mode=0,
+                   guard_ring_nf=0):
 
         bot_sub_extw = layout_info['bot_sub_extw']
         top_sub_extw = layout_info['top_sub_extw']
@@ -133,7 +133,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         self._laygo_info.guard_ring_nf = guard_ring_nf
         self._laygo_info.draw_boundaries = draw_boundaries
         self._laygo_info.end_mode = end_mode
-        self._laygo_info.set_num_col(num_col)
+        self._laygo_info.set_num_col(num_cols)
 
         self.grid = self._laygo_info.grid
         self._row_layout_info = layout_info
@@ -248,18 +248,18 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             self._ext_params.append((row_idx + 1, w * 2, ycur - w * mos_pitch))
             ycur += self._row_height
 
-        if num_col is not None:
-            self.set_digital_size(num_col=num_col)
+        if num_cols is not None:
+            self.set_digital_size(num_cols=num_cols)
 
-    def set_digital_size(self, num_col=None):
+    def set_digital_size(self, num_cols=None):
         if self._dig_size is None:
-            if num_col is None:
-                num_col = 0
+            if num_cols is None:
+                num_cols = 0
                 for intv in self._used_list:
-                    num_col = max(num_col, intv.get_end())
+                    num_cols = max(num_cols, intv.get_end())
 
-            self._laygo_info.set_num_col(num_col)
-            self._dig_size = num_col, self._num_rows
+            self._laygo_info.set_num_col(num_cols)
+            self._dig_size = num_cols, self._num_rows
 
             top_layer = self._laygo_info.top_layer
 
