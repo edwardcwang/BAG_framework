@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """This module defines various substrate related classes."""
+# TODO: Add tech_cls switch support?
 
 from typing import TYPE_CHECKING, Dict, Any, Set, Tuple, Optional, Union
 
