@@ -1534,7 +1534,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                      upper=None,  # # type: Optional[Union[float, int]]
                      fill_margin=0,  # type: Union[int, float]
                      fill_type='',  # type: str
-                     unit_mode=False  # type: bool
+                     unit_mode=False,  # type: bool
+                     min_len_mode=None,  # type: Optional[int]
                      ):
         # type: (...) -> List[WireArray]
         """Extend the given wires to the given coordinates.
@@ -1553,6 +1554,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
         unit_mode: bool
             True if lower/upper/fill_margin is given in resolution units.
+        min_len_mode : Optional[int]
+            If not None, will extend track so it satisfy minimum length requirement.
+            Use -1 to extend lower bound, 1 to extend upper bound, 0 to extend both equally.
 
         Returns
         -------
@@ -1574,8 +1578,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         new_warr_list = []
         for warr in warr_list:
-            wlower = int(round(warr.lower / res))
-            wupper = int(round(warr.upper / res))
+            wlower = warr.lower_unit
+            wupper = warr.upper_unit
             if lower is None:
                 cur_lower = wlower
             else:
@@ -1584,6 +1588,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 cur_upper = wupper
             else:
                 cur_upper = max(upper, wupper)
+            if min_len_mode is not None:
+                # extend track to meet minimum length
+                min_len = self.grid.get_min_length(warr.layer_id, warr.track_id.width,
+                                                   unit_mode=True)
+                # make sure minimum length is even so that middle coordinate exists
+                min_len = -(-min_len // 2) * 2
+                tr_len = cur_upper - cur_lower
+                if min_len > tr_len:
+                    ext = min_len - tr_len
+                    if min_len_mode < 0:
+                        cur_lower -= ext
+                    elif min_len_mode > 0:
+                        cur_upper += ext
+                    else:
+                        cur_lower -= ext // 2
+                        cur_upper = cur_lower + min_len
 
             new_warr = WireArray(warr.track_id, cur_lower, cur_upper, res=res, unit_mode=True)
             for layer_name, bbox_arr in new_warr.wire_arr_iter(self.grid):
