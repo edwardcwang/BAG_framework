@@ -278,7 +278,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_row_extension_info(self, bot_ext_list, top_ext_list):
-        # type: (List[Any], List[Any]) -> List[Tuple[int, Any, Any]]
+        # type: (List[Any], List[Any]) -> List[Tuple[int, int, Any, Any]]
         """Compute the list of bottom/top extension information pair to create Laygo extension row.
 
         Parameters
@@ -290,7 +290,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        ext_combo_list : List[Tuple[int, Any, Any]]
+        ext_combo_list : List[Tuple[int, int, Any, Any]]
             list of number of fingers and bottom/top extension information objects for each
             extension primitive.
         """
@@ -452,9 +452,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         ext_groups = self.get_row_extension_info(bot_ext_list, top_ext_list)
         num_ext = len(ext_groups)
 
-        curx = laygo_info.col_to_coord(0, unit_mode=True)
         ext_edges = []
-        for idx, (fg, bot_info, top_info) in enumerate(ext_groups):
+        for idx, (fg_off, fg, bot_info, top_info) in enumerate(ext_groups):
             if w > 0 or self.draw_zero_extension():
                 ext_params = dict(
                     lch=lch,
@@ -464,9 +463,9 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                     bot_ext_info=bot_info,
                     is_laygo=True,
                 )
+                curx = laygo_info.col_to_coord(fg_off, unit_mode=True)
                 ext_master = template.new_template(params=ext_params, temp_cls=AnalogMOSExt)
                 template.add_instance(ext_master, loc=(curx, yext), unit_mode=True)
-                curx += ext_master.prim_bound_box.width_unit
 
                 if idx == 0:
                     adj_blk_info = ext_master.get_left_edge_info()

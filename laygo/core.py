@@ -12,7 +12,6 @@ from bag.util.interval import IntervalSet
 
 from bag.layout.util import BBox
 from bag.layout.template import TemplateBase
-from bag.layout.objects import Instance
 from bag.layout.routing import TrackID, WireArray
 
 from .tech import LaygoTech
@@ -21,6 +20,7 @@ from ..analog_core.placement import WireGroup, WireTree
 
 if TYPE_CHECKING:
     from bag.layout.template import TemplateDB
+    from bag.layout.objects import Instance
     from bag.layout.routing import RoutingGrid
 
 
@@ -1213,7 +1213,14 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def _get_ext_info_row(self, row_idx, ext_idx):
         intv = self._used_list[row_idx]
-        return [ext_info[ext_idx] for ext_info in intv.values()]
+        ext_row = []
+        for ext_info in intv.values():
+            cur_val = ext_info[ext_idx]
+            if isinstance(cur_val, list):
+                ext_row.extend(cur_val)
+            else:
+                ext_row.append(cur_val)
+        return ext_row
 
     def get_left_edge_info(self):
         endl_list = []
@@ -1380,6 +1387,70 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                     ports[name] = WireArray.list_to_warr(pins)
 
         return ports
+
+    def add_laygo_template(self, master, col_idx, flip=False, nx=1, spx=0):
+        # type: (LaygoBase, int, bool, int, int) -> Instance
+        """Adds a LaygoBase template at the given location.
+
+        Parameters
+        ----------
+        master : LaygoBase
+            the LaygoBase template to add
+        col_idx : int
+            the left-most column index.
+        flip : bool
+            True to mirror the template across Y axis.
+        nx : int
+            horizontal array factor.
+        spx : int
+            horizontal array pitch, in number of columns.
+
+        Returns
+        -------
+        inst : Instance
+            the instance added.
+        """
+        num_cols = master.num_cols
+        ext_info = master.get_ext_bot_info(), master.get_ext_top_info()
+
+        if flip:
+            x0 = self._laygo_info.col_to_coord(col_idx + num_cols, unit_mode=True)
+            inst_endl_iter = master.get_right_edge_info()[0]
+            inst_endr_iter = master.get_left_edge_info()[0]
+            orient = 'MY'
+        else:
+            x0 = self._laygo_info.col_to_coord(col_idx, unit_mode=True)
+            inst_endl_iter = master.get_left_edge_info()[0]
+            inst_endr_iter = master.get_right_edge_info()[0]
+            orient = 'R0'
+
+        num_rows = self.num_rows
+        for yidx, inst_endl, inst_endr in zip(range(num_rows), inst_endl_iter, inst_endr_iter):
+            intv = self._used_list[yidx]
+            if yidx == 0:
+                if yidx == num_rows - 1:
+                    cur_ext_info = ext_info
+                else:
+                    cur_ext_info = ext_info[0], num_cols
+            elif yidx == num_rows - 1:
+                cur_ext_info = num_cols, ext_info[1]
+            else:
+                cur_ext_info = num_cols, num_cols
+
+            for inst_num in range(nx):
+                intv_offset = col_idx + spx * inst_num
+                inst_intv = intv_offset, intv_offset + num_cols
+                if not intv.add(inst_intv, cur_ext_info, inst_endl, inst_endr):
+                    raise ValueError('Cannot add block on row %d, column '
+                                     '[%d, %d).' % (yidx, inst_intv[0], inst_intv[1]))
+
+        # convert horizontal pitch to resolution units
+        col_width = self._laygo_info.col_width
+        spx *= col_width
+
+        inst_name = 'XR0C%d' % col_idx
+        return self.add_instance(master, inst_name=inst_name, loc=(x0, 0), orient=orient,
+                                 nx=nx, spx=spx, unit_mode=True)
 
     def add_laygo_primitive(self, blk_type, loc=(0, 0), flip=False, nx=1, spx=0, **kwargs):
         # type: (str, Tuple[int, int], bool, int, int, **kwargs) -> Instance

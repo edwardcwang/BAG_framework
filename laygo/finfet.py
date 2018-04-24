@@ -459,7 +459,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         )
 
     def get_row_extension_info(self, bot_ext_list, top_ext_list):
-        # type: (List[ExtInfo], List[ExtInfo]) -> List[Tuple[int, ExtInfo, ExtInfo]]
+        # type: (List[ExtInfo], List[ExtInfo]) -> List[Tuple[int, int, ExtInfo, ExtInfo]]
 
         # merge list of bottom and top extension informations into a list of
         # bottom/top extension tuples
@@ -471,29 +471,37 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         while bot_idx < bot_len and top_idx < top_len:
             bot_info = bot_ext_list[bot_idx]
             top_info = top_ext_list[top_idx]
-            bot_ptype = bot_info.po_types
-            top_ptype = top_info.po_types
-            bot_stop = bot_off + len(bot_ptype)
-            top_stop = top_off + len(top_ptype)
-            stop_idx = min(bot_stop, top_stop)
-
-            # create new bottom/top extension information objects for the current overlapping block
-            bot_po_types = bot_ptype[cur_fg - bot_off:stop_idx - bot_off]
-            top_po_types = top_ptype[cur_fg - top_off:stop_idx - top_off]
-            # noinspection PyProtectedMember
-            cur_bot_info = bot_info._replace(po_types=bot_po_types)
-            # noinspection PyProtectedMember
-            cur_top_info = top_info._replace(po_types=top_po_types)
-            # append tuples of current number of fingers and bottom/top extension information object
-            ext_groups.append((stop_idx - cur_fg, cur_bot_info, cur_top_info))
-
-            cur_fg = stop_idx
-            if stop_idx == bot_stop:
-                bot_off = cur_fg
+            if isinstance(bot_info, int) and isinstance(top_info, int):
+                cur_fg += bot_info
+                bot_off = top_off = cur_fg
                 bot_idx += 1
-            if stop_idx == top_stop:
-                top_off = cur_fg
                 top_idx += 1
+            else:
+                bot_ptype = bot_info.po_types
+                top_ptype = top_info.po_types
+                bot_stop = bot_off + len(bot_ptype)
+                top_stop = top_off + len(top_ptype)
+                stop_idx = min(bot_stop, top_stop)
+
+                # create new bottom/top extension information objects for the
+                # current overlapping block
+                bot_po_types = bot_ptype[cur_fg - bot_off:stop_idx - bot_off]
+                top_po_types = top_ptype[cur_fg - top_off:stop_idx - top_off]
+                # noinspection PyProtectedMember
+                cur_bot_info = bot_info._replace(po_types=bot_po_types)
+                # noinspection PyProtectedMember
+                cur_top_info = top_info._replace(po_types=top_po_types)
+                # append tuples of current number of fingers and bottom/top
+                # extension information object
+                ext_groups.append((cur_fg, stop_idx - cur_fg, cur_bot_info, cur_top_info))
+
+                cur_fg = stop_idx
+                if stop_idx == bot_stop:
+                    bot_off = cur_fg
+                    bot_idx += 1
+                if stop_idx == top_stop:
+                    top_off = cur_fg
+                    top_idx += 1
 
         return ext_groups
 
