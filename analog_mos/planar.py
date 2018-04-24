@@ -318,13 +318,16 @@ class MOSTechPlanarGeneric(MOSTech):
         po_h = max(po_h_min, od_w_min + 2 * po_od_exty)
         po_od_exty = (po_h - od_w_min) // 2
         dum_po_yb = -bot_ext_info.po_margin + sp_po
-        od_bot_margin = max(dum_po_yb + po_od_exty, bot_imp_min_w + imp_od_ency,
-                            bot_imp_min_w + imp_po_ency + po_od_exty)
+        od_bot_margin = max(dum_po_yb + po_od_exty, bot_imp_min_w + imp_od_ency)
+        if imp_po_ency is not None:
+            od_bot_margin = max(od_bot_margin, bot_imp_min_w + imp_po_ency + po_od_exty)
 
         # get od_top_margin assuming yt = 0
         dum_po_yt = top_ext_info.po_margin - sp_po
-        od_top_margin = -min(dum_po_yt - po_od_exty, -top_imp_min_w - imp_od_ency,
-                             -top_imp_min_w - imp_po_ency - po_od_exty)
+        od_top_margin = min(dum_po_yt - po_od_exty, -top_imp_min_w - imp_od_ency)
+        if imp_po_ency is not None:
+            od_top_margin = min(od_top_margin, -top_imp_min_w - imp_po_ency - po_od_exty)
+        od_top_margin *= -1
 
         # get minimum extension width from OD related spacing rules
         min_ext_w_od = -(-(od_w_min + od_bot_margin + od_top_margin) // mos_pitch)
@@ -1394,6 +1397,9 @@ class MOSTechPlanarGeneric(MOSTech):
                                  mbot_yt=od_yt)
 
         # add pins
+        if gate_tracks == [-0.5, 0.5, 1.5]:
+            import pdb
+            pdb.set_trace()
         template.add_pin('dummy', dum_warrs, show=False)
 
     def draw_decap_connection(self, template, mos_info, sdir, ddir, gate_ext_mode, export_gate,

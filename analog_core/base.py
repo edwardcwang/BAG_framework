@@ -60,9 +60,9 @@ class AnalogBaseInfo(object):
         # type: (RoutingGrid, float, int, Optional[int], int, int, Optional[int], **kwargs) -> None
         tech_cls_name = kwargs.get('tech_cls_name', 'mos_tech_class')
         if tech_cls_name is None:
-            self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
+            self._tech_cls = grid.tech_info.tech_params['layout']['mos_tech_class']
         else:
-            self._tech_cls = self.grid.tech_info.tech_params['layout'][tech_cls_name]
+            self._tech_cls = grid.tech_info.tech_params['layout'][tech_cls_name]
 
         # update RoutingGrid
         lch_unit = int(round(lch / grid.layout_unit / grid.resolution))
@@ -825,7 +825,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         ridx = self._ridx_lookup[mos_type][row_idx]
         row_info = self._row_prop_list[ridx]
         orient = row_info['orient']
-        mos_kwargs = row_info['kwargs']
+        mos_kwargs = row_info['kwargs'].copy()
         w = row_info['w']
         xc, yc = self._layout_info.sd_xc_unit, self._sd_yc_list[ridx]
         xc += start * self.sd_pitch_unit
@@ -1035,7 +1035,6 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         ridx = self._ridx_lookup[mos_type][row_idx]
         row_info = self._row_prop_list[ridx]
         orient = row_info['orient']
-        mos_kwargs = row_info['kwargs']
         w = row_info['w']
         xc, yc = self._layout_info.sd_xc_unit, self._sd_yc_list[ridx]
         xc += col_idx * sd_pitch
@@ -1046,16 +1045,18 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             ddir = 2 - ddir
 
         loc = xc, yc
-        mos_kwargs.update(kwargs)
+        for key, val in row_info['kwargs'].items():
+            if key not in kwargs:
+                kwargs[key] = val
         lch_unit = int(round(self._lch / self.grid.layout_unit / self.grid.resolution))
-        mos_kwargs['source_parity'] = col_idx % self._tech_cls.get_mos_conn_modulus(lch_unit)
+        kwargs['source_parity'] = col_idx % self._tech_cls.get_mos_conn_modulus(lch_unit)
         conn_params = dict(
             lch=self._lch,
             w=w,
             fg=fg,
             sdir=sdir,
             ddir=ddir,
-            options=mos_kwargs,
+            options=kwargs,
             tech_cls_name=self._tech_cls_name,
         )
         conn_params.update(kwargs)
@@ -2385,7 +2386,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 dum_htr.extend(bot_dhtr[bot_dist])
             if top_dist < len(top_dhtr):
                 dum_htr.extend(top_dhtr[top_dist])
-            dum_htr.sort()
+            dum_htr = sorted(set(dum_htr))
 
             for start, stop in dum_tran_intv:
                 used_tracks, yb, yt = self._draw_dummy_sep_conn(mos_type, ridx, start,
