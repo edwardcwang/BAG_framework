@@ -8,11 +8,12 @@ from bag.layout.template import TemplateBase, TemplateDB
 
 
 class AnalogSubstrateCore(TemplateBase):
+    """A primitive template of substrate contact
+    """
+
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
-        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
 
     @classmethod
     def get_params_info(cls):
@@ -20,27 +21,36 @@ class AnalogSubstrateCore(TemplateBase):
         return dict(
             layout_name='name of the layout cell.',
             layout_info='the layout information dictionary.',
+            tech_cls_name='Technology class name.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(
+            tech_cls_name=None,
         )
 
     def get_layout_basename(self):
         return self.params['layout_name']
 
-    def compute_unique_key(self):
-        return self.to_immutable_id((self.params['layout_name'], self.params['layout_info']))
-
     def draw_layout(self):
         layout_info = self.params['layout_info']
+        tech_cls_name = self.params['tech_cls_name']
+        if tech_cls_name is None:
+            tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
+        else:
+            tech_cls = self.grid.tech_info.tech_params['layout'][tech_cls_name]
 
         # draw substrate
-        self._tech_cls.draw_mos(self, layout_info)
+        tech_cls.draw_mos(self, layout_info)
+        self.prim_top_layer = tech_cls.get_mos_conn_layer()
 
 
 class AnalogSubstrate(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
-        self.prim_top_layer = self._tech_cls.get_mos_conn_layer()
         self._layout_info = None
         self._ext_top_info = None
         self._ext_bot_info = None
@@ -67,12 +77,6 @@ class AnalogSubstrate(TemplateBase):
         return self._layout_info
 
     @classmethod
-    def get_default_param_values(cls):
-        return dict(
-            options={},
-        )
-
-    @classmethod
     def get_params_info(cls):
         # type: () -> Dict[str, str]
         return dict(
@@ -83,6 +87,15 @@ class AnalogSubstrate(TemplateBase):
             fg='number of substrate fingers.',
             top_layer='The top routing layer.  Used to determine vertical pitch.',
             options='Optional layout parameters.',
+            tech_cls_name='Technology class name.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(
+            options=None,
+            tech_cls_name=None,
         )
 
     @classmethod
@@ -116,10 +129,6 @@ class AnalogSubstrate(TemplateBase):
 
         return basename
 
-    def compute_unique_key(self):
-        key = self.get_layout_basename(), self.params['options']
-        return self.to_immutable_id(key)
-
     def draw_layout(self):
         lch = self.params['lch']
         w = self.params['w']
@@ -128,13 +137,21 @@ class AnalogSubstrate(TemplateBase):
         threshold = self.params['threshold']
         top_layer = self.params['top_layer']
         options = self.params['options']
+        tech_cls_name = self.params['tech_cls_name']
+
+        if options is None:
+            options = {}
+        if tech_cls_name is None:
+            tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
+        else:
+            tech_cls = self.grid.tech_info.tech_params['layout'][tech_cls_name]
 
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
 
         blk_pitch = self.get_block_pitch(self.grid, top_layer, **options)
-        info = self._tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg,
-                                                 blk_pitch=blk_pitch, **options)
+        info = tech_cls.get_substrate_info(lch_unit, w, sub_type, threshold, fg,
+                                           blk_pitch=blk_pitch, **options)
         self._layout_info = info['layout_info']
         self._sd_yc = info['sd_yc']
         self._ext_top_info = info['ext_top_info']
@@ -145,6 +162,7 @@ class AnalogSubstrate(TemplateBase):
         core_params = dict(
             layout_name=self.get_layout_basename() + '_core',
             layout_info=self._layout_info,
+            tech_cls_name=tech_cls_name,
         )
 
         master = self.new_template(params=core_params, temp_cls=AnalogSubstrateCore)
@@ -154,3 +172,4 @@ class AnalogSubstrate(TemplateBase):
 
         for port_name in inst.port_names_iter():
             self.reexport(inst.get_port(port_name), show=False)
+        self.prim_top_layer = tech_cls.get_mos_conn_layer()

@@ -415,10 +415,6 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         self._top_sub_bndy = None
         self._bot_sub_bndy = None
         self._sub_bndx = None
-        self._dum_conn_pitch = self._tech_cls.get_dum_conn_pitch()
-        if self._dum_conn_pitch != 1 and self._dum_conn_pitch != 2:
-            raise ValueError('Current only support dum_conn_pitch = 1 or 2, '
-                             'but it is %d' % self._dum_conn_pitch)
 
         # transistor usage/automatic dummy parameters
         self._n_intvs = None  # type: List[IntervalSet]
@@ -527,6 +523,12 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             # error checking
             raise ValueError('%s row with index = %d not found' % (mos_type, row_idx))
         return ridx_list[row_idx]
+
+    def set_tech_class(self, class_name):
+        # type: (str) -> None
+        """Sets the underlying technology class object."""
+        tech_params = self.grid.tech_info.tech_params
+        self._tech_cls = tech_params['layout']['mos_tech_class_%s' % class_name]  # type: MOSTech
 
     def get_num_tracks(self, mos_type, row_idx, tr_type):
         """Get number of tracks of the given type on the given row.
@@ -2479,7 +2481,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         htr0 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xl, unit_mode=True))
         htr1 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xr, unit_mode=True))
 
-        htr_pitch = self._dum_conn_pitch * 2
+        htr_pitch = self._tech_cls.get_dum_conn_pitch() * 2
         start, stop = htr0 + 2, htr1
         left_adj, right_adj = True, True
         if col0 == 0:
