@@ -274,16 +274,16 @@ class InstanceInfo(dict):
             elif orient == 'MY':
                 self['sp_cols'] *= -1
             elif orient == 'R90':
-                self['sp_rows'], self['sp_cols'] = self['sp_col'], -self['sp_row']
+                self['sp_rows'], self['sp_cols'] = self['sp_cols'], -self['sp_rows']
                 self['num_rows'], self['num_cols'] = self['num_cols'], self['num_rows']
             elif orient == 'MXR90':
-                self['sp_rows'], self['sp_cols'] = self['sp_col'], self['sp_row']
+                self['sp_rows'], self['sp_cols'] = self['sp_cols'], self['sp_rows']
                 self['num_rows'], self['num_cols'] = self['num_cols'], self['num_rows']
             elif orient == 'MYR90':
-                self['sp_rows'], self['sp_cols'] = -self['sp_col'], -self['sp_row']
+                self['sp_rows'], self['sp_cols'] = -self['sp_cols'], -self['sp_rows']
                 self['num_rows'], self['num_cols'] = self['num_cols'], self['num_rows']
             elif orient == 'R270':
-                self['sp_rows'], self['sp_cols'] = -self['sp_col'], self['sp_row']
+                self['sp_rows'], self['sp_cols'] = -self['sp_cols'], self['sp_rows']
                 self['num_rows'], self['num_cols'] = self['num_cols'], self['num_rows']
             elif orient != 'R0':
                 raise ValueError('Unknown orientation: %s' % orient)
