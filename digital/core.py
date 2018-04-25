@@ -150,7 +150,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         default_end_info = tech_cls.get_default_end_info()
         def_edge_info = LaygoEdgeInfo([(default_end_info, None)] * num_laygo_rows, [])
         self._used_list = [LaygoIntvSet(def_edge_info) for _ in range(num_rows)]
-        self._ext_end_list = [[0, None, None]] * (num_rows - 1)
+        self._ext_end_list = [[0, None, None] for _ in range(num_rows - 1)]
 
         lch = self._laygo_info.lch
         mos_pitch = self._laygo_info.mos_pitch
@@ -357,7 +357,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                     cur_ext_info = num_cols, num_cols
 
             # update ext_end_list
-            if rcur < self._num_rows - 1:
+            if yidx < num_rows - 1:
                 ext_end_cur = self._ext_end_list[rcur]
                 if coll == 0:
                     ext_end_cur[1] = endl.get_ext_end(yidx)
