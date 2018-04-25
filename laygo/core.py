@@ -33,6 +33,9 @@ class DigitalExtInfo(object):
     def reverse(self):
         return DigitalExtInfo([ext.reverse() for ext in reversed(self._ext_list)])
 
+    def ext_iter(self):
+        return self._ext_list
+
 
 class LaygoEdgeInfo(object):
     """The edge information object for LaygoBase."""
@@ -51,6 +54,10 @@ class LaygoEdgeInfo(object):
             edge_params['adj_blk_info'] = end
             yield (y0 - y if flip else y0 + y, flip != flip_ud, edge_params)
 
+    def row_end_iter(self):
+        for val in self._row_end_list:
+            yield val
+
 
 class DigitalEdgeInfo(object):
     """The edge information object for DigitalBase."""
@@ -60,11 +67,18 @@ class DigitalEdgeInfo(object):
         self._ext_end_list = ext_end_list
 
     def master_infos_iter(self, row_edge_infos, y0=0, flip=False):
-        for y, edge_params in self._ext_end_list:
-            yield (y0 - y if flip else y0 + y, flip, edge_params)
+        for val in self._ext_end_list:
+            if val is not None:
+                yield (y0 - val[0] if flip else y0 + val[0], flip, val[1])
 
         for lay_edge_info in self._lay_edge_list:
             yield from lay_edge_info.master_infos_iter(row_edge_infos, y0=y0, flip=flip)
+
+    def get_laygo_edge(self, idx):
+        return self._lay_edge_list[idx]
+
+    def get_ext_end(self, bot_idx):
+        return self._ext_end_list[bot_idx + 1]
 
 
 class LaygoIntvSet(object):
@@ -504,8 +518,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
 
         hidden_params = kwargs.pop('hidden_params', {}).copy()
-        hidden_params['laygo_endl_infos'] = None
-        hidden_params['laygo_endr_infos'] = None
+        hidden_params['laygo_edgel'] = None
+        hidden_params['laygo_edger'] = None
 
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names,
                               hidden_params=hidden_params, **kwargs)
@@ -528,8 +542,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         self._tb_ext_info = None
         self._bot_sub_extw = 0
         self._top_sub_extw = 0
-        self._endl_infos = None
-        self._endr_infos = None
+        self._laygo_edgel = None
+        self._laygo_edger = None
 
     @property
     def num_rows(self):
@@ -619,13 +633,13 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def _set_endlr_infos(self, num_rows):
         default_end_info = (self._tech_cls.get_default_end_info(), None)
-        default_list = [default_end_info] * num_rows
-        self._endl_infos = self.params['laygo_endl_infos']
-        if self._endl_infos is None:
-            self._endl_infos = default_list
-        self._endr_infos = self.params['laygo_endr_infos']
-        if self._endr_infos is None:
-            self._endr_infos = default_list
+        def_edge_info = LaygoEdgeInfo([(default_end_info, None)] * num_rows, [])
+        self._laygo_edgel = self.params['laygo_edgel']
+        if self._laygo_edgel is None:
+            self._laygo_edgel = def_edge_info
+        self._laygo_edger = self.params['laygo_edger']
+        if self._laygo_edger is None:
+            self._laygo_edger = def_edge_info
 
     def set_rows_direct(self, layout_info, num_col=None, end_mode=None):
         top_layer = layout_info['top_layer']
@@ -1514,10 +1528,10 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         num_col = self._laygo_size[0]
         # add space blocks
         total_intv = (0, num_col)
-        for row_idx, (intv, endl_info, endr_info) in \
-                enumerate(zip(self._used_list, self._endl_infos, self._endr_infos)):
-            for (start, end), end_info in zip(*intv.get_complement(total_intv, endl_info,
-                                                                   endr_info)):
+        endl_iter = self._laygo_edgel.row_end_iter()
+        endr_iter = self._laygo_edger.row_end_iter()
+        for row_idx, (intv, endl, endr) in enumerate(zip(self._used_list, endl_iter, endr_iter)):
+            for (start, end), end_info in zip(*intv.get_complement(total_intv, endl, endr)):
                 self._add_laygo_space(end_info, num_blk=end - start, loc=(start, row_idx))
 
         # draw extensions
@@ -1535,7 +1549,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         # set edge information
         endl_list, endr_list = [], []
-        num_col = self._laygo_size[0]
         for intv in self._used_list:
             endl, endr = intv.get_end_info(num_col)
             endl_list.append(endl)
