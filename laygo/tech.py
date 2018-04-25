@@ -479,7 +479,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                         adj_blk_info=adj_blk_info,
                         is_laygo=True,
                     )
-                    edgesl = (yext, 'R0', cur_ext_edge_params)
+                    edgesl = (yext, cur_ext_edge_params)
                 if idx == num_ext - 1:
                     adj_blk_info = ext_master.get_right_edge_info()
                     # compute edge parameters
@@ -491,7 +491,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                         adj_blk_info=adj_blk_info,
                         is_laygo=True,
                     )
-                    edgesr = (yext, 'MY', cur_ext_edge_params)
+                    edgesr = (yext, cur_ext_edge_params)
 
         return edgesl, edgesr
 
@@ -580,11 +580,13 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                                                             loc=(x, y), unit_mode=True))
 
         # draw edge blocks
-        for y, orient, edge_params in edgel_infos:
+        for y, flip_ud, edge_params in edgel_infos:
+            orient = 'MX' if flip_ud else 'R0'
             edge_master = template.new_template(params=edge_params, temp_cls=AnalogEdge)
             edge_inst_list.append(template.add_instance(edge_master, orient=orient,
                                                         loc=(emargin_l, y), unit_mode=True))
-        for y, orient, edge_params in edger_infos:
+        for y, flip_ud, edge_params in edger_infos:
+            orient = 'R180' if flip_ud else 'MY'
             edge_master = template.new_template(params=edge_params, temp_cls=AnalogEdge)
             edge_inst_list.append(template.add_instance(edge_master, orient=orient,
                                                         loc=(xr - emargin_r, y), unit_mode=True))

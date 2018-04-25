@@ -32,29 +32,26 @@ class LaygoPrimitive(TemplateBase):
         tech_info = self.grid.tech_info
         self._tech_cls = tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
-        self._num_col = 1
-        self._blk_info = None
-
-    def get_left_edge_info(self):
-        return self._blk_info['left_edge_info']
-
-    def get_right_edge_info(self):
-        return self._blk_info['right_edge_info']
-
-    def get_ext_bot_info(self):
-        return self._blk_info['ext_bot_info']
-
-    def get_ext_top_info(self):
-        return self._blk_info['ext_top_info']
+        self._num_col = 0
+        self._lr_edge_info = None
+        self._tb_ext_info = None
+        self._layout_info = None
 
     @property
-    def laygo_size(self):
-        return self._num_col, 1
+    def num_col(self):
+        return self._num_col
 
-    @classmethod
-    def get_default_param_values(cls):
-        # type: () -> Dict[str, Any]
-        return dict(options=None)
+    @property
+    def lr_edge_info(self):
+        return self._lr_edge_info
+
+    @property
+    def tb_ext_info(self):
+        return self._tb_ext_info
+
+    @property
+    def layout_info(self):
+        return self._layout_info
 
     @classmethod
     def get_params_info(cls):
@@ -65,6 +62,11 @@ class LaygoPrimitive(TemplateBase):
             row_info='laygo row information dictionary.',
             options="layout options.",
         )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(options=None)
 
     def get_layout_basename(self):
         fmt = 'laygo_%s_l%s_w%s_%s_%s'
@@ -83,15 +85,18 @@ class LaygoPrimitive(TemplateBase):
         row_info = self.params['row_info']
         options = self.params['options']
 
-        self._blk_info = self._tech_cls.get_laygo_blk_info(blk_type, w, row_info, **options)
-        layout_info = self._blk_info['layout_info']
-        self._num_col = layout_info['fg']
-        # draw transistor
-        self._tech_cls.draw_mos(self, layout_info)
-        # draw connection
         if options is None:
             options = {}
-        self._tech_cls.draw_laygo_connection(self, self._blk_info, blk_type, options)
+
+        blk_info = self._tech_cls.get_laygo_blk_info(blk_type, w, row_info, **options)
+        self._lr_edge_info = blk_info['left_edge_info'], blk_info['right_edge_info']
+        self._tb_ext_info = blk_info['ext_top_info'], blk_info['ext_bot_info']
+        self._layout_info = blk_info['layout_info']
+        self._num_col = self._layout_info['fg']
+        # draw transistor
+        self._tech_cls.draw_mos(self, self._layout_info)
+        # draw connection
+        self._tech_cls.draw_laygo_connection(self, blk_info, blk_type, options)
 
 
 class LaygoSubstrate(TemplateBase):
@@ -118,33 +123,30 @@ class LaygoSubstrate(TemplateBase):
         tech_info = self.grid.tech_info
         self._tech_cls = tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
-        self._blk_info = None
         self._num_col = 1
+        self._lr_edge_info = None
+        self._tb_ext_info = None
+        self._layout_info = None
 
-    def get_left_edge_info(self):
-        return self._blk_info['left_edge_info']
+    @property
+    def num_col(self):
+        return self._num_col
 
-    def get_right_edge_info(self):
-        return self._blk_info['right_edge_info']
+    @property
+    def lr_edge_info(self):
+        return self._lr_edge_info
 
-    def get_ext_bot_info(self):
-        return self._blk_info['ext_bot_info']
+    @property
+    def tb_ext_info(self):
+        return self._tb_ext_info
 
-    def get_ext_top_info(self):
-        return self._blk_info['ext_top_info']
+    @property
+    def layout_info(self):
+        return self._layout_info
 
     @property
     def row_info(self):
         return self.params['row_info']
-
-    @property
-    def laygo_size(self):
-        return self._num_col, 1
-
-    @classmethod
-    def get_default_param_values(cls):
-        # type: () -> Dict[str, Any]
-        return dict(options=None)
 
     @classmethod
     def get_params_info(cls):
@@ -153,6 +155,11 @@ class LaygoSubstrate(TemplateBase):
             row_info='laygo row information dictionary.',
             options="additional substrate options.",
         )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(options=None)
 
     def get_layout_basename(self):
         fmt = 'laygo_%s_l%s_w%s_%s'
@@ -168,17 +175,19 @@ class LaygoSubstrate(TemplateBase):
         row_info = self.params['row_info']
         options = self.params['options']
 
-        w_sub = row_info['w_sub']
-        self._blk_info = self._tech_cls.get_laygo_blk_info('sub', w_sub, row_info, **options)
-
-        layout_info = self._blk_info['layout_info']
-        self._num_col = layout_info['fg']
-        # draw transistor
-        self._tech_cls.draw_mos(self, layout_info)
-        # draw connection
         if options is None:
             options = {}
-        self._tech_cls.draw_laygo_connection(self, self._blk_info, 'sub', options)
+
+        w_sub = row_info['w_sub']
+        blk_info = self._tech_cls.get_laygo_blk_info('sub', w_sub, row_info, **options)
+        self._lr_edge_info = blk_info['left_edge_info'], blk_info['right_edge_info']
+        self._tb_ext_info = blk_info['ext_top_info'], blk_info['ext_bot_info']
+        self._layout_info = blk_info['layout_info']
+        self._num_col = self._layout_info['fg']
+        # draw transistor
+        self._tech_cls.draw_mos(self, self._layout_info)
+        # draw connection
+        self._tech_cls.draw_laygo_connection(self, blk_info, 'sub', options)
 
 
 class LaygoEndRow(TemplateBase):
@@ -275,24 +284,26 @@ class LaygoSpace(TemplateBase):
         tech_info = self.grid.tech_info
         self._tech_cls = tech_info.tech_params['layout']['laygo_tech_class']  # type: LaygoTech
         self.prim_top_layer = self._tech_cls.get_dig_conn_layer()
-        self._num_blk = self.params['num_blk']
-        self._blk_info = None
-
-    def get_left_edge_info(self):
-        return self._blk_info['left_edge_info']
-
-    def get_right_edge_info(self):
-        return self._blk_info['right_edge_info']
-
-    def get_ext_bot_info(self):
-        return self._blk_info['ext_bot_info']
-
-    def get_ext_top_info(self):
-        return self._blk_info['ext_top_info']
+        self._num_col = 0
+        self._lr_edge_info = None
+        self._tb_ext_info = None
+        self._layout_info = None
 
     @property
-    def laygo_size(self):
-        return self._num_blk, 1
+    def num_col(self):
+        return self._num_col
+
+    @property
+    def lr_edge_info(self):
+        return self._lr_edge_info
+
+    @property
+    def tb_ext_info(self):
+        return self._tb_ext_info
+
+    @property
+    def layout_info(self):
+        return self._layout_info
 
     @classmethod
     def get_params_info(cls):
@@ -316,9 +327,14 @@ class LaygoSpace(TemplateBase):
         left_blk_info = self.params['left_blk_info']
         right_blk_info = self.params['right_blk_info']
 
-        self._blk_info = self._tech_cls.get_laygo_space_info(row_info, num_blk, left_blk_info,
-                                                             right_blk_info)
+        blk_info = self._tech_cls.get_laygo_space_info(row_info, num_blk, left_blk_info,
+                                                       right_blk_info)
+        self._lr_edge_info = blk_info['left_edge_info'], blk_info['right_edge_info']
+        self._tb_ext_info = blk_info['ext_top_info'], blk_info['ext_bot_info']
+        self._layout_info = blk_info['layout_info']
+        self._num_col = num_blk
+
         # draw transistor
-        self._tech_cls.draw_mos(self, self._blk_info['layout_info'])
-        self._tech_cls.draw_laygo_space_connection(self, self._blk_info, left_blk_info,
+        self._tech_cls.draw_mos(self, self._layout_info)
+        self._tech_cls.draw_laygo_space_connection(self, blk_info, left_blk_info,
                                                    right_blk_info)

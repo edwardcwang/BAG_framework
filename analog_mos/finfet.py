@@ -20,12 +20,20 @@ from .core import MOSTech
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfoConfig
 
-ExtInfo = namedtuple('ExtInfo', ['margins', 'od_h', 'imp_min_h', 'mtype', 'thres', 'po_types',
-                                 'edgel_info', 'edger_info'])
 RowInfo = namedtuple('RowInfo', ['od_x_list', 'od_type', 'row_y', 'od_y', 'po_y', 'md_y'])
 AdjRowInfo = namedtuple('AdjRowInfo', ['row_y', 'po_y', 'po_types'])
 EdgeInfo = namedtuple('EdgeInfo', ['od_type', 'draw_layers', 'y_intv'])
 FillInfo = namedtuple('FillInfo', ['layer', 'exc_layer', 'x_intv_list', 'y_intv_list'])
+
+
+class ExtInfo(namedtuple('ExtInfoBase', ['margins', 'od_h', 'imp_min_h', 'mtype', 'thres',
+                                         'po_types', 'edgel_info', 'edger_info'])):
+    __slots__ = ()
+
+    def reverse(self):
+        return self._replace(po_types=tuple(reversed(self.po_types)),
+                             edgel_info=self.edger_info,
+                             edger_info=self.edgel_info)
 
 
 class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
