@@ -5,6 +5,7 @@ from typing import Dict, Any, Set, List, Tuple
 import abc
 
 from bag.layout.util import BBox
+from bag.layout.routing import TrackID
 from bag.layout.template import TemplateBase, TemplateDB
 
 from ..laygo.base import LaygoEndRow, LaygoSubstrate
@@ -64,10 +65,11 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names,
                               hidden_params=hidden_params, **kwargs)
         # initialize attributes
-        self._laygo_info = None
+        self._laygo_info = None  # type: LaygoBaseInfo
         self._num_rows = 0
         self._row_layout_info = None
         self._row_height = 0
+        self._row_info_list = None
         self._dig_size = None
         self._ext_params = None
         self._used_list = None  # type: List[LaygoIntvSet]
@@ -90,11 +92,18 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
 
     @property
     def digital_size(self):
+        # type: () -> Tuple[int, int]
         return self._dig_size
 
     @property
     def laygo_info(self):
+        # type: () -> LaygoBaseInfo
         return self._laygo_info
+
+    @property
+    def conn_layer(self):
+        # type: () -> int
+        return self._laygo_info.conn_layer
 
     @property
     def row_layout_info(self):
@@ -237,6 +246,8 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             self._ybot = (0, 0)
             self._ytop = (tot_height, tot_height)
 
+        self._row_info_list = LaygoBase.compute_row_info(self._laygo_info, row_prop_list,
+                                                         dy=self._ybot[1])[1]
         # add rest of extension parameters
         ycur = self._ybot[1] + self._row_height
         for bot_row_idx in range(num_rows - 1):
@@ -268,7 +279,35 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             if not self._laygo_info.draw_boundaries:
                 self.array_box = bound_box
 
-    def add_digital_block(self, master, loc=(0, 0), flip=False, nx=1, spx=0):
+    def get_track_index(self, row_idx, tr_type, tr_idx, dig_row_idx=0):
+        row_prop_list = self._row_layout_info['row_prop_list']
+
+        row_info = self._row_info_list[row_idx]
+        orient = row_prop_list[row_idx]['orient']
+        intv = row_info['%s_intv' % tr_type]
+        ntr = intv[1] - intv[0]
+        if tr_idx >= ntr:
+            raise IndexError('tr_idx = %d >= %d' % (tr_idx, ntr))
+        if tr_idx < 0:
+            tr_idx += ntr
+        if tr_idx < 0:
+            raise IndexError('index out of range.')
+
+        if orient == 'R0':
+            ans = intv[0] + tr_idx
+        else:
+            ans = intv[1] - 1 - tr_idx
+
+        if dig_row_idx != 0:
+            # TODO: figure this out
+            raise ValueError('Not supported yet.')
+        return ans
+
+    def make_track_id(self, row_idx, tr_type, tr_idx, width=1, num=1, pitch=0, dig_row_idx=0):
+        tid = self.get_track_index(row_idx, tr_type, tr_idx, dig_row_idx=dig_row_idx)
+        return TrackID(self.conn_layer + 1, tid, width=width, num=num, pitch=pitch)
+
+    def add_digital_block(self, master, loc, flip=False, nx=1, spx=0):
         col_idx, row_idx = loc
         num_cols, num_rows = master.digital_size
         y0 = row_idx * self._row_height + self._ybot[1]

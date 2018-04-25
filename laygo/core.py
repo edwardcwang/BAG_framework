@@ -570,7 +570,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
     @property
     def conn_layer(self):
-        return self._laygo_info.conn_layer
+        return self._tech_cls.get_dig_conn_layer()
 
     @property
     def fg2d_s_short(self):
@@ -675,7 +675,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                                      top_layer, 0)
 
         self._row_prop_list = row_prop_list
-        self._ext_params, self._row_info_list = self._set_rows_from_prop(row_prop_list)
+        self._ext_params, self._row_info_list = self.compute_row_info(self._laygo_info,
+                                                                      row_prop_list)
 
         # compute laygo size if we know the number of columns
         if num_col is not None:
@@ -1180,14 +1181,16 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         return ext_params_list
 
-    def _set_rows_from_prop(self, rprop_list):
-        lch_unit = self._laygo_info.lch_unit
+    @classmethod
+    def compute_row_info(cls, laygo_info, rprop_list, dy=0):
+        lch_unit = laygo_info.lch_unit
+        tcls = laygo_info.tech_cls
+        grid = laygo_info.grid
 
-        tcls = self._tech_cls
         mos_pitch = tcls.get_mos_pitch(unit_mode=True)
         vm_layer = tcls.get_dig_conn_layer()
         hm_layer = vm_layer + 1
-        via_ext = self.grid.get_via_extensions(vm_layer, 1, 1, unit_mode=True)[0]
+        via_ext = grid.get_via_extensions(vm_layer, 1, 1, unit_mode=True)[0]
 
         ext_params_list = []
         rinfo_list = []
@@ -1217,36 +1220,36 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             ext_params_list.append(((yb_cur - ext_y) // mos_pitch, ext_y))
 
             # record track intervals
-            btr = self.grid.find_next_track(hm_layer, yb_row, half_track=True,
-                                            mode=1, unit_mode=True)
-            ttr = self.grid.find_next_track(hm_layer, yt_row, half_track=True,
-                                            mode=-1, unit_mode=True)
+            btr = grid.find_next_track(hm_layer, dy + yb_row, half_track=True,
+                                       mode=1, unit_mode=True)
+            ttr = grid.find_next_track(hm_layer, dy + yt_row, half_track=True,
+                                       mode=-1, unit_mode=True)
             g_conn_y = row_info.get('g_conn_y', (0, 0))
             gb_conn_y = row_info['gb_conn_y']
             ds_conn_y = row_info['ds_conn_y']
             if row_orient == 'R0':
-                yt_g = yb_cur + g_conn_y[1]
-                yb_gb = yb_cur + gb_conn_y[0]
-                yb_ds = yb_cur + ds_conn_y[0]
-                gtr = self.grid.find_next_track(hm_layer, yt_g - via_ext, half_track=True,
-                                                mode=-1, unit_mode=True)
-                gbtr = self.grid.find_next_track(hm_layer, yb_gb + via_ext, half_track=True,
-                                                 mode=1, unit_mode=True)
-                dstr = self.grid.find_next_track(hm_layer, yb_ds + via_ext, half_track=True,
-                                                 mode=1, unit_mode=True)
+                yt_g = dy + yb_cur + g_conn_y[1]
+                yb_gb = dy + yb_cur + gb_conn_y[0]
+                yb_ds = dy + yb_cur + ds_conn_y[0]
+                gtr = grid.find_next_track(hm_layer, yt_g - via_ext, half_track=True,
+                                           mode=-1, unit_mode=True)
+                gbtr = grid.find_next_track(hm_layer, yb_gb + via_ext, half_track=True,
+                                            mode=1, unit_mode=True)
+                dstr = grid.find_next_track(hm_layer, yb_ds + via_ext, half_track=True,
+                                            mode=1, unit_mode=True)
                 row_info['g_intv'] = (btr, max(btr, gtr + 1))
                 row_info['gb_intv'] = (gbtr, max(ttr + 1, gbtr))
                 row_info['ds_intv'] = (dstr, max(ttr + 1, dstr))
             else:
-                yb_g = yt_cur - g_conn_y[1]
-                yt_gb = yt_cur - gb_conn_y[0]
-                yt_ds = yt_cur - ds_conn_y[0]
-                gtr = self.grid.find_next_track(hm_layer, yb_g + via_ext, half_track=True,
-                                                mode=1, unit_mode=True)
-                gbtr = self.grid.find_next_track(hm_layer, yt_gb - via_ext, half_track=True,
-                                                 mode=-1, unit_mode=True)
-                dstr = self.grid.find_next_track(hm_layer, yt_ds - via_ext, half_track=True,
-                                                 mode=-1, unit_mode=True)
+                yb_g = dy + yt_cur - g_conn_y[1]
+                yt_gb = dy + yt_cur - gb_conn_y[0]
+                yt_ds = dy + yt_cur - ds_conn_y[0]
+                gtr = grid.find_next_track(hm_layer, yb_g + via_ext, half_track=True,
+                                           mode=1, unit_mode=True)
+                gbtr = grid.find_next_track(hm_layer, yt_gb - via_ext, half_track=True,
+                                            mode=-1, unit_mode=True)
+                dstr = grid.find_next_track(hm_layer, yt_ds - via_ext, half_track=True,
+                                            mode=-1, unit_mode=True)
                 row_info['g_intv'] = (gtr, max(ttr + 1, gtr))
                 row_info['gb_intv'] = (btr, max(btr, gbtr + 1))
                 row_info['ds_intv'] = (btr, max(btr, dstr + 1))
@@ -1302,10 +1305,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         row_info = self._row_info_list[row_idx]
         return row_info['%s_intv' % tr_type]
 
-    def make_track_id(self, row_idx, tr_type, tr_idx, width=1, num=1, pitch=0.0):
+    def make_track_id(self, row_idx, tr_type, tr_idx, width=1, num=1, pitch=0):
         tid = self.get_track_index(row_idx, tr_type, tr_idx)
-        hm_layer = self._tech_cls.get_dig_conn_layer() + 1
-        return TrackID(hm_layer, tid, width=width, num=num, pitch=pitch)
+        return TrackID(self.conn_layer + 1, tid, width=width, num=num, pitch=pitch)
 
     def set_laygo_size(self, num_col=None):
         if self._laygo_size is None:
