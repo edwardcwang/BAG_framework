@@ -461,19 +461,6 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                     ext_info_row.extend(test.ext_iter())
             return ext_info_row
 
-    @staticmethod
-    def _flip_ud(orient):
-        if orient == 'R0':
-            return 'MX'
-        elif orient == 'MX':
-            return 'R0'
-        elif orient == 'MY':
-            return 'R180'
-        elif orient == 'R180':
-            return 'MY'
-        else:
-            raise ValueError('Unknonw orientation: %s' % orient)
-
     def _draw_end_substrates(self, port_cols):
         laygo_info = self._laygo_info
         top_layer = laygo_info.top_layer
