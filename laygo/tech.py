@@ -416,6 +416,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
     def draw_extensions(self,  # type: LaygoTech
                         template,  # type: TemplateBase
                         laygo_info,  # type: LaygoBaseInfo
+                        num_cols,  # type: int
                         w,  # type: int
                         yext,  # type: int
                         bot_ext_list,  # type: List[Tuple[int, Any]]
@@ -430,6 +431,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
             the LaygoBase/DigitalBase object to draw layout in.
         laygo_info : LaygoBaseInfo
             the LaygoBaseInfo object.
+        num_cols : int
+            number of columns.
         w : int
             extension width in number of mos pitches.
         yext : int
@@ -451,7 +454,6 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         guard_ring_nf = laygo_info.guard_ring_nf
 
         ext_groups = self.get_row_extension_info(bot_ext_list, top_ext_list)
-        num_ext = len(ext_groups)
 
         edgesl, edgesr = None, None
         if w > 0 or self.draw_zero_extension():
@@ -468,7 +470,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                 ext_master = template.new_template(params=ext_params, temp_cls=AnalogMOSExt)
                 template.add_instance(ext_master, loc=(curx, yext), unit_mode=True)
 
-                if idx == 0:
+                if fg_off == 0:
                     adj_blk_info = ext_master.get_left_edge_info()
                     # compute edge parameters
                     cur_ext_edge_params = dict(
@@ -480,7 +482,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                         is_laygo=True,
                     )
                     edgesl = (yext, cur_ext_edge_params)
-                if idx == num_ext - 1:
+                if fg_off + fg == num_cols:
                     adj_blk_info = ext_master.get_right_edge_info()
                     # compute edge parameters
                     cur_ext_edge_params = dict(

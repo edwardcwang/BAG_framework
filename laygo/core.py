@@ -83,7 +83,14 @@ class DigitalEdgeInfo(object):
         return self._lay_edge_list[idx]
 
     def get_ext_end(self, bot_idx):
-        return self._ext_end_list[bot_idx + 1]
+        test = self._ext_end_list[bot_idx + 1]
+        if test is None:
+            return None
+        return test[1]
+
+    def reverse(self):
+        return DigitalEdgeInfo(self._row_y_list, self._lay_edge_list[::-1],
+                               self._ext_end_list[::-1])
 
 
 class LaygoIntvSet(object):
@@ -1538,9 +1545,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         if self._laygo_size is None:
             raise ValueError('laygo_size must be set before filling spaces.')
 
-        num_col = self._laygo_size[0]
+        num_cols = self._laygo_size[0]
         # add space blocks
-        total_intv = (0, num_col)
+        total_intv = (0, num_cols)
         endl_iter = self._laygo_edgel.row_end_iter()
         endr_iter = self._laygo_edger.row_end_iter()
         for row_idx, (intv, endl, endr) in enumerate(zip(self._used_list, endl_iter, endr_iter)):
@@ -1555,7 +1562,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             w, yext = self._ext_params[bot_ridx + 1]
             bot_ext_list = self._get_ext_info_row(bot_ridx, 1)
             top_ext_list = self._get_ext_info_row(bot_ridx + 1, 0)
-            edgel, edger = tech_cls.draw_extensions(self, laygo_info, w, yext,
+            edgel, edger = tech_cls.draw_extensions(self, laygo_info, num_cols, w, yext,
                                                     bot_ext_list, top_ext_list)
             ext_endl_infos.append(edgel)
             ext_endr_infos.append(edger)
@@ -1563,7 +1570,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         # set edge information
         endl_list, endr_list = [], []
         for intv in self._used_list:
-            endl, endr = intv.get_end_info(num_col)
+            endl, endr = intv.get_end_info(num_cols)
             endl_list.append(endl)
             endr_list.append(endr)
 

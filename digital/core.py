@@ -3,6 +3,7 @@
 from typing import Dict, Any, Set, List, Tuple
 
 import abc
+from itertools import chain
 
 from bag.layout.util import BBox
 from bag.layout.routing import TrackID
@@ -408,15 +409,20 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         for bot_ridx in range(-1, num_rows):
             ext_val = self._ext_params[bot_ridx + 1]
             if ext_val is not None:
+                w, yext = ext_val
                 bot_ext_list = self._get_ext_info_row(bot_ridx, 1)
                 top_ext_list = self._get_ext_info_row(bot_ridx + 1, 0)
-                edgel, edger = tech_cls.draw_extensions(self, laygo_info, ext_val[0], ext_val[1],
+                edgel, edger = tech_cls.draw_extensions(self, laygo_info, num_cols, w, yext,
                                                         bot_ext_list, top_ext_list)
-                ext_endl_infos.append(edgel)
-                ext_endr_infos.append(edger)
+                if 0 <= bot_ridx < num_rows - 1:
+                    if edgel is None:
+                        edgel = (yext, self._ext_end_list[bot_ridx][1])
+                    if edger is None:
+                        edger = (yext, self._ext_end_list[bot_ridx][2])
             else:
-                ext_endl_infos.append(None)
-                ext_endr_infos.append(None)
+                edgel = edger = None
+            ext_endl_infos.append(edgel)
+            ext_endr_infos.append(edger)
 
         # set edge information
         row_y_list, lendl_list, lendr_list = [], [], []
@@ -448,10 +454,11 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             intv = self._used_list[row_idx]
             ext_info_row = []
             for val in intv.values():
-                if isinstance(val, int):
-                    ext_info_row.append(val)
+                test = val[ext_idx]
+                if isinstance(test, int):
+                    ext_info_row.append(test)
                 else:
-                    ext_info_row.extend(val[ext_idx].ext_iter())
+                    ext_info_row.extend(test.ext_iter())
             return ext_info_row
 
     @staticmethod
@@ -551,9 +558,11 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             end_mode = self._laygo_info.end_mode
             row_edge_infos = self._row_layout_info['row_edge_infos']
             if end_mode & 8 != 0:
-                edgel_infos.extend(self._lr_edge_info[0].master_infos_iter(row_edge_infos))
+                edgel_infos = chain(edgel_infos,
+                                    self._lr_edge_info[0].master_infos_iter(row_edge_infos))
             if end_mode & 4 != 0:
-                edger_infos.extend(self._lr_edge_info[1].master_infos_iter(row_edge_infos))
+                edger_infos = chain(edger_infos,
+                                    self._lr_edge_info[1].master_infos_iter(row_edge_infos))
 
             yt = self.bound_box.top_unit
             tmp = laygo_info.tech_cls.draw_boundaries(self, laygo_info, self._dig_size[0], yt,
