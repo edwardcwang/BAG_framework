@@ -69,7 +69,6 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         self._num_rows = 0
         self._row_layout_info = None
         self._row_height = 0
-        self._row_info_list = None
         self._dig_size = None
         self._ext_params = None
         self._used_list = None  # type: List[LaygoIntvSet]
@@ -246,8 +245,6 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
             self._ybot = (0, 0)
             self._ytop = (tot_height, tot_height)
 
-        self._row_info_list = LaygoBase.compute_row_info(self._laygo_info, row_prop_list,
-                                                         dy=self._ybot[1])[1]
         # add rest of extension parameters
         ycur = self._ybot[1] + self._row_height
         for bot_row_idx in range(num_rows - 1):
@@ -280,10 +277,10 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                 self.array_box = bound_box
 
     def get_track_index(self, row_idx, tr_type, tr_idx, dig_row_idx=0):
-        row_prop_list = self._row_layout_info['row_prop_list']
+        row_prop = self._row_layout_info['row_prop_list'][row_idx]
+        row_info = self._row_layout_info['row_info_list'][row_idx]
 
-        row_info = self._row_info_list[row_idx]
-        orient = row_prop_list[row_idx]['orient']
+        orient = row_prop['orient']
         intv = row_info['%s_intv' % tr_type]
         ntr = intv[1] - intv[0]
         if tr_idx >= ntr:
@@ -301,6 +298,10 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         if dig_row_idx != 0:
             # TODO: figure this out
             raise ValueError('Not supported yet.')
+        else:
+            dtr = self.grid.find_next_track(self.conn_layer + 1, self._ybot[1], mode=1,
+                                            unit_mode=True)
+            ans += dtr
         return ans
 
     def make_track_id(self, row_idx, tr_type, tr_idx, width=1, num=1, pitch=0, dig_row_idx=0):

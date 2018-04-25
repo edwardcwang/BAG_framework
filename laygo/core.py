@@ -9,6 +9,7 @@ import bisect
 
 from bag.math import lcm
 from bag.util.interval import IntervalSet
+from bag.util.cache import DesignMaster
 
 from bag.layout.util import BBox
 from bag.layout.template import TemplateBase
@@ -43,6 +44,9 @@ class LaygoEdgeInfo(object):
     def __init__(self, row_end_list, ext_end_list):
         self._row_end_list = row_end_list
         self._ext_end_list = ext_end_list
+
+    def get_immutable_key(self):
+        return DesignMaster.to_immutable_id((self._row_end_list, self._ext_end_list))
 
     def master_infos_iter(self, row_edge_infos, y0=0, flip=False):
         for y, edge_params in self._ext_end_list:
@@ -627,6 +631,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             draw_boundaries=self._laygo_info.draw_boundaries,
             end_mode=self._laygo_info.end_mode,
             row_prop_list=self._row_prop_list,
+            row_info_list=self._row_info_list,
+            ext_params=self._ext_params,
             bot_sub_extw=self._bot_sub_extw,
             top_sub_extw=self._top_sub_extw,
             row_edge_infos=row_edge_infos,
@@ -676,8 +682,12 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                                      top_layer, 0)
 
         self._row_prop_list = row_prop_list
-        self._ext_params, self._row_info_list = self.compute_row_info(self._laygo_info,
-                                                                      row_prop_list)
+        if 'row_info_list' in layout_info:
+            self._row_info_list = layout_info['row_info_list']
+            self._ext_params = layout_info['ext_params']
+        else:
+            self._ext_params, self._row_info_list = self.compute_row_info(self._laygo_info,
+                                                                          row_prop_list)
 
         # compute laygo size if we know the number of columns
         if num_col is not None:
