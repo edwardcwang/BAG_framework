@@ -418,14 +418,18 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
                 ext_endr_infos.append(None)
 
         # set edge information
-        lendl_list, lendr_list = [], []
-        for intv in self._used_list:
+        row_y_list, lendl_list, lendr_list = [], [], []
+        for row_idx, intv in enumerate(self._used_list):
             lendl, lendr = intv.get_end_info(num_cols)
             lendl_list.append(lendl)
             lendr_list.append(lendr)
+            y0 = row_idx * self._row_height + self._ybot[1]
+            if row_idx % 2 == 1:
+                y0 += self._row_height
+            row_y_list.append(y0)
 
-        self._lr_edge_info = (DigitalEdgeInfo(lendl_list, ext_endl_infos),
-                              DigitalEdgeInfo(lendr_list, ext_endr_infos))
+        self._lr_edge_info = (DigitalEdgeInfo(row_y_list, lendl_list, ext_endl_infos),
+                              DigitalEdgeInfo(row_y_list, lendr_list, ext_endr_infos))
         self._tb_ext_info = (DigitalExtInfo(self._get_ext_info_row(num_rows - 1, 1)),
                              DigitalExtInfo(self._get_ext_info_row(0, 0)))
 
@@ -505,7 +509,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
 
         edgel_infos, edger_infos = [], []
         for master, y, flip in ((self._bot_sub_master, ybot, False),
-                                (self._top_sub_master, ytop, False)):
+                                (self._top_sub_master, ytop, True)):
             layout_info = master.layout_info
             endl, endr = master.lr_edge_info
             rinfo = master.row_info

@@ -62,17 +62,18 @@ class LaygoEdgeInfo(object):
 class DigitalEdgeInfo(object):
     """The edge information object for DigitalBase."""
 
-    def __init__(self, lay_edge_list, ext_end_list):
+    def __init__(self, row_y_list, lay_edge_list, ext_end_list):
+        self._row_y_list = row_y_list
         self._lay_edge_list = lay_edge_list
         self._ext_end_list = ext_end_list
 
-    def master_infos_iter(self, row_edge_infos, y0=0, flip=False):
+    def master_infos_iter(self, row_edge_infos):
         for val in self._ext_end_list:
             if val is not None:
-                yield (y0 - val[0] if flip else y0 + val[0], flip, val[1])
+                yield (val[0], False, val[1])
 
-        for lay_edge_info in self._lay_edge_list:
-            yield from lay_edge_info.master_infos_iter(row_edge_infos, y0=y0, flip=flip)
+        for idx, (row_y, lay_edge_info) in enumerate(zip(self._row_y_list, self._lay_edge_list)):
+            yield from lay_edge_info.master_infos_iter(row_edge_infos, y0=row_y, flip=idx % 2 == 1)
 
     def get_laygo_edge(self, idx):
         return self._lay_edge_list[idx]
@@ -1556,8 +1557,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             endl_list.append(endl)
             endr_list.append(endr)
 
-        self._lr_edge_info = (DigitalEdgeInfo([LaygoEdgeInfo(endl_list, ext_endl_infos)], []),
-                              DigitalEdgeInfo([LaygoEdgeInfo(endr_list, ext_endr_infos)], []))
+        self._lr_edge_info = (DigitalEdgeInfo([0], [LaygoEdgeInfo(endl_list, ext_endl_infos)], []),
+                              DigitalEdgeInfo([0], [LaygoEdgeInfo(endr_list, ext_endr_infos)], []))
         self._tb_ext_info = (DigitalExtInfo(self._get_ext_info_row(self.num_rows - 1, 1)),
                              DigitalExtInfo(self._get_ext_info_row(0, 0)))
 
