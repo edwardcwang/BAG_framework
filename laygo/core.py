@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 class DigitalExtInfo(object):
     """The extension information object for DigitalBase."""
+
     def __init__(self, ext_list):
         self._ext_list = ext_list
 
@@ -35,6 +36,7 @@ class DigitalExtInfo(object):
 
 class LaygoEdgeInfo(object):
     """The edge information object for LaygoBase."""
+
     def __init__(self, row_end_list, ext_end_list):
         self._row_end_list = row_end_list
         self._ext_end_list = ext_end_list
@@ -54,6 +56,7 @@ class LaygoEdgeInfo(object):
 
 class DigitalEdgeInfo(object):
     """The edge information object for DigitalBase."""
+
     def __init__(self, row_end_list, ext_end_list):
         self._row_end_list = row_end_list
         self._ext_end_list = ext_end_list
@@ -973,15 +976,18 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                     wire_tree, min_htot):
         lch_unit = self._laygo_info.lch_unit
 
+        grid = self.grid
         mos_pitch = self._tech_cls.get_mos_pitch(unit_mode=True)
         vm_layer = self._tech_cls.get_dig_conn_layer()
         hm_layer = vm_layer + 1
+        vm_le_sp = grid.get_line_end_space(vm_layer, 1, unit_mode=True)
 
         num_rows = len(rprop_list)
         ext_params_list = []
         prev_ext_info = None
         prev_ext_h = 0
         ytop_prev = ybot
+        ytop_vm_prev = None
         # first pass: determine Y coordinates of each row.
         for idx, (rprop, pinfo) in enumerate(zip(rprop_list, pinfo_list)):
             row_type = rprop['mos_type']
@@ -1004,10 +1010,16 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                     # find Y coordinate that allows us to connect to top bottom track
                     for (_, yt), wg in zip(bot_conn_y, wire_groups):
                         _, tr_idx, tr_w = wg.last_track
-                        via_ext = self.grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
-                        y_ttr = self.grid.get_wire_bounds(hm_layer, tr_idx, width=tr_w,
-                                                          unit_mode=True)[1]
+                        via_ext = grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
+                        y_ttr = grid.get_wire_bounds(hm_layer, tr_idx, width=tr_w,
+                                                     unit_mode=True)[1]
                         ycur = max(ycur, y_ttr + via_ext - yt)
+                    ycur = -(-ycur // mos_pitch) * mos_pitch
+
+                # if previous row has top wires, make sure vm line-end spacing constraint is met
+                if ytop_vm_prev is not None and bot_conn_y:
+                    conn_yb = min((yintv[0] for yintv in bot_conn_y))
+                    ycur = max(ycur, ytop_vm_prev + vm_le_sp - conn_yb)
                     ycur = -(-ycur // mos_pitch) * mos_pitch
 
                 # make sure extension constraints is met
@@ -1031,20 +1043,27 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             # move top tracks and find top coordinate
             ytop = max(ycur + blk_height, ytop_prev + min_row_height)
             wire_groups = wire_tree.get_wire_groups((idx, 1))
+            ytop_vm = None
             if wire_groups is not None:
                 # move the top tracks so we can connect to them
                 for (yb, _), wg in zip(top_conn_y, wire_groups):
                     _, tr_idx, tr_w = wg.first_track
-                    via_ext = self.grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
-                    idx_targ = self.grid.find_next_track(hm_layer, ycur + yb + via_ext,
-                                                         tr_width=tr_w, half_track=True,
-                                                         mode=1, unit_mode=True)
+                    via_ext = grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
+                    idx_targ = grid.find_next_track(hm_layer, ycur + yb + via_ext,
+                                                    tr_width=tr_w, half_track=True,
+                                                    mode=1, unit_mode=True)
                     if tr_idx < idx_targ:
                         wg.move_by(idx_targ - tr_idx, propagate=True)
                     # update ytop
                     _, last_idx, last_w = wg.last_track
-                    ytop = max(ytop, self.grid.get_wire_bounds(hm_layer, last_idx,
-                                                               width=last_w, unit_mode=True)[1])
+                    ytop_wire_cur = grid.get_wire_bounds(hm_layer, last_idx, width=last_w,
+                                                         unit_mode=True)[1]
+                    via_ext = grid.get_via_extensions(vm_layer, 1, last_w, unit_mode=True)[0]
+                    if ytop_vm is None:
+                        ytop_vm = ytop_wire_cur + via_ext
+                    else:
+                        ytop_vm = max(ytop_vm, ytop_wire_cur + via_ext)
+                    ytop = max(ytop, ytop_wire_cur)
 
             ytop = -(-ytop // row_pitch) * row_pitch
             if idx == num_rows - 1:
@@ -1081,10 +1100,10 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 if wire_groups is not None:
                     for wg in wire_groups:
                         _, tr_idx, tr_w = wg.first_track
-                        idx_targ = self.grid.find_next_track(hm_layer, ytop,
-                                                             tr_width=tr_w,
-                                                             half_track=True,
-                                                             mode=1, unit_mode=True)
+                        idx_targ = grid.find_next_track(hm_layer, ytop,
+                                                        tr_width=tr_w,
+                                                        half_track=True,
+                                                        mode=1, unit_mode=True)
                         if tr_idx < idx_targ:
                             wg.move_by(idx_targ - tr_idx, propagate=True)
 
@@ -1095,6 +1114,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
             # update previous row information
             ytop_prev = ytop
+            ytop_vm_prev = ytop_vm
             prev_ext_info = ext_top_info
             prev_ext_h = cur_top_ext_h
 
@@ -1109,10 +1129,10 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             if bot_wire_groups is not None:
                 for (yb, yt), wg in zip(bot_conn_y, bot_wire_groups):
                     _, tr_idx, tr_w = wg.last_track
-                    via_ext = self.grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
-                    idx_max = self.grid.find_next_track(hm_layer, ycur + yt - via_ext,
-                                                        tr_width=tr_w, half_track=True,
-                                                        mode=-1, unit_mode=True)
+                    via_ext = grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
+                    idx_max = grid.find_next_track(hm_layer, ycur + yt - via_ext,
+                                                   tr_width=tr_w, half_track=True,
+                                                   mode=-1, unit_mode=True)
                     if idx_max > tr_idx:
                         wg.move_up(idx_max - tr_idx)
 
