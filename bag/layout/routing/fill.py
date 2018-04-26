@@ -3,15 +3,157 @@
 """This module defines classes that provides automatic fill utility on a grid.
 """
 
-from typing import Optional, Union, List, Tuple, Iterable, Any, Dict
+from typing import TYPE_CHECKING, Optional, Union, List, Tuple, Iterable, Any, Dict, Generator
 
 import numpy as np
+from rtree.index import Index
 
 from bag.util.interval import IntervalSet
 from bag.util.search import BinaryIterator, minimize_cost_golden
-from bag.layout.util import BBox
+
 from .base import WireArray, TrackID
-from .grid import RoutingGrid
+
+if TYPE_CHECKING:
+    from bag.layout.util import BBox
+
+    from .grid import RoutingGrid
+
+
+class RectIndex(object):
+    """A R-tree that stores all tracks on a layer."""
+
+    def __init__(self):
+        # type: () -> None
+        self._index = Index(interleaved=True)
+        self._cnt = 0
+
+    def record_box(self, box, dx, dy):
+        # type: (BBox, int, int) -> None
+        """Record the given BBox."""
+        bnds = box.expand(dx=dx, dy=dy, unit_mode=True).get_bounds(unit_mode=True)
+        self._index.insert(self._cnt, bnds, obj=(dx, dy))
+        self._cnt += 1
+
+    def intersection_iter(self, box, dx=0, dy=0):
+        # type: (BBox, int, int) -> Generator[Tuple[BBox, int, int], None, None]
+        """Finds all bounding box that intersects the given box."""
+        res = box.resolution
+        test_box = box.expand(dx=dx, dy=dy, unit_mode=True)
+        for item in self._index.intersection(test_box.get_bounds(unit_mode=True), objects=True):
+            item_box = item.bbox
+            item_dx, item_dy = item.object
+            item_box_sp = BBox(item_box[0], item_box[1], item_box[2],
+                               item_box[3], res, unit_mode=True)
+            item_box_real = item_box_sp.expand(dx=-item_dx, dy=-item_dy, unit_mode=True)
+            if item_box_sp.overlaps(box) or test_box.overlaps(item_box_real):
+                yield item_box_real, max(dx, item_dx), max(dy, item_dy)
+
+
+class RectLookup(object):
+    """A R-tree that stores all tracks in a template.
+
+    Parameters
+    ----------
+    grid : RoutingGrid
+        the RoutingGRid object.
+    """
+
+    def __init__(self, grid):
+        # type: (RoutingGrid) -> None
+        self._grid = grid
+        self._idx_table = {}
+
+    def record_warr(self, warr):
+        # type: (WireArray) -> None
+        """Record the given WireArray."""
+        grid = self._grid
+        layer_id = warr.layer_id
+        if layer_id not in self._idx_table:
+            index = self._idx_table[layer_id] = RectIndex()
+        else:
+            index = self._idx_table[layer_id]
+
+        horizontal = grid.get_direction(layer_id) == 'x'
+        track_id = warr.track_id
+        tr_w = track_id.width
+        sp = grid.get_space(layer_id, tr_w, unit_mode=True)
+        sp_le = grid.get_line_end_space(layer_id, tr_w, unit_mode=True)
+        if horizontal:
+            dx, dy = sp_le, sp
+        else:
+            dx, dy = sp, sp_le
+
+        box_arr = warr.get_bbox_array(grid)
+        for box in box_arr:
+            index.record_box(box, dx, dy)
+
+    def blockage_iter(self,  # type: RectLookup
+                      layer_id,  # type: int
+                      tr_idx,  # type: Union[float, int]
+                      lower,  # type: int
+                      upper,  # type: int
+                      width=1,  # type: int
+                      sp=0,  # type: int
+                      sp_le=0,  # type: int
+                      ):
+        # type: (...) -> Generator[Tuple[int, int], None, None]
+        if layer_id not in self._idx_table:
+            self._idx_table[layer_id] = RectIndex()
+        else:
+            grid = self._grid
+            res = grid.resolution
+            warr = WireArray(TrackID(layer_id, tr_idx), lower, upper, res=res, unit_mode=True)
+            wbox = warr.get_bbox_array(grid).base
+            index = self._idx_table[layer_id]
+
+            sp = max(sp, grid.get_space(layer_id, width, unit_mode=True))
+            sp_le = max(sp_le, grid.get_line_end_space(layer_id, width, unit_mode=True))
+            is_horiz = grid.get_direction(layer_id) == 'x'
+            if is_horiz:
+                box_iter = index.intersection_iter(wbox, dx=sp_le, dy=sp)
+            else:
+                box_iter = index.intersection_iter(wbox, dx=sp, dy=sp_le)
+
+            for box, dx, dy in box_iter:
+                if is_horiz:
+                    yield max(lower, box.left_unit - dx), min(upper, box.right_unit + dx)
+                else:
+                    yield max(lower, box.bottom_unit - dy), min(upper, box.top_unit + dy)
+
+    def open_interval_iter(self,  # type: RectLookup
+                           layer_id,  # type: int
+                           tr_idx,  # type: Union[float, int]
+                           lower,  # type: int
+                           upper,  # type: int
+                           width=1,  # type: int
+                           sp=0,  # type: int
+                           sp_le=0,  # type: int
+                           min_len=0,  # type: int
+                           ):
+        # type: (...) -> bool
+        intv_set = IntervalSet()
+        for tl, tu in self.blockage_iter(layer_id, tr_idx, lower, upper,
+                                         width=width, sp=sp, sp_le=sp_le):
+            intv_set.add((tl, tu))
+
+        for intv in intv_set.get_complement((lower, upper)):
+            if intv[1] - intv[0] >= min_len:
+                yield intv
+
+    def is_track_available(self,  # type: RectLookup
+                           layer_id,  # type: int
+                           tr_idx,  # type: Union[float, int]
+                           lower,  # type: int
+                           upper,  # type: int
+                           width=1,  # type: int
+                           sp=0,  # type: int
+                           sp_le=0,  # type: int
+                           ):
+        # type: (...) -> bool
+        for _ in self.blockage_iter(layer_id, tr_idx, lower, upper,
+                                    width=width, sp=sp, sp_le=sp_le):
+            return False
+        return True
 
 
 class TrackSet(object):
@@ -756,6 +898,7 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
     if sp_max is not None:
         if sp_max <= sp_min:
             raise ValueError('Cannot have sp_max = %d <= %d = sp_min' % (sp_max, sp_min))
+
         # find minimum nfill that meets sp_max spec
 
         def golden_fun2(nfill):
