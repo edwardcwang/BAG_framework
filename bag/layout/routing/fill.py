@@ -22,10 +22,14 @@ if TYPE_CHECKING:
 class RectIndex(object):
     """A R-tree that stores all tracks on a layer."""
 
-    def __init__(self):
-        # type: () -> None
-        self._index = Index(interleaved=True)
-        self._cnt = 0
+    def __init__(self, resolution, init_cnt=0, init_index=None):
+        # type: (float) -> None
+        self._res = resolution
+        self._cnt = init_cnt
+        if init_index is None:
+            self._index = Index(interleaved=True)
+        else:
+            self._index = init_index
 
     def record_box(self, box, dx, dy):
         # type: (BBox, int, int) -> None
@@ -34,19 +38,51 @@ class RectIndex(object):
         self._index.insert(self._cnt, bnds, obj=(dx, dy))
         self._cnt += 1
 
+    def rect_iter(self):
+        for item in self._index.intersection(self._index.bounds, objects=True):
+            yield item.id, item.bbox, item.object
+
     def intersection_iter(self, box, dx=0, dy=0):
         # type: (BBox, int, int) -> Generator[Tuple[BBox, int, int], None, None]
         """Finds all bounding box that intersects the given box."""
-        res = box.resolution
         test_box = box.expand(dx=dx, dy=dy, unit_mode=True)
         for item in self._index.intersection(test_box.get_bounds(unit_mode=True), objects=True):
             item_box = item.bbox
             item_dx, item_dy = item.object
             item_box_sp = BBox(item_box[0], item_box[1], item_box[2],
-                               item_box[3], res, unit_mode=True)
+                               item_box[3], self._res, unit_mode=True)
             item_box_real = item_box_sp.expand(dx=-item_dx, dy=-item_dy, unit_mode=True)
             if item_box_sp.overlaps(box) or test_box.overlaps(item_box_real):
                 yield item_box_real, max(dx, item_dx), max(dy, item_dy)
+
+    def transform(self, dx, dy, orient):
+        # type: (int, int, str) -> RectIndex
+        """Returns a new transformed RectIndex."""
+        return RectIndex(self._res, init_cnt=self._cnt,
+                         init_index=Index(self._transform_iter(dx, dy, orient), interleaved=True))
+
+    def _transform_iter(self,  # type: RectIndex
+                        dx,  # type: int
+                        dy,  # type: int
+                        orient,  # type: str
+                        ):
+        # type: (...) -> Generator[Tuple[int, Tuple[int, ...], Tuple[int, int]], None, None]
+        loc = (dx, dy)
+        flip = (orient == 'R90' or orient == 'R270' or orient == 'MXR90' or orient == 'MYR90')
+        for item in self._index.intersection(self._index.bounds, objects=True):
+            item_box = item.bbox
+            new_obj = (item.object[1], item.object[0]) if flip else item.object
+            item_box = BBox(item_box[0], item_box[1], item_box[2],
+                            item_box[3], self._res, unit_mode=True)
+            item_box = item_box.transform(loc=loc, orient=orient, unit_mode=True)
+            yield item.id, item_box.get_bounds(unit_mode=True), new_obj
+
+    def merge(self, rect_index):
+        # type: (RectIndex) -> None
+        """Merge the given RectIndex to this one."""
+        for _, bnds, obj in rect_index.rect_iter():
+            self._index.insert(self._cnt, bnds, obj=obj)
+            self._cnt += 1
 
 
 class RectLookup(object):
@@ -69,7 +105,7 @@ class RectLookup(object):
         grid = self._grid
         layer_id = warr.layer_id
         if layer_id not in self._idx_table:
-            index = self._idx_table[layer_id] = RectIndex()
+            index = self._idx_table[layer_id] = RectIndex(grid.resolution)
         else:
             index = self._idx_table[layer_id]
 
@@ -97,11 +133,11 @@ class RectLookup(object):
                       sp_le=0,  # type: int
                       ):
         # type: (...) -> Generator[Tuple[int, int], None, None]
+        grid = self._grid
+        res = grid.resolution
         if layer_id not in self._idx_table:
-            self._idx_table[layer_id] = RectIndex()
+            self._idx_table[layer_id] = RectIndex(res)
         else:
-            grid = self._grid
-            res = grid.resolution
             warr = WireArray(TrackID(layer_id, tr_idx), lower, upper, res=res, unit_mode=True)
             wbox = warr.get_bbox_array(grid).base
             index = self._idx_table[layer_id]
