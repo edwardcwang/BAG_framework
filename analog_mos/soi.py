@@ -664,17 +664,24 @@ class MOSTechSOIGenericBC(MOSTech):
         fg = layout_info['fg']
         b_po_y_list = layout_info['b_po_y_list']
         g_y_list = layout_info['g_y_list']
+        d_y_list = layout_info['d_y_list']
         b_y_list = layout_info['b_y_list']
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sp_gb_po = mos_constants['sp_gb_po']
+        po_od_spx = mos_constants['po_od_spx']
+        w_delta = mos_constants['w_delta']
 
         sd_pitch2 = sd_pitch // 2
         width = fg * sd_pitch
         lch2 = lch_unit // 2
-        po_name = mos_lay_table['PO']
+        po_name = mos_lay_table['PO_dummy']
+        od_name = mos_lay_table['OD_dummy']
         po_yb = g_y_list[0][0] - sd_yc
         po_yt = b_po_y_list[0][0] - sp_gb_po - sd_yc
+        od_yb = d_y_list[0][0] - sd_yc
+        od_yt = d_y_list[0][1] + w_delta - sd_yc
+        od_w = sd_pitch - lch_unit - 2 * po_od_spx
 
         if (edge_mode & 1) == 0:
             po_box = BBox(sd_pitch2 - lch2, po_yb, sd_pitch2 + lch2, po_yt, res, unit_mode=True)
@@ -682,6 +689,8 @@ class MOSTechSOIGenericBC(MOSTech):
             po_xcl = sd_pitch2 * 3
         else:
             po_xcl = sd_pitch2
+        od_xl = sd_pitch2 + lch2 + po_od_spx
+        od_xr = od_xl + od_w
 
         if (edge_mode & 2) == 0:
             po_box = BBox(width - sd_pitch2 - lch2, po_yb, width - sd_pitch2 + lch2,
@@ -698,6 +707,9 @@ class MOSTechSOIGenericBC(MOSTech):
             # draw dummy PO
             po_box = BBox(po_xcl - lch2, po_yb, po_xcl + lch2, po_yt, res, unit_mode=True)
             template.add_rect(po_name, po_box, nx=nx, spx=sd_pitch, unit_mode=True)
+        if fg > 1:
+            od_box = BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True)
+            template.add_rect(od_name, od_box, nx=fg - 1, spx=sd_pitch, unit_mode=True)
 
         # draw body M1
         m1_name = lay_name_table[1]
