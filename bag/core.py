@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, Union, Type, Seque
 import os
 import string
 import importlib
+import cProfile
+import pstats
 
 # noinspection PyPackageRequirements
 import yaml
@@ -605,8 +607,9 @@ class BagProject(object):
                       run_lvs=False,  # type: bool
                       use_cybagoa=True,  # type: bool
                       debug=False,  # type: bool
+                      profile_fname='',  # type: str
                       ):
-        # type: (...) -> None
+        # type: (...) -> Optional[pstats.Stats]
         """Generate layout/schematic of a given cell from specification file.
 
         Parameters
@@ -625,6 +628,13 @@ class BagProject(object):
             True to enable cybagoa acceleration if available.
         debug : bool
             True to print debug messages.
+        profile_fname : str
+            If not empty, profile layout generation, and save statistics to this file.
+
+        Returns
+        -------
+        stats : pstats.Stats
+            If profiling is enabled, the statistics object.
         """
         impl_lib = specs['impl_lib']
         impl_cell = specs['impl_cell']
@@ -639,6 +649,14 @@ class BagProject(object):
 
         name_list = [impl_cell]
         print('computing layout...')
+        if profile_fname:
+            profiler = cProfile.Profile()
+            profiler.runcall(temp_db.new_template, params=params, temp_cls=temp_cls, debug=False)
+            profiler.dump_stats(profile_fname)
+            result = pstats.Stats(profile_fname).strip_dirs()
+        else:
+            result = None
+
         temp = temp_db.new_template(params=params, temp_cls=temp_cls, debug=debug)
         print('computation done.')
         temp_list = [temp]
@@ -662,6 +680,8 @@ class BagProject(object):
                 print('LVS passed!')
             else:
                 print('LVS failed...')
+
+        return result
 
     def create_library(self, lib_name, lib_path=''):
         # type: (str, str) -> None
