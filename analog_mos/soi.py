@@ -669,25 +669,35 @@ class MOSTechSOIGenericBC(MOSTech):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sp_gb_po = mos_constants['sp_gb_po']
 
+        sd_pitch2 = sd_pitch // 2
         width = fg * sd_pitch
+        lch2 = lch_unit // 2
+        po_name = mos_lay_table['PO']
+        po_yb = g_y_list[0][0] - sd_yc
+        po_yt = b_po_y_list[0][0] - sp_gb_po - sd_yc
+
+        if (edge_mode & 1) == 0:
+            po_box = BBox(sd_pitch2 - lch2, po_yb, sd_pitch2 + lch2, po_yt, res, unit_mode=True)
+            template.add_rect(po_name, po_box, unit_mode=True)
+            po_xcl = sd_pitch2 * 3
+        else:
+            po_xcl = sd_pitch2
+
+        if (edge_mode & 2) == 0:
+            po_box = BBox(width - sd_pitch2 - lch2, po_yb, width - sd_pitch2 + lch2,
+                          po_yt, res, unit_mode=True)
+            template.add_rect(po_name, po_box, unit_mode=True)
+            po_xcr = width - sd_pitch2 * 3
+        else:
+            po_xcr = width - sd_pitch2
 
         # get dummy PO X coordinates
-        po_x_list = []
-        if (edge_mode & 1) == 0:
-            po_x_list.append(sd_pitch // 2)
-        if (edge_mode & 2) == 0:
-            po_x_list.append(width - sd_pitch // 2)
-
-        if po_x_list:
+        nx = (po_xcr - po_xcl) // sd_pitch + 1
+        po_yt = b_po_y_list[0][1] - sd_yc
+        if nx > 0:
             # draw dummy PO
-            po_name = mos_lay_table['PO']
-            po_yb = g_y_list[0][0]
-            po_yt = b_po_y_list[0][0] - sp_gb_po
-            po_box = BBox(-lch_unit // 2, po_yb, lch_unit // 2, po_yt, res, unit_mode=True)
-            po_box = po_box.move_by(dy=-sd_yc, unit_mode=True)
-            for po_xc in po_x_list:
-                po_box = po_box.move_by(dx=po_xc - po_box.xc_unit, unit_mode=True)
-                template.add_rect(po_name, po_box)
+            po_box = BBox(po_xcl - lch2, po_yb, po_xcl + lch2, po_yt, res, unit_mode=True)
+            template.add_rect(po_name, po_box, nx=nx, spx=sd_pitch, unit_mode=True)
 
         # draw body M1
         m1_name = lay_name_table[1]
