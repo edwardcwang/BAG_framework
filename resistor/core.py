@@ -239,7 +239,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
     def bot_layer_id(self):
         # type: () -> int
         """Returns the bottom resistor routing layer ID."""
-        return self._layout_info.bot_layer
+        return self.get_port_layer_id(self.grid.tech_info)
 
     @property
     def w_tracks(self):
