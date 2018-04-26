@@ -286,6 +286,15 @@ class BBox(object):
                     min(self._top_unit, bbox._top_unit),
                     self._res, unit_mode=True)
 
+    def overlaps(self, bbox):
+        # type: (BBox) -> bool
+        """Returns True if this BBox overlaps the given BBox."""
+
+        return ((max(self._left_unit, bbox._left_unit) <
+                 min(self._right_unit, bbox._right_unit)) and
+                (max(self._bot_unit, bbox._bot_unit) <
+                 min(self._top_unit, bbox._top_unit)))
+
     def extend(self, x=None, y=None, unit_mode=False):
         # type: (Union[float, int], Union[float, int], bool) -> BBox
         """Returns an extended BBox that covers the given point.

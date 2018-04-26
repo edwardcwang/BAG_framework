@@ -163,7 +163,7 @@ class RoutingGrid(object):
                            orient,  # type: str
                            unit_mode=False,  # type: bool
                            ):
-        # type: (...) -> Dict[int, bool]
+        # type: (...) -> Dict[int, Tuple[int, int]]
         """Compute the flip parity dictionary for an instance placed at the given location.
 
         Parameters
@@ -178,6 +178,11 @@ class RoutingGrid(object):
             the instance orientation.
         unit_mode : bool
             True if loc is given in resolution units.
+
+        Returns
+        -------
+        flip_parity : Dict[int, Tuple[int, int]]
+            the flip_parity dictionary.
         """
         if unit_mode:
             xo, yo = loc
@@ -446,9 +451,41 @@ class RoutingGrid(object):
         else:
             return min_length
 
+    def get_space(self, layer_id, width_ntr, same_color=False, unit_mode=False):
+        # type: (int, int, bool, bool) -> Union[int, float]
+        """Returns the space needed around a track, in layout/resolution units.
+
+        Parameters
+        ----------
+        layer_id : int
+            the track layer ID
+        width_ntr : int
+            the track width in number of tracks.
+        same_color : bool
+            True to use same-color spacing.
+        unit_mode : bool
+            True to return resolution units.
+
+        Returns
+        -------
+        sp : Union[int, float]
+            minimum space needed around the given track in layout/resolution units.
+        """
+        layer_name = self.tech_info.get_layer_name(layer_id)
+        if isinstance(layer_name, tuple):
+            layer_name = layer_name[0]
+        layer_type = self.tech_info.get_layer_type(layer_name)
+
+        width = self.get_track_width(layer_id, width_ntr, unit_mode=True)
+        sp_min_unit = self.tech_info.get_min_space(layer_type, width, unit_mode=True,
+                                                   same_color=same_color)
+        if unit_mode:
+            return sp_min_unit
+        return sp_min_unit * self._resolution
+
     def get_num_space_tracks(self, layer_id, width_ntr, half_space=False, same_color=False):
         # type: (int, int, bool, bool) -> Union[int, float]
-        """Returns the number of tracks needed to reserve for space around a track of the given width.
+        """Returns the number of tracks needed for space around a track of the given width.
 
         In advance technologies, metal spacing is often a function of the metal width, so for a
         a wide track we may need to reserve empty tracks next to this.  This method computes the
@@ -470,14 +507,8 @@ class RoutingGrid(object):
         num_sp_tracks : Union[int, float]
             minimum space needed around the given track in number of tracks.
         """
-        layer_name = self.tech_info.get_layer_name(layer_id)
-        if isinstance(layer_name, tuple):
-            layer_name = layer_name[0]
-        layer_type = self.tech_info.get_layer_type(layer_name)
-
         width = self.get_track_width(layer_id, width_ntr, unit_mode=True)
-        sp_min_unit = self.tech_info.get_min_space(layer_type, width, unit_mode=True,
-                                                   same_color=same_color)
+        sp_min_unit = self.get_space(layer_id, width_ntr, same_color=same_color, unit_mode=True)
         w_unit = self.w_tracks[layer_id]
         sp_unit = self.sp_tracks[layer_id]
         # if this width is overridden, we may have extra space
