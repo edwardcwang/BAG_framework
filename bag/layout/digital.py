@@ -312,7 +312,8 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
         self.add_instance_primitive(lib_name, 'boundary_bottomleft' + suffix, (0, 0))
 
         # add left
-        self.add_instance_primitive(lib_name, 'boundary_left' + suffix, (0, dy), ny=num_row_even, spy=hrow * 2)
+        self.add_instance_primitive(lib_name, 'boundary_left' + suffix, (0, dy), ny=num_row_even,
+                                    spy=hrow * 2)
         if num_row_odd > 0:
             self.add_instance_primitive(lib_name, 'boundary_left' + suffix, (0, dy + 2 * hrow),
                                         orient='MX', ny=num_row_odd, spy=hrow * 2)
@@ -323,14 +324,17 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
             self.add_instance_primitive(lib_name, 'boundary_topleft' + suffix, (0, yc))
         else:
             yc = 2 * dy + num_row * hrow
-            self.add_instance_primitive(lib_name, 'boundary_bottomleft' + suffix, (0, yc), orient='MX')
+            self.add_instance_primitive(lib_name, 'boundary_bottomleft' + suffix, (0, yc),
+                                        orient='MX')
 
         # add bottom
-        self.add_instance_primitive(lib_name, 'boundary_bottom' + suffix, (dx, 0), nx=num_col, spx=wcol)
+        self.add_instance_primitive(lib_name, 'boundary_bottom' + suffix, (dx, 0), nx=num_col,
+                                    spx=wcol)
 
         # add top
         if num_row % 2 == 1:
-            self.add_instance_primitive(lib_name, 'boundary_top' + suffix, (dx, yc), nx=num_col, spx=wcol)
+            self.add_instance_primitive(lib_name, 'boundary_top' + suffix, (dx, yc), nx=num_col,
+                                        spx=wcol)
         else:
             self.add_instance_primitive(lib_name, 'boundary_bottom' + suffix, (dx, yc), orient='MX',
                                         nx=num_col, spx=wcol)
@@ -340,7 +344,8 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
         self.add_instance_primitive(lib_name, 'boundary_bottomright' + suffix, (xc, 0))
 
         # add right
-        self.add_instance_primitive(lib_name, 'boundary_right' + suffix, (xc, dy), ny=num_row_even, spy=hrow * 2)
+        self.add_instance_primitive(lib_name, 'boundary_right' + suffix, (xc, dy), ny=num_row_even,
+                                    spy=hrow * 2)
         if num_row_odd > 0:
             self.add_instance_primitive(lib_name, 'boundary_right' + suffix, (xc, dy + 2 * hrow),
                                         orient='MX', ny=num_row_odd, spy=hrow * 2)
@@ -349,7 +354,8 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
         if num_row % 2 == 1:
             self.add_instance_primitive(lib_name, 'boundary_topright' + suffix, (xc, yc))
         else:
-            self.add_instance_primitive(lib_name, 'boundary_bottomright' + suffix, (xc, yc), orient='MX')
+            self.add_instance_primitive(lib_name, 'boundary_bottomright' + suffix, (xc, yc),
+                                        orient='MX')
 
     def fill_space(self):
         # type: () -> None
@@ -433,6 +439,11 @@ class StdCellTemplate(StdCellBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         StdCellBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        self._sch_params = None
+
+    @property
+    def sch_params(self):
+        return self._sch_params
 
     @classmethod
     def get_params_info(cls):
@@ -497,3 +508,6 @@ class StdCellTemplate(StdCellBase):
                 warr = WireArray(TrackID(port_lay_id, tr_idx, width=tr_w), lower, upper,
                                  res=res, unit_mode=False)
                 self.add_pin(port_name, warr, show=False)
+
+        # set properties
+        self._sch_params = cell_params.get('sch_params', None)
