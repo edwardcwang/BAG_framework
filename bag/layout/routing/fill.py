@@ -31,6 +31,11 @@ class RectIndex(object):
         else:
             self._index = init_index
 
+    def copy(self):
+        """Returns a copy of this instance."""
+        new_index = Index(self.rect_iter(), interleaved=True)
+        return RectIndex(self._res, init_cnt=self._cnt, init_index=new_index)
+
     def record_box(self, box, dx, dy):
         # type: (BBox, int, int) -> None
         """Record the given BBox."""
@@ -55,19 +60,17 @@ class RectIndex(object):
             if item_box_sp.overlaps(box) or test_box.overlaps(item_box_real):
                 yield item_box_real, max(dx, item_dx), max(dy, item_dy)
 
-    def transform(self, dx, dy, orient):
-        # type: (int, int, str) -> RectIndex
+    def transform(self, loc, orient):
+        # type: (Tuple[int, int], str) -> RectIndex
         """Returns a new transformed RectIndex."""
         return RectIndex(self._res, init_cnt=self._cnt,
-                         init_index=Index(self._transform_iter(dx, dy, orient), interleaved=True))
+                         init_index=Index(self._transform_iter(loc, orient), interleaved=True))
 
     def _transform_iter(self,  # type: RectIndex
-                        dx,  # type: int
-                        dy,  # type: int
+                        loc,  # type: Tuple[int, int]
                         orient,  # type: str
                         ):
         # type: (...) -> Generator[Tuple[int, Tuple[int, ...], Tuple[int, int]], None, None]
-        loc = (dx, dy)
         flip = (orient == 'R90' or orient == 'R270' or orient == 'MXR90' or orient == 'MYR90')
         for item in self._index.intersection(self._index.bounds, objects=True):
             item_box = item.bbox
@@ -94,34 +97,43 @@ class RectLookup(object):
         the RoutingGRid object.
     """
 
-    def __init__(self, grid):
+    def __init__(self, grid, init_idx_table=None):
         # type: (RoutingGrid) -> None
         self._grid = grid
-        self._idx_table = {}
+        if init_idx_table is None:
+            self._idx_table = {}
+        else:
+            self._idx_table = init_idx_table
 
-    def record_warr(self, warr):
-        # type: (WireArray) -> None
+    def record_wire_arrays(self, warr_list):
+        # type: (Union[WireArray, List[WireArray]]) -> None
         """Record the given WireArray."""
+        if isinstance(warr_list, WireArray):
+            warr_list = [warr_list, ]
+        else:
+            pass
+
         grid = self._grid
-        layer_id = warr.layer_id
-        if layer_id not in self._idx_table:
-            index = self._idx_table[layer_id] = RectIndex(grid.resolution)
-        else:
-            index = self._idx_table[layer_id]
+        for warr in warr_list:
+            layer_id = warr.layer_id
+            if layer_id not in self._idx_table:
+                index = self._idx_table[layer_id] = RectIndex(grid.resolution)
+            else:
+                index = self._idx_table[layer_id]
 
-        horizontal = grid.get_direction(layer_id) == 'x'
-        track_id = warr.track_id
-        tr_w = track_id.width
-        sp = grid.get_space(layer_id, tr_w, unit_mode=True)
-        sp_le = grid.get_line_end_space(layer_id, tr_w, unit_mode=True)
-        if horizontal:
-            dx, dy = sp_le, sp
-        else:
-            dx, dy = sp, sp_le
+            horizontal = grid.get_direction(layer_id) == 'x'
+            track_id = warr.track_id
+            tr_w = track_id.width
+            sp = grid.get_space(layer_id, tr_w, unit_mode=True)
+            sp_le = grid.get_line_end_space(layer_id, tr_w, unit_mode=True)
+            if horizontal:
+                dx, dy = sp_le, sp
+            else:
+                dx, dy = sp, sp_le
 
-        box_arr = warr.get_bbox_array(grid)
-        for box in box_arr:
-            index.record_box(box, dx, dy)
+            box_arr = warr.get_bbox_array(grid)
+            for box in box_arr:
+                index.record_box(box, dx, dy)
 
     def blockage_iter(self,  # type: RectLookup
                       layer_id,  # type: int
@@ -190,6 +202,25 @@ class RectLookup(object):
                                     width=width, sp=sp, sp_le=sp_le):
             return False
         return True
+
+    def transform(self,
+                  loc,  # type: Tuple[int, int]
+                  orient,  # type: str
+                  ):
+        # type: (...) -> RectLookup
+        """Return a new transformed RectLookup."""
+
+        new_idx_table = {lay: idx.transform(loc, orient) for lay, idx in self._idx_table.items()}
+        return RectLookup(self._grid, new_idx_table)
+
+    def merge(self, rect_lookup):
+        # type: (RectLookup) -> None
+        """Merge the given used tracks to this one."""
+        for lay_id, idx in rect_lookup._idx_table.items():
+            if lay_id not in self._idx_table:
+                self._idx_table[lay_id] = idx.copy()
+            else:
+                self._idx_table[lay_id].merge(idx)
 
 
 class TrackSet(object):
