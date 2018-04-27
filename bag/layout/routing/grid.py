@@ -767,17 +767,18 @@ class RoutingGrid(object):
                                            include_private=include_private,
                                            half_blk_x=half_blk_x, half_blk_y=half_blk_y)
 
-        top_pitch = self.get_track_pitch(layer_id, unit_mode=True)
-        bot_pitch = self.get_track_pitch(layer_id - 1, unit_mode=True)
-        top_dim = (fill_config[layer_id][0] + fill_config[layer_id][1]) * top_pitch
-        bot_dim = (fill_config[layer_id - 1][0] + fill_config[layer_id - 1][1]) * bot_pitch
-        if self.get_direction(layer_id) == 'x':
-            fill_w, fill_h = bot_dim, top_dim
-        else:
-            fill_w, fill_h = top_dim, bot_dim
+        w_list = [blk_w]
+        h_list = [blk_h]
+        for lay, (tr_w, tr_sp, _, _) in fill_config.items():
+            cur_pitch = self.get_track_pitch(lay, unit_mode=True)
+            cur_dim = (tr_w + tr_sp) * cur_pitch * 2
+            if self.get_direction(lay) == 'x':
+                h_list.append(cur_dim)
+            else:
+                w_list.append(cur_dim)
 
-        blk_w = lcm([blk_w, fill_w])
-        blk_h = lcm([blk_h, fill_h])
+        blk_w = lcm(w_list)
+        blk_h = lcm(h_list)
         if unit_mode:
             return blk_w, blk_h
         return blk_w * self._resolution, blk_h * self._resolution
