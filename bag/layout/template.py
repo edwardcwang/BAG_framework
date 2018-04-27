@@ -10,7 +10,7 @@ import os
 import time
 import abc
 import copy
-from itertools import chain, islice, product
+from itertools import islice, product
 
 import yaml
 
@@ -20,7 +20,7 @@ from .core import BagLayout
 from .util import BBox, BBoxArray
 from ..io import get_encoding, open_file
 from .routing import Port, TrackID, WireArray
-from .routing.fill import UsedTracks, get_power_fill_tracks, get_available_tracks
+from .routing.fill import UsedTracks
 from .objects import Instance, Rect, Via, Path
 
 if TYPE_CHECKING:
@@ -733,8 +733,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             sp = int(round(sp / res))
             sp_le = int(round(sp_le / res))
 
-        return self._used_tracks.is_track_available(self.grid, layer_id, tr_idx, lower, upper,
-                                                    width=width, sp=sp, sp_le=sp_le)
+        track_id = TrackID(layer_id, tr_idx, width=width)
+        return self._used_tracks.is_track_available(self.grid, track_id, lower, upper,
+                                                    sp=sp, sp_le=sp_le)
 
     def get_rect_bbox(self, layer):
         # type: (Union[str, Tuple[str, str]]) -> BBox
@@ -3134,28 +3135,31 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         res = grid.resolution
 
         for bwarr in bot_warr_list:
-            bot_intv = int(round(bwarr.lower / res)), int(round(bwarr.upper / res))
+            bot_tl = bwarr.lower_unit
+            bot_tu = bwarr.upper_unit
             bot_track_idx = bwarr.track_id
             bot_layer_id = bot_track_idx.layer_id
             top_layer_id = bot_layer_id + 1
             bot_width = bot_track_idx.width
             bot_dir = self.grid.get_direction(bot_layer_id)
+            bot_horizontal = (bot_dir == 'x')
             for bot_index in bot_track_idx:
                 bot_lay_name = self.grid.get_layer_name(bot_layer_id, bot_index)
                 btl, btu = grid.get_wire_bounds(bot_layer_id, bot_index, width=bot_width,
                                                 unit_mode=True)
                 for twarr in top_warr_list:
-                    top_intv = int(round(twarr.lower / res)), int(round(twarr.upper / res))
+                    top_tl = twarr.lower_unit
+                    top_tu = twarr.upper_unit
                     top_track_idx = twarr.track_id
                     top_width = top_track_idx.width
-                    if top_intv[1] >= btu and top_intv[0] <= btl:
+                    if top_tu >= btu and top_tl <= btl:
                         # top wire cuts bottom wire, possible intersection
                         for top_index in top_track_idx:
                             ttl, ttu = grid.get_wire_bounds(top_layer_id, top_index,
                                                             width=top_width, unit_mode=True)
-                            if bot_intv[1] >= ttu and bot_intv[0] <= ttl:
+                            if bot_tl >= ttu and bot_tu <= ttl:
                                 # bottom wire cuts top wire, we have intersection.  Make bbox
-                                if bot_dir == 'x':
+                                if bot_horizontal:
                                     box = BBox(ttl, btl, ttu, btu, res, unit_mode=True)
                                 else:
                                     box = BBox(btl, ttl, btu, ttu, res, unit_mode=True)
@@ -3194,37 +3198,74 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             upper = int(round(upper / res))
             margin = int(round(margin / res))
 
-        self._merge_inst_used_tracks()
-        return get_available_tracks(self.grid, layer_id, tr_idx_list, lower, upper,
-                                    width, margin, self._used_tracks.get_tracks_info(layer_id))
+        return [tr_idx for tr_idx in tr_idx_list
+                if self.is_track_available(layer_id, tr_idx, lower, upper, width=width,
+                                           sp=margin, sp_le=margin, unit_mode=True)]
 
     def do_power_fill(self,  # type: TemplateBase
                       layer_id,  # type: int
-                      vdd_warrs,  # type: Union[WireArray, List[WireArray]]
-                      vss_warrs,  # type: Union[WireArray, List[WireArray]]
-                      sup_width=1,  # type: int
-                      fill_margin=0,  # type: Union[float, int]
-                      edge_margin=0,  # type: Union[float, int]
+                      space,  # type: int
+                      space_le,  # type: int
+                      vdd_warrs=None,  # type: Union[WireArray, List[WireArray]]
+                      vss_warrs=None,  # type: Union[WireArray, List[WireArray]]
+                      bound_box=None,  # type: Optional[BBox]
+                      fill_width=1,  # type: int
+                      fill_space=0,  # type: int
+                      x_margin=0,  # type: Union[float, int]
+                      y_margin=0,  # type: Union[float, int]
+                      min_len=0,  # type: Union[float, int]
+                      flip=False,  # type: bool
                       unit_mode=False,  # type: bool
-                      sup_spacing=-1,  # type: int
-                      debug=False,  # type: bool
                       ):
         # type: (...) -> Tuple[List[WireArray], List[WireArray]]
         """Draw power fill on the given layer."""
+        res = self.grid.resolution
         if not unit_mode:
-            res = self.grid.resolution
-            fill_margin = int(round(fill_margin / res))
-            edge_margin = int(round(edge_margin / res))
+            x_margin = int(round(x_margin / res))
+            y_margin = int(round(y_margin / res))
+            min_len = int(round(min_len / res))
 
         self._merge_inst_used_tracks()
-        top_vdd, top_vss = get_power_fill_tracks(self.grid, self.bound_box, layer_id,
-                                                 self._used_tracks.get_tracks_info(layer_id),
-                                                 sup_width, fill_margin, edge_margin,
-                                                 sup_spacing=sup_spacing, debug=debug)
-        for warr in chain(top_vdd, top_vss):
-            for layer, box_arr in warr.wire_arr_iter(self.grid):
-                self.add_rect(layer, box_arr)
+
+        min_len = max(min_len, self.grid.get_min_length(layer_id, fill_width, unit_mode=True))
+        if bound_box is None:
+            bound_box = self.bound_box
+
+        bound_box = bound_box.expand(dx=-x_margin, dy=-y_margin, unit_mode=True)
+
+        htr0 = fill_width + fill_space
+        htr_pitch = 2 * (fill_width + fill_space)
+        is_horizontal = (self.grid.get_direction(layer_id) == 'x')
+        if is_horizontal:
+            cl, cu = bound_box.bottom_unit, bound_box.top_unit
+            lower, upper = bound_box.left_unit, bound_box.right_unit
+        else:
+            cl, cu = bound_box.left_unit, bound_box.right_unit
+            lower, upper = bound_box.bottom_unit, bound_box.top_unit
+
+        tr_bot = self.grid.find_next_track(layer_id, cl, tr_width=fill_width, half_track=True,
+                                           mode=1, unit_mode=True)
+        tr_top = self.grid.find_next_track(layer_id, cu, tr_width=fill_width, half_track=True,
+                                           mode=-1, unit_mode=True)
+        n0 = - (-(int(tr_bot * 2) + 1 - htr0) // htr_pitch)
+        n1 = (int(tr_top * 2) + 1 - htr0) // htr_pitch
+        top_vdd, top_vss = [], []
+        for ncur in range(n0, n1 + 1):
+            tr_idx = (htr0 + ncur * htr_pitch - 1) / 2
+            tid = TrackID(layer_id, tr_idx, width=fill_width)
+            lay_name = self.grid.get_layer_name(layer_id, tr_idx)
+            cl, cu = self.grid.get_wire_bounds(layer_id, tr_idx, width=fill_width, unit_mode=True)
+            cur_list = top_vss if (ncur % 2 == 0) != flip else top_vdd
+            for tl, tu in self._used_tracks.open_interval_iter(self.grid, tid, lower, upper,
+                                                               sp=space, sp_le=space_le,
+                                                               min_len=min_len):
+                if is_horizontal:
+                    box = BBox(tl, cl, tu, cu, res, unit_mode=True)
+                else:
+                    box = BBox(cl, tl, cu, tu, res, unit_mode=True)
+                self.add_rect(lay_name, box)
+                cur_list.append(WireArray(tid, tl, tu, res=res, unit_mode=True))
+
         self.draw_vias_on_intersections(vdd_warrs, top_vdd)
         self.draw_vias_on_intersections(vss_warrs, top_vss)
-
         return top_vdd, top_vss

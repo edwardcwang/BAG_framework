@@ -5,7 +5,6 @@
 
 from typing import TYPE_CHECKING, Optional, Union, List, Tuple, Any, Generator, Dict
 
-import numpy as np
 from rtree.index import Index
 
 from bag.layout.util import BBox
@@ -142,22 +141,22 @@ class UsedTracks(object):
 
     def blockage_iter(self,  # type: UsedTracks
                       grid,  # type: RoutingGrid
-                      layer_id,  # type: int
-                      tr_idx,  # type: Union[float, int]
+                      track_id,  # type: TrackID
                       lower,  # type: int
                       upper,  # type: int
-                      width=1,  # type: int
                       sp=0,  # type: int
                       sp_le=0,  # type: int
                       ):
         # type: (...) -> Generator[Tuple[int, int], None, None]
         res = grid.resolution
+        layer_id = track_id.layer_id
         if layer_id not in self._idx_table:
             self._idx_table[layer_id] = RectIndex(res)
         else:
-            warr = WireArray(TrackID(layer_id, tr_idx), lower, upper, res=res, unit_mode=True)
+            warr = WireArray(track_id, lower, upper, res=res, unit_mode=True)
             wbox = warr.get_bbox_array(grid).base
             index = self._idx_table[layer_id]
+            width = track_id.width
 
             sp = max(sp, grid.get_space(layer_id, width, unit_mode=True))
             sp_le = max(sp_le, grid.get_line_end_space(layer_id, width, unit_mode=True))
@@ -175,19 +174,16 @@ class UsedTracks(object):
 
     def open_interval_iter(self,  # type: UsedTracks
                            grid,  # type: RoutingGrid
-                           layer_id,  # type: int
-                           tr_idx,  # type: Union[float, int]
+                           track_id,  # type: TrackID
                            lower,  # type: int
                            upper,  # type: int
-                           width=1,  # type: int
                            sp=0,  # type: int
                            sp_le=0,  # type: int
                            min_len=0,  # type: int
                            ):
-        # type: (...) -> bool
+        # type: (...) -> Generator[Tuple[int, int], None, None]
         intv_set = IntervalSet()
-        for tl, tu in self.blockage_iter(grid, layer_id, tr_idx, lower, upper,
-                                         width=width, sp=sp, sp_le=sp_le):
+        for tl, tu in self.blockage_iter(grid, track_id, lower, upper, sp=sp, sp_le=sp_le):
             intv_set.add((tl, tu))
 
         for intv in intv_set.get_complement((lower, upper)):
@@ -196,17 +192,14 @@ class UsedTracks(object):
 
     def is_track_available(self,  # type: UsedTracks
                            grid,  # type: RoutingGrid
-                           layer_id,  # type: int
-                           tr_idx,  # type: Union[float, int]
+                           track_id,  # type: TrackID
                            lower,  # type: int
                            upper,  # type: int
-                           width=1,  # type: int
                            sp=0,  # type: int
                            sp_le=0,  # type: int
                            ):
         # type: (...) -> bool
-        for _ in self.blockage_iter(grid, layer_id, tr_idx, lower, upper,
-                                    width=width, sp=sp, sp_le=sp_le):
+        for _ in self.blockage_iter(grid, track_id, lower, upper, sp=sp, sp_le=sp_le):
             return False
         return True
 
@@ -228,195 +221,6 @@ class UsedTracks(object):
                 self._idx_table[lay_id] = idx.copy()
             else:
                 self._idx_table[lay_id].merge(idx)
-
-
-def get_available_tracks(grid,  # type: RoutingGrid
-                         layer_id,  # type: int
-                         tr_idx_list,  # type: List[int]
-                         lower,  # type: int
-                         upper,  # type: int
-                         width,  # type: int
-                         margin,  # type: int
-                         track_set,  # type: TrackSet
-                         ):
-    # type: () -> List[int]
-    """Fill unused tracks with supply tracks.
-    """
-    avail_track_set = TrackSet(min_length=upper - lower)
-    for tidx in tr_idx_list:
-        avail_track_set.add_track(2 * tidx + 1, (lower, upper), width, value=False)
-
-    tech_info = grid.tech_info
-    layer_name = tech_info.get_layer_name(layer_id)
-    if isinstance(layer_name, tuple) or isinstance(layer_name, list):
-        layer_name = layer_name[0]
-    layer_type = tech_info.get_layer_type(layer_name)
-
-    # subtract used tracks.
-    for hidx, intv_set in track_set.items():
-        for (wstart, wstop), (wwidth, (fmargin, fill_type)) in intv_set.items():
-            cbeg, cend = grid.get_wire_bounds(layer_id, (hidx - 1) / 2,
-                                              width=wwidth, unit_mode=True)
-            min_space = tech_info.get_min_space(layer_type, cend - cbeg, unit_mode=True)
-            fmargin = max(margin, fmargin, min_space)
-
-            sub_intv = (wstart - fmargin, wstop + fmargin)
-            idx0, idx1 = grid.get_overlap_tracks(layer_id, cbeg - fmargin, cend + fmargin,
-                                                 half_track=True, unit_mode=True)
-            hidx0 = int(round(2 * idx0 + 1)) - 2 * (width - 1)
-            hidx1 = int(round(2 * idx1 + 1)) + 2 * (width - 1)
-
-            # substract
-            for sub_idx in range(hidx0, hidx1 + 1):
-                avail_track_set.subtract(sub_idx, sub_intv)
-
-    # return available tracks
-    hidx_arr = np.array(sorted(avail_track_set.keys()), dtype=int)
-    ans = ((hidx_arr - 1) // 2).tolist()  # type: List[int]
-    return ans
-
-
-def get_power_fill_tracks(grid,  # type: RoutingGrid
-                          bnd_box,  # type: BBox
-                          layer_id,  # type: int
-                          track_set,  # type: TrackSet
-                          sup_width,  # type: int
-                          fill_margin,  # type: int
-                          edge_margin,  # type: int
-                          sup_spacing=-1,  # type: int
-                          debug=False,  # type: bool
-                          ):
-    # type: () -> Tuple[List[WireArray], List[WireArray]]
-    """Fill unused tracks with supply tracks.
-    """
-    # get block size and lower/upper coordinates.
-    blk_width, blk_height = bnd_box.width_unit, bnd_box.height_unit
-    lower = edge_margin
-    if grid.get_direction(layer_id) == 'x':
-        upper = blk_width - edge_margin
-        cupper = blk_height
-    else:
-        upper = blk_height - edge_margin
-        cupper = blk_width
-
-    # find fill track indices in half tracks
-    num_space = grid.get_num_space_tracks(layer_id, sup_width, half_space=False)
-    # check if user specify supply spacing
-    if sup_spacing >= 0:
-        if sup_spacing < num_space:
-            raise ValueError('Power fill spacing less then min spacing = %d' % num_space)
-        num_space = sup_spacing
-
-    start_tidx, end_tidx = grid.get_track_index_range(layer_id, 0, cupper, num_space=num_space,
-                                                      edge_margin=edge_margin, half_track=False,
-                                                      unit_mode=True)
-
-    first_hidx = start_tidx * 2 + 1 + sup_width - 1
-    last_hidx = end_tidx * 2 + 1 - (sup_width - 1)
-    fill_hidx_list = list(range(first_hidx, last_hidx + 1, 2 * (sup_width + num_space)))
-
-    # add all fill tracks
-    min_length = grid.get_min_length(layer_id, sup_width, unit_mode=True)
-    fill_track_set = TrackSet(min_length=min_length)
-    fill_intv = (lower, upper)
-    for hidx in fill_hidx_list:
-        fill_track_set.add_track(hidx, fill_intv, sup_width, value=False)
-
-    max_fill_hidx = fill_hidx_list[-1]
-    # subtract used tracks from fill.
-    sup_type = {}
-    for hidx, intv_set in track_set.items():
-        for (wstart, wstop), (wwidth, (fmargin, fill_type)) in intv_set.items():
-            fmargin = max(fill_margin, fmargin)
-            sub_intv = (wstart - fmargin, wstop + fmargin)
-            cbeg, cend = grid.get_wire_bounds(layer_id, (hidx - 1) / 2,
-                                              width=wwidth, unit_mode=True)
-            idx0, idx1 = grid.get_overlap_tracks(layer_id, cbeg - fmargin, cend + fmargin,
-                                                 half_track=True, unit_mode=True)
-            hidx0 = int(round(2 * idx0 + 1)) - 2 * (sup_width - 1)
-            hidx1 = int(round(2 * idx1 + 1)) + 2 * (sup_width - 1)
-            if debug:
-                print('Found track: hidx = %d, intv = (%d, %d), '
-                      'fill_type = %s' % (hidx, wstart, wstop, fill_type))
-                print('deleting fill in hidx range (inclusive): (%d, %d)' % (hidx0, hidx1))
-
-            # substract fill
-            for sub_idx in range(hidx0, hidx1 + 1):
-                fill_track_set.subtract(sub_idx, sub_intv)
-                # TODO: more robust error/warning messages?
-                if sub_idx not in sup_type and (fill_type == 'VDD' or fill_type == 'VSS'):
-                    sup_type[sub_idx] = fill_type
-                    if debug:
-                        print('assigning hidx %d fill type %s' % (sub_idx, fill_type))
-            # assign adjacent fill tracks to fill_type
-            if fill_type == 'VDD' or fill_type == 'VSS':
-                for sub_idx in range(hidx0 - 1, -1, -1):
-                    if sub_idx in fill_track_set:
-                        if sub_idx not in sup_type:
-                            # TODO: more robust error/warning messages?
-                            sup_type[sub_idx] = fill_type
-                            if debug:
-                                print('assigning hidx %d fill type %s' % (sub_idx, fill_type))
-                        break
-                for sub_idx in range(hidx1 + 1, max_fill_hidx + 1):
-                    if sub_idx in fill_track_set:
-                        if sub_idx not in sup_type:
-                            # TODO: more robust error/warning messages?
-                            sup_type[sub_idx] = fill_type
-                            if debug:
-                                print('assigning hidx %d fill type %s' % (sub_idx, fill_type))
-                        break
-
-    # count remaining fill tracks
-    fill_hidx_list = sorted(fill_track_set.keys())
-    tot_cnt = len(fill_hidx_list)
-    vdd_cnt = 0
-    vss_cnt = 0
-    for hidx in fill_hidx_list:
-        cur_type = sup_type.get(hidx, None)
-        if cur_type == 'VDD':
-            vdd_cnt += 1
-        elif cur_type == 'VSS':
-            vss_cnt += 1
-
-    # assign tracks to VDD/VSS
-    num_vdd = tot_cnt // 2
-    num_vss = tot_cnt - num_vdd
-    remaining_tot = tot_cnt - vdd_cnt - vss_cnt
-    remaining_vss = max(num_vss - vss_cnt, 0)
-    remaining_vdd = remaining_tot - remaining_vss
-    # uniformly distribute vdd tracks among remaining tracks
-    k = 0
-    next_vdd = ((2 * k + 1) * remaining_tot + remaining_vdd) // (2 * remaining_vdd)
-    cur_idx = 0
-    res = grid.resolution
-    vdd_warr_list = []
-    vss_warr_list = []
-    for hidx in fill_hidx_list:
-        if debug:
-            print('creating fill at hidx %d' % hidx)
-        # get supply type
-        if hidx not in sup_type:
-            if cur_idx == next_vdd:
-                cur_type = 'VDD'
-                k += 1
-                next_vdd = ((2 * k + 1) * remaining_tot + remaining_vdd) // (2 * remaining_vdd)
-            else:
-                cur_type = 'VSS'
-            cur_idx += 1
-            if debug:
-                print('hidx %d, unassigned, pick fill type = %s' % (hidx, cur_type))
-        else:
-            cur_type = sup_type[hidx]
-            if debug:
-                print('hidx %d, assigned fill type = %s' % (hidx, cur_type))
-
-        w_list = vdd_warr_list if cur_type == 'VDD' else vss_warr_list
-        tid = TrackID(layer_id, (hidx - 1) / 2, width=sup_width)
-        w_list.extend(WireArray(tid, intv[0], intv[1], res=res, unit_mode=True)
-                      for intv in fill_track_set[hidx].intervals())
-
-    return vdd_warr_list, vss_warr_list
 
 
 def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):
