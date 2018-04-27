@@ -44,7 +44,7 @@ def get_inverse_transform(loc, orient):
         orient_inv = orient
 
     inv_mat = transform_table[orient_inv]
-    new_shift = np.dot(inv_mat, np.asarray(loc))
+    new_shift = np.dot(inv_mat, -np.asarray(loc))
     return (new_shift.item(0), new_shift.item(1)), orient_inv
 
 
