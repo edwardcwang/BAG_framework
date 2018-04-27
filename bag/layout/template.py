@@ -492,7 +492,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._array_box = None  # type: BBox
         self.prim_top_layer = None
         self.prim_bound_box = None
-        self._used_tracks = UsedTracks(self._grid.resolution)
+        self._used_tracks = UsedTracks()
         self._added_inst_tracks = False
 
         # add hidden parameters
@@ -698,6 +698,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         else:
             raise RuntimeError('Template already finalized.')
 
+    @property
+    def used_tracks(self):
+        # type: () -> UsedTracks
+        return self._used_tracks
+
     def _update_flip_parity(self):
         # type: () -> None
         """Update all instances in this template to have the correct track parity.
@@ -710,41 +715,26 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                                    inst.orientation, unit_mode=True)
             inst.new_master_with(flip_parity=fp_dict)
 
-    def get_used_tracks(self):
-        # type: () -> UsedTracks
-        """Returns data structure of used tracks on the given layers."""
-        return self._used_tracks
-
-    def get_occupied_tracks(self, layer_id, lower, upper, unit_mode=False, half_index=False):
-        # type: (int, Union[float, int], Union[float, int], bool, bool) -> List[Union[float, int]]
-        """Returns all track indices which has a wire overlapping the given interval.
-
-        Parameters
-        ----------
-        layer_id : int
-            the wire layer ID.
-        lower : Union[float, int]
-            the lower coordinate, in layout or resolution units.
-        upper : Union[float, int]
-            the upper coordinate, in layout or resolution units.
-        unit_mode : bool
-            True if lower/upper are in resolution units.
-        half_index : bool
-            True to return half-track indices.
-
-        Returns
-        -------
-        occupied_tracks : List[Union[float, int]]
-            list of occupied track indices.
-        """
-        res = self.grid.resolution
+    def is_track_available(self,  # type: TemplateBase
+                           layer_id,  # type: int
+                           tr_idx,  # type: Union[float, int]
+                           lower,  # type: Union[float, int]
+                           upper,  # type: Union[float, int]
+                           width=1,  # type: int
+                           sp=0,  # type: Union[float, int]
+                           sp_le=0,  # type: Union[float, int]
+                           unit_mode=False,  # type: bool
+                           ):
+        """Returns True if the given track is available."""
         if not unit_mode:
+            res = self.grid.resolution
             lower = int(round(lower / res))
             upper = int(round(upper / res))
-        track_set = self._used_tracks.get_tracks_info(layer_id)
-        ans = track_set.get_occupied_tracks((lower, upper), half_index=half_index)
-        ans.sort()
-        return ans
+            sp = int(round(sp / res))
+            sp_le = int(round(sp_le / res))
+
+        return self._used_tracks.is_track_available(self.grid, layer_id, tr_idx, lower, upper,
+                                                    width=width, sp=sp, sp_le=sp_le)
 
     def get_rect_bbox(self, layer):
         # type: (Union[str, Tuple[str, str]]) -> BBox
@@ -1112,6 +1102,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         rect = Rect(layer, bbox, nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=unit_mode)
         self._layout.add_rect(rect)
+        self._used_tracks.record_rect(self.grid, layer, rect.bbox_array)
         return rect
 
     def add_res_metal(self, layer_id, bbox, **kwargs):
@@ -1220,9 +1211,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._layout.add_boundary(boundary)
         return boundary
 
-    def reexport(self, port, net_name='', label='', show=True,
-                 fill_margin=0, fill_type='', unit_mode=False):
-        # type: (Port, str, str, bool, Union[float, int], str, bool) -> None
+    def reexport(self, port, net_name='', label='', show=True):
+        # type: (Port, str, str, bool) -> None
         """Re-export the given port object.
 
         Add all geometries in the given port as pins with optional new name
@@ -1238,12 +1228,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the label.  If not given, use net_name.
         show : bool
             True to draw the pin in layout.
-        fill_margin : Union[float, int]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
-        unit_mode : bool
-            True if fill_margin is given in resolution units.
         """
         net_name = net_name or port.net_name
         if not label:
@@ -1266,9 +1250,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # export all port geometries
         port_pins = port_params['pins']
         for wire_arr in port:
-            self._used_tracks.add_wire_arrays(wire_arr, fill_margin=fill_margin,
-                                              fill_type=fill_type,
-                                              unit_mode=unit_mode)
             layer_id = wire_arr.layer_id
             if layer_id not in port_pins:
                 port_pins[layer_id] = [wire_arr]
@@ -1532,8 +1513,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                      warr_list,  # type: Union[WireArray, List[WireArray]]
                      lower=None,  # type: Optional[Union[float, int]]
                      upper=None,  # # type: Optional[Union[float, int]]
-                     fill_margin=0,  # type: Union[int, float]
-                     fill_type='',  # type: str
                      unit_mode=False,  # type: bool
                      min_len_mode=None,  # type: Optional[int]
                      ):
@@ -1548,10 +1527,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the wire lower coordinate.
         upper : Optional[Union[float, int]]
             the wire upper coordinate.
-        fill_margin : Union[float, int]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
         unit_mode: bool
             True if lower/upper/fill_margin is given in resolution units.
         min_len_mode : Optional[int]
@@ -1574,7 +1549,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 lower = int(round(lower / res))
             if upper is not None:
                 upper = int(round(upper / res))
-            fill_margin = int(round(fill_margin / res))
 
         new_warr_list = []
         for warr in warr_list:
@@ -1609,8 +1583,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             for layer_name, bbox_arr in new_warr.wire_arr_iter(self.grid):
                 self.add_rect(layer_name, bbox_arr)
 
-            self._used_tracks.add_wire_arrays(new_warr, fill_margin=fill_margin,
-                                              fill_type=fill_type, unit_mode=True)
             new_warr_list.append(new_warr)
 
         return new_warr_list
@@ -1623,8 +1595,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                   width=1,  # type: int
                   num=1,  # type: int
                   pitch=0,  # type: Union[float, int]
-                  fill_margin=0,  # type: Union[int, float]
-                  fill_type='',  # type: str
                   unit_mode=False  # type: bool
                   ):
         # type: (...) -> WireArray
@@ -1646,12 +1616,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             number of wires.
         pitch : Union[float, int]
             the wire pitch.
-        fill_margin : Union[float, int]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
         unit_mode: bool
-            True if lower/upper/fill_margin is given in resolution units.
+            True if lower/upper is given in resolution units.
 
         Returns
         -------
@@ -1662,16 +1628,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if not unit_mode:
             lower = int(round(lower / res))
             upper = int(round(upper / res))
-            fill_margin = int(round(fill_margin / res))
 
         tid = TrackID(layer_id, track_idx, width=width, num=num, pitch=pitch)
         warr = WireArray(tid, lower, upper, res=res, unit_mode=True)
 
         for layer_name, bbox_arr in warr.wire_arr_iter(self.grid):
             self.add_rect(layer_name, bbox_arr)
-
-        self._used_tracks.add_wire_arrays(warr, fill_margin=fill_margin, fill_type=fill_type,
-                                          unit_mode=True)
 
         return warr
 
@@ -1716,9 +1678,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     port_widths=1,  # type: Union[int, List[int], Dict[int, int]
                     port_parity=None,
                     # type: Optional[Union[Tuple[int, int], Dict[int, Tuple[int, int]]]]
-                    fill_margin=0,  # type: Union[float, int]
-                    fill_type='',  # type: str
-                    unit_mode=False,  # type: bool
                     array=False,  # type: bool
                     **kwargs,
                     ):
@@ -1731,8 +1690,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         res = self.grid.resolution
         tech_info = self.grid.tech_info
-        if not unit_mode:
-            fill_margin = int(round(fill_margin / res))
 
         mom_cap_dict = tech_info.tech_params['layout']['mom_cap']
         cap_margins = mom_cap_dict['margins']
@@ -1871,11 +1828,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             # draw lower and upper ports
             lower_tracks, upper_tracks = port_tracks[cur_layer]
             lower_warrs = [self.add_wires(cur_layer, tr_idx, lower, upper, width=cur_port_width,
-                                          fill_margin=fill_margin, fill_type=fill_type,
                                           unit_mode=True)
                            for tr_idx in lower_tracks]
             upper_warrs = [self.add_wires(cur_layer, tr_idx, lower, upper, width=cur_port_width,
-                                          fill_margin=fill_margin, fill_type=fill_type,
                                           unit_mode=True)
                            for tr_idx in upper_tracks]
 
@@ -1993,9 +1948,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                        width=1,  # type: int
                        num=1,  # type: int
                        pitch=0,  # type: Union[float, int]
-                       fill_margin=0,  # type: Union[int, float]
-                       fill_type='',  # type: str
-                       unit_mode=False  # type: bool
                        ):
         # type: (...) -> None
         """Reserve the given routing tracks so that power fill will not fill these tracks.
@@ -2014,12 +1966,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             number of wires.
         pitch : Union[float, int]
             the wire pitch.
-        fill_margin : Union[float, int]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
-        unit_mode: bool
-            True if fill_margin is given in resolution units.
         """
 
         bnd_box = self.bound_box
@@ -2030,16 +1976,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             upper = bnd_box.height_unit
         warr = WireArray(tid, 0, upper, res=self.grid.resolution, unit_mode=True)
 
-        self._used_tracks.add_wire_arrays(warr, fill_margin=fill_margin, fill_type=fill_type,
-                                          unit_mode=unit_mode)
+        lay_name = self.grid.get_layer_name(layer_id, track_idx)
+        self._used_tracks.record_rect(self.grid, lay_name, warr.get_bbox_array(self.grid))
 
     def connect_wires(self,  # type: TemplateBase
                       wire_arr_list,  # type: Union[WireArray, List[WireArray]]
                       lower=None,  # type: Optional[Union[int, float]]
                       upper=None,  # type: Optional[Union[int, float]]
                       debug=False,  # type: bool
-                      fill_margin=0,  # type: Union[int, float]
-                      fill_type='',  # type: str
                       unit_mode=False  # type: bool
                       ):
         # type: (...) -> List[WireArray]
@@ -2057,10 +2001,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend connection wires to this upper coordinate.
         debug : bool
             True to print debug messages.
-        fill_margin : Union[float, int]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
         unit_mode: bool
             True if lower/upper/fill_margin is given in resolution units.
 
@@ -2073,7 +2013,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         res = grid.resolution
 
         if not unit_mode:
-            fill_margin = int(round(fill_margin / res))
             if lower is not None:
                 lower = int(round(lower / res))
             if upper is not None:
@@ -2192,8 +2131,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             self.add_rect(layer_name, bbox_arr)
         new_warr_list.append(warr)
 
-        self._used_tracks.add_wire_arrays(new_warr_list, fill_margin=fill_margin,
-                                          fill_type=fill_type, unit_mode=True)
         return new_warr_list
 
     def _draw_via_on_track(self, wlayer, box_arr, track_id, tl_unit=None,
@@ -2262,8 +2199,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                track_id,  # type: TrackID
                                track_lower=None,  # type: Optional[Union[int, float]]
                                track_upper=None,  # type: Optional[Union[int, float]]
-                               fill_margin=0,  # type: Union[int, float]
-                               fill_type='',  # type: str
                                unit_mode=False,  # type: bool
                                min_len_mode=None,  # type: Optional[int]
                                wire_lower=None,  # type: Optional[Union[float, int]]
@@ -2284,10 +2219,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[Union[int, float]]
             if given, extend track(s) to this upper coordinate.
-        fill_margin : Union[int, float]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
         unit_mode: bool
             True if track_lower/track_upper/fill_margin is given in resolution units.
         min_len_mode : Optional[int]
@@ -2311,7 +2242,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         grid = self.grid
         res = grid.resolution
         if not unit_mode:
-            fill_margin = int(round(fill_margin / res))
             if track_lower is not None:
                 track_lower = int(round(track_lower / res))
             if track_upper is not None:
@@ -2364,8 +2294,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         for layer_name, bbox_arr in result.wire_arr_iter(grid):
             self.add_rect(layer_name, bbox_arr)
 
-        self._used_tracks.add_wire_arrays(result, fill_margin=fill_margin, fill_type=fill_type,
-                                          unit_mode=True)
         return result
 
     def connect_bbox_to_differential_tracks(self,  # type: TemplateBase
@@ -2378,8 +2306,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                             width=1,  # type: int
                                             track_lower=None,  # type: Optional[Union[float, int]]
                                             track_upper=None,  # type: Optional[Union[float, int]]
-                                            fill_margin=0,  # type: Union[int, float]
-                                            fill_type='',  # type: str
                                             unit_mode=False,  # type: bool
                                             ):
         # type: (...) -> Tuple[Optional[WireArray], Optional[WireArray]]
@@ -2407,10 +2333,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[Union[float, int]]
             if given, extend track(s) to this upper coordinate.
-        fill_margin : Union[int, float]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
         unit_mode: bool
             True if track_lower/track_upper/fill_margin is given in resolution units.
 
@@ -2425,8 +2347,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                                           [ptr_idx, ntr_idx], width=width,
                                                           track_lower=track_lower,
                                                           track_upper=track_upper,
-                                                          fill_margin=fill_margin,
-                                                          fill_type=fill_type,
                                                           unit_mode=unit_mode)
         return track_list[0], track_list[1]
 
@@ -2438,8 +2358,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                         width=1,  # type: int
                                         track_lower=None,  # type: Optional[Union[int, float]]
                                         track_upper=None,  # type: Optional[Union[int, float]]
-                                        fill_margin=0,  # type: Union[int, float]
-                                        fill_type='',  # type: str
                                         unit_mode=False  # type: bool
                                         ):
         # type: (...) -> List[Optional[WireArray]]
@@ -2461,10 +2379,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[Union[int, float]]
             if given, extend track(s) to this upper coordinate.
-        fill_margin : Union[int, float]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
         unit_mode: bool
             True if track_lower/track_upper/fill_margin is given in resolution units.
 
@@ -2476,7 +2390,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         grid = self.grid
         res = grid.resolution
         if not unit_mode:
-            fill_margin = int(round(fill_margin / res))
             if track_lower is not None:
                 track_lower = int(round(track_lower / res))
             if track_upper is not None:
@@ -2547,13 +2460,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         track_list = []
         for box_arr, tr_idx in zip(box_arr_list, tr_idx_list):
             track_list.append(self.add_wires(tr_layer_id, tr_idx, track_lower, track_upper,
-                                             width=width, fill_margin=fill_margin,
-                                             fill_type=fill_type, unit_mode=True))
+                                             width=width, unit_mode=True))
 
             tr_id = TrackID(tr_layer_id, tr_idx, width=width)
             self.connect_bbox_to_tracks(layer_name, box_arr, tr_id, wire_lower=bbox_bounds[0],
-                                        wire_upper=bbox_bounds[1], fill_margin=fill_margin,
-                                        fill_type=fill_type, unit_mode=True)
+                                        wire_upper=bbox_bounds[1], unit_mode=True)
 
         return track_list
 
@@ -2564,8 +2475,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           wire_upper=None,  # type: Optional[Union[float, int]]
                           track_lower=None,  # type: Optional[Union[float, int]]
                           track_upper=None,  # type: Optional[Union[float, int]]
-                          fill_margin=0,  # type: Union[int, float]
-                          fill_type='',  # type: str
                           unit_mode=False,  # type: bool
                           min_len_mode=None,  # type: Optional[int]
                           debug=False,  # type: bool
@@ -2589,12 +2498,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[Union[float, int]]
             if given, extend track(s) to this upper coordinate.
-        fill_margin : Union[int, float]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
         unit_mode : bool
-            True if track_lower/track_upper/fill_margin is given in resolution units.
+            True if track_lower/track_upper is given in resolution units.
         min_len_mode : Optional[int]
             If not None, will extend track so it satisfy minimum length requirement.
             Use -1 to extend lower bound, 1 to extend upper bound, 0 to extend both equally.
@@ -2620,7 +2525,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         res = grid.resolution
 
         if not unit_mode:
-            fill_margin = int(round(fill_margin / res))
             if track_upper is not None:
                 track_upper = int(round(track_upper / res))
             if track_lower is not None:
@@ -2653,10 +2557,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     'WireArray layer %d cannot connect to layer %d' % (cur_layer_id, tr_layer_id))
 
         # connect wires together
-        top_wire_list = self.connect_wires(top_list, lower=wl, upper=wu, fill_margin=fill_margin,
-                                           fill_type=fill_type, unit_mode=True, debug=debug)
-        bot_wire_list = self.connect_wires(bot_list, lower=wl, upper=wu, fill_margin=fill_margin,
-                                           fill_type=fill_type, unit_mode=True, debug=debug)
+        top_wire_list = self.connect_wires(top_list, lower=wl, upper=wu, unit_mode=True,
+                                           debug=debug)
+        bot_wire_list = self.connect_wires(bot_list, lower=wl, upper=wu, unit_mode=True,
+                                           debug=debug)
 
         # draw vias
         for w_layer_id, wire_list in ((tr_layer_id + 1, top_wire_list),
@@ -2688,16 +2592,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         for layer_name, bbox_arr in result.wire_arr_iter(grid):
             self.add_rect(layer_name, bbox_arr)
 
-        self._used_tracks.add_wire_arrays(result, fill_margin=fill_margin, fill_type=fill_type,
-                                          unit_mode=True)
         return result
 
     def connect_to_track_wires(self,  # type: TemplateBase
                                wire_arr_list,  # type: Union[WireArray, List[WireArray]]
                                track_wires,  # type: Union[WireArray, List[WireArray]]
-                               fill_margin=0,  # type: Union[int, float]
-                               fill_type='',  # type: str
-                               unit_mode=False,  # type: bool
                                min_len_mode=None,  # type: Optional[int]
                                debug=False,  # type: bool
                                ):
@@ -2710,12 +2609,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             list of WireArrays to connect to track.
         track_wires : Union[WireArray, List[WireArray]]
             list of tracks as WireArrays.
-        fill_margin : Union[int, float]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
-        unit_mode : bool
-            True if track_lower/track_upper/fill_margin is given in resolution units.
         min_len_mode : Optional[int]
             If not None, will extend track so it satisfy minimum length requirement.
             Use -1 to extend lower bound, 1 to extend upper bound, 0 to extend both equally.
@@ -2729,9 +2622,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         res = self.grid.resolution
 
-        if not unit_mode:
-            fill_margin = int(round(fill_margin / res))
-
         ans = []
         if isinstance(track_wires, WireArray):
             ans_is_list = False
@@ -2744,7 +2634,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             track_upper = int(round(warr.upper / res))
             tr = self.connect_to_tracks(wire_arr_list, warr.track_id,
                                         track_lower=track_lower, track_upper=track_upper,
-                                        fill_margin=fill_margin, fill_type=fill_type,
                                         unit_mode=True, min_len_mode=min_len_mode, debug=debug)
             ans.append(tr)
 
@@ -2758,9 +2647,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                tr_w_list=None,  # type: Optional[List[int]]
                                tr_mode_list=None,  # type: Optional[Union[int, List[int]]]
                                min_len_mode_list=None,  # type: Optional[Union[int, List[int]]]
-                               fill_margin=0,  # type: Union[int, float]
-                               fill_type='',  # type: str
-                               unit_mode=False,  # type: bool
                                debug=False,  # type: bool
                                ):
         # type: (...) -> List[WireArray]
@@ -2783,12 +2669,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the track mode flags determine whether to pick upper or lower tracks
         min_len_mode_list : Optional[Union[int, List[int]]]
             minimum length mode flags on each layer.
-        fill_margin : Union[int, float]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
-        unit_mode : bool
-            True if fill_margin is given in resolution units.
         debug : bool
             True to print debug messages.
 
@@ -2890,9 +2770,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                                          mode=tr_mode, unit_mode=True)
 
             targ_tid = TrackID(targ_layer, targ_index, width=tr_w)
-            warr = self.connect_to_tracks(wire_array, targ_tid, fill_margin=fill_margin,
-                                          fill_type=fill_type, unit_mode=unit_mode,
-                                          min_len_mode=min_len_mode, debug=debug)
+            warr = self.connect_to_tracks(wire_array, targ_tid, min_len_mode=min_len_mode,
+                                          unit_mode=True, debug=debug)
             results.append(warr)
             wire_array = warr
 
@@ -2903,9 +2782,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     targ_layer,  # type: int
                     tr_w_list=None,  # type: Optional[List[int]]
                     min_len_mode_list=None,  # type: Optional[List[int]]
-                    fill_margin=0,  # type: Union[int, float]
-                    fill_type='',  # type: str
-                    unit_mode=False,  # type: bool
                     ):
         # type: (...) -> WireArray
         """Strap the given WireArrays to the target routing layer.
@@ -2923,12 +2799,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the track widths to use on each layer.  If not specified, will determine automatically.
         min_len_mode_list : Optional[List[int]]
             minimum length mode flags on each layer.
-        fill_margin : Union[int, float]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
-        unit_mode : bool
-            True if track_lower/track_upper/fill_margin is given in resolution units.
 
         Returns
         -------
@@ -2959,8 +2829,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         layer_dir = 1 if targ_layer > warr_layer else -1
         for tr_w, mlen_mode in zip(tr_w_list, min_len_mode_list):
-            warr = self._strap_wires_helper(warr, warr.layer_id + layer_dir, tr_w, mlen_mode,
-                                            fill_margin, fill_type, unit_mode)
+            warr = self._strap_wires_helper(warr, warr.layer_id + layer_dir, tr_w, mlen_mode)
 
         return warr
 
@@ -2969,9 +2838,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                             targ_layer,  # type: int
                             tr_w,  # type: int
                             mlen_mode,  # type: Optional[int]
-                            fill_margin,  # type: Union[int, float]
-                            fill_type,  # type: str
-                            unit_mode,  # type: bool
                             ):
         # type: (...) -> WireArray
         """Helper method for strap_wires().  Connect one layer at a time."""
@@ -2981,8 +2847,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         res = self.grid.resolution
         lower = int(round(warr.lower / res))
         upper = int(round(warr.upper / res))
-        if not unit_mode:
-            fill_margin = int(round(fill_margin / res))
 
         # error checking
         wdir = self.grid.get_direction(wire_layer)
@@ -3056,11 +2920,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         # add wires
         self.add_wires(wire_layer, wire_tid.base_index, w_lower, w_upper, width=wire_tid.width,
-                       num=wire_tid.num, pitch=wire_tid.pitch, fill_margin=fill_margin,
-                       fill_type=fill_type, unit_mode=True)
+                       num=wire_tid.num, pitch=wire_tid.pitch, unit_mode=True)
         return self.add_wires(targ_layer, base_tid, new_lower, new_upper, width=tr_w,
-                              num=wire_tid.num, pitch=num_pitch, fill_margin=fill_margin,
-                              fill_type=fill_type, unit_mode=True)
+                              num=wire_tid.num, pitch=num_pitch, unit_mode=True)
 
     def connect_differential_tracks(self,  # type: TemplateBase
                                     pwarr_list,  # type: Union[WireArray, List[WireArray]]
@@ -3071,8 +2933,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                     width=1,  # type: int
                                     track_lower=None,  # type: Optional[Union[float, int]]
                                     track_upper=None,  # type: Optional[Union[float, int]]
-                                    fill_margin=0,  # type: Union[int, float]
-                                    fill_type='',  # type: str
                                     unit_mode=False,  # type: bool
                                     debug=False  # type: bool
                                     ):
@@ -3099,12 +2959,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[Union[float, int]]
             if given, extend track(s) to this upper coordinate.
-        fill_margin : Union[int, float]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
         unit_mode: bool
-            True if track_lower/track_upper/fill_margin is given in resolution units.
+            True if track_lower/track_upper is given in resolution units.
         debug : bool
             True to print debug messages.
 
@@ -3119,7 +2975,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                                   [ptr_idx, ntr_idx], width=width,
                                                   track_lower=track_lower,
                                                   track_upper=track_upper,
-                                                  fill_margin=fill_margin, fill_type=fill_type,
                                                   unit_mode=unit_mode,
                                                   debug=debug)
         return track_list[0], track_list[1]
@@ -3131,8 +2986,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                 width=1,  # type: int
                                 track_lower=None,  # type: Optional[Union[float, int]]
                                 track_upper=None,  # type: Optional[Union[float, int]]
-                                fill_margin=0,  # type: Union[int, float]
-                                fill_type='',  # type: str
                                 unit_mode=False,  # type: bool
                                 debug=False  # type: bool
                                 ):
@@ -3155,12 +3008,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[Union[float, int]]
             if given, extend track(s) to this upper coordinate.
-        fill_margin : Union[int, float]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
         unit_mode: bool
-            True if track_lower/track_upper/fill_margin is given in resolution units.
+            True if track_lower/track_upper is given in resolution units.
         debug : bool
             True to print debug messages.
 
@@ -3173,7 +3022,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         res = grid.resolution
 
         if not unit_mode:
-            fill_margin = int(round(fill_margin / res))
             if track_lower is not None:
                 track_lower = int(round(track_lower / res))
             if track_upper is not None:
@@ -3250,17 +3098,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         track_list = []
         for bwarr_list, twarr_list, tr_idx in zip(bot_warrs, top_warrs, tr_idx_list):
             track_list.append(self.add_wires(tr_layer_id, tr_idx, track_lower, track_upper,
-                                             width=width, fill_margin=fill_margin,
-                                             fill_type=fill_type, unit_mode=True))
+                                             width=width, unit_mode=True))
 
             tr_id = TrackID(tr_layer_id, tr_idx, width=width)
             self.connect_to_tracks(bwarr_list, tr_id, wire_lower=bot_bounds[0],
-                                   wire_upper=bot_bounds[1], fill_margin=fill_margin,
-                                   fill_type=fill_type, unit_mode=True,
+                                   wire_upper=bot_bounds[1], unit_mode=True,
                                    min_len_mode=None, debug=debug)
             self.connect_to_tracks(twarr_list, tr_id, wire_lower=top_bounds[0],
-                                   wire_upper=top_bounds[1], fill_margin=fill_margin,
-                                   fill_type=fill_type, unit_mode=True,
+                                   wire_upper=top_bounds[1], unit_mode=True,
                                    min_len_mode=None, debug=debug)
 
         return track_list
@@ -3318,47 +3163,19 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                 self.add_via(box, bot_lay_name, top_lay_name, bot_dir)
 
     def _merge_inst_used_tracks(self):
-        template_bot_layer = self.grid.layers[0]
         if not self._added_inst_tracks:
             self._added_inst_tracks = True
             for inst in self._layout.inst_iter():
-                top_layer = inst.master.top_layer
-                bot_layer = self.grid.get_bot_common_layer(inst.master.grid, top_layer)
                 for cidx in range(inst.nx):
                     for ridx in range(inst.ny):
-                        # merge tracks on common layers
-                        inst_used_tracks = inst.get_used_tracks(bot_layer, top_layer,
-                                                                row=ridx, col=cidx)
-                        self._used_tracks.merge(inst_used_tracks)
-                        # black out tracks on changed layers
-                        if bot_layer > template_bot_layer:
-                            inst_box = inst.get_bound_box_of(row=ridx, col=cidx)
-                            for lay_id in range(template_bot_layer, bot_layer):
-                                if lay_id in self.grid.layers:
-                                    self.mark_bbox_used(lay_id, inst_box)
+                        self._used_tracks.merge(inst.get_used_tracks(row=ridx, col=cidx))
 
     def mark_bbox_used(self, layer_id, bbox):
         # type: (int, BBox) -> None
         """Marks the given bounding-box region as used in this Template."""
-        if self.grid.get_direction(layer_id) == 'x':
-            lower, upper = bbox.left_unit, bbox.right_unit
-            tl, tu = bbox.bottom_unit, bbox.top_unit
-        else:
-            lower, upper = bbox.bottom_unit, bbox.top_unit
-            tl, tu = bbox.left_unit, bbox.right_unit
-
-        tr_w2 = self.grid.get_track_width(layer_id, 1, unit_mode=True) // 2
-        tl -= tr_w2
-        tu += tr_w2
-        tidx0 = self.grid.coord_to_nearest_track(layer_id, tl, half_track=True,
-                                                 mode=1, unit_mode=True)
-        tidx1 = self.grid.coord_to_nearest_track(layer_id, tu, half_track=True,
-                                                 mode=-1, unit_mode=True)
-        htr0 = int(round(tidx0 * 2 + 1))
-        htr1 = int(round(tidx1 * 2 + 1))
-        warr = WireArray(TrackID(layer_id, tidx0, num=htr1 - htr0 + 1, pitch=0.5), lower, upper,
-                         res=self.grid.resolution, unit_mode=True)
-        self._used_tracks.add_wire_arrays(warr)
+        layer_name = self.grid.get_layer_name(layer_id, 0)
+        self._used_tracks.record_rect(self.grid, layer_name, BBoxArray(bbox, unit_mode=True),
+                                      dx=0, dy=0)
 
     def get_available_tracks(self,  # type: TemplateBase
                              layer_id,  # type: int

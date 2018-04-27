@@ -3,18 +3,19 @@
 """This module defines classes that provides automatic fill utility on a grid.
 """
 
-from typing import TYPE_CHECKING, Optional, Union, List, Tuple, Iterable, Any, Dict, Generator
+from typing import TYPE_CHECKING, Optional, Union, List, Tuple, Any, Generator, Dict
 
 import numpy as np
 from rtree.index import Index
 
+from bag.layout.util import BBox
 from bag.util.interval import IntervalSet
 from bag.util.search import BinaryIterator, minimize_cost_golden
 
 from .base import WireArray, TrackID
 
 if TYPE_CHECKING:
-    from bag.layout.util import BBox
+    from bag.layout.util import BBoxArray
 
     from .grid import RoutingGrid
 
@@ -88,54 +89,59 @@ class RectIndex(object):
             self._cnt += 1
 
 
-class RectLookup(object):
+class UsedTracks(object):
     """A R-tree that stores all tracks in a template.
 
     Parameters
     ----------
-    grid : RoutingGrid
-        the RoutingGRid object.
+    init_idx_table: Optional[Dict[int, RectIndex]]
+        The RectIndex table.
     """
 
-    def __init__(self, grid, init_idx_table=None):
-        # type: (RoutingGrid) -> None
-        self._grid = grid
+    def __init__(self, init_idx_table=None):
+        # type: (Optional[Dict[int, RectIndex]]) -> None
         if init_idx_table is None:
             self._idx_table = {}
         else:
             self._idx_table = init_idx_table
 
-    def record_wire_arrays(self, warr_list):
-        # type: (Union[WireArray, List[WireArray]]) -> None
-        """Record the given WireArray."""
-        if isinstance(warr_list, WireArray):
-            warr_list = [warr_list, ]
+    def record_rect(self, grid, layer_name, box_arr, dx=-1, dy=-1):
+        # type: (RoutingGrid, Union[Tuple[str, str], str], BBoxArray, int, int) -> None
+        """Record the given bounding box array."""
+        tech_info = grid.tech_info
+
+        if isinstance(layer_name, tuple):
+            layer_name = layer_name[0]
+        try:
+            layer_id = tech_info.get_layer_id(layer_name)
+        except ValueError:
+            return
+
+        if layer_id not in self._idx_table:
+            index = self._idx_table[layer_id] = RectIndex(grid.resolution)
         else:
-            pass
+            index = self._idx_table[layer_id]
 
-        grid = self._grid
-        for warr in warr_list:
-            layer_id = warr.layer_id
-            if layer_id not in self._idx_table:
-                index = self._idx_table[layer_id] = RectIndex(grid.resolution)
-            else:
-                index = self._idx_table[layer_id]
+        layer_type = tech_info.get_layer_type(layer_name)
+        if grid.get_direction(layer_id) == 'x':
+            w = box_arr.base.height_unit
+            dx0 = tech_info.get_min_line_end_space(layer_type, w, unit_mode=True)
+            dy0 = tech_info.get_min_space(layer_type, w, unit_mode=True, same_color=False)
+        else:
+            w = box_arr.base.width_unit
+            dy0 = tech_info.get_min_line_end_space(layer_type, w, unit_mode=True)
+            dx0 = tech_info.get_min_space(layer_type, w, unit_mode=True, same_color=False)
 
-            horizontal = grid.get_direction(layer_id) == 'x'
-            track_id = warr.track_id
-            tr_w = track_id.width
-            sp = grid.get_space(layer_id, tr_w, unit_mode=True)
-            sp_le = grid.get_line_end_space(layer_id, tr_w, unit_mode=True)
-            if horizontal:
-                dx, dy = sp_le, sp
-            else:
-                dx, dy = sp, sp_le
+        if dx < 0:
+            dx = dx0
+        if dy < 0:
+            dy = dy0
 
-            box_arr = warr.get_bbox_array(grid)
-            for box in box_arr:
-                index.record_box(box, dx, dy)
+        for box in box_arr:
+            index.record_box(box, dx, dy)
 
-    def blockage_iter(self,  # type: RectLookup
+    def blockage_iter(self,  # type: UsedTracks
+                      grid,  # type: RoutingGrid
                       layer_id,  # type: int
                       tr_idx,  # type: Union[float, int]
                       lower,  # type: int
@@ -145,7 +151,6 @@ class RectLookup(object):
                       sp_le=0,  # type: int
                       ):
         # type: (...) -> Generator[Tuple[int, int], None, None]
-        grid = self._grid
         res = grid.resolution
         if layer_id not in self._idx_table:
             self._idx_table[layer_id] = RectIndex(res)
@@ -168,7 +173,8 @@ class RectLookup(object):
                 else:
                     yield max(lower, box.bottom_unit - dy), min(upper, box.top_unit + dy)
 
-    def open_interval_iter(self,  # type: RectLookup
+    def open_interval_iter(self,  # type: UsedTracks
+                           grid,  # type: RoutingGrid
                            layer_id,  # type: int
                            tr_idx,  # type: Union[float, int]
                            lower,  # type: int
@@ -180,7 +186,7 @@ class RectLookup(object):
                            ):
         # type: (...) -> bool
         intv_set = IntervalSet()
-        for tl, tu in self.blockage_iter(layer_id, tr_idx, lower, upper,
+        for tl, tu in self.blockage_iter(grid, layer_id, tr_idx, lower, upper,
                                          width=width, sp=sp, sp_le=sp_le):
             intv_set.add((tl, tu))
 
@@ -188,7 +194,8 @@ class RectLookup(object):
             if intv[1] - intv[0] >= min_len:
                 yield intv
 
-    def is_track_available(self,  # type: RectLookup
+    def is_track_available(self,  # type: UsedTracks
+                           grid,  # type: RoutingGrid
                            layer_id,  # type: int
                            tr_idx,  # type: Union[float, int]
                            lower,  # type: int
@@ -198,7 +205,7 @@ class RectLookup(object):
                            sp_le=0,  # type: int
                            ):
         # type: (...) -> bool
-        for _ in self.blockage_iter(layer_id, tr_idx, lower, upper,
+        for _ in self.blockage_iter(grid, layer_id, tr_idx, lower, upper,
                                     width=width, sp=sp, sp_le=sp_le):
             return False
         return True
@@ -207,332 +214,20 @@ class RectLookup(object):
                   loc,  # type: Tuple[int, int]
                   orient,  # type: str
                   ):
-        # type: (...) -> RectLookup
-        """Return a new transformed RectLookup."""
+        # type: (...) -> UsedTracks
+        """Return a new transformed UsedTracks."""
 
         new_idx_table = {lay: idx.transform(loc, orient) for lay, idx in self._idx_table.items()}
-        return RectLookup(self._grid, new_idx_table)
-
-    def merge(self, rect_lookup):
-        # type: (RectLookup) -> None
-        """Merge the given used tracks to this one."""
-        for lay_id, idx in rect_lookup._idx_table.items():
-            if lay_id not in self._idx_table:
-                self._idx_table[lay_id] = idx.copy()
-            else:
-                self._idx_table[lay_id].merge(idx)
-
-
-class TrackSet(object):
-    """A data structure that stored tracks on the same layer.
-
-    Parameters
-    ----------
-    min_length : int
-        Make sure all stored track has at least min_length.
-    init_tracks : Optional[Dict[int, IntervalSet]]
-        Dictionary of initial tracks.
-    """
-
-    def __init__(self, min_length=0, init_tracks=None):
-        # type: (float, Optional[Dict[int, IntervalSet]]) -> None
-        if init_tracks is None:
-            init_tracks = {}  # type: Dict[int, IntervalSet]
-        else:
-            pass
-        self._tracks = init_tracks
-        self._min_len = min_length
-
-    def __contains__(self, item):
-        # type: (int) -> bool
-        return item in self._tracks
-
-    def __getitem__(self, item):
-        # type: (int) -> IntervalSet
-        return self._tracks[item]
-
-    def __len__(self):
-        return len(self._tracks)
-
-    def __iter__(self):
-        return iter(self._tracks)
-
-    def keys(self):
-        # type: () -> Iterable[int]
-        return self._tracks.keys()
-
-    def items(self):
-        # type: () -> Iterable[int, IntervalSet]
-        return self._tracks.items()
-
-    def subtract(self, hidx, intv):
-        # type: (int, Tuple[int, int]) -> None
-        """Subtract the given intervals from this TrackSet."""
-        if hidx in self._tracks:
-            intv_set = self._tracks[hidx]
-            new_intvs = intv_set.subtract(intv)
-            # delete intervals smaller than minimum length.
-            for intv in new_intvs:
-                if intv[1] - intv[0] < self._min_len:
-                    intv_set.remove(intv)
-            if not intv_set:
-                del self._tracks[hidx]
-
-    def add_track(self, hidx, intv, width, value=None):
-        # type: (int, Tuple[int, int], int, Any) -> None
-        """Add tracks to this data structure.
-
-        Parameters
-        ----------
-        hidx : int
-            the half track index.
-        intv : Tuple[int, int]
-            the track interval.
-        width : int
-            the track width.
-        value : Any
-            value associated with this track.
-        """
-        if intv[1] - intv[0] >= self._min_len:
-            if hidx not in self._tracks:
-                intv_set = IntervalSet()
-                self._tracks[hidx] = intv_set
-            else:
-                intv_set = self._tracks[hidx]
-
-            # TODO: add more robust checking?
-            intv_set.add(intv, val=[width, value], merge=True)
-
-    def get_occupied_tracks(self, intv, half_index=True):
-        # type: (Tuple[int, int], bool) -> List[Union[float, int]]
-        """Returns all track indices which has wire overlapping the given interval.
-
-        Parameters
-        ----------
-        intv : Tuple[int, int]
-            the wire interval in resolution units.
-        half_index : bool
-            True to return half-track indices.
-
-        Returns
-        -------
-        occupied_tracks : List[Union[float, int]]
-            list of occupied track indices.
-        """
-        occupied_tracks = []
-        for hidx, intv_set in self._tracks.items():
-            if intv_set.has_overlap(intv):
-                if half_index:
-                    occupied_tracks.append(hidx)
-                else:
-                    val = (hidx - 1) // 2 if hidx % 2 == 1 else (hidx - 1) / 2
-                    occupied_tracks.append(val)
-        return occupied_tracks
-
-    def transform(self, grid, layer_id, dx, dy, orient='R0'):
-        # type: (RoutingGrid, int, int, int, str) -> TrackSet
-        """Return a new transformed TrackSet.
-
-        Parameters
-        ----------
-        grid : RoutingGrid
-            the RoutingGrid object.
-        layer_id : int
-            the layer ID of this TrackSet.
-        dx : int
-            the X shift in resolution units.
-        dy : int
-            the Y shift in resolution units.
-        orient : str
-            the new orientation.
-
-        Returns
-        -------
-        result : TrackSet
-            the new TrackSet.
-        """
-        is_x = grid.get_direction(layer_id) == 'x'
-        if is_x:
-            hidx_shift = int(2 * grid.coord_to_track(layer_id, dy, unit_mode=True)) + 1
-            intv_shift = dx
-        else:
-            hidx_shift = int(2 * grid.coord_to_track(layer_id, dx, unit_mode=True)) + 1
-            intv_shift = dy
-
-        if orient == 'R0':
-            hidx_scale = intv_scale = 1
-        elif orient == 'R180':
-            hidx_scale = -1
-            intv_scale = -1
-        elif orient == 'MX':
-            if is_x:
-                hidx_scale = -1
-                intv_scale = 1
-            else:
-                hidx_scale = 1
-                intv_scale = -1
-        elif orient == 'MY':
-            if is_x:
-                hidx_scale = 1
-                intv_scale = -1
-            else:
-                hidx_scale = -1
-                intv_scale = 1
-        else:
-            raise ValueError('Unsupported orientation: %s' % orient)
-
-        new_tracks = {}
-        for hidx, intv_set in self._tracks.items():
-            new_tracks[hidx * hidx_scale + hidx_shift] = intv_set.transform(intv_scale, intv_shift)
-
-        return TrackSet(min_length=self._min_len, init_tracks=new_tracks)
-
-    def merge(self, track_set):
-        # type: (TrackSet) -> None
-        """Merge the given TrackSet to this one."""
-        for hidx, new_intv_set in track_set.items():
-            if hidx not in self._tracks:
-                intv_set = IntervalSet()
-                self._tracks[hidx] = intv_set
-            else:
-                intv_set = self._tracks[hidx]
-
-            for intv, val in new_intv_set.items():
-                intv_set.add(intv, val, merge=True)
-
-
-class UsedTracks(object):
-    """A data structure that stores used tracks on the routing grid.
-
-    Parameters
-    ----------
-    resolution : float
-        the layout resolution.
-    init_track_sets : Optional[Dict[int, TrackSet]]
-        Dictionary of initial TrackSets.
-    """
-
-    def __init__(self, resolution, init_track_sets=None):
-        # type: (float, Dict[int, Optional[Dict[int, TrackSet]]]) -> None
-        if init_track_sets is None:
-            init_track_sets = {}  # type: Dict[int, TrackSet]
-        else:
-            pass
-        self._track_sets = init_track_sets
-        self._res = resolution
-
-    def layer_track_set_iter(self):
-        return self._track_sets.items()
-
-    def get_tracks_info(self, layer_id):
-        # type: (int) -> TrackSet
-        """Returns used tracks information on the given layer.
-
-        Parameters
-        ----------
-        layer_id : int
-            the layer ID.
-
-        Returns
-        -------
-        tracks_info : TrackSet
-            the used tracks on the given layer.
-        """
-        if layer_id not in self._track_sets:
-            self._track_sets[layer_id] = TrackSet()
-        return self._track_sets[layer_id]
-
-    def add_wire_arrays(self, warr_list, fill_margin=0, fill_type='VSS', unit_mode=False):
-        # type: (Union[WireArray, List[WireArray]], Union[float, int], str, bool) -> None
-        """Adds a wire array to this data structure.
-
-        Parameters
-        ----------
-        warr_list : Union[WireArray, List[WireArray]]
-            the WireArrays to add.
-        fill_margin : Union[float, int]
-            minimum margin between wires and fill.
-        fill_type : str
-            fill connection type.  Either 'VDD' or 'VSS'.  Defaults to 'VSS'.
-        unit_mode : bool
-            True if fill_margin is given in resolution units.
-        """
-        if isinstance(warr_list, WireArray):
-            warr_list = [warr_list, ]
-        else:
-            pass
-
-        if not unit_mode:
-            fill_margin = int(round(fill_margin / self._res))
-
-        for warr in warr_list:
-            warr_tid = warr.track_id
-            layer_id = warr_tid.layer_id
-            width = warr_tid.width
-            if layer_id not in self._track_sets:
-                track_set = TrackSet()
-                self._track_sets[layer_id] = track_set
-            else:
-                track_set = self._track_sets[layer_id]
-
-            intv = (int(round(warr.lower / self._res)), int(round(warr.upper / self._res)))
-            base_hidx = int(round(2 * warr_tid.base_index + 1))
-            step = int(round(warr_tid.pitch * 2))
-            for idx in range(warr_tid.num):
-                hidx = base_hidx + idx * step
-                track_set.add_track(hidx, intv, width, value=(fill_margin, fill_type))
-
-    def transform(self,
-                  grid,  # type: RoutingGrid
-                  bot_layer,  # type: int
-                  top_layer,  # type: int
-                  loc=(0, 0),  # type: Tuple[Union[float, int], Union[float, int]]
-                  orient='R0',  # type: str
-                  unit_mode=False,  # type: bool
-                  ):
-        # type: (...) -> UsedTracks
-        """Return a new transformed UsedTracks on the given layers.
-
-        Parameters
-        ----------
-        grid : RoutingGrid
-            the RoutingGrid object.
-        bot_layer : int
-            the bottom layer ID, inclusive.
-        top_layer : int
-            the top layer ID, inclusive.
-        loc : Tuple[Union[float, int], Union[float, int]]
-            the X/Y coordinate shift.
-        orient : str
-            the new orientation.
-        unit_mode : bool
-            True if loc is given in resolution units.
-        """
-        if not unit_mode:
-            res = grid.resolution
-            dx, dy = int(round(loc[0] / res)), int(round(loc[1] / res))
-        else:
-            dx, dy = loc
-
-        new_track_sets = {}
-        for layer_id, track_set in self._track_sets.items():
-            if bot_layer <= layer_id <= top_layer:
-                new_track_sets[layer_id] = track_set.transform(grid, layer_id, dx, dy,
-                                                               orient=orient)
-
-        return UsedTracks(self._res, init_track_sets=new_track_sets)
+        return UsedTracks(init_idx_table=new_idx_table)
 
     def merge(self, used_tracks):
         # type: (UsedTracks) -> None
         """Merge the given used tracks to this one."""
-        for layer_id, new_track_set in used_tracks.layer_track_set_iter():
-            if layer_id not in self._track_sets:
-                track_set = TrackSet()
-                self._track_sets[layer_id] = track_set
+        for lay_id, idx in used_tracks._idx_table.items():
+            if lay_id not in self._idx_table:
+                self._idx_table[lay_id] = idx.copy()
             else:
-                track_set = self._track_sets[layer_id]
-
-            track_set.merge(new_track_set)
+                self._idx_table[lay_id].merge(idx)
 
 
 def get_available_tracks(grid,  # type: RoutingGrid
