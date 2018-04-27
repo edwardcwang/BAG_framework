@@ -8,10 +8,7 @@ from typing import TYPE_CHECKING, Optional, Union, List, Tuple, Any, Generator, 
 from rtree.index import Index
 
 from bag.layout.util import BBox
-from bag.util.interval import IntervalSet
 from bag.util.search import BinaryIterator, minimize_cost_golden
-
-from .base import WireArray, TrackID
 
 if TYPE_CHECKING:
     from bag.layout.util import BBoxArray
@@ -48,7 +45,7 @@ class RectIndex(object):
             yield item.id, item.bbox, item.object
 
     def intersection_iter(self, box, dx=0, dy=0):
-        # type: (BBox, int, int) -> Generator[Tuple[BBox, int, int], None, None]
+        # type: (BBox, int, int) -> Generator[BBox, None, None]
         """Finds all bounding box that intersects the given box."""
         test_box = box.expand(dx=dx, dy=dy, unit_mode=True)
         for item in self._index.intersection(test_box.get_bounds(unit_mode=True), objects=True):
@@ -58,7 +55,7 @@ class RectIndex(object):
                                item_box[3], self._res, unit_mode=True)
             item_box_real = item_box_sp.expand(dx=-item_dx, dy=-item_dy, unit_mode=True)
             if item_box_sp.overlaps(box) or test_box.overlaps(item_box_real):
-                yield item_box_real, max(dx, item_dx), max(dy, item_dy)
+                yield item_box_real.expand(dx=max(dx, item_dx), dy=max(dy, item_dy), unit_mode=True)
 
     def transform(self, loc, orient):
         # type: (Tuple[int, int], str) -> RectIndex
@@ -142,69 +139,10 @@ class UsedTracks(object):
         for box in box_arr:
             index.record_box(box, dx, dy)
 
-    def blockage_iter(self,  # type: UsedTracks
-                      grid,  # type: RoutingGrid
-                      track_id,  # type: TrackID
-                      lower,  # type: int
-                      upper,  # type: int
-                      sp=0,  # type: int
-                      sp_le=0,  # type: int
-                      ):
-        # type: (...) -> Generator[Tuple[int, int], None, None]
-        res = grid.resolution
-        layer_id = track_id.layer_id
-        if layer_id not in self._idx_table:
-            self._idx_table[layer_id] = RectIndex(res)
-        else:
-            warr = WireArray(track_id, lower, upper, res=res, unit_mode=True)
-            wbox = warr.get_bbox_array(grid).base
-            index = self._idx_table[layer_id]
-            width = track_id.width
-
-            sp = max(sp, grid.get_space(layer_id, width, unit_mode=True))
-            sp_le = max(sp_le, grid.get_line_end_space(layer_id, width, unit_mode=True))
-            is_horiz = grid.get_direction(layer_id) == 'x'
-            if is_horiz:
-                box_iter = index.intersection_iter(wbox, dx=sp_le, dy=sp)
-            else:
-                box_iter = index.intersection_iter(wbox, dx=sp, dy=sp_le)
-
-            for box, dx, dy in box_iter:
-                if is_horiz:
-                    yield max(lower, box.left_unit - dx), min(upper, box.right_unit + dx)
-                else:
-                    yield max(lower, box.bottom_unit - dy), min(upper, box.top_unit + dy)
-
-    def open_interval_iter(self,  # type: UsedTracks
-                           grid,  # type: RoutingGrid
-                           track_id,  # type: TrackID
-                           lower,  # type: int
-                           upper,  # type: int
-                           sp=0,  # type: int
-                           sp_le=0,  # type: int
-                           min_len=0,  # type: int
-                           ):
-        # type: (...) -> Generator[Tuple[int, int], None, None]
-        intv_set = IntervalSet()
-        for tl, tu in self.blockage_iter(grid, track_id, lower, upper, sp=sp, sp_le=sp_le):
-            intv_set.add((tl, tu), merge=True)
-
-        for intv in intv_set.get_complement((lower, upper)):
-            if intv[1] - intv[0] >= min_len:
-                yield intv
-
-    def is_track_available(self,  # type: UsedTracks
-                           grid,  # type: RoutingGrid
-                           track_id,  # type: TrackID
-                           lower,  # type: int
-                           upper,  # type: int
-                           sp=0,  # type: int
-                           sp_le=0,  # type: int
-                           ):
-        # type: (...) -> bool
-        for _ in self.blockage_iter(grid, track_id, lower, upper, sp=sp, sp_le=sp_le):
-            return False
-        return True
+    def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
+        # type: (int, BBox, int, int) -> Generator[BBox, None, None]
+        if layer_id in self._idx_table:
+            yield from self._idx_table[layer_id].intersection_iter(test_box, dx=spx, dy=spy)
 
     def transform(self,
                   loc,  # type: Tuple[int, int]

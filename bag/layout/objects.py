@@ -2,13 +2,14 @@
 
 """This module defines various layout objects one can add and manipulate in a template.
 """
-from typing import TYPE_CHECKING, Union, List, Tuple, Optional, Dict, Any, Iterator, Iterable
+from typing import TYPE_CHECKING, Union, List, Tuple, Optional, Dict, Any, Iterator, Iterable, \
+    Generator
 
 import abc
 import numpy as np
 from copy import deepcopy
 
-from .util import transform_table, BBox, BBoxArray, transform_point
+from .util import transform_table, BBox, BBoxArray, transform_point, get_inverse_transform
 from .routing.base import Port, WireArray
 from .routing.fill import UsedTracks
 from .routing.grid import RoutingGrid
@@ -487,6 +488,23 @@ class Instance(Arrayable):
         dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
         inst_loc = dx + self._loc_unit[0], dy + self._loc_unit[1]
         return self._master.used_tracks.transform(inst_loc, self._orient)
+
+    def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
+        # type: (int, BBox, int, int) -> Generator[BBox, None, None]
+        # transform the given BBox to master coordinate
+        orient = self._orient
+        x0, y0 = self._loc_unit
+        if (orient == 'R90' or orient == 'R270' or
+                orient == 'MXR90' or orient == 'MYR90'):
+            spx, spy = spy, spx
+        for row in range(self.ny):
+            for col in range(self.nx):
+                dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
+                loc = dx + x0, dy + y0
+                inv_loc, inv_orient = get_inverse_transform(loc, orient)
+                cur_box = test_box.transform(inv_loc, inv_orient, unit_mode=True)
+                for box in self._master.blockage_iter(layer_id, cur_box, spx=spx, spy=spy):
+                    yield box.transform(loc, orient, unit_mode=True)
 
     def get_rect_bbox(self, layer):
         """Returns the overall bounding box of all rectangles on the given layer.
@@ -1282,6 +1300,7 @@ class Polygon(Figure):
     unit_mode : bool
         True if the points are given in resolution units.
     """
+
     def __init__(self,
                  resolution,  # type: float
                  layer,  # type: Union[str, Tuple[str, str]]
@@ -1373,6 +1392,7 @@ class Blockage(Polygon):
     unit_mode : bool
         True if the points are given in resolution units.
     """
+
     def __init__(self, resolution, block_type, block_layer, points, unit_mode=False):
         # type: (float, str, str, List[Tuple[Union[float, int], Union[float, int]]], bool) -> None
         Polygon.__init__(self, resolution, block_layer, points, unit_mode=unit_mode)
@@ -1417,6 +1437,7 @@ class Boundary(Polygon):
     unit_mode : bool
         True if the points are given in resolution units.
     """
+
     def __init__(self, resolution, boundary_type, points, unit_mode=False):
         # type: (float, str, List[Tuple[Union[float, int], Union[float, int]]], bool) -> None
         Polygon.__init__(self, resolution, ('', ''), points, unit_mode=unit_mode)
