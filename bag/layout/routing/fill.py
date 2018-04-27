@@ -116,18 +116,16 @@ class UsedTracks(object):
         except ValueError:
             return
 
+        if layer_id not in grid:
+            return
+
         if layer_id not in self._idx_table:
             index = self._idx_table[layer_id] = RectIndex(grid.resolution)
         else:
             index = self._idx_table[layer_id]
 
         layer_type = tech_info.get_layer_type(layer_name)
-        base_box = box_arr.base
-        if layer_id in grid:
-            is_horiz = grid.get_direction(layer_id) == 'x'
-        else:
-            is_horiz = (base_box.height_unit <= base_box.width_unit)
-        if is_horiz:
+        if grid.get_direction(layer_id) == 'x':
             w = box_arr.base.height_unit
             dx0 = tech_info.get_min_line_end_space(layer_type, w, unit_mode=True)
             dy0 = tech_info.get_min_space(layer_type, w, unit_mode=True, same_color=False)
