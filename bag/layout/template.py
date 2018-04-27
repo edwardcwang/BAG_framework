@@ -2046,7 +2046,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                       lower=None,  # type: Optional[Union[int, float]]
                       upper=None,  # type: Optional[Union[int, float]]
                       debug=False,  # type: bool
-                      unit_mode=False  # type: bool
+                      unit_mode=False,  # type: bool
                       ):
         # type: (...) -> List[WireArray]
         """Connect all given WireArrays together.
@@ -3259,8 +3259,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                       layer_id,  # type: int
                       space,  # type: Union[float, int]
                       space_le,  # type: Union[float, int]
-                      vdd_warrs=None,  # type: Union[WireArray, List[WireArray]]
-                      vss_warrs=None,  # type: Union[WireArray, List[WireArray]]
+                      vdd_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
+                      vss_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
                       bound_box=None,  # type: Optional[BBox]
                       fill_width=1,  # type: int
                       fill_space=0,  # type: int
@@ -3318,6 +3318,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             for lay, box_arr in warr.wire_arr_iter(self.grid):
                 self.add_rect(lay, box_arr)
 
-        self.draw_vias_on_intersections(vdd_warrs, top_vdd)
-        self.draw_vias_on_intersections(vss_warrs, top_vss)
+        if vdd_warrs:
+            self.draw_vias_on_intersections(vdd_warrs, top_vdd)
+        if vss_warrs:
+            self.draw_vias_on_intersections(vss_warrs, top_vss)
         return top_vdd, top_vss
