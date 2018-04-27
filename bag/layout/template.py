@@ -3204,8 +3204,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     def do_power_fill(self,  # type: TemplateBase
                       layer_id,  # type: int
-                      space,  # type: int
-                      space_le,  # type: int
+                      space,  # type: Union[float, int]
+                      space_le,  # type: Union[float, int]
                       vdd_warrs=None,  # type: Union[WireArray, List[WireArray]]
                       vss_warrs=None,  # type: Union[WireArray, List[WireArray]]
                       bound_box=None,  # type: Optional[BBox]
@@ -3222,6 +3222,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """Draw power fill on the given layer."""
         res = self.grid.resolution
         if not unit_mode:
+            space =  int(round(space / res))
+            space_le = int(round(space_le / res))
             x_margin = int(round(x_margin / res))
             y_margin = int(round(y_margin / res))
             tr_offset = int(round(tr_offset / res))
