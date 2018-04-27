@@ -101,9 +101,12 @@ class UsedTracks(object):
         else:
             self._idx_table = init_idx_table
 
+    def __iter__(self):
+        return self._idx_table.keys()
+
     def record_rect(self, grid, layer_name, box_arr, dx=-1, dy=-1):
-        # type: (RoutingGrid, Union[Tuple[str, str], str], BBoxArray, int, int) -> None
-        """Record the given bounding box array."""
+        # type: (RoutingGrid, Union[Tuple[str, str], str], BBoxArray, int, int) -> Optional[int]
+        """Record the given bounding box array.  Returns the added layer ID."""
         tech_info = grid.tech_info
 
         if isinstance(layer_name, tuple):
@@ -111,10 +114,10 @@ class UsedTracks(object):
         try:
             layer_id = tech_info.get_layer_id(layer_name)
         except ValueError:
-            return
+            return None
 
         if layer_id not in grid:
-            return
+            return None
 
         if layer_id not in self._idx_table:
             index = self._idx_table[layer_id] = RectIndex(grid.resolution)
@@ -138,6 +141,8 @@ class UsedTracks(object):
 
         for box in box_arr:
             index.record_box(box, dx, dy)
+
+        return layer_id
 
     def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
         # type: (int, BBox, int, int) -> Generator[BBox, None, None]

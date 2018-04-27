@@ -493,6 +493,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self.prim_top_layer = None
         self.prim_bound_box = None
         self._used_tracks = UsedTracks()
+        self._nonempty_layers = set()
 
         # add hidden parameters
         if 'hidden_params' in kwargs:
@@ -610,6 +611,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # get set of children keys
         self.children = self._layout.get_masters_set()
 
+        for inst in self._layout.inst_iter():
+            self._nonempty_layers.update(inst.master.nonempty_layers)
+
         # call super finalize routine
         DesignMaster.finalize(self)
 
@@ -625,6 +629,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # type: () -> bool
         """Returns True if this template is empty."""
         return self._layout.is_empty
+
+    @property
+    def nonempty_layers(self):
+        # type: () -> Set[int]
+        return self._nonempty_layers
 
     @property
     def grid(self):
@@ -713,9 +722,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
         # type: (int, BBox, int, int) -> Generator[BBox, None, None]
-        yield from self._used_tracks.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
+        if layer_id in self._nonempty_layers:
+            yield from self._used_tracks.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
         for inst in self._layout.inst_iter():
-            yield from inst.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
+            if layer_id in inst.master.nonempty_layers:
+                yield from inst.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
 
     def open_interval_iter(self,  # type: TemplateBase
                            track_id,  # type: TrackID
@@ -1004,6 +1015,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         unit_mode : bool
             true if given shift values are in resolution units.
         """
+        print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
         self._layout.move_all_by(dx=dx, dy=dy, unit_mode=unit_mode)
 
     def add_instance(self,  # type: TemplateBase
@@ -1150,7 +1162,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         rect = Rect(layer, bbox, nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=unit_mode)
         self._layout.add_rect(rect)
-        self._used_tracks.record_rect(self.grid, layer, rect.bbox_array)
+        layer_id = self._used_tracks.record_rect(self.grid, layer, rect.bbox_array)
+        if layer_id is not None:
+            self._nonempty_layers.add(layer_id)
         return rect
 
     def add_res_metal(self, layer_id, bbox, **kwargs):

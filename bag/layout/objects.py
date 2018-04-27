@@ -492,19 +492,20 @@ class Instance(Arrayable):
     def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
         # type: (int, BBox, int, int) -> Generator[BBox, None, None]
         # transform the given BBox to master coordinate
-        orient = self._orient
-        x0, y0 = self._loc_unit
-        if (orient == 'R90' or orient == 'R270' or
-                orient == 'MXR90' or orient == 'MYR90'):
-            spx, spy = spy, spx
-        for row in range(self.ny):
-            for col in range(self.nx):
-                dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
-                loc = dx + x0, dy + y0
-                inv_loc, inv_orient = get_inverse_transform(loc, orient)
-                cur_box = test_box.transform(inv_loc, inv_orient, unit_mode=True)
-                for box in self._master.blockage_iter(layer_id, cur_box, spx=spx, spy=spy):
-                    yield box.transform(loc, orient, unit_mode=True)
+        if not self.destroyed:
+            orient = self._orient
+            x0, y0 = self._loc_unit
+            if (orient == 'R90' or orient == 'R270' or
+                    orient == 'MXR90' or orient == 'MYR90'):
+                spx, spy = spy, spx
+            for row in range(self.ny):
+                for col in range(self.nx):
+                    dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
+                    loc = dx + x0, dy + y0
+                    inv_loc, inv_orient = get_inverse_transform(loc, orient)
+                    cur_box = test_box.transform(inv_loc, inv_orient, unit_mode=True)
+                    for box in self._master.blockage_iter(layer_id, cur_box, spx=spx, spy=spy):
+                        yield box.transform(loc, orient, unit_mode=True)
 
     def get_rect_bbox(self, layer):
         """Returns the overall bounding box of all rectangles on the given layer.
@@ -897,6 +898,7 @@ class Rect(Arrayable):
         if isinstance(val, str):
             val = (val, 'drawing')
         self._layer = val[0], val[1]
+        print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
 
     @property
     def bbox(self):
@@ -909,6 +911,7 @@ class Rect(Arrayable):
         self.check_destroyed()
         if not val.is_physical():
             raise ValueError('Bounding box %s is not physical' % val)
+        print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
         self._bbox = val
 
     @property
@@ -937,6 +940,7 @@ class Rect(Arrayable):
         unit_mode : bool
         True if layout dimensions are specified in resolution units.
         """
+        print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
         self._bbox = self._bbox.move_by(dx=dx, dy=dy, unit_mode=unit_mode)
 
     def extend(self, x=None, y=None):
@@ -949,6 +953,7 @@ class Rect(Arrayable):
         y : float or None
             if not None, make sure the base rectangle overlaps this Y coordinate.
         """
+        print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
         self._bbox = self._bbox.extend(x=x, y=y)
 
     def transform(self, loc=(0, 0), orient='R0', unit_mode=False, copy=False):
@@ -956,11 +961,18 @@ class Rect(Arrayable):
         """Transform this figure."""
         new_box = self._bbox.transform(loc=loc, orient=orient, unit_mode=unit_mode)
         if copy:
+            print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
             self._bbox = new_box
             return self
         else:
             return Rect(self._layer, new_box, nx=self.nx, ny=self.ny, spx=self.spx_unit,
                         spy=self.spy_unit, unit_mode=True)
+
+    def destroy(self):
+        # type: () -> None
+        """Destroy this instance."""
+        print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
+        Arrayable.destroy(self)
 
 
 class Path(Figure):
