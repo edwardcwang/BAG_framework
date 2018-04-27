@@ -3157,7 +3157,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                         for top_index in top_track_idx:
                             ttl, ttu = grid.get_wire_bounds(top_layer_id, top_index,
                                                             width=top_width, unit_mode=True)
-                            if bot_tl >= ttu and bot_tu <= ttl:
+                            if bot_tu >= ttu and bot_tl <= ttl:
                                 # bottom wire cuts top wire, we have intersection.  Make bbox
                                 if bot_horizontal:
                                     box = BBox(ttl, btl, ttu, btu, res, unit_mode=True)
