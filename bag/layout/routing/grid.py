@@ -730,6 +730,58 @@ class RoutingGrid(object):
         else:
             return w_pitch * self.resolution, h_pitch * self.resolution
 
+    def get_fill_size(self,  # type: RoutingGrid
+                      layer_id,  # type: int
+                      fill_config,  # type: Dict[int, Tuple[int, int, int, int]]
+                      unit_mode=False,  # type: bool
+                      include_private=False,  # type: bool
+                      half_blk_x=True,  # type: bool
+                      half_blk_y=True,  # type: bool
+                      ):
+        # type: (...) -> Tuple[Union[float, int], Union[float, int]]
+        """Returns unit block size given the top routing layer and power fill configuration.
+
+        Parameters
+        ----------
+        layer_id : int
+            the routing layer ID.
+        fill_config : Dict[int, Tuple[int, int, int, int]]
+            the fill configuration dictionary.
+        unit_mode : bool
+            True to return block dimension in resolution units.
+        include_private : bool
+            True to include private layers in block size calculation.
+        half_blk_x : bool
+            True to allow half-block widths.
+        half_blk_y : bool
+            True to allow half-block heights.
+
+        Returns
+        -------
+        block_width : Union[float, int]
+            the block width in layout units.
+        block_height : Union[float, int]
+            the block height in layout units.
+        """
+        blk_w, blk_h = self.get_block_size(layer_id, unit_mode=True,
+                                           include_private=include_private,
+                                           half_blk_x=half_blk_x, half_blk_y=half_blk_y)
+
+        top_pitch = self.get_track_pitch(layer_id, unit_mode=True)
+        bot_pitch = self.get_track_pitch(layer_id - 1, unit_mode=True)
+        top_dim = (fill_config[layer_id][0] + fill_config[layer_id][1]) * top_pitch
+        bot_dim = (fill_config[layer_id - 1][0] + fill_config[layer_id - 1][1]) * bot_pitch
+        if self.get_direction(layer_id) == 'x':
+            fill_w, fill_h = bot_dim, top_dim
+        else:
+            fill_w, fill_h = top_dim, bot_dim
+
+        blk_w = lcm([blk_w, fill_w])
+        blk_h = lcm([blk_h, fill_h])
+        if unit_mode:
+            return blk_w, blk_h
+        return blk_w * self._resolution, blk_h * self._resolution
+
     def size_defined(self, layer_id):
         # type: (int) -> bool
         """Returns True if size is defined on the given layer."""
