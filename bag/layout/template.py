@@ -4,7 +4,7 @@
 """
 
 from typing import TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, \
-    Optional, Tuple, Iterable, Sequence, Callable
+    Optional, Tuple, Iterable, Sequence, Callable, Generator
 
 import os
 import time
@@ -493,7 +493,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self.prim_top_layer = None
         self.prim_bound_box = None
         self._used_tracks = UsedTracks()
-        self._added_inst_tracks = False
 
         # add hidden parameters
         if 'hidden_params' in kwargs:
@@ -593,9 +592,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # update track parities of all instances
         if self.grid.tech_info.use_flip_parity():
             self._update_flip_parity()
-
-        # update used tracks
-        self._merge_inst_used_tracks()
 
         # construct port objects
         for net_name, port_params in self._port_params.items():
@@ -715,6 +711,44 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                                    inst.orientation, unit_mode=True)
             inst.new_master_with(flip_parity=fp_dict)
 
+    def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
+        # type: (int, BBox, int, int) -> Generator[BBox, None, None]
+        yield from self._used_tracks.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
+        for inst in self._layout.inst_iter():
+            yield from inst.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
+
+    def open_interval_iter(self,  # type: TemplateBase
+                           track_id,  # type: TrackID
+                           lower,  # type: int
+                           upper,  # type: int
+                           sp=0,  # type: int
+                           sp_le=0,  # type: int
+                           min_len=0,  # type: int
+                           ):
+        # type: (...) -> Generator[Tuple[int, int], None, None]
+
+        res = self.grid.resolution
+        layer_id = track_id.layer_id
+        width = track_id.width
+        intv_dir = self.grid.get_direction(layer_id)
+        warr = WireArray(track_id, lower, upper, res=res, unit_mode=True)
+        test_box = warr.get_bbox_array(self.grid).base
+        sp = max(sp, self.grid.get_space(layer_id, width, unit_mode=True))
+        sp_le = max(sp_le, self.grid.get_line_end_space(layer_id, width, unit_mode=True))
+        if intv_dir == 'x':
+            spx, spy = sp_le, sp
+        else:
+            spx, spy = sp, sp_le
+
+        intv_set = IntervalSet()
+        for box in self.blockage_iter(layer_id, test_box, spx=spx, spy=spy):
+            bnds = box.get_interval(intv_dir, unit_mode=True)
+            intv_set.add((max(bnds[0], lower), min(bnds[1], upper)), merge=True)
+
+        for intv in intv_set.get_complement((lower, upper)):
+            if intv[1] - intv[0] >= min_len:
+                yield intv
+
     def is_track_available(self,  # type: TemplateBase
                            layer_id,  # type: int
                            tr_idx,  # type: Union[float, int]
@@ -726,16 +760,29 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                            unit_mode=False,  # type: bool
                            ):
         """Returns True if the given track is available."""
+        res = self.grid.resolution
         if not unit_mode:
-            res = self.grid.resolution
             lower = int(round(lower / res))
             upper = int(round(upper / res))
             sp = int(round(sp / res))
             sp_le = int(round(sp_le / res))
 
+        intv_dir = self.grid.get_direction(layer_id)
         track_id = TrackID(layer_id, tr_idx, width=width)
-        return self._used_tracks.is_track_available(self.grid, track_id, lower, upper,
-                                                    sp=sp, sp_le=sp_le)
+        warr = WireArray(track_id, lower, upper, res=res, unit_mode=True)
+        test_box = warr.get_bbox_array(self.grid).base
+        sp = max(sp, self.grid.get_space(layer_id, width, unit_mode=True))
+        sp_le = max(sp_le, self.grid.get_line_end_space(layer_id, width, unit_mode=True))
+        if intv_dir == 'x':
+            spx, spy = sp_le, sp
+        else:
+            spx, spy = sp, sp_le
+
+        try:
+            next(self.blockage_iter(layer_id, test_box, spx=spx, spy=spy))
+        except StopIteration:
+            return True
+        return False
 
     def get_rect_bbox(self, layer):
         # type: (Union[str, Tuple[str, str]]) -> BBox
@@ -3166,14 +3213,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                 top_lay_name = self.grid.get_layer_name(top_layer_id, top_index)
                                 self.add_via(box, bot_lay_name, top_lay_name, bot_dir)
 
-    def _merge_inst_used_tracks(self):
-        if not self._added_inst_tracks:
-            self._added_inst_tracks = True
-            for inst in self._layout.inst_iter():
-                for cidx in range(inst.nx):
-                    for ridx in range(inst.ny):
-                        self._used_tracks.merge(inst.get_used_tracks(row=ridx, col=cidx))
-
     def mark_bbox_used(self, layer_id, bbox):
         # type: (int, BBox) -> None
         """Marks the given bounding-box region as used in this Template."""
@@ -3222,14 +3261,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """Draw power fill on the given layer."""
         res = self.grid.resolution
         if not unit_mode:
-            space =  int(round(space / res))
+            space = int(round(space / res))
             space_le = int(round(space_le / res))
             x_margin = int(round(x_margin / res))
             y_margin = int(round(y_margin / res))
             tr_offset = int(round(tr_offset / res))
             min_len = int(round(min_len / res))
-
-        self._merge_inst_used_tracks()
 
         min_len = max(min_len, self.grid.get_min_length(layer_id, fill_width, unit_mode=True))
         if bound_box is None:
@@ -3259,9 +3296,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             tr_idx = (htr0 + ncur * htr_pitch - 1) / 2
             tid = TrackID(layer_id, tr_idx, width=fill_width)
             cur_list = top_vss if (ncur % 2 == 0) != flip else top_vdd
-            for tl, tu in self._used_tracks.open_interval_iter(self.grid, tid, lower, upper,
-                                                               sp=space, sp_le=space_le,
-                                                               min_len=min_len):
+            for tl, tu in self.open_interval_iter(tid, lower, upper, sp=space, sp_le=space_le,
+                                                  min_len=min_len):
                 cur_list.append(WireArray(tid, tl, tu, res=res, unit_mode=True))
 
         for warr in chain(top_vdd, top_vss):

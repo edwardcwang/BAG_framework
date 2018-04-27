@@ -9,7 +9,8 @@ import pprint
 
 import numpy as np
 
-__all__ = ['BBox', 'BBoxArray', 'Pin', 'transform_table', 'transform_point']
+__all__ = ['BBox', 'BBoxArray', 'Pin', 'transform_table', 'transform_point',
+           'get_inverse_transform']
 
 transform_table = {'R0': np.array([[1, 0], [0, 1]], dtype=int),
                    'MX': np.array([[1, 0], [0, -1]], dtype=int),
@@ -31,6 +32,20 @@ def transform_point(x, y, loc, orient):
     mat = transform_table[orient]
     ans = np.dot(mat, np.array([x, y])) + shift
     return ans.item(0), ans.item(1)
+
+
+def get_inverse_transform(loc, orient):
+    """Returns the inverse transform"""
+    if orient == 'R90':
+        orient_inv = 'R270'
+    elif orient == 'R270':
+        orient_inv = 'R90'
+    else:
+        orient_inv = orient
+
+    inv_mat = transform_table[orient_inv]
+    new_shift = np.dot(inv_mat, np.asarray(loc))
+    return (new_shift.item(0), new_shift.item(1)), orient_inv
 
 
 def transform_loc_orient(loc, orient, trans_loc, trans_orient):
@@ -352,7 +367,7 @@ class BBox(object):
         return BBox(self._left_unit - dx, self._bot_unit - dy, self._right_unit + dx,
                     self._top_unit + dy, self._res, unit_mode=True)
 
-    def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False):
+    def transform(self, loc=(0, 0), orient='R0', unit_mode=False):
         # type: (Tuple[Union[float, int], Union[float, int]], str, bool) -> BBox
         """Returns a new BBox under the given transformation.
 
