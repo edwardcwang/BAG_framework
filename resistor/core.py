@@ -239,7 +239,7 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
     def bot_layer_id(self):
         # type: () -> int
         """Returns the bottom resistor routing layer ID."""
-        return self._layout_info.bot_layer
+        return self.get_port_layer_id(self.grid.tech_info)
 
     @property
     def w_tracks(self):
@@ -264,6 +264,12 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         # type: () -> Tuple[int, int]
         """Returns the size of a unit resistor block in resolution units"""
         return self._core_pitch
+
+    @property
+    def core_offset(self):
+        # type: () -> Tuple[int, int]
+        """Returns the core resistor block offset."""
+        return self._core_offset
 
     def get_well_width(self, unit_mode=False):
         # type: (bool) -> Union[float, int]
