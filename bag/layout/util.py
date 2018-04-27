@@ -528,7 +528,7 @@ class BBoxArray(object):
         True if layout dimensions are specified in resolution units.
     """
 
-    def __init__(self, bbox, nx=1, ny=1, spx=0.0, spy=0.0, unit_mode=False):
+    def __init__(self, bbox, nx=1, ny=1, spx=0, spy=0, unit_mode=False):
         # type: (BBox, int, int, Union[float, int], Union[float, int], bool) -> None
         if not isinstance(bbox, BBox):
             raise ValueError('%s is not a BBox object' % bbox)

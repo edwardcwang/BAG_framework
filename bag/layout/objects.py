@@ -468,16 +468,12 @@ class Instance(Arrayable):
         """
         self._master = self._master.new_template_with(**kwargs)
 
-    def get_used_tracks(self, bot_layer, top_layer, row=0, col=0):
-        # type: (int, int, int, int) -> UsedTracks
+    def get_used_tracks(self, row=0, col=0):
+        # type: (int, int) -> UsedTracks
         """Return the used track object of the given instance in the array.
 
         Parameters
         ----------
-        bot_layer : int
-            the bottom layer ID, inclusive.
-        top_layer : int
-            the top layer ID, inclusive.
         row : int
             the instance row index.  Index 0 is the bottom-most row.
         col : int
@@ -490,8 +486,7 @@ class Instance(Arrayable):
         """
         dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
         inst_loc = dx + self._loc_unit[0], dy + self._loc_unit[1]
-        return self._master.get_used_tracks().transform(self._parent_grid, bot_layer, top_layer,
-                                                        inst_loc, self._orient, unit_mode=True)
+        return self._master.used_tracks.transform(inst_loc, self._orient)
 
     def get_rect_bbox(self, layer):
         """Returns the overall bounding box of all rectangles on the given layer.
