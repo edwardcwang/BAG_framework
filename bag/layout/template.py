@@ -10,7 +10,7 @@ import os
 import time
 import abc
 import copy
-from itertools import islice, product
+from itertools import islice, product, chain
 
 import yaml
 
@@ -3213,6 +3213,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                       fill_space=0,  # type: int
                       x_margin=0,  # type: Union[float, int]
                       y_margin=0,  # type: Union[float, int]
+                      tr_offset=0,  # type: Union[float, int]
                       min_len=0,  # type: Union[float, int]
                       flip=False,  # type: bool
                       unit_mode=False,  # type: bool
@@ -3223,6 +3224,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if not unit_mode:
             x_margin = int(round(x_margin / res))
             y_margin = int(round(y_margin / res))
+            tr_offset = int(round(tr_offset / res))
             min_len = int(round(min_len / res))
 
         self._merge_inst_used_tracks()
@@ -3233,7 +3235,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         bound_box = bound_box.expand(dx=-x_margin, dy=-y_margin, unit_mode=True)
 
-        htr0 = fill_width + fill_space
+        tr_off = self.grid.coord_to_track(layer_id, tr_offset, unit_mode=True)
+        htr0 = int(tr_off * 2) + 1 + fill_width + fill_space
         htr_pitch = 2 * (fill_width + fill_space)
         is_horizontal = (self.grid.get_direction(layer_id) == 'x')
         if is_horizontal:
@@ -3253,18 +3256,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         for ncur in range(n0, n1 + 1):
             tr_idx = (htr0 + ncur * htr_pitch - 1) / 2
             tid = TrackID(layer_id, tr_idx, width=fill_width)
-            lay_name = self.grid.get_layer_name(layer_id, tr_idx)
-            cl, cu = self.grid.get_wire_bounds(layer_id, tr_idx, width=fill_width, unit_mode=True)
             cur_list = top_vss if (ncur % 2 == 0) != flip else top_vdd
             for tl, tu in self._used_tracks.open_interval_iter(self.grid, tid, lower, upper,
                                                                sp=space, sp_le=space_le,
                                                                min_len=min_len):
-                if is_horizontal:
-                    box = BBox(tl, cl, tu, cu, res, unit_mode=True)
-                else:
-                    box = BBox(cl, tl, cu, tu, res, unit_mode=True)
-                self.add_rect(lay_name, box)
                 cur_list.append(WireArray(tid, tl, tu, res=res, unit_mode=True))
+
+        for warr in chain(top_vdd, top_vss):
+            for lay, box_arr in warr.wire_arr_iter(self.grid):
+                self.add_rect(lay, box_arr)
 
         self.draw_vias_on_intersections(vdd_warrs, top_vdd)
         self.draw_vias_on_intersections(vss_warrs, top_vss)
