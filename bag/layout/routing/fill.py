@@ -122,7 +122,12 @@ class UsedTracks(object):
             index = self._idx_table[layer_id]
 
         layer_type = tech_info.get_layer_type(layer_name)
-        if grid.get_direction(layer_id) == 'x':
+        base_box = box_arr.base
+        if layer_id in grid:
+            is_horiz = grid.get_direction(layer_id) == 'x'
+        else:
+            is_horiz = (base_box.height_unit <= base_box.width_unit)
+        if is_horiz:
             w = box_arr.base.height_unit
             dx0 = tech_info.get_min_line_end_space(layer_type, w, unit_mode=True)
             dy0 = tech_info.get_min_space(layer_type, w, unit_mode=True, same_color=False)
@@ -184,7 +189,7 @@ class UsedTracks(object):
         # type: (...) -> Generator[Tuple[int, int], None, None]
         intv_set = IntervalSet()
         for tl, tu in self.blockage_iter(grid, track_id, lower, upper, sp=sp, sp_le=sp_le):
-            intv_set.add((tl, tu))
+            intv_set.add((tl, tu), merge=True)
 
         for intv in intv_set.get_complement((lower, upper)):
             if intv[1] - intv[0] >= min_len:
