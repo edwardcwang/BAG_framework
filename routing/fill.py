@@ -42,7 +42,6 @@ class PowerFill(TemplateBase):
         return dict(
             fill_config='the fill configuration dictionary.',
             bot_layer='the bottom fill layer.',
-            top_layer='the top layer.',
             show_pins='True to show pins.',
         )
 
@@ -61,7 +60,7 @@ class PowerFill(TemplateBase):
                         bot_layer,  # type: int
                         top_layer,  # type: int
                         ):
-        # type: (...) -> List[List[Tuple[int, int, int, int]]]
+        # type: (...) -> List[List[Instance]]
         # number of wire types per fill block
         ntype = 2
 
@@ -88,7 +87,6 @@ class PowerFill(TemplateBase):
         shape = (nx, ny)
         inst_info_list2 = []
         for layer in range(bot_layer, top_layer + 1):
-            print('working on layer %d' % layer)
             fill_w, fill_sp, sp, sp_le = fill_config[layer]
             cur_dir = grid.get_direction(layer)
             cur_pitch = grid.get_track_pitch(layer, unit_mode=True)
@@ -115,7 +113,6 @@ class PowerFill(TemplateBase):
 
             cur_tr = grid.coord_to_track(layer, tr_c0, unit_mode=True) + fill_pitch / 2
             for idx in range(num_tr):
-                print('track index %d' % idx)
                 blk_idx = idx // ntype
                 wl, wu = grid.get_wire_bounds(layer, cur_tr, width=fill_w, unit_mode=True)
                 test_box = bound_box.with_interval(perp_dir, wl, wu, unit_mode=True)
@@ -128,7 +125,6 @@ class PowerFill(TemplateBase):
                 cur_tr += fill_pitch
 
             if layer > bot_layer:
-                print('computing mosaics')
                 prev_uf_mat = use_fill_list[-1]
                 uf_tot = prev_uf_mat & uf_mat
                 inst_info_list = []
@@ -138,7 +134,22 @@ class PowerFill(TemplateBase):
 
             use_fill_list.append(uf_mat)
 
-        return inst_info_list2
+        inst_params = dict(
+            fill_config=fill_config,
+            show_pins=False
+        )
+        inst_list2 = []
+        for idx, inst_info_list in enumerate(inst_info_list2):
+            inst_list = []
+            inst_params['bot_layer'] = bot_layer + idx
+            master = template.new_template(params=inst_params, temp_cls=PowerFill)
+            for x0, y0, nx, ny in inst_info_list:
+                loc = xl + x0 * blk_w, yb + y0 * blk_h
+                inst = template.add_instance(master, loc=loc, nx=nx, ny=ny, spx=blk_w,
+                                             spy=blk_h, unit_mode=True)
+                inst_list.append(inst)
+            inst_list2.append(inst_list)
+        return inst_list2
 
     @classmethod
     def get_fill_mosaics(cls, uf_mat):
@@ -149,16 +160,19 @@ class PowerFill(TemplateBase):
             for yidx in range(ny):
                 if uf_mat[xidx, yidx]:
                     if xidx > 0 and idx_mat[xidx-1, yidx, 1] == yidx:
-                        cur_xl = idx_mat[xidx-1, yidx, 0]
+                        cur_xl = idx_mat[xidx, yidx, 0] = idx_mat[xidx-1, yidx, 0]
                         idx_mat[xidx-1, yidx, :] = -1
                     else:
-                        cur_xl = xidx
-                    idx_mat[xidx, yidx, 0] = cur_xl
+                        cur_xl = idx_mat[xidx, yidx, 0] = xidx
                     if yidx > 0 and idx_mat[xidx, yidx-1, 0] == cur_xl:
-                        idx_mat[xidx, yidx, 1] = idx_mat[xidx, yidx-1, 1]
+                        cur_yb = idx_mat[xidx, yidx, 1] = idx_mat[xidx, yidx-1, 1]
                         idx_mat[xidx, yidx-1, :] = -1
+                        if xidx > 0 and idx_mat[xidx-1, yidx, 1] == cur_yb:
+                            idx_mat[xidx, yidx, 0] = idx_mat[xidx - 1, yidx, 0]
+                            idx_mat[xidx - 1, yidx, :] = -1
                     else:
                         idx_mat[xidx, yidx, 1] = yidx
+
         x_list, y_list = np.nonzero(idx_mat[:, :, 0] >= 0)
         for xidx, yidx in zip(x_list, y_list):
             x0, y0 = idx_mat[xidx, yidx, :]
@@ -170,9 +184,9 @@ class PowerFill(TemplateBase):
         # type: () -> None
         fill_config = self.params['fill_config']
         bot_layer = self.params['bot_layer']
-        top_layer = self.params['top_layer']
         show_pins = self.params['show_pins']
 
+        top_layer = bot_layer + 1
         blk_w, blk_h = self.grid.get_fill_size(top_layer, fill_config, unit_mode=True)
         bnd_box = BBox(0, 0, blk_w, blk_h, self.grid.resolution, unit_mode=True)
         self.set_size_from_bound_box(top_layer, bnd_box)
