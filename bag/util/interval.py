@@ -15,21 +15,22 @@ class IntervalSet(object):
 
     Parameters
     ----------
-    intv_list : Optional[List[Tuple[int, int]]]
+    intv_list : Optional[Iterable[Tuple[int, int]]]
         the sorted initial interval list.
-    val_list : Optional[List[Any]]
+    val_list : Optional[Iterable[Any]]
         the initial values list.
     """
 
     def __init__(self, intv_list=None, val_list=None):
-        # type: (Optional[List[Tuple[int, int]]], Optional[List[Any]]) -> None
+        # type: (Optional[Iterable[Tuple[int, int]]], Optional[Iterable[Any]]) -> None
+        self._start_list = []
+        self._end_list = []
         if intv_list is None:
-            self._start_list = []
-            self._end_list = []
             self._val_list = []
         else:
-            self._start_list = [v[0] for v in intv_list]
-            self._end_list = [v[1] for v in intv_list]
+            for v0, v1 in intv_list:
+                self._start_list.append(v0)
+                self._end_list.append(v1)
             if val_list is None:
                 self._val_list = [None] * len(self._start_list)
             else:
@@ -240,6 +241,14 @@ class IntervalSet(object):
         """
         return self._get_first_overlap_idx(intv) >= 0
 
+    def has_single_cover(self, intv):
+        # type: (Tuple[int, int]) -> bool
+        """Returns True if the given interval is completed covered by a single interval."""
+        idx = self._get_first_overlap_idx(intv)
+        if idx < 0:
+            return False
+        return self._start_list[idx] <= intv[0] and self._end_list[idx] >= intv[1]
+
     def remove(self, intv):
         # type: (Tuple[int, int]) -> bool
         """Removes the given interval from this IntervalSet.
@@ -317,24 +326,25 @@ class IntervalSet(object):
         complement : IntervalSet
             the complement of this IntervalSet.
         """
-        if not self._start_list:
-            # complement of empty interval is the universal interval
-            return IntervalSet(intv_list=[total_intv])
+        return IntervalSet(intv_list=self.complement_iter(total_intv))
 
-        if self._start_list[0] < total_intv[0] or total_intv[1] < self._end_list[-1]:
+    def complement_iter(self, total_intv):
+        # type: (Tuple[int, int]) -> Generator[Tuple[int, int], None, None]
+        """Iterate over all intervals that;s the complement of this one."""
+        if not self._start_list:
+            yield total_intv
+        elif self._start_list[0] < total_intv[0] or total_intv[1] < self._end_list[-1]:
             raise ValueError('The given interval [{0}, {1}) is '
                              'not a valid universal interval'.format(*total_intv))
-        intv_list = []
-        marker = total_intv[0]
-        for start, end in zip(self._start_list, self._end_list):
-            if marker < start:
-                intv_list.append((marker, start))
-            marker = end
+        else:
+            marker = total_intv[0]
+            for start, end in zip(self._start_list, self._end_list):
+                if marker < start:
+                    yield marker, start
+                marker = end
 
-        if marker < total_intv[1]:
-            intv_list.append((marker, total_intv[1]))
-
-        return IntervalSet(intv_list=intv_list)
+            if marker < total_intv[1]:
+                yield marker, total_intv[1]
 
     def remove_all_overlaps(self, intv):
         # type: (Tuple[int, int]) -> None
