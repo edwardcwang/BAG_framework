@@ -3,7 +3,7 @@
 """This module provides data structure that keeps track of intervals.
 """
 
-from typing import List, Optional, Tuple, Any, Iterable
+from typing import List, Optional, Tuple, Any, Iterable, Generator
 
 import bisect
 
@@ -150,14 +150,16 @@ class IntervalSet(object):
         return IntervalSet(intv_list=list(zip(self._start_list, self._end_list)),
                            val_list=self._val_list)
 
-    def _get_first_overlap_idx(self, intv):
-        # type: (Tuple[int, int]) -> int
+    def _get_first_overlap_idx(self, intv, abut=False):
+        # type: (Tuple[int, int], bool) -> int
         """Returns the index of the first interval that overlaps with the given interval.
 
         Parameters
         ----------
         intv : Tuple[int, int]
             the given interval.
+        abut : bool
+            True to return abutted interval too.
 
         Returns
         -------
@@ -172,29 +174,33 @@ class IntervalSet(object):
         idx = bisect.bisect_right(self._start_list, start)
         if idx == 0:
             # all interval's starting point is greater than start
-            return 0 if self._start_list[0] < end else -1
+            test = self._start_list[0]
+            return 0 if test < end or (abut and test == end) else -1
 
         # interval where start index is less than or equal to start
         test_idx = idx - 1
-        if start < self._end_list[test_idx]:
+        test = self._end_list[test_idx]
+        if start < test or (abut and start == test):
             # start is covered by the interval; overlaps.
             return test_idx
-        elif idx < len(self._start_list) and self._start_list[idx] < end:
+        elif idx < len(self._start_list) and \
+                (self._start_list[idx] < end or (abut and self._start_list[idx] == end)):
             # _start_list[idx] covered by interval.
             return idx
         else:
-            # if
             # no overlap interval found
             return -(idx + 1)
 
-    def _get_last_overlap_idx(self, intv):
-        # type: (Tuple[int, int]) -> int
+    def _get_last_overlap_idx(self, intv, abut=False):
+        # type: (Tuple[int, int], bool) -> int
         """Returns the index of the last interval that overlaps with the given interval.
 
         Parameters
         ----------
         intv : Tuple[int, int]
             the given interval.
+        abut : bool
+            True to return abutted interval too.
 
         Returns
         -------
@@ -213,11 +219,10 @@ class IntervalSet(object):
 
         # interval where start index is less than or equal to end
         test_idx = idx - 1
-        if self._end_list[test_idx] < start:
-            # end of interval less than start; no overlap
-            return -(idx + 1)
-        else:
+        test = self._end_list[test_idx]
+        if test > start or (abut and test == start):
             return test_idx
+        return -(idx + 1)
 
     def has_overlap(self, intv):
         # type: (Tuple[int, int]) -> bool
@@ -347,8 +352,8 @@ class IntervalSet(object):
             del self._end_list[sidx:eidx]
             del self._val_list[sidx:eidx]
 
-    def add(self, intv, val=None, merge=False):
-        # type: (Tuple[int, int], Any, bool) -> bool
+    def add(self, intv, val=None, merge=False, abut=False):
+        # type: (Tuple[int, int], Any, bool, bool) -> bool
         """Adds the given interval to this IntervalSet.
 
         Can only add interval that does not overlap with any existing ones, unless merge is True.
@@ -362,17 +367,20 @@ class IntervalSet(object):
         merge : bool
             If true, the given interval will be merged with any existing intervals
             that overlaps with it.  The merged interval will have the given value.
+        abut : bool
+            True to count merge abutting intervals.
 
         Returns
         -------
         success : bool
             True if the given interval is added.
         """
-        bidx = self._get_first_overlap_idx(intv)
+        abut = abut and merge
+        bidx = self._get_first_overlap_idx(intv, abut=abut)
         if bidx >= 0:
             if not merge:
                 return False
-            eidx = self._get_last_overlap_idx(intv)
+            eidx = self._get_last_overlap_idx(intv, abut=abut)
             new_start = min(self._start_list[bidx], intv[0])
             new_end = max(self._end_list[eidx], intv[1])
             del self._start_list[bidx:eidx + 1]
@@ -469,7 +477,7 @@ class IntervalSet(object):
         return self._val_list.__iter__()
 
     def overlap_items(self, intv):
-        # type: (Tuple[int, int]) -> Iterable[Tuple[Tuple[int, int], Any]]
+        # type: (Tuple[int, int]) -> Generator[Tuple[Tuple[int, int], Any], None, None]
         """Iterates over intervals and values overlapping the given interval.
 
         Parameters
@@ -485,14 +493,13 @@ class IntervalSet(object):
             value associated with ovl_intv.
         """
         sidx = self._get_first_overlap_idx(intv)
-        if sidx < 0:
-            return
-        eidx = self._get_last_overlap_idx(intv) + 1
-        for idx in range(sidx, eidx):
-            yield (self._start_list[idx], self._end_list[idx]), self._val_list[idx]
+        if sidx >= 0:
+            eidx = self._get_last_overlap_idx(intv) + 1
+            for idx in range(sidx, eidx):
+                yield (self._start_list[idx], self._end_list[idx]), self._val_list[idx]
 
     def overlap_intervals(self, intv):
-        # type: () -> Iterable[Tuple[int, int]]
+        # type: (Tuple[int, int]) -> Generator[Tuple[int, int], None, None]
         """Iterates over intervals overlapping the given interval.
 
         Parameters
@@ -506,11 +513,18 @@ class IntervalSet(object):
             the overlapping interval.
         """
         sidx = self._get_first_overlap_idx(intv)
-        if sidx < 0:
-            return
-        eidx = self._get_last_overlap_idx(intv) + 1
-        for idx in range(sidx, eidx):
-            yield self._start_list[idx], self._end_list[idx]
+        if sidx >= 0:
+            eidx = self._get_last_overlap_idx(intv) + 1
+            for idx in range(sidx, eidx):
+                yield self._start_list[idx], self._end_list[idx]
+
+    def get_first_overlap_item(self, intv):
+        # type: (Tuple[int, int]) -> Optional[Tuple[Tuple[int, int], Any]]
+        """Returns the first item with interval that overlaps the given one."""
+        idx = self._get_first_overlap_idx(intv)
+        if idx < 0:
+            return None
+        return (self._start_list[idx], self._end_list[idx]), self._val_list[idx]
 
     def transform(self, scale=1, shift=0):
         # type: (int, int) -> IntervalSet

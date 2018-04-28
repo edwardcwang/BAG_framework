@@ -2089,60 +2089,73 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             # do nothing
             return []
 
-        # calculate wire vertical coordinates
+        # record all wire ranges
         a = wire_arr_list[0]
         layer_id = a.layer_id
         direction = grid.get_direction(layer_id)
+        is_horiz = direction == 'x'
         perp_dir = 'y' if direction == 'x' else 'x'
         htr_pitch = grid.get_track_pitch(layer_id, unit_mode=True) // 2
         intv_set = IntervalSet()
-
         for wire_arr in wire_arr_list:
             if wire_arr.layer_id != layer_id:
                 raise ValueError('WireArray layer ID != %d' % layer_id)
 
-            cur_range = (int(round(wire_arr.lower / res)),
-                         int(round(wire_arr.upper / res)))
-            if lower is not None:
-                cur_range = (min(cur_range[0], lower), max(cur_range[1], lower))
-            if upper is not None:
-                cur_range = (min(cur_range[0], upper), max(cur_range[1], upper))
-
+            cur_range = wire_arr.lower_unit, wire_arr.upper_unit
             box_arr = wire_arr.get_bbox_array(grid)
             for box in box_arr:
                 intv = box.get_interval(perp_dir, unit_mode=True)
-                try:
-                    old_range = intv_set[intv]
-                    intv_set[intv] = (min(cur_range[0], old_range[0]),
-                                      max(cur_range[1], old_range[1]))
-                except KeyError:
-                    success = intv_set.add(intv, cur_range)
-                    if not success:
-                        raise ValueError('wire interval {} overlap existing wires.'.format(intv))
+                intv_rang_item = intv_set.get_first_overlap_item(intv)
+                if intv_rang_item is None:
+                    range_set = IntervalSet()
+                    range_set.add(cur_range)
+                    intv_set.add(intv, val=range_set)
+                elif intv_rang_item[0] == intv:
+                    intv_rang_item[1].add(cur_range, merge=True, abut=True)
+                else:
+                    raise ValueError('wire interval {} overlap existing wires.'.format(intv))
 
         # draw wires, group into arrays
         new_warr_list = []
-        base_range = None
+        base_start = base_end = None
         base_intv = None
         base_width = None
         count = 0
         hpitch = 0
         last_lower = 0
-        for intv, wrange in intv_set.items():
+        for intv, range_set in intv_set.items():
+            cur_start = range_set.get_start()
+            cur_end = range_set.get_end()
+            add = len(range_set) > 1
+            if lower is not None and lower < cur_start:
+                cur_start = lower
+                add = True
+            if upper is not None and upper > cur_end:
+                cur_end = upper
+                add = True
+
+            cur_lower, cur_upper = intv
+            if add:
+                tr_id = grid.coord_to_track(layer_id, (cur_lower + cur_upper) // 2, unit_mode=True)
+                layer_name = grid.get_layer_name(layer_id, tr_id)
+                if is_horiz:
+                    box = BBox(cur_start, cur_lower, cur_end, cur_upper, res, unit_mode=True)
+                else:
+                    box = BBox(cur_lower, cur_start, cur_upper, cur_end, res, unit_mode=True)
+                self.add_rect(layer_name, box)
+
             if debug:
-                print('wires intv: %s, range: %s' % (intv, wrange))
-            cur_width = intv[1] - intv[0]
-            cur_lower = intv[0]
+                print('wires intv: %s, range: (%d, %d)' % (intv, cur_start, cur_end))
+            cur_width = cur_upper - cur_lower
             if count == 0:
-                base_range = wrange
                 base_intv = intv
-                base_width = intv[1] - intv[0]
+                base_start = cur_start
+                base_end = cur_end
+                base_width = cur_upper - cur_lower
                 count = 1
                 hpitch = 0
             else:
-                if wrange[0] == base_range[0] and \
-                        wrange[1] == base_range[1] and \
-                        base_width == cur_width:
+                if cur_start == base_start and cur_end == base_end and base_width == cur_width:
                     # length and width matches
                     cur_hpitch = (cur_lower - last_lower) // htr_pitch
                     if count == 1:
@@ -2156,27 +2169,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                         # pitch does not match, add current wires and start anew
                         tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv,
                                                                   unit_mode=True)
-                        track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
-                        warr = WireArray(track_id, base_range[0], base_range[1],
-                                         res=res, unit_mode=True)
-                        for layer_name, bbox_arr in warr.wire_arr_iter(grid):
-                            self.add_rect(layer_name, bbox_arr)
+                        track_id = TrackID(layer_id, tr_idx, width=tr_width,
+                                           num=count, pitch=hpitch / 2)
+                        warr = WireArray(track_id, base_start, base_end, res=res, unit_mode=True)
                         new_warr_list.append(warr)
-                        base_range = wrange
                         base_intv = intv
-                        base_width = cur_width
                         count = 1
                         hpitch = 0
                 else:
                     # length/width does not match, add cumulated wires and start anew
                     tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv, unit_mode=True)
-                    track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
-                    warr = WireArray(track_id, base_range[0], base_range[1], res=res,
-                                     unit_mode=True)
-                    for layer_name, bbox_arr in warr.wire_arr_iter(grid):
-                        self.add_rect(layer_name, bbox_arr)
+                    track_id = TrackID(layer_id, tr_idx, width=tr_width,
+                                       num=count, pitch=hpitch / 2)
+                    warr = WireArray(track_id, base_start, base_end, res=res, unit_mode=True)
                     new_warr_list.append(warr)
-                    base_range = wrange
+                    base_start = cur_start
+                    base_end = cur_end
                     base_intv = intv
                     base_width = cur_width
                     count = 1
@@ -2188,11 +2196,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # add last wires
         tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv, unit_mode=True)
         track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
-        warr = WireArray(track_id, base_range[0], base_range[1], res=res, unit_mode=True)
-        for layer_name, bbox_arr in warr.wire_arr_iter(grid):
-            self.add_rect(layer_name, bbox_arr)
+        warr = WireArray(track_id, base_start, base_end, res=res, unit_mode=True)
         new_warr_list.append(warr)
-
         return new_warr_list
 
     def _draw_via_on_track(self, wlayer, box_arr, track_id, tl_unit=None,
