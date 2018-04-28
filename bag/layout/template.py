@@ -493,7 +493,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self.prim_top_layer = None
         self.prim_bound_box = None
         self._used_tracks = UsedTracks()
-        self._nonempty_layers = set()
+        self._track_boxes = {}
 
         # add hidden parameters
         if 'hidden_params' in kwargs:
@@ -611,8 +611,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # get set of children keys
         self.children = self._layout.get_masters_set()
 
+        for layer_id, bbox in self._used_tracks.track_box_iter():
+            self._track_boxes[layer_id] = bbox
         for inst in self._layout.inst_iter():
-            self._nonempty_layers.update(inst.master.nonempty_layers)
+            for layer_id, bbox in inst.track_bbox_iter():
+                if layer_id not in self._track_boxes:
+                    self._track_boxes[layer_id] = bbox
+                else:
+                    self._track_boxes[layer_id] = bbox.merge(self._track_boxes[layer_id])
 
         # call super finalize routine
         DesignMaster.finalize(self)
@@ -629,11 +635,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # type: () -> bool
         """Returns True if this template is empty."""
         return self._layout.is_empty
-
-    @property
-    def nonempty_layers(self):
-        # type: () -> Set[int]
-        return self._nonempty_layers
 
     @property
     def grid(self):
@@ -723,11 +724,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
         # type: (int, BBox, int, int) -> Generator[BBox, None, None]
         """Returns all block intersecting the given rectangle."""
-        if layer_id in self._nonempty_layers:
-            yield from self._used_tracks.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
+        yield from self._used_tracks.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
         for inst in self._layout.inst_iter():
-            if layer_id in inst.master.nonempty_layers:
-                yield from inst.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
+            yield from inst.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
 
     def open_interval_iter(self,  # type: TemplateBase
                            track_id,  # type: TrackID
@@ -813,6 +812,20 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the overall bounding box of the given layer.
         """
         return self._layout.get_rect_bbox(layer)
+
+    def get_track_bbox(self, layer_id):
+        """Returns the bounding box of all tracks on the given layer."""
+        if not self.finalized:
+            raise ValueError('This method only works after being finalized.')
+        if layer_id in self._track_boxes:
+            return self._track_boxes[layer_id]
+        return BBox.get_invalid_bbox()
+
+    def track_bbox_iter(self):
+        """Returns the bounding box of all tracks on the given layer."""
+        if not self.finalized:
+            raise ValueError('This method only works after being finalized.')
+        return self._track_boxes.items()
 
     def new_template_with(self, **kwargs):
         # type: (**kwargs) -> TemplateBase
@@ -1163,9 +1176,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         rect = Rect(layer, bbox, nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=unit_mode)
         self._layout.add_rect(rect)
-        layer_id = self._used_tracks.record_rect(self.grid, layer, rect.bbox_array)
-        if layer_id is not None:
-            self._nonempty_layers.add(layer_id)
+        self._used_tracks.record_rect(self.grid, layer, rect.bbox_array)
         return rect
 
     def add_res_metal(self, layer_id, bbox, **kwargs):

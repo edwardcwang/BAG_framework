@@ -28,6 +28,11 @@ class RectIndex(object):
         else:
             self._index = init_index
 
+    @property
+    def bound_box(self):
+        xl, yb, xr, yt = self._index.bounds
+        return BBox(int(xl), int(yb), int(xr), int(yt), self._res, unit_mode=True)
+
     def copy(self):
         """Returns a copy of this instance."""
         new_index = Index(self.rect_iter(), interleaved=True)
@@ -103,6 +108,15 @@ class UsedTracks(object):
 
     def __iter__(self):
         return self._idx_table.keys()
+
+    def get_track_bbox(self, layer_id):
+        if layer_id not in self._idx_table:
+            return BBox.get_invalid_bbox()
+        return self._idx_table[layer_id].bound_box
+
+    def track_box_iter(self):
+        for layer_id, rect_idx in self._idx_table.items():
+            yield layer_id, rect_idx.bound_box
 
     def record_rect(self, grid, layer_name, box_arr, dx=-1, dy=-1):
         # type: (RoutingGrid, Union[Tuple[str, str], str], BBoxArray, int, int) -> Optional[int]
