@@ -731,7 +731,7 @@ class RoutingGrid(object):
             return w_pitch * self.resolution, h_pitch * self.resolution
 
     def get_fill_size(self,  # type: RoutingGrid
-                      layer_id,  # type: int
+                      top_layer,  # type: int
                       fill_config,  # type: Dict[int, Tuple[int, int, int, int]]
                       unit_mode=False,  # type: bool
                       include_private=False,  # type: bool
@@ -743,8 +743,8 @@ class RoutingGrid(object):
 
         Parameters
         ----------
-        layer_id : int
-            the routing layer ID.
+        top_layer : int
+            the top layer ID.
         fill_config : Dict[int, Tuple[int, int, int, int]]
             the fill configuration dictionary.
         unit_mode : bool
@@ -763,19 +763,20 @@ class RoutingGrid(object):
         block_height : Union[float, int]
             the block height in layout units.
         """
-        blk_w, blk_h = self.get_block_size(layer_id, unit_mode=True,
+        blk_w, blk_h = self.get_block_size(top_layer, unit_mode=True,
                                            include_private=include_private,
                                            half_blk_x=half_blk_x, half_blk_y=half_blk_y)
 
         w_list = [blk_w]
         h_list = [blk_h]
         for lay, (tr_w, tr_sp, _, _) in fill_config.items():
-            cur_pitch = self.get_track_pitch(lay, unit_mode=True)
-            cur_dim = (tr_w + tr_sp) * cur_pitch * 2
-            if self.get_direction(lay) == 'x':
-                h_list.append(cur_dim)
-            else:
-                w_list.append(cur_dim)
+            if lay <= top_layer:
+                cur_pitch = self.get_track_pitch(lay, unit_mode=True)
+                cur_dim = (tr_w + tr_sp) * cur_pitch * 2
+                if self.get_direction(lay) == 'x':
+                    h_list.append(cur_dim)
+                else:
+                    w_list.append(cur_dim)
 
         blk_w = lcm(w_list)
         blk_h = lcm(h_list)
