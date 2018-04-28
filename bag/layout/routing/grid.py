@@ -1145,9 +1145,9 @@ class RoutingGrid(object):
                 continue
             if bot_w > 0 and bot_dir != tr_dir:
                 if tr_dir == 'x':
-                    bbox = BBox(0.0, 0.0, bot_w, width, res, unit_mode=True)
+                    bbox = BBox(0, 0, bot_w, width, res, unit_mode=True)
                 else:
-                    bbox = BBox(0.0, 0.0, width, bot_w, res, unit_mode=True)
+                    bbox = BBox(0, 0, width, bot_w, res, unit_mode=True)
                 vinfo = self.tech_info.get_via_info(bbox, bot_layer_name, layer_name,
                                                     bot_dir, **kwargs)
                 if (vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or
@@ -1156,9 +1156,9 @@ class RoutingGrid(object):
                     continue
             if top_w > 0 and top_dir != tr_dir:
                 if tr_dir == 'x':
-                    bbox = BBox(0.0, 0.0, top_w, width, res, unit_mode=True)
+                    bbox = BBox(0, 0, top_w, width, res, unit_mode=True)
                 else:
-                    bbox = BBox(0.0, 0.0, width, top_w, res, unit_mode=True)
+                    bbox = BBox(0, 0, width, top_w, res, unit_mode=True)
                 vinfo = self.tech_info.get_via_info(bbox, layer_name, top_layer_name,
                                                     tr_dir, **kwargs)
                 if (vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or

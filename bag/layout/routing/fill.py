@@ -36,8 +36,10 @@ class RectIndex(object):
     def record_box(self, box, dx, dy):
         # type: (BBox, int, int) -> None
         """Record the given BBox."""
-        bnds = box.expand(dx=dx, dy=dy, unit_mode=True).get_bounds(unit_mode=True)
-        self._index.insert(self._cnt, bnds, obj=(dx, dy))
+        sp_box = box.expand(dx=dx, dy=dy, unit_mode=True)
+        bnds = sp_box.get_bounds(unit_mode=True)
+        obj = (box.left_unit, box.bottom_unit, box.right_unit, box.top_unit, dx, dy)
+        self._index.insert(self._cnt, bnds, obj=obj)
         self._cnt += 1
 
     def rect_iter(self):
@@ -48,14 +50,12 @@ class RectIndex(object):
         # type: (BBox, int, int) -> Generator[BBox, None, None]
         """Finds all bounding box that intersects the given box."""
         test_box = box.expand(dx=dx, dy=dy, unit_mode=True)
-        for item in self._index.intersection(test_box.get_bounds(unit_mode=True), objects=True):
-            item_box = item.bbox
-            item_dx, item_dy = item.object
-            item_box_sp = BBox(item_box[0], item_box[1], item_box[2],
-                               item_box[3], self._res, unit_mode=True)
-            item_box_real = item_box_sp.expand(dx=-item_dx, dy=-item_dy, unit_mode=True)
-            if item_box_sp.overlaps(box) or test_box.overlaps(item_box_real):
-                yield item_box_real.expand(dx=max(dx, item_dx), dy=max(dy, item_dy), unit_mode=True)
+        box_iter = self._index.intersection(test_box.get_bounds(unit_mode=True), objects='raw')
+        for xl, yb, xr, yt, sdx, sdy in box_iter:
+            box_real = BBox(xl, yb, xr, yt, box.resolution, unit_mode=True)
+            box_sp = box_real.expand(dx=sdx, dy=sdy, unit_mode=True)
+            if box_sp.overlaps(box) or test_box.overlaps(box_real):
+                yield box_real.expand(dx=max(dx, sdx), dy=max(dy, sdy), unit_mode=True)
 
     def transform(self, loc, orient):
         # type: (Tuple[int, int], str) -> RectIndex
