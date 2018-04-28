@@ -722,6 +722,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
         # type: (int, BBox, int, int) -> Generator[BBox, None, None]
+        """Returns all block intersecting the given rectangle."""
         if layer_id in self._nonempty_layers:
             yield from self._used_tracks.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
         for inst in self._layout.inst_iter():
