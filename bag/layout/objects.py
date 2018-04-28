@@ -723,8 +723,8 @@ class Instance(Arrayable):
         port = self._master.get_port(name)
         return port.transform(self._parent_grid, loc=(xshift, yshift), orient=self.orientation)
 
-    def get_pin(self, name='', layer=-1):
-        # type: (Optional[str], int) -> WireArray
+    def get_pin(self, name='', row=0, col=0, layer=-1):
+        # type: (Optional[str], int, int, int) -> WireArray
         """Returns the first pin with the given name.
 
         This is an efficient method if you know this instance has exactly one pin.
@@ -734,6 +734,10 @@ class Instance(Arrayable):
         name : Optional[str]
             the port terminal name.  If None or empty, check if this
             instance has only one port, then return it.
+        row : int
+            the instance row index.  Index 0 is the bottom-most row.
+        col : int
+            the instance column index.  Index 0 is the left-most column.
         layer : int
             the pin layer.  If negative, check to see if the given port has only one layer.
             If so then use that layer.
@@ -743,7 +747,7 @@ class Instance(Arrayable):
         pin : WireArray
             the first pin associated with the port of given name.
         """
-        port = self.get_port(name, 0, 0)
+        port = self.get_port(name, row, col)
         return port.get_pins(layer)[0]
 
     def get_all_port_pins(self, name='', layer=-1):
