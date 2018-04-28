@@ -754,10 +754,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         intv_set = IntervalSet()
         for box in self.blockage_iter(layer_id, test_box, spx=spx, spy=spy):
-            bnds = box.get_interval(intv_dir, unit_mode=True)
-            intv_set.add((max(bnds[0], lower), min(bnds[1], upper)), merge=True)
+            bl, bu = box.get_interval(intv_dir, unit_mode=True)
+            intv_set.add((max(bl, lower), min(bu, upper)), merge=True, abut=True)
 
-        for intv in intv_set.get_complement((lower, upper)):
+        for intv in intv_set.complement_iter((lower, upper)):
             if intv[1] - intv[0] >= min_len:
                 yield intv
 
