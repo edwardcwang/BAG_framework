@@ -52,6 +52,10 @@ class PowerFill(TemplateBase):
             show_pins=True,
         )
 
+    def get_layout_basename(self):
+        bot_lay = self.params['bot_layer']
+        return 'power_fill_m%dm%d' % (bot_lay, bot_lay + 1)
+
     @classmethod
     def add_fill_blocks(cls,
                         template,  # type: TemplateBase
@@ -96,7 +100,7 @@ class PowerFill(TemplateBase):
             uf_mat = np.ones(shape, dtype=bool)
             if is_horiz:
                 perp_dir = 'y'
-                blk_dim = blk_h
+                blk_dim = blk_w
                 num_tr = tot_h // (cur_pitch * fill_pitch)
                 tr_c0 = yb
                 spx = sp_le
@@ -104,7 +108,7 @@ class PowerFill(TemplateBase):
                 uf_mat_set = uf_mat.transpose()
             else:
                 perp_dir = 'x'
-                blk_dim = blk_w
+                blk_dim = blk_h
                 num_tr = tot_w // (cur_pitch * fill_pitch)
                 tr_c0 = xl
                 spx = sp
@@ -198,6 +202,9 @@ class PowerFill(TemplateBase):
             vdd_list, vss_list = self.do_power_fill(lay, space, space_le, vdd_warrs=vdd_list,
                                                     vss_warrs=vss_list, fill_width=fill_width,
                                                     fill_space=fill_space, unit_mode=True)
+            if lay == bot_layer:
+                self.add_pin('VDD_b', vdd_list, show=False)
+                self.add_pin('VSS_b', vss_list, show=False)
 
         self.add_pin('VDD', vdd_list, show=show_pins)
         self.add_pin('VSS', vss_list, show=show_pins)
