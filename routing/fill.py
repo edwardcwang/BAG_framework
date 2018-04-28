@@ -2,12 +2,15 @@
 
 """This module defines dummy/power fill related templates."""
 
-from typing import TYPE_CHECKING, Dict, Set, Any
+from typing import TYPE_CHECKING, Dict, Set, Any, Tuple, List
+
+import numpy as np
 
 from bag.layout.util import BBox
 from bag.layout.template import TemplateBase
 
 if TYPE_CHECKING:
+    from bag.layout.objects import Instance
     from bag.layout.template import TemplateDB
 
 
@@ -49,6 +52,119 @@ class PowerFill(TemplateBase):
         return dict(
             show_pins=True,
         )
+
+    @classmethod
+    def add_fill_blocks(cls,
+                        template,  # type: TemplateBase
+                        bound_box,  # type: BBox
+                        fill_config,  # type: Dict[int, Tuple[int, int, int, int]]
+                        bot_layer,  # type: int
+                        top_layer,  # type: int
+                        ):
+        # type: (...) -> List[List[Tuple[int, int, int, int]]]
+        # number of wire types per fill block
+        ntype = 2
+
+        # error checking
+        if top_layer <= bot_layer:
+            raise ValueError('Must have top_layer > bot_layer.')
+
+        grid = template.grid
+        blk_w, blk_h = grid.get_fill_size(top_layer, fill_config, unit_mode=True)
+
+        xl = bound_box.left_unit
+        yb = bound_box.bottom_unit
+        xr = bound_box.right_unit
+        yt = bound_box.top_unit
+        if xl % blk_w != 0 or xr % blk_w != 0 or yb % blk_h != 0 or yt % blk_h != 0:
+            raise ValueError('%s is not on power fill grid.' % bound_box)
+
+        # figure out where we can draw fill blocks.
+        tot_w = xr - xl
+        tot_h = yt - yb
+        nx = tot_w // blk_w
+        ny = tot_h // blk_h
+        use_fill_list = []
+        shape = (nx, ny)
+        inst_info_list2 = []
+        for layer in range(bot_layer, top_layer + 1):
+            print('working on layer %d' % layer)
+            fill_w, fill_sp, sp, sp_le = fill_config[layer]
+            cur_dir = grid.get_direction(layer)
+            cur_pitch = grid.get_track_pitch(layer, unit_mode=True)
+
+            fill_pitch = fill_w + fill_sp
+            is_horiz = cur_dir == 'x'
+            uf_mat = np.ones(shape, dtype=bool)
+            if is_horiz:
+                perp_dir = 'y'
+                blk_dim = blk_h
+                num_tr = tot_h // (cur_pitch * fill_pitch)
+                tr_c0 = yb
+                spx = sp_le
+                spy = sp
+                uf_mat_set = uf_mat.transpose()
+            else:
+                perp_dir = 'x'
+                blk_dim = blk_w
+                num_tr = tot_w // (cur_pitch * fill_pitch)
+                tr_c0 = xl
+                spx = sp
+                spy = sp_le
+                uf_mat_set = uf_mat
+
+            cur_tr = grid.coord_to_track(layer, tr_c0, unit_mode=True) + fill_pitch / 2
+            for idx in range(num_tr):
+                print('track index %d' % idx)
+                blk_idx = idx // ntype
+                wl, wu = grid.get_wire_bounds(layer, cur_tr, width=fill_w, unit_mode=True)
+                test_box = bound_box.with_interval(perp_dir, wl, wu, unit_mode=True)
+                for block_box in template.blockage_iter(layer, test_box, spx=spx, spy=spy):
+                    bl, bu = block_box.get_interval(cur_dir, unit_mode=True)
+                    nstart = max(bl - tr_c0, 0) // blk_dim
+                    nstop = max(bu - tr_c0, 0) // blk_dim
+                    uf_mat_set[blk_idx, nstart:nstop + 1] = False
+
+                cur_tr += fill_pitch
+
+            if layer > bot_layer:
+                print('computing mosaics')
+                prev_uf_mat = use_fill_list[-1]
+                uf_tot = prev_uf_mat & uf_mat
+                inst_info_list = []
+                for x0, y0, nx, ny in cls.get_fill_mosaics(uf_tot):
+                    inst_info_list.append((x0, y0, nx, ny))
+                inst_info_list2.append(inst_info_list)
+
+            use_fill_list.append(uf_mat)
+
+        return inst_info_list2
+
+    @classmethod
+    def get_fill_mosaics(cls, uf_mat):
+        # TODO: use Eppestein's Polygon dissection instead of greedy algorithm
+        nx, ny = uf_mat.shape
+        idx_mat = np.full((nx, ny, 2), -1)
+        for xidx in range(nx):
+            for yidx in range(ny):
+                if uf_mat[xidx, yidx]:
+                    if xidx > 0 and idx_mat[xidx-1, yidx, 1] == yidx:
+                        cur_xl = idx_mat[xidx-1, yidx, 0]
+                        idx_mat[xidx-1, yidx, :] = -1
+                    else:
+                        cur_xl = xidx
+                    idx_mat[xidx, yidx, 0] = cur_xl
+                    if yidx > 0 and idx_mat[xidx, yidx-1, 0] == cur_xl:
+                        idx_mat[xidx, yidx, 1] = idx_mat[xidx, yidx-1, 1]
+                        idx_mat[xidx, yidx-1, :] = -1
+                    else:
+                        idx_mat[xidx, yidx, 1] = yidx
+        x_list, y_list = np.nonzero(idx_mat[:, :, 0] >= 0)
+        for xidx, yidx in zip(x_list, y_list):
+            x0, y0 = idx_mat[xidx, yidx, :]
+            nx = xidx - x0 + 1
+            ny = yidx - y0 + 1
+            yield x0, y0, nx, ny
 
     def draw_layout(self):
         # type: () -> None
