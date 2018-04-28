@@ -492,20 +492,38 @@ class Instance(Arrayable):
     def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
         # type: (int, BBox, int, int) -> Generator[BBox, None, None]
         # transform the given BBox to master coordinate
-        if not self.destroyed:
-            orient = self._orient
-            x0, y0 = self._loc_unit
-            if (orient == 'R90' or orient == 'R270' or
-                    orient == 'MXR90' or orient == 'MYR90'):
-                spx, spy = spy, spx
-            for row in range(self.ny):
-                for col in range(self.nx):
-                    dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
-                    loc = dx + x0, dy + y0
-                    inv_loc, inv_orient = get_inverse_transform(loc, orient)
-                    cur_box = test_box.transform(inv_loc, inv_orient, unit_mode=True)
-                    for box in self._master.blockage_iter(layer_id, cur_box, spx=spx, spy=spy):
-                        yield box.transform(loc, orient, unit_mode=True)
+        if self.destroyed:
+            return
+
+        base_box = self._master.get_track_bbox(layer_id)
+        if not base_box.is_physical():
+            return
+        base_box = self.translate_master_box(base_box)
+        test = test_box.expand(dx=spx, dy=spy, unit_mode=True)
+
+        inst_spx = max(self.spx_unit, 1)
+        inst_spy = max(self.spy_unit, 1)
+        xl = base_box.left_unit
+        yb = base_box.bottom_unit
+        xr = base_box.right_unit
+        yt = base_box.top_unit
+        nx0 = max(0, -(-(test.left_unit - xr) // inst_spx))
+        nx1 = min(self.nx - 1, (test.right_unit - xl) // inst_spx)
+        ny0 = max(0, -(-(test.bottom_unit - yt) // inst_spy))
+        ny1 = min(self.ny - 1, (test.top_unit - yb) // inst_spy)
+        orient = self._orient
+        x0, y0 = self._loc_unit
+        if (orient == 'R90' or orient == 'R270' or
+                orient == 'MXR90' or orient == 'MYR90'):
+            spx, spy = spy, spx
+        for row in range(ny0, ny1 + 1):
+            for col in range(nx0, nx1 + 1):
+                dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
+                loc = dx + x0, dy + y0
+                inv_loc, inv_orient = get_inverse_transform(loc, orient)
+                cur_box = test_box.transform(inv_loc, inv_orient, unit_mode=True)
+                for box in self._master.blockage_iter(layer_id, cur_box, spx=spx, spy=spy):
+                    yield box.transform(loc, orient, unit_mode=True)
 
     def get_rect_bbox(self, layer):
         """Returns the overall bounding box of all rectangles on the given layer.
@@ -515,7 +533,15 @@ class Instance(Arrayable):
         bbox = self._master.get_rect_bbox(layer)
         if not bbox.is_valid():
             return bbox
-        return self.translate_master_box(bbox)
+        box_arr = BBoxArray(self.translate_master_box(bbox), nx=self.nx, ny=self.ny,
+                            spx=self.spx_unit, spy=self.spy_unit, unit_mode=True)
+        return box_arr.get_overall_bbox()
+
+    def track_bbox_iter(self):
+        for layer_id, bbox in self._master.track_bbox_iter():
+            box_arr = BBoxArray(self.translate_master_box(bbox), nx=self.nx, ny=self.ny,
+                                spx=self.spx_unit, spy=self.spy_unit, unit_mode=True)
+            yield layer_id, box_arr.get_overall_bbox()
 
     @property
     def master(self):
