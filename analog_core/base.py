@@ -2629,6 +2629,9 @@ class AnalogBaseEnd(TemplateBase):
         options = end_params['options']
         tech_cls_name = self.params['tech_cls_name']
 
+        if options is None:
+            options = {}
+
         res = self.grid.resolution
 
         end_params['is_end'] = True
