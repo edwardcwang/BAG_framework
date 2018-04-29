@@ -30,13 +30,9 @@ class RectIndex(object):
 
     @property
     def bound_box(self):
+        # type: () -> BBox
         xl, yb, xr, yt = self._index.bounds
         return BBox(int(xl), int(yb), int(xr), int(yt), self._res, unit_mode=True)
-
-    def copy(self):
-        """Returns a copy of this instance."""
-        new_index = Index(self.rect_iter(), interleaved=True)
-        return RectIndex(self._res, init_cnt=self._cnt, init_index=new_index)
 
     def record_box(self, box, dx, dy):
         # type: (BBox, int, int) -> None
@@ -48,46 +44,22 @@ class RectIndex(object):
         self._cnt += 1
 
     def rect_iter(self):
-        for item in self._index.intersection(self._index.bounds, objects=True):
-            yield item.id, item.bbox, item.object
+        # type: () -> Generator[Tuple[BBox, int, int], None, None]
+        for xl, yb, xr, yt, sdx, sdy in self._index.intersection(self._index.bounds, objects='raw'):
+            box_real = BBox(xl, yb, xr, yt, self._res, unit_mode=True)
+            yield box_real, sdx, sdy
 
     def intersection_iter(self, box, dx=0, dy=0):
         # type: (BBox, int, int) -> Generator[BBox, None, None]
         """Finds all bounding box that intersects the given box."""
+        res = self._res
         test_box = box.expand(dx=dx, dy=dy, unit_mode=True)
         box_iter = self._index.intersection(test_box.get_bounds(unit_mode=True), objects='raw')
         for xl, yb, xr, yt, sdx, sdy in box_iter:
-            box_real = BBox(xl, yb, xr, yt, box.resolution, unit_mode=True)
+            box_real = BBox(xl, yb, xr, yt, res, unit_mode=True)
             box_sp = box_real.expand(dx=sdx, dy=sdy, unit_mode=True)
             if box_sp.overlaps(box) or test_box.overlaps(box_real):
                 yield box_real.expand(dx=max(dx, sdx), dy=max(dy, sdy), unit_mode=True)
-
-    def transform(self, loc, orient):
-        # type: (Tuple[int, int], str) -> RectIndex
-        """Returns a new transformed RectIndex."""
-        return RectIndex(self._res, init_cnt=self._cnt,
-                         init_index=Index(self._transform_iter(loc, orient), interleaved=True))
-
-    def _transform_iter(self,  # type: RectIndex
-                        loc,  # type: Tuple[int, int]
-                        orient,  # type: str
-                        ):
-        # type: (...) -> Generator[Tuple[int, Tuple[int, ...], Tuple[int, int]], None, None]
-        flip = (orient == 'R90' or orient == 'R270' or orient == 'MXR90' or orient == 'MYR90')
-        for item in self._index.intersection(self._index.bounds, objects=True):
-            item_box = item.bbox
-            new_obj = (item.object[1], item.object[0]) if flip else item.object
-            item_box = BBox(item_box[0], item_box[1], item_box[2],
-                            item_box[3], self._res, unit_mode=True)
-            item_box = item_box.transform(loc=loc, orient=orient, unit_mode=True)
-            yield item.id, item_box.get_bounds(unit_mode=True), new_obj
-
-    def merge(self, rect_index):
-        # type: (RectIndex) -> None
-        """Merge the given RectIndex to this one."""
-        for _, bnds, obj in rect_index.rect_iter():
-            self._index.insert(self._cnt, bnds, obj=obj)
-            self._cnt += 1
 
 
 class UsedTracks(object):
@@ -110,13 +82,23 @@ class UsedTracks(object):
         return self._idx_table.keys()
 
     def get_track_bbox(self, layer_id):
+        # type: (int) -> BBox
         if layer_id not in self._idx_table:
             return BBox.get_invalid_bbox()
         return self._idx_table[layer_id].bound_box
 
     def track_box_iter(self):
+        # type: () -> Generator[Tuple[int, BBox], None, None]
         for layer_id, rect_idx in self._idx_table.items():
             yield layer_id, rect_idx.bound_box
+
+    def record_box(self, layer_id, box, dx, dy, res):
+        # type: (int, BBox, int, int, float) -> None
+        if layer_id not in self._idx_table:
+            index = self._idx_table[layer_id] = RectIndex(res)
+        else:
+            index = self._idx_table[layer_id]
+        index.record_box(box, dx, dy)
 
     def record_rect(self, grid, layer_name, box_arr, dx=-1, dy=-1):
         # type: (RoutingGrid, Union[Tuple[str, str], str], BBoxArray, int, int) -> Optional[int]
@@ -158,29 +140,16 @@ class UsedTracks(object):
 
         return layer_id
 
+    def all_rect_iter(self):
+        # type: () -> Generator[Tuple[int, BBox, int, int], None, None]
+        for layer_id, index in self._idx_table.items():
+            for box, dx, dy, in index.rect_iter():
+                yield layer_id, box, dx, dy
+
     def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
         # type: (int, BBox, int, int) -> Generator[BBox, None, None]
         if layer_id in self._idx_table:
             yield from self._idx_table[layer_id].intersection_iter(test_box, dx=spx, dy=spy)
-
-    def transform(self,
-                  loc,  # type: Tuple[int, int]
-                  orient,  # type: str
-                  ):
-        # type: (...) -> UsedTracks
-        """Return a new transformed UsedTracks."""
-
-        new_idx_table = {lay: idx.transform(loc, orient) for lay, idx in self._idx_table.items()}
-        return UsedTracks(init_idx_table=new_idx_table)
-
-    def merge(self, used_tracks):
-        # type: (UsedTracks) -> None
-        """Merge the given used tracks to this one."""
-        for lay_id, idx in used_tracks._idx_table.items():
-            if lay_id not in self._idx_table:
-                self._idx_table[lay_id] = idx.copy()
-            else:
-                self._idx_table[lay_id].merge(idx)
 
 
 def fill_symmetric_const_space(area, sp_max, n_min, n_max, offset=0):

@@ -11,13 +11,12 @@ from copy import deepcopy
 
 from .util import transform_table, BBox, BBoxArray, transform_point, get_inverse_transform
 from .routing.base import Port, WireArray
-from .routing.fill import UsedTracks
-from .routing.grid import RoutingGrid
 
 import bag.io
 
 if TYPE_CHECKING:
     from .template import TemplateBase
+    from .routing.grid import RoutingGrid
 
 ldim = Union[float, int]
 loc_type = Tuple[ldim, ldim]
@@ -469,26 +468,6 @@ class Instance(Arrayable):
         """
         self._master = self._master.new_template_with(**kwargs)
 
-    def get_used_tracks(self, row=0, col=0):
-        # type: (int, int) -> UsedTracks
-        """Return the used track object of the given instance in the array.
-
-        Parameters
-        ----------
-        row : int
-            the instance row index.  Index 0 is the bottom-most row.
-        col : int
-            the instance column index.  Index 0 is the left-most column.
-
-        Returns
-        -------
-        used_tracks : UsedTracks
-            the UsedTracks object of the given instance.
-        """
-        dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
-        inst_loc = dx + self._loc_unit[0], dy + self._loc_unit[1]
-        return self._master.used_tracks.transform(inst_loc, self._orient)
-
     def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
         # type: (int, BBox, int, int) -> Generator[BBox, None, None]
         # transform the given BBox to master coordinate
@@ -524,6 +503,23 @@ class Instance(Arrayable):
                 cur_box = test_box.transform(inv_loc, inv_orient, unit_mode=True)
                 for box in self._master.blockage_iter(layer_id, cur_box, spx=spx, spy=spy):
                     yield box.transform(loc, orient, unit_mode=True)
+
+    def all_rect_iter(self):
+        # type: () -> Generator[Tuple[BBox, int, int], None, None]
+        if self.destroyed:
+            return
+
+        orient = self._orient
+        x0, y0 = self._loc_unit
+        flip = (orient == 'R90' or orient == 'R270' or orient == 'MXR90' or orient == 'MYR90')
+        for layer_id, box, sdx, sdy in self._master.all_rect_iter():
+            if flip:
+                sdx, sdy = sdy, sdx
+            for row in range(self.ny):
+                for col in range(self.nx):
+                    dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
+                    loc = dx + x0, dy + y0
+                    yield layer_id, box.transform(loc, orient, unit_mode=True), sdx, sdy
 
     def get_rect_bbox(self, layer):
         """Returns the overall bounding box of all rectangles on the given layer.
