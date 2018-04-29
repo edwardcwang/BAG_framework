@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, \
     Optional, Tuple, Iterable, Sequence, Callable, Generator
 
 import os
-import time
 import abc
 import copy
+import time
+import pickle
 from itertools import islice, product, chain
 
 import yaml
@@ -486,7 +487,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._grid = kwargs.get('grid', temp_db.grid).copy()
         self._layout = BagLayout(self._grid, use_cybagoa=use_cybagoa)
         self._size = None  # type: Tuple[int, int, int]
-        self.pins = {}
         self._ports = {}
         self._port_params = {}
         self._array_box = None  # type: BBox
@@ -624,6 +624,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         # call super finalize routine
         DesignMaster.finalize(self)
+
+    @classmethod
+    def get_cache_properties(cls):
+        # type: () -> List[str]
+        """Returns a list of properties to cache."""
+        return []
 
     @property
     def template_db(self):
@@ -944,11 +950,49 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         with open_file(fname, 'w') as f:
             yaml.dump(info, f)
 
-    def write_cache_file(self, fname, lib_name, cell_name, prop_dict=None):
+    def write_to_disk(self, fname, lib_name, cell_name):
         # type: (str, str, str) -> None
         """Create a cache file for this template."""
+        if not self.finalized:
+            raise ValueError('Cannot write non-final template to disk.')
+
+        prop_dict = {key: getattr(self, key) for key in self.get_cache_properties()}
         self.merge_inst_tracks()
-        pass
+
+        template_info = dict(
+            lib_name=lib_name,
+            cell_name=cell_name,
+            size=self._size,
+            port_params=self._port_params,
+            prim_top_layer=self.prim_top_layer,
+            prim_bound_box=self.prim_bound_box,
+            array_box=self.array_box,
+            used_tracks=self._used_tracks,
+            properties=prop_dict,
+        )
+
+        with open(fname, 'wb') as f:
+            pickle.dump(template_info, f, protocol=-1)
+
+    def load_from_disk(self, fname):
+        with open(fname, 'rb') as f:
+            info = pickle.load(f)
+        self._size = info['size']
+        self._port_params = info['port_params']
+        self.prim_top_layer = info['prim_top_layer']
+        self.prim_bound_box = info['prim_bound_box']
+        self.array_box = info['array_box']
+
+        self._used_tracks = info['used_tracks']
+        self._merge_used_tracks = True
+
+        prop_dict = info['properties']
+        for key, val in prop_dict.items():
+            setattr(self, key, val)
+
+        lib_name = info['lib_name']
+        cell_name = info['cell_name']
+        self.add_instance_primitive(lib_name, cell_name, (0, 0), inst_name='X0', unit_mode=True)
 
     def merge_inst_tracks(self):
         # type: () -> None
@@ -3367,3 +3411,21 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if vss_warrs:
             self.draw_vias_on_intersections(vss_warrs, top_vss)
         return top_vdd, top_vss
+
+
+class CachedTemplate(TemplateBase):
+    """A template that's cached in file."""
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        return dict(
+            cache_fname='the cache file name.',
+        )
+
+    def draw_layout(self):
+        # type: () -> None
+        self.load_from_disk(self.params['cache_fname'])

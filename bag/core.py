@@ -608,6 +608,7 @@ class BagProject(object):
                       use_cybagoa=True,  # type: bool
                       debug=False,  # type: bool
                       profile_fname='',  # type: str
+                      cache_fname='',  # type: str
                       ):
         # type: (...) -> Optional[pstats.Stats]
         """Generate layout/schematic of a given cell from specification file.
@@ -630,6 +631,8 @@ class BagProject(object):
             True to print debug messages.
         profile_fname : str
             If not empty, profile layout generation, and save statistics to this file.
+        cache_fname : str
+            If not empty, write layout template to cache file.
 
         Returns
         -------
@@ -660,6 +663,10 @@ class BagProject(object):
         temp = temp_db.new_template(params=params, temp_cls=temp_cls, debug=debug)
         print('computation done.')
         temp_list = [temp]
+        if cache_fname:
+            print('writing layout to cache...')
+            temp.write_to_disk(cache_fname, impl_lib, impl_cell)
+            print('cache writing done.')
 
         if gen_lay:
             print('creating layout...')
