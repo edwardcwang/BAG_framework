@@ -55,50 +55,6 @@ class DigitalSpace(LaygoBase):
         self.fill_space()
 
 
-class DigitalTap(LaygoBase):
-    """A tap block in digital template.
-
-    Parameters
-    ----------
-    temp_db : TemplateDB
-            the template database.
-    lib_name : str
-        the layout library name.
-    params : Dict[str, Any]
-        the parameter values.
-    used_names : Set[str]
-        a set of already used cell names.
-    **kwargs
-        dictionary of optional parameters.  See documentation of
-        :class:`bag.layout.template.TemplateBase` for details.
-    """
-
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        LaygoBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-
-    @classmethod
-    def get_params_info(cls):
-        return dict(
-            config='laygo configuration dictionary.',
-            layout_info='LaygoBase layout information dictionary.',
-        )
-
-    def draw_layout(self):
-        """Draw the layout of a dynamic latch chain.
-        """
-        layout_info = self.params['layout_info']
-        nsub = self.laygo_info.sub_columns
-        self.set_rows_direct(layout_info, draw_boundaries=False, num_col=nsub)
-
-        ports = self.add_laygo_mos(0, 0, nsub, is_sub=True)
-        ports = self.add_laygo_mos(1, 0, nsub, is_sub=True)
-        for name, warr in ports.items():
-            self.add_pin(name, warr, show=False)
-
-        self.fill_space()
-
-
 class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
@@ -428,13 +384,6 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         inst_name = 'XR%dC%d' % (row_idx, col_idx)
         return self.add_instance(master, inst_name=inst_name, loc=(x0, y0), orient=orient,
                                  nx=nx, spx=spx * col_width, unit_mode=True)
-
-    def add_substrate_tap(self, loc, nx=1):
-        """Add substrate taps at the given location."""
-        nsub = self._laygo_info.sub_columns
-        params = dict(config=self._row_layout_info['config'], layout_info=self._row_layout_info)
-        tap_master = self.new_template(params=params, temp_cls=DigitalTap)
-        return self.add_digital_block(tap_master, loc=loc, nx=nx, spx=nsub)
 
     def fill_space(self, port_cols=None):
         if self._dig_size is None:
