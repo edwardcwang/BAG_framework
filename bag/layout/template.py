@@ -494,6 +494,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self.prim_bound_box = None
         self._used_tracks = UsedTracks()
         self._track_boxes = {}
+        self._merge_used_tracks = False
 
         # add hidden parameters
         if 'hidden_params' in kwargs:
@@ -613,12 +614,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         for layer_id, bbox in self._used_tracks.track_box_iter():
             self._track_boxes[layer_id] = bbox
-        for inst in self._layout.inst_iter():
-            for layer_id, bbox in inst.track_bbox_iter():
-                if layer_id not in self._track_boxes:
-                    self._track_boxes[layer_id] = bbox
-                else:
-                    self._track_boxes[layer_id] = bbox.merge(self._track_boxes[layer_id])
+        if not self._merge_used_tracks:
+            for inst in self._layout.inst_iter():
+                for layer_id, bbox in inst.track_bbox_iter():
+                    if layer_id not in self._track_boxes:
+                        self._track_boxes[layer_id] = bbox
+                    else:
+                        self._track_boxes[layer_id] = bbox.merge(self._track_boxes[layer_id])
 
         # call super finalize routine
         DesignMaster.finalize(self)
@@ -725,8 +727,17 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # type: (int, BBox, int, int) -> Generator[BBox, None, None]
         """Returns all block intersecting the given rectangle."""
         yield from self._used_tracks.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
-        for inst in self._layout.inst_iter():
-            yield from inst.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
+        if not self._merge_used_tracks:
+            for inst in self._layout.inst_iter():
+                yield from inst.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
+
+    def all_rect_iter(self):
+        # type: () -> Generator[Tuple[int, BBox, int, int], None, None]
+        """Returns all rectangle objects in this """
+        yield from self._used_tracks.all_rect_iter()
+        if not self._merge_used_tracks:
+            for inst in self._layout.inst_iter():
+                yield from inst.all_rect_iter()
 
     def open_interval_iter(self,  # type: TemplateBase
                            track_id,  # type: TrackID
@@ -932,6 +943,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         with open_file(fname, 'w') as f:
             yaml.dump(info, f)
+
+    def write_cache_file(self, fname, lib_name, cell_name, prop_dict=None):
+        # type: (str, str, str) -> None
+        """Create a cache file for this template."""
+        self.merge_inst_tracks()
+        pass
+
+    def merge_inst_tracks(self):
+        # type: () -> None
+        """Flatten all rectangles from instances into the UsedTracks data structure."""
+        res = self.grid.resolution
+        if not self._merge_used_tracks:
+            self._merge_used_tracks = True
+            for inst in self._layout.inst_iter():
+                for layer_id, box, dx, dy in inst.all_rect_iter():
+                    self._used_tracks.record_box(layer_id, box, dx, dy, res)
 
     def get_pin_name(self, name):
         # type: (str) -> str
