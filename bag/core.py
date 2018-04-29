@@ -665,7 +665,7 @@ class BagProject(object):
         temp_list = [temp]
         if cache_fname:
             print('writing layout to cache...')
-            temp.write_to_disk(cache_fname, impl_lib, impl_cell)
+            temp.write_to_disk(cache_fname, impl_lib, impl_cell, debug=debug)
             print('cache writing done.')
 
         if gen_lay:

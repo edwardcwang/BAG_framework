@@ -950,12 +950,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         with open_file(fname, 'w') as f:
             yaml.dump(info, f)
 
-    def write_to_disk(self, fname, lib_name, cell_name):
-        # type: (str, str, str) -> None
+    def write_to_disk(self, fname, lib_name, cell_name, debug=False):
+        # type: (str, str, str, bool) -> None
         """Create a cache file for this template."""
         if not self.finalized:
             raise ValueError('Cannot write non-final template to disk.')
 
+        start = time.time()
         prop_dict = {key: getattr(self, key) for key in self.get_cache_properties()}
         self.merge_inst_tracks()
 
@@ -973,6 +974,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         with open(fname, 'wb') as f:
             pickle.dump(template_info, f, protocol=-1)
+
+        stop = time.time()
+        if debug:
+            print('Writing to cache took %.4g seconds.' % (stop - start))
 
     def load_from_disk(self, fname):
         with open(fname, 'rb') as f:
