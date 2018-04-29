@@ -318,8 +318,34 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         return ans
 
     def make_track_id(self, row_idx, tr_type, tr_idx, width=1, num=1, pitch=0, dig_row_idx=0):
-        tid = self.get_track_index(row_idx, tr_type, tr_idx, dig_row_idx=dig_row_idx)
-        return TrackID(self.conn_layer + 1, tid, width=width, num=num, pitch=pitch)
+        tidx = self.get_track_index(row_idx, tr_type, tr_idx, dig_row_idx=dig_row_idx)
+        return TrackID(self.conn_layer + 1, tidx, width=width, num=num, pitch=pitch)
+
+    def get_num_x_tracks(self, layer_id, half_int=False):
+        row_height = self._row_height
+        tr_pitch2 = self.grid.get_track_pitch(layer_id, unit_mode=True) // 2
+        if row_height % tr_pitch2 != 0:
+            raise ValueError('row height = %d not divisible '
+                             'by pitch on layer %d' % (row_height, layer_id))
+
+        num = row_height // tr_pitch2
+        return num if half_int else (num // 2 if num % 2 == 0 else num / 2)
+
+    def get_x_track_index(self, layer_id, dig_row_idx, tr_idx):
+        row_height = self._row_height
+        tr_pitch2 = self.grid.get_track_pitch(layer_id, unit_mode=True) // 2
+        if row_height % tr_pitch2 != 0:
+            raise ValueError('row height = %d not divisible '
+                             'by pitch on layer %d' % (row_height, layer_id))
+
+        y0 = dig_row_idx * self._row_height + self._ybot[1]
+        tr_off = self.grid.coord_to_track(layer_id, y0, unit_mode=True)
+        htr2 = int(round(2 * (tr_off + tr_idx))) + 1
+        return htr2 // 2 if htr2 % 2 == 0 else htr2 / 2
+
+    def make_x_track_id(self, layer_id, dig_row_idx, tr_idx, width=1, num=1, pitch=0):
+        tidx = self.get_x_track_index(layer_id, dig_row_idx, tr_idx)
+        return TrackID(layer_id, tidx, width=width, num=num, pitch=pitch)
 
     def add_digital_block(self, master, loc, flip=False, nx=1, spx=0):
         col_idx, row_idx = loc
