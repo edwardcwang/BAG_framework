@@ -647,7 +647,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def _set_endlr_infos(self, num_rows):
         default_end_info = (self._tech_cls.get_default_end_info(), None)
-        def_edge_info = LaygoEdgeInfo([(default_end_info, None)] * num_rows, [])
+        def_edge_info = LaygoEdgeInfo([default_end_info] * num_rows, [])
         self._laygo_edgel = self.params['laygo_edgel']
         if self._laygo_edgel is None:
             self._laygo_edgel = def_edge_info

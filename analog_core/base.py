@@ -2557,24 +2557,33 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         return conn_list
 
     def _export_supplies(self, port_name, dum_tracks, port_tracks, sub_inst, dum_only):
+        grid = self.grid
+        mconn_layer = self.mos_conn_layer
         sub_port = sub_inst.get_port(port_name)
-        sub_box = sub_port.get_bounding_box(self.grid, self.mos_conn_layer)
+        sub_box = sub_port.get_bounding_box(grid, mconn_layer)
         yb, yt = sub_box.bottom_unit, sub_box.top_unit
 
         x0 = self._layout_info.sd_xc_unit
-        dum_tr_offset = self.grid.coord_to_track(self.dum_conn_layer, x0, unit_mode=True) + 0.5
-        mconn_tr_offset = self.grid.coord_to_track(self.mos_conn_layer, x0, unit_mode=True) + 0.5
+        sd_pitch = self._layout_info.sd_pitch_unit
+        dum_tr_offset = grid.coord_to_track(self.dum_conn_layer, x0, unit_mode=True) + 0.5
+        mconn_tr_offset = grid.coord_to_track(mconn_layer, x0, unit_mode=True) + 0.5
         dum_tracks = [tr - dum_tr_offset for tr in dum_tracks]
         new_port_tracks, port_htr = [], []
         for tr in port_tracks:
             cur_htr = int(2 * (tr - mconn_tr_offset) + 1)
             port_htr.append(cur_htr)
             new_port_tracks.append((cur_htr - 1) / 2)
-        occu_tracks = self.get_occupied_tracks(self.mos_conn_layer, yb, yt, unit_mode=True,
-                                               half_index=True)
+
+        # compute tracks to exclude
+        exc_tracks = []
         mconn_off2 = int(round(2 * mconn_tr_offset))
-        exc_tracks = [(htr - mconn_off2 - 1) / 2 for htr in occu_tracks
-                      if htr - mconn_off2 not in port_htr]
+        for x_port in range(x0, x0 + self._fg_tot * sd_pitch + 1, sd_pitch):
+            cur_tr = grid.coord_to_track(mconn_layer, x_port, unit_mode=True)
+            cur_htr = int(round(2 * cur_tr)) + 1
+            if (cur_htr - mconn_off2 not in port_htr and
+                    not self.is_track_available(mconn_layer, cur_tr, yb, yt, unit_mode=True)):
+                exc_tracks.append((cur_htr - mconn_off2 - 1) / 2)
+
         sub_inst.new_master_with(dum_tracks=dum_tracks, port_tracks=new_port_tracks,
                                  dummy_only=dum_only, exc_tracks=exc_tracks)
 
