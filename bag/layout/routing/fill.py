@@ -28,6 +28,16 @@ class RectIndex(object):
         else:
             self._index = init_index
 
+    def __getstate__(self):
+        info = [(item.id, item.bbox, item.object)
+                for item in self._index.intersection(self._index.bounds, objects=True)]
+        return self._res, self._cnt, info
+
+    def __setstate__(self, state):
+        self._res = state[0]
+        self._cnt = state[1]
+        self._index = Index(state[2], interleaved=True)
+
     @property
     def bound_box(self):
         # type: () -> BBox
