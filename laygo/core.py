@@ -691,9 +691,14 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         self._row_prop_list = row_prop_list
         if 'row_info_list' in layout_info:
+            # this layout information dictionary is from another LaygoBase
             self._row_info_list = layout_info['row_info_list']
             self._ext_params = layout_info['ext_params']
+            # set substrate extension information
+            self._bot_sub_extw = layout_info['bot_sub_extw']
+            self._top_sub_extw = layout_info['top_sub_extw']
         else:
+            # this layout information dictionary is from AnalogBase
             self._ext_params, self._row_info_list = self.compute_row_info(self._laygo_info,
                                                                           row_prop_list)
 

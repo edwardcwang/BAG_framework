@@ -92,6 +92,11 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         tech_cls = tech_info.tech_params['layout']['laygo_tech_class']
         return tech_cls.get_sub_columns(lch_unit)
 
+    @classmethod
+    def get_sub_port_columns(cls, tech_info, lch_unit):
+        tech_cls = tech_info.tech_params['layout']['laygo_tech_class']
+        return tech_cls.get_sub_port_columns(lch_unit)
+
     @property
     def conn_layer(self):
         # type: () -> int
