@@ -655,13 +655,14 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         if self._laygo_edger is None:
             self._laygo_edger = def_edge_info
 
-    def set_rows_direct(self, layout_info, num_col=None, end_mode=None):
+    def set_rows_direct(self, layout_info, num_col=None, draw_boundaries=None, end_mode=None):
         top_layer = layout_info['top_layer']
         guard_ring_nf = layout_info['guard_ring_nf']
-        draw_boundaries = layout_info['draw_boundaries']
         row_prop_list = layout_info['row_prop_list']
         if end_mode is None:
             end_mode = layout_info['end_mode']
+        if draw_boundaries is None:
+            draw_boundaries = layout_info['draw_boundaries']
 
         num_rows = len(row_prop_list)
 
@@ -1395,11 +1396,14 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             raise ValueError("gate_loc must be 'd' or 's'.")
 
         ports = {}
-        if is_sub or row_type == 'ntap' or row_type == 'ptap':
-            if seg % 2 == 1:
-                raise ValueError('Cannot draw odd segments of substrate connection.')
-            nx = seg // 2
-            inst = self._add_laygo_primitive('sub', loc=(col_idx, row_idx), nx=nx, spx=2, **kwargs)
+        is_sub_row = (row_type == 'ntap' or row_type == 'ptap')
+        if is_sub or is_sub_row:
+            nsub = 2 if is_sub_row else self.laygo_info.sub_columns
+            if seg % nsub != 0:
+                raise ValueError('Cannot draw %d segments of substrate connection.' % seg)
+            nx = seg // nsub
+            inst = self._add_laygo_primitive('sub', loc=(col_idx, row_idx), nx=nx, spx=nsub,
+                                             **kwargs)
             port_name = 'VDD' if row_type == 'ntap' or row_type == 'pch' else 'VSS'
             for name in (port_name, port_name + '_s', port_name + '_d'):
                 ports[name] = WireArray.list_to_warr(inst.get_all_port_pins(name))

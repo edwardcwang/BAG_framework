@@ -458,9 +458,11 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
             right_edge_info=lr_edge_info,
         )
 
-    def get_row_extension_info(self, bot_ext_list, top_ext_list):
-        # type: (List[ExtInfo], List[ExtInfo]) -> List[Tuple[int, int, ExtInfo, ExtInfo]]
-
+    def get_row_extension_info(self,  # type: LaygoTechFinfetBase
+                               bot_ext_list,  # type: List[Union[int, ExtInfo]]
+                               top_ext_list,  # type: List[Union[int, ExtInfo]]
+                               ):
+        # type: (...) -> List[Tuple[int, int, ExtInfo, ExtInfo]]
         # merge list of bottom and top extension informations into a list of
         # bottom/top extension tuples
         bot_idx = top_idx = 0
@@ -469,8 +471,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         ext_groups = []
         cur_fg = bot_off = top_off = 0
         while bot_idx < bot_len and top_idx < top_len:
-            bot_info = bot_ext_list[bot_idx]
-            top_info = top_ext_list[top_idx]
+            bot_info = bot_ext_list[bot_idx]  # type: Union[int, ExtInfo]
+            top_info = top_ext_list[top_idx]  # type: Union[int, ExtInfo]
             if isinstance(bot_info, int) and isinstance(top_info, int):
                 cur_fg += bot_info
                 bot_off = top_off = cur_fg
