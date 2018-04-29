@@ -254,6 +254,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         lch_unit = row_info['lch_unit']
         row_type = row_info['row_type']
         sub_type = row_info['sub_type']
+        threshold = row_info['threshold']
         row_ext_top = row_info['ext_top_info']
         row_ext_bot = row_info['ext_bot_info']
         lay_info_list = row_info['lay_info_list']
@@ -284,6 +285,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                 edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={}, y_intv=y_intv)
                 po_types = ('PO_sub', 'PO_sub')
             else:
+                lay_info_list = [(lay, 0, arr_y[0], arr_y[1])
+                                 for lay in self.get_mos_layers(sub_type, threshold)]
                 fg = self.get_sub_columns(lch_unit)
                 od_intv = (2, fg - 2)
                 edgel_info = edger_info = EdgeInfo(od_type=None, draw_layers={}, y_intv=y_intv)
