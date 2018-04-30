@@ -139,6 +139,17 @@ class IntervalSet(object):
         """
         return self._end_list[-1]
 
+    def get_interval(self, idx):
+        # type: (int) -> Tuple[int, int]
+        if idx < 0:
+            idx += len(self._start_list)
+        if idx < 0:
+            raise IndexError('Invalid index: %d' % idx)
+        if idx >= len(self._start_list):
+            raise IndexError('Invalid index: %d' % idx)
+
+        return self._start_list[idx], self._end_list[idx]
+
     def copy(self):
         # type: () -> IntervalSet
         """Create a copy of this interval set.
