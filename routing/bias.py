@@ -171,11 +171,18 @@ class BiasShield(TemplateBase):
         else:
             end_master = template.new_template(params=params, temp_cls=BiasShieldEnd)
             if lu_end_mode & 2 != 0:
-                nstart = end_master.num_blk
+                eorient = 'R180' if mode < 0 else ('MY' if is_horiz else 'MX')
+                nend = nstart = end_master.num_blk
                 nstop = ntot
             else:
+                eorient = orient
                 nstart = 0
-                nstop = ntot - end_master.num_blk
+                nend = nstop = ntot - end_master.num_blk
+            if is_horiz:
+                loc = (tr_lower + nend * qdim, blk_off)
+            else:
+                loc = (blk_off, tr_lower + nend * qdim)
+            template.add_instance(end_master, loc=loc, orient=eorient, unit_mode=True)
 
         tr_intv = (tr_lower, tr_upper)
         if tr_lower % qdim != 0 or tr_upper % qdim != 0:
@@ -270,6 +277,7 @@ class BiasShield(TemplateBase):
         bbox = BBox(0, 0, tot_w, tot_h, res, unit_mode=True)
         self.set_size_from_bound_box(top_layer, bbox)
         self.array_box = bbox
+        self.add_cell_boundary(bbox)
 
         tr_manager = TrackManager(grid, {'sig': {route_layer: width}},
                                   {('sig', ''): {route_layer: space_sig}}, half_space=True)
