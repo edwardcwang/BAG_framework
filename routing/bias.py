@@ -2,7 +2,7 @@
 
 """This module defines bias routing related templates."""
 
-from typing import TYPE_CHECKING, Dict, Set, Any, Iterable, List, Union, Tuple
+from typing import TYPE_CHECKING, Dict, Set, Any, Iterable, List, Union, Tuple, Generator
 
 import numbers
 from itertools import chain, repeat
@@ -126,6 +126,7 @@ class BiasShield(TemplateBase):
                          width=1,  # type: int
                          space_sig=0,  # type: int
                          space_sup=1,  # type: Union[int, Tuple[int, int]]
+                         lu_end_mode=0,  # type: int
                          ):
         # type: (...) -> List[WireArray]
         grid = template.grid
@@ -162,6 +163,19 @@ class BiasShield(TemplateBase):
             blk_off = grid.track_to_coord(layer, tr0 - mode * 0.5, unit_mode=True)
             tr_lower = y0
             orient = 'R0' if mode > 0 else 'MY'
+
+        ntot = tr_upper // qdim
+        if lu_end_mode == 0:
+            nstart = 0
+            nstop = ntot
+        else:
+            end_master = template.new_template(params=params, temp_cls=BiasShieldEnd)
+            if lu_end_mode & 2 != 0:
+                nstart = end_master.num_blk
+                nstop = ntot
+            else:
+                nstart = 0
+                nstop = ntot - end_master.num_blk
 
         tr_intv = (tr_lower, tr_upper)
         if tr_lower % qdim != 0 or tr_upper % qdim != 0:
@@ -201,23 +215,34 @@ class BiasShield(TemplateBase):
             sl, su = master.sup_intv
             sl += tr_lower
             su += tr_lower
-            for lower, upper in intvs.complement_iter(tr_intv):
-                n0 = -(-(lower - sl) // qdim)
-                n1 = (upper - su) // qdim
-                nblk = n1 - n0 + 1
+            ncur = nstart
+            for nend, nnext in cls._get_blk_idx_iter(intvs, sl, su, qdim, nstart, nstop):
+                nblk = nend - ncur
                 if nblk > 0:
                     if is_horiz:
-                        loc = (tr_lower + n0 * qdim, blk_off)
+                        loc = (tr_lower + ncur * qdim, blk_off)
                         nx = nblk
                         ny = 1
                     else:
-                        loc = (blk_off, tr_lower + n0 * qdim)
+                        loc = (blk_off, tr_lower + ncur * qdim)
                         nx = 1
                         ny = nblk
                     template.add_instance(master, loc=loc, orient=orient, nx=nx, ny=ny,
                                           spx=qdim, spy=qdim, unit_mode=True)
+                ncur = nnext
 
         return tr_warr_list
+
+    @classmethod
+    def _get_blk_idx_iter(cls, intvs, sl, su, qdim, nstart, nstop):
+        # type: (IntervalSet, int, int, int, int, int) -> Generator[Tuple[int, int], None, None]
+        for lower, upper in intvs:
+            nend = 1 + (lower - su) // qdim
+            if nend < nstart:
+                raise ValueError('wire interval (%d, %d) is out of bounds.' % (lower, upper))
+            ncur = -(-(upper - sl) // qdim)
+            yield nend, ncur
+        yield nstop, nstop
 
     def draw_layout(self):
         # type: () -> None
@@ -296,11 +321,11 @@ class BiasShieldEnd(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._sup_intv = None
+        self._nblk = None
 
     @property
-    def sup_intv(self):
-        return self._sup_intv
+    def num_blk(self):
+        return self._nblk
 
     @classmethod
     def get_params_info(cls):
@@ -360,6 +385,7 @@ class BiasShieldEnd(TemplateBase):
             min_len = max(min_len, blk_h)
             ny = nblk = -(-(sp_le + min_len) // blk_h)  # type: int
             cr = nblk * blk_h
+        self._nblk = nblk
 
         bot_inst = self.add_instance(bot_master, 'XBOT', loc=orig, nx=nx, ny=ny,
                                      spx=blk_w, spy=blk_h, unit_mode=True)
