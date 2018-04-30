@@ -39,10 +39,15 @@ class BiasShield(TemplateBase):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._bias_tids = None
+        self._sup_intv = None
 
     @property
     def bias_tids(self):
         return self._bias_tids
+
+    @property
+    def sup_intv(self):
+        return self._sup_intv
 
     @classmethod
     def get_params_info(cls):
@@ -171,11 +176,14 @@ class BiasShield(TemplateBase):
                     cur_intvs.add((wl - sp, wu + sp), merge=True, abut=True)
 
         for master, intvs in zip((bot_master, top_master), (bot_intvs, top_intvs)):
+            sl, su = master.sup_intv
+            sl += tr_lower
+            su += tr_lower
             for lower, upper in intvs.complement_iter(tr_intv):
-                n0 = -(-(lower - tr_lower) // qdim)
-                n1 = (upper - tr_lower) // qdim
-                if n1 > n0:
-                    nblk = n1 - n0
+                n0 = -(-(lower - sl) // qdim)
+                n1 = (upper - su) // qdim
+                nblk = n1 - n0 + 1
+                if nblk > 0:
                     if is_horiz:
                         loc = (tr_lower + n0 * qdim, blk_off)
                         nx = nblk
@@ -205,7 +213,8 @@ class BiasShield(TemplateBase):
 
         bot_layer = route_layer - 1
         top_layer = route_layer + 1
-        is_horiz = self.grid.get_direction(route_layer) == 'x'
+        route_dir = self.grid.get_direction(route_layer)
+        is_horiz = route_dir == 'x'
         if is_horiz:
             half_blk_x = False
             half_blk_y = True
@@ -255,3 +264,6 @@ class BiasShield(TemplateBase):
                               num=(tr_upper // (sup_pitch * bot_pitch)), pitch=sup_pitch)
             warr = self.connect_to_tracks(sh_warr, sup_tid)
         self.add_pin('sup', warr, show=False)
+
+        sup_box = warr.get_bbox_array(self.grid).get_overall_bbox()
+        self._sup_intv = sup_box.get_interval(route_dir, unit_mode=True)
