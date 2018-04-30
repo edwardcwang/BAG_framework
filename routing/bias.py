@@ -73,6 +73,21 @@ class BiasShield(TemplateBase):
         return 'bias_shield_%s_lay%d_n%d' % (desc, layer, nwire)
 
     @classmethod
+    def get_shield_size(cls, template, layer, nwire, width=1, space_sig=0, space_sup=1):
+        # type: (TemplateBase, int, int, int, int, Union[int, Tuple[int, int]]) -> Tuple[int, int]
+        params = dict(
+            layer=layer,
+            nwire=nwire,
+            top=False,
+            width=width,
+            space_sig=space_sig,
+            space_sup=space_sup,
+        )
+        bot_master = template.new_template(params=params, temp_cls=BiasShield)
+        box = bot_master.bound_box
+        return box.width_unit, box.height_unit
+
+    @classmethod
     def add_bias_shields(cls,
                          template,  # type: TemplateBase
                          layer,  # type: int
@@ -98,6 +113,7 @@ class BiasShield(TemplateBase):
             space_sup=space_sup,
         )
         bot_master = template.new_template(params=params, temp_cls=BiasShield)
+        sh_box = bot_master.bound_box
         params['top'] = True
         top_master = template.new_template(params=params, temp_cls=BiasShield)
 
@@ -105,11 +121,24 @@ class BiasShield(TemplateBase):
         tr_dir = grid.get_direction(layer)
         is_horiz = tr_dir == 'x'
         if is_horiz:
+            qdim = sh_box.width_unit
             tr0 = grid.find_next_track(layer, y0, half_track=True,
                                        mode=mode, unit_mode=True)
+
+            blk_off = grid.track_to_coord(layer, tr0 - mode * 0.5, unit_mode=True)
+            tr_lower = x0
+            orient = 'R0' if mode > 0 else 'MX'
         else:
+            qdim = sh_box.height_unit
             tr0 = grid.find_next_track(layer, x0, half_track=True,
                                        mode=mode, unit_mode=True)
+            blk_off = grid.track_to_coord(layer, tr0 - mode * 0.5, unit_mode=True)
+            tr_lower = y0
+            orient = 'R0' if mode > 0 else 'MY'
+
+        tr_intv = (tr_lower, tr_upper)
+        if tr_lower % qdim != 0 or tr_upper % qdim != 0:
+            raise ValueError('track lower/upper = %s not divisible by %d' % (tr_intv, qdim))
 
         bot_warrs = []
         top_warrs = []
@@ -140,6 +169,23 @@ class BiasShield(TemplateBase):
                 for box in box_arr:
                     wl, wu = box.get_interval(tr_dir, unit_mode=True)
                     cur_intvs.add((wl - sp, wu + sp), merge=True, abut=True)
+
+        for master, intvs in zip((bot_master, top_master), (bot_intvs, top_intvs)):
+            for lower, upper in intvs.complement_iter(tr_intv):
+                n0 = -(-(lower - tr_lower) // qdim)
+                n1 = (upper - tr_lower) // qdim
+                if n1 > n0:
+                    nblk = n1 - n0
+                    if is_horiz:
+                        loc = (tr_lower + n0 * qdim, blk_off)
+                        nx = nblk
+                        ny = 1
+                    else:
+                        loc = (blk_off, tr_lower + n0 * qdim)
+                        nx = 1
+                        ny = nblk
+                    template.add_instance(master, loc=loc, orient=orient, nx=nx, ny=ny,
+                                          spx=qdim, spy=qdim, unit_mode=True)
 
         return tr_warr_list
 
