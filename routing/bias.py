@@ -5,7 +5,7 @@
 from typing import TYPE_CHECKING, Dict, Set, Any, Iterable, List, Union, Tuple, Generator
 
 import numbers
-from itertools import chain, repeat
+from itertools import chain, repeat, islice
 
 from bag.math import lcm
 from bag.util.interval import IntervalSet
@@ -39,12 +39,12 @@ class BiasShield(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._bias_tids = None
+        self._route_tids = None
         self._sup_intv = None
 
     @property
-    def bias_tids(self):
-        return self._bias_tids
+    def route_tids(self):
+        return self._route_tids
 
     @property
     def sup_intv(self):
@@ -145,7 +145,7 @@ class BiasShield(TemplateBase):
         params['top'] = True
         top_master = template.new_template(params=params, temp_cls=BiasShield)
 
-        bias_tids = bot_master.bias_tids
+        route_tids = bot_master.route_tids
         tr_dir = grid.get_direction(layer)
         is_horiz = tr_dir == 'x'
         if is_horiz:
@@ -159,15 +159,29 @@ class BiasShield(TemplateBase):
 
         bot_warrs = []
         top_warrs = []
-        tr_warr_list = []
         bot_intvs = IntervalSet()
         top_intvs = IntervalSet()
-        for warr_list, (tidx, tr_width) in zip(warr_list2, bias_tids):
+        if lu_end_mode == 0:
+            min_len_mode = 0
+        elif lu_end_mode & 2 != 0:
+            min_len_mode = 1
+        else:
+            min_len_mode = -1
+        tl, tu = None, None
+        tr_warr_list = []
+        for warr_list, (tidx, tr_width) in zip(warr_list2, islice(route_tids, 1, nwire + 1)):
             if isinstance(warr_list, WireArray):
                 warr_list = [warr_list]
 
             cur_tid = TrackID(layer, mode * tidx + tr0, width=width)
-            tr_warr_list.append(template.connect_to_tracks(warr_list, cur_tid))
+            tr_warr = template.connect_to_tracks(warr_list, cur_tid, min_len_mode=min_len_mode)
+            tr_warr_list.append(tr_warr)
+            if tl is None:
+                tl = tr_warr.lower_unit
+                tu = tr_warr.upper_unit
+            else:
+                tl = min(tl, tr_warr.lower_unit)
+                tu = max(tu, tr_warr.upper_unit)
 
             for warr in warr_list:
                 cur_layer = warr.layer_id
@@ -187,24 +201,10 @@ class BiasShield(TemplateBase):
                     wl, wu = box.get_interval(tr_dir, unit_mode=True)
                     cur_intvs.add((wl - sp, wu + sp), merge=True, abut=True)
 
-        # find nstart/nstop
-        nstart = nstop = None
-        iter_list = [(bot_master, bot_intvs), (top_master, top_intvs)]
-        for master, intvs in iter_list:
-            sl, su = master.sup_intv
-            nend = 1 + (intvs.get_interval(0)[0] - su) // qdim
-            nnext = -(-(intvs.get_interval(-1)[-1] - sl) // qdim)
-            if nstart is None:
-                nstart = nend
-            else:
-                nstart = min(nstart, nend)
-            if nstop is None:
-                nstop = nnext
-            else:
-                nstop = max(nstop, nnext)
-
         # draw blocks
-        for master, intvs in iter_list:
+        nstart = tl // qdim
+        nstop = -(-tu // qdim)
+        for master, intvs in zip((bot_master, top_master), (bot_intvs, top_intvs)):
             sl, su = master.sup_intv
             ncur = nstart
             for nend, nnext in cls._get_blk_idx_iter(intvs, sl, su, qdim, nstart, nstop):
@@ -222,12 +222,19 @@ class BiasShield(TemplateBase):
                                           spx=qdim, spy=qdim, unit_mode=True)
                 ncur = nnext
 
+        # draw wires and end master
+        tl = nstart * qdim
+        tu = nstop * qdim
+        if lu_end_mode == 0:
+            tr_warr_list = template.extend_wires(tr_warr_list, lower=tl, upper=tu, unit_mode=True)
         if lu_end_mode != 0:
             end_master = template.new_template(params=params, temp_cls=BiasShieldEnd)
             if lu_end_mode & 2 != 0:
+                tr_warr_list = template.extend_wires(tr_warr_list, upper=tu, unit_mode=True)
                 eorient = 'R180' if mode < 0 else ('MY' if is_horiz else 'MX')
                 nend = nstart
             else:
+                tr_warr_list = template.extend_wires(tr_warr_list, lower=tl, unit_mode=True)
                 eorient = orient
                 nend = nstop
             if is_horiz:
@@ -284,7 +291,9 @@ class BiasShield(TemplateBase):
         route_list = list(chain(tmp, repeat('sig', nwire), tmp))
         ntr, locs = tr_manager.place_wires(route_layer, route_list)
 
-        self._bias_tids = [(locs[idx], width) for idx in range(1, nwire + 1)]
+        self._route_tids = list(chain([(locs[0], 1)],
+                                      ((locs[idx], width) for idx in range(1, nwire + 1)),
+                                      [(locs[nwire + 1], 1)]))
 
         pitch = locs[nwire + 1] - locs[0]
         tr_upper = bbox.width_unit if route_dir == 'x' else bbox.height_unit
@@ -398,7 +407,7 @@ class BiasShieldEnd(TemplateBase):
         top_inst = self.add_instance(top_master, 'XTOP', loc=orig, nx=nx, ny=ny,
                                      spx=blk_w, spy=blk_h, unit_mode=True)
 
-        (tidx0, tr_w), (tidx1, _) = bot_master.bias_tids[:2]
+        (tidx0, tr_w), (tidx1, _) = bot_master.route_tids[1:3]
         warr = self.add_wires(route_layer, tidx0, cr - min_len, cr, width=tr_w, num=nwire,
                               pitch=tidx1 - tidx0, unit_mode=True)
         bot_port = bot_inst.get_port('sup', row=ny - 1, col=nx - 1)
