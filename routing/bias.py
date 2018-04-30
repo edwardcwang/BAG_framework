@@ -76,8 +76,11 @@ class BiasShield(TemplateBase):
     def add_bias_shields(cls,
                          template,  # type: TemplateBase
                          layer,  # type: int
-                         bound_box,  # type: BBox
                          warr_list2,  # type: List[Union[WireArray, Iterable[WireArray]]]
+                         x0,  # type: int,
+                         y0,  # type: int
+                         tr_upper,  # type: int
+                         mode=1,  # type: int
                          width=1,  # type: int
                          space_sig=0,  # type: int
                          space_sup=1,  # type: Union[int, Tuple[int, int]]
@@ -102,11 +105,11 @@ class BiasShield(TemplateBase):
         tr_dir = grid.get_direction(layer)
         is_horiz = tr_dir == 'x'
         if is_horiz:
-            tr0 = grid.find_next_track(layer, bound_box.bottom_unit, half_track=True,
-                                       mode=1, unit_mode=True)
+            tr0 = grid.find_next_track(layer, y0, half_track=True,
+                                       mode=mode, unit_mode=True)
         else:
-            tr0 = grid.find_next_track(layer, bound_box.left_unit, half_track=True,
-                                       mode=1, unit_mode=True)
+            tr0 = grid.find_next_track(layer, x0, half_track=True,
+                                       mode=mode, unit_mode=True)
 
         bot_warrs = []
         top_warrs = []
@@ -117,7 +120,7 @@ class BiasShield(TemplateBase):
             if isinstance(warr_list, WireArray):
                 warr_list = [warr_list]
 
-            cur_tid = TrackID(layer, tidx + tr0, width=width)
+            cur_tid = TrackID(layer, mode * tidx + tr0, width=width)
             tr_warr_list.append(template.connect_to_tracks(warr_list, cur_tid))
 
             for warr in warr_list:
