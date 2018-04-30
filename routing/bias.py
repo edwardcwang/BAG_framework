@@ -2,15 +2,16 @@
 
 """This module defines bias routing related templates."""
 
-from typing import TYPE_CHECKING, Dict, Set, Any
+from typing import TYPE_CHECKING, Dict, Set, Any, Iterable, List, Union, Tuple
 
 import numbers
 from itertools import chain, repeat
 
 from bag.math import lcm
+from bag.util.interval import IntervalSet
 from bag.layout.util import BBox
 from bag.layout.template import TemplateBase
-from bag.layout.routing.base import TrackManager, TrackID
+from bag.layout.routing.base import TrackManager, TrackID, WireArray
 
 if TYPE_CHECKING:
     from bag.layout.template import TemplateDB
@@ -49,9 +50,9 @@ class BiasShield(TemplateBase):
         return dict(
             layer='the routing layer.',
             nwire='number of routing wires.',
+            top='True to draw top shield.',
             width='route wire width.',
             space_sig='route wire spacing.',
-            top='True to draw top shield.',
             space_sup='supplu wire spacing.',
         )
 
@@ -60,6 +61,8 @@ class BiasShield(TemplateBase):
         # type: () -> Dict[str, Any]
         return dict(
             top=True,
+            width=1,
+            space_sig=0,
             space_sup=1,
         )
 
@@ -68,6 +71,74 @@ class BiasShield(TemplateBase):
         nwire = self.params['nwire']
         desc = 'top' if self.params['top'] else 'bot'
         return 'bias_shield_%s_lay%d_n%d' % (desc, layer, nwire)
+
+    @classmethod
+    def add_bias_shields(cls,
+                         template,  # type: TemplateBase
+                         layer,  # type: int
+                         bound_box,  # type: BBox
+                         warr_list2,  # type: List[Union[WireArray, Iterable[WireArray]]]
+                         width=1,  # type: int
+                         space_sig=0,  # type: int
+                         space_sup=1,  # type: Union[int, Tuple[int, int]]
+                         ):
+        # type: (...) -> List[WireArray]
+        grid = template.grid
+
+        nwire = len(warr_list2)
+        params = dict(
+            layer=layer,
+            nwire=nwire,
+            top=False,
+            width=width,
+            space_sig=space_sig,
+            space_sup=space_sup,
+        )
+        bot_master = template.new_template(params=params, temp_cls=BiasShield)
+        params['top'] = True
+        top_master = template.new_template(params=params, temp_cls=BiasShield)
+
+        bias_tids = bot_master.bias_tids
+        tr_dir = grid.get_direction(layer)
+        is_horiz = tr_dir == 'x'
+        if is_horiz:
+            tr0 = grid.find_next_track(layer, bound_box.bottom_unit, half_track=True,
+                                       mode=1, unit_mode=True)
+        else:
+            tr0 = grid.find_next_track(layer, bound_box.left_unit, half_track=True,
+                                       mode=1, unit_mode=True)
+
+        bot_warrs = []
+        top_warrs = []
+        tr_warr_list = []
+        bot_intvs = IntervalSet()
+        top_intvs = IntervalSet()
+        for warr_list, (tidx, tr_width) in zip(warr_list2, bias_tids):
+            if isinstance(warr_list, WireArray):
+                warr_list = [warr_list]
+
+            cur_tid = TrackID(layer, tidx + tr0, width=width)
+            tr_warr_list.append(template.connect_to_tracks(warr_list, cur_tid))
+
+            for warr in warr_list:
+                cur_layer = warr.layer_id
+                if cur_layer == layer - 1:
+                    bot_warrs.append(warr)
+                    cur_intvs = bot_intvs
+                elif cur_layer == layer + 1:
+                    top_warrs.append(warr)
+                    cur_intvs = top_intvs
+                else:
+                    raise ValueError('Cannot connect to wire %s' % warr)
+
+                cur_width = warr.width
+                sp = grid.get_space(cur_layer, cur_width, unit_mode=True)
+                box_arr = warr.get_bbox_array(grid)
+                for box in box_arr:
+                    wl, wu = box.get_interval(tr_dir, unit_mode=True)
+                    cur_intvs.add((wl - sp, wu + sp), merge=True, abut=True)
+
+        return tr_warr_list
 
     def draw_layout(self):
         # type: () -> None
@@ -79,7 +150,7 @@ class BiasShield(TemplateBase):
         space_sup = self.params['space_sup']
 
         if isinstance(space_sup, numbers.Integral):
-            space_sup = [space_sup, space_sup]
+            space_sup = (space_sup, space_sup)
 
         res = self.grid.resolution
 
@@ -119,8 +190,7 @@ class BiasShield(TemplateBase):
         self.set_size_from_bound_box(top_layer, bbox)
         self.array_box = bbox
 
-        self._bias_tids = [TrackID(route_layer, locs[idx], width=width)
-                           for idx in range(1, nwire + 1)]
+        self._bias_tids = [(locs[idx], width) for idx in range(1, nwire + 1)]
 
         pitch = locs[nwire + 1] - locs[0]
         sh_warr = self.add_wires(route_layer, locs[0], 0, tr_upper, num=2, pitch=pitch,
