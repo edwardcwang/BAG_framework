@@ -1660,7 +1660,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self.add_via(bbox, bname, tname, bot_dir)
 
     def extend_wires(self,  # type: TemplateBase
-                     warr_list,  # type: Union[WireArray, List[WireArray]]
+                     warr_list,  # type: Union[WireArray, List[Optional[WireArray]]]
                      lower=None,  # type: Optional[Union[float, int]]
                      upper=None,  # # type: Optional[Union[float, int]]
                      unit_mode=False,  # type: bool
@@ -1671,7 +1671,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        warr_list : Union[WireArray, List[WireArray]]
+        warr_list : Union[WireArray, List[Optional[WireArray]]]
             the wires to extend.
         lower : Optional[Union[float, int]]
             the wire lower coordinate.
@@ -1702,38 +1702,41 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         new_warr_list = []
         for warr in warr_list:
-            wlower = warr.lower_unit
-            wupper = warr.upper_unit
-            if lower is None:
-                cur_lower = wlower
+            if warr is None:
+                new_warr_list.append(None)
             else:
-                cur_lower = min(lower, wlower)
-            if upper is None:
-                cur_upper = wupper
-            else:
-                cur_upper = max(upper, wupper)
-            if min_len_mode is not None:
-                # extend track to meet minimum length
-                min_len = self.grid.get_min_length(warr.layer_id, warr.track_id.width,
-                                                   unit_mode=True)
-                # make sure minimum length is even so that middle coordinate exists
-                min_len = -(-min_len // 2) * 2
-                tr_len = cur_upper - cur_lower
-                if min_len > tr_len:
-                    ext = min_len - tr_len
-                    if min_len_mode < 0:
-                        cur_lower -= ext
-                    elif min_len_mode > 0:
-                        cur_upper += ext
-                    else:
-                        cur_lower -= ext // 2
-                        cur_upper = cur_lower + min_len
+                wlower = warr.lower_unit
+                wupper = warr.upper_unit
+                if lower is None:
+                    cur_lower = wlower
+                else:
+                    cur_lower = min(lower, wlower)
+                if upper is None:
+                    cur_upper = wupper
+                else:
+                    cur_upper = max(upper, wupper)
+                if min_len_mode is not None:
+                    # extend track to meet minimum length
+                    min_len = self.grid.get_min_length(warr.layer_id, warr.track_id.width,
+                                                       unit_mode=True)
+                    # make sure minimum length is even so that middle coordinate exists
+                    min_len = -(-min_len // 2) * 2
+                    tr_len = cur_upper - cur_lower
+                    if min_len > tr_len:
+                        ext = min_len - tr_len
+                        if min_len_mode < 0:
+                            cur_lower -= ext
+                        elif min_len_mode > 0:
+                            cur_upper += ext
+                        else:
+                            cur_lower -= ext // 2
+                            cur_upper = cur_lower + min_len
 
-            new_warr = WireArray(warr.track_id, cur_lower, cur_upper, res=res, unit_mode=True)
-            for layer_name, bbox_arr in new_warr.wire_arr_iter(self.grid):
-                self.add_rect(layer_name, bbox_arr)
+                new_warr = WireArray(warr.track_id, cur_lower, cur_upper, res=res, unit_mode=True)
+                for layer_name, bbox_arr in new_warr.wire_arr_iter(self.grid):
+                    self.add_rect(layer_name, bbox_arr)
 
-            new_warr_list.append(new_warr)
+                new_warr_list.append(new_warr)
 
         return new_warr_list
 
