@@ -136,11 +136,12 @@ class BiasShield(TemplateBase):
         num = dim_par // sup_unit
         if num == 1:
             num = 1 if sup_p2 == 0 else 1 + (sup_np2 - 2 * sup_spe2) // sup_p2
-            sup_tid = TrackID(sup_layer, (sup_spe2 - 1) / 2, num=num, pitch=sup_p2 / 2)
+            sup_tid = TrackID(sup_layer, (sup_spe2 - 1) / 2, width=sup_w, num=num, pitch=sup_p2 / 2)
             warr = self.connect_to_tracks(sh_warr, sup_tid)
         else:
             if sup_p2 == 0:
-                sup_tid = TrackID(sup_layer, (sup_spe2 - 1) / 2, num=num, pitch=sup_np2 / 2)
+                sup_tid = TrackID(sup_layer, (sup_spe2 - 1) / 2, width=sup_w, num=num,
+                                  pitch=sup_np2 / 2)
                 warr = self.connect_to_tracks(sh_warr, sup_tid)
             else:
                 # TODO: come back to fix this
@@ -468,6 +469,7 @@ class BiasShieldJoin(TemplateBase):
         # type: () -> Dict[str, str]
         return dict(
             bot_layer='The bottom routing layer ID.',
+            bias_config='The bias configuration dictionary.',
             bot_params='the bottom layer routing parameters.',
             top_params='the top layer routing parameters.',
             bot_open='True if bottom layer routing is open on both ends.',
@@ -485,6 +487,7 @@ class BiasShieldJoin(TemplateBase):
     def draw_layout(self):
         # type: () -> None
         bot_layer = self.params['bot_layer']
+        bias_config = self.params['bias_config']
         bot_params = self.params['bot_params']
         top_params = self.params['top_params']
         bot_open = self.params['bot_open']
@@ -496,8 +499,8 @@ class BiasShieldJoin(TemplateBase):
         bot_dir = grid.get_direction(bot_layer)
         bot_horiz = (bot_dir == 'x')
 
-        bot_w, bot_h = BiasShield.get_block_size(grid, bot_layer, **bot_params)
-        top_w, top_h = BiasShield.get_block_size(grid, top_layer, **top_params)
+        bot_w, bot_h = BiasShield.get_block_size(grid, bot_layer, bias_config, **bot_params)
+        top_w, top_h = BiasShield.get_block_size(grid, top_layer, bias_config, **top_params)
 
         nx_bot = ny_bot = nx_top = ny_top = 1
         if bot_horiz:
@@ -510,12 +513,14 @@ class BiasShieldJoin(TemplateBase):
 
         bot_params = bot_params.copy()
         bot_params['layer'] = bot_layer
+        bot_params['bias_config'] = bias_config
         bot_params['top'] = False
         bb_master = self.new_template(params=bot_params, temp_cls=BiasShield)
         bot_params['top'] = True
         bt_master = self.new_template(params=bot_params, temp_cls=BiasShield)
         top_params = top_params.copy()
         top_params['layer'] = top_layer
+        top_params['bias_config'] = bias_config
         top_params['top'] = True
         tt_master = self.new_template(params=top_params, temp_cls=BiasShield)
         top_params['top'] = False
