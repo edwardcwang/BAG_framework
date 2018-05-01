@@ -120,18 +120,18 @@ class BiasShield(TemplateBase):
             return perp_dim, par_dim
 
     @classmethod
-    def add_bias_shields(cls,
-                         template,  # type: TemplateBase
-                         layer,  # type: int
-                         warr_list2,  # type: List[Union[WireArray, Iterable[WireArray]]]
-                         offset,  # type: int
-                         width=1,  # type: int
-                         space_sig=0,  # type: int
-                         space_sup=1,  # type: Union[int, Tuple[int, int]]
-                         tr_lower=None,  # type: Optional[int]
-                         tr_upper=None,  # type: Optional[int]
-                         lu_end_mode=0,  # type: int
-                         ):
+    def draw_bias_shields(cls,
+                          template,  # type: TemplateBase
+                          layer,  # type: int
+                          warr_list2,  # type: List[Union[WireArray, Iterable[WireArray]]]
+                          offset,  # type: int
+                          width=1,  # type: int
+                          space_sig=0,  # type: int
+                          space_sup=1,  # type: Union[int, Tuple[int, int]]
+                          tr_lower=None,  # type: Optional[int]
+                          tr_upper=None,  # type: Optional[int]
+                          lu_end_mode=0,  # type: int
+                          ):
         # type: (...) -> BiasInfo
         grid = template.grid
 
@@ -175,9 +175,11 @@ class BiasShield(TemplateBase):
             if tr_warr is not None:
                 if tr_lower is None:
                     tr_lower = tr_warr.lower_unit
-                    tr_upper = tr_warr.upper_unit
                 else:
                     tr_lower = min(tr_lower, tr_warr.lower_unit)
+                if tr_upper is None:
+                    tr_upper = tr_warr.upper_unit
+                else:
                     tr_upper = max(tr_upper, tr_warr.upper_unit)
 
             for warr in warr_list:
