@@ -4,7 +4,6 @@
 
 from typing import TYPE_CHECKING, Dict, Set, Any, Iterable, List, Union, Tuple, Generator, Optional
 
-import numbers
 from collections import namedtuple
 from itertools import chain, repeat, islice
 
@@ -59,10 +58,10 @@ class BiasShield(TemplateBase):
         return dict(
             layer='the routing layer.',
             nwire='number of routing wires.',
+            bias_config='The bias configuration dictionary.',
             top='True to draw top shield.',
             width='route wire width.',
             space_sig='route wire spacing.',
-            space_sup='supply wire spacing.',
         )
 
     @classmethod
@@ -72,7 +71,6 @@ class BiasShield(TemplateBase):
             top=True,
             width=1,
             space_sig=0,
-            space_sup=1,
         )
 
     def get_layout_basename(self):
@@ -84,14 +82,11 @@ class BiasShield(TemplateBase):
     def draw_layout(self):
         # type: () -> None
         route_layer = self.params['layer']
+        bias_config = self.params['bias_config']
         nwire = self.params['nwire']
         width = self.params['width']
         space_sig = self.params['space_sig']
         top = self.params['top']
-        space_sup = self.params['space_sup']
-
-        if isinstance(space_sup, numbers.Integral):
-            space_sup = (space_sup, space_sup)
 
         grid = self.grid
         res = grid.resolution
@@ -99,93 +94,106 @@ class BiasShield(TemplateBase):
         bot_layer = route_layer - 1
         top_layer = route_layer + 1
         bot_pitch = grid.get_track_pitch(bot_layer, unit_mode=True)
-        top_pitch = grid.get_track_pitch(top_layer, unit_mode=True)
         route_dir = grid.get_direction(route_layer)
+        is_horiz = (route_dir == 'x')
 
-        tot_w, tot_h = self.get_block_size(grid, route_layer, nwire, width=width,
-                                           space_sig=space_sig, space_sup=space_sup)
+        # compute size
+        tot_w, tot_h = self.get_block_size(grid, route_layer, bias_config, nwire,
+                                           width=width, space_sig=space_sig)
+        if is_horiz:
+            dim_perp = tot_h
+            dim_par = tot_w
+        else:
+            dim_perp = tot_w
+            dim_par = tot_h
         bbox = BBox(0, 0, tot_w, tot_h, res, unit_mode=True)
         self.prim_top_layer = top_layer
         self.prim_bound_box = bbox
         self.array_box = bbox
 
+        # compute wire location
         tr_manager = TrackManager(grid, {'sig': {route_layer: width}},
                                   {('sig', ''): {route_layer: space_sig}}, half_space=True)
-
-        tmp = [1]
+        route_w = bias_config[route_layer][1]
+        tmp = [route_w]
         route_list = list(chain(tmp, repeat('sig', nwire), tmp))
-        ntr, locs = tr_manager.place_wires(route_layer, route_list)
+        route_pitch = grid.get_track_pitch(route_layer, unit_mode=True)
+        route_ntr = dim_perp / route_pitch
+        locs = tr_manager.align_wires(route_layer, route_list, route_ntr, alignment=0, start_idx=0)
 
-        self._route_tids = list(chain([(locs[0], 1)],
+        self._route_tids = list(chain([(locs[0], route_w)],
                                       ((locs[idx], width) for idx in range(1, nwire + 1)),
-                                      [(locs[nwire + 1], 1)]))
+                                      [(locs[nwire + 1], route_w)]))
 
         pitch = locs[nwire + 1] - locs[0]
-        tr_upper = bbox.width_unit if route_dir == 'x' else bbox.height_unit
+        tr_upper = bbox.width_unit if is_horiz else bbox.height_unit
         sh_warr = self.add_wires(route_layer, locs[0], 0, tr_upper, num=2, pitch=pitch,
                                  unit_mode=True)
-        if top:
-            sup_pitch = space_sup[1] + 1
-            sup_tid = TrackID(top_layer, space_sup[1] / 2,
-                              num=(tr_upper // (sup_pitch * top_pitch)), pitch=sup_pitch)
+
+        sup_layer = top_layer if top else bot_layer
+        pitch2 = grid.get_track_pitch(sup_layer, unit_mode=True) // 2
+        sup_np2, sup_w, sup_spe2, sup_p2 = bias_config[sup_layer]
+        sup_unit = sup_np2 * pitch2
+        num = dim_par // sup_unit
+        if num == 1:
+            num = 1 if sup_p2 == 0 else 1 + (sup_np2 - 2 * sup_spe2) // sup_p2
+            sup_tid = TrackID(sup_layer, sup_spe2 / 2, num=num, pitch=sup_p2 / 2)
             warr = self.connect_to_tracks(sh_warr, sup_tid)
         else:
-            sup_pitch = space_sup[0] + 1
-            sup_tid = TrackID(bot_layer, space_sup[0] / 2,
-                              num=(tr_upper // (sup_pitch * bot_pitch)), pitch=sup_pitch)
-            warr = self.connect_to_tracks(sh_warr, sup_tid)
-        self.add_pin('sup', warr, show=False)
+            if sup_p2 == 0:
+                sup_tid = TrackID(sup_layer, sup_spe2 / 2, num=num, pitch=sup_np2 / 2)
+                warr = self.connect_to_tracks(sh_warr, sup_tid)
+            else:
+                # TODO: come back to fix this
+                raise ValueError('umm...see Eric')
 
+        self.add_pin('sup', warr, show=False)
         sup_box = warr.get_bbox_array(self.grid).get_overall_bbox()
         self._sup_intv = sup_box.get_interval(route_dir, unit_mode=True)
 
     @classmethod
-    def get_block_size(cls, grid, route_layer, nwire, width=1, space_sig=0, space_sup=1):
-        # type: (RoutingGrid, int, int, int, int, Union[int, Tuple[int, int]]) -> Tuple[int, int]
-        if isinstance(space_sup, numbers.Integral):
-            space_sup = (space_sup, space_sup)
+    def get_block_size(cls, grid, route_layer, bias_config, nwire, width=1, space_sig=0):
+        # type: (RoutingGrid, int, Dict[int, Tuple[int, ...]], int, int, int) -> Tuple[int, int]
 
         bot_layer = route_layer - 1
         top_layer = route_layer + 1
         route_dir = grid.get_direction(route_layer)
         is_horiz = route_dir == 'x'
-        if is_horiz:
-            half_blk_x = False
-            half_blk_y = True
-        else:
-            half_blk_x = True
-            half_blk_y = False
-        blk_w, blk_h = grid.get_block_size(top_layer, unit_mode=True, half_blk_x=half_blk_x,
-                                           half_blk_y=half_blk_y)
 
-        bot_pitch = grid.get_track_pitch(bot_layer, unit_mode=True)
-        top_pitch = grid.get_track_pitch(top_layer, unit_mode=True)
-        route_pitch = grid.get_track_pitch(route_layer, unit_mode=True)
+        # calculate dimension
+        bot_pitch2 = grid.get_track_pitch(bot_layer, unit_mode=True) // 2
+        route_pitch2 = grid.get_track_pitch(route_layer, unit_mode=True) // 2
+        top_pitch2 = grid.get_track_pitch(top_layer, unit_mode=True) // 2
+        bot_np2, bot_w, bot_spe2, _ = bias_config[bot_layer]
+        route_np2, route_w, route_spe2, _ = bias_config[route_layer]
+        top_np2, top_w, top_spe2, _ = bias_config[top_layer]
+        bot_unit = bot_np2 * bot_pitch2
+        route_unit = route_np2 * route_pitch2
+        top_unit = top_np2 * top_pitch2
+        dim_par = lcm([bot_unit, top_unit])
 
         tr_manager = TrackManager(grid, {'sig': {route_layer: width}},
                                   {('sig', ''): {route_layer: space_sig}}, half_space=True)
 
-        tmp = [1]
+        tmp = [route_w]
         route_list = list(chain(tmp, repeat('sig', nwire), tmp))
-        ntr, _ = tr_manager.place_wires(route_layer, route_list)
-        par_dim = lcm([bot_pitch * (1 + space_sup[0]), top_pitch * (1 + space_sup[1])])
-        perp_dim = int(round(ntr * route_pitch))
+        _, locs = tr_manager.place_wires(route_layer, route_list)
+        num_htr = int(2 * (locs[nwire + 1] - locs[0])) + 2 * route_spe2
+        dim_perp = -(-(num_htr * route_pitch2) // route_unit) * route_unit
         if is_horiz:
-            par_dim = -(-par_dim // blk_w) * blk_w
-            return par_dim, perp_dim
+            return dim_par, dim_perp
         else:
-            par_dim = -(-par_dim // blk_h) * blk_h
-            return perp_dim, par_dim
+            return dim_perp, dim_par
 
     @classmethod
-    def draw_bias_shields(cls,
+    def draw_bias_shields(cls,  # type: BiasShield
                           template,  # type: TemplateBase
                           layer,  # type: int
+                          bias_config,  # type: Dict[int, Tuple[int, ...]]
                           warr_list2,  # type: List[Union[WireArray, Iterable[WireArray]]]
                           offset,  # type: int
                           width=1,  # type: int
                           space_sig=0,  # type: int
-                          space_sup=1,  # type: Union[int, Tuple[int, int]]
                           tr_lower=None,  # type: Optional[int]
                           tr_upper=None,  # type: Optional[int]
                           lu_end_mode=0,  # type: int
@@ -197,10 +205,10 @@ class BiasShield(TemplateBase):
         params = dict(
             layer=layer,
             nwire=nwire,
+            bias_config=bias_config,
             top=False,
             width=width,
             space_sig=space_sig,
-            space_sup=space_sup,
         )
         bot_master = template.new_template(params=params, temp_cls=BiasShield)
         sh_box = bot_master.bound_box
@@ -361,9 +369,9 @@ class BiasShieldEnd(TemplateBase):
         return dict(
             layer='the routing layer.',
             nwire='number of routing wires.',
+            bias_config='The bias configuration dictionary.',
             width='route wire width.',
             space_sig='route wire spacing.',
-            space_sup='supply wire spacing.',
         )
 
     @classmethod
@@ -372,7 +380,6 @@ class BiasShieldEnd(TemplateBase):
         return dict(
             width=1,
             space_sig=0,
-            space_sup=1,
         )
 
     def get_layout_basename(self):
@@ -505,13 +512,21 @@ class BiasShieldJoin(TemplateBase):
         bot_params = bot_params.copy()
         bot_params['layer'] = bot_layer
         bot_params['top'] = False
-        bot_sh_master = self.new_template(params=bot_params, temp_cls=BiasShield)
+        bb_master = self.new_template(params=bot_params, temp_cls=BiasShield)
+        bot_params['top'] = True
+        bt_master = self.new_template(params=bot_params, temp_cls=BiasShield)
         top_params = top_params.copy()
         top_params['layer'] = top_layer
         top_params['top'] = True
-        top_sh_master = self.new_template(params=top_params, temp_cls=BiasShield)
+        tt_master = self.new_template(params=top_params, temp_cls=BiasShield)
+        top_params['top'] = False
+        tb_master = self.new_template(params=top_params, temp_cls=BiasShield)
 
-        bot_sh = self.add_instance(bot_sh_master, 'XB', loc=(0, 0), nx=nx_bot,
-                                   ny=ny_bot, spx=bot_w, spy=bot_h, unit_mode=True)
-        top_sh = self.add_instance(top_sh_master, 'XT', loc=(0, 0), nx=nx_top,
-                                   ny=ny_top, spx=top_w, spy=top_h, unit_mode=True)
+        bb_inst = self.add_instance(bb_master, 'XBB', loc=(0, 0), nx=nx_bot,
+                                    ny=ny_bot, spx=bot_w, spy=bot_h, unit_mode=True)
+        tt_inst = self.add_instance(tt_master, 'XTT', loc=(0, 0), nx=nx_top,
+                                    ny=ny_top, spx=top_w, spy=top_h, unit_mode=True)
+        bt_test = self.add_instance(bt_master, 'XBT', loc=(0, -bot_h), unit_mode=True)
+        tb_test = self.add_instance(tb_master, 'XTB', loc=(-top_w, 0), unit_mode=True)
+
+
