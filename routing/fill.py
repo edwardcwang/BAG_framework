@@ -82,13 +82,26 @@ class PowerFill(TemplateBase):
         self.add_pin('VSS', vss_list, show=show_pins)
 
     @classmethod
+    def get_fill_orient(cls, orient_mode):
+        if orient_mode == 0:
+            return 'R0'
+        elif orient_mode == 1:
+            return 'MY'
+        elif orient_mode == 2:
+            return 'MX'
+        elif orient_mode == 3:
+            return 'R180'
+        else:
+            raise ValueError('Unknown orientation mode: %d' % orient_mode)
+
+    @classmethod
     def add_fill_blocks(cls,
                         template,  # type: TemplateBase
                         bound_box,  # type: BBox
                         fill_config,  # type: Dict[int, Tuple[int, int, int, int]]
                         bot_layer,  # type: int
                         top_layer,  # type: int
-                        orient='R0',  # type: str
+                        orient_mode=0,  # type: int
                         ):
         # type: (...) -> List[List[Instance]]
         # number of wire types per fill block
@@ -168,9 +181,10 @@ class PowerFill(TemplateBase):
             fill_config=fill_config,
             show_pins=False
         )
-        xinc = 0 if (orient == 'R0' or orient == 'MX') else 1
-        yinc = 0 if (orient == 'R0' or orient == 'MY') else 1
+        xinc = 0 if (orient_mode & 1 == 0) else 1
+        yinc = 0 if (orient_mode & 2 == 0) else 1
         inst_list2 = []
+        orient = cls.get_fill_orient(orient_mode)
         for idx, inst_info_list in enumerate(inst_info_list2):
             inst_list = []
             inst_params['bot_layer'] = bot_layer + idx
