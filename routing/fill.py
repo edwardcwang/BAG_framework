@@ -56,6 +56,31 @@ class PowerFill(TemplateBase):
         bot_lay = self.params['bot_layer']
         return 'power_fill_m%dm%d' % (bot_lay, bot_lay + 1)
 
+    def draw_layout(self):
+        # type: () -> None
+        fill_config = self.params['fill_config']
+        bot_layer = self.params['bot_layer']
+        show_pins = self.params['show_pins']
+
+        top_layer = bot_layer + 1
+        blk_w, blk_h = self.grid.get_fill_size(top_layer, fill_config, unit_mode=True)
+        bnd_box = BBox(0, 0, blk_w, blk_h, self.grid.resolution, unit_mode=True)
+        self.set_size_from_bound_box(top_layer, bnd_box)
+        self.array_box = bnd_box
+
+        vdd_list, vss_list = None, None
+        for lay in range(bot_layer, top_layer + 1):
+            fill_width, fill_space, space, space_le = fill_config[lay]
+            vdd_list, vss_list = self.do_power_fill(lay, space, space_le, vdd_warrs=vdd_list,
+                                                    vss_warrs=vss_list, fill_width=fill_width,
+                                                    fill_space=fill_space, unit_mode=True)
+            if lay == bot_layer:
+                self.add_pin('VDD_b', vdd_list, show=False)
+                self.add_pin('VSS_b', vss_list, show=False)
+
+        self.add_pin('VDD', vdd_list, show=show_pins)
+        self.add_pin('VSS', vss_list, show=show_pins)
+
     @classmethod
     def add_fill_blocks(cls,
                         template,  # type: TemplateBase
@@ -63,6 +88,7 @@ class PowerFill(TemplateBase):
                         fill_config,  # type: Dict[int, Tuple[int, int, int, int]]
                         bot_layer,  # type: int
                         top_layer,  # type: int
+                        orient='R0',  # type: str
                         ):
         # type: (...) -> List[List[Instance]]
         # number of wire types per fill block
@@ -132,7 +158,7 @@ class PowerFill(TemplateBase):
                 prev_uf_mat = use_fill_list[-1]
                 uf_tot = prev_uf_mat & uf_mat
                 inst_info_list = []
-                for x0, y0, nx, ny in cls.get_fill_mosaics(uf_tot):
+                for x0, y0, nx, ny in cls._get_fill_mosaics(uf_tot):
                     inst_info_list.append((x0, y0, nx, ny))
                 inst_info_list2.append(inst_info_list)
 
@@ -142,21 +168,23 @@ class PowerFill(TemplateBase):
             fill_config=fill_config,
             show_pins=False
         )
+        xinc = 0 if (orient == 'R0' or orient == 'MX') else 1
+        yinc = 0 if (orient == 'R0' or orient == 'MY') else 1
         inst_list2 = []
         for idx, inst_info_list in enumerate(inst_info_list2):
             inst_list = []
             inst_params['bot_layer'] = bot_layer + idx
             master = template.new_template(params=inst_params, temp_cls=PowerFill)
             for x0, y0, nx, ny in inst_info_list:
-                loc = xl + x0 * blk_w, yb + y0 * blk_h
-                inst = template.add_instance(master, loc=loc, nx=nx, ny=ny, spx=blk_w,
-                                             spy=blk_h, unit_mode=True)
+                loc = xl + (x0 + xinc) * blk_w, yb + (y0 + yinc) * blk_h
+                inst = template.add_instance(master, loc=loc, orient=orient, nx=nx, ny=ny,
+                                             spx=blk_w, spy=blk_h, unit_mode=True)
                 inst_list.append(inst)
             inst_list2.append(inst_list)
         return inst_list2
 
     @classmethod
-    def get_fill_mosaics(cls, uf_mat):
+    def _get_fill_mosaics(cls, uf_mat):
         # TODO: use Eppestein's Polygon dissection instead of greedy algorithm
         nx, ny = uf_mat.shape
         idx_mat = np.full((nx, ny, 2), -1)
@@ -183,28 +211,3 @@ class PowerFill(TemplateBase):
             nx = xidx - x0 + 1
             ny = yidx - y0 + 1
             yield x0, y0, nx, ny
-
-    def draw_layout(self):
-        # type: () -> None
-        fill_config = self.params['fill_config']
-        bot_layer = self.params['bot_layer']
-        show_pins = self.params['show_pins']
-
-        top_layer = bot_layer + 1
-        blk_w, blk_h = self.grid.get_fill_size(top_layer, fill_config, unit_mode=True)
-        bnd_box = BBox(0, 0, blk_w, blk_h, self.grid.resolution, unit_mode=True)
-        self.set_size_from_bound_box(top_layer, bnd_box)
-        self.array_box = bnd_box
-
-        vdd_list, vss_list = None, None
-        for lay in range(bot_layer, top_layer + 1):
-            fill_width, fill_space, space, space_le = fill_config[lay]
-            vdd_list, vss_list = self.do_power_fill(lay, space, space_le, vdd_warrs=vdd_list,
-                                                    vss_warrs=vss_list, fill_width=fill_width,
-                                                    fill_space=fill_space, unit_mode=True)
-            if lay == bot_layer:
-                self.add_pin('VDD_b', vdd_list, show=False)
-                self.add_pin('VSS_b', vss_list, show=False)
-
-        self.add_pin('VDD', vdd_list, show=show_pins)
-        self.add_pin('VSS', vss_list, show=show_pins)
