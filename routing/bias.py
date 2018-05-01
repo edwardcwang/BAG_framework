@@ -204,6 +204,7 @@ class BiasShield(TemplateBase):
         nstart = tr_lower // qdim
         nstop = -(-tr_upper // qdim)
         sup_warrs = []
+        sup_layer = layer + 1
         for master, intvs in zip((bot_master, top_master), (bot_intvs, top_intvs)):
             sl, su = master.sup_intv
             ncur = nstart
@@ -220,7 +221,7 @@ class BiasShield(TemplateBase):
                         ny = nblk
                     inst = template.add_instance(master, loc=loc, nx=nx, ny=ny,
                                                  spx=qdim, spy=qdim, unit_mode=True)
-                    sup_warrs.extend(inst.get_all_port_pins('sup'))
+                    sup_warrs.extend(inst.port_pins_iter('sup', layer=sup_layer))
                 ncur = nnext
 
         # draw wires and end master
@@ -253,7 +254,7 @@ class BiasShield(TemplateBase):
                 loc = p1
                 p1 = None
             inst = template.add_instance(end_master, loc=loc, orient=eorient, unit_mode=True)
-            sup_warrs.extend(inst.get_all_port_pins('sup'))
+            sup_warrs.extend(inst.get_all_port_pins('sup', layer=sup_layer))
 
         return BiasInfo(tracks=tr_warr_list, supplies=sup_warrs, p0=p0, p1=p1)
 
