@@ -93,7 +93,6 @@ class BiasShield(TemplateBase):
 
         bot_layer = route_layer - 1
         top_layer = route_layer + 1
-        bot_pitch = grid.get_track_pitch(bot_layer, unit_mode=True)
         route_dir = grid.get_direction(route_layer)
         is_horiz = (route_dir == 'x')
 
@@ -110,24 +109,24 @@ class BiasShield(TemplateBase):
         self.prim_top_layer = top_layer
         self.prim_bound_box = bbox
         self.array_box = bbox
+        self.add_cell_boundary(bbox)
 
         # compute wire location
         tr_manager = TrackManager(grid, {'sig': {route_layer: width}},
                                   {('sig', ''): {route_layer: space_sig}}, half_space=True)
-        route_w = bias_config[route_layer][1]
-        tmp = [route_w]
+        tmp = [1]
         route_list = list(chain(tmp, repeat('sig', nwire), tmp))
         route_pitch = grid.get_track_pitch(route_layer, unit_mode=True)
         route_ntr = dim_perp / route_pitch
         locs = tr_manager.align_wires(route_layer, route_list, route_ntr, alignment=0, start_idx=0)
 
-        self._route_tids = list(chain([(locs[0], route_w)],
+        self._route_tids = list(chain([(locs[0], 1)],
                                       ((locs[idx], width) for idx in range(1, nwire + 1)),
-                                      [(locs[nwire + 1], route_w)]))
+                                      [(locs[nwire + 1], 1)]))
 
         pitch = locs[nwire + 1] - locs[0]
         tr_upper = bbox.width_unit if is_horiz else bbox.height_unit
-        sh_warr = self.add_wires(route_layer, locs[0], 0, tr_upper, num=2, pitch=pitch,
+        sh_warr = self.add_wires(route_layer, locs[0], 0, tr_upper, width=1, num=2, pitch=pitch,
                                  unit_mode=True)
 
         sup_layer = top_layer if top else bot_layer
@@ -137,11 +136,11 @@ class BiasShield(TemplateBase):
         num = dim_par // sup_unit
         if num == 1:
             num = 1 if sup_p2 == 0 else 1 + (sup_np2 - 2 * sup_spe2) // sup_p2
-            sup_tid = TrackID(sup_layer, sup_spe2 / 2, num=num, pitch=sup_p2 / 2)
+            sup_tid = TrackID(sup_layer, (sup_spe2 - 1) / 2, num=num, pitch=sup_p2 / 2)
             warr = self.connect_to_tracks(sh_warr, sup_tid)
         else:
             if sup_p2 == 0:
-                sup_tid = TrackID(sup_layer, sup_spe2 / 2, num=num, pitch=sup_np2 / 2)
+                sup_tid = TrackID(sup_layer, (sup_spe2 - 1) / 2, num=num, pitch=sup_np2 / 2)
                 warr = self.connect_to_tracks(sh_warr, sup_tid)
             else:
                 # TODO: come back to fix this
