@@ -1446,8 +1446,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         self._layout.add_label(label, layer, bbox)
 
-    def add_pin(self, net_name, wire_arr_list, label='', show=True):
-        # type: (str, Union[WireArray, List[WireArray]], str, bool) -> None
+    def add_pin(self, net_name, wire_arr_list, label='', show=True, edge_mode=0):
+        # type: (str, Union[WireArray, List[WireArray]], str, bool, int) -> None
         """Add new pin to the layout.
 
         If one or more pins with the same net name already exists,
@@ -1464,6 +1464,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             this argument is used if you need the label to be different than net name
             for LVS purposes.  For example, unconnected pins usually need a colon after
             the name to indicate that LVS should short those pins together.
+        edge_mode : int
+            If <0, draw the pin on the lower end of the WireArray.  If >0, draw the pin
+            on the upper end.  If 0, draw the pin on the entire WireArray.
         show : bool
             if True, draw the pin in layout.
         """
@@ -1486,14 +1489,25 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if port_params['show'] != show:
             raise ValueError('Conflicting show port specification.')
 
-        for wire_arr in wire_arr_list:
+        for warr in wire_arr_list:
             # add pin array to port_pins
-            layer_id = wire_arr.track_id.layer_id
+            layer_id = warr.track_id.layer_id
+            if edge_mode != 0:
+                cur_w = self.grid.get_track_width(layer_id, warr.track_id.width, unit_mode=True)
+                wl = warr.lower_unit
+                wu = warr.upper_unit
+                pin_len = min(cur_w * 2, wu - wl)
+                if edge_mode < 0:
+                    wu = wl + pin_len
+                else:
+                    wl = wu - pin_len
+                warr = WireArray(warr.track_id, wl, wu, res=self.grid.resolution, unit_mode=True)
+
             port_pins = port_params['pins']
             if layer_id not in port_pins:
-                port_pins[layer_id] = [wire_arr]
+                port_pins[layer_id] = [warr]
             else:
-                port_pins[layer_id].append(wire_arr)
+                port_pins[layer_id].append(warr)
 
     def add_via(self,  # type: TemplateBase
                 bbox,  # type: BBox
