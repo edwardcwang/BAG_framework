@@ -147,6 +147,7 @@ class BiasShield(TemplateBase):
                 # TODO: come back to fix this
                 raise ValueError('umm...see Eric')
 
+        self.add_pin('shield', sh_warr, show=False)
         self.add_pin('sup', warr, show=False)
         sup_box = warr.get_bbox_array(self.grid).get_overall_bbox()
         self._sup_intv = sup_box.get_interval(route_dir, unit_mode=True)
@@ -442,6 +443,94 @@ class BiasShieldEnd(TemplateBase):
         self.add_pin('sup', top_inst.get_all_port_pins('sup'), show=False)
 
 
+class BiasShieldCrossing(TemplateBase):
+    """This template allows orthogonal bias bus to cross each other.
+
+    Parameters
+    ----------
+    temp_db : TemplateDB
+        the template database.
+    lib_name : str
+        the layout library name.
+    params : Dict[str, Any]
+        the parameter values.
+    used_names : Set[str]
+        a set of already used cell names.
+    **kwargs :
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        return dict(
+            bot_layer='The bottom routing layer ID.',
+            bias_config='The bias configuration dictionary.',
+            bot_params='the bottom layer routing parameters.',
+            top_params='the top layer routing parameters.',
+            connect_shield='True to connect shield wires together.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(
+            connect_shield=False,
+        )
+
+    def draw_layout(self):
+        # type: () -> None
+        bot_layer = self.params['bot_layer']
+        bias_config = self.params['bias_config']
+        bot_params = self.params['bot_params']
+        top_params = self.params['top_params']
+        connect_shield = self.params['connect_shield']
+
+        grid = self.grid
+
+        top_layer = bot_layer + 1
+        bot_dir = grid.get_direction(bot_layer)
+        bot_horiz = (bot_dir == 'x')
+
+        bot_w, bot_h = BiasShield.get_block_size(grid, bot_layer, bias_config, **bot_params)
+        top_w, top_h = BiasShield.get_block_size(grid, top_layer, bias_config, **top_params)
+
+        nx_bot = ny_bot = nx_top = ny_top = 1
+        if bot_horiz:
+            nx_bot = -(-top_w // bot_w)
+            ny_top = -(-bot_h // top_h)
+
+        else:
+            ny_bot = -(-top_h // bot_h)
+            nx_top = -(-bot_w // top_w)
+
+        bot_params = bot_params.copy()
+        bot_params['layer'] = bot_layer
+        bot_params['bias_config'] = bias_config
+        bot_params['top'] = False
+        bb_master = self.new_template(params=bot_params, temp_cls=BiasShield)
+        top_params = top_params.copy()
+        top_params['layer'] = top_layer
+        top_params['bias_config'] = bias_config
+        top_params['top'] = True
+        tt_master = self.new_template(params=top_params, temp_cls=BiasShield)
+
+        bb_inst = self.add_instance(bb_master, 'XBB', loc=(0, 0), nx=nx_bot,
+                                    ny=ny_bot, spx=bot_w, spy=bot_h, unit_mode=True)
+        tt_inst = self.add_instance(tt_master, 'XTT', loc=(0, 0), nx=nx_top,
+                                    ny=ny_top, spx=top_w, spy=top_h, unit_mode=True)
+
+        if connect_shield:
+            self.connect_to_track_wires(bb_inst.get_pin('shield'), tt_inst.get_pin('shield'))
+
+        self.reexport(tt_inst.get_port('sup'), show=False)
+
+
 class BiasShieldJoin(TemplateBase):
     """This template joins orthogonal bias routes together.
 
@@ -532,5 +621,3 @@ class BiasShieldJoin(TemplateBase):
                                     ny=ny_top, spx=top_w, spy=top_h, unit_mode=True)
         bt_test = self.add_instance(bt_master, 'XBT', loc=(0, -bot_h), unit_mode=True)
         tb_test = self.add_instance(tb_master, 'XTB', loc=(-top_w, 0), unit_mode=True)
-
-
