@@ -1538,7 +1538,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         intv = self._used_list[row_idx]
         lay_info = master.layout_info
         endl, endr = master.lr_edge_info
-        endb, endt = master.tb_ext_info
+        endt, endb = master.tb_ext_info
         x0 = self._laygo_info.col_to_coord(col_idx, unit_mode=True)
         if row_orient == 'MX':
             endb, endt = endt, endb
@@ -1637,7 +1637,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         # update used interval
         lay_info = master.layout_info
         endl, endr = master.lr_edge_info
-        endb, endt = master.tb_ext_info
+        endt, endb = master.tb_ext_info
         if row_orient == 'MX':
             endb, endt = endt, endb
 
@@ -1661,11 +1661,11 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
             end_mode = self._laygo_info.end_mode
             row_edge_infos = self._row_layout_info['row_edge_infos']
-            if end_mode & 8 != 0:
+            if end_mode & 4 != 0:
                 edgel_infos = self._lr_edge_info[0].master_infos_iter(row_edge_infos)
             else:
                 edgel_infos = []
-            if end_mode & 4 != 0:
+            if end_mode & 8 != 0:
                 edger_infos = self._lr_edge_info[1].master_infos_iter(row_edge_infos)
             else:
                 edger_infos = []
