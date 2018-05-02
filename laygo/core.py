@@ -659,8 +659,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         top_layer = layout_info['top_layer']
         guard_ring_nf = layout_info['guard_ring_nf']
         row_prop_list = layout_info['row_prop_list']
+        lay_end_mode = layout_info['end_mode']
         if end_mode is None:
-            end_mode = layout_info['end_mode']
+            end_mode = lay_end_mode
         if draw_boundaries is None:
             draw_boundaries = layout_info['draw_boundaries']
 
@@ -686,12 +687,14 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             top_type = row_prop_list[-1]['mos_type']
             bot_thres = row_prop_list[0]['threshold']
             top_thres = row_prop_list[-1]['threshold']
-            self._create_end_masters(end_mode, bot_type, top_type, bot_thres, top_thres,
-                                     top_layer, 0)
+            ybot, _ = self._create_end_masters(end_mode, bot_type, top_type, bot_thres,
+                                               top_thres, top_layer, 0)
+        else:
+            ybot = 0
 
-        self._row_prop_list = row_prop_list
         if 'row_info_list' in layout_info:
             # this layout information dictionary is from another LaygoBase
+            self._row_prop_list = row_prop_list
             self._row_info_list = layout_info['row_info_list']
             self._ext_params = layout_info['ext_params']
             # set substrate extension information
@@ -699,8 +702,16 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             self._top_sub_extw = layout_info['top_sub_extw']
         else:
             # this layout information dictionary is from AnalogBase
-            self._ext_params, self._row_info_list = self.compute_row_info(self._laygo_info,
-                                                                          row_prop_list)
+            bot_end = end_mode & 1
+            lay_bot_end = lay_end_mode & 1
+            if bot_end == 1 and lay_bot_end == 0:
+                dy = ybot
+            elif bot_end == 0 and lay_bot_end == 1:
+                dy = -self._row_prop_list[0]['row_y'][0]
+            else:
+                dy = 0
+            tmp = self.compute_row_info(self._laygo_info, row_prop_list, dy=dy)
+            self._ext_params, self._row_info_list, self._row_prop_list = tmp
 
         # compute laygo size if we know the number of columns
         if num_col is not None:
@@ -1218,9 +1229,18 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
         ext_params_list = []
         rinfo_list = []
+        new_rprop_list = []
         # first pass: determine Y coordinates of each row.
         for idx, rprop in enumerate(rprop_list):
-            yb_row, yb_cur, yt_cur, yt_row = rprop['row_y']
+            if dy == 0:
+                new_rprop = rprop
+            else:
+                new_rprop = rprop.copy()
+                yb_row, yb_cur, yt_cur, yt_row = rprop['row_y']
+                new_rprop['row_y'] = (yb_row + dy, yb_cur + dy, yt_cur + dy, yt_row + dy)
+
+            new_rprop_list.append(new_rprop)
+            yb_row, yb_cur, yt_cur, yt_row = new_rprop['row_y']
             row_orient = rprop['orient']
             row_type = rprop['mos_type']
             row_w = rprop['w']
@@ -1239,22 +1259,22 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 raise ValueError('Unknown row type: %s' % row_type)
 
             # record information
-            ext_y = yb_row if idx == 0 else rprop_list[idx - 1]['row_y'][2]
+            ext_y = yb_row if idx == 0 else new_rprop_list[idx - 1]['row_y'][2]
             rinfo_list.append(row_info)
             ext_params_list.append(((yb_cur - ext_y) // mos_pitch, ext_y))
 
             # record track intervals
-            btr = grid.find_next_track(hm_layer, dy + yb_row, half_track=True,
+            btr = grid.find_next_track(hm_layer, yb_row, half_track=True,
                                        mode=1, unit_mode=True)
-            ttr = grid.find_next_track(hm_layer, dy + yt_row, half_track=True,
+            ttr = grid.find_next_track(hm_layer, yt_row, half_track=True,
                                        mode=-1, unit_mode=True)
             g_conn_y = row_info.get('g_conn_y', (0, 0))
             gb_conn_y = row_info['gb_conn_y']
             ds_conn_y = row_info['ds_conn_y']
             if row_orient == 'R0':
-                yt_g = dy + yb_cur + g_conn_y[1]
-                yb_gb = dy + yb_cur + gb_conn_y[0]
-                yb_ds = dy + yb_cur + ds_conn_y[0]
+                yt_g = yb_cur + g_conn_y[1]
+                yb_gb = yb_cur + gb_conn_y[0]
+                yb_ds = yb_cur + ds_conn_y[0]
                 gtr = grid.find_next_track(hm_layer, yt_g - via_ext, half_track=True,
                                            mode=-1, unit_mode=True)
                 gbtr = grid.find_next_track(hm_layer, yb_gb + via_ext, half_track=True,
@@ -1265,9 +1285,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 row_info['gb_intv'] = (gbtr, max(ttr + 1, gbtr))
                 row_info['ds_intv'] = (dstr, max(ttr + 1, dstr))
             else:
-                yb_g = dy + yt_cur - g_conn_y[1]
-                yt_gb = dy + yt_cur - gb_conn_y[0]
-                yt_ds = dy + yt_cur - ds_conn_y[0]
+                yb_g = yt_cur - g_conn_y[1]
+                yt_gb = yt_cur - gb_conn_y[0]
+                yt_ds = yt_cur - ds_conn_y[0]
                 gtr = grid.find_next_track(hm_layer, yb_g + via_ext, half_track=True,
                                            mode=1, unit_mode=True)
                 gbtr = grid.find_next_track(hm_layer, yt_gb - via_ext, half_track=True,
@@ -1278,7 +1298,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 row_info['gb_intv'] = (btr, max(btr, gbtr + 1))
                 row_info['ds_intv'] = (btr, max(btr, dstr + 1))
 
-        return ext_params_list, rinfo_list
+        return ext_params_list, rinfo_list, new_rprop_list
 
     def get_row_info(self, row_idx):
         # type : (int) -> Dict[str, Any]
