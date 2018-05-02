@@ -682,6 +682,7 @@ class BagProject(object):
             print('creating schematic...')
             dsn.implement_design(impl_lib, top_cell_name=impl_cell)
             print('schematic done.')
+        lvs_passed = False
         if run_lvs or run_rcx:
             print('running lvs...')
             lvs_passed, lvs_log = self.run_lvs(impl_lib, impl_cell)
@@ -690,7 +691,7 @@ class BagProject(object):
                 print('LVS passed!')
             else:
                 print('LVS failed...')
-        if run_rcx:
+        if lvs_passed and run_rcx:
             print('running rcx...')
             rcx_passed, rcx_log = self.run_rcx(impl_lib, impl_cell)
             print('RCX log: %s' % rcx_log)
