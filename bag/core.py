@@ -605,6 +605,7 @@ class BagProject(object):
                       gen_lay=True,  # type: bool
                       gen_sch=False,  # type: bool
                       run_lvs=False,  # type: bool
+                      run_rcx=False,  # type: bool
                       use_cybagoa=True,  # type: bool
                       debug=False,  # type: bool
                       profile_fname='',  # type: str
@@ -625,6 +626,8 @@ class BagProject(object):
             True to generate schematics.
         run_lvs : bool
             True to run LVS.
+        run_rcx : bool
+            True to run RCX.
         use_cybagoa : bool
             True to enable cybagoa acceleration if available.
         debug : bool
@@ -679,7 +682,7 @@ class BagProject(object):
             print('creating schematic...')
             dsn.implement_design(impl_lib, top_cell_name=impl_cell)
             print('schematic done.')
-        if run_lvs:
+        if run_lvs or run_rcx:
             print('running lvs...')
             lvs_passed, lvs_log = self.run_lvs(impl_lib, impl_cell)
             print('LVS log: %s' % lvs_log)
@@ -687,6 +690,14 @@ class BagProject(object):
                 print('LVS passed!')
             else:
                 print('LVS failed...')
+        if run_rcx:
+            print('running rcx...')
+            rcx_passed, rcx_log = self.run_rcx(impl_lib, impl_cell)
+            print('RCX log: %s' % rcx_log)
+            if rcx_passed:
+                print('RCX passed!')
+            else:
+                print('RCX failed...')
 
         return result
 
