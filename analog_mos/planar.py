@@ -1034,6 +1034,9 @@ class MOSTechPlanarGeneric(MOSTech):
             sub_y_list=sub_y_list,
         )
 
+    def draw_od(self, template, od_name, od_box, nx=1, ny=1, spx=0, spy=0, **kwargs):
+        template.add_rect(od_name, od_box, nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=True)
+
     def draw_mos(self, template, layout_info):
         # type: (TemplateBase, Dict[str, Any]) -> None
         """Draw transistor related layout.
@@ -1131,7 +1134,8 @@ class MOSTechPlanarGeneric(MOSTech):
             if od_yt > od_yb and draw_od:
                 od_xl = po_xc - lch_unit // 2 + od_start * sd_pitch - po_od_extx
                 od_xr = po_xc + lch_unit // 2 + (od_stop - 1) * sd_pitch + po_od_extx
-                template.add_rect(od_lay_cur, BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True))
+                self.draw_od(template, od_lay_cur,
+                             BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True), od_type='main')
 
             # draw PO
             if po_yt > po_yb:
