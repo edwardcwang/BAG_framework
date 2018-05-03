@@ -296,12 +296,10 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         top_warr : WireArray
             the top port as WireArray.
         """
-        res = self.grid.resolution
-        dx = self._core_offset[0] + self._core_pitch[0] * col_idx
-        dy = self._core_offset[1] + self._core_pitch[1] * row_idx
-        loc = dx * res, dy * res
-        bot_port = self._bot_port.transform(self.grid, loc=loc)
-        top_port = self._top_port.transform(self.grid, loc=loc)
+        loc = (self._core_offset[0] + self._core_pitch[0] * col_idx,
+               self._core_offset[1] + self._core_pitch[1] * row_idx)
+        bot_port = self._bot_port.transform(self.grid, loc=loc, unit_mode=True)
+        top_port = self._top_port.transform(self.grid, loc=loc, unit_mode=True)
         return bot_port.get_pins()[0], top_port.get_pins()[0]
 
     def get_track_offsets(self, row_idx, col_idx):
