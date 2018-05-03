@@ -740,10 +740,9 @@ class Instance(Arrayable):
         """
         dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
         xshift, yshift = self._loc_unit
-        xshift = (xshift + dx) * self.resolution
-        yshift = (yshift + dy) * self.resolution
-        port = self._master.get_port(name)
-        return port.transform(self._parent_grid, loc=(xshift, yshift), orient=self.orientation)
+        loc = (xshift + dx, yshift + dy)
+        return self._master.get_port(name).transform(self._parent_grid, loc=loc,
+                                                     orient=self.orientation, unit_mode=True)
 
     def get_pin(self, name='', row=0, col=0, layer=-1):
         # type: (Optional[str], int, int, int) -> WireArray

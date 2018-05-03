@@ -524,19 +524,23 @@ class Port(object):
             box = box.merge(warr.get_bbox_array(grid).get_overall_bbox())
         return box
 
-    def transform(self, grid, loc=(0, 0), orient='R0'):
+    def transform(self, grid, loc=(0, 0), orient='R0', unit_mode=False):
+        # type: (RoutingGrid, Tuple[Union[float, int], Union[float, int]], str, bool) -> Port
         """Return a new transformed Port.
 
         Parameters
         ----------
-        grid : :class:`bag.layout.routing.RoutingGrid`
+        grid : RoutingGrid
             the RoutingGrid of this Port.
-        loc : tuple(float, float)
+        loc : Tuple[Union[float, int], Union[float, int]]
             the X/Y coordinate shift.
-        orient : string
+        orient : str
             the new orientation.
+        unit_mode: bool
+            True if location is in resolution units.
         """
-        new_pin_dict = {lay: [wa.transform(grid, loc=loc, orient=orient) for wa in wa_list]
+        new_pin_dict = {lay: [wa.transform(grid, loc=loc, orient=orient, unit_mode=unit_mode)
+                              for wa in wa_list]
                         for lay, wa_list in self._pin_dict.items()}
         return Port(self._term_name, new_pin_dict, label=self._label)
 
