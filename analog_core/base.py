@@ -17,6 +17,8 @@ from bag.layout.routing import TrackID, WireArray
 from bag.layout.util import BBox
 from bag.layout.objects import Instance
 
+from ..laygo.core import LaygoEdgeInfo
+
 from ..analog_mos.core import MOSTech
 from ..analog_mos.mos import AnalogMOSBase, AnalogMOSExt
 from ..analog_mos.substrate import AnalogSubstrate
@@ -409,8 +411,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         # layout information parameters
         self._lch = None
         self._row_prop_list = None
-        self._left_edge_info = None
-        self._right_edge_info = None
+        self._lr_edge_info = None
         self._fg_tot = None
         self._sd_yc_list = None
         self._layout_info = None
@@ -506,11 +507,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         """Returns the analog placement information dictionary."""
         return self._row_layout_info
 
-    def get_left_edge_info(self):
-        return self._left_edge_info
-
-    def get_right_edge_info(self):
-        return self._right_edge_info
+    @property
+    def lr_edge_info(self):
+        return self._lr_edge_info
 
     def set_layout_info(self, layout_info):
         # type: (AnalogBaseInfo) -> None
@@ -1535,8 +1534,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         top_bound_box = BBox.get_invalid_bbox()
         self._tr_intvs = []
         self._wire_info = []
-        self._left_edge_info = []
-        self._right_edge_info = []
+        le_info_list = []
+        re_info_list = []
         self._tr_manager = tr_manager
         gr_vss_warrs = []
         gr_vdd_warrs = []
@@ -1570,8 +1569,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             redge_info = master.get_right_edge_info()
 
             if row_idx != 0 and row_idx != len(master_list) - 1:
-                self._left_edge_info.append(ledge_info)
-                self._right_edge_info.append(redge_info)
+                le_info_list.append((ledge_info, None))
+                re_info_list.append((redge_info, None))
                 cur_tr_intvs = {}
                 cur_wire_info = {}
                 self._tr_intvs.append(cur_tr_intvs)
@@ -1800,6 +1799,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             self.set_size_from_bound_box(top_layer, bound_box)
 
         self.add_cell_boundary(self.bound_box)
+
+        # set left/right edge info
+        self._lr_edge_info = LaygoEdgeInfo(le_info_list, []), LaygoEdgeInfo(re_info_list, [])
 
     def draw_base(self,  # type: AnalogBase
                   lch,  # type: float
