@@ -370,6 +370,9 @@ class MOSTechSOIGenericBC(MOSTech):
         # type: (Dict[str, Any], Any) -> Dict[str, Any]
         raise ValueError('Guard ring is not supported in this technology.')
 
+    def draw_od(self, template, od_name, od_box, nx=1, ny=1, spx=0, spy=0, **kwargs):
+        template.add_rect(od_name, od_box, nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=True)
+
     def draw_mos(self, template, layout_info):
         # type: (TemplateBase, Dict[str, Any]) -> None
         """Draw transistor geometries.
@@ -522,14 +525,14 @@ class MOSTechSOIGenericBC(MOSTech):
         d_od_yt += w_delta
         od_box = BBox(-md_w // 2, d_od_yb, width + md_w // 2, d_od_yt, res, unit_mode=True)
         od_box = od_box.move_by(dy=-sd_yc, unit_mode=True)
-        template.add_rect(od_name, od_box)
+        self.draw_od(template, od_name, od_box, od_type='main')
         # draw body OD
         b_od_yb = d_od_yt
         b_od_yt = b_y_list[0][1]
         b_od_xc = sd_pitch // 2
         od_box = BBox(-w_body // 2, b_od_yb, w_body // 2, b_od_yt, res, unit_mode=True)
         od_box = od_box.move_by(dx=b_od_xc, dy=-sd_yc, unit_mode=True)
-        template.add_rect(od_name, od_box, nx=fg, spx=sd_pitch * res)
+        self.draw_od(template, od_name, od_box, nx=fg, spx=sd_pitch, od_type='body')
 
         # draw PO
         # draw gate PO bar
