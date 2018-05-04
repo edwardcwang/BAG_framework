@@ -9,7 +9,6 @@ import bisect
 
 from bag.math import lcm
 from bag.util.interval import IntervalSet
-from bag.util.cache import DesignMaster
 
 from bag.layout.util import BBox
 from bag.layout.template import TemplateBase
@@ -18,6 +17,7 @@ from bag.layout.routing import TrackID, WireArray
 from .tech import LaygoTech
 from .base import LaygoPrimitive, LaygoSubstrate, LaygoEndRow, LaygoSpace
 from ..analog_core.placement import WireGroup, WireTree
+from ..analog_core.base import AnalogBaseEdgeInfo
 
 if TYPE_CHECKING:
     from bag.layout.template import TemplateDB
@@ -36,31 +36,6 @@ class DigitalExtInfo(object):
 
     def ext_iter(self):
         return self._ext_list
-
-
-class LaygoEdgeInfo(object):
-    """The edge information object for LaygoBase."""
-
-    def __init__(self, row_end_list, ext_end_list):
-        self._row_end_list = row_end_list
-        self._ext_end_list = ext_end_list
-
-    def get_immutable_key(self):
-        return DesignMaster.to_immutable_id((self._row_end_list, self._ext_end_list))
-
-    def master_infos_iter(self, row_edge_infos, y0=0, flip=False):
-        for y, edge_params in self._ext_end_list:
-            yield (y0 - y if flip else y0 + y, flip, edge_params)
-
-        for (end, lay_info), (y, flip_ud, re_params) in zip(self._row_end_list, row_edge_infos):
-            edge_params = re_params.copy()
-            edge_params['layout_info'] = lay_info
-            edge_params['adj_blk_info'] = end
-            yield (y0 - y if flip else y0 + y, flip != flip_ud, edge_params)
-
-    def row_end_iter(self):
-        for val in self._row_end_list:
-            yield val
 
 
 class DigitalEdgeInfo(object):
@@ -647,7 +622,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def _set_endlr_infos(self, num_rows):
         default_end_info = (self._tech_cls.get_default_end_info(), None)
-        def_edge_info = LaygoEdgeInfo([default_end_info] * num_rows, [])
+        def_edge_info = AnalogBaseEdgeInfo([default_end_info] * num_rows, [])
         self._laygo_edgel = self.params['laygo_edgel']
         if self._laygo_edgel is None:
             self._laygo_edgel = def_edge_info
@@ -1603,8 +1578,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             endl_list.append(endl)
             endr_list.append(endr)
 
-        self._lr_edge_info = (DigitalEdgeInfo([0], [LaygoEdgeInfo(endl_list, ext_endl_infos)], []),
-                              DigitalEdgeInfo([0], [LaygoEdgeInfo(endr_list, ext_endr_infos)], []))
+        self._lr_edge_info = (DigitalEdgeInfo([0], [AnalogBaseEdgeInfo(endl_list, ext_endl_infos)], []),
+                              DigitalEdgeInfo([0], [AnalogBaseEdgeInfo(endr_list, ext_endr_infos)], []))
         self._tb_ext_info = (DigitalExtInfo(self._get_ext_info_row(self.num_rows - 1, 1)),
                              DigitalExtInfo(self._get_ext_info_row(0, 0)))
 

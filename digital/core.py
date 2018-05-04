@@ -9,9 +9,10 @@ from bag.layout.util import BBox
 from bag.layout.routing import TrackID
 from bag.layout.template import TemplateBase, TemplateDB
 
+from ..analog_core.base import AnalogBaseEdgeInfo
+
 from ..laygo.base import LaygoEndRow, LaygoSubstrate
-from ..laygo.core import LaygoBase, LaygoBaseInfo, LaygoIntvSet, \
-    LaygoEdgeInfo, DigitalEdgeInfo, DigitalExtInfo
+from ..laygo.core import LaygoBase, LaygoBaseInfo, LaygoIntvSet, DigitalEdgeInfo, DigitalExtInfo
 
 
 class DigitalSpace(LaygoBase):
@@ -160,7 +161,7 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
 
         tech_cls = self._laygo_info.tech_cls
         default_end_info = tech_cls.get_default_end_info()
-        def_edge_info = LaygoEdgeInfo([(default_end_info, None)] * num_laygo_rows, [])
+        def_edge_info = AnalogBaseEdgeInfo([(default_end_info, None)] * num_laygo_rows, [])
         self._used_list = [LaygoIntvSet(def_edge_info) for _ in range(num_rows)]
         self._ext_end_list = [[0, None, None] for _ in range(num_rows - 1)]
 

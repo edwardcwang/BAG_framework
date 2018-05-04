@@ -10,14 +10,13 @@ import numbers
 from itertools import chain
 
 from bag.math import lcm
+from bag.util.cache import DesignMaster
 from bag.util.interval import IntervalSet
 from bag.util.search import BinaryIterator
 from bag.layout.template import TemplateBase
 from bag.layout.routing import TrackID, WireArray
 from bag.layout.util import BBox
 from bag.layout.objects import Instance
-
-from ..laygo.core import LaygoEdgeInfo
 
 from ..analog_mos.core import MOSTech
 from ..analog_mos.mos import AnalogMOSBase, AnalogMOSExt
@@ -30,6 +29,31 @@ from .placement import WireGroup, WireTree
 if TYPE_CHECKING:
     from bag.layout.template import TemplateDB
     from bag.layout.routing import RoutingGrid
+
+
+class AnalogBaseEdgeInfo(object):
+    """The edge information object for AnalogBase."""
+
+    def __init__(self, row_end_list, ext_end_list):
+        self._row_end_list = row_end_list
+        self._ext_end_list = ext_end_list
+
+    def get_immutable_key(self):
+        return DesignMaster.to_immutable_id((self._row_end_list, self._ext_end_list))
+
+    def master_infos_iter(self, row_edge_infos, y0=0, flip=False):
+        for y, edge_params in self._ext_end_list:
+            yield (y0 - y if flip else y0 + y, flip, edge_params)
+
+        for (end, lay_info), (y, flip_ud, re_params) in zip(self._row_end_list, row_edge_infos):
+            edge_params = re_params.copy()
+            edge_params['layout_info'] = lay_info
+            edge_params['adj_blk_info'] = end
+            yield (y0 - y if flip else y0 + y, flip != flip_ud, edge_params)
+
+    def row_end_iter(self):
+        for val in self._row_end_list:
+            yield val
 
 
 class AnalogBaseInfo(object):
@@ -1801,7 +1825,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         self.add_cell_boundary(self.bound_box)
 
         # set left/right edge info
-        self._lr_edge_info = LaygoEdgeInfo(le_info_list, []), LaygoEdgeInfo(re_info_list, [])
+        self._lr_edge_info = AnalogBaseEdgeInfo(le_info_list, []), AnalogBaseEdgeInfo(re_info_list, [])
 
     def draw_base(self,  # type: AnalogBase
                   lch,  # type: float
