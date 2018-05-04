@@ -1652,36 +1652,20 @@ class MOSTechPlanarGeneric(MOSTech):
             import pdb
             pdb.set_trace()
             return False
-        if arr_nmax is None or num_via <= arr_nmax:
-            via_harr = num_via * (via_w + via_sp) - via_sp
-            via_yb = via_yc - via_harr // 2
-            via_yt = via_yb + via_harr
+        if arr_nmax is not None and num_via > arr_nmax:
+            via_sp = arr_sp
+            num_via = (area_h + via_sp) // (via_w + via_sp)
 
-            enc1 = [via_enc1, via_enc1, mbot_yt - via_yt, via_yb - mbot_yb]
-            enc2 = [via_enc2, via_enc2, mtop_yt - via_yt, via_yb - mtop_yb]
-            template.add_via_primitive(via_type, loc=[x0, via_yc], num_rows=num_via,
-                                       sp_rows=via_sp, enc1=enc1, enc2=enc2, cut_width=via_w,
-                                       cut_height=via_h, nx=num_sd, spx=sd_pitch, unit_mode=True)
-            return True
-        else:
-            via_harr = arr_nmax * (via_w + via_sp) - via_sp
-            via_yb = yb_max
-            via_yt = yb_max + via_harr
-            via_yc = (via_yb + via_yt) // 2
+        via_harr = num_via * (via_w + via_sp) - via_sp
+        via_yb = via_yc - via_harr // 2
+        via_yt = via_yb + via_harr
 
-            enc1 = [via_enc1, via_enc1, via_benc_le, via_yb - mbot_yb]
-            enc2 = [via_enc2, via_enc2, via_tenc_le, via_yb - mtop_yb]
-            template.add_via_primitive(via_type, loc=[x0, via_yc], num_rows=arr_nmax,
-                                       sp_rows=via_sp, enc1=enc1, enc2=enc2, cut_width=via_w,
-                                       cut_height=via_h, nx=num_sd, spx=sd_pitch, unit_mode=True)
-
-            mbot_yb = min(mbot_yt, via_yt + arr_sp - via_benc_le)
-            mtop_yb = min(mtop_yt, via_yt + arr_sp - via_tenc_le)
-            self._add_via_with_arr_constraint(template, mbot_yb, mbot_yt, mtop_yb, mtop_yt,
-                                              via_type, x0, via_w, via_h, num_sd, sd_pitch, via_sp,
-                                              via_benc_le, via_tenc_le, arr_nmax, arr_sp, via_enc1,
-                                              via_enc2)
-            return True
+        enc1 = [via_enc1, via_enc1, mbot_yt - via_yt, via_yb - mbot_yb]
+        enc2 = [via_enc2, via_enc2, mtop_yt - via_yt, via_yb - mtop_yb]
+        template.add_via_primitive(via_type, loc=[x0, via_yc], num_rows=num_via,
+                                   sp_rows=via_sp, enc1=enc1, enc2=enc2, cut_width=via_w,
+                                   cut_height=via_h, nx=num_sd, spx=sd_pitch, unit_mode=True)
+        return True
 
     def _get_wire_array(self, layer_id, tr0, num, lower, upper, pitch=1):
         tid = TrackID(layer_id, tr0, num=num, pitch=pitch)
