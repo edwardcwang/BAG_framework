@@ -1429,6 +1429,8 @@ class MOSTechPlanarGeneric(MOSTech):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         g_via_info = mos_constants['g_via']
+        v0_po_encx_min = mos_constants.get('v0_po_encx_min', None)
+
         g_drc_info = self.get_conn_drc_info(lch_unit, 'g')
 
         dum_conn_layer = self.get_dum_conn_layer()
@@ -1449,6 +1451,9 @@ class MOSTechPlanarGeneric(MOSTech):
         m1_w = g_drc_info[1]['w']
         via_enc1 = (lch_unit - v0_w) // 2
         via_enc2 = (m1_w - v0_h) // 2
+        if v0_po_encx_min is not None:
+            via_enc1 = max(via_enc1, v0_po_encx_min)
+
         enc1 = [via_enc1, via_enc1, po_ency, po_ency]
         enc2 = [m1_encx, m1_encx, via_enc2, via_enc2]
         if has_od:
