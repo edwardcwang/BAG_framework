@@ -1566,7 +1566,13 @@ class MOSTechPlanarGeneric(MOSTech):
         sub_m1_enc_le = mos_constants['sub_m1_enc_le']
         md_w = mos_constants['md_w']
 
-        mx_yc = (mx_yt + mx_yb) // 2
+        bot_enc_le_info = via_info['bot_enc_le']
+        top_enc_le_info = via_info['top_enc_le']
+        dim_info = via_info['dim']
+        sp_info = via_info['sp']
+        arr_nmax_info = via_info.get('arr_nmax', [None, None, None])
+        arr_sp_info = via_info.get('arr_sp', sp_info)
+
         via_drawn = True
 
         if top_layer is None:
@@ -1576,14 +1582,20 @@ class MOSTechPlanarGeneric(MOSTech):
         if mbot_yt is None:
             mbot_yt = mx_yt
 
-        mtop_h = mx_yt - mx_yb
         for bot_lay_id in range(start_layer, top_layer):
-            via_enc_le_bot = via_info['bot_enc_le'][bot_lay_id]
-            via_w, via_h = via_info['dim'][bot_lay_id]
-            via_sp = via_info['sp'][bot_lay_id]
+            via_benc_le = bot_enc_le_info[bot_lay_id]
+            via_tenc_le = top_enc_le_info[bot_lay_id]
+            via_w, via_h = dim_info[bot_lay_id]
+            via_sp = sp_info[bot_lay_id]
+            arr_nmax = arr_nmax_info[bot_lay_id]
+            arr_sp = arr_sp_info[bot_lay_id]
 
             w_bot = md_w if bot_lay_id == 0 else drc_info[bot_lay_id]['w']
             w_top = drc_info[bot_lay_id + 1]['w']
+            xlb = x0 - w_bot // 2
+            xrb = xlb + w_bot
+            xlt = x0 - w_top // 2
+            xrt = xlt + w_top
 
             if bot_lay_id == 0:
                 mos_layer_table = self.config['mos_layer_table']
@@ -1596,38 +1608,80 @@ class MOSTechPlanarGeneric(MOSTech):
 
             if via_abut:
                 # force these vias to have line end of ceil(sp / 2) or more
-                via_enc_le_bot = max(via_enc_le_bot, -(-via_sp // 2))
+                via_benc_le = max(via_benc_le, -(-via_sp // 2))
             if is_sub:
                 if bot_lay_id == 1:
-                    via_enc_le_bot = max(via_enc_le_bot, sub_m1_enc_le)
+                    via_benc_le = max(via_benc_le, sub_m1_enc_le)
 
-            mbot_h = mbot_yt - mbot_yb
-            num_via = (mbot_h - 2 * via_enc_le_bot + via_sp) // (via_w + via_sp)
-            if num_via > 0:
-                via_harr = num_via * (via_w + via_sp) - via_sp
-                via_enc_le_top = (mtop_h - via_harr) // 2
-                via_enc_le_bot = (mbot_h - via_harr) // 2
-                via_enc1 = (w_bot - via_w) // 2
-                via_enc2 = (w_top - via_w) // 2
-
-                enc1 = [via_enc1, via_enc1, via_enc_le_bot, via_enc_le_bot]
-                enc2 = [via_enc2, via_enc2, via_enc_le_top, via_enc_le_top]
-                template.add_via_primitive(via_type, loc=[x0, mx_yc], num_rows=num_via,
-                                           sp_rows=via_sp, enc1=enc1, enc2=enc2, cut_width=via_w,
-                                           cut_height=via_h, nx=num, spx=pitch, unit_mode=True)
+            via_enc1 = (w_bot - via_w) // 2
+            via_enc2 = (w_top - via_w) // 2
+            if bot_lay_id > 0:
+                template.add_rect(lay_name_table[bot_lay_id], BBox(xlb, mbot_yb, xrb, mbot_yt,
+                                                                   res, unit_mode=True),
+                                  nx=num, spx=pitch, unit_mode=True)
+            if bot_lay_id == top_layer - 1:
+                template.add_rect(lay_name_table[bot_lay_id + 1], BBox(xlt, mx_yb, xrt, mx_yt,
+                                                                       res, unit_mode=True),
+                                  nx=num, spx=pitch, unit_mode=True)
+            via_drawn = self._add_via_with_arr_constraint(template, mbot_yb, mbot_yt, mx_yb, mx_yt,
+                                                          via_type, x0, via_w, via_h, num, pitch,
+                                                          via_sp, via_benc_le, via_tenc_le,
+                                                          arr_nmax, arr_sp, via_enc1, via_enc2)
+            if via_drawn:
                 if m1_yb is not None and start_layer == 0:
                     m1_name = lay_name_table[1]
                     m1_xl = x0 - w_top // 2
                     m1_xr = x0 + w_top // 2
                     template.add_rect(m1_name, BBox(m1_xl, m1_yb, m1_xr, mx_yt,
                                                     res, unit_mode=True),
-                                      nx=num, spx=pitch * res)
-            else:
-                via_drawn = False
-
+                                      nx=num, spx=pitch, unit_mode=True)
             mbot_yb, mbot_yt = mx_yb, mx_yt
 
         return via_drawn
+
+    def _add_via_with_arr_constraint(self, template, mbot_yb, mbot_yt, mtop_yb, mtop_yt, via_type,
+                                     x0, via_w, via_h, num_sd, sd_pitch, via_sp, via_benc_le,
+                                     via_tenc_le, arr_nmax, arr_sp, via_enc1, via_enc2):
+        """Add via given maximum number of vias in array constraint."""
+        yb_max = max(mbot_yb + via_benc_le, mtop_yb + via_tenc_le)
+        yt_min = min(mbot_yt - via_benc_le, mtop_yt - via_tenc_le)
+        via_yc = (yb_max + yt_min) // 2
+        area_h = yt_min - yb_max
+        num_via = (area_h + via_sp) // (via_w + via_sp)
+        if num_via <= 0:
+            import pdb
+            pdb.set_trace()
+            return False
+        if arr_nmax is None or num_via <= arr_nmax:
+            via_harr = num_via * (via_w + via_sp) - via_sp
+            via_yb = via_yc - via_harr // 2
+            via_yt = via_yb + via_harr
+
+            enc1 = [via_enc1, via_enc1, mbot_yt - via_yt, via_yb - mbot_yb]
+            enc2 = [via_enc2, via_enc2, mtop_yt - via_yt, via_yb - mtop_yb]
+            template.add_via_primitive(via_type, loc=[x0, via_yc], num_rows=num_via,
+                                       sp_rows=via_sp, enc1=enc1, enc2=enc2, cut_width=via_w,
+                                       cut_height=via_h, nx=num_sd, spx=sd_pitch, unit_mode=True)
+            return True
+        else:
+            via_harr = arr_nmax * (via_w + via_sp) - via_sp
+            via_yb = yb_max
+            via_yt = yb_max + via_harr
+            via_yc = (via_yb + via_yt) // 2
+
+            enc1 = [via_enc1, via_enc1, via_benc_le, via_yb - mbot_yb]
+            enc2 = [via_enc2, via_enc2, via_tenc_le, via_yb - mtop_yb]
+            template.add_via_primitive(via_type, loc=[x0, via_yc], num_rows=arr_nmax,
+                                       sp_rows=via_sp, enc1=enc1, enc2=enc2, cut_width=via_w,
+                                       cut_height=via_h, nx=num_sd, spx=sd_pitch, unit_mode=True)
+
+            mbot_yb = min(mbot_yt, via_yt + arr_sp - via_benc_le)
+            mtop_yb = min(mtop_yt, via_yt + arr_sp - via_tenc_le)
+            self._add_via_with_arr_constraint(template, mbot_yb, mbot_yt, mtop_yb, mtop_yt,
+                                              via_type, x0, via_w, via_h, num_sd, sd_pitch, via_sp,
+                                              via_benc_le, via_tenc_le, arr_nmax, arr_sp, via_enc1,
+                                              via_enc2)
+            return True
 
     def _get_wire_array(self, layer_id, tr0, num, lower, upper, pitch=1):
         tid = TrackID(layer_id, tr0, num=num, pitch=pitch)
