@@ -650,38 +650,44 @@ class BagProject(object):
         grid_specs = specs['routing_grid']
         params = specs['params']
 
-        temp_db = self.make_template_db(impl_lib, grid_specs, use_cybagoa=use_cybagoa,
-                                        gds_lay_file=gds_lay_file)
+        if gen_lay or gen_sch:
+            temp_db = self.make_template_db(impl_lib, grid_specs, use_cybagoa=use_cybagoa,
+                                            gds_lay_file=gds_lay_file)
 
-        name_list = [impl_cell]
-        print('computing layout...')
-        if profile_fname:
-            profiler = cProfile.Profile()
-            profiler.runcall(temp_db.new_template, params=params, temp_cls=temp_cls, debug=False)
-            profiler.dump_stats(profile_fname)
-            result = pstats.Stats(profile_fname).strip_dirs()
+            name_list = [impl_cell]
+            print('computing layout...')
+            if profile_fname:
+                profiler = cProfile.Profile()
+                profiler.runcall(temp_db.new_template, params=params, temp_cls=temp_cls,
+                                 debug=False)
+                profiler.dump_stats(profile_fname)
+                result = pstats.Stats(profile_fname).strip_dirs()
+            else:
+                result = None
+
+            temp = temp_db.new_template(params=params, temp_cls=temp_cls, debug=debug)
+            print('computation done.')
+            temp_list = [temp]
+            if cache_fname:
+                print('writing layout to cache...')
+                temp.write_to_disk(cache_fname, impl_lib, impl_cell, debug=debug)
+                print('cache writing done.')
+
+            if gen_lay:
+                print('creating layout...')
+                temp_db.batch_layout(self, temp_list, name_list, debug=debug)
+                print('layout done.')
+
+            if gen_sch:
+                dsn = self.create_design_module(lib_name=sch_lib, cell_name=sch_cell)
+                print('computing schematic...')
+                dsn.design(**temp.sch_params)
+                print('creating schematic...')
+                dsn.implement_design(impl_lib, top_cell_name=impl_cell)
+                print('schematic done.')
         else:
             result = None
 
-        temp = temp_db.new_template(params=params, temp_cls=temp_cls, debug=debug)
-        print('computation done.')
-        temp_list = [temp]
-        if cache_fname:
-            print('writing layout to cache...')
-            temp.write_to_disk(cache_fname, impl_lib, impl_cell, debug=debug)
-            print('cache writing done.')
-
-        if gen_lay:
-            print('creating layout...')
-            temp_db.batch_layout(self, temp_list, name_list, debug=debug)
-            print('layout done.')
-        if gen_sch:
-            dsn = self.create_design_module(lib_name=sch_lib, cell_name=sch_cell)
-            print('computing schematic...')
-            dsn.design(**temp.sch_params)
-            print('creating schematic...')
-            dsn.implement_design(impl_lib, top_cell_name=impl_cell)
-            print('schematic done.')
         lvs_passed = False
         if run_lvs or run_rcx:
             print('running lvs...')
