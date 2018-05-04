@@ -76,6 +76,11 @@ class TrackID(object):
         return (self._hidx - 1) / 2
 
     @property
+    def index_htr(self):
+        # type: () -> int
+        return self._hidx
+
+    @property
     def num(self):
         # type: () -> int
         return self._n
@@ -86,6 +91,11 @@ class TrackID(object):
         if self._hpitch % 2 == 0:
             return self._hpitch // 2
         return self._hpitch / 2
+
+    @property
+    def pitch_htr(self):
+        # type: () -> int
+        return self._hpitch
 
     def get_immutable_key(self):
         return self.__class__.__name__, self._layer_id, self._hidx, self._w, self._n, self._hpitch
@@ -110,9 +120,10 @@ class TrackID(object):
         """
         lower, upper = grid.get_wire_bounds(self.layer_id, self.base_index,
                                             width=self.width, unit_mode=True)
-        upper += (self.num - 1) * self.pitch * grid.get_track_pitch(self._layer_id, unit_mode=True)
+        pitch_dim = (self._hpitch * grid.get_track_pitch(self._layer_id, unit_mode=True)) // 2
+        upper += (self.num - 1) * pitch_dim
         if unit_mode:
-            return lower, int(upper)
+            return lower, upper
         else:
             res = grid.resolution
             return lower * res, upper * res
@@ -327,14 +338,14 @@ class WireArray(object):
         layer_id = track_id.layer_id
         base_idx = track_id.base_index
         num = track_id.num
-        pitch = track_id.pitch
 
         base_box = grid.get_bbox(layer_id, base_idx, self._lower_unit, self._upper_unit,
                                  width=tr_w, unit_mode=True)
+        tot_pitch = (track_id.pitch_htr * grid.get_track_pitch(layer_id, unit_mode=True)) // 2
         if grid.get_direction(layer_id) == 'x':
-            return BBoxArray(base_box, ny=num, spy=pitch * grid.get_track_pitch(layer_id))
+            return BBoxArray(base_box, ny=num, spy=tot_pitch, unit_mode=True)
         else:
-            return BBoxArray(base_box, nx=num, spx=pitch * grid.get_track_pitch(layer_id))
+            return BBoxArray(base_box, nx=num, spx=tot_pitch, unit_mode=True)
 
     def wire_iter(self, grid):
         """Iterate over all wires in this WireArray as layer/BBox pair.
@@ -386,7 +397,7 @@ class WireArray(object):
             base_idx = track_idx.base_index
             cur_layer = grid.get_layer_name(layer_id, base_idx)
             cur_num = track_idx.num
-            wire_pitch = track_idx.pitch * track_pitch
+            wire_pitch = (track_idx.pitch_htr * track_pitch) // 2
             tl, tu = grid.get_wire_bounds(layer_id, base_idx, width=tr_width, unit_mode=True)
             if is_x:
                 base_box = BBox(self._lower_unit, tl, self._upper_unit, tu, res, unit_mode=True)
