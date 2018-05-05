@@ -3151,6 +3151,43 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                                   debug=debug)
         return track_list[0], track_list[1]
 
+    def connect_differential_wires(self,  # type: TemplateBase
+                                   pin_warrs,  # type: Union[WireArray, List[WireArray]]
+                                   nin_warrs,  # type: Union[WireArray, List[WireArray]]
+                                   pout_warr,  # type: WireArray
+                                   nout_warr,  # type: WireArray
+                                   track_lower=None,  # type: Optional[Union[float, int]]
+                                   track_upper=None,  # type: Optional[Union[float, int]]
+                                   unit_mode=False,  # type: bool
+                                   debug=False  # type: bool
+                                   ):
+        # type: (...) -> Tuple[Optional[WireArray], Optional[WireArray]]
+        if not unit_mode:
+            res = self.grid.resolution
+            if track_lower is not None:
+                track_lower = int(round(track_lower / res))
+            if track_upper is not None:
+                track_upper = int(round(track_lower / res))
+
+        p_tid = pout_warr.track_id
+        lay_id = p_tid.layer_id
+        pidx = p_tid.base_index
+        nidx = nout_warr.track_id.base_index
+        width = p_tid.width
+
+        if track_lower is None:
+            tr_lower = pout_warr.lower_unit
+        else:
+            tr_lower = min(track_lower, pout_warr.lower_unit)
+        if track_upper is None:
+            tr_upper = pout_warr.upper_unit
+        else:
+            tr_upper = max(track_upper, pout_warr.upper_unit)
+
+        return self.connect_differential_tracks(pin_warrs, nin_warrs, lay_id, pidx, nidx,
+                                                width=width, track_lower=tr_lower,
+                                                track_upper=tr_upper, unit_mode=True, debug=debug)
+
     def connect_matching_tracks(self,  # type: TemplateBase
                                 warr_list_list,  # type: List[Union[WireArray, List[WireArray]]]
                                 tr_layer_id,  # type: int
@@ -3437,6 +3474,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
 class CachedTemplate(TemplateBase):
     """A template that's cached in file."""
+
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
