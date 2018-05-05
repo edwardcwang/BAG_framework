@@ -1564,10 +1564,10 @@ class RoutingGrid(object):
             hidx_scale = 1
         elif orient == 'R180':
             hidx_scale = -1
-        elif orient == 'MX' and is_x:
-            hidx_scale = -1
-        elif orient == 'MY' and not is_x:
-            hidx_scale = -1
+        elif orient == 'MX':
+            hidx_scale = -1 if is_x else 1
+        elif orient == 'MY':
+            hidx_scale = 1 if is_x else -1
         else:
             raise ValueError('Unsupported orientation: %s' % orient)
 
