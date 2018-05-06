@@ -167,20 +167,8 @@ class ResArrayBaseInfo(object):
         harr = h_edge * 2 + h_core * ny
         wtot = -(-max(min_width, warr) // wblk) * wblk
         htot = -(-max(min_height, harr) // hblk) * hblk
-        dx = (wtot - warr) // 2
-        dy = (htot - harr) // 2
-        # if wtot - warr is odd number of resistor block pitch, we could be misaligned.
-        # fix by adding extra block
-        if dx % wblk_res != 0:
-            if (wblk // wblk_res) % 2 == 0:
-                raise ValueError('Cannot center resistor array primitives.  See developer.')
-            wtot += wblk
-            dx = (wtot - warr) // 2
-        if dy % hblk_res != 0:
-            if (hblk // hblk_res) % 2 == 0:
-                raise ValueError('Cannot center resistor array primitives.  See developer.')
-            htot += hblk
-            dy = (htot - harr) // 2
+        dx = ((wtot - warr) // 2 // wblk_res) * wblk_res
+        dy = ((htot - harr) // 2 // hblk_res) * hblk_res
 
         if update_grid:
             for lay_id, tr_w, tr_sp, tr_dir in self._grid_layers:
