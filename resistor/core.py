@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Dict, Set, Tuple, Union, Any
 import abc
 from itertools import chain
 
+from bag.math import lcm
 from bag.layout.util import BBox
 from bag.layout.routing import TrackID, WireArray
 from bag.layout.template import TemplateBase
@@ -159,12 +160,27 @@ class ResArrayBaseInfo(object):
         wblk, hblk = self.grid.get_block_size(top_layer, unit_mode=True,
                                               half_blk_x=half_blk_x,
                                               half_blk_y=half_blk_y)
+        wblk_res, hblk_res = self._tech_cls.get_block_pitch()
+        wblk = lcm([wblk, wblk_res])
+        hblk = lcm([hblk, hblk_res])
         warr = w_edge * 2 + w_core * nx
         harr = h_edge * 2 + h_core * ny
         wtot = -(-max(min_width, warr) // wblk) * wblk
         htot = -(-max(min_height, harr) // hblk) * hblk
         dx = (wtot - warr) // 2
         dy = (htot - harr) // 2
+        # if wtot - warr is odd number of resistor block pitch, we could be misaligned.
+        # fix by adding extra block
+        if dx % wblk_res != 0:
+            if (wblk // wblk_res) % 2 == 0:
+                raise ValueError('Cannot center resistor array primitives.  See developer.')
+            wtot += wblk
+            dx = (wtot - warr) // 2
+        if dy % hblk_res != 0:
+            if (hblk // hblk_res) % 2 == 0:
+                raise ValueError('Cannot center resistor array primitives.  See developer.')
+            htot += hblk
+            dy = (htot - harr) // 2
 
         if update_grid:
             for lay_id, tr_w, tr_sp, tr_dir in self._grid_layers:
