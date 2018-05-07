@@ -282,6 +282,15 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
             return self._well_width
         return self._well_width * self.grid.resolution
 
+    def get_res_bbox(self, row_idx, col_idx):
+        # type: (int, int) -> BBox
+        """Returns the bounding box of the given resistor."""
+        x0, y0 = self._core_offset
+        xp, yp = self._core_pitch
+        x0 += xp * col_idx
+        y0 += yp * row_idx
+        return BBox(x0, y0, x0 + xp, y0 + yp, self.grid.resolution, unit_mode=True)
+
     def get_res_ports(self, row_idx, col_idx):
         # type: (int, int) -> Tuple[WireArray, WireArray]
         """Returns the port of the given resistor.
