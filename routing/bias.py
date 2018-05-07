@@ -229,6 +229,7 @@ class BiasShield(TemplateBase):
                           ):
         # type: (...) -> BiasInfo
         grid = template.grid
+        res = grid.resolution
 
         nwire = len(warr_list2)
         params = dict(
@@ -249,8 +250,6 @@ class BiasShield(TemplateBase):
         is_horiz = tr_dir == 'x'
         qdim = sh_box.width_unit if is_horiz else sh_box.height_unit
         tr0 = grid.coord_to_track(layer, offset, unit_mode=True) + 0.5
-        bot_warrs = []
-        top_warrs = []
         bot_intvs = IntervalSet()
         top_intvs = IntervalSet()
         if lu_end_mode == 0:
@@ -260,6 +259,7 @@ class BiasShield(TemplateBase):
         else:
             min_len_mode = -1
         tr_warr_list = []
+
         for warr_list, (tidx, tr_width) in zip(warr_list2, islice(route_tids, 1, nwire + 1)):
             if isinstance(warr_list, WireArray):
                 warr_list = [warr_list]
@@ -277,23 +277,15 @@ class BiasShield(TemplateBase):
                 else:
                     tr_upper = max(tr_upper, tr_warr.upper_unit)
 
-            for warr in warr_list:
-                cur_layer = warr.layer_id
-                if cur_layer == layer - 1:
-                    bot_warrs.append(warr)
-                    cur_intvs = bot_intvs
-                elif cur_layer == layer + 1:
-                    top_warrs.append(warr)
-                    cur_intvs = top_intvs
-                else:
-                    raise ValueError('Cannot connect to wire %s' % warr)
-
-                cur_width = warr.width
-                sp = grid.get_space(cur_layer, cur_width, unit_mode=True)
-                box_arr = warr.get_bbox_array(grid)
-                for box in box_arr:
-                    wl, wu = box.get_interval(tr_dir, unit_mode=True)
-                    cur_intvs.add((wl - sp, wu + sp), merge=True, abut=True)
+        # get blockages
+        master_h = bot_master.bound_box.height_unit
+        if is_horiz:
+            test_box = BBox(tr_lower, offset, tr_upper, offset + master_h, res, unit_mode=True)
+        else:
+            test_box = BBox(offset, tr_lower, offset + master_h, tr_upper, res, unit_mode=True)
+        for lay_id, intv in ((layer - 1, bot_intvs), (layer + 1, top_intvs)):
+            for box in template.blockage_iter(lay_id, test_box):
+                intv.add(box.get_interval(tr_dir, unit_mode=True), merge=True, abut=True)
 
         # draw blocks
         nstart = tr_lower // qdim
