@@ -1402,7 +1402,7 @@ class BagLayout(object):
             sp_rows = round(sp_rows / res) * res
             sp_cols = round(sp_cols / res) * res
         else:
-            loc = [loc[0] * res, loc[0] * res]
+            loc = [loc[0] * res, loc[1] * res]
             sp_rows *= res
             sp_cols *= res
 
