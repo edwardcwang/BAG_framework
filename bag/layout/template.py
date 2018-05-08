@@ -2649,9 +2649,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           track_upper=None,  # type: Optional[Union[float, int]]
                           unit_mode=False,  # type: bool
                           min_len_mode=None,  # type: Optional[int]
+                          return_wires=False,  # type: bool
                           debug=False,  # type: bool
                           ):
-        # type: (...) -> Optional[WireArray]
+        # type: (...) -> Optional[Union[WireArray, Tuple[WireArray, List[WireArray]]]]
         """Connect all given WireArrays to the given track(s).
 
         All given wires should be on adjacent layers of the track.
@@ -2675,13 +2676,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         min_len_mode : Optional[int]
             If not None, will extend track so it satisfy minimum length requirement.
             Use -1 to extend lower bound, 1 to extend upper bound, 0 to extend both equally.
+        return_wires : bool
+            True to return the extended wires.
         debug : bool
             True to print debug messages.
 
         Returns
         -------
-        wire_arr : Optional[WireArray]
-            WireArray representing the tracks created.  None if nothing to do.
+        wire_arr : Optional[Union[WireArray, Tuple[WireArray, List[WireArray]]]]
+            WireArray representing the tracks/wires created.  None if nothing to do.
         """
         if isinstance(wire_arr_list, WireArray):
             # convert to list.
@@ -2764,7 +2767,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         for layer_name, bbox_arr in result.wire_arr_iter(grid):
             self.add_rect(layer_name, bbox_arr)
 
-        return result
+        if return_wires:
+            top_wire_list.extend(bot_wire_list)
+            return result, top_wire_list
+        else:
+            return result
 
     def connect_to_track_wires(self,  # type: TemplateBase
                                wire_arr_list,  # type: Union[WireArray, List[WireArray]]
