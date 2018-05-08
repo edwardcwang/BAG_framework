@@ -334,8 +334,7 @@ class BiasShield(TemplateBase):
         if lu_end_mode == 0:
             tr_warr_list = template.extend_wires(tr_warr_list, lower=tr_lower, upper=tr_upper,
                                                  unit_mode=True)
-        elif add_end:
-            end_master = template.new_template(params=params, temp_cls=BiasShieldEnd)
+        else:
             if lu_end_mode & 2 != 0:
                 tr_warr_list = template.extend_wires(tr_warr_list, upper=tr_upper, unit_mode=True)
                 eorient = 'MY' if is_horiz else 'MX'
@@ -346,8 +345,10 @@ class BiasShield(TemplateBase):
                 eorient = 'R0'
                 loc = p1
                 p1 = None
-            inst = template.add_instance(end_master, loc=loc, orient=eorient, unit_mode=True)
-            sup_warrs.extend(inst.get_all_port_pins('sup', layer=sup_layer))
+            if add_end:
+                end_master = template.new_template(params=params, temp_cls=BiasShieldEnd)
+                inst = template.add_instance(end_master, loc=loc, orient=eorient, unit_mode=True)
+                sup_warrs.extend(inst.get_all_port_pins('sup', layer=sup_layer))
 
         return BiasInfo(tracks=tr_warr_list, supplies=sup_warrs, p0=p0, p1=p1, shields=shields)
 
