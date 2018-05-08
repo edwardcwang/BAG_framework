@@ -315,7 +315,8 @@ class TemplateDB(MasterDB):
         cnt = 0
         for master in temp_list:
             fname = '%d.pickle' % cnt
-            master.write_to_disk(os.path.join(dir_name, fname), self.lib_name, master.cell_name)
+            master.write_to_disk(os.path.join(dir_name, fname), self.lib_name, master.cell_name,
+                                 debug=True)
             info[master.key] = fname
             cnt += 1
 
@@ -990,6 +991,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if not self.finalized:
             raise ValueError('Cannot write non-final template to disk.')
 
+        if debug:
+            print('Writing %s to disk...' % self.__class__.__name__)
+
         start = time.time()
         prop_dict = {key: getattr(self, key) for key in self.get_cache_properties()}
         self.merge_inst_tracks()
@@ -1011,7 +1015,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         stop = time.time()
         if debug:
-            print('Writing to cache took %.4g seconds.' % (stop - start))
+            print('Writing to disk took %.4g seconds.' % (stop - start))
 
     def load_from_disk(self, fname):
         with open(fname, 'rb') as f:
