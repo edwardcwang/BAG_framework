@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from bag.layout.routing.grid import RoutingGrid
     from bag.layout.template import TemplateDB
 
-BiasInfo = namedtuple('BiasInfo', ['tracks', 'supplies', 'p0', 'p1'])
+BiasInfo = namedtuple('BiasInfo', ['tracks', 'supplies', 'p0', 'p1', 'shields'])
 
 
 class BiasShield(TemplateBase):
@@ -226,6 +226,7 @@ class BiasShield(TemplateBase):
                           tr_lower=None,  # type: Optional[int]
                           tr_upper=None,  # type: Optional[int]
                           lu_end_mode=0,  # type: int
+                          sup_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
                           ):
         # type: (...) -> BiasInfo
         grid = template.grid
@@ -277,6 +278,19 @@ class BiasShield(TemplateBase):
                 else:
                     tr_upper = max(tr_upper, tr_warr.upper_unit)
 
+        # draw shields
+        nstart = tr_lower // qdim
+        nstop = -(-tr_upper // qdim)
+        tr_lower = nstart * qdim
+        tr_upper = nstop * qdim
+        tr0_ref = route_tids[0][0]
+        sh0 = tr0_ref + tr0
+        shp = route_tids[nwire + 1][0] - tr0_ref
+        shields = template.add_wires(layer, sh0, tr_lower, tr_upper, num=2,
+                                     pitch=shp, unit_mode=True)
+        if sup_warrs is not None:
+            template.connect_to_tracks(sup_warrs, shields.track_id)
+
         # get blockages
         master_h = bot_master.bound_box.height_unit
         if is_horiz:
@@ -285,11 +299,10 @@ class BiasShield(TemplateBase):
             test_box = BBox(offset, tr_lower, offset + master_h, tr_upper, res, unit_mode=True)
         for lay_id, intv in ((layer - 1, bot_intvs), (layer + 1, top_intvs)):
             for box in template.blockage_iter(lay_id, test_box):
-                intv.add(box.get_interval(tr_dir, unit_mode=True), merge=True, abut=True)
+                blkl, blku = box.get_interval(tr_dir, unit_mode=True)
+                intv.add((max(blkl, tr_lower), min(blku, tr_upper)), merge=True, abut=True)
 
         # draw blocks
-        nstart = tr_lower // qdim
-        nstop = -(-tr_upper // qdim)
         sup_warrs = []
         sup_layer = layer + 1
         for master, intvs in zip((bot_master, top_master), (bot_intvs, top_intvs)):
@@ -311,20 +324,12 @@ class BiasShield(TemplateBase):
                     sup_warrs.extend(inst.port_pins_iter('sup', layer=sup_layer))
                 ncur = nnext
 
-        # draw wires and end master
-        tr_lower = nstart * qdim
-        tr_upper = nstop * qdim
-        # draw shields
-        tr0_ref = route_tids[0][0]
-        sh0 = tr0_ref + tr0
-        shp = route_tids[nwire + 1][0] - tr0_ref
         if is_horiz:
             p0 = (tr_lower, offset)
             p1 = (tr_upper, offset)
         else:
             p0 = (offset, tr_lower)
             p1 = (offset, tr_upper)
-        template.add_wires(layer, sh0, tr_lower, tr_upper, num=2, pitch=shp, unit_mode=True)
         if lu_end_mode == 0:
             tr_warr_list = template.extend_wires(tr_warr_list, lower=tr_lower, upper=tr_upper,
                                                  unit_mode=True)
@@ -343,7 +348,7 @@ class BiasShield(TemplateBase):
             inst = template.add_instance(end_master, loc=loc, orient=eorient, unit_mode=True)
             sup_warrs.extend(inst.get_all_port_pins('sup', layer=sup_layer))
 
-        return BiasInfo(tracks=tr_warr_list, supplies=sup_warrs, p0=p0, p1=p1)
+        return BiasInfo(tracks=tr_warr_list, supplies=sup_warrs, p0=p0, p1=p1, shields=shields)
 
     @classmethod
     def _get_blk_idx_iter(cls, intvs, sl, su, qdim, nstart, nstop):
