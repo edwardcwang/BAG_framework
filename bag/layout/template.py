@@ -116,7 +116,7 @@ class TemplateDB(MasterDB):
             with open(os.path.join(cache_dir, 'db_mapping.pickle'), 'rb') as f:
                 info = pickle.load(f)
             for key, fname in info.items():
-                params = dict(cache_fname=os.path.join(cache_dir, fname))
+                params = dict(cache_fname=fname)
                 master = CachedTemplate(self, lib_name, params, self.used_cell_names,
                                         use_cybagoa=self._use_cybagoa)
                 master.finalize()
@@ -314,9 +314,8 @@ class TemplateDB(MasterDB):
         info = {}
         cnt = 0
         for master in temp_list:
-            fname = '%d.pickle' % cnt
-            master.write_to_disk(os.path.join(dir_name, fname), self.lib_name, master.cell_name,
-                                 debug=True)
+            fname = os.path.join(dir_name, str(cnt))
+            master.write_to_disk(fname, self.lib_name, master.cell_name, debug=True)
             info[master.key] = fname
             cnt += 1
 
@@ -996,7 +995,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         start = time.time()
         prop_dict = {key: getattr(self, key) for key in self.get_cache_properties()}
-        self.merge_inst_tracks()
+
+        res = self.grid.resolution
+        save_tracks = UsedTracks(fname, overwrite=True)
+        for layer_id, box, dx, dy in self.all_rect_iter():
+            save_tracks.record_box(layer_id, box, dx, dy, res)
+        save_tracks.close()
 
         template_info = dict(
             lib_name=lib_name,
@@ -1006,43 +1010,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             prim_top_layer=self.prim_top_layer,
             prim_bound_box=self.prim_bound_box,
             array_box=self.array_box,
-            used_tracks=self._used_tracks,
             properties=prop_dict,
         )
 
-        with open(fname, 'wb') as f:
+        with open(fname + '_info.pickle', 'wb') as f:
             pickle.dump(template_info, f, protocol=-1)
 
         stop = time.time()
         if debug:
             print('Writing to disk took %.4g seconds.' % (stop - start))
 
-    def load_from_disk(self, fname):
-        with open(fname, 'rb') as f:
-            info = pickle.load(f)
-        self._size = info['size']
-        self._port_params = info['port_params']
-        self.prim_top_layer = info['prim_top_layer']
-        self.prim_bound_box = info['prim_bound_box']
-        self.array_box = info['array_box']
-
-        self._used_tracks = info['used_tracks']
-        self._merge_used_tracks = True
-
-        prop_dict = info['properties']
-        for key, val in prop_dict.items():
-            setattr(self, key, val)
-
-        lib_name = info['lib_name']
-        cell_name = info['cell_name']
-        self.add_instance_primitive(lib_name, cell_name, (0, 0), inst_name='X0', unit_mode=True)
-
     def merge_inst_tracks(self):
         # type: () -> None
         """Flatten all rectangles from instances into the UsedTracks data structure."""
-        res = self.grid.resolution
         if not self._merge_used_tracks:
             self._merge_used_tracks = True
+            res = self.grid.resolution
             for inst in self._layout.inst_iter():
                 for layer_id, box, dx, dy in inst.all_rect_iter():
                     self._used_tracks.record_box(layer_id, box, dx, dy, res)
@@ -3533,4 +3516,23 @@ class CachedTemplate(TemplateBase):
 
     def draw_layout(self):
         # type: () -> None
-        self.load_from_disk(self.params['cache_fname'])
+        fname = self.params['cache_fname']
+
+        with open(fname + '_info.pickle', 'rb') as f:
+            info = pickle.load(f)
+        self._size = info['size']
+        self._port_params = info['port_params']
+        self.prim_top_layer = info['prim_top_layer']
+        self.prim_bound_box = info['prim_bound_box']
+        self.array_box = info['array_box']
+
+        self._merge_used_tracks = True
+        self._used_tracks = UsedTracks(fname, overwrite=False)
+
+        prop_dict = info['properties']
+        for key, val in prop_dict.items():
+            setattr(self, key, val)
+
+        lib_name = info['lib_name']
+        cell_name = info['cell_name']
+        self.add_instance_primitive(lib_name, cell_name, (0, 0), inst_name='X0', unit_mode=True)
