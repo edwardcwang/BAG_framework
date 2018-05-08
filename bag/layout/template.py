@@ -110,14 +110,20 @@ class TemplateDB(MasterDB):
         self._pure_oa = pure_oa
 
         if cache_dir and os.path.isdir(cache_dir):
+            print('loading template cache...')
+            start = time.time()
             cache_dir = os.path.realpath(cache_dir)
             with open(os.path.join(cache_dir, 'db_mapping.pickle'), 'rb') as f:
                 info = pickle.load(f)
             for key, fname in info.items():
                 params = dict(cache_fname=os.path.join(cache_dir, fname))
-                master = CachedTemplate(self, lib_name, params, self.used_cell_names)
+                master = CachedTemplate(self, lib_name, params, self.used_cell_names,
+                                        use_cybagoa=self._use_cybagoa)
                 master.finalize()
                 self.register_master(key, master)
+                self.register_master(master.key, master)
+            end = time.time()
+            print('cache loading took %.5g seconds.' % (end - start))
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
         # type: (Type[TemplateType], str, Dict[str, Any], Set[str], **kwargs) -> TemplateType
