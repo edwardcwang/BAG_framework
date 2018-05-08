@@ -474,6 +474,11 @@ class MasterDB(abc.ABC):
         """Returns the cell name suffix."""
         return self._name_suffix
 
+    @property
+    def used_cell_names(self):
+        # type: () -> Set[str]
+        return self._used_cell_names
+
     @cell_suffix.setter
     def cell_suffix(self, new_val):
         # type: (str) -> None
@@ -612,9 +617,10 @@ class MasterDB(abc.ABC):
                 self._key_lookup[prelim_key] = key
                 if key in self._master_lookup:
                     master = self._master_lookup[key]
+                    self._used_cell_names.add(master.cell_name)
                 else:
-                    self._master_lookup[key] = master
-                self._used_cell_names.add(master.cell_name)
+                    self.register_master(key, master)
+
                 if debug:
                     print('finalizing master took %.4g seconds' % (end - start))
         else:
@@ -628,12 +634,15 @@ class MasterDB(abc.ABC):
                 start = time.time()
                 master.finalize()
                 end = time.time()
-                self._master_lookup[key] = master
-                self._used_cell_names.add(master.cell_name)
+                self.register_master(key, master)
                 if debug:
                     print('finalizing master took %.4g seconds' % (end - start))
 
         return master
+
+    def register_master(self, key, master):
+        self._master_lookup[key] = master
+        self._used_cell_names.add(master.cell_name)
 
     def instantiate_masters(self,
                             master_list,  # type: Sequence[DesignMaster]

@@ -90,6 +90,7 @@ class TemplateDB(MasterDB):
                           name_prefix=name_prefix, name_suffix=name_suffix)
 
         pure_oa = kwargs.get('pure_oa', False)
+        cache_dir = kwargs.get('cache_dir', '')
 
         if gds_lay_file:
             if gdspy is None:
@@ -107,6 +108,16 @@ class TemplateDB(MasterDB):
         self._gds_lay_file = gds_lay_file
         self._flatten = flatten
         self._pure_oa = pure_oa
+
+        if cache_dir and os.path.isdir(cache_dir):
+            cache_dir = os.path.realpath(cache_dir)
+            with open(os.path.join(cache_dir, 'db_mapping.pickle'), 'rb') as f:
+                info = pickle.load(f)
+            for key, fname in info.items():
+                params = dict(cache_fname=os.path.join(cache_dir, fname))
+                master = CachedTemplate(self, lib_name, params, self.used_cell_names)
+                master.finalize()
+                self.register_master(key, master)
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
         # type: (Type[TemplateType], str, Dict[str, Any], Set[str], **kwargs) -> TemplateType
@@ -290,6 +301,20 @@ class TemplateDB(MasterDB):
         self._prj = prj
         self.instantiate_masters(template_list, name_list=name_list, lib_name=lib_name,
                                  debug=debug, rename_dict=rename_dict)
+
+    def save_cache_templates(self, temp_list, dir_name):
+        os.makedirs(dir_name, exist_ok=True)
+
+        info = {}
+        cnt = 0
+        for master in temp_list:
+            fname = '%d.pickle' % cnt
+            master.write_to_disk(os.path.join(dir_name, fname), self.lib_name, master.cell_name)
+            info[master.key] = fname
+            cnt += 1
+
+        with open(os.path.join(dir_name, 'db_mapping.pickle'), 'wb') as f:
+            pickle.dump(info, f, protocol=-1)
 
     def _create_gds(self, lib_name, content_list, debug=False):
         # type: (str, Sequence[Any], bool) -> None
@@ -728,6 +753,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             fp_dict = self.grid.get_flip_parity_at(bot_layer, top_layer, loc,
                                                    inst.orientation, unit_mode=True)
             inst.new_master_with(flip_parity=fp_dict)
+
+    def instance_iter(self):
+        return self._layout.inst_iter()
 
     def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
         # type: (int, BBox, int, int) -> Generator[BBox, None, None]

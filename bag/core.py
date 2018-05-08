@@ -571,8 +571,9 @@ class BagProject(object):
 
         return self.impl_db.get_cells_in_library(lib_name)
 
-    def make_template_db(self, impl_lib, grid_specs, use_cybagoa=True, gds_lay_file=''):
-        # type: (str, Dict[str, Any], bool, str) -> TemplateDB
+    def make_template_db(self, impl_lib, grid_specs, use_cybagoa=True, gds_lay_file='',
+                         cache_dir=''):
+        # type: (str, Dict[str, Any], bool, str, str) -> TemplateDB
         """Create and return a new TemplateDB instance.
 
         Parameters
@@ -585,6 +586,8 @@ class BagProject(object):
             True to enable cybagoa acceleration if available.
         gds_lay_file : str
             the GDS layout information file.
+        cache_dir : str
+            the cache directory name.
         """
         layers = grid_specs['layers']
         widths = grid_specs['widths']
@@ -595,7 +598,7 @@ class BagProject(object):
         routing_grid = RoutingGrid(self.tech_info, layers, spaces, widths, bot_dir,
                                    width_override=width_override)
         tdb = TemplateDB('template_libs.def', routing_grid, impl_lib, use_cybagoa=use_cybagoa,
-                         gds_lay_file=gds_lay_file)
+                         gds_lay_file=gds_lay_file, cache_dir=cache_dir)
 
         return tdb
 
@@ -609,7 +612,8 @@ class BagProject(object):
                       use_cybagoa=True,  # type: bool
                       debug=False,  # type: bool
                       profile_fname='',  # type: str
-                      cache_fname='',  # type: str
+                      cache_dir='',  # type: str
+                      temp_db=None,  # type: Optional[TemplateDB]
                       ):
         # type: (...) -> Optional[pstats.Stats]
         """Generate layout/schematic of a given cell from specification file.
@@ -634,8 +638,10 @@ class BagProject(object):
             True to print debug messages.
         profile_fname : str
             If not empty, profile layout generation, and save statistics to this file.
-        cache_fname : str
-            If not empty, write layout template to cache file.
+        cache_dir : str
+            If not empty, Use this as the cache directory.
+        temp_db : Optional[TemplateDB]
+            If given, will use this template database instead.
 
         Returns
         -------
@@ -651,8 +657,9 @@ class BagProject(object):
         params = specs['params']
 
         if gen_lay or gen_sch:
-            temp_db = self.make_template_db(impl_lib, grid_specs, use_cybagoa=use_cybagoa,
-                                            gds_lay_file=gds_lay_file)
+            if temp_db is None:
+                temp_db = self.make_template_db(impl_lib, grid_specs, use_cybagoa=use_cybagoa,
+                                                gds_lay_file=gds_lay_file, cache_dir=cache_dir)
 
             name_list = [impl_cell]
             print('computing layout...')
@@ -668,10 +675,6 @@ class BagProject(object):
             temp = temp_db.new_template(params=params, temp_cls=temp_cls, debug=debug)
             print('computation done.')
             temp_list = [temp]
-            if cache_fname:
-                print('writing layout to cache...')
-                temp.write_to_disk(cache_fname, impl_lib, impl_cell, debug=debug)
-                print('cache writing done.')
 
             if gen_lay:
                 print('creating layout...')
