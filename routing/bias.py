@@ -333,7 +333,7 @@ class BiasShield(TemplateBase):
         if lu_end_mode == 0:
             tr_warr_list = template.extend_wires(tr_warr_list, lower=tr_lower, upper=tr_upper,
                                                  unit_mode=True)
-        if lu_end_mode != 0:
+        else:
             end_master = template.new_template(params=params, temp_cls=BiasShieldEnd)
             if lu_end_mode & 2 != 0:
                 tr_warr_list = template.extend_wires(tr_warr_list, upper=tr_upper, unit_mode=True)
