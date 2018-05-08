@@ -227,6 +227,7 @@ class BiasShield(TemplateBase):
                           tr_upper=None,  # type: Optional[int]
                           lu_end_mode=0,  # type: int
                           sup_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
+                          add_end=True,  # type: bool
                           ):
         # type: (...) -> BiasInfo
         grid = template.grid
@@ -333,7 +334,7 @@ class BiasShield(TemplateBase):
         if lu_end_mode == 0:
             tr_warr_list = template.extend_wires(tr_warr_list, lower=tr_lower, upper=tr_upper,
                                                  unit_mode=True)
-        else:
+        elif add_end:
             end_master = template.new_template(params=params, temp_cls=BiasShieldEnd)
             if lu_end_mode & 2 != 0:
                 tr_warr_list = template.extend_wires(tr_warr_list, upper=tr_upper, unit_mode=True)
