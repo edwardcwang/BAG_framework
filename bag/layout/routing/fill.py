@@ -3,9 +3,9 @@
 """This module defines classes that provides automatic fill utility on a grid.
 """
 
-from typing import TYPE_CHECKING, Optional, Union, List, Tuple, Any, Generator, Dict
+from typing import TYPE_CHECKING, Optional, Union, List, Tuple, Any, Generator
 
-from rtree.index import Index
+from rtree.index import Index, Property
 
 from bag.layout.util import BBox
 from bag.util.search import BinaryIterator, minimize_cost_golden
@@ -19,30 +19,24 @@ if TYPE_CHECKING:
 class RectIndex(object):
     """A R-tree that stores all tracks on a layer."""
 
-    def __init__(self, resolution, init_cnt=0, init_index=None):
+    def __init__(self, resolution, basename=None, overwrite=False):
         # type: (float) -> None
         self._res = resolution
-        self._cnt = init_cnt
-        if init_index is None:
+        self._cnt = 0
+        if basename is None:
             self._index = Index(interleaved=True)
         else:
-            self._index = init_index
-
-    def __getstate__(self):
-        info = [(item.id, item.bbox, item.object)
-                for item in self._index.intersection(self._index.bounds, objects=True)]
-        return self._res, self._cnt, info
-
-    def __setstate__(self, state):
-        self._res = state[0]
-        self._cnt = state[1]
-        self._index = Index(state[2], interleaved=True)
+            p = Property(overwrite=overwrite)
+            self._index = Index(basename, interleaved=True, properties=p)
 
     @property
     def bound_box(self):
         # type: () -> BBox
         xl, yb, xr, yt = self._index.bounds
         return BBox(int(xl), int(yb), int(xr), int(yt), self._res, unit_mode=True)
+
+    def close(self):
+        self._index.close()
 
     def record_box(self, box, dx, dy):
         # type: (BBox, int, int) -> None
@@ -74,19 +68,13 @@ class RectIndex(object):
 
 class UsedTracks(object):
     """A R-tree that stores all tracks in a template.
-
-    Parameters
-    ----------
-    init_idx_table: Optional[Dict[int, RectIndex]]
-        The RectIndex table.
     """
 
-    def __init__(self, init_idx_table=None):
-        # type: (Optional[Dict[int, RectIndex]]) -> None
-        if init_idx_table is None:
-            self._idx_table = {}
-        else:
-            self._idx_table = init_idx_table
+    def __init__(self, save_file_basename=None, overwrite=False):
+        # type: (Optional[str]) -> None
+        self._idx_table = {}
+        self._save_file_basename = save_file_basename
+        self._overwrite = overwrite
 
     def __iter__(self):
         return self._idx_table.keys()
@@ -105,10 +93,18 @@ class UsedTracks(object):
     def record_box(self, layer_id, box, dx, dy, res):
         # type: (int, BBox, int, int, float) -> None
         if layer_id not in self._idx_table:
-            index = self._idx_table[layer_id] = RectIndex(res)
+            if self._save_file_basename is None:
+                basename = None
+            else:
+                basename = self._save_file_basename + ('_%d' % layer_id)
+            index = self._idx_table[layer_id] = RectIndex(res, basename, self._overwrite)
         else:
             index = self._idx_table[layer_id]
         index.record_box(box, dx, dy)
+
+    def close(self):
+        for index in self._idx_table.values():
+            index.close()
 
     def record_rect(self, grid, layer_name, box_arr, dx=-1, dy=-1):
         # type: (RoutingGrid, Union[Tuple[str, str], str], BBoxArray, int, int) -> Optional[int]
@@ -126,7 +122,12 @@ class UsedTracks(object):
             return None
 
         if layer_id not in self._idx_table:
-            index = self._idx_table[layer_id] = RectIndex(grid.resolution)
+            if self._save_file_basename is None:
+                basename = None
+            else:
+                basename = self._save_file_basename + ('_%d' % layer_id)
+            index = self._idx_table[layer_id] = RectIndex(grid.resolution, basename,
+                                                          self._overwrite)
         else:
             index = self._idx_table[layer_id]
 
