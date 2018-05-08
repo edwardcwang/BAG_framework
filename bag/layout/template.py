@@ -308,14 +308,14 @@ class TemplateDB(MasterDB):
         self.instantiate_masters(template_list, name_list=name_list, lib_name=lib_name,
                                  debug=debug, rename_dict=rename_dict)
 
-    def save_cache_templates(self, temp_list, dir_name):
+    def save_to_cache(self, temp_list, dir_name, debug=False):
         os.makedirs(dir_name, exist_ok=True)
 
         info = {}
         cnt = 0
         for master in temp_list:
             fname = os.path.join(dir_name, str(cnt))
-            master.write_to_disk(fname, self.lib_name, master.cell_name, debug=True)
+            master.write_to_disk(fname, self.lib_name, master.cell_name, debug=debug)
             info[master.key] = fname
             cnt += 1
 
