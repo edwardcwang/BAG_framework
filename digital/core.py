@@ -99,6 +99,19 @@ class DigitalBase(TemplateBase, metaclass=abc.ABCMeta):
         return tech_cls.get_sub_port_columns(lch_unit)
 
     @property
+    def lch_unit(self):
+        if 'config' in self.params:
+            lch = self.params['config']['lch']
+            grid = self.grid
+            return int(round(lch / (grid.layout_unit * grid.resolution)))
+        else:
+            return self._laygo_info.lch_unit
+
+    @property
+    def sub_columns(self):
+        return self.get_sub_columns(self.grid.tech_info, self.lch_unit)
+
+    @property
     def conn_layer(self):
         # type: () -> int
         return self._tech_cls.get_dig_conn_layer()
