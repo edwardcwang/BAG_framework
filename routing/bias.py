@@ -327,10 +327,10 @@ class BiasShield(TemplateBase):
 
         if is_horiz:
             p0 = (tr_lower, offset)
-            p1 = (tr_upper, offset)
+            p1 = (tr_upper, offset + sh_box.height_unit)
         else:
             p0 = (offset, tr_lower)
-            p1 = (offset, tr_upper)
+            p1 = (offset + sh_box.width_unit, tr_upper)
         if lu_end_mode == 0:
             tr_warr_list = template.extend_wires(tr_warr_list, lower=tr_lower, upper=tr_upper,
                                                  unit_mode=True)
@@ -339,12 +339,10 @@ class BiasShield(TemplateBase):
                 tr_warr_list = template.extend_wires(tr_warr_list, upper=tr_upper, unit_mode=True)
                 eorient = 'MY' if is_horiz else 'MX'
                 loc = p0
-                p0 = None
             else:
                 tr_warr_list = template.extend_wires(tr_warr_list, lower=tr_lower, unit_mode=True)
                 eorient = 'R0'
                 loc = p1
-                p1 = None
             if add_end:
                 end_master = template.new_template(params=params, temp_cls=BiasShieldEnd)
                 inst = template.add_instance(end_master, loc=loc, orient=eorient, unit_mode=True)
