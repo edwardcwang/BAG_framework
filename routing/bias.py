@@ -228,6 +228,7 @@ class BiasShield(TemplateBase):
                           lu_end_mode=0,  # type: int
                           sup_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
                           add_end=True,  # type: bool
+                          extend_tracks=True,  # type: bool
                           ):
         # type: (...) -> BiasInfo
         grid = template.grid
@@ -332,17 +333,22 @@ class BiasShield(TemplateBase):
             p0 = (offset, tr_lower)
             p1 = (offset + sh_box.width_unit, tr_upper)
         if lu_end_mode == 0:
-            tr_warr_list = template.extend_wires(tr_warr_list, lower=tr_lower, upper=tr_upper,
-                                                 unit_mode=True)
+            if extend_tracks:
+                tr_warr_list = template.extend_wires(tr_warr_list, lower=tr_lower, upper=tr_upper,
+                                                     unit_mode=True)
         else:
             if lu_end_mode & 2 != 0:
-                tr_warr_list = template.extend_wires(tr_warr_list, upper=tr_upper, unit_mode=True)
+                if extend_tracks:
+                    tr_warr_list = template.extend_wires(tr_warr_list, upper=tr_upper,
+                                                         unit_mode=True)
                 eorient = 'MY' if is_horiz else 'MX'
                 loc = p0
             else:
-                tr_warr_list = template.extend_wires(tr_warr_list, lower=tr_lower, unit_mode=True)
+                if extend_tracks:
+                    tr_warr_list = template.extend_wires(tr_warr_list, lower=tr_lower,
+                                                         unit_mode=True)
                 eorient = 'R0'
-                loc = p1
+                loc = (tr_upper, offset) if is_horiz else (offset, tr_upper)
             if add_end:
                 end_master = template.new_template(params=params, temp_cls=BiasShieldEnd)
                 inst = template.add_instance(end_master, loc=loc, orient=eorient, unit_mode=True)
