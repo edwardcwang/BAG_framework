@@ -315,8 +315,10 @@ class TemplateDB(MasterDB):
         cnt = 0
         for master in temp_list:
             fname = os.path.join(dir_name, str(cnt))
-            master.write_to_disk(fname, self.lib_name, master.cell_name, debug=debug)
-            info[master.key] = fname
+            key = master.key
+            if key not in info:
+                master.write_to_disk(fname, self.lib_name, master.cell_name, debug=debug)
+                info[key] = fname
             cnt += 1
 
         with open(os.path.join(dir_name, 'db_mapping.pickle'), 'wb') as f:
