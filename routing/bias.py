@@ -423,7 +423,9 @@ class BiasShieldEnd(TemplateBase):
         # type: () -> None
         route_layer = self.params['layer']
         nwire_real = self.params['nwire']
+        bias_config = self.params['bias_config']
         width = self.params['width']
+        space_sig = self.params['space_sig']
 
         grid = self.grid
 
@@ -440,19 +442,16 @@ class BiasShieldEnd(TemplateBase):
         bot_box = bot_master.bound_box
         blk_w = bot_box.width_unit
         blk_h = bot_box.height_unit
-        sp_le = grid.get_line_end_space(route_layer, width, unit_mode=True)
         min_len = grid.get_min_length(route_layer, width, unit_mode=True)
 
         orig = (0, 0)
         nx = ny = 1
+        cr = self.get_dimension(grid, route_layer, bias_config, nwire_real, width=width,
+                                space_sig=space_sig)
         if is_horiz:
-            min_len = max(min_len, blk_w)
-            nx = nblk = -(-(sp_le + min_len) // blk_w)  # type: int
-            cr = nblk * blk_w
+            nx = nblk = cr // blk_w
         else:
-            min_len = max(min_len, blk_h)
-            ny = nblk = -(-(sp_le + min_len) // blk_h)  # type: int
-            cr = nblk * blk_h
+            ny = nblk = cr // blk_h
         self._nblk = nblk
 
         bot_inst = self.add_instance(bot_master, 'XBOT', loc=orig, nx=nx, ny=ny,
@@ -477,6 +476,26 @@ class BiasShieldEnd(TemplateBase):
         self.prim_top_layer = top_layer
         self.prim_bound_box = self.array_box = bnd_box
         self.add_pin('sup', top_inst.get_all_port_pins('sup'), show=False)
+
+    @classmethod
+    def get_dimension(cls, grid, route_layer, bias_config, nwire, width=1, space_sig=0):
+        # type: (RoutingGrid, int, Dict[int, Tuple[int, ...]], int, int, int) -> int
+
+        blk_w, blk_h = BiasShield.get_block_size(grid, route_layer, bias_config, nwire,
+                                                 width=width, space_sig=space_sig)
+
+        route_dir = grid.get_direction(route_layer)
+        is_horiz = (route_dir == 'x')
+
+        sp_le = grid.get_line_end_space(route_layer, width, unit_mode=True)  # type: int
+        min_len = grid.get_min_length(route_layer, width, unit_mode=True)  # type: int
+
+        if is_horiz:
+            min_len = max(min_len, blk_w)
+            return -(-(sp_le + min_len) // blk_w) * blk_w
+        else:
+            min_len = max(min_len, blk_h)
+            return -(-(sp_le + min_len) // blk_h) * blk_h
 
 
 class BiasShieldCrossing(TemplateBase):
