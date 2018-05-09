@@ -284,20 +284,22 @@ class WireArray(object):
         # type: (List[WireArray]) -> WireArray
         """Convert a list of WireArrays to a single WireArray.
 
-        this method assumes all WireArrays have the same layer and lower and upper coordinates.
+        this method assumes all WireArrays have the same layer, width, and lower/upper coordinates.
         Overlapping WireArrays will be compacted.
         """
         if len(warr_list) == 1:
             return warr_list[0]
 
-        layer = warr_list[0].layer_id
+        tid0 = warr_list[0].track_id
+        layer = tid0.layer_id
+        width = tid0.width
         res = warr_list[0].resolution
         lower, upper = warr_list[0].lower_unit, warr_list[0].upper_unit
         tid_list = sorted(set((int(idx * 2) for warr in warr_list for idx in warr.track_id)))
         base_idx2 = tid_list[0]
         base_idx = base_idx2 // 2 if base_idx2 % 2 == 0 else base_idx2 / 2
         if len(tid_list) < 2:
-            return WireArray(TrackID(layer, base_idx), lower, upper,
+            return WireArray(TrackID(layer, base_idx, width=width), lower, upper,
                              res=res, unit_mode=True)
         diff = tid_list[1] - tid_list[0]
         for idx in range(1, len(tid_list) - 1):
@@ -305,8 +307,8 @@ class WireArray(object):
                 raise ValueError('pitch mismatch.')
         pitch = diff // 2 if diff % 2 == 0 else diff / 2
 
-        return WireArray(TrackID(layer, base_idx, num=len(tid_list), pitch=pitch), lower, upper,
-                         res=res, unit_mode=True)
+        return WireArray(TrackID(layer, base_idx, width=width, num=len(tid_list), pitch=pitch),
+                         lower, upper, res=res, unit_mode=True)
 
     def get_immutable_key(self):
         return (self.__class__.__name__, self._track_id.get_immutable_key(), self._lower_unit,
