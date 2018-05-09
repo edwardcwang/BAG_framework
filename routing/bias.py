@@ -642,7 +642,7 @@ class BiasShieldJoin(TemplateBase):
         cross_params['connect_shield'] = True
         master = self.new_template(params=cross_params, temp_cls=BiasShieldCrossing)
         inst = self.add_instance(master, 'XCROSS', loc=(0, 0), unit_mode=True)
-        bnd_box = master.bound_box
+        self.array_box = bnd_box = master.bound_box
 
         sup_list = inst.get_all_port_pins('sup')
         bot_horiz = self.grid.get_direction(bot_layer) == 'x'
@@ -673,6 +673,8 @@ class BiasShieldJoin(TemplateBase):
             sup_list.extend(inst.port_pins_iter('sup'))
             bnd_box = bnd_box.merge(inst.bound_box)
 
+        self.add_pin('sup', sup_list, show=False)
+
         self.prim_top_layer = master.top_layer
-        self.prim_bound_box = self.array_box = bnd_box
+        self.prim_bound_box = bnd_box
         self.add_cell_boundary(bnd_box)
