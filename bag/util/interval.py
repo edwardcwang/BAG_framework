@@ -539,6 +539,26 @@ class IntervalSet(object):
             for idx in range(sidx, eidx):
                 yield self._start_list[idx], self._end_list[idx]
 
+    def overlap_values(self, intv):
+        # type: (Tuple[int, int]) -> Generator[Any, None, None]
+        """Iterates over values of intervals overlapping the given interval.
+
+        Parameters
+        ----------
+        intv : Tuple[int, int]
+            the interval.
+
+        Yields
+        -------
+        ovl_intv : Tuple[int, int]
+            the overlapping interval.
+        """
+        sidx = self._get_first_overlap_idx(intv)
+        if sidx >= 0:
+            eidx = self._get_last_overlap_idx(intv) + 1
+            for idx in range(sidx, eidx):
+                yield self._val_list[idx]
+
     def get_first_overlap_item(self, intv):
         # type: (Tuple[int, int]) -> Optional[Tuple[Tuple[int, int], Any]]
         """Returns the first item with interval that overlaps the given one."""

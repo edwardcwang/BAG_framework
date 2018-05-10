@@ -2717,6 +2717,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         if not wire_arr_list:
             # do nothing
+            if return_wires:
+                return None, []
             return None
 
         grid = self.grid
