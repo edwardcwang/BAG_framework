@@ -247,6 +247,7 @@ class BiasShield(TemplateBase):
                           space_sig=0,  # type: int
                           sup_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
                           check_blockage=True,  # type: bool
+                          tb_mode=3,  # type: int
                           ):
         grid = template.grid
         res = grid.resolution
@@ -299,10 +300,15 @@ class BiasShield(TemplateBase):
                     blkl, blku = box.get_interval(tr_dir, unit_mode=True)
                     intv.add((max(blkl, lower), min(blku, upper)), merge=True, abut=True)
 
+        master_intv_list = []
+        if tb_mode & 1 != 0:
+            master_intv_list.append((bot_master, bot_intvs))
+        if tb_mode & 2 != 0:
+            master_intv_list.append((top_master, top_intvs))
         # draw blocks
         sup_warrs = []
         sup_layer = layer + 1
-        for master, intvs in ((bot_master, bot_intvs), (top_master, top_intvs)):
+        for master, intvs in master_intv_list:
             sl, su = master.sup_intv
             ncur = nstart
             for nend, nnext in cls._get_blk_idx_iter(intvs, sl, su, qdim, nstart, nstop):
@@ -600,6 +606,7 @@ class BiasShieldCrossing(TemplateBase):
             bot_params='the bottom layer routing parameters.',
             top_params='the top layer routing parameters.',
             connect_shield='True to connect shield wires together.',
+            draw_top='True to draw top shield.',
         )
 
     @classmethod
@@ -607,6 +614,7 @@ class BiasShieldCrossing(TemplateBase):
         # type: () -> Dict[str, Any]
         return dict(
             connect_shield=False,
+            draw_top=True,
         )
 
     def draw_layout(self):
@@ -616,6 +624,7 @@ class BiasShieldCrossing(TemplateBase):
         bot_params = self.params['bot_params']
         top_params = self.params['top_params']
         connect_shield = self.params['connect_shield']
+        draw_top = self.params['draw_top']
 
         grid = self.grid
 
@@ -648,18 +657,29 @@ class BiasShieldCrossing(TemplateBase):
 
         bb_inst = self.add_instance(bb_master, 'XBB', loc=(0, 0), nx=nx_bot,
                                     ny=ny_bot, spx=bot_w, spy=bot_h, unit_mode=True)
-        tt_inst = self.add_instance(tt_master, 'XTT', loc=(0, 0), nx=nx_top,
-                                    ny=ny_top, spx=top_w, spy=top_h, unit_mode=True)
 
         self.prim_top_layer = top_layer + 1
-        self.prim_bound_box = self.array_box = tt_inst.bound_box
+        self.prim_bound_box = self.array_box = bb_inst.bound_box
 
-        if connect_shield:
-            bb_shields = self.connect_wires(bb_inst.get_all_port_pins('shield'))
-            tt_shields = self.connect_wires(tt_inst.get_all_port_pins('shield'))
-            self.connect_to_track_wires(bb_shields, tt_shields)
+        bb_shields = self.connect_wires(bb_inst.get_all_port_pins('shield'))
+        if draw_top:
+            tt_inst = self.add_instance(tt_master, 'XTT', loc=(0, 0), nx=nx_top,
+                                        ny=ny_top, spx=top_w, spy=top_h, unit_mode=True)
+            if connect_shield:
+                tt_shields = self.connect_wires(tt_inst.get_all_port_pins('shield'))
+                self.connect_to_track_wires(bb_shields, tt_shields)
 
-        self.add_pin('sup', tt_inst.get_all_port_pins('sup'), show=False)
+            self.add_pin('sup', tt_inst.get_all_port_pins('sup'), show=False)
+        else:
+            # still draw shield wires
+            sh_warr = tt_master.get_port('shield').get_pins()
+            upper = self.prim_bound_box.top_unit if bot_horiz else self.prim_bound_box.right_unit
+            for warr in sh_warr:
+                tid = warr.track_id
+                self.add_wires(tid.layer_id, tid.base_index, 0, upper,
+                               width=tid.width, num=tid.num, pitch=tid.pitch, unit_mode=True)
+            if connect_shield:
+                self.connect_to_track_wires(bb_shields, sh_warr)
 
 
 class BiasShieldJoin(TemplateBase):
