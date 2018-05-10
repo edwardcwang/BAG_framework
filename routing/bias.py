@@ -47,8 +47,18 @@ def compute_vroute_width(template, vm_layer, blk_w, num_vdd, num_vss, bias_confi
 
 def join_bias_vroutes(template, vm_layer, vdd_dx, vss_dx, xr, num_vdd_tot, num_vss_tot,
                       hm_bias_info_list, bias_config, vdd_pins, vss_pins, show_pins,
-                      xl=0, yt=None):
+                      xl=0, yt=None, vss_warrs=None, vdd_warrs=None):
     grid = template.grid
+
+    vss_intvs = IntervalSet()
+    vdd_intvs = IntervalSet()
+    if vss_warrs is not None:
+        for w in WireArray.single_warr_iter(vss_warrs):
+            vss_intvs.add(w.track_id.get_bounds(grid, unit_mode=True), val=w)
+    if vdd_warrs is not None:
+        for w in WireArray.single_warr_iter(vdd_warrs):
+            vdd_intvs.add(w.track_id.get_bounds(grid, unit_mode=True), val=w)
+
     vdd_xl, vdd_xr = vdd_dx
     vss_xl, vss_xr = vss_dx
     vdd_xl += xl
@@ -78,18 +88,21 @@ def join_bias_vroutes(template, vm_layer, vdd_dx, vss_dx, xr, num_vdd_tot, num_v
         if code == 0:
             params['bot_params'] = vss_params
             if vss_y_prev is not None and y0 > vss_y_prev:
+                sup_warrs = list(vss_intvs.overlap_values((vss_y_prev, y0)))
                 tmp = BiasShield.draw_bias_shields(template, vm_layer, bias_config, num_vss_tot,
-                                                   vss_xl, vss_y_prev, y0)
+                                                   vss_xl, vss_y_prev, y0, sup_warrs=sup_warrs)
                 vss_hm_list.extend(tmp[0])
         else:
             params['bot_params'] = vdd_params
             if vdd_y_prev is not None and y0 > vdd_y_prev:
+                sup_warrs = list(vdd_intvs.overlap_values((vdd_y_prev, y0)))
                 tmp = BiasShield.draw_bias_shields(template, vm_layer, bias_config, num_vdd_tot,
-                                                   vdd_xl, vdd_y_prev, y0)
+                                                   vdd_xl, vdd_y_prev, y0, sup_warrs=sup_warrs)
                 vdd_hm_list.extend(tmp[0])
             if vss_y_prev is not None and y0 > vss_y_prev:
+                sup_warrs = list(vss_intvs.overlap_values((vss_y_prev, y0)))
                 tmp = BiasShield.draw_bias_shields(template, vm_layer, bias_config, num_vss_tot,
-                                                   vss_xl, vss_y_prev, y0)
+                                                   vss_xl, vss_y_prev, y0, sup_warrs=sup_warrs)
                 vss_hm_list.extend(tmp[0])
 
         params['top_params'] = dict(
@@ -134,12 +147,14 @@ def join_bias_vroutes(template, vm_layer, vdd_dx, vss_dx, xr, num_vdd_tot, num_v
     if yt is None:
         yt = max(vss_y_prev, vdd_y_prev)
     if vss_y_prev < yt:
+        sup_warrs = list(vss_intvs.overlap_values((vss_y_prev, yt)))
         tmp = BiasShield.draw_bias_shields(template, vm_layer, bias_config, num_vss_tot,
-                                           vss_xl, vss_y_prev, yt)
+                                           vss_xl, vss_y_prev, yt, sup_warrs=sup_warrs)
         vss_hm_list.extend(tmp[0])
     if vdd_y_prev < yt:
+        sup_warrs = list(vdd_intvs.overlap_values((vdd_y_prev, yt)))
         tmp = BiasShield.draw_bias_shields(template, vm_layer, bias_config, num_vdd_tot,
-                                           vdd_xl, vdd_y_prev, yt)
+                                           vdd_xl, vdd_y_prev, yt, sup_warrs=sup_warrs)
         vdd_hm_list.extend(tmp[0])
 
     sup_layer = hm_layer + 1
@@ -448,8 +463,18 @@ class BiasShield(TemplateBase):
         shp = route_tids[nwire + 1][0] - tr0_ref
         shields = template.add_wires(layer, sh0, lower, upper, num=2,
                                      pitch=shp, unit_mode=True)
+
+        # connect supply wires if necessary
+        sup_layer = layer + 1
         if sup_warrs is not None:
-            template.connect_to_tracks(sup_warrs, shields.track_id)
+            new_sup_warrs = []
+            _, wires = template.connect_to_tracks(sup_warrs, shields.track_id, return_wires=True)
+            for warr in wires:
+                if warr.layer_id == sup_layer:
+                    new_sup_warrs.append(warr)
+            sup_warrs = new_sup_warrs
+        else:
+            sup_warrs = []
 
         # get blockages
         if check_blockage:
@@ -468,8 +493,6 @@ class BiasShield(TemplateBase):
         if tb_mode & 2 != 0:
             master_intv_list.append((top_master, top_intvs))
         # draw blocks
-        sup_warrs = []
-        sup_layer = layer + 1
         for master, intvs in master_intv_list:
             sl, su = master.sup_intv
             ncur = nstart
