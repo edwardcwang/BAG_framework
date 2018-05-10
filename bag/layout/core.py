@@ -1471,9 +1471,6 @@ class BagLayout(object):
         if self._finalized:
             raise Exception('Layout is already finalized.')
 
-        # if isinstance(rect.nx, float) or isinstance(rect.ny, float):
-        #     raise Exception('float nx/ny')
-
         self._rect_list.append(rect)
 
     def add_path(self, path):
