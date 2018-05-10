@@ -310,16 +310,27 @@ class WireArray(object):
         return WireArray(TrackID(layer, base_idx, width=width, num=len(tid_list), pitch=pitch),
                          lower, upper, res=res, unit_mode=True)
 
+    @classmethod
+    def single_warr_iter(cls, warr):
+        if isinstance(warr, WireArray):
+            yield from warr.warr_iter()
+        for w in warr:
+            yield from w.warr_iter()
+
     def get_immutable_key(self):
         return (self.__class__.__name__, self._track_id.get_immutable_key(), self._lower_unit,
                 self._upper_unit, self._res)
 
     def to_warr_list(self):
+        return list(self.warr_iter())
+
+    def warr_iter(self):
         tid = self._track_id
         layer = tid.layer_id
         width = tid.width
-        return [WireArray(TrackID(layer, tr, width=width), self._lower_unit,
-                          self._upper_unit, res=self._res, unit_mode=True) for tr in tid]
+        for tr in tid:
+            yield WireArray(TrackID(layer, tr, width=width), self._lower_unit,
+                            self._upper_unit, res=self._res, unit_mode=True)
 
     def get_bbox_array(self, grid):
         # type: ('RoutingGrid') -> BBoxArray
