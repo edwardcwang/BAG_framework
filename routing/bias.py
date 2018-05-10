@@ -102,14 +102,8 @@ class BiasShield(TemplateBase):
         # compute size
         tot_w, tot_h = self.get_block_size(grid, route_layer, bias_config, nwire_real,
                                            width=width, space_sig=space_sig)
-        nwire = -(-nwire_real // 2) * 2
 
-        if is_horiz:
-            dim_perp = tot_h
-            dim_par = tot_w
-        else:
-            dim_perp = tot_w
-            dim_par = tot_h
+        dim_par = tot_w if is_horiz else tot_h
         bbox = BBox(0, 0, tot_w, tot_h, res, unit_mode=True)
         self.prim_top_layer = top_layer
         self.prim_bound_box = bbox
@@ -117,21 +111,12 @@ class BiasShield(TemplateBase):
         self.add_cell_boundary(bbox)
 
         # compute wire location
-        tr_manager = TrackManager(grid, {'sig': {route_layer: width}},
-                                  {('sig', ''): {route_layer: space_sig}}, half_space=True)
-        tmp = [1]
-        route_list = list(chain(tmp, repeat('sig', nwire), tmp))
-        route_pitch = grid.get_track_pitch(route_layer, unit_mode=True)
-        route_ntr = dim_perp / route_pitch
-        locs = tr_manager.align_wires(route_layer, route_list, route_ntr, alignment=0, start_idx=0)
+        self._route_tids = locs = self.get_route_tids(self.grid, route_layer, 0, bias_config,
+                                                      nwire_real, width=width, space_sig=space_sig)
 
-        self._route_tids = list(chain([(locs[0], 1)],
-                                      ((locs[idx], width) for idx in range(1, nwire_real + 1)),
-                                      [(locs[nwire + 1], 1)]))
-
-        pitch = locs[nwire + 1] - locs[0]
+        pitch = locs[nwire_real + 1][0] - locs[0][0]
         tr_upper = bbox.width_unit if is_horiz else bbox.height_unit
-        sh_warr = self.add_wires(route_layer, locs[0], 0, tr_upper, width=1, num=2, pitch=pitch,
+        sh_warr = self.add_wires(route_layer, locs[0][0], 0, tr_upper, width=1, num=2, pitch=pitch,
                                  unit_mode=True)
 
         sup_layer = top_layer if top else bot_layer
@@ -160,8 +145,9 @@ class BiasShield(TemplateBase):
                 self.add_pin('sup', warr, show=False)
                 sup_tid = TrackID(sup_layer, sup_tid.base_index + (sup_n - 1) * sup_pitch,
                                   width=sup_w)
-            shl = grid.get_wire_bounds(route_layer, locs[0], width=1, unit_mode=True)[0]
-            shr = grid.get_wire_bounds(route_layer, locs[nwire + 1], width=1, unit_mode=True)[1]
+            shl = grid.get_wire_bounds(route_layer, locs[0][0], width=1, unit_mode=True)[0]
+            shr = grid.get_wire_bounds(route_layer, locs[nwire_real + 1][0], width=1,
+                                       unit_mode=True)[1]
             sh_singles = sh_warr.to_warr_list()
             if top:
                 test_warr = self.connect_to_tracks(sh_singles[0], sup_tid)
@@ -218,6 +204,7 @@ class BiasShield(TemplateBase):
     def get_route_tids(cls,  # type: BiasShield
                        grid,  # type: RoutingGrid
                        layer,  # type: int
+                       offset,  # type: int
                        bias_config,  # type: Dict[int, Tuple[int, ...]]
                        nwire,  # type: int
                        width=1,  # type: int
@@ -241,9 +228,11 @@ class BiasShield(TemplateBase):
         route_ntr = dim_perp / route_pitch
         locs = tr_manager.align_wires(layer, route_list, route_ntr, alignment=0, start_idx=0)
 
-        return list(chain([(locs[0], 1)],
-                          ((locs[idx], width) for idx in range(1, nwire + 1)),
-                          [(locs[nwire_alloc + 1], 1)]))
+        htr0 = int(round(grid.coord_to_track(layer, offset, unit_mode=True) * 2 + 1))
+        tr0 = htr0 // 2 if htr0 % 2 == 0 else htr0 / 2
+        return list(chain([(locs[0] + tr0, 1)],
+                          ((locs[idx] + tr0, width) for idx in range(1, nwire + 1)),
+                          [(locs[nwire_alloc + 1] + tr0, 1)]))
 
     @classmethod
     def draw_bias_shields(cls,  # type: BiasShield
@@ -257,6 +246,7 @@ class BiasShield(TemplateBase):
                           width=1,  # type: int
                           space_sig=0,  # type: int
                           sup_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
+                          check_blockage=True,  # type: bool
                           ):
         grid = template.grid
         res = grid.resolution
@@ -299,14 +289,15 @@ class BiasShield(TemplateBase):
             template.connect_to_tracks(sup_warrs, shields.track_id)
 
         # get blockages
-        if is_horiz:
-            test_box = BBox(lower, offset, upper, offset + blk_h, res, unit_mode=True)
-        else:
-            test_box = BBox(offset, lower, offset + blk_w, upper, res, unit_mode=True)
-        for lay_id, intv in ((layer - 1, bot_intvs), (layer + 1, top_intvs)):
-            for box in template.blockage_iter(lay_id, test_box):
-                blkl, blku = box.get_interval(tr_dir, unit_mode=True)
-                intv.add((max(blkl, lower), min(blku, upper)), merge=True, abut=True)
+        if check_blockage:
+            if is_horiz:
+                test_box = BBox(lower, offset, upper, offset + blk_h, res, unit_mode=True)
+            else:
+                test_box = BBox(offset, lower, offset + blk_w, upper, res, unit_mode=True)
+            for lay_id, intv in ((layer - 1, bot_intvs), (layer + 1, top_intvs)):
+                for box in template.blockage_iter(lay_id, test_box):
+                    blkl, blku = box.get_interval(tr_dir, unit_mode=True)
+                    intv.add((max(blkl, lower), min(blku, upper)), merge=True, abut=True)
 
         # draw blocks
         sup_warrs = []
@@ -355,12 +346,11 @@ class BiasShield(TemplateBase):
 
         blk_w, blk_h = cls.get_block_size(grid, layer, bias_config, nwire,
                                           width=width, space_sig=space_sig)
-        route_tids = cls.get_route_tids(grid, layer, bias_config, nwire,
+        route_tids = cls.get_route_tids(grid, layer, offset, bias_config, nwire,
                                         width=width, space_sig=space_sig)
         tr_dir = grid.get_direction(layer)
         is_horiz = tr_dir == 'x'
         qdim = blk_w if is_horiz else blk_h
-        tr0 = grid.coord_to_track(layer, offset, unit_mode=True) + 0.5
         if lu_end_mode == 0:
             min_len_mode = 0
         elif lu_end_mode & 2 != 0:
@@ -373,7 +363,7 @@ class BiasShield(TemplateBase):
             if isinstance(warr_list, WireArray):
                 warr_list = [warr_list]
 
-            cur_tid = TrackID(layer, tidx + tr0, width=width)
+            cur_tid = TrackID(layer, tidx, width=width)
             tr_warr = template.connect_to_tracks(warr_list, cur_tid, min_len_mode=min_len_mode)
             tr_warr_list.append(tr_warr)
             if tr_warr is not None:
@@ -665,9 +655,11 @@ class BiasShieldCrossing(TemplateBase):
         self.prim_bound_box = self.array_box = tt_inst.bound_box
 
         if connect_shield:
-            self.connect_to_track_wires(bb_inst.get_pin('shield'), tt_inst.get_pin('shield'))
+            bb_shields = self.connect_wires(bb_inst.get_all_port_pins('shield'))
+            tt_shields = self.connect_wires(tt_inst.get_all_port_pins('shield'))
+            self.connect_to_track_wires(bb_shields, tt_shields)
 
-        self.reexport(tt_inst.get_port('sup'), show=False)
+        self.add_pin('sup', tt_inst.get_all_port_pins('sup'), show=False)
 
 
 class BiasShieldJoin(TemplateBase):
