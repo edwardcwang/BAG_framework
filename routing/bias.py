@@ -26,7 +26,7 @@ def _add_inst_r180(template, master, x, y):
                                  orient='R180', unit_mode=True)
 
 
-def compute_vroute_width(template, top_layer, vm_layer, num_vdd, num_vss, fill_config, bias_config):
+def compute_vroute_width(template, vm_layer, blk_w, num_vdd, num_vss, bias_config):
     grid = template.grid
 
     hm_layer = vm_layer + 1
@@ -41,16 +41,20 @@ def compute_vroute_width(template, top_layer, vm_layer, num_vdd, num_vss, fill_c
         vss_xl = vdd_xr + BiasShieldEnd.get_dimension(grid, hm_layer, bias_config, num_vss)
         vss_xr = vss_xl + BiasShield.get_block_size(grid, vm_layer, bias_config, num_vss)[0]
 
-    fill_w = grid.get_fill_size(top_layer, fill_config, unit_mode=True)[0]
-    route_w = -(-vss_xr // fill_w) * fill_w
+    route_w = -(-vss_xr // blk_w) * blk_w
     return route_w, (vdd_xl, vdd_xr), (vss_xl, vss_xr)
 
 
-def join_bias_vroutes(template, vm_layer, vdd_x, vss_x, xr, num_vdd_tot, num_vss_tot,
-                      hm_bias_info_list, bias_config, vdd_pins, vss_pins, show_pins, yt=None):
+def join_bias_vroutes(template, vm_layer, vdd_dx, vss_dx, xr, num_vdd_tot, num_vss_tot,
+                      hm_bias_info_list, bias_config, vdd_pins, vss_pins, show_pins,
+                      xl=0, yt=None):
     grid = template.grid
-    vdd_xl, vdd_xr = vdd_x
-    vss_xl, vss_xr = vss_x
+    vdd_xl, vdd_xr = vdd_dx
+    vss_xl, vss_xr = vss_dx
+    vdd_xl += xl
+    vdd_xr += xl
+    vss_xl += xl
+    vss_xr += xl
     vss_params = dict(
         nwire=num_vss_tot,
         width=1,
@@ -81,11 +85,11 @@ def join_bias_vroutes(template, vm_layer, vdd_x, vss_x, xr, num_vdd_tot, num_vss
                 vss_hm_list.extend(tmp[0])
         else:
             params['bot_params'] = vdd_params
-            if vdd_y_prev is not None:
+            if vdd_y_prev is not None and y0 > vdd_y_prev:
                 tmp = BiasShield.draw_bias_shields(template, vm_layer, bias_config, num_vdd_tot,
                                                    vdd_xl, vdd_y_prev, y0, check_blockage=False)
                 vdd_hm_list.extend(tmp[0])
-            if vss_y_prev is not None:
+            if vss_y_prev is not None and y0 > vss_y_prev:
                 tmp = BiasShield.draw_bias_shields(template, vm_layer, bias_config, num_vss_tot,
                                                    vss_xl, vss_y_prev, y0, check_blockage=False)
                 vss_hm_list.extend(tmp[0])
@@ -151,16 +155,23 @@ def join_bias_vroutes(template, vm_layer, vdd_x, vss_x, xr, num_vdd_tot, num_vss
     template.draw_vias_on_intersections(vss_hm_list, vss_list)
 
     # connect pins
-    tidx_list = BiasShield.get_route_tids(grid, vm_layer, vss_xl, bias_config, num_vss_tot)
-    for (name, warr), (tidx, tr_w) in zip(vss_pins, islice(tidx_list, 1, num_vss_tot + 1)):
-        tid = TrackID(vm_layer, tidx, width=tr_w)
-        warr = template.connect_to_tracks(warr, tid, track_upper=yt, unit_mode=True)
-        template.add_pin(name, warr, show=show_pins, edge_mode=1)
-    tidx_list = BiasShield.get_route_tids(grid, vm_layer, vdd_xl, bias_config, num_vdd_tot)
-    for (name, warr), (tidx, tr_w) in zip(vdd_pins, islice(tidx_list, 1, num_vdd_tot + 1)):
-        tid = TrackID(vm_layer, tidx, width=tr_w)
-        warr = template.connect_to_tracks(warr, tid, track_upper=yt, unit_mode=True)
-        template.add_pin(name, warr, show=show_pins, edge_mode=1)
+    vss_tidx_list = BiasShield.get_route_tids(grid, vm_layer, vss_xl, bias_config, num_vss_tot)
+    vdd_tidx_list = BiasShield.get_route_tids(grid, vm_layer, vdd_xl, bias_config, num_vdd_tot)
+    pin_map = {}
+    for pins, tidx_list in ((vss_pins, vss_tidx_list), (vdd_pins, vdd_tidx_list)):
+        next_idx = 0
+        for name, warr in pins:
+            if name in pin_map:
+                cur_idx = pin_map[name]
+            else:
+                cur_idx = pin_map[name] = next_idx
+                next_idx += 1
+            tidx, tr_w = tidx_list[cur_idx + 1]
+            tid = TrackID(vm_layer, tidx, width=tr_w)
+            warr = template.connect_to_tracks(warr, tid, track_upper=yt, unit_mode=True)
+            template.add_pin(name, warr, show=show_pins, edge_mode=1)
+
+        pin_map.clear()
 
     return vdd_list, vss_list
 
@@ -394,6 +405,9 @@ class BiasShield(TemplateBase):
                           check_blockage=True,  # type: bool
                           tb_mode=3,  # type: int
                           ):
+        if lower >= upper:
+            return [], None
+
         grid = template.grid
         res = grid.resolution
 
@@ -420,12 +434,12 @@ class BiasShield(TemplateBase):
         bot_intvs = IntervalSet()
         top_intvs = IntervalSet()
 
-        if lower % qdim != 0 or upper % qdim != 0:
-            raise ValueError('lower/upper not divisible by %d' % qdim)
+        nstart, tr_offset = divmod(lower, qdim)
+        nstop, tr_off_test = divmod(upper, qdim)
+        if tr_offset != tr_off_test:
+            raise ValueError('upper - lower not divisible by %d' % qdim)
 
         # draw shields
-        nstart = lower // qdim
-        nstop = -(-upper // qdim)
         tr0_ref = route_tids[0][0]
         sh0 = tr0_ref + tr0
         shp = route_tids[nwire + 1][0] - tr0_ref
@@ -460,11 +474,11 @@ class BiasShield(TemplateBase):
                 nblk = nend - ncur
                 if nblk > 0:
                     if is_horiz:
-                        loc = (ncur * qdim, offset)
+                        loc = (ncur * qdim + tr_offset, offset)
                         nx = nblk
                         ny = 1
                     else:
-                        loc = (offset, ncur * qdim)
+                        loc = (offset, ncur * qdim + tr_offset)
                         nx = 1
                         ny = nblk
                     inst = template.add_instance(master, loc=loc, nx=nx, ny=ny,
@@ -510,6 +524,13 @@ class BiasShield(TemplateBase):
             min_len_mode = -1
         tr_warr_list = []
 
+        if tr_lower is not None:
+            tr_offset = tr_lower % qdim
+        elif tr_upper is not None:
+            tr_offset = tr_upper % qdim
+        else:
+            tr_offset = 0
+
         for warr_list, (tidx, tr_width) in zip(warr_list2, islice(route_tids, 1, nwire + 1)):
             if isinstance(warr_list, WireArray):
                 warr_list = [warr_list]
@@ -530,11 +551,11 @@ class BiasShield(TemplateBase):
         if tr_lower is None or tr_upper is None:
             raise ValueError('Cannot determine bias shield location.')
 
-        # draw shields
-        nstart = tr_lower // qdim
-        nstop = -(-tr_upper // qdim)
-        tr_lower = nstart * qdim
-        tr_upper = nstop * qdim
+        # round lower/upper to nearest coordinates, then draw shields.
+        nstart = (tr_lower - tr_offset) // qdim
+        nstop = -(-(tr_upper - tr_offset) // qdim)
+        tr_lower = nstart * qdim + tr_offset
+        tr_upper = nstop * qdim + tr_offset
 
         tmp = cls.draw_bias_shields(template, layer, bias_config, nwire, offset, tr_lower, tr_upper,
                                     width=width, space_sig=space_sig, sup_warrs=sup_warrs)
