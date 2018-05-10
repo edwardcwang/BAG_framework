@@ -78,6 +78,12 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return []
 
     @abc.abstractmethod
+    def get_threshold_layers(self, mos_type, threshold, res_type=None):
+        # type: (str, str, Optional[str]) -> List[Tuple[str, str]]
+        """Returns a list of threshold layers."""
+        return []
+
+    @abc.abstractmethod
     def get_dnw_margin_unit(self, dnw_mode):
         # type: (str) -> int
         """Returns the required DNW margin given the DNW mode.
@@ -505,6 +511,27 @@ class TechInfo(object, metaclass=abc.ABCMeta):
     def layout_unit(self):
         """Returns the layout unit length, in meters."""
         return self._layout_unit
+
+    def merge_well(self, template, inst_list, sub_type, threshold=None, res_type=None,
+                   merge_imp=False):
+        # type: ('TemplateBase', List[Instance], str, Optional[str], Optional[str], bool) -> None
+        """Merge the well of the given instances together."""
+
+        if threshold is not None:
+            lay_iter = chain(self.get_well_layers(sub_type),
+                             self.get_threshold_layers(sub_type, threshold, res_type=res_type))
+        else:
+            lay_iter = self.get_well_layers(sub_type)
+        if merge_imp:
+            lay_iter = chain(lay_iter, self.get_implant_layers(sub_type, res_type=res_type))
+
+        for lay in lay_iter:
+            tot_box = BBox.get_invalid_bbox()
+            for inst in inst_list:
+                cur_box = inst.master.get_rect_bbox(lay)
+                tot_box = tot_box.merge(inst.translate_master_box(cur_box))
+            if tot_box.is_physical():
+                template.add_rect(lay, tot_box)
 
     def use_flip_parity(self):
         # type: () -> bool
@@ -1030,6 +1057,9 @@ class DummyTechInfo(TechInfo):
         return []
 
     def get_implant_layers(self, mos_type, res_type=None):
+        return []
+
+    def get_threshold_layers(self, mos_type, threshold, res_type=None):
         return []
 
     def get_dnw_layers(self):

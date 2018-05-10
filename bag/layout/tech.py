@@ -74,6 +74,15 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
 
         return list(table['imp_layers'][mos_type].keys())
 
+    def get_threshold_layers(self, mos_type, threshold, res_type=None):
+        # type: (str, str, Optional[str]) -> List[Tuple[str, str]]
+        if res_type is None:
+            table = self.config[self._mos_entry_name]
+        else:
+            table = self.config['resistor']
+
+        return list(table['thres_layers'][mos_type][threshold].keys())
+
     def get_dnw_margin_unit(self, dnw_mode):
         # type: (str) -> int
         return self.config['dnw_margins'][dnw_mode]
