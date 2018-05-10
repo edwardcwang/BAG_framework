@@ -483,9 +483,19 @@ class BiasShield(TemplateBase):
             else:
                 test_box = BBox(offset, lower, offset + blk_w, upper, res, unit_mode=True)
             for lay_id, intv in ((layer - 1, bot_intvs), (layer + 1, top_intvs)):
-                for box in template.blockage_iter(lay_id, test_box):
+                w_ntr = bias_config[lay_id][1]
+                if is_horiz:
+                    spx = grid.get_space(lay_id, w_ntr, unit_mode=True)
+                    spy = grid.get_line_end_space(lay_id, w_ntr, unit_mode=True)
+                else:
+                    spy = grid.get_space(lay_id, w_ntr, unit_mode=True)
+                    spx = grid.get_line_end_space(lay_id, w_ntr, unit_mode=True)
+                for box in template.blockage_iter(lay_id, test_box, spx=spx, spy=spy):
                     blkl, blku = box.get_interval(tr_dir, unit_mode=True)
-                    intv.add((max(blkl, lower), min(blku, upper)), merge=True, abut=True)
+                    blkl = max(blkl, lower)
+                    blku = min(blku, upper)
+                    if blku > blkl:
+                        intv.add((blkl, blku), merge=True, abut=True)
 
         master_intv_list = []
         if tb_mode & 1 != 0:
@@ -496,7 +506,8 @@ class BiasShield(TemplateBase):
         for master, intvs in master_intv_list:
             sl, su = master.sup_intv
             ncur = nstart
-            for nend, nnext in cls._get_blk_idx_iter(intvs, sl, su, qdim, nstart, nstop):
+            for nend, nnext in cls._get_blk_idx_iter(intvs, sl + tr_offset, su + tr_offset,
+                                                     qdim, nstart, nstop):
                 nblk = nend - ncur
                 if nblk > 0:
                     if is_horiz:
@@ -626,8 +637,15 @@ class BiasShield(TemplateBase):
         return BiasInfo(tracks=tr_warr_list, supplies=sup_warrs, p0=p0, p1=p1, shields=shields)
 
     @classmethod
-    def _get_blk_idx_iter(cls, intvs, sl, su, qdim, nstart, nstop):
-        # type: (IntervalSet, int, int, int, int, int) -> Generator[Tuple[int, int], None, None]
+    def _get_blk_idx_iter(cls,  # type: BiasShield
+                          intvs,  # type: IntervalSet
+                          sl,  # type: int
+                          su,  # type: int
+                          qdim,  # type: int
+                          nstart,  # type: int
+                          nstop,  # type: int
+                          ):
+        # type: (...) -> Generator[Tuple[int, int], None, None]
         for lower, upper in intvs:
             nend = 1 + (lower - su) // qdim
             if nend < nstart:
