@@ -20,6 +20,151 @@ if TYPE_CHECKING:
 BiasInfo = namedtuple('BiasInfo', ['tracks', 'supplies', 'p0', 'p1', 'shields'])
 
 
+def _add_inst_r180(template, master, x, y):
+    box = master.array_box
+    return template.add_instance(master, loc=(x + box.width_unit, y + box.height_unit),
+                                 orient='R180', unit_mode=True)
+
+
+def compute_vroute_width(template, top_layer, vm_layer, num_vdd, num_vss, fill_config, bias_config):
+    grid = template.grid
+
+    hm_layer = vm_layer + 1
+    if num_vdd == 0:
+        vdd_xl = vdd_xr = 0
+    else:
+        vdd_xl = BiasShieldEnd.get_dimension(grid, hm_layer, bias_config, num_vdd)
+        vdd_xr = vdd_xl + BiasShield.get_block_size(grid, vm_layer, bias_config, num_vdd)[0]
+    if num_vss == 0:
+        vss_xr = vss_xl = vdd_xr
+    else:
+        vss_xl = vdd_xr + BiasShieldEnd.get_dimension(grid, hm_layer, bias_config, num_vss)
+        vss_xr = vss_xl + BiasShield.get_block_size(grid, vm_layer, bias_config, num_vss)[0]
+
+    fill_w = grid.get_fill_size(top_layer, fill_config, unit_mode=True)[0]
+    route_w = -(-vss_xr // fill_w) * fill_w
+    return route_w, (vdd_xl, vdd_xr), (vss_xl, vss_xr)
+
+
+def join_bias_vroutes(template, vm_layer, vdd_x, vss_x, xr, num_vdd_tot, num_vss_tot,
+                      hm_bias_info_list, bias_config, vdd_pins, vss_pins, show_pins, yt=None):
+    grid = template.grid
+    vdd_xl, vdd_xr = vdd_x
+    vss_xl, vss_xr = vss_x
+    vss_params = dict(
+        nwire=num_vss_tot,
+        width=1,
+        space_sig=0,
+    )
+    vdd_params = dict(
+        nwire=num_vdd_tot,
+        width=1,
+        space_sig=0,
+    )
+    hm_layer = vm_layer + 1
+    sup_layer = hm_layer + 1
+    vss_list = []
+    vdd_list = []
+    vss_hm_list = []
+    vdd_hm_list = []
+    vss_y_prev = vdd_y_prev = None
+    params = dict(
+        bot_layer=vm_layer,
+        bias_config=bias_config,
+    )
+    for idx, (code, num, y0) in enumerate(hm_bias_info_list):
+        if code == 0:
+            params['bot_params'] = vss_params
+            if vss_y_prev is not None and y0 > vss_y_prev:
+                tmp = BiasShield.draw_bias_shields(template, vm_layer, bias_config, num_vss_tot,
+                                                   vss_xl, vss_y_prev, y0, check_blockage=False)
+                vss_hm_list.extend(tmp[0])
+        else:
+            params['bot_params'] = vdd_params
+            if vdd_y_prev is not None:
+                tmp = BiasShield.draw_bias_shields(template, vm_layer, bias_config, num_vdd_tot,
+                                                   vdd_xl, vdd_y_prev, y0, check_blockage=False)
+                vdd_hm_list.extend(tmp[0])
+            if vss_y_prev is not None:
+                tmp = BiasShield.draw_bias_shields(template, vm_layer, bias_config, num_vss_tot,
+                                                   vss_xl, vss_y_prev, y0, check_blockage=False)
+                vss_hm_list.extend(tmp[0])
+
+        params['top_params'] = dict(
+            nwire=num,
+            width=1,
+            space_sig=0,
+        )
+        if idx == 0:
+            master = template.new_template(params=params, temp_cls=BiasShieldJoin)
+            if code == 1:
+                inst = _add_inst_r180(template, master, vdd_xl, y0)
+                vdd_list.extend(inst.port_pins_iter('sup', layer=sup_layer))
+                BiasShield.draw_bias_shields(template, hm_layer, bias_config, num, y0,
+                                             vdd_xr, xr, check_blockage=False)
+                vdd_y_prev = inst.array_box.top_unit
+            else:
+                inst = _add_inst_r180(template, master, vss_xl, y0)
+                vss_list.extend(inst.port_pins_iter('sup', layer=sup_layer))
+                BiasShield.draw_bias_shields(template, hm_layer, bias_config, num, y0,
+                                             vss_xr, xr, check_blockage=False)
+                vss_y_prev = inst.array_box.top_unit
+        elif code == 1:
+            params['bot_open'] = True
+            master = template.new_template(params=params, temp_cls=BiasShieldJoin)
+            inst = _add_inst_r180(template, master, vdd_xl, y0)
+            params['bot_params'] = vss_params
+            vdd_list.extend(inst.port_pins_iter('sup', layer=sup_layer))
+            BiasShield.draw_bias_shields(template, hm_layer, bias_config, num, y0,
+                                         vdd_xr, vss_xl, check_blockage=False, tb_mode=1)
+            vdd_y_prev = inst.array_box.top_unit
+            params['draw_top'] = False
+            master = template.new_template(params=params, temp_cls=BiasShieldCrossing)
+            inst = _add_inst_r180(template, master, vss_xl, y0)
+            vss_list.extend(inst.port_pins_iter('sup', layer=sup_layer))
+            BiasShield.draw_bias_shields(template, hm_layer, bias_config, num, y0,
+                                         vss_xr, xr, check_blockage=False)
+            vss_y_prev = inst.array_box.top_unit
+        else:
+            params['bot_open'] = True
+            master = template.new_template(params=params, temp_cls=BiasShieldJoin)
+            inst = _add_inst_r180(template, master, vss_xl, y0)
+            vss_list.extend(inst.port_pins_iter('sup', layer=sup_layer))
+            BiasShield.draw_bias_shields(template, hm_layer, bias_config, num, y0,
+                                         vss_xr, xr, check_blockage=False)
+            vss_y_prev = inst.array_box.top_unit
+
+    if yt is None:
+        yt = max(vss_y_prev, vdd_y_prev)
+    if vss_y_prev < yt:
+        tmp = BiasShield.draw_bias_shields(template, vm_layer, bias_config, num_vss_tot,
+                                           vss_xl, vss_y_prev, yt, check_blockage=False)
+        vss_hm_list.extend(tmp[0])
+    if vdd_y_prev < yt:
+        tmp = BiasShield.draw_bias_shields(template, vm_layer, bias_config, num_vdd_tot,
+                                           vdd_xl, vdd_y_prev, yt, check_blockage=False)
+        vdd_hm_list.extend(tmp[0])
+
+    vdd_list = template.connect_wires(vdd_list, upper=yt, unit_mode=True)
+    vss_list = template.connect_wires(vss_list, upper=yt, unit_mode=True)
+    template.draw_vias_on_intersections(vdd_hm_list, vdd_list)
+    template.draw_vias_on_intersections(vss_hm_list, vss_list)
+
+    # connect pins
+    tidx_list = BiasShield.get_route_tids(grid, vm_layer, vss_xl, bias_config, num_vss_tot)
+    for (name, warr), (tidx, tr_w) in zip(vss_pins, islice(tidx_list, 1, num_vss_tot + 1)):
+        tid = TrackID(vm_layer, tidx, width=tr_w)
+        warr = template.connect_to_tracks(warr, tid, track_upper=yt, unit_mode=True)
+        template.add_pin(name, warr, show=show_pins, edge_mode=1)
+    tidx_list = BiasShield.get_route_tids(grid, vm_layer, vdd_xl, bias_config, num_vdd_tot)
+    for (name, warr), (tidx, tr_w) in zip(vdd_pins, islice(tidx_list, 1, num_vdd_tot + 1)):
+        tid = TrackID(vm_layer, tidx, width=tr_w)
+        warr = template.connect_to_tracks(warr, tid, track_upper=yt, unit_mode=True)
+        template.add_pin(name, warr, show=show_pins, edge_mode=1)
+
+    return vdd_list, vss_list
+
+
 class BiasShield(TemplateBase):
     """Unit cell template for shield around bias wires.
 
