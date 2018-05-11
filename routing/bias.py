@@ -46,7 +46,7 @@ def compute_vroute_width(template, vm_layer, blk_w, num_vdd, num_vss, bias_confi
 
 
 def join_bias_vroutes(template, vm_layer, vdd_dx, vss_dx, xr, num_vdd_tot, num_vss_tot,
-                      hm_bias_info_list, bias_config, vdd_pins, vss_pins, show_pins,
+                      hm_bias_info_list, bias_config, vdd_pins, vss_pins,
                       xl=0, yt=None, vss_warrs=None, vdd_warrs=None):
     grid = template.grid
 
@@ -176,7 +176,10 @@ def join_bias_vroutes(template, vm_layer, vdd_dx, vss_dx, xr, num_vdd_tot, num_v
     vss_tidx_list = BiasShield.get_route_tids(grid, vm_layer, vss_xl, bias_config, num_vss_tot)
     vdd_tidx_list = BiasShield.get_route_tids(grid, vm_layer, vdd_xl, bias_config, num_vdd_tot)
     pin_map = {}
-    for pins, tidx_list in ((vss_pins, vss_tidx_list), (vdd_pins, vdd_tidx_list)):
+    vss_tr_warrs = []
+    vdd_tr_warrs = []
+    for pins, tidx_list, result_list in ((vss_pins, vss_tidx_list, vss_tr_warrs),
+                                         (vdd_pins, vdd_tidx_list, vdd_tr_warrs)):
         next_idx = 0
         for name, warr in pins:
             if name in pin_map:
@@ -187,11 +190,11 @@ def join_bias_vroutes(template, vm_layer, vdd_dx, vss_dx, xr, num_vdd_tot, num_v
             tidx, tr_w = tidx_list[cur_idx + 1]
             tid = TrackID(vm_layer, tidx, width=tr_w)
             warr = template.connect_to_tracks(warr, tid, track_upper=yt, unit_mode=True)
-            template.add_pin(name, warr, show=show_pins, edge_mode=1)
+            result_list.append((name, warr))
 
         pin_map.clear()
 
-    return vdd_list, vss_list
+    return vdd_tr_warrs, vss_tr_warrs, vdd_list, vss_list
 
 
 class BiasShield(TemplateBase):
@@ -948,6 +951,7 @@ class BiasShieldJoin(TemplateBase):
         self.array_box = bnd_box = master.bound_box
 
         sup_list = inst.get_all_port_pins('sup')
+        self.add_pin('sup_core', sup_list, show=False)
         bot_horiz = self.grid.get_direction(bot_layer) == 'x'
         if not top_open:
             top_params = self.params['top_params'].copy()
