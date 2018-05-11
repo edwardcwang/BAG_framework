@@ -184,13 +184,16 @@ def join_bias_vroutes(template, vm_layer, vdd_dx, vss_dx, xr, num_vdd_tot, num_v
         for name, warr in pins:
             if name in pin_map:
                 cur_idx = pin_map[name]
+                add_pin = False
             else:
                 cur_idx = pin_map[name] = next_idx
                 next_idx += 1
+                add_pin = True
             tidx, tr_w = tidx_list[cur_idx + 1]
             tid = TrackID(vm_layer, tidx, width=tr_w)
             warr = template.connect_to_tracks(warr, tid, track_upper=yt, unit_mode=True)
-            result_list.append((name, warr))
+            if add_pin:
+                result_list.append((name, warr))
 
         pin_map.clear()
 
@@ -809,6 +812,18 @@ class BiasShieldCrossing(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        self._hm_route_tids = None
+        self._vm_route_tids = None
+
+    @property
+    def hm_route_tids(self):
+        # type: () -> List[Tuple[int, int]]
+        return self._hm_route_tids
+
+    @property
+    def vm_route_tids(self):
+        # type: () -> List[Tuple[int, int]]
+        return self._vm_route_tids
 
     @classmethod
     def get_params_info(cls):
@@ -868,6 +883,13 @@ class BiasShieldCrossing(TemplateBase):
         top_params['top'] = True
         tt_master = self.new_template(params=top_params, temp_cls=BiasShield)
 
+        if bot_horiz:
+            self._hm_route_tids = bb_master.route_tids
+            self._vm_route_tids = tt_master.route_tids
+        else:
+            self._hm_route_tids = tt_master.route_tids
+            self._vm_route_tids = bb_master.route_tids
+
         bb_inst = self.add_instance(bb_master, 'XBB', loc=(0, 0), nx=nx_bot,
                                     ny=ny_bot, spx=bot_w, spy=bot_h, unit_mode=True)
 
@@ -916,6 +938,18 @@ class BiasShieldJoin(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        self._hm_route_tids = None
+        self._vm_route_tids = None
+
+    @property
+    def hm_route_tids(self):
+        # type: () -> List[Tuple[int, int]]
+        return self._hm_route_tids
+
+    @property
+    def vm_route_tids(self):
+        # type: () -> List[Tuple[int, int]]
+        return self._vm_route_tids
 
     @classmethod
     def get_params_info(cls):
@@ -985,3 +1019,6 @@ class BiasShieldJoin(TemplateBase):
         self.prim_top_layer = master.top_layer
         self.prim_bound_box = bnd_box
         self.add_cell_boundary(bnd_box)
+
+        self._hm_route_tids = master.hm_route_tids
+        self._vm_route_tids = master.vm_route_tids
