@@ -2676,7 +2676,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           return_wires=False,  # type: bool
                           debug=False,  # type: bool
                           ):
-        # type: (...) -> Optional[Union[WireArray, Tuple[WireArray, List[WireArray]]]]
+        # type: (...) -> Union[Optional[WireArray], Tuple[Optional[WireArray], List[WireArray]]]
         """Connect all given WireArrays to the given track(s).
 
         All given wires should be on adjacent layers of the track.
