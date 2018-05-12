@@ -314,8 +314,9 @@ class WireArray(object):
     def single_warr_iter(cls, warr):
         if isinstance(warr, WireArray):
             yield from warr.warr_iter()
-        for w in warr:
-            yield from w.warr_iter()
+        else:
+            for w in warr:
+                yield from w.warr_iter()
 
     def get_immutable_key(self):
         return (self.__class__.__name__, self._track_id.get_immutable_key(), self._lower_unit,
