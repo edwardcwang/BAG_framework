@@ -1874,6 +1874,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # type: (...) -> Any
         """Draw mom cap in the defined bounding box."""
         return_rect = kwargs.get('return_cap_wires', False)
+        cap_type = kwargs.get('cap_type', 'standard')
 
         if num_layer <= 1:
             raise ValueError('Must have at least 2 layers for MOM cap.')
@@ -1881,7 +1882,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         res = self.grid.resolution
         tech_info = self.grid.tech_info
 
-        mom_cap_dict = tech_info.tech_params['layout']['mom_cap']
+        mom_cap_dict = tech_info.tech_params['layout']['mom_cap'][cap_type]
         cap_margins = mom_cap_dict['margins']
         cap_info = mom_cap_dict['width_space']
         num_ports_on_edge = mom_cap_dict.get('num_ports_on_edge', {})
