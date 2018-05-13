@@ -174,6 +174,12 @@ class AnalogBaseInfo(object):
             raise ValueError('number of fingers not set; cannot compute core width.')
         return self._place_info.core_width
 
+    @property
+    def edge_margins(self):
+        if self._place_info is None:
+            raise ValueError('number of fingers not set; cannot compute edge margins.')
+        return self._place_info.edge_margins
+
     def set_fg_tot(self, new_fg_tot):
         if new_fg_tot is not None:
             self._fg_tot = new_fg_tot
