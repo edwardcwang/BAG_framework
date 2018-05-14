@@ -21,7 +21,7 @@ from .core import BagLayout
 from .util import BBox, BBoxArray
 from ..io import get_encoding, open_file
 from .routing import Port, TrackID, WireArray
-from .routing.fill import UsedTracks
+from .routing.fill import UsedTracks, fill_symmetric_min_density_info, fill_symmetric_interval
 from .objects import Instance, Rect, Via, Path
 
 if TYPE_CHECKING:
@@ -3508,7 +3508,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           layer_id,  # type: int
                           bound_box=None,  # type: Optional[BBox]
                           ):
-        # type: (...) -> Tuple[List[WireArray], List[WireArray]]
+        # type: (...) -> None
         """Draw density fill on the given layer."""
         grid = self.grid
         res = grid.resolution
@@ -3522,40 +3522,34 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if bound_box is None:
             bound_box = self.bound_box
 
-        """
-        tr_w = grid.get_track_width(layer_id, 1, unit_mode=True)
-
+        # get tracks information
         tr_dir = grid.get_direction(layer_id)
         perp_dir = 'x' if tr_dir == 'y' else 'y'
-        dim0, dim1 = bound_box.get_interval(tr_dir, unit_mode=True)
-        lower, upper = bound_box.get_interval(perp_dir, unit_mode=True)
+        dim0, dim1 = bound_box.get_interval(perp_dir, unit_mode=True)
+        lower, upper = bound_box.get_interval(tr_dir, unit_mode=True)
+        dim_perp = dim1 - dim0
         tr0 = self.grid.coord_to_nearest_track(layer_id, dim0 + sp_max // 2, half_track=True,
                                                mode=-1, unit_mode=True)
         tr1 = self.grid.coord_to_nearest_track(layer_id, dim1 - sp_max // 2, half_track=True,
                                                mode=1, unit_mode=True)
-        num_tr = int((tr1 - tr0) + 1)
-        intv_list = [IntervalSet() for idx in range(num_tr)]
+        htr0 = int(round(tr0 * 2 + 1))
+        htr1 = int(round(tr1 * 2 + 1))
+        num_htr_tot = htr1 - htr0 + 1
 
-        for bbox in self.blockage_iter(layer_id, bound_box):
-            pass
+        # calculate track pitch based on density/max space
+        tr_w, tr_sp = grid.get_track_info(layer_id, unit_mode=True)
+        tr_pitch2 = grid.get_track_pitch(layer_id, unit_mode=True) // 2
+        num_tracks = int(round(-(-(dim_perp * density) // tr_w)))
+        htr_pitch_max = (sp_max - tr_sp) // tr_pitch2 + 2
 
-        if grid.get_direction(layer_id) == 'x':
-            dim = bound_box.height_unit
-            lower, upper = bound_box.get_invalid_bbox()
-        else:
-            dim = bound_box.width_unit
+        fill_info, invert = fill_symmetric_min_density_info(num_htr_tot, num_tracks, 1, 1, 2,
+                                                            sp_max=htr_pitch_max, fill_on_edge=True)
 
-        # calculate fill pitch based on density
-        tr_pitch = grid.get_track_pitch(layer_id, unit_mode=True)
-        tr_start = sp_max // 2 // tr_pitch
-        ntr_tot = dim // tr_pitch
-        ntr_fill = int(round(-(-(bound_box.height_unit * density) // tr_w)))
-        fill_pitch_max = ntr_tot // ntr_fill
-        # calculate fill pitch based on maximum space
-        fill_pitch_max = min(fill_pitch, sp_max // tr_pitch)
+        intv_list = fill_symmetric_interval(*fill_info[2], offset=htr0, invert=invert)[0]
 
-        min_len = grid.get_min_length(layer_id, 1, unit_mode=True)
-        """
+        for intv in intv_list:
+            tidx = (intv[0] - 1) / 2
+            self.add_wires(layer_id, tidx, lower, upper, unit_mode=True)
 
         self.add_rect(tech_info.get_exclude_layer(layer_id), bound_box)
 
