@@ -10,6 +10,7 @@ import os
 import abc
 import copy
 import time
+import bisect
 import pickle
 from itertools import islice, product, chain
 
@@ -3566,9 +3567,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         intv_tran0 = IntervalSet()
         intv_tran1 = IntervalSet()
         htr_list = [intv[0] for intv in intv_list]
+        num_htr = len(htr_list)
         set_long0 = set(htr_list)
         set_long1 = set_long0.copy()
-        intv_list = [IntervalSet() for _ in range(len(htr_list))]
+        intv_list = [IntervalSet() for _ in range(num_htr)]
 
         # handle blockages
         for blk_box in self.blockage_iter(layer_id, bound_box, spx=spx, spy=spy):
@@ -3576,29 +3578,30 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             b_long0, b_long1 = blk_box.get_interval(long_dir, unit_mode=True)
             b_long0_lim = max(b_long0, dim_longl)
             b_long1_lim = min(b_long1, dim_longu)
+            blk_intv = (b_long0_lim, b_long1_lim)
             if b_long0_lim < b_long1_lim:
                 # handle lower/upper transverse edges
-                intv = (b_long0_lim, b_long1_lim)
                 if b_tran0 <= dim_tran0 and dim_tranl <= b_tran1:
-                    intv_tran0.add(intv, merge=True, abut=True)
+                    intv_tran0.add(blk_intv, merge=True, abut=True)
                 if b_tran0 <= dim_tranu and dim_tran1 <= b_tran1:
-                    intv_tran1.add(intv, merge=True, abut=True)
+                    intv_tran1.add(blk_intv, merge=True, abut=True)
             cur_htr0 = self.grid.find_next_track(layer_id, b_tran0, half_track=True, mode=1,
                                                  unit_mode=True)
             cur_htr1 = self.grid.find_next_track(layer_id, b_tran1, half_track=True, mode=-1,
                                                  unit_mode=True)
             cur_htr0 = max(htr0, int(round(cur_htr0 * 2 + 1)))
             cur_htr1 = min(htr1, int(round(cur_htr1 * 2 + 1)))
-            if cur_htr0 <= cur_htr1:
-                # handle lower/upper longitudinal edges
-                if b_long0 <= dim_long0 and dim_longl <= b_long1:
-                    for htr in range(cur_htr0, cur_htr1 + 1):
+            htr_idx0 = bisect.bisect_left(htr_list, cur_htr0)
+            if htr_list[htr_idx0] <= cur_htr1:
+                htr_idx1 = min(num_htr - 1, bisect.bisect_right(htr_list, cur_htr1, lo=htr_idx0))
+                for htr_idx in range(htr_idx0, htr_idx1 + 1):
+                    htr = htr_list[htr_idx]
+                    # handle lower/upper longitudinal edges
+                    if b_long0 <= dim_long0 and dim_longl <= b_long1:
                         set_long0.discard(htr)
-                if b_long0 <= dim_longu and dim_long1 <= b_long1:
-                    for htr in range(cur_htr0, cur_htr1 + 1):
+                    if b_long0 <= dim_longu and dim_long1 <= b_long1:
                         set_long1.discard(htr)
-
-        warr_list = []
+                    intv_list[htr_idx].add(blk_intv, merge=True, abut=True)
 
         # add fill in edges on transverse sides
         trl = self.grid.coord_to_nearest_track(layer_id, dim_tran0 + margin, half_track=True,
@@ -3611,42 +3614,34 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 if long1 - long0 < min_len:
                     long0 = (long0 + long1 - min_len) // 2
                     long1 = long0 + min_len
-                warr = self.add_wires(layer_id, tidx, long0, long1, unit_mode=True)
-                warr_list.append(warr)
+                self.add_wires(layer_id, tidx, long0, long1, unit_mode=True)
 
         # add fill in edges on longitude sides
         long_lower = dim_long0 + margin_le
         long_upper = dim_long1 - margin_le
         for htr in set_long0:
-            warr = self.add_wires(layer_id, (htr - 1) / 2, long_lower, long_lower + min_len,
-                                  unit_mode=True)
-            warr_list.append(warr)
+            htr_idx = bisect.bisect_left(htr_list, htr)
+            intv_list[htr_idx].add((long_lower - sp_le_max2, long_lower + min_len + sp_le_max2),
+                                   merge=True, abut=True)
+            self.add_wires(layer_id, (htr - 1) / 2, long_lower, long_lower + min_len,
+                           unit_mode=True)
 
         for htr in set_long1:
-            warr = self.add_wires(layer_id, (htr - 1) / 2, long_upper - min_len, long_upper,
-                                  unit_mode=True)
-            warr_list.append(warr)
+            htr_idx = bisect.bisect_left(htr_list, htr)
+            intv_list[htr_idx].add((long_upper - min_len - sp_le_max2, long_upper + sp_le_max2),
+                                   merge=True, abut=True)
+            self.add_wires(layer_id, (htr - 1) / 2, long_upper - min_len, long_upper,
+                           unit_mode=True)
 
-        for warr in warr_list:
-            for _, box_arr in warr.wire_arr_iter(grid):
-                self.add_rect('M7', box_arr)
+        # add rest of fill
+        for htr, intv_set in zip(htr_list, intv_list):
+            tidx = (htr - 1) / 2
+            for long0, long1 in intv_set.complement_iter(intv_long):
+                if long1 - long0 < min_len:
+                    long0 = (long0 + long1 - min_len) // 2
+                    long1 = long0 + min_len
+                self.add_wires(layer_id, tidx, long0, long1, unit_mode=True)
 
-        """
-        lower += margin_le
-        upper -= margin_le
-
-        for intv in intv_list:
-            track_id = TrackID(layer_id, (intv[0] - 1) / 2)
-            # find open intervals before adding wires, so the act of adding wires will not
-            # impact the search for open intervals
-            wire_intv_list = list(self.open_interval_iter(track_id, lower, upper, sp=sp_max2,
-                                                          sp_le=sp_le_max2))
-            for wl, wu in wire_intv_list:
-                if wu - wl < min_len:
-                    wl = (wu + wl - min_len) // 2
-                    wu = wl + min_len
-                self.add_wires(layer_id, track_id.base_index, wl, wu, unit_mode=True)
-        """
         self.mark_bbox_used(layer_id, bound_box)
         self.add_rect(tech_info.get_exclude_layer(layer_id), bound_box)
 
