@@ -3627,7 +3627,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             cur_htr0 = max(htr0, int(round(cur_htr0 * 2 + 1)))
             cur_htr1 = min(htr1, int(round(cur_htr1 * 2 + 1)))
             htr_idx0 = bisect.bisect_left(htr_list, cur_htr0)
-            if htr_list[htr_idx0] <= cur_htr1:
+            if htr_idx0 < num_htr and htr_list[htr_idx0] <= cur_htr1:
                 htr_idx1 = min(num_htr - 1, bisect.bisect_right(htr_list, cur_htr1, lo=htr_idx0))
                 for htr_idx in range(htr_idx0, htr_idx1 + 1):
                     htr = htr_list[htr_idx]
@@ -3636,7 +3636,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                         set_long0.discard(htr)
                     if b_long0 <= dim_longu and dim_long1 <= b_long1:
                         set_long1.discard(htr)
-                    intv_list[htr_idx].add(blk_intv, merge=True, abut=True)
+                    if b_long0_lim < b_long1_lim:
+                        intv_list[htr_idx].add(blk_intv, merge=True, abut=True)
 
         # add fill in edges on transverse sides
         trl = self.grid.coord_to_nearest_track(layer_id, dim_tran0 + margin, half_track=True,
