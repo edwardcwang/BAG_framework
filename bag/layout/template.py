@@ -22,7 +22,8 @@ from .core import BagLayout
 from .util import BBox, BBoxArray
 from ..io import get_encoding, open_file
 from .routing import Port, TrackID, WireArray
-from .routing.fill import UsedTracks, fill_symmetric_min_density_info, fill_symmetric_interval
+from .routing.fill import UsedTracks, fill_symmetric_max_num_info, fill_symmetric_interval, \
+    NoFillChoiceError
 from .objects import Instance, Rect, Via, Path
 
 if TYPE_CHECKING:
@@ -3556,12 +3557,21 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         tr_w, tr_sp = grid.get_track_info(layer_id, unit_mode=True)
         tr_pitch2 = grid.get_track_pitch(layer_id, unit_mode=True) // 2
         num_tracks = int(round(-(-(dim_tran * density) // tr_w)))
-        htr_pitch_max = (sp_max - tr_sp) // tr_pitch2 + 2
+        num_tracks = min(max(num_tracks, -(-num_htr_tot // ((sp_max - tr_sp) // tr_pitch2 + 2))),
+                         num_htr_tot // 2)
 
-        fill_info, invert = fill_symmetric_min_density_info(num_htr_tot, num_tracks, 1, 1, 2,
-                                                            sp_max=htr_pitch_max, fill_on_edge=True)
+        fill_info = None
+        invert = False
+        for _ in range(100):
+            try:
+                fill_info, invert = fill_symmetric_max_num_info(num_htr_tot, num_tracks, 1, 1, 1,
+                                                                fill_on_edge=True, cyclic=False)
+            except NoFillChoiceError:
+                num_tracks -= 1
+        if fill_info is None:
+            raise ValueError('no fill solution.')
 
-        intv_list = fill_symmetric_interval(*fill_info[2], offset=htr0, invert=invert)[0]
+        intv_list = fill_symmetric_interval(*fill_info[1], offset=htr0, invert=invert)[0]
 
         # create interval sets
         intv_tran0 = IntervalSet()
@@ -3621,14 +3631,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         long_upper = dim_long1 - margin_le
         for htr in set_long0:
             htr_idx = bisect.bisect_left(htr_list, htr)
-            intv_list[htr_idx].add((long_lower - sp_le_max2, long_lower + min_len + sp_le_max2),
+            intv_list[htr_idx].add((dim_longl, long_lower + min_len + sp_le_max2),
                                    merge=True, abut=True)
             self.add_wires(layer_id, (htr - 1) / 2, long_lower, long_lower + min_len,
                            unit_mode=True)
 
         for htr in set_long1:
             htr_idx = bisect.bisect_left(htr_list, htr)
-            intv_list[htr_idx].add((long_upper - min_len - sp_le_max2, long_upper + sp_le_max2),
+            intv_list[htr_idx].add((long_upper - min_len - sp_le_max2, dim_longu),
                                    merge=True, abut=True)
             self.add_wires(layer_id, (htr - 1) / 2, long_upper - min_len, long_upper,
                            unit_mode=True)

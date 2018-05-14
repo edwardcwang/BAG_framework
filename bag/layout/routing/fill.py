@@ -299,8 +299,8 @@ def fill_symmetric_min_density_info(area, targ_area, n_min, n_max, sp_min,
     while n_max_iter.has_next():
         n_max_cur = n_max_iter.get_next()
         try:
-            info, invert = _fill_symmetric_max_num_info(area, nfill_opt, n_min, n_max_cur, sp_min,
-                                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
+            info, invert = fill_symmetric_max_num_info(area, nfill_opt, n_min, n_max_cur, sp_min,
+                                                       fill_on_edge=fill_on_edge, cyclic=cyclic)
             fill_area_cur = area - info[0] if invert else info[0]
             if invert:
                 _, sp_cur = _get_min_max_blk_len(info)
@@ -374,17 +374,17 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
     nfill_min = 1
     try:
         try:
-            _fill_symmetric_max_num_info(area, nfill_min, n_min, n_max, sp_min,
-                                         fill_on_edge=fill_on_edge, cyclic=cyclic)
+            fill_symmetric_max_num_info(area, nfill_min, n_min, n_max, sp_min,
+                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
         except NoFillAbutEdgeError:
             # we need at least 2 fiils
             nfill_min = 2
-            _fill_symmetric_max_num_info(area, nfill_min, n_min, n_max, sp_min,
-                                         fill_on_edge=fill_on_edge, cyclic=cyclic)
+            fill_symmetric_max_num_info(area, nfill_min, n_min, n_max, sp_min,
+                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
     except InsufficientAreaError:
         # cannot fill at all
-        info, invert = _fill_symmetric_max_num_info(area, 0, n_min, n_max, sp_min,
-                                                    fill_on_edge=fill_on_edge, cyclic=cyclic)
+        info, invert = fill_symmetric_max_num_info(area, 0, n_min, n_max, sp_min,
+                                                   fill_on_edge=fill_on_edge, cyclic=cyclic)
         return (0, 0, info[1]), invert
 
     # fill area first monotonically increases with number of fill blocks, then monotonically
@@ -392,8 +392,8 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
     # can be done on the number of fill blocks to determine the optimum.
     def golden_fun(nfill):
         try:
-            info2, invert2 = _fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
-                                                          fill_on_edge=fill_on_edge, cyclic=cyclic)
+            info2, invert2 = fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
+                                                         fill_on_edge=fill_on_edge, cyclic=cyclic)
         except ValueError:
             return 0
         if invert2:
@@ -409,9 +409,9 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
 
         def golden_fun2(nfill):
             try:
-                info2, invert2 = _fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
-                                                              fill_on_edge=fill_on_edge,
-                                                              cyclic=cyclic)
+                info2, invert2 = fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
+                                                             fill_on_edge=fill_on_edge,
+                                                             cyclic=cyclic)
                 if invert2:
                     _, sp_cur = _get_min_max_blk_len(info2)
                 else:
@@ -430,8 +430,8 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
     nfill_opt = min_result.x
     if nfill_opt is None:
         nfill_opt = min_result.xmax
-    info, invert = _fill_symmetric_max_num_info(area, nfill_opt, n_min, n_max, sp_min,
-                                                fill_on_edge=fill_on_edge, cyclic=cyclic)
+    info, invert = fill_symmetric_max_num_info(area, nfill_opt, n_min, n_max, sp_min,
+                                               fill_on_edge=fill_on_edge, cyclic=cyclic)
     fill_area = area - info[0] if invert else info[0]
     return (fill_area, nfill_opt, info[1]), invert
 
@@ -513,8 +513,8 @@ class EmptyRegionError(ValueError):
     pass
 
 
-def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min,
-                                 fill_on_edge=True, cyclic=False):
+def fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min,
+                                fill_on_edge=True, cyclic=False):
     # type: (int, int, int, int, int, bool, bool) -> Tuple[Tuple[Any, ...], bool]
     """Fill the given 1-D area as much as possible with given number of fill blocks.
 
