@@ -376,7 +376,7 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
         try:
             fill_symmetric_max_num_info(area, nfill_min, n_min, n_max, sp_min,
                                         fill_on_edge=fill_on_edge, cyclic=cyclic)
-        except NoFillAbutEdgeError:
+        except (NoFillAbutEdgeError, NoFillChoiceError):
             # we need at least 2 fiils
             nfill_min = 2
             fill_symmetric_max_num_info(area, nfill_min, n_min, n_max, sp_min,
