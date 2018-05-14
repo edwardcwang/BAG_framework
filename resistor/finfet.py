@@ -10,11 +10,11 @@ import math
 
 from bag.layout.util import BBox
 from bag.layout.routing import TrackID, WireArray
-from bag.layout.routing.fill import fill_symmetric_const_space, fill_symmetric_max_density
+from bag.layout.routing.fill import fill_symmetric_max_density, \
+    fill_symmetric_min_density_info, fill_symmetric_interval
 from bag.layout.template import TemplateBase
 
 from .base import ResTech
-
 
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfoConfig
@@ -277,19 +277,31 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
             if bot_rect_info['do_fill']:
                 layer = bot_rect_info['layer']
                 exc_layer = bot_rect_info['exc_layer']
+                density = bot_rect_info['density']
+                sp_min = bot_rect_info['sp_min']
                 sp_max = bot_rect_info['sp_max']
                 sp_bnd = bot_rect_info['sp_bnd']
                 bot_box = bot_rect_info['bbox']
                 top_box = top_rect_info['bbox']
+                density_1d = density ** 0.5
                 w, h = bot_box.width_unit, bot_box.height_unit
                 bot_yb, bot_yt = bot_box.bottom_unit, bot_box.top_unit
                 top_yb, top_yt = top_box.bottom_unit, top_box.top_unit
                 # compute fill Y coordinates between ports inside the cell
-                core_mid_y = fill_symmetric_const_space(top_yb - bot_yt, sp_max, h, h,
-                                                        offset=bot_yt)
+                area = top_yb - bot_yt
+                tarea = int(math.ceil(area * density_1d))
+                mid_info = fill_symmetric_min_density_info(area, tarea, h, h, sp_min, sp_max=sp_max,
+                                                           fill_on_edge=False)
+                core_mid_y = fill_symmetric_interval(*mid_info[0][2], offset=bot_yt,
+                                                     invert=mid_info[1])[0]
                 # compute fill Y coordinates between ports outside the cell
-                core_top_y = fill_symmetric_const_space(bot_yb + height - top_yt, sp_max, h, h,
-                                                        offset=top_yt)
+                area = bot_yb + height - top_yt
+                tarea = int(math.ceil(area * density_1d))
+                top_info = fill_symmetric_min_density_info(area, tarea, h, h, sp_min, sp_max=sp_max,
+                                                           fill_on_edge=False)
+                core_top_y = fill_symmetric_interval(*top_info[0][2], offset=top_yt,
+                                                     invert=top_info[1])[0]
+
                 # combine fill Y coordinates together in one list
                 fill_len2 = -(-len(core_top_y) // 2)
                 core_y = [(a - height, b - height) for (a, b) in core_top_y[-fill_len2:]]
@@ -301,11 +313,18 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
                 xl, xr = bot_box.left_unit, bot_box.right_unit
                 sp_xl = -width + xr
                 sp_xr = xl
-                core_x = fill_symmetric_const_space(sp_xr - sp_xl, sp_max, w, w, offset=sp_xl)
+
+                area = sp_xr - sp_xl
+                tarea = int(math.ceil(area * density_1d))
+                x_info = fill_symmetric_min_density_info(area, tarea, w, w, sp_min,
+                                                         sp_max=sp_max, fill_on_edge=False)
+                core_x = fill_symmetric_interval(*x_info[0][2], offset=sp_xl, invert=x_info[1])[0]
+
                 core_x.append((xl, xr))
                 core_x.extend(((a + width, b + width) for (a, b) in core_x[:-1]))
 
-                fill_info.append((layer, exc_layer, w, h, core_x, core_y, sp_max, sp_bnd))
+                fill_info.append((layer, exc_layer, w, h, core_x, core_y, density, sp_min,
+                                  sp_max, sp_bnd))
 
         layout_info['port_info'] = port_info
         layout_info['fill_info'] = fill_info
@@ -406,10 +425,15 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         # if we get here, then all density rules are met
         # compute fill X coordinate in edge block
         fill_edge_x_list = []
-        for _, _, w, h, core_x, core_y, sp_max, sp_bnd in core_fill_info:
+        for _, _, w, h, core_x, core_y, density, sp_min, sp_max, sp_bnd in core_fill_info:
             sp_xl = sp_bnd + w
             sp_xr = wedge + core_x[0][0]
-            edge_x = fill_symmetric_const_space(sp_xr - sp_xl, sp_max, w, w, offset=sp_xl)
+
+            area = sp_xr - sp_xl
+            tarea = int(math.ceil(area * density ** 0.5))
+            c_info = fill_symmetric_min_density_info(area, tarea, w, w, sp_min, sp_max=sp_max,
+                                                     fill_on_edge=False)
+            edge_x = fill_symmetric_interval(*c_info[0][2], offset=sp_xl, invert=c_info[1])[0]
             edge_x.insert(0, (sp_bnd, sp_xl))
             fill_edge_x_list.append(edge_x)
 
@@ -539,10 +563,15 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         # if we get here, then all density rules are met
         # compute fill Y coordinate in edge block
         fill_edge_y_list = []
-        for _, _, w, h, core_x, core_y, sp_max, sp_bnd in core_fill_info:
+        for _, _, w, h, core_x, core_y, density, sp_min, sp_max, sp_bnd in core_fill_info:
             sp_yb = sp_bnd + h
             sp_yt = hedge + core_y[0][0]
-            edge_y = fill_symmetric_const_space(sp_yt - sp_yb, sp_max, h, h, offset=sp_yb)
+
+            area = sp_yt - sp_yb
+            tarea = int(math.ceil(area * density ** 0.5))
+            c_info = fill_symmetric_min_density_info(area, tarea, h, h, sp_min, sp_max=sp_max,
+                                                     fill_on_edge=False)
+            edge_y = fill_symmetric_interval(*c_info[0][2], offset=sp_yb, invert=c_info[1])[0]
             edge_y.insert(0, (sp_bnd, sp_yb))
             fill_edge_y_list.append(edge_y)
 
@@ -693,7 +722,7 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         self._draw_dummies(template, xc, tb_fg, bot_od_loc)
 
         # draw metal fill
-        for layer, exc_layer, w, h, core_x, core_y, sp_max, sp_bnd in fill_info:
+        for layer, exc_layer, _, _, core_x, core_y, _, _, _, _ in fill_info:
             template.add_rect(exc_layer, arr_box)
             for xl, xr in core_x:
                 for yb, yt in core_y:
@@ -830,8 +859,9 @@ class ResTechFinfetBase(ResTech, metaclass=abc.ABCMeta):
         template.add_cell_boundary(bnd_box)
 
         # draw metal fill
-        for (layer, exc_layer, _, _, _, _, _, _), fill_x, fill_y in zip(core_fill_info, fill_x_list,
-                                                                        fill_y_list):
+        for (layer, exc_layer, _, _, _, _, _, _, _, _), fill_x, fill_y in zip(core_fill_info,
+                                                                              fill_x_list,
+                                                                              fill_y_list):
             template.add_rect(exc_layer, bnd_box)
             for xl, xr in fill_x:
                 for yb, yt in fill_y:
