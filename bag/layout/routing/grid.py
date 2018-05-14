@@ -1723,6 +1723,8 @@ class RoutingGrid(object):
         is_private : bool
             True if this is a private layer.
         """
+        self._ignore_layers.discard(layer_id)
+
         if not unit_mode:
             sp_unit = 2 * int(round(tr_space / (2 * self.resolution)))
             w_unit = 2 * int(round(tr_width / (2 * self.resolution)))
