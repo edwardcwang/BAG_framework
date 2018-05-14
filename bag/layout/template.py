@@ -3504,6 +3504,59 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             self.draw_vias_on_intersections(vss_warrs, top_vss)
         return top_vdd, top_vss
 
+    def do_density_fill(self,  # type: TemplateBase
+                        layer_id,  # type: int
+                        bound_box=None,  # type: Optional[BBox]
+                        ):
+        # type: (...) -> Tuple[List[WireArray], List[WireArray]]
+        """Draw density fill on the given layer."""
+        grid = self.grid
+        res = grid.resolution
+        tech_info = grid.tech_info
+
+        fill_config = tech_info.tech_params['layout']['dummy_fill'][layer_id]
+        density = fill_config['density']
+        sp_max = fill_config['sp_max']
+        sp_le_max = fill_config['sp_le_max']
+
+        if bound_box is None:
+            bound_box = self.bound_box
+
+        tr_w = grid.get_track_width(layer_id, 1, unit_mode=True)
+
+        tr_dir = grid.get_direction(layer_id)
+        perp_dir = 'x' if tr_dir == 'y' else 'y'
+        dim0, dim1 = bound_box.get_interval(tr_dir, unit_mode=True)
+        lower, upper = bound_box.get_interval(perp_dir, unit_mode=True)
+        tr0 = self.grid.coord_to_nearest_track(layer_id, dim0 + sp_max // 2, half_track=True,
+                                               mode=-1, unit_mode=True)
+        tr1 = self.grid.coord_to_nearest_track(layer_id, dim1 - sp_max // 2, half_track=True,
+                                               mode=1, unit_mode=True)
+        num_tr = int((tr1 - tr0) + 1)
+        intv_list = [IntervalSet() for idx in range(num_tr)]
+
+        for bbox in self.blockage_iter(layer_id, bound_box):
+            pass
+
+
+        if grid.get_direction(layer_id) == 'x':
+            dim = bound_box.height_unit
+            lower, upper = bound_box.get_invalid_bbox()
+        else:
+            dim = bound_box.width_unit
+
+        # calculate fill pitch based on density
+        tr_pitch = grid.get_track_pitch(layer_id, unit_mode=True)
+        tr_start = sp_max // 2 // tr_pitch
+        tr_end =
+        ntr_tot = dim // tr_pitch
+        ntr_fill = int(round(-(-(bound_box.height_unit * density) // tr_w)))
+        fill_pitch_max = ntr_tot // ntr_fill
+        # calculate fill pitch based on maximum space
+        fill_pitch_max = min(fill_pitch, sp_max // tr_pitch)
+
+        min_len = grid.get_min_length(layer_id, 1, unit_mode=True)
+        max_len =
 
 class CachedTemplate(TemplateBase):
     """A template that's cached in file."""
