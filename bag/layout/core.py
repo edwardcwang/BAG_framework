@@ -84,6 +84,12 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return []
 
     @abc.abstractmethod
+    def get_exclude_layer(self, layer_id):
+        # type: (int) -> Tuple[str, str]
+        """Returns the metal exclude layer"""
+        return '', ''
+
+    @abc.abstractmethod
     def get_dnw_margin_unit(self, dnw_mode):
         # type: (str) -> int
         """Returns the required DNW margin given the DNW mode.
@@ -1065,6 +1071,11 @@ class DummyTechInfo(TechInfo):
     def get_dnw_layers(self):
         # type: () -> List[Tuple[str, str]]
         return []
+
+    def get_exclude_layer(self, layer_id):
+        # type: (int) -> Tuple[str, str]
+        """Returns the metal exclude layer"""
+        return '', ''
 
     def get_dnw_margin_unit(self, dnw_mode):
         # type: (str) -> int
