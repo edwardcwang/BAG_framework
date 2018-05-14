@@ -626,6 +626,19 @@ class Instance(Arrayable):
         return box_arr.get_overall_bbox().transform(self.location_unit, self.orientation,
                                                     unit_mode=True)
 
+    @property
+    def fill_box(self):
+        # type: () -> BBox
+        """Returns the array box of this instance."""
+        master_box = getattr(self._master, 'fill_box', None)  # type: BBox
+        if master_box is None:
+            raise ValueError('Master template fill box is not defined.')
+
+        box_arr = BBoxArray(master_box, nx=self.nx, ny=self.ny,
+                            spx=self._spx_unit, spy=self._spy_unit, unit_mode=True)
+        return box_arr.get_overall_bbox().transform(self.location_unit, self.orientation,
+                                                    unit_mode=True)
+
     def get_bound_box_of(self, row=0, col=0):
         """Returns the bounding box of an instance in this mosaic."""
         dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
