@@ -3504,10 +3504,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             self.draw_vias_on_intersections(vss_warrs, top_vss)
         return top_vdd, top_vss
 
-    def do_density_fill(self,  # type: TemplateBase
-                        layer_id,  # type: int
-                        bound_box=None,  # type: Optional[BBox]
-                        ):
+    def do_max_space_fill(self,  # type: TemplateBase
+                          layer_id,  # type: int
+                          bound_box=None,  # type: Optional[BBox]
+                          ):
         # type: (...) -> Tuple[List[WireArray], List[WireArray]]
         """Draw density fill on the given layer."""
         grid = self.grid
@@ -3522,6 +3522,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if bound_box is None:
             bound_box = self.bound_box
 
+        """
         tr_w = grid.get_track_width(layer_id, 1, unit_mode=True)
 
         tr_dir = grid.get_direction(layer_id)
@@ -3538,7 +3539,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         for bbox in self.blockage_iter(layer_id, bound_box):
             pass
 
-
         if grid.get_direction(layer_id) == 'x':
             dim = bound_box.height_unit
             lower, upper = bound_box.get_invalid_bbox()
@@ -3548,7 +3548,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # calculate fill pitch based on density
         tr_pitch = grid.get_track_pitch(layer_id, unit_mode=True)
         tr_start = sp_max // 2 // tr_pitch
-        tr_end =
         ntr_tot = dim // tr_pitch
         ntr_fill = int(round(-(-(bound_box.height_unit * density) // tr_w)))
         fill_pitch_max = ntr_tot // ntr_fill
@@ -3556,7 +3555,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         fill_pitch_max = min(fill_pitch, sp_max // tr_pitch)
 
         min_len = grid.get_min_length(layer_id, 1, unit_mode=True)
-        max_len =
+        """
+
+        self.add_rect(tech_info.get_exclude_layer(layer_id), bound_box)
+
 
 class CachedTemplate(TemplateBase):
     """A template that's cached in file."""
