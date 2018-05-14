@@ -3667,13 +3667,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             long_upper = max(dim_long1 - margin_le, long_lower + min_len)
             long_edge_iter = ((set_long0, long_lower, long_upper), )
         else:
-            long_lower = dim_long0 + margin_le
-            long_upper = dim_long1 - margin_le
+            long_lower = dim_long0 + margin_le - min_len // 2
+            long_upper = dim_long1 - margin_le + min_len // 2
             long_edge_iter = ((set_long0, long_lower, long_lower + min_len),
                               (set_long1, long_upper - min_len, long_upper))
 
         for set_long_edge, lower, upper in long_edge_iter:
-            intv_mark = (max(dim_longl, lower), min(dim_longu, upper))
+            intv_mark = (max(dim_longl, lower - sp_le_max2), min(dim_longu, upper + sp_le_max2))
             for htr in set_long_edge:
                 htr_idx = bisect.bisect_left(htr_list, htr)
                 intv_list[htr_idx].add(intv_mark, merge=True, abut=True)
