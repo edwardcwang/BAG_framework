@@ -614,6 +614,7 @@ class BagProject(object):
                       profile_fname='',  # type: str
                       use_cache=False,  # type: bool
                       save_cache=False,  # type: bool
+                      **kwargs,
                       ):
         # type: (...) -> Optional[pstats.Stats]
         """Generate layout/schematic of a given cell from specification file.
@@ -642,12 +643,17 @@ class BagProject(object):
             True to use cached layouts.
         save_cache : bool
             True to save instances in this template to cache.
+        **kwargs :
+            Additional optional arguments.
 
         Returns
         -------
         stats : pstats.Stats
             If profiling is enabled, the statistics object.
         """
+        prefix = kwargs.get('prefix', '')
+        suffix = kwargs.get('suffix', '')
+
         impl_lib = specs['impl_lib']
         impl_cell = specs['impl_cell']
         sch_lib = specs['sch_lib']
@@ -696,7 +702,8 @@ class BagProject(object):
                 print('computing schematic...')
                 dsn.design(**temp.sch_params)
                 print('creating schematic...')
-                dsn.implement_design(impl_lib, top_cell_name=impl_cell)
+                dsn.implement_design(impl_lib, top_cell_name=impl_cell, prefix=prefix,
+                                     suffix=suffix)
                 print('schematic done.')
         else:
             result = None
