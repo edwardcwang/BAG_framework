@@ -3511,35 +3511,50 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # type: (...) -> None
         """Draw density fill on the given layer."""
         grid = self.grid
-        res = grid.resolution
         tech_info = grid.tech_info
 
         fill_config = tech_info.tech_params['layout']['dummy_fill'][layer_id]
         density = fill_config['density']
         sp_max = fill_config['sp_max']
         sp_le_max = fill_config['sp_le_max']
+        sp_max2 = sp_max // 2
+        sp_le_max2 = sp_le_max // 2
+        margin = sp_max2 // 2
+        margin_le = sp_le_max2 // 2
 
         if bound_box is None:
             bound_box = self.bound_box
 
         # get tracks information
-        tr_dir = grid.get_direction(layer_id)
-        perp_dir = 'x' if tr_dir == 'y' else 'y'
-        dim0, dim1 = bound_box.get_interval(perp_dir, unit_mode=True)
-        lower, upper = bound_box.get_interval(tr_dir, unit_mode=True)
-        dim_perp = dim1 - dim0
-        tr0 = self.grid.coord_to_nearest_track(layer_id, dim0 + sp_max // 2, half_track=True,
-                                               mode=-1, unit_mode=True)
-        tr1 = self.grid.coord_to_nearest_track(layer_id, dim1 - sp_max // 2, half_track=True,
-                                               mode=1, unit_mode=True)
-        htr0 = int(round(tr0 * 2 + 1))
-        htr1 = int(round(tr1 * 2 + 1))
+        long_dir = grid.get_direction(layer_id)
+        if long_dir == 'y':
+            tran_dir = 'x'
+            spx = sp_max2
+            spy = sp_le_max2
+        else:
+            tran_dir = 'y'
+            spx = sp_le_max2
+            spy = sp_max2
+        dim_tran0, dim_tran1 = bound_box.get_interval(tran_dir, unit_mode=True)
+        dim_long0, dim_long1 = bound_box.get_interval(long_dir, unit_mode=True)
+        dim_tranl = dim_tran0 + sp_max2
+        dim_tranu = dim_tran1 - sp_max2
+        dim_longl = dim_long0 + sp_le_max2
+        dim_longu = dim_long1 - sp_le_max2
+        dim_tran = dim_tran1 - dim_tran0
+        min_len = grid.get_min_length(layer_id, 1, unit_mode=True)
+        htr0 = self.grid.coord_to_nearest_track(layer_id, dim_tranl, half_track=True,
+                                                mode=-1, unit_mode=True)
+        htr1 = self.grid.coord_to_nearest_track(layer_id, dim_tranu, half_track=True,
+                                                mode=1, unit_mode=True)
+        htr0 = int(round(htr0 * 2 + 1))
+        htr1 = int(round(htr1 * 2 + 1))
         num_htr_tot = htr1 - htr0 + 1
 
         # calculate track pitch based on density/max space
         tr_w, tr_sp = grid.get_track_info(layer_id, unit_mode=True)
         tr_pitch2 = grid.get_track_pitch(layer_id, unit_mode=True) // 2
-        num_tracks = int(round(-(-(dim_perp * density) // tr_w)))
+        num_tracks = int(round(-(-(dim_tran * density) // tr_w)))
         htr_pitch_max = (sp_max - tr_sp) // tr_pitch2 + 2
 
         fill_info, invert = fill_symmetric_min_density_info(num_htr_tot, num_tracks, 1, 1, 2,
@@ -3547,10 +3562,92 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         intv_list = fill_symmetric_interval(*fill_info[2], offset=htr0, invert=invert)[0]
 
-        for intv in intv_list:
-            tidx = (intv[0] - 1) / 2
-            self.add_wires(layer_id, tidx, lower, upper, unit_mode=True)
+        # create interval sets
+        intv_tran0 = IntervalSet()
+        intv_tran1 = IntervalSet()
+        htr_list = [intv[0] for intv in intv_list]
+        set_long0 = set(htr_list)
+        set_long1 = set_long0.copy()
+        intv_list = [IntervalSet() for _ in range(len(htr_list))]
 
+        # handle blockages
+        for blk_box in self.blockage_iter(layer_id, bound_box, spx=spx, spy=spy):
+            b_tran0, b_tran1 = blk_box.get_interval(tran_dir, unit_mode=True)
+            b_long0, b_long1 = blk_box.get_interval(long_dir, unit_mode=True)
+            b_long0_lim = max(b_long0, dim_longl)
+            b_long1_lim = min(b_long1, dim_longu)
+            if b_long0_lim < b_long1_lim:
+                # handle lower/upper transverse edges
+                intv = (b_long0_lim, b_long1_lim)
+                if b_tran0 <= dim_tran0 and dim_tranl <= b_tran1:
+                    intv_tran0.add(intv, merge=True, abut=True)
+                if b_tran0 <= dim_tranu and dim_tran1 <= b_tran1:
+                    intv_tran1.add(intv, merge=True, abut=True)
+            cur_htr0 = self.grid.find_next_track(layer_id, b_tran0, half_track=True, mode=1,
+                                                 unit_mode=True)
+            cur_htr1 = self.grid.find_next_track(layer_id, b_tran1, half_track=True, mode=-1,
+                                                 unit_mode=True)
+            cur_htr0 = max(htr0, int(round(cur_htr0 * 2 + 1)))
+            cur_htr1 = min(htr1, int(round(cur_htr1 * 2 + 1)))
+            if cur_htr0 <= cur_htr1:
+                # handle lower/upper longitudinal edges
+                if b_long0 <= dim_long0 and dim_longl <= b_long1:
+                    for htr in range(cur_htr0, cur_htr1 + 1):
+                        set_long0.discard(htr)
+                if b_long0 <= dim_longu and dim_long1 <= b_long1:
+                    for htr in range(cur_htr0, cur_htr1 + 1):
+                        set_long1.discard(htr)
+
+        warr_list = []
+
+        # add fill in edges on transverse sides
+        trl = self.grid.coord_to_nearest_track(layer_id, dim_tran0 + margin, half_track=True,
+                                               mode=-1, unit_mode=True)
+        trr = self.grid.coord_to_nearest_track(layer_id, dim_tran1 - margin, half_track=True,
+                                               mode=1, unit_mode=True)
+        intv_long = (dim_longl, dim_longu)
+        for intv_set, tidx in ((intv_tran0, trl), (intv_tran1, trr)):
+            for long0, long1 in intv_set.complement_iter(intv_long):
+                if long1 - long0 < min_len:
+                    long0 = (long0 + long1 - min_len) // 2
+                    long1 = long0 + min_len
+                warr = self.add_wires(layer_id, tidx, long0, long1, unit_mode=True)
+                warr_list.append(warr)
+
+        # add fill in edges on longitude sides
+        long_lower = dim_long0 + margin_le
+        long_upper = dim_long1 - margin_le
+        for htr in set_long0:
+            warr = self.add_wires(layer_id, (htr - 1) / 2, long_lower, long_lower + min_len,
+                                  unit_mode=True)
+            warr_list.append(warr)
+
+        for htr in set_long1:
+            warr = self.add_wires(layer_id, (htr - 1) / 2, long_upper - min_len, long_upper,
+                                  unit_mode=True)
+            warr_list.append(warr)
+
+        for warr in warr_list:
+            for _, box_arr in warr.wire_arr_iter(grid):
+                self.add_rect('M7', box_arr)
+
+        """
+        lower += margin_le
+        upper -= margin_le
+
+        for intv in intv_list:
+            track_id = TrackID(layer_id, (intv[0] - 1) / 2)
+            # find open intervals before adding wires, so the act of adding wires will not
+            # impact the search for open intervals
+            wire_intv_list = list(self.open_interval_iter(track_id, lower, upper, sp=sp_max2,
+                                                          sp_le=sp_le_max2))
+            for wl, wu in wire_intv_list:
+                if wu - wl < min_len:
+                    wl = (wu + wl - min_len) // 2
+                    wu = wl + min_len
+                self.add_wires(layer_id, track_id.base_index, wl, wu, unit_mode=True)
+        """
+        self.mark_bbox_used(layer_id, bound_box)
         self.add_rect(tech_info.get_exclude_layer(layer_id), bound_box)
 
 
