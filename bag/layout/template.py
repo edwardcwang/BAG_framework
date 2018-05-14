@@ -3519,6 +3519,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         density = fill_config['density']
         sp_max = fill_config['sp_max']
         sp_le_max = fill_config['sp_le_max']
+        ip_margin = fill_config['margin']
+        ip_margin_le = fill_config['margin_le']
         sp_max2 = sp_max // 2
         sp_le_max2 = sp_le_max // 2
         margin = sp_max2 // 2
@@ -3539,11 +3541,17 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             spy = sp_max2
         dim_tran0, dim_tran1 = bound_box.get_interval(tran_dir, unit_mode=True)
         dim_long0, dim_long1 = bound_box.get_interval(long_dir, unit_mode=True)
-        dim_tranl = dim_tran0 + sp_max2
-        dim_tranu = dim_tran1 - sp_max2
-        dim_longl = dim_long0 + sp_le_max2
-        dim_longu = dim_long1 - sp_le_max2
+        dim_tranl = min(dim_tran1, dim_tran0 + sp_max2)
+        dim_tranu = max(dim_tran0, dim_tran1 - sp_max2)
+        dim_longl = min(dim_long1, dim_long0 + sp_le_max2)
+        dim_longu = max(dim_long0, dim_long1 - sp_le_max2)
         dim_tran = dim_tran1 - dim_tran0
+        dim_long = dim_long1 - dim_long0
+
+        self.add_rect(tech_info.get_exclude_layer(layer_id), bound_box)
+        if dim_tran <= ip_margin or dim_long <= ip_margin_le:
+            return
+
         min_len = grid.get_min_length(layer_id, 1, unit_mode=True)
         htr0 = self.grid.coord_to_nearest_track(layer_id, dim_tranl, half_track=True,
                                                 mode=-1, unit_mode=True)
@@ -3555,6 +3563,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         # calculate track pitch based on density/max space
         tr_w, tr_sp = grid.get_track_info(layer_id, unit_mode=True)
+        sp_le = grid.get_line_end_space(layer_id, 1, unit_mode=True)
         tr_pitch2 = grid.get_track_pitch(layer_id, unit_mode=True) // 2
         num_tracks = int(round(-(-(dim_tran * density) // tr_w)))
         num_tracks = min(max(num_tracks, -(-num_htr_tot // ((sp_max - tr_sp) // tr_pitch2 + 2))),
@@ -3618,8 +3627,17 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                                mode=-1, unit_mode=True)
         trr = self.grid.coord_to_nearest_track(layer_id, dim_tran1 - margin, half_track=True,
                                                mode=1, unit_mode=True)
+        if trr < trl + 1:
+            # handle cases where the given bounding box is small
+            dim_mid = (dim_tran0 + dim_tran1) // 2
+            trl = self.grid.coord_to_nearest_track(layer_id, dim_mid, half_track=True,
+                                                   mode=0, unit_mode=True)
+            tran_edge_iter = ((intv_tran0, trl), )
+        else:
+            tran_edge_iter = ((intv_tran0, trl), (intv_tran1, trr))
+
         intv_long = (dim_longl, dim_longu)
-        for intv_set, tidx in ((intv_tran0, trl), (intv_tran1, trr)):
+        for intv_set, tidx in tran_edge_iter:
             for long0, long1 in intv_set.complement_iter(intv_long):
                 if long1 - long0 < min_len:
                     long0 = (long0 + long1 - min_len) // 2
@@ -3627,21 +3645,23 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 self.add_wires(layer_id, tidx, long0, long1, unit_mode=True)
 
         # add fill in edges on longitude sides
-        long_lower = dim_long0 + margin_le
-        long_upper = dim_long1 - margin_le
-        for htr in set_long0:
-            htr_idx = bisect.bisect_left(htr_list, htr)
-            intv_list[htr_idx].add((dim_longl, long_lower + min_len + sp_le_max2),
-                                   merge=True, abut=True)
-            self.add_wires(layer_id, (htr - 1) / 2, long_lower, long_lower + min_len,
-                           unit_mode=True)
+        if dim_long0 + 2 * (margin_le + min_len) + sp_le > dim_long1:
+            # handle cases where the giving bounding box is small
+            long_lower = min(dim_long0 + margin_le, (dim_long0 + dim_long1 - min_len) // 2)
+            long_upper = max(dim_long1 - margin_le, long_lower + min_len)
+            long_edge_iter = ((set_long0, long_lower, long_upper), )
+        else:
+            long_lower = dim_long0 + margin_le
+            long_upper = dim_long1 - margin_le
+            long_edge_iter = ((set_long0, long_lower, long_lower + min_len),
+                              (set_long1, long_upper - min_len, long_upper))
 
-        for htr in set_long1:
-            htr_idx = bisect.bisect_left(htr_list, htr)
-            intv_list[htr_idx].add((long_upper - min_len - sp_le_max2, dim_longu),
-                                   merge=True, abut=True)
-            self.add_wires(layer_id, (htr - 1) / 2, long_upper - min_len, long_upper,
-                           unit_mode=True)
+        for set_long_edge, lower, upper in long_edge_iter:
+            intv_mark = (max(dim_longl, lower), min(dim_longu, upper))
+            for htr in set_long_edge:
+                htr_idx = bisect.bisect_left(htr_list, htr)
+                intv_list[htr_idx].add(intv_mark, merge=True, abut=True)
+                self.add_wires(layer_id, (htr - 1) / 2, lower, upper, unit_mode=True)
 
         # add rest of fill
         for htr, intv_set in zip(htr_list, intv_list):
@@ -3651,9 +3671,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     long0 = (long0 + long1 - min_len) // 2
                     long1 = long0 + min_len
                 self.add_wires(layer_id, tidx, long0, long1, unit_mode=True)
-
-        self.mark_bbox_used(layer_id, bound_box)
-        self.add_rect(tech_info.get_exclude_layer(layer_id), bound_box)
 
 
 class CachedTemplate(TemplateBase):
