@@ -525,6 +525,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._ports = {}
         self._port_params = {}
         self._array_box = None  # type: BBox
+        self._fill_box = None  # type: BBox
         self.prim_top_layer = None
         self.prim_bound_box = None
         self._used_tracks = UsedTracks()
@@ -696,7 +697,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     @property
     def array_box(self):
-        # type: () -> BBox
+        # type: () -> Optional[BBox]
         """Returns the array/abutment bounding box of this template."""
         return self._array_box
 
@@ -706,6 +707,21 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """Sets the array/abutment bound box of this template."""
         if not self._finalized:
             self._array_box = new_array_box
+        else:
+            raise RuntimeError('Template already finalized.')
+
+    @property
+    def fill_box(self):
+        # type: () -> Optional[BBox]
+        """Returns the dummy fill bounding box of this template."""
+        return self._fill_box
+
+    @fill_box.setter
+    def fill_box(self, new_box):
+        # type: (BBox) -> None
+        """Sets the array/abutment bound box of this template."""
+        if not self._finalized:
+            self._fill_box = new_box
         else:
             raise RuntimeError('Template already finalized.')
 
