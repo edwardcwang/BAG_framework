@@ -3701,7 +3701,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def do_max_space_fill(self,  # type: TemplateBase
                           layer_id,  # type: int
                           bound_box=None,  # type: Optional[BBox]
-                          fill_pitch=1,  # type: int
+                          fill_pitch=1,  # type: Union[float, int]
                           ):
         # type: (...) -> None
         """Draw density fill on the given layer."""
@@ -3808,50 +3808,55 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         min_len2 = -(-min_len // 2)
         tot_box = shgeo.box(*bound_box.get_bounds(unit_mode=True))
         geo = tot_box.difference(tot_geo)
-        if not geo.is_empty:
-            self._fill_poly_bounds(geo, layer_id, is_horiz, min_len2, fill_pitch)
+        for poly in self._get_flat_poly_iter(geo):
+            if not poly.is_empty:
+                self._fill_poly_bounds(poly, layer_id, is_horiz, min_len2, fill_pitch)
 
-    def _fill_poly_bounds(self, geo, layer_id, is_horiz, min_len2, fill_pitch):
+    def _fill_poly_bounds(self, poly, layer_id, is_horiz, min_len2, fill_pitch):
         grid = self.grid
-        bounds = geo.bounds
+        bounds = poly.bounds
         xl = int(round(bounds[0]))
         yb = int(round(bounds[1]))
         xr = int(round(bounds[2]))
         yt = int(round(bounds[3]))
-        tr_p = grid.get_track_pitch(layer_id, unit_mode=True)
+        tr_p2 = grid.get_track_pitch(layer_id, unit_mode=True) // 2
+        fill_htr = int(round(2 * fill_pitch))
         if is_horiz:
             tr0 = grid.coord_to_nearest_track(layer_id, yb, half_track=True,
                                               mode=-1, unit_mode=True)
             tr1 = grid.coord_to_nearest_track(layer_id, yt, half_track=True,
                                               mode=1, unit_mode=True)
             wl, wu = grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True)
-            comb = shgeo.MultiPolygon([shgeo.box(xl, wl + tr_p * idx, xr, wu + tr_p * idx)
-                                       for idx in range(0, (int(round(2 * (tr1 - tr0))) + 2) // 2,
-                                                        fill_pitch)])
+            comb = shgeo.MultiPolygon([shgeo.box(xl, wl + tr_p2 * idx, xr, wu + tr_p2 * idx)
+                                       for idx in range(0, int(round(2 * (tr1 - tr0))) + 2,
+                                                        fill_htr)])
         else:
             tr0 = grid.coord_to_nearest_track(layer_id, xl, half_track=True,
                                               mode=-1, unit_mode=True)
             tr1 = grid.coord_to_nearest_track(layer_id, xr, half_track=True,
                                               mode=1, unit_mode=True)
             wl, wu = grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True)
-            comb = shgeo.MultiPolygon([shgeo.box(wl + tr_p * idx, yb, wu + tr_p * idx, yt)
-                                       for idx in range(0, (int(round(2 * (tr1 - tr0))) + 2) // 2,
-                                                        fill_pitch)])
+            comb = shgeo.MultiPolygon([shgeo.box(wl + tr_p2 * idx, yb, wu + tr_p2 * idx, yt)
+                                       for idx in range(0, int(round(2 * (tr1 - tr0))) + 2,
+                                                        fill_htr)])
 
-        for p in self._get_flat_poly_iter(geo.intersection(comb)):
+        htr0 = int(round(tr0 * 2)) + 1
+        pitch = fill_htr * tr_p2
+        for p in self._get_flat_poly_iter(poly.intersection(comb)):
             p_bnds = p.bounds
             if p_bnds:
                 if is_horiz:
-                    tr = tr0 + (int(round(p_bnds[1])) - wl) // tr_p
+                    htr = htr0 + (int(round(p_bnds[1])) - wl) // pitch * fill_htr
                     pl = int(round(p_bnds[0]))
                     pu = int(round(p_bnds[2]))
                 else:
-                    tr = tr0 + (int(round(p_bnds[0])) - wl) // tr_p
+                    htr = htr0 + (int(round(p_bnds[0])) - wl) // pitch * fill_htr
                     pl = int(round(p_bnds[1]))
                     pu = int(round(p_bnds[3]))
                 pc = (pl + pu) // 2
-                self.add_wires(layer_id, tr, min(pl, pc - min_len2), max(pu, pc + min_len2),
-                               unit_mode=True)
+
+                self.add_wires(layer_id, (htr - 1) / 2, min(pl, pc - min_len2),
+                               max(pu, pc + min_len2), unit_mode=True)
 
     @classmethod
     def _get_flat_poly_iter(cls, poly):
