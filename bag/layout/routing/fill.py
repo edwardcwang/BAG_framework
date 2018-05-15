@@ -65,6 +65,14 @@ class RectIndex(object):
             if box_sp.overlaps(box) or test_box.overlaps(box_real):
                 yield box_real.expand(dx=max(dx, sdx), dy=max(dy, sdy), unit_mode=True)
 
+    def intersection_rect_iter(self, box):
+        # type: (BBox) -> Generator[BBox, None, None]
+        """Finds all bounding box that intersects the given box."""
+        res = self._res
+        box_iter = self._index.intersection(box.get_bounds(unit_mode=True), objects='raw')
+        for xl, yb, xr, yt, sdx, sdy in box_iter:
+            yield BBox(xl, yb, xr, yt, res, unit_mode=True)
+
 
 class UsedTracks(object):
     """A R-tree that stores all tracks in a template.
@@ -156,6 +164,12 @@ class UsedTracks(object):
         for layer_id, index in self._idx_table.items():
             for box, dx, dy, in index.rect_iter():
                 yield layer_id, box, dx, dy
+
+    def intersection_rect_iter(self, layer_id, box):
+        # type: (BBox) -> Generator[BBox, None, None]
+        """Finds all bounding box that intersects the given box."""
+        if layer_id in self._idx_table:
+            yield from self._idx_table[layer_id].intersection_rect_iter(box)
 
     def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
         # type: (int, BBox, int, int) -> Generator[BBox, None, None]
