@@ -3811,14 +3811,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if isinstance(geo, shgeo.Polygon):
             geo = [geo]
         for poly in geo:
-            poly_core = poly.buffer(-sp_max2, cap_style=2, join_style=2)
-            poly_min = poly.difference(poly_core.buffer(sp_max2, cap_style=2, join_style=2))
-            core_bounds = poly_core.bounds
-            min_bounds = poly_min.bounds
-            if core_bounds:
-                self._fill_poly_bounds(core_bounds, poly_core, layer_id, is_horiz, min_len2)
-            if min_bounds:
-                self._fill_poly_bounds(min_bounds, poly_min, layer_id, is_horiz, min_len2)
+            bounds = poly.bounds
+            if bounds:
+                self._fill_poly_bounds(bounds, poly, layer_id, is_horiz, min_len2)
 
     def _fill_poly_bounds(self, bounds, poly, layer_id, is_horiz, min_len2):
         grid = self.grid
@@ -3865,7 +3860,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             test_box = shaff.translate(test_box, xoff=xoff, yoff=yoff)
 
     def _get_flat_poly_iter(self, poly):
-        if isinstance(poly, shgeo.MultiPolygon):
+        if isinstance(poly, shgeo.MultiPolygon) or isinstance(poly, shgeo.MultiLineString):
             yield from poly
         elif isinstance(poly, shgeo.collection.GeometryCollection):
             for p in poly:
