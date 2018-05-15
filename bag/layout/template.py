@@ -3811,40 +3811,29 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if isinstance(geo, shgeo.Polygon):
             geo = [geo]
         for poly in geo:
-            poly_core = poly.buffer(-sp_max2, cap_style=2,
-                                    join_style=2).buffer(sp_max2, cap_style=2, join_style=2)
-            poly_min = poly.difference(poly_core)
+            poly_core = poly.buffer(-sp_max2, cap_style=2, join_style=2)
+            poly_min = poly.difference(poly_core.buffer(sp_max2, cap_style=2, join_style=2))
             core_bounds = poly_core.bounds
             min_bounds = poly_min.bounds
             if core_bounds:
-                self._fill_poly_bounds(core_bounds, poly_core, layer_id, is_horiz, sp_max2,
-                                       min_len2)
+                self._fill_poly_bounds(core_bounds, poly_core, layer_id, is_horiz, min_len2)
             if min_bounds:
-                self._fill_poly_bounds(min_bounds, poly_min, layer_id, is_horiz, sp_max2,
-                                       min_len2)
+                self._fill_poly_bounds(min_bounds, poly_min, layer_id, is_horiz, min_len2)
 
-    def _fill_poly_bounds(self, bounds, poly, layer_id, is_horiz, sp_max2, min_len2):
+    def _fill_poly_bounds(self, bounds, poly, layer_id, is_horiz, min_len2):
         grid = self.grid
         xl = int(round(bounds[0]))
         yb = int(round(bounds[1]))
         xr = int(round(bounds[2]))
         yt = int(round(bounds[3]))
-        xc = (xl + xr) // 2
-        yc = (yb + yt) // 2
-        xl = min(xl + sp_max2, xc)
-        xr = max(xr - sp_max2, xc)
-        yb = min(yb + sp_max2, yc)
-        yt = max(yt - sp_max2, yc)
         tr_pitch = grid.get_track_pitch(layer_id, unit_mode=True)
         if is_horiz:
             tr0 = grid.coord_to_nearest_track(layer_id, yb, half_track=True,
                                               mode=-1, unit_mode=True)
             tr1 = grid.coord_to_nearest_track(layer_id, yt, half_track=True,
                                               mode=1, unit_mode=True)
-            lower = min(xl, xc - min_len2)
-            upper = max(xr, xc + min_len2)
             wl, wu = grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True)
-            test_box = shgeo.box(lower, wl, upper, wu)
+            test_box = shgeo.box(xl, wl, xr, wu)
             xoff = 0
             yoff = tr_pitch
         else:
@@ -3852,10 +3841,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                               mode=-1, unit_mode=True)
             tr1 = grid.coord_to_nearest_track(layer_id, xr, half_track=True,
                                               mode=1, unit_mode=True)
-            lower = min(yb, yc - min_len2)
-            upper = max(yt, yc + min_len2)
             wl, wu = grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True)
-            test_box = shgeo.box(wl, lower, wu, upper)
+            test_box = shgeo.box(wl, yb, wu, yt)
             xoff = tr_pitch
             yoff = 0
 
@@ -3875,8 +3862,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     pc = (pl + pu) // 2
                     pl = min(pl, pc - min_len2)
                     pu = max(pu, pc + min_len2)
-                    self.add_wires(layer_id, tr0, min(pl, pc - min_len2), max(pu, pc + min_len2),
-                                   unit_mode=True)
+                    self.add_wires(layer_id, tr0, pl, pu, unit_mode=True)
             tr0 += 1
             test_box = shaff.translate(test_box, xoff=xoff, yoff=yoff)
 
