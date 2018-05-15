@@ -17,7 +17,6 @@ from itertools import islice, product, chain
 import yaml
 import shapely.ops as shops
 import shapely.geometry as shgeo
-import shapely.affinity as shaff
 
 from bag.util.cache import DesignMaster, MasterDB
 from bag.util.interval import IntervalSet
@@ -3702,6 +3701,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def do_max_space_fill(self,  # type: TemplateBase
                           layer_id,  # type: int
                           bound_box=None,  # type: Optional[BBox]
+                          fill_pitch=1,  # type: int
                           ):
         # type: (...) -> None
         """Draw density fill on the given layer."""
@@ -3808,63 +3808,57 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         min_len2 = -(-min_len // 2)
         tot_box = shgeo.box(*bound_box.get_bounds(unit_mode=True))
         geo = tot_box.difference(tot_geo)
-        if isinstance(geo, shgeo.Polygon):
-            geo = [geo]
-        for poly in geo:
-            bounds = poly.bounds
-            if bounds:
-                self._fill_poly_bounds(bounds, poly, layer_id, is_horiz, min_len2)
+        if not geo.is_empty:
+            self._fill_poly_bounds(geo, layer_id, is_horiz, min_len2, fill_pitch)
 
-    def _fill_poly_bounds(self, bounds, poly, layer_id, is_horiz, min_len2):
+    def _fill_poly_bounds(self, geo, layer_id, is_horiz, min_len2, fill_pitch):
         grid = self.grid
+        bounds = geo.bounds
         xl = int(round(bounds[0]))
         yb = int(round(bounds[1]))
         xr = int(round(bounds[2]))
         yt = int(round(bounds[3]))
-        tr_pitch = grid.get_track_pitch(layer_id, unit_mode=True)
+        tr_p = grid.get_track_pitch(layer_id, unit_mode=True)
         if is_horiz:
             tr0 = grid.coord_to_nearest_track(layer_id, yb, half_track=True,
                                               mode=-1, unit_mode=True)
             tr1 = grid.coord_to_nearest_track(layer_id, yt, half_track=True,
                                               mode=1, unit_mode=True)
             wl, wu = grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True)
-            test_box = shgeo.box(xl, wl, xr, wu)
-            xoff = 0
-            yoff = tr_pitch
+            comb = shgeo.MultiPolygon([shgeo.box(xl, wl + tr_p * idx, xr, wu + tr_p * idx)
+                                       for idx in range(0, (int(round(2 * (tr1 - tr0))) + 2) // 2,
+                                                        fill_pitch)])
         else:
             tr0 = grid.coord_to_nearest_track(layer_id, xl, half_track=True,
                                               mode=-1, unit_mode=True)
             tr1 = grid.coord_to_nearest_track(layer_id, xr, half_track=True,
                                               mode=1, unit_mode=True)
             wl, wu = grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True)
-            test_box = shgeo.box(wl, yb, wu, yt)
-            xoff = tr_pitch
-            yoff = 0
+            comb = shgeo.MultiPolygon([shgeo.box(wl + tr_p * idx, yb, wu + tr_p * idx, yt)
+                                       for idx in range(0, (int(round(2 * (tr1 - tr0))) + 2) // 2,
+                                                        fill_pitch)])
 
-        for idx in range((int(round(2 * (tr1 - tr0))) + 2) // 2):
-            cur_poly = poly.intersection(test_box)
-            for p in self._get_flat_poly_iter(cur_poly):
-                p_bnds = p.bounds
-                if p_bnds:
-                    if is_horiz:
-                        pl = int(round(p_bnds[0]))
-                        pu = int(round(p_bnds[2]))
-                    else:
-                        pl = int(round(p_bnds[1]))
-                        pu = int(round(p_bnds[3]))
-                    pc = (pl + pu) // 2
-                    pl = min(pl, pc - min_len2)
-                    pu = max(pu, pc + min_len2)
-                    self.add_wires(layer_id, tr0, pl, pu, unit_mode=True)
-            tr0 += 1
-            test_box = shaff.translate(test_box, xoff=xoff, yoff=yoff)
+        for p in self._get_flat_poly_iter(geo.intersection(comb)):
+            p_bnds = p.bounds
+            if p_bnds:
+                if is_horiz:
+                    tr = tr0 + (int(round(p_bnds[1])) - wl) // tr_p
+                    pl = int(round(p_bnds[0]))
+                    pu = int(round(p_bnds[2]))
+                else:
+                    tr = tr0 + (int(round(p_bnds[0])) - wl) // tr_p
+                    pl = int(round(p_bnds[1]))
+                    pu = int(round(p_bnds[3]))
+                pc = (pl + pu) // 2
+                self.add_wires(layer_id, tr, min(pl, pc - min_len2), max(pu, pc + min_len2),
+                               unit_mode=True)
 
-    def _get_flat_poly_iter(self, poly):
-        if isinstance(poly, shgeo.MultiPolygon) or isinstance(poly, shgeo.MultiLineString):
+    @classmethod
+    def _get_flat_poly_iter(cls, poly):
+        if (isinstance(poly, shgeo.MultiPolygon) or
+                isinstance(poly, shgeo.MultiLineString) or
+                isinstance(poly, shgeo.GeometryCollection)):
             yield from poly
-        elif isinstance(poly, shgeo.collection.GeometryCollection):
-            for p in poly:
-                yield from self._get_flat_poly_iter(p)
         else:
             yield poly
 
