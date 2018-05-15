@@ -2459,3 +2459,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             template.add_pin('g', g_warr, show=False)
         for sup_warr in sup_warrs:
             template.add_pin('supply', sup_warr, show=False)
+
+    def draw_active_fill(self, template, w, h):
+        # type: (TemplateBase, int, int) -> None
+        raise ValueError('Active fill not yet supported.')

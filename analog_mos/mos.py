@@ -303,3 +303,31 @@ class SubRingExt(TemplateBase):
         self._right_edge_info = ext_info['right_edge_info']
         tech_cls.draw_mos(self, self._layout_info)
         self.prim_top_layer = tech_cls.get_mos_conn_layer()
+
+
+class DummyFillActive(TemplateBase):
+    """A template that fills an area with active devices.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        return dict(
+            width='The width of the fill area, in resolution units.',
+            height='The height of the fill area, in resolution units.',
+        )
+
+    def get_layout_basename(self):
+        fmt = 'dummy_fill_active_w%d_h%d'
+        return fmt % (self.params['width'], self.params['height'])
+
+    def draw_layout(self):
+        w = self.params['width']
+        h = self.params['height']
+
+        tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
+        tech_cls.draw_active_fill(self, w, h)
