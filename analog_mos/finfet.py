@@ -885,7 +885,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # convert fin interval to Y coordinates
         od_intv_list = od_fin_area_iter.get_last_save_info()
         return [(self.get_od_edge(lch_unit, start, False),
-                 self.get_od_edge(lch_unit, stop, True)) for start, stop in od_intv_list]
+                 self.get_od_edge(lch_unit, stop - 1, True)) for start, stop in od_intv_list]
 
     def _get_dummy_yloc(self, lch_unit, bot_ext_info, top_ext_info, yblk, **kwargs):
         """Compute dummy OD/MD/PO/CPO Y intervals in extension block.
@@ -2523,13 +2523,15 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         for sup_warr in sup_warrs:
             template.add_pin('supply', sup_warr, show=False)
 
-    def draw_active_fill(self, template, w, h):
-        # type: (TemplateBase, int, int) -> None
+    def draw_active_fill(self, template, mos_type, threshold, w, h):
+        # type: (TemplateBase, str, str, int, int) -> None
 
         mos_layer_table = self.config['mos_layer_table']
         lch_unit = self.mos_config['dum_lch']
         mos_constants = self.get_mos_tech_constants(lch_unit)
 
+        fin_h = mos_constants['fin_h']
+        fin_p = mos_constants['mos_pitch']
         od_min_density = mos_constants['od_min_density']
         od_spx = mos_constants['od_spx']
         dod_edge_spx = mos_constants['dod_edge_spx']
@@ -2538,10 +2540,16 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         po_od_exty = mos_constants['po_od_exty']
         po_od_extx = mos_constants['po_od_extx']
         sd_pitch = mos_constants['sd_pitch']
+        fb_od_encx = mos_constants['fb_od_encx']
+        imp_od_encx = mos_constants['imp_od_encx']
+        imp_po_ency = mos_constants['imp_od_ency']
+
 
         # compute fill X intervals
         fill_xl = dod_edge_spx
         fill_xr = w - dod_edge_spx
+        fill_yb = dpo_edge_spy
+        fill_yt = h - dpo_edge_spy
         fill_w = fill_xr - fill_xl
 
         # check if we can draw anything at all
@@ -2583,8 +2591,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         ny = len(od_y_list)
         po_lay = mos_layer_table['PO_dummy']
         for idx, (od_yb, od_yt) in enumerate(od_y_list):
-            po_yb = dpo_edge_spy if idx == 0 else od_yb - po_od_exty
-            po_yt = h - dpo_edge_spy if idx == ny - 1 else od_yt + po_od_exty
+            po_yb = fill_yb if idx == 0 else od_yb - po_od_exty
+            po_yt = fill_yt if idx == ny - 1 else od_yt + po_od_exty
             for od_xl, od_xr in od_x_list:
                 box = BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True)
                 self.draw_od(template, 'OD_dummy', box)
@@ -2593,3 +2601,27 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 nx = 1 + ((od_xr - po_xr - po_od_extx + sd_pitch) // sd_pitch)
                 template.add_rect(po_lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True),
                                   nx=nx, spx=sd_pitch, unit_mode=True)
+
+        # draw other layers
+        od_xl = od_x_list[0][0]
+        od_xr = od_x_list[-1][1]
+        finbound_lay = mos_layer_table['FB']
+        fin_p2 = fin_p // 2
+        fin_h2 = fin_h // 2
+        fin_xl = min(fill_xl, od_xl - fb_od_encx)
+        fin_xr = max(fill_xr, od_xr + fb_od_encx)
+        fin_yb = fin_p2 - fin_h2
+        fin_yt = ((h - fin_p2 - fin_h2) // fin_p) * fin_p + fin_p2 + fin_h2
+        imp_xl = min(fill_xl, od_xl - imp_od_encx)
+        imp_xr = max(fill_xr, od_xr + imp_od_encx)
+        imp_yb = fill_yb - imp_po_ency
+        imp_yt = fill_yt + imp_po_ency
+        fin_box = BBox(fin_xl, fin_yb, fin_xr, fin_yt, res, unit_mode=True)
+        imp_box = BBox(imp_xl, imp_yb, imp_xr, imp_yt, res, unit_mode=True)
+        for imp_lay in self.get_mos_layers(mos_type, threshold):
+            if imp_lay == finbound_lay:
+                box = fin_box
+            else:
+                box = imp_box
+            if box.is_physical():
+                self.draw_mos_rect(template, imp_lay, box)

@@ -318,21 +318,28 @@ class DummyFillActive(TemplateBase):
     def get_params_info(cls):
         # type: () -> Dict[str, str]
         return dict(
+            mos_type='transistor type.',
+            threshold='transistor threshold.',
             width='The width of the fill area, in resolution units.',
             height='The height of the fill area, in resolution units.',
         )
 
     def get_layout_basename(self):
-        fmt = 'dummy_fill_active_w%d_h%d'
-        return fmt % (self.params['width'], self.params['height'])
+        mos_type = self.params['mos_type']
+        threshold = self.params['threshold']
+        w = self.params['width']
+        h = self.params['height']
+        return '%s_%s_dummy_fill_w%d_h%d' % (mos_type, threshold, w, h)
 
     def draw_layout(self):
+        mos_type = self.params['mos_type']
+        threshold = self.params['threshold']
         w = self.params['width']
         h = self.params['height']
 
         # draw fill
         tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
-        tech_cls.draw_active_fill(self, w, h)
+        tech_cls.draw_active_fill(self, mos_type, threshold, w, h)
 
         # set size
         box = BBox(0, 0, w, h, self.grid.resolution, unit_mode=True)

@@ -787,6 +787,6 @@ class MOSTechSOIGenericBC(MOSTech):
         # type: (TemplateBase, Dict[str, Any], int, int, int, bool, Dict[str, Any]) -> None
         raise ValueError('Decap connection is not supported in this technology.')
 
-    def draw_active_fill(self, template, w, h):
-        # type: (TemplateBase, int, int) -> None
+    def draw_active_fill(self, template, mos_type, threshold, w, h):
+        # type: (TemplateBase, str, str, int, int) -> None
         raise ValueError('Active fill not yet supported.')

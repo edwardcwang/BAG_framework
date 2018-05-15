@@ -495,14 +495,18 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def draw_active_fill(self, template, w, h):
-        # type: (TemplateBase, int, int) -> None
+    def draw_active_fill(self, template, mos_type, threshold, w, h):
+        # type: (TemplateBase, str, str, int, int) -> None
         """Draw active fill in the given area.
 
         Parameters
         ----------
         template : TemplateBase
             the TemplateBase object to draw layout in.
+        mos_type : str
+            the transistor type.  Either 'pch' or 'nch'.
+        threshold : str
+            the transistor threshold.
         w : int
             the template width, in resolution units.
         h : int
