@@ -3848,9 +3848,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         for idx in range((int(round(2 * (tr1 - tr0))) + 2) // 2):
             cur_poly = poly.intersection(test_box)
-            if not isinstance(cur_poly, shgeo.MultiPolygon):
-                cur_poly = [cur_poly]
-            for p in cur_poly:
+            for p in self._get_flat_poly_iter(cur_poly):
                 p_bnds = p.bounds
                 if p_bnds:
                     if is_horiz:
@@ -3865,6 +3863,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     self.add_wires(layer_id, tr0, pl, pu, unit_mode=True)
             tr0 += 1
             test_box = shaff.translate(test_box, xoff=xoff, yoff=yoff)
+
+    def _get_flat_poly_iter(self, poly):
+        if isinstance(poly, shgeo.MultiPolygon):
+            yield from poly
+        elif isinstance(poly, shgeo.collection.GeometryCollection):
+            for p in poly:
+                yield from self._get_flat_poly_iter(p)
+        else:
+            yield poly
 
     def _fill_long_edge_helper(self, layer_id, grid, tot_geo, long_box, coord_mid, is_horiz,
                                min_len, sp_max2, new_polys):
