@@ -6,8 +6,11 @@ from typing import TYPE_CHECKING, Dict, Set, Any, Tuple, List
 
 import numpy as np
 
+from bag.util.search import BinaryIterator
 from bag.layout.util import BBox
 from bag.layout.template import TemplateBase
+
+from ..analog_core.base import AnalogBase, AnalogBaseInfo
 
 if TYPE_CHECKING:
     from bag.layout.objects import Instance
@@ -205,15 +208,15 @@ class PowerFill(TemplateBase):
         for xidx in range(nx):
             for yidx in range(ny):
                 if uf_mat[xidx, yidx]:
-                    if xidx > 0 and idx_mat[xidx-1, yidx, 1] == yidx:
-                        cur_xl = idx_mat[xidx, yidx, 0] = idx_mat[xidx-1, yidx, 0]
-                        idx_mat[xidx-1, yidx, :] = -1
+                    if xidx > 0 and idx_mat[xidx - 1, yidx, 1] == yidx:
+                        cur_xl = idx_mat[xidx, yidx, 0] = idx_mat[xidx - 1, yidx, 0]
+                        idx_mat[xidx - 1, yidx, :] = -1
                     else:
                         cur_xl = idx_mat[xidx, yidx, 0] = xidx
-                    if yidx > 0 and idx_mat[xidx, yidx-1, 0] == cur_xl:
-                        cur_yb = idx_mat[xidx, yidx, 1] = idx_mat[xidx, yidx-1, 1]
-                        idx_mat[xidx, yidx-1, :] = -1
-                        if xidx > 0 and idx_mat[xidx-1, yidx, 1] == cur_yb:
+                    if yidx > 0 and idx_mat[xidx, yidx - 1, 0] == cur_xl:
+                        cur_yb = idx_mat[xidx, yidx, 1] = idx_mat[xidx, yidx - 1, 1]
+                        idx_mat[xidx, yidx - 1, :] = -1
+                        if xidx > 0 and idx_mat[xidx - 1, yidx, 1] == cur_yb:
                             idx_mat[xidx, yidx, 0] = idx_mat[xidx - 1, yidx, 0]
                             idx_mat[xidx - 1, yidx, :] = -1
                     else:
@@ -225,3 +228,125 @@ class PowerFill(TemplateBase):
             nx = xidx - x0 + 1
             ny = yidx - y0 + 1
             yield x0, y0, nx, ny
+
+
+class DecapFill(AnalogBase):
+    """A decap cell used for power fill
+
+    Parameters
+    ----------
+    temp_db : TemplateDB
+        the template database.
+    lib_name : str
+        the layout library name.
+    params : Dict[str, Any]
+        the parameter values.
+    used_names : Set[str]
+        a set of already used cell names.
+    **kwargs :
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        AnalogBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        return dict(
+            lch='channel length, in meters.',
+            ptap_w='NMOS substrate width, in meters/number of fins.',
+            ntap_w='PMOS substrate width, in meters/number of fins.',
+            wp='PMOS width.',
+            wn='NMOS width.',
+            thp='PMOS threshold.',
+            thn='NMOS threshold.',
+            nx='number of horizontal blocks of fill.',
+            ny='number of vertical blocks of fill.',
+            fill_config='the fill configuration dictionary.',
+            top_layer='Top power fill layer',
+            options='other AnalogBase options',
+            show_pins='True to create pin labels.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(
+            options=None,
+            show_pins=True,
+        )
+
+    def get_layout_basename(self):
+        lay = self.params['top_layer']
+        nx = self.params['nx']
+        ny = self.params['ny']
+        return 'decap_fill_lay%d_%dx%d' % (lay, nx, ny)
+
+    def draw_layout(self):
+        # type: () -> None
+        lch = self.params['lch']
+        ptap_w = self.params['ptap_w']
+        ntap_w = self.params['ntap_w']
+        wp = self.params['wp']
+        wn = self.params['wn']
+        thp = self.params['thp']
+        thn = self.params['thn']
+        nx = self.params['nx']
+        ny = self.params['ny']
+        fill_config = self.params['fill_config']
+        top_layer = self.params['top_layer']
+        options = self.params['options']
+        show_pins = self.params['show_pins']
+
+        if options is None:
+            options = {}
+
+        # get power fill size
+        w_tot, h_tot = self.grid.get_fill_size(top_layer, fill_config, unit_mode=True)
+        w_tot *= nx
+        h_tot *= ny
+        # get number of fingers
+        info = AnalogBaseInfo(self.grid, lch, 0, top_layer=top_layer)
+        bin_iter = BinaryIterator(2, None)
+        while bin_iter.has_next():
+            fg_cur = bin_iter.get_next()
+            w_cur = info.get_placement_info(fg_cur).tot_width
+            if w_cur < w_tot:
+                bin_iter.save()
+                bin_iter.up()
+            elif w_cur > w_tot:
+                bin_iter.down()
+            else:
+                bin_iter.save()
+                break
+
+        fg_tot = bin_iter.get_last_save()
+        if fg_tot is None:
+            raise ValueError('Decaep cell width exceed fill width.')
+        self.draw_base(lch, fg_tot, ptap_w, ntap_w, [wn], [thn], [wp], [thp],
+                       ng_tracks=[1], pg_tracks=[1], n_orientations=['MX'],
+                       p_orientations=['R0'], top_layer=None, min_height=h_tot,
+                       **options)
+
+        if self.bound_box.height_unit > h_tot:
+            raise ValueError('Decap cell height exceed fill height.')
+
+        nmos = self.draw_mos_conn('nch', 0, 0, fg_tot, 0, 0)
+        pmos = self.draw_mos_conn('pch', 0, 0, fg_tot, 2, 2, gate_pref_loc='s')
+
+        vss_tid = self.make_track_id('pch', 0, 'g', 0)
+        vdd_tid = self.make_track_id('nch', 0, 'g', 0)
+
+        self.connect_to_substrate('ptap', nmos['d'])
+        self.connect_to_substrate('ntap', pmos['s'])
+        vss_g = self.connect_to_tracks([nmos['s'], pmos['g']], vss_tid)
+        vdd_g = self.connect_to_tracks([pmos['d'], nmos['g']], vdd_tid)
+
+        vss, vdd = self.fill_dummy()
+        vss.append(vss_g)
+        vdd.append(vdd_g)
+        self.add_pin('VSS', vss, label='VSS:', show=show_pins)
+        self.add_pin('VDD', vdd, label='VDD:', show=show_pins)
