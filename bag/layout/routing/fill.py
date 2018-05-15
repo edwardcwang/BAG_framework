@@ -435,10 +435,16 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
                 return -sp_max - 1
 
         min_result = minimize_cost_golden(golden_fun2, -sp_max, offset=nfill_min, maxiter=None)
-        nfill_min = min_result.x
-        if nfill_min is None:
-            # should never get here...
-            raise ValueError('No solution for sp_max = %d' % sp_max)
+        if min_result.x is None:
+            # try even steps
+            min_result = minimize_cost_golden(golden_fun2, -sp_max, offset=nfill_min,
+                                              step=2, maxiter=None)
+            nfill_min = min_result.x
+            if nfill_min is None:
+                # should never get here...
+                raise ValueError('No solution for sp_max = %d' % sp_max)
+        else:
+            nfill_min = min_result.x
 
     min_result = minimize_cost_golden(golden_fun, targ_area, offset=nfill_min, maxiter=None)
     nfill_opt = min_result.x
