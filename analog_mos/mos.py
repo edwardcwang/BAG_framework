@@ -6,6 +6,7 @@
 from typing import TYPE_CHECKING, Dict, Any, Set, Tuple, Optional
 
 from bag import float_to_si_string
+from bag.layout.util import BBox
 from bag.layout.template import TemplateBase
 
 if TYPE_CHECKING:
@@ -329,5 +330,12 @@ class DummyFillActive(TemplateBase):
         w = self.params['width']
         h = self.params['height']
 
+        # draw fill
         tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
         tech_cls.draw_active_fill(self, w, h)
+
+        # set size
+        box = BBox(0, 0, w, h, self.grid.resolution, unit_mode=True)
+        self.prim_top_layer = 1
+        self.array_box = self.prim_bound_box = box
+        self.add_cell_boundary(box)
