@@ -1252,7 +1252,7 @@ class BagLayout(object):
         box = BBox.get_invalid_bbox()
         for rect in self._rect_list:
             if layer == rect.layer:
-                box = box.merge(rect.bbox)
+                box = box.merge(rect.bbox_array.get_overall_bbox())
 
         for inst in self._inst_list:
             box = box.merge(inst.get_rect_bbox(layer))
