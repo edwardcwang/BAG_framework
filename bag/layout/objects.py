@@ -521,7 +521,7 @@ class Instance(Arrayable):
                     loc = dx + x0, dy + y0
                     yield layer_id, box.transform(loc, orient, unit_mode=True), sdx, sdy
 
-    def intersection_rect_iter(self, layer_id, box):
+    def intersection_rect_iter(self, layer_id, test_box):
         # type: () -> Generator[BBox, None, None]
         if self.destroyed:
             return
@@ -537,10 +537,10 @@ class Instance(Arrayable):
         yb = base_box.bottom_unit
         xr = base_box.right_unit
         yt = base_box.top_unit
-        nx0 = max(0, -(-(box.left_unit - xr) // inst_spx))
-        nx1 = min(self.nx - 1, (box.right_unit - xl) // inst_spx)
-        ny0 = max(0, -(-(box.bottom_unit - yt) // inst_spy))
-        ny1 = min(self.ny - 1, (box.top_unit - yb) // inst_spy)
+        nx0 = max(0, -(-(test_box.left_unit - xr) // inst_spx))
+        nx1 = min(self.nx - 1, (test_box.right_unit - xl) // inst_spx)
+        ny0 = max(0, -(-(test_box.bottom_unit - yt) // inst_spy))
+        ny1 = min(self.ny - 1, (test_box.top_unit - yb) // inst_spy)
         orient = self._orient
         x0, y0 = self._loc_unit
         for row in range(ny0, ny1 + 1):
@@ -548,7 +548,7 @@ class Instance(Arrayable):
                 dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
                 loc = dx + x0, dy + y0
                 inv_loc, inv_orient = get_inverse_transform(loc, orient)
-                cur_box = box.transform(inv_loc, inv_orient, unit_mode=True)
+                cur_box = test_box.transform(inv_loc, inv_orient, unit_mode=True)
                 for box in self._master.intersection_rect_iter(layer_id, cur_box):
                     yield box.transform(loc, orient, unit_mode=True)
 
