@@ -15,6 +15,9 @@ import pickle
 from itertools import islice, product, chain
 
 import yaml
+import shapely.ops as shops
+import shapely.geometry as shgeo
+import shapely.affinity as shaff
 
 from bag.util.cache import DesignMaster, MasterDB
 from bag.util.interval import IntervalSet
@@ -798,6 +801,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if not self._merge_used_tracks:
             for inst in self._layout.inst_iter():
                 yield from inst.all_rect_iter()
+
+    def intersection_rect_iter(self, layer_id, box):
+        # type: () -> Generator[BBox, None, None]
+        yield from self._used_tracks.intersection_rect_iter(layer_id, box)
+        if not self._merge_used_tracks:
+            for inst in self._layout.inst_iter():
+                yield from inst.intersection_rect_iter(layer_id, box)
 
     def open_interval_iter(self,  # type: TemplateBase
                            track_id,  # type: TrackID
@@ -3522,10 +3532,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             self.draw_vias_on_intersections(vss_warrs, top_vss)
         return top_vdd, top_vss
 
-    def do_max_space_fill(self,  # type: TemplateBase
-                          layer_id,  # type: int
-                          bound_box=None,  # type: Optional[BBox]
-                          ):
+    def do_max_space_fill2(self,  # type: TemplateBase
+                           layer_id,  # type: int
+                           bound_box=None,  # type: Optional[BBox]
+                           ):
         # type: (...) -> None
         """Draw density fill on the given layer."""
         grid = self.grid
@@ -3649,7 +3659,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             dim_mid = (dim_tran0 + dim_tran1) // 2
             trl = self.grid.coord_to_nearest_track(layer_id, dim_mid, half_track=True,
                                                    mode=0, unit_mode=True)
-            tran_edge_iter = ((intv_tran0, trl), )
+            tran_edge_iter = ((intv_tran0, trl),)
         else:
             tran_edge_iter = ((intv_tran0, trl), (intv_tran1, trr))
 
@@ -3666,7 +3676,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             # handle cases where the giving bounding box is small
             long_lower = min(dim_long0 + margin_le, (dim_long0 + dim_long1 - min_len) // 2)
             long_upper = max(dim_long1 - margin_le, long_lower + min_len)
-            long_edge_iter = ((set_long0, long_lower, long_upper), )
+            long_edge_iter = ((set_long0, long_lower, long_upper),)
         else:
             long_lower = dim_long0 + margin_le - min_len // 2
             long_upper = dim_long1 - margin_le + min_len // 2
@@ -3688,6 +3698,234 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     long0 = (long0 + long1 - min_len) // 2
                     long1 = long0 + min_len
                 self.add_wires(layer_id, tidx, long0, long1, unit_mode=True)
+
+    def do_max_space_fill(self,  # type: TemplateBase
+                          layer_id,  # type: int
+                          bound_box=None,  # type: Optional[BBox]
+                          ):
+        # type: (...) -> None
+        """Draw density fill on the given layer."""
+
+        grid = self.grid
+        tech_info = grid.tech_info
+
+        fill_config = tech_info.tech_params['layout']['dummy_fill'][layer_id]
+        sp_max = fill_config['sp_max']
+        sp_le_max = fill_config['sp_le_max']
+        ip_margin = fill_config['margin']
+        ip_margin_le = fill_config['margin_le']
+        sp_max2 = sp_max // 2
+        sp_le_max2 = sp_le_max // 2
+        margin = sp_max2 // 2
+        margin_le = sp_le_max2 // 2
+
+        min_len = grid.get_min_length(layer_id, 1, unit_mode=True)
+        long_dir = grid.get_direction(layer_id)
+        is_horiz = (long_dir == 'x')
+
+        if bound_box is None:
+            bound_box = self.bound_box
+
+        xl = bound_box.left_unit
+        xr = bound_box.right_unit
+        yb = bound_box.bottom_unit
+        yt = bound_box.top_unit
+        if is_horiz:
+            tran_box = shgeo.box(xl + margin_le, yb, xr - margin_le, yb + sp_max2)
+            long_box = shgeo.box(xl, yb + margin_le, xl + sp_le_max2, yt - margin_le)
+            dim_tran0 = yb
+            dim_tran1 = yt
+            dim_long0 = xl
+            dim_long1 = xr
+        else:
+            tran_box = shgeo.box(xl, yb + margin_le, xl + sp_max2, yt - margin_le)
+            long_box = shgeo.box(xl + margin_le, yb, xr - margin_le, yb + sp_le_max2)
+            dim_tran0 = xl
+            dim_tran1 = xr
+            dim_long0 = yb
+            dim_long1 = yt
+
+        dim_tran = dim_tran1 - dim_tran0
+        dim_long = dim_long1 - dim_long0
+        self.add_rect(tech_info.get_exclude_layer(layer_id), bound_box)
+        if dim_tran <= ip_margin or dim_long <= ip_margin_le:
+            return
+
+        box_list = [shgeo.box(*box.get_bounds(unit_mode=True))
+                    for box in self.intersection_rect_iter(layer_id, bound_box)]
+        tot_geo = shops.cascaded_union(box_list)
+        tot_geo = tot_geo.buffer(sp_max2, cap_style=2, join_style=2)
+
+        # fill transverse edges
+        new_polys = []
+        if sp_max2 * 2 >= dim_tran:
+            tr = grid.coord_to_nearest_track(layer_id, (dim_tran0 + dim_tran1) // 2,
+                                             half_track=True, unit_mode=True)
+            do_upper = False
+        else:
+            tr = grid.coord_to_nearest_track(layer_id, dim_tran0 + margin, half_track=True,
+                                             mode=-1, unit_mode=True)
+            do_upper = True
+        self._fill_tran_edge_helper(layer_id, grid, tot_geo, tran_box, tr, is_horiz,
+                                    min_len, sp_max2, new_polys)
+
+        if do_upper:
+            tr = grid.coord_to_nearest_track(layer_id, dim_tran1 - margin, half_track=True,
+                                             mode=1, unit_mode=True)
+            if is_horiz:
+                tran_box = shgeo.box(xl + margin_le, yt - sp_max2, xr - margin_le, yt)
+            else:
+                tran_box = shgeo.box(xr - sp_max2, yb + margin_le, xr, yt - margin_le)
+            self._fill_tran_edge_helper(layer_id, grid, tot_geo, tran_box, tr, is_horiz,
+                                        min_len, sp_max2, new_polys)
+
+        new_polys.append(tot_geo)
+        tot_geo = shops.cascaded_union(new_polys)
+
+        # fill longitudinal edges
+        new_polys.clear()
+        if sp_le_max2 * 2 >= dim_long:
+            coord_mid = (dim_long1 + dim_long0) // 2
+            do_upper = False
+        else:
+            coord_mid = dim_long0 + margin_le
+            do_upper = True
+        self._fill_long_edge_helper(layer_id, grid, tot_geo, long_box, coord_mid, is_horiz,
+                                    min_len, sp_max2, new_polys)
+        if do_upper:
+            coord_mid = dim_long1 - margin_le
+            if is_horiz:
+                long_box = shgeo.box(xr - sp_le_max2, yb + margin_le, xr, yt - margin_le)
+            else:
+                long_box = shgeo.box(xl + margin_le, yt - sp_le_max2, xr - margin_le, yt)
+            self._fill_long_edge_helper(layer_id, grid, tot_geo, long_box, coord_mid, is_horiz,
+                                        min_len, sp_max2, new_polys)
+
+        new_polys.append(tot_geo)
+        tot_geo = shops.cascaded_union(new_polys)
+
+        # fill interior
+        min_len2 = -(-min_len // 2)
+        tot_box = shgeo.box(*bound_box.get_bounds(unit_mode=True))
+        geo = tot_box.difference(tot_geo)
+        if isinstance(geo, shgeo.Polygon):
+            geo = [geo]
+        for poly in geo:
+            poly_core = poly.buffer(-sp_max2, cap_style=2,
+                                    join_style=2).buffer(sp_max2, cap_style=2, join_style=2)
+            poly_min = poly.difference(poly_core)
+            core_bounds = poly_core.bounds
+            min_bounds = poly_min.bounds
+            if core_bounds:
+                self._fill_poly_bounds(core_bounds, poly_core, layer_id, is_horiz, sp_max2,
+                                       min_len2)
+            if min_bounds:
+                self._fill_poly_bounds(min_bounds, poly_min, layer_id, is_horiz, sp_max2,
+                                       min_len2)
+
+    def _fill_poly_bounds(self, bounds, poly, layer_id, is_horiz, sp_max2, min_len2):
+        grid = self.grid
+        xl = int(round(bounds[0]))
+        yb = int(round(bounds[1]))
+        xr = int(round(bounds[2]))
+        yt = int(round(bounds[3]))
+        xc = (xl + xr) // 2
+        yc = (yb + yt) // 2
+        xl = min(xl + sp_max2, xc)
+        xr = max(xr - sp_max2, xc)
+        yb = min(yb + sp_max2, yc)
+        yt = max(yt - sp_max2, yc)
+        tr_pitch = grid.get_track_pitch(layer_id, unit_mode=True)
+        if is_horiz:
+            tr0 = grid.coord_to_nearest_track(layer_id, yb, half_track=True,
+                                              mode=-1, unit_mode=True)
+            tr1 = grid.coord_to_nearest_track(layer_id, yt, half_track=True,
+                                              mode=1, unit_mode=True)
+            lower = min(xl, xc - min_len2)
+            upper = max(xr, xc + min_len2)
+            wl, wu = grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True)
+            test_box = shgeo.box(lower, wl, upper, wu)
+            xoff = 0
+            yoff = tr_pitch
+        else:
+            tr0 = grid.coord_to_nearest_track(layer_id, xl, half_track=True,
+                                              mode=-1, unit_mode=True)
+            tr1 = grid.coord_to_nearest_track(layer_id, xr, half_track=True,
+                                              mode=1, unit_mode=True)
+            lower = min(yb, yc - min_len2)
+            upper = max(yt, yc + min_len2)
+            wl, wu = grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True)
+            test_box = shgeo.box(wl, lower, wu, upper)
+            xoff = tr_pitch
+            yoff = 0
+
+        for idx in range((int(round(2 * (tr1 - tr0))) + 2) // 2):
+            cur_poly = poly.intersection(test_box)
+            if not isinstance(cur_poly, shgeo.MultiPolygon):
+                cur_poly = [cur_poly]
+            for p in cur_poly:
+                p_bnds = p.bounds
+                if p_bnds:
+                    if is_horiz:
+                        pl = int(round(p_bnds[0]))
+                        pu = int(round(p_bnds[2]))
+                    else:
+                        pl = int(round(p_bnds[1]))
+                        pu = int(round(p_bnds[3]))
+                    pc = (pl + pu) // 2
+                    pl = min(pl, pc - min_len2)
+                    pu = max(pu, pc + min_len2)
+                    self.add_wires(layer_id, tr0, min(pl, pc - min_len2), max(pu, pc + min_len2),
+                                   unit_mode=True)
+            tr0 += 1
+            test_box = shaff.translate(test_box, xoff=xoff, yoff=yoff)
+
+    def _fill_long_edge_helper(self, layer_id, grid, tot_geo, long_box, coord_mid, is_horiz,
+                               min_len, sp_max2, new_polys):
+        clower = coord_mid - min_len // 2
+        cupper = clower + min_len
+        geo = long_box.difference(tot_geo)
+        if isinstance(geo, shgeo.Polygon):
+            geo = [geo]
+        for poly in geo:
+            poly_bnds = poly.bounds
+            if poly_bnds:
+                if is_horiz:
+                    lower = poly_bnds[1]
+                    upper = poly_bnds[3]
+                else:
+                    lower = poly_bnds[0]
+                    upper = poly_bnds[2]
+                htr0 = grid.coord_to_nearest_track(layer_id, lower, half_track=True, mode=-1,
+                                                   unit_mode=True)
+                htr1 = grid.coord_to_nearest_track(layer_id, upper, half_track=True, mode=1,
+                                                   unit_mode=True)
+                htr0 = int(round(htr0 * 2 + 1))
+                htr1 = int(round(htr1 * 2 + 1))
+                for htr in range(htr0, htr1 + 1, 2):
+                    warr = self.add_wires(layer_id, (htr - 1) / 2, clower, cupper, unit_mode=True)
+                    wbox = shgeo.box(*warr.get_bbox_array(grid).base.get_bounds(unit_mode=True))
+                    new_polys.append(wbox.buffer(sp_max2, cap_style=2, join_style=2))
+
+    def _fill_tran_edge_helper(self, layer_id, grid, tot_geo, tran_box, tr, is_horiz, min_len,
+                               sp_max2, new_polys):
+        geo = tran_box.difference(tot_geo)
+        if isinstance(geo, shgeo.Polygon):
+            geo = [geo]
+        for poly in geo:
+            poly_bnds = poly.bounds
+            if poly_bnds:
+                if is_horiz:
+                    lower = poly_bnds[0]
+                    upper = poly_bnds[2]
+                else:
+                    lower = poly_bnds[1]
+                    upper = poly_bnds[3]
+                lower = min(lower, (lower + upper - min_len) // 2)
+                upper = max(upper, lower + min_len)
+                warr = self.add_wires(layer_id, tr, lower, upper, unit_mode=True)
+                wbox = shgeo.box(*warr.get_bbox_array(grid).base.get_bounds(unit_mode=True))
+                new_polys.append(wbox.buffer(sp_max2, cap_style=2, join_style=2))
 
 
 class CachedTemplate(TemplateBase):
