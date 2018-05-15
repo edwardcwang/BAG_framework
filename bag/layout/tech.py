@@ -83,6 +83,11 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
 
         return list(table['thres_layers'][mos_type][threshold].keys())
 
+    def get_exclude_layer(self, layer_id):
+        # type: (int) -> Tuple[str, str]
+        """Returns the metal exclude layer"""
+        return self.config['metal_exclude_table'][layer_id]
+
     def get_dnw_margin_unit(self, dnw_mode):
         # type: (str) -> int
         return self.config['dnw_margins'][dnw_mode]

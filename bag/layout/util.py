@@ -136,7 +136,7 @@ class BBox(object):
         box : bag.layout.util.BBox
             an invalid bounding box.
         """
-        return cls(0.0, 0.0, -1.0, -1.0, 0.1)
+        return cls(0, 0, -1, -1, 0.1, unit_mode=True)
 
     @property
     def left(self):
@@ -396,7 +396,7 @@ class BBox(object):
                     max(p1[0], p2[0]), max(p1[1], p2[1]),
                     self._res, unit_mode=True)
 
-    def move_by(self, dx=0.0, dy=0.0, unit_mode=False):
+    def move_by(self, dx=0, dy=0, unit_mode=False):
         # type: (Union[float, int], Union[float, int], bool) -> BBox
         """Returns a new BBox shifted by the given amount.
 
@@ -730,7 +730,7 @@ class BBoxArray(object):
         """
         return self.transform((dx, dy), unit_mode=unit_mode)
 
-    def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False):
+    def transform(self, loc=(0, 0), orient='R0', unit_mode=False):
         # type: (Tuple[Union[float, int], Union[float, int]], str, bool) -> BBoxArray
         """Returns a new BBoxArray under the given transformation.
 
@@ -779,7 +779,7 @@ class BBoxArray(object):
         return BBoxArray(new_base, nx=self._nx, ny=self._ny,
                          spx=self._spx_unit, spy=self._spy_unit, unit_mode=True)
 
-    def arrayed_copies(self, nx=1, ny=1, spx=0.0, spy=0.0, unit_mode=False):
+    def arrayed_copies(self, nx=1, ny=1, spx=0, spy=0, unit_mode=False):
         # type: (int, int, Union[float, int], Union[float, int], bool) -> 'BBoxCollection'
         """Returns a BBoxCollection containing arrayed copies of this BBoxArray
 
@@ -922,7 +922,7 @@ class BBoxCollection(object):
 
         return box
 
-    def transform(self, loc=(0.0, 0.0), orient='R0'):
+    def transform(self, loc=(0, 0), orient='R0'):
         """Returns a new BBoxCollection under the given transformation.
 
         rotates first before shift.

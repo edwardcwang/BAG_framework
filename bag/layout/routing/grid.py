@@ -73,6 +73,7 @@ class RoutingGrid(object):
         self._resolution = tech_info.resolution
         self._layout_unit = tech_info.layout_unit
         self._flip_parity = {}
+        self._ignore_layers = set()
         self.layers = []
         self.sp_tracks = {}
         self.w_tracks = {}
@@ -259,11 +260,13 @@ class RoutingGrid(object):
         top_private_layer = self.top_private_layer
 
         # update private block pitches
-        lay_list = [lay for lay in self.layers if lay <= top_private_layer]
+        lay_list = [lay for lay in self.layers
+                    if lay <= top_private_layer and lay not in self._ignore_layers]
         self._update_block_pitch_helper(lay_list)
 
         # update public block pitches
-        lay_list = [lay for lay in self.layers if lay > top_private_layer]
+        lay_list = [lay for lay in self.layers
+                    if lay > top_private_layer and lay not in self._ignore_layers]
         self._update_block_pitch_helper(lay_list)
 
     def _update_block_pitch_helper(self, lay_list):
@@ -1660,6 +1663,7 @@ class RoutingGrid(object):
         attrs['_resolution'] = self._resolution
         attrs['_layout_unit'] = self._layout_unit
         attrs['_flip_parity'] = self._flip_parity.copy()
+        attrs['_ignore_layers'] = self._ignore_layers.copy()
         attrs['layers'] = list(self.layers)
         attrs['sp_tracks'] = self.sp_tracks.copy()
         attrs['dir_tracks'] = self.dir_tracks.copy()
@@ -1674,26 +1678,19 @@ class RoutingGrid(object):
 
         return result
 
-    def remove_layers_under(self, layer_id):
+    def ignore_layers_under(self, layer_id):
         # type: (int) -> None
-        """Remove all routing layers under the given layer.
+        """Ignore all layers under the given layer (inclusive) when calculating block pitches.
 
         Parameters
         ----------
         layer_id : int
-            all layers under and including this layer will be removed.
+            ignore this layer and below.
         """
-        while self.layers and self.layers[0] <= layer_id:
-            rm_layer = self.layers[0]
-            del self.layers[0]
-            del self.sp_tracks[rm_layer]
-            del self.w_tracks[rm_layer]
-            del self.dir_tracks[rm_layer]
-            del self.block_pitch[rm_layer]
-            self._flip_parity.pop(rm_layer, None)
-            self.offset_tracks.pop(rm_layer, None)
-            self.max_num_tr_tracks.pop(rm_layer, None)
-            self.w_override.pop(rm_layer, None)
+        for lay in self.layers:
+            if lay > layer_id:
+                break
+            self._ignore_layers.add(lay)
 
     def add_new_layer(self, layer_id, tr_space, tr_width, direction,
                       max_num_tr=100, override=False, unit_mode=False, is_private=True):
@@ -1726,6 +1723,8 @@ class RoutingGrid(object):
         is_private : bool
             True if this is a private layer.
         """
+        self._ignore_layers.discard(layer_id)
+
         if not unit_mode:
             sp_unit = 2 * int(round(tr_space / (2 * self.resolution)))
             w_unit = 2 * int(round(tr_width / (2 * self.resolution)))
