@@ -339,3 +339,5 @@ class DummyFillActive(TemplateBase):
         self.prim_top_layer = 1
         self.array_box = self.prim_bound_box = box
         self.add_cell_boundary(box)
+
+        self.grid.tech_info.draw_device_blockage(self)

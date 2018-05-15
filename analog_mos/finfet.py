@@ -2526,6 +2526,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     def draw_active_fill(self, template, w, h):
         # type: (TemplateBase, int, int) -> None
 
+        mos_layer_table = self.config['mos_layer_table']
         lch_unit = self.mos_config['dum_lch']
         mos_constants = self.get_mos_tech_constants(lch_unit)
 
@@ -2533,6 +2534,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_spx = mos_constants['od_spx']
         dod_edge_spx = mos_constants['dod_edge_spx']
         dod_fg_min, dod_fg_max = mos_constants['dod_fill_fg']
+        dpo_edge_spy = mos_constants['dpo_edge_spy']
+        po_od_exty = mos_constants['po_od_exty']
+        po_od_extx = mos_constants['po_od_extx']
+        sd_pitch = mos_constants['sd_pitch']
 
         # compute fill X intervals
         fill_xl = dod_edge_spx
@@ -2575,7 +2580,16 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # draw fills
         res = template.grid.resolution
-        for od_xl, od_xr in od_x_list:
-            for od_yb, od_yt in od_y_list:
+        ny = len(od_y_list)
+        po_lay = mos_layer_table['PO_dummy']
+        for idx, (od_yb, od_yt) in enumerate(od_y_list):
+            po_yb = dpo_edge_spy if idx == 0 else od_yb - po_od_exty
+            po_yt = h - dpo_edge_spy if idx == ny - 1 else od_yt + po_od_exty
+            for od_xl, od_xr in od_x_list:
                 box = BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True)
                 self.draw_od(template, 'OD_dummy', box)
+                po_xl = od_xl + po_od_extx - sd_pitch
+                po_xr = po_xl + lch_unit
+                nx = 1 + ((od_xr - po_xr - po_od_extx + sd_pitch) // sd_pitch)
+                template.add_rect(po_lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True),
+                                  nx=nx, spx=sd_pitch, unit_mode=True)
