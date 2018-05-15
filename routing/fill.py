@@ -230,7 +230,7 @@ class PowerFill(TemplateBase):
             yield x0, y0, nx, ny
 
 
-class DecapFill(AnalogBase):
+class DecapFillCore(AnalogBase):
     """A decap cell used for power fill
 
     Parameters
@@ -267,6 +267,7 @@ class DecapFill(AnalogBase):
             ny='number of vertical blocks of fill.',
             fill_config='the fill configuration dictionary.',
             top_layer='Top power fill layer',
+            sup_width='Supply track width.',
             options='other AnalogBase options',
             show_pins='True to create pin labels.',
         )
@@ -275,6 +276,7 @@ class DecapFill(AnalogBase):
     def get_default_param_values(cls):
         # type: () -> Dict[str, Any]
         return dict(
+            sup_width=2,
             options=None,
             show_pins=True,
         )
@@ -283,7 +285,7 @@ class DecapFill(AnalogBase):
         lay = self.params['top_layer']
         nx = self.params['nx']
         ny = self.params['ny']
-        return 'decap_fill_lay%d_%dx%d' % (lay, nx, ny)
+        return 'decap_fill_core_lay%d_%dx%d' % (lay, nx, ny)
 
     def draw_layout(self):
         # type: () -> None
@@ -298,6 +300,7 @@ class DecapFill(AnalogBase):
         ny = self.params['ny']
         fill_config = self.params['fill_config']
         top_layer = self.params['top_layer']
+        sup_width = self.params['sup_width']
         options = self.params['options']
         show_pins = self.params['show_pins']
 
@@ -328,7 +331,7 @@ class DecapFill(AnalogBase):
             raise ValueError('Decaep cell width exceed fill width.')
         self.draw_base(lch, fg_tot, ptap_w, ntap_w, [wn], [thn], [wp], [thp],
                        ng_tracks=[1], pg_tracks=[1], n_orientations=['MX'],
-                       p_orientations=['R0'], top_layer=None, min_height=h_tot,
+                       p_orientations=['R0'], top_layer=top_layer, min_height=h_tot,
                        **options)
 
         if self.bound_box.height_unit > h_tot:
@@ -345,8 +348,111 @@ class DecapFill(AnalogBase):
         vss_g = self.connect_to_tracks([nmos['s'], pmos['g']], vss_tid)
         vdd_g = self.connect_to_tracks([pmos['d'], nmos['g']], vdd_tid)
 
-        vss, vdd = self.fill_dummy()
+        vss, vdd = self.fill_dummy(vdd_width=sup_width, vss_width=sup_width)
         vss.append(vss_g)
         vdd.append(vdd_g)
         self.add_pin('VSS', vss, label='VSS:', show=show_pins)
         self.add_pin('VDD', vdd, label='VDD:', show=show_pins)
+
+
+class DecapFill(TemplateBase):
+    """A power fill cell containing decap
+
+    Parameters
+    ----------
+    temp_db : TemplateDB
+        the template database.
+    lib_name : str
+        the layout library name.
+    params : Dict[str, Any]
+        the parameter values.
+    used_names : Set[str]
+        a set of already used cell names.
+    **kwargs :
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        return dict(
+            fill_config='the fill configuration dictionary.',
+            decap_params='decap parameters.',
+            nx='number of horizontal blocks of fill.',
+            ny='number of vertical blocks of fill.',
+            top_layer='Top power fill layer',
+            show_pins='True to show pins.',
+        )
+
+    @classmethod
+    def get_default_param_values(cls):
+        # type: () -> Dict[str, Any]
+        return dict(
+            show_pins=True,
+        )
+
+    def get_layout_basename(self):
+        lay = self.params['top_layer']
+        nx = self.params['nx']
+        ny = self.params['ny']
+        return 'decap_fill_lay%d_%dx%d' % (lay, nx, ny)
+
+    def draw_layout(self):
+        # type: () -> None
+        fill_config = self.params['fill_config']
+        decap_params = self.params['decap_params']
+        nx = self.params['nx']
+        ny = self.params['ny']
+        top_layer = self.params['top_layer']
+        show_pins = self.params['show_pins']
+
+        params = decap_params.copy()
+        params['nx'] = nx
+        params['ny'] = ny
+        params['fill_config'] = fill_config
+        params['top_layer'] = top_layer
+
+        master_cap = self.new_template(params=params, temp_cls=DecapFillCore)
+
+        w_blk, h_blk = self.grid.get_fill_size(top_layer, fill_config, unit_mode=True)
+        w_tot = w_blk * nx
+        h_tot = h_blk * ny
+        dx = (w_tot - master_cap.bound_box.width_unit) // 2
+        cap_inst = self.add_instance(master_cap, 'XCAP', (dx, 0), unit_mode=True)
+        hm_layer = master_cap.mos_conn_layer + 1
+
+        if top_layer <= hm_layer:
+            raise ValueError('top layer must be at least %d' % (hm_layer + 1))
+
+        # set size
+        res = self.grid.resolution
+        self.array_box = bnd_box = BBox(0, 0, w_tot, h_tot, res, unit_mode=True)
+        self.set_size_from_bound_box(top_layer, bnd_box)
+        self.add_cell_boundary(bnd_box)
+
+        # do power fill
+        ym_layer = hm_layer + 1
+        vdd_list = cap_inst.get_all_port_pins('VDD')
+        vss_list = cap_inst.get_all_port_pins('VSS')
+        fill_width, fill_space, space, space_le = fill_config[ym_layer]
+        vdd_list, vss_list = self.do_power_fill(ym_layer, space, space_le, vdd_warrs=vdd_list,
+                                                vss_warrs=vss_list, fill_width=fill_width,
+                                                fill_space=fill_space, unit_mode=True)
+        if top_layer > ym_layer:
+            params = dict(fill_config=fill_config, show_pins=False)
+            inst = None
+            for bot_layer in range(ym_layer, top_layer):
+                params['bot_layer'] = bot_layer
+                master = self.new_template(params=params, temp_cls=PowerFill)
+                inst = self.add_instance(master, 'X%d' % bot_layer, nx=nx, ny=ny,
+                                         spx=w_blk, spy=h_blk, unit_mode=True)
+            vdd_list = self.connect_wires(inst.get_all_port_pins('VDD'))
+            vss_list = self.connect_wires(inst.get_all_port_pins('VSS'))
+
+        self.add_pin('VDD', vdd_list, show=show_pins)
+        self.add_pin('VSS', vss_list, show=show_pins)
