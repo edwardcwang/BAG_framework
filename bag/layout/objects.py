@@ -521,6 +521,37 @@ class Instance(Arrayable):
                     loc = dx + x0, dy + y0
                     yield layer_id, box.transform(loc, orient, unit_mode=True), sdx, sdy
 
+    def intersection_rect_iter(self, layer_id, test_box):
+        # type: () -> Generator[BBox, None, None]
+        if self.destroyed:
+            return
+
+        base_box = self._master.get_track_bbox(layer_id)
+        if not base_box.is_physical():
+            return
+        base_box = self.translate_master_box(base_box)
+
+        inst_spx = max(self.spx_unit, 1)
+        inst_spy = max(self.spy_unit, 1)
+        xl = base_box.left_unit
+        yb = base_box.bottom_unit
+        xr = base_box.right_unit
+        yt = base_box.top_unit
+        nx0 = max(0, -(-(test_box.left_unit - xr) // inst_spx))
+        nx1 = min(self.nx - 1, (test_box.right_unit - xl) // inst_spx)
+        ny0 = max(0, -(-(test_box.bottom_unit - yt) // inst_spy))
+        ny1 = min(self.ny - 1, (test_box.top_unit - yb) // inst_spy)
+        orient = self._orient
+        x0, y0 = self._loc_unit
+        for row in range(ny0, ny1 + 1):
+            for col in range(nx0, nx1 + 1):
+                dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
+                loc = dx + x0, dy + y0
+                inv_loc, inv_orient = get_inverse_transform(loc, orient)
+                cur_box = test_box.transform(inv_loc, inv_orient, unit_mode=True)
+                for box in self._master.intersection_rect_iter(layer_id, cur_box):
+                    yield box.transform(loc, orient, unit_mode=True)
+
     def get_rect_bbox(self, layer):
         """Returns the overall bounding box of all rectangles on the given layer.
 
@@ -620,6 +651,19 @@ class Instance(Arrayable):
         master_box = getattr(self._master, 'array_box', None)  # type: BBox
         if master_box is None:
             raise ValueError('Master template array box is not defined.')
+
+        box_arr = BBoxArray(master_box, nx=self.nx, ny=self.ny,
+                            spx=self._spx_unit, spy=self._spy_unit, unit_mode=True)
+        return box_arr.get_overall_bbox().transform(self.location_unit, self.orientation,
+                                                    unit_mode=True)
+
+    @property
+    def fill_box(self):
+        # type: () -> BBox
+        """Returns the array box of this instance."""
+        master_box = getattr(self._master, 'fill_box', None)  # type: BBox
+        if master_box is None:
+            raise ValueError('Master template fill box is not defined.')
 
         box_arr = BBoxArray(master_box, nx=self.nx, ny=self.ny,
                             spx=self._spx_unit, spy=self._spy_unit, unit_mode=True)

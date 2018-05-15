@@ -65,6 +65,14 @@ class RectIndex(object):
             if box_sp.overlaps(box) or test_box.overlaps(box_real):
                 yield box_real.expand(dx=max(dx, sdx), dy=max(dy, sdy), unit_mode=True)
 
+    def intersection_rect_iter(self, box):
+        # type: (BBox) -> Generator[BBox, None, None]
+        """Finds all bounding box that intersects the given box."""
+        res = self._res
+        box_iter = self._index.intersection(box.get_bounds(unit_mode=True), objects='raw')
+        for xl, yb, xr, yt, sdx, sdy in box_iter:
+            yield BBox(xl, yb, xr, yt, res, unit_mode=True)
+
 
 class UsedTracks(object):
     """A R-tree that stores all tracks in a template.
@@ -156,6 +164,12 @@ class UsedTracks(object):
         for layer_id, index in self._idx_table.items():
             for box, dx, dy, in index.rect_iter():
                 yield layer_id, box, dx, dy
+
+    def intersection_rect_iter(self, layer_id, box):
+        # type: (BBox) -> Generator[BBox, None, None]
+        """Finds all bounding box that intersects the given box."""
+        if layer_id in self._idx_table:
+            yield from self._idx_table[layer_id].intersection_rect_iter(box)
 
     def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
         # type: (int, BBox, int, int) -> Generator[BBox, None, None]
@@ -299,8 +313,8 @@ def fill_symmetric_min_density_info(area, targ_area, n_min, n_max, sp_min,
     while n_max_iter.has_next():
         n_max_cur = n_max_iter.get_next()
         try:
-            info, invert = _fill_symmetric_max_num_info(area, nfill_opt, n_min, n_max_cur, sp_min,
-                                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
+            info, invert = fill_symmetric_max_num_info(area, nfill_opt, n_min, n_max_cur, sp_min,
+                                                       fill_on_edge=fill_on_edge, cyclic=cyclic)
             fill_area_cur = area - info[0] if invert else info[0]
             if invert:
                 _, sp_cur = _get_min_max_blk_len(info)
@@ -374,17 +388,17 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
     nfill_min = 1
     try:
         try:
-            _fill_symmetric_max_num_info(area, nfill_min, n_min, n_max, sp_min,
-                                         fill_on_edge=fill_on_edge, cyclic=cyclic)
-        except NoFillAbutEdgeError:
+            fill_symmetric_max_num_info(area, nfill_min, n_min, n_max, sp_min,
+                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
+        except (NoFillAbutEdgeError, NoFillChoiceError):
             # we need at least 2 fiils
             nfill_min = 2
-            _fill_symmetric_max_num_info(area, nfill_min, n_min, n_max, sp_min,
-                                         fill_on_edge=fill_on_edge, cyclic=cyclic)
+            fill_symmetric_max_num_info(area, nfill_min, n_min, n_max, sp_min,
+                                        fill_on_edge=fill_on_edge, cyclic=cyclic)
     except InsufficientAreaError:
         # cannot fill at all
-        info, invert = _fill_symmetric_max_num_info(area, 0, n_min, n_max, sp_min,
-                                                    fill_on_edge=fill_on_edge, cyclic=cyclic)
+        info, invert = fill_symmetric_max_num_info(area, 0, n_min, n_max, sp_min,
+                                                   fill_on_edge=fill_on_edge, cyclic=cyclic)
         return (0, 0, info[1]), invert
 
     # fill area first monotonically increases with number of fill blocks, then monotonically
@@ -392,8 +406,8 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
     # can be done on the number of fill blocks to determine the optimum.
     def golden_fun(nfill):
         try:
-            info2, invert2 = _fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
-                                                          fill_on_edge=fill_on_edge, cyclic=cyclic)
+            info2, invert2 = fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
+                                                         fill_on_edge=fill_on_edge, cyclic=cyclic)
         except ValueError:
             return 0
         if invert2:
@@ -409,9 +423,9 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
 
         def golden_fun2(nfill):
             try:
-                info2, invert2 = _fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
-                                                              fill_on_edge=fill_on_edge,
-                                                              cyclic=cyclic)
+                info2, invert2 = fill_symmetric_max_num_info(area, nfill, n_min, n_max, sp_min,
+                                                             fill_on_edge=fill_on_edge,
+                                                             cyclic=cyclic)
                 if invert2:
                     _, sp_cur = _get_min_max_blk_len(info2)
                 else:
@@ -421,17 +435,23 @@ def fill_symmetric_max_density_info(area, targ_area, n_min, n_max, sp_min,
                 return -sp_max - 1
 
         min_result = minimize_cost_golden(golden_fun2, -sp_max, offset=nfill_min, maxiter=None)
-        nfill_min = min_result.x
-        if nfill_min is None:
-            # should never get here...
-            raise ValueError('No solution for sp_max = %d' % sp_max)
+        if min_result.x is None:
+            # try even steps
+            min_result = minimize_cost_golden(golden_fun2, -sp_max, offset=nfill_min,
+                                              step=2, maxiter=None)
+            nfill_min = min_result.x
+            if nfill_min is None:
+                # should never get here...
+                raise ValueError('No solution for sp_max = %d' % sp_max)
+        else:
+            nfill_min = min_result.x
 
     min_result = minimize_cost_golden(golden_fun, targ_area, offset=nfill_min, maxiter=None)
     nfill_opt = min_result.x
     if nfill_opt is None:
         nfill_opt = min_result.xmax
-    info, invert = _fill_symmetric_max_num_info(area, nfill_opt, n_min, n_max, sp_min,
-                                                fill_on_edge=fill_on_edge, cyclic=cyclic)
+    info, invert = fill_symmetric_max_num_info(area, nfill_opt, n_min, n_max, sp_min,
+                                               fill_on_edge=fill_on_edge, cyclic=cyclic)
     fill_area = area - info[0] if invert else info[0]
     return (fill_area, nfill_opt, info[1]), invert
 
@@ -513,8 +533,8 @@ class EmptyRegionError(ValueError):
     pass
 
 
-def _fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min,
-                                 fill_on_edge=True, cyclic=False):
+def fill_symmetric_max_num_info(tot_area, nfill, n_min, n_max, sp_min,
+                                fill_on_edge=True, cyclic=False):
     # type: (int, int, int, int, int, bool, bool) -> Tuple[Tuple[Any, ...], bool]
     """Fill the given 1-D area as much as possible with given number of fill blocks.
 
