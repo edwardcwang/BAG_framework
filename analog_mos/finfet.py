@@ -829,8 +829,18 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
             # check if we can draw anything at all
             dum_h_min = self.get_od_h(lch_unit, od_nfin_min) + 2 * po_od_exty
-            if fill_h > dum_h_min:
+            # worst case, we will allow po_spy / 2 margin on edge
+            if yblk < po_spy + dum_h_min:
                 return []
+            # check if we can just draw one dummy
+            if fill_h < dum_h_min * 2 + po_spy:
+                # get od fins. round up to try to meet min edge distance rule
+                nfin = min(od_nfin_max, self.get_od_h_inverse(lch_unit, fill_h - 2 * po_od_exty,
+                                                              round_up=True))
+                od_h = self.get_od_h(lch_unit, nfin)
+                od_yb = self.snap_od_edge(lch_unit, (fill_yb + fill_yt - od_h) // 2,
+                                          False, round_up=False)
+                return [(od_yb, od_yb + od_h)]
 
             # compute OD fill area needed to meet density
             bot_od_fidx = self.get_fin_idx(lch_unit, fill_yb + po_od_exty, False, round_up=True)
@@ -2531,8 +2541,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # check if we can draw anything at all
         dum_w_min = self.get_od_w(lch_unit, dod_fg_min)
-        if fill_w > dum_w_min:
+        # worst case, we will allow od_spx / 2 margin on edge
+        if w < od_spx + dum_w_min:
             return
+        # check if we can just draw one dummy
         if fill_w < dum_w_min * 2 + od_spx:
             # get number of fingers. round up to try to meet min edge distance rule
             fg = min(dod_fg_max, self.get_od_w_inverse(lch_unit, fill_w, round_up=True))
@@ -2566,4 +2578,4 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         for od_xl, od_xr in od_x_list:
             for od_yb, od_yt in od_y_list:
                 box = BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True)
-                self.draw_od(template, 'dummy', box)
+                self.draw_od(template, 'OD_dummy', box)
