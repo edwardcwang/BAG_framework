@@ -962,7 +962,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         ycur = -(-ycur // mos_pitch) * mos_pitch
         return ycur, tr_last_info
 
-    def _place_mirror_or_sub(self, row_type, row_thres, lch_unit, mos_pitch, ydelta, ext_info):
+    def _place_mirror_or_sub(self, row_type, row_thres, lch_unit, mos_pitch, ydelta, ext_info,
+                             ignore_vm=False):
         # find substrate parameters
         sub_type = 'ntap' if row_type == 'pch' or row_type == 'ntap' else 'ptap'
         w_sub = self._laygo_info['w_sub']
@@ -991,7 +992,7 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             ext_w_valid = True
             # check we satisfy substrate constraint
             valid_widths = self._tech_cls.get_valid_extension_widths(lch_unit, sub_ext_info,
-                                                                     ext_info)
+                                                                     ext_info, ignore_vm=ignore_vm)
             ext_w_test = ext_w + sub_extw
             if ext_w_test < valid_widths[-1] and ext_w_test not in valid_widths:
                 # did not pass substrate constraint, update extension width
@@ -1001,7 +1002,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 continue
 
             # check we satisfy mirror extension constraint
-            valid_widths = self._tech_cls.get_valid_extension_widths(lch_unit, ext_info, ext_info)
+            valid_widths = self._tech_cls.get_valid_extension_widths(lch_unit, ext_info, ext_info,
+                                                                     ignore_vm=ignore_vm)
             ext_w_test = ext_w * 2
             if ext_w_test < valid_widths[-1] and ext_w_test not in valid_widths:
                 # did not pass extension constraint, update extension width.
@@ -1016,8 +1018,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         lch_unit = self._laygo_info.lch_unit
 
         grid = self.grid
-        mos_pitch = self._tech_cls.get_mos_pitch(unit_mode=True)
-        vm_layer = self._tech_cls.get_dig_conn_layer()
+        tech_cls = self._tech_cls
+        mos_pitch = tech_cls.get_mos_pitch(unit_mode=True)
+        vm_layer = tech_cls.get_dig_conn_layer()
         hm_layer = vm_layer + 1
         vm_le_sp = grid.get_line_end_space(vm_layer, 1, unit_mode=True)
 
@@ -1029,8 +1032,16 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
         ytop_vm_prev = None
         # first pass: determine Y coordinates of each row.
         for idx, (rprop, pinfo) in enumerate(zip(rprop_list, pinfo_list)):
+            row_orient = rprop['orient']
             row_type = rprop['mos_type']
             row_thres = rprop['threshold']
+            row_kwargs = rprop['kwargs']
+            row_r0 = (row_orient == 'R0')
+            ignore_g_vm = row_kwargs.get('ignore_g_vm', False)
+            ignore_d_vm = row_kwargs.get('ignore_d_vm', False)
+            ignore_bot_vm = (ignore_g_vm and row_r0) or (ignore_d_vm and not row_r0)
+            ignore_top_vm = (ignore_g_vm and not row_r0) or (ignore_d_vm and row_r0)
+            print(idx, row_kwargs)
 
             (bot_conn_y, top_conn_y, blk_height, ext_bot_info, ext_top_info,
              min_row_height, row_pitch) = pinfo
@@ -1056,15 +1067,16 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                     ycur = -(-ycur // mos_pitch) * mos_pitch
 
                 # if previous row has top wires, make sure vm line-end spacing constraint is met
-                if ytop_vm_prev is not None and bot_conn_y:
+                if ytop_vm_prev is not None and bot_conn_y and not ignore_bot_vm:
                     conn_yb = min((yintv[0] for yintv in bot_conn_y))
                     ycur = max(ycur, ytop_vm_prev + vm_le_sp - conn_yb)
                     ycur = -(-ycur // mos_pitch) * mos_pitch
 
                 # make sure extension constraints is met
                 if idx != 0:
-                    valid_widths = self._tech_cls.get_valid_extension_widths(lch_unit, ext_bot_info,
-                                                                             prev_ext_info)
+                    valid_widths = tech_cls.get_valid_extension_widths(lch_unit, ext_bot_info,
+                                                                       prev_ext_info,
+                                                                       ignore_vm=ignore_bot_vm)
                     cur_bot_ext_h = (ycur - ytop_prev) // mos_pitch
                     ext_h = prev_ext_h + cur_bot_ext_h
                     if ext_h < valid_widths[-1] and ext_h not in valid_widths:
@@ -1074,7 +1086,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                 else:
                     # nmos/pmos at bottom row.  Need to check we can draw mirror image row.
                     tmp = self._place_mirror_or_sub(row_type, row_thres, lch_unit, mos_pitch,
-                                                    ycur - ybot, ext_bot_info)
+                                                    ycur - ybot, ext_bot_info,
+                                                    ignore_vm=ignore_bot_vm)
                     cur_bot_ext_h, self._bot_sub_extw = tmp
 
                 ycur = ytop_prev + cur_bot_ext_h * mos_pitch
@@ -1120,7 +1133,8 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
                     pass_mirror = False
                     while not pass_mirror:
                         tmp = self._place_mirror_or_sub(row_type, row_thres, lch_unit, mos_pitch,
-                                                        ytop - ycur - blk_height, ext_top_info)
+                                                        ytop - ycur - blk_height, ext_top_info,
+                                                        ignore_vm=ignore_top_vm)
                         cur_top_ext_h, self._top_sub_extw = tmp
                         ytest = ycur + blk_height + cur_top_ext_h * mos_pitch
                         if ytest != ytop:
@@ -1578,8 +1592,9 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             endl_list.append(endl)
             endr_list.append(endr)
 
-        self._lr_edge_info = (DigitalEdgeInfo([0], [AnalogBaseEdgeInfo(endl_list, ext_endl_infos)], []),
-                              DigitalEdgeInfo([0], [AnalogBaseEdgeInfo(endr_list, ext_endr_infos)], []))
+        ledge = DigitalEdgeInfo([0], [AnalogBaseEdgeInfo(endl_list, ext_endl_infos)], [])
+        redge = DigitalEdgeInfo([0], [AnalogBaseEdgeInfo(endr_list, ext_endr_infos)], [])
+        self._lr_edge_info = (ledge, redge)
         self._tb_ext_info = (DigitalExtInfo(self._get_ext_info_row(self.num_rows - 1, 1)),
                              DigitalExtInfo(self._get_ext_info_row(0, 0)))
 
