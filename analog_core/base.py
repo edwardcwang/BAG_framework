@@ -2431,10 +2431,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 used_tracks, yb, yt = self._draw_dummy_sep_conn(mos_type, ridx, start,
                                                                 stop, dum_htr)
                 for htr in used_tracks:
-                    if htr in bot_htr_set:
+                    if bot_htr_set is not None and htr in bot_htr_set:
                         dum_y = bot_dum_y_table[htr]
                         dum_y[1] = max(dum_y[1], yt)
-                    if htr in top_htr_set:
+                    if top_htr_set is not None and htr in top_htr_set:
                         dum_y = top_dum_y_table[htr]
                         dum_y[0] = min(dum_y[0], yb)
 
