@@ -1831,7 +1831,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         self.add_cell_boundary(self.bound_box)
 
         # set left/right edge info
-        self._lr_edge_info = AnalogBaseEdgeInfo(le_info_list, []), AnalogBaseEdgeInfo(re_info_list, [])
+        self._lr_edge_info = (AnalogBaseEdgeInfo(le_info_list, []),
+                              AnalogBaseEdgeInfo(re_info_list, []))
 
     def draw_base(self,  # type: AnalogBase
                   lch,  # type: float
@@ -2367,45 +2368,43 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         # step 5: create dictionary from dummy half-track index to Y coordinates
         res = self.grid.resolution
-        dum_y_table = {}
+        bot_dum_y_table = {}
         bot_dum_tracks = []
         if bot_sub_inst is not None:
             bot_sub_port = bot_sub_inst.get_port(port_name)
             sub_yb = bot_sub_port.get_bounding_box(self.grid, self.dum_conn_layer).bottom_unit
             for htr in bot_dhtr[0]:
-                dum_y_table[htr] = [sub_yb, sub_yb]
+                bot_dum_y_table[htr] = [sub_yb, sub_yb]
             for warr in cap_wires_dict[1]:
                 lower, upper = int(round(warr.lower / res)), int(round(warr.upper / res))
                 for tid in warr.track_id:
                     htr = int(2 * tid + 1)
-                    if htr in dum_y_table:
-                        dum_y = dum_y_table[htr]
+                    if htr in bot_dum_y_table:
+                        dum_y = bot_dum_y_table[htr]
                         dum_y[0] = min(dum_y[0], lower)
                         dum_y[1] = max(dum_y[1], upper)
                     else:
-                        dum_y_table[htr] = [sub_yb, upper]
+                        bot_dum_y_table[htr] = [sub_yb, upper]
                     if tid not in bot_dum_tracks:
                         bot_dum_tracks.append(tid)
 
+        top_dum_y_table = {}
         top_dum_tracks = []
         if top_sub_inst is not None:
             top_sub_port = top_sub_inst.get_port(port_name)
             sub_yt = top_sub_port.get_bounding_box(self.grid, self.dum_conn_layer).top_unit
             for htr in top_dhtr[0]:
-                if htr in dum_y_table:
-                    dum_y_table[htr][1] = sub_yt
-                else:
-                    dum_y_table[htr] = [sub_yt, sub_yt]
+                top_dum_y_table[htr] = [sub_yt, sub_yt]
             for warr in cap_wires_dict[-1]:
                 lower, upper = int(round(warr.lower / res)), int(round(warr.upper / res))
                 for tid in warr.track_id:
                     htr = int(2 * tid + 1)
-                    if htr in dum_y_table:
-                        dum_y = dum_y_table[htr]
+                    if htr in top_dum_y_table:
+                        dum_y = top_dum_y_table[htr]
                         dum_y[0] = min(dum_y[0], lower)
                         dum_y[1] = max(dum_y[1], upper)
                     else:
-                        dum_y_table[htr] = [lower, sub_yt]
+                        top_dum_y_table[htr] = [lower, sub_yt]
                     if tid not in top_dum_tracks:
                         top_dum_tracks.append(tid)
 
@@ -2413,24 +2412,30 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         for ridx, dum_tran_intv in enumerate(dum_tran_intv_list):
             bot_dist = ridx
             top_dist = num_rows - 1 - ridx
-            dum_htr = []
+            htr_list_tot = set()
+            bot_htr_set = top_htr_set = None
             if bot_dist < len(bot_dhtr):
-                dum_htr.extend(bot_dhtr[bot_dist])
+                bot_htr_set = set(bot_dhtr[bot_dist])
+                htr_list_tot.update(bot_htr_set)
             if top_dist < len(top_dhtr):
-                dum_htr.extend(top_dhtr[top_dist])
-            dum_htr = sorted(set(dum_htr))
+                top_htr_set = set(top_dhtr[top_dist])
+                htr_list_tot.update(top_htr_set)
+            dum_htr = sorted(htr_list_tot)
 
             for start, stop in dum_tran_intv:
                 used_tracks, yb, yt = self._draw_dummy_sep_conn(mos_type, ridx, start,
                                                                 stop, dum_htr)
                 for htr in used_tracks:
-                    dum_y = dum_y_table[htr]
-                    dum_y[0] = min(dum_y[0], yb)
-                    dum_y[1] = max(dum_y[1], yt)
+                    if htr in bot_htr_set:
+                        dum_y = bot_dum_y_table[htr]
+                        dum_y[1] = max(dum_y[1], yt)
+                    if htr in top_htr_set:
+                        dum_y = top_dum_y_table[htr]
+                        dum_y[0] = min(dum_y[0], yb)
 
         # step 7: draw dummy tracks to substrates
         dum_layer = self.dum_conn_layer
-        for htr, dum_y in dum_y_table.items():
+        for htr, dum_y in chain(bot_dum_y_table.items(), top_dum_y_table.items()):
             dum_yb, dum_yt = dum_y
             if dum_yt > dum_yb:
                 self.add_wires(dum_layer, (htr - 1) / 2, dum_y[0], dum_y[1], unit_mode=True)
