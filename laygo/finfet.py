@@ -71,8 +71,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         return {}
 
     @abc.abstractmethod
-    def get_laygo_blk_yloc_info(self, w, row_info, **kwargs):
-        # type: (int, Dict[str, Any], **kwargs) -> Dict[str, Any]
+    def get_laygo_blk_yloc_info(self, w, blk_type, row_info, **kwargs):
+        # type: (int, str, Dict[str, Any], **kwargs) -> Dict[str, Any]
         """Computes Y coordinates of various layers in the laygo block.
 
         The returned dictionary should have the following entries:
@@ -262,7 +262,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
         fill_info_list = row_info['fill_info_list']
 
         # get Y coordinate information dictionary
-        yloc_info = self.get_laygo_blk_yloc_info(w, row_info, **kwargs)
+        yloc_info = self.get_laygo_blk_yloc_info(w, blk_type, row_info, **kwargs)
         od_yloc = yloc_info['od']
         md_yloc = yloc_info['md']
 
