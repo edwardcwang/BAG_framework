@@ -56,6 +56,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
     def __init__(self, config, tech_info, mos_entry_name='mos'):
         # type: (Dict[str, Any], TechInfoConfig, str) -> None
         MOSTech.__init__(self, config, tech_info, mos_entry_name=mos_entry_name)
+        self.ignore_vm_layers = set()
 
     @abc.abstractmethod
     def get_mos_yloc_info(self, lch_unit, w, **kwargs):
@@ -687,6 +688,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         #. Return the list of valid extension widths
         """
         guard_ring_nf = kwargs.get('guard_ring_nf', 0)
+        ignore_vm = kwargs.get('ignore_vm', False)
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_p = mos_constants['mos_pitch']  # type: int
@@ -715,8 +717,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # step 1: get minimum extension width from vertical spacing rule
         min_ext_h = max(0, -(-(bot_imp_min_h + top_imp_min_h) // fin_p))
         for name, (tm, cur_spy) in top_ext_info.margins.items():
-            tot_margin = cur_spy - (tm + bot_ext_info.margins[name][0])
-            min_ext_h = max(min_ext_h, -(-tot_margin // fin_p))
+            if not ignore_vm or name not in self.ignore_vm_layers:
+                tot_margin = cur_spy - (tm + bot_ext_info.margins[name][0])
+                min_ext_h = max(min_ext_h, -(-tot_margin // fin_p))
 
         # step 2: get maximum extension width without dummy OD
         od_bot_yt = -bot_ext_info.margins['od'][0]
