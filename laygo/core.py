@@ -1041,7 +1041,6 @@ class LaygoBase(TemplateBase, metaclass=abc.ABCMeta):
             ignore_d_vm = row_kwargs.get('ignore_d_vm', False)
             ignore_bot_vm = (ignore_g_vm and row_r0) or (ignore_d_vm and not row_r0)
             ignore_top_vm = (ignore_g_vm and not row_r0) or (ignore_d_vm and row_r0)
-            print(idx, row_kwargs)
 
             (bot_conn_y, top_conn_y, blk_height, ext_bot_info, ext_top_info,
              min_row_height, row_pitch) = pinfo

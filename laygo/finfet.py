@@ -285,8 +285,30 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                 edgel_info = edger_info = EdgeInfo(od_type=od_type, draw_layers={}, y_intv=y_intv)
                 po_types = ('PO_sub', 'PO_sub')
             else:
-                lay_info_list = [(lay, 0, arr_y[0], arr_y[1])
+                mos_constants = self.get_mos_tech_constants(lch_unit)
+                imp_od_ency = mos_constants['imp_od_ency']
+                imp_yb = od_yloc[0] - imp_od_ency
+                imp_yt = od_yloc[1] + imp_od_ency
+                arr_yb, arr_yt = arr_y
+                if kwargs.get('imp_min_g', False):
+                    row_yb = arr_yb
+                    row_yt = max(imp_yb, arr_yb)
+                    sub_yb = row_yt
+                    sub_yt = arr_yt
+                elif kwargs.get('imp_min_d', False):
+                    sub_yb = arr_yb
+                    sub_yt = min(imp_yt, arr_yt)
+                    row_yb = sub_yt
+                    row_yt = arr_yt
+                else:
+                    row_yb = row_yt = arr_yb
+                    sub_yb = arr_yb
+                    sub_yt = arr_yt
+                lay_info_list = [(lay, 0, sub_yb, sub_yt)
                                  for lay in self.get_mos_layers(sub_type, threshold)]
+                if row_yt > row_yb:
+                    lay_info_list.extend((lay, 0, row_yb, row_yt)
+                                         for lay in self.get_mos_layers(row_type, threshold))
                 fg = self.get_sub_columns(lch_unit)
                 od_intv = (2, fg - 2)
                 edgel_info = edger_info = EdgeInfo(od_type=None, draw_layers={}, y_intv=y_intv)
