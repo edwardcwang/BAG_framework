@@ -42,8 +42,8 @@ class ResTech(object, metaclass=abc.ABCMeta):
         # type: (int, int, str, str, str, Dict[str, Any]) -> Tuple[int, int]
         """Calculate the minimum size of a resistor core based on DRC rules.
 
-        This function usually calculates the minimum size based on spacing rules and not density rules.
-        density rule calculations are usually handled in get_core_info().
+        This function usually calculates the minimum size based on spacing rules and not density
+        rules. density rule calculations are usually handled in get_core_info().
 
         Parameters
         ----------
@@ -347,10 +347,9 @@ class ResTech(object, metaclass=abc.ABCMeta):
         cur_layer = self.get_bot_layer()
         for idx, min_num_tr in enumerate(min_tracks):
             # make sure that current layer can connect to next layer
-            next_layer = cur_layer + 1
-            next_width = grid.get_track_width(next_layer, 1, unit_mode=True)
             if idx < len(min_tracks) - 1 or connect_up:
-                top_w = next_width
+                top_tr_w = grid.get_min_track_width(cur_layer + 1, unit_mode=True, **em_specs)
+                top_w = grid.get_track_width(cur_layer + 1, top_tr_w, unit_mode=True)
             else:
                 top_w = -1
 
@@ -371,7 +370,7 @@ class ResTech(object, metaclass=abc.ABCMeta):
                 min_w = max(min_w, min_dim)
 
             prev_width = grid.get_track_width(cur_layer, cur_width, unit_mode=True)
-            cur_layer = next_layer
+            cur_layer += 1
 
         # get block size
         wblk, hblk = grid.get_block_size(cur_layer - 1, unit_mode=True, include_private=True)
@@ -383,8 +382,17 @@ class ResTech(object, metaclass=abc.ABCMeta):
 
         return track_widths, track_spaces, (min_w, min_h), (wblk, hblk)
 
-    def find_core_size(self, grid, params, wres, hres, wblk, hblk, ext_dir, max_blk_ext):
-        # type: (RoutingGrid, Dict[str, Any], int, int, int, int, str, int) -> Tuple[int, int, Dict[str, Any]]
+    def find_core_size(self,  # type: ResTech
+                       grid,  # type: RoutingGrid
+                       params,  # type: Dict[str, Any]
+                       wres,  # type: int
+                       hres,  # type: int
+                       wblk,  # type: int
+                       hblk,  # type: int
+                       ext_dir,  # type: str
+                       max_blk_ext,  # type: int
+                       ):
+        # type: (...) -> Tuple[int, int, Dict[str, Any]]
         """Compute resistor core size that meets DRC rules.
         
         Given current resistor block size and the block pitch, increase the resistor block
@@ -486,8 +494,15 @@ class ResTech(object, metaclass=abc.ABCMeta):
                                  'additional block pitches.' % max_blk_ext)
             return nxopt, nyopt, ans
 
-    def find_edge_size(self, grid, core_info, is_lr_edge, params, blk1, max_blk_ext):
-        # type: (RoutingGrid, Dict[str, Any], bool, Dict[str, Any], int, int) -> Tuple[int, Dict[str, Any]]
+    def find_edge_size(self,  # type: ResTech
+                       grid,  # type: RoutingGrid
+                       core_info,  # type: Dict[str, Any]
+                       is_lr_edge,  # type: bool
+                       params,  # type: Dict[str, Any]
+                       blk1,  # type: int
+                       max_blk_ext,  # type: int
+                       ):
+        # type: (...) -> Tuple[int, Dict[str, Any]]
         """Compute resistor edge size that meets DRC rules.
 
         Calculate edge dimension (width for LR edge, height for TB edge) that meets DRC rules
@@ -602,8 +617,8 @@ class ResTech(object, metaclass=abc.ABCMeta):
             pass
 
         # step 1: get track/size parameters
-        track_widths, track_spaces, min_size, blk_pitch = self.get_core_track_info(grid, min_tracks, em_specs,
-                                                                                   connect_up=connect_up)
+        tmp = self.get_core_track_info(grid, min_tracks, em_specs, connect_up=connect_up)
+        track_widths, track_spaces, min_size, blk_pitch = tmp
         params = dict(
             l=l,
             w=w,
@@ -622,11 +637,14 @@ class ResTech(object, metaclass=abc.ABCMeta):
         wres = -(-wres // wblk) * wblk
         hres = -(-hres // hblk) * hblk
         # step 3: extend core until density rule is satisfied.
-        nxblk, nyblk, core_info = self.find_core_size(grid, params, wres, hres, wblk, hblk, ext_dir, max_blk_ext)
+        nxblk, nyblk, core_info = self.find_core_size(grid, params, wres, hres, wblk, hblk, ext_dir,
+                                                      max_blk_ext)
         wcore, hcore = nxblk * wblk, nyblk * hblk
         # step 4: calculate edge size that satisfies density rule.
-        nxblk_lr, edge_lr_info = self.find_edge_size(grid, core_info, True, params, wblk, max_blk_ext)
-        nyblk_tb, edge_tb_info = self.find_edge_size(grid, core_info, False, params, hblk, max_blk_ext)
+        nxblk_lr, edge_lr_info = self.find_edge_size(grid, core_info, True, params, wblk,
+                                                     max_blk_ext)
+        nyblk_tb, edge_tb_info = self.find_edge_size(grid, core_info, False, params, hblk,
+                                                     max_blk_ext)
         wedge, hedge = nxblk_lr * wblk, nyblk_tb * hblk
 
         # step 6: calculate geometry information of each primitive block.
@@ -699,7 +717,7 @@ class AnalogResCore(TemplateBase):
         self._num_tracks = self._layout_info['num_tracks']
         self._track_widths = self._layout_info['track_widths']
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['res_tech_class']  # type: ResTech
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['res_tech_class']
 
     @classmethod
     def get_params_info(cls):
@@ -805,7 +823,7 @@ class AnalogResBoundary(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._tech_cls = self.grid.tech_info.tech_params['layout']['res_tech_class']  # type: ResTech
+        self._tech_cls = self.grid.tech_info.tech_params['layout']['res_tech_class']
         self._well_xl = self.params['layout_info']['well_xl']
 
     @classmethod
@@ -858,6 +876,6 @@ class AnalogResBoundary(TemplateBase):
         return self.to_immutable_id((basename, self.params['layout_info']))
 
     def draw_layout(self):
-        self._tech_cls.draw_res_boundary(self, self.params['boundary_type'], self.params['layout_info'],
-                                         self.params['end_mode'])
+        self._tech_cls.draw_res_boundary(self, self.params['boundary_type'],
+                                         self.params['layout_info'], self.params['end_mode'])
         self.prim_top_layer = self._tech_cls.get_bot_layer()
