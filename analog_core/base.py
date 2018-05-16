@@ -127,7 +127,12 @@ class AnalogBaseInfo(object):
         half_blk_y = self._place_kwargs.get('half_blk_y', True)
         blk_pitch = self.grid.get_block_size(self.top_layer, unit_mode=True,
                                              half_blk_y=half_blk_y)[1]
-        return lcm([blk_pitch, self._tech_cls.get_mos_pitch(unit_mode=True)])
+        mos_pitch = self._tech_cls.get_mos_pitch(unit_mode=True)
+        # TODO: fix this hack so that templates have the same block size as parent on
+        # TODO: public layers
+        if not half_blk_y and mos_pitch > 10:
+            mos_pitch *= 2
+        return lcm([blk_pitch, mos_pitch])
 
     @property
     def sd_pitch(self):
