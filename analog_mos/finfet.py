@@ -2406,19 +2406,27 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         d_x_list = list(range(wire_pitch, num_seg * wire_pitch + 1, 2 * wire_pitch))
 
         drain_parity = (source_parity + 1) % mos_conn_modullus
+        # determine drain/source via location
+        if sdir == 0:
+            ds_code = 2
+        elif ddir == 0:
+            ds_code = 1
+        else:
+            ds_code = 1 if gate_pref_loc == 's' else 2
+
         if diode_conn:
             if fg == 1:
                 raise ValueError('1 finger transistor connection not supported.')
 
             # draw wires
             _, s_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y,
-                                                 md_y, s_x_list, s_x_list, False, sdir, 1,
+                                                 md_y, s_x_list, s_x_list, ds_code == 1, sdir, 1,
                                                  source_parity=source_parity)
             _, d_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y,
-                                                 md_y, d_x_list, d_x_list, True, 0, 2,
+                                                 md_y, d_x_list, d_x_list, ds_code == 2, 0, 2,
                                                  source_parity=drain_parity)
             g_warrs = self.draw_g_connection(template, lch_unit, fg, sd_pitch, 0, od_y, md_y,
-                                             d_x_list, is_sub=False)
+                                             d_x_list, is_sub=False, is_diode=True)
 
             g_warrs = WireArray.list_to_warr(g_warrs)
             d_warrs = WireArray.list_to_warr(d_warrs)
@@ -2428,15 +2436,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             template.add_pin('d', d_warrs, show=False)
             template.add_pin('s', s_warrs, show=False)
         else:
-            # determine gate location
-            if sdir == 0:
-                ds_code = 2
-            elif ddir == 0:
-                ds_code = 1
-            else:
-                ds_code = 1 if gate_pref_loc == 's' else 2
-
-            if ds_code == 2:
+            if not gate_pref_loc:
+                gate_pref_loc = 'd' if ds_code == 2 else 's'
+            if gate_pref_loc == 'd':
                 # avoid drawing gate on the left-most source/drain if number of fingers is odd
                 g_x_list = list(range(wire_pitch, num_seg * wire_pitch, 2 * wire_pitch))
             else:
@@ -2543,7 +2545,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fb_od_encx = mos_constants['fb_od_encx']
         imp_od_encx = mos_constants['imp_od_encx']
         imp_po_ency = mos_constants['imp_od_ency']
-
 
         # compute fill X intervals
         fill_xl = dod_edge_spx
