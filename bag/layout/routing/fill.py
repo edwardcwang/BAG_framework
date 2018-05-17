@@ -120,6 +120,9 @@ class UsedTracks(object):
         tech_info = grid.tech_info
 
         if isinstance(layer_name, tuple):
+            # TODO: find more process-portable fix?
+            if layer_name[1] == 'exclude':
+                return None
             layer_name = layer_name[0]
         try:
             layer_id = tech_info.get_layer_id(layer_name)
