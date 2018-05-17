@@ -707,10 +707,10 @@ class RoutingGrid(object):
 
         # get bottom layer that has different direction
         bot_layer = layer_id - 1
-        while bot_layer in self.dir_tracks and self.dir_tracks[bot_layer] == top_dir:
+        while bot_layer in self.block_pitch and self.dir_tracks[bot_layer] == top_dir:
             bot_layer -= 1
 
-        if bot_layer not in self.dir_tracks:
+        if bot_layer not in self.block_pitch:
             bot_pitch = (2, 1)
         else:
             bot_pitch = self.block_pitch[bot_layer]
