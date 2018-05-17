@@ -85,6 +85,8 @@ class AnalogBaseInfo(object):
                  fg_tot=None, **kwargs):
         # type: (RoutingGrid, float, int, Optional[int], int, int, Optional[int], **kwargs) -> None
         tech_cls_name = kwargs.get('tech_cls_name', None)
+        half_blk_y = kwargs.get('half_blk_y', True)
+
         if tech_cls_name is None:
             self._tech_cls = grid.tech_info.tech_params['layout']['mos_tech_class']
         else:
@@ -98,6 +100,10 @@ class AnalogBaseInfo(object):
         self.dum_port_layer = self._tech_cls.get_dum_conn_layer()
         vm_space, vm_width = self._tech_cls.get_mos_conn_track_info(lch_unit)
         dum_space, dum_width = self._tech_cls.get_dum_conn_track_info(lch_unit)
+
+        self._correct_v_pitch = self.grid.get_block_size(self.mconn_port_layer + 1,
+                                                         unit_mode=True,
+                                                         half_blk_y=half_blk_y)[1]
         self.grid.ignore_layers_under(self.mconn_port_layer)
         self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y', override=True,
                                 unit_mode=True)
@@ -124,12 +130,15 @@ class AnalogBaseInfo(object):
 
     @property
     def vertical_pitch_unit(self):
+        # TODO: fix this hack so that templates have the same block size as parent on
+        # TODO: public layers
+        do_correct_v_pitch = self._place_kwargs.get('do_correct_v_pitch', False)
+        if do_correct_v_pitch:
+            return self._correct_v_pitch
         half_blk_y = self._place_kwargs.get('half_blk_y', True)
         blk_pitch = self.grid.get_block_size(self.top_layer, unit_mode=True,
                                              half_blk_y=half_blk_y)[1]
         mos_pitch = self._tech_cls.get_mos_pitch(unit_mode=True)
-        # TODO: fix this hack so that templates have the same block size as parent on
-        # TODO: public layers
         if not half_blk_y and mos_pitch > 10:
             mos_pitch *= 2
         return lcm([blk_pitch, mos_pitch])
@@ -1959,6 +1968,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         wire_names = kwargs.get('wire_names', None)
         min_height = kwargs.get('min_height', 0)
         ds2_no_po = kwargs.get('ds2_no_po', False)
+        do_correct_v_pitch = kwargs.get('do_correct_v_pitch', False)
 
         numn = len(nw_list)
         nump = len(pw_list)
@@ -1974,6 +1984,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                                                 end_mode=end_mode, min_fg_sep=min_fg_sep,
                                                 fg_tot=fg_tot, half_blk_x=half_blk_x,
                                                 half_blk_y=half_blk_y,
+                                                do_correct_v_pitch=do_correct_v_pitch,
                                                 tech_cls_name=self._tech_cls_name))
 
         # initialize private attributes.
