@@ -8,7 +8,7 @@ from bag import float_to_si_string
 from bag.layout.routing.fill import fill_symmetric_max_density
 
 from .tech import LaygoTech
-from ..analog_mos.finfet import ExtInfo, RowInfo, EdgeInfo, FillInfo
+from ..analog_mos.planar import ExtInfo, RowInfo, EdgeInfo, MOSTechPlanarGeneric
 
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfoConfig
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from bag.layout.template import TemplateBase
 
 
-class LaygoTechPlanarBase(LaygoTech, metaclass=abc.ABCMeta):
+class LaygoTechPlanarBase(MOSTechPlanarGeneric, LaygoTech, metaclass=abc.ABCMeta):
     """Base class for implementations of LaygoTech in Finfet technologies.
 
     This class for now handles all DRC rules and drawings related to PO, OD, CPO,
@@ -37,38 +37,51 @@ class LaygoTechPlanarBase(LaygoTech, metaclass=abc.ABCMeta):
         # type: (Dict[str, Any], TechInfoConfig, str) -> None
         LaygoTech.__init__(self, config, tech_info, mos_entry_name=mos_entry_name)
 
-    @abc.abstractmethod
     def get_laygo_row_yloc_info(self, lch_unit, w, is_sub, **kwargs):
         # type: (int, int, bool, **kwargs) -> Dict[str, Any]
-        """Computes Y coordinates of various layers in the laygo row.
+        analog = kwargs.pop('analog', False)
 
-        The returned dictionary should have the following entries:
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+        od_spy = mos_constants['od_spy']
+        po_spy = mos_constants['po_spy']
 
-        blk :
-            a tuple of row bottom/top Y coordinates.
-        po :
-            a tuple of PO bottom/top Y coordinates that's outside of CPO.
-        od :
-            a tuple of OD bottom/top Y coordinates.
-        md :
-            a tuple of MD bottom/top Y coordinates.
-        top_margins :
-            a dictionary of top extension margins and minimum space,
-            which is ((blk_yt - lay_yt), spy) of each layer.
-        bot_margins :
-            a dictionary of bottom extension margins and minimum space,
-            which is ((lay_yb - blk_yb), spy) of each layer.
-        fill_info :
-            a dictionary from metal layer tuple to tuple of exclusion
-            layer name and list of metal fill Y intervals.
-        g_conn_y :
-            gate wire Y interval.
-        gb_conn_y :
-            gate-bar wire Y interval.
-        ds_conn_y :
-            drain/source wire Y interval.
-        """
-        return {}
+        g_conn_info = self.get_conn_drc_info(lch_unit, 'g', is_laygo=True)
+        g_m1_sple = g_conn_info[1]['sp_le']
+
+        if is_sub:
+            yloc_info = self.get_sub_yloc_info(lch_unit, w, **kwargs)
+        else:
+            yloc_info = self.get_mos_yloc_info(lch_unit, w, **kwargs)
+
+        blk_yb, blk_yt = blk_y = yloc_info['blk']
+        po_yb, po_yt = po_y = yloc_info['po']
+        od_yb, od_yt = od_y = yloc_info['od']
+
+        # get wire coordinates
+        conn_yloc_info = self.get_laygo_conn_yloc_info(lch_unit, od_y, is_sub)
+        d_yb, d_yt = d_y = conn_yloc_info['d_y']
+        g_yb, g_yt = g_y = conn_yloc_info['g_y']
+
+        # step 2: compute top CPO location.
+        return dict(
+            blk=blk_y,
+            po=po_y,
+            od=od_y,
+            top_margins=dict(
+                od=(blk_yt - od_yt, od_spy),
+                po=(blk_yt - po_yt, po_spy),
+                m1=(blk_yt - d_yt, g_m1_sple),
+            ),
+            bot_margins=dict(
+                od=(od_yb - blk_yb, od_spy),
+                po=(blk_yt - po_yt, po_spy),
+                m1=(g_yb - blk_yb, g_m1_sple),
+            ),
+            fill_info={},
+            g_conn_y=g_y,
+            gb_conn_y=d_y,
+            ds_conn_y=d_y,
+        )
 
     @abc.abstractmethod
     def get_laygo_blk_yloc_info(self, w, blk_type, row_info, **kwargs):

@@ -50,8 +50,8 @@ class MOSTechPlanarGeneric(MOSTech):
         # type: (Dict[str, Any], TechInfoConfig, str) -> None
         MOSTech.__init__(self, config, tech_info, mos_entry_name=mos_entry_name)
 
-    def get_mos_yloc_info(self, lch_unit, w):
-        # type: (int, float) -> Dict[str, Any]
+    def get_mos_yloc_info(self, lch_unit, w, **kwargs):
+        # type: (int, float, **kwargs) -> Dict[str, Any]
         # get transistor constants
         mos_constants = self.get_mos_tech_constants(lch_unit)
         od_spy = mos_constants['od_spy']
@@ -287,7 +287,7 @@ class MOSTechPlanarGeneric(MOSTech):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
 
-        yloc_info = self.get_mos_yloc_info(lch_unit, w)
+        yloc_info = self.get_mos_yloc_info(lch_unit, w, **kwargs)
         blk_yb, blk_yt = blk_y = yloc_info['blk']
         od_yb, od_yt = od_y = yloc_info['od']
         po_y = yloc_info['po']
