@@ -488,9 +488,8 @@ class Port(object):
 
         the iteration order is not guaranteed.
         """
-        for wire_arr_list in self._pin_dict.values():
-            for wire_arr in wire_arr_list:
-                yield wire_arr
+        for geo_list in self._pin_dict.values():
+            yield from geo_list
 
     def _get_layer(self, layer):
         """Get the layer number."""
@@ -521,11 +520,11 @@ class Port(object):
 
         Returns
         -------
-        track_bus_list : list[:class:`~bag.layout.routing.WireArray`]
+        track_bus_list : Union[WireArray, BBox]
             pins on the given layer representing as WireArrays.
         """
-        layer_id = self._get_layer(layer)
-        return self._pin_dict.get(layer_id, [])
+        layer = self._get_layer(layer)
+        return self._pin_dict.get(layer, [])
 
     def get_bounding_box(self, grid, layer=-1):
         """Calculate the overall bounding box of this port on the given layer.
@@ -540,13 +539,16 @@ class Port(object):
 
         Returns
         -------
-        bbox : :class:`~bag.layout.util.BBox`
+        bbox : BBox
             the bounding box.
         """
         layer = self._get_layer(layer)
         box = BBox.get_invalid_bbox()
-        for warr in self._pin_dict[layer]:
-            box = box.merge(warr.get_bbox_array(grid).get_overall_bbox())
+        for geo in self._pin_dict[layer]:
+            if isinstance(geo, BBox):
+                box = box.merge(geo)
+            else:
+                box = box.merge(geo.get_bbox_array(grid).get_overall_bbox())
         return box
 
     def transform(self, grid, loc=(0, 0), orient='R0', unit_mode=False):
@@ -564,9 +566,20 @@ class Port(object):
         unit_mode: bool
             True if location is in resolution units.
         """
-        new_pin_dict = {lay: [wa.transform(grid, loc=loc, orient=orient, unit_mode=unit_mode)
-                              for wa in wa_list]
-                        for lay, wa_list in self._pin_dict.items()}
+        if not unit_mode:
+            res = grid.resolution
+            loc = (int(round(loc[0] / res)), int(round(loc[1] / res)))
+
+        new_pin_dict = {}
+        for lay, geo_list in self._pin_dict.items():
+            new_geo_list = []
+            for geo in geo_list:
+                if isinstance(geo, BBox):
+                    new_geo_list.append(geo.transform(loc=loc, orient=orient, unit_mode=True))
+                else:
+                    new_geo_list.append(geo.transform(grid, loc=loc, orient=orient, unit_mode=True))
+            new_pin_dict[lay] = new_geo_list
+
         return Port(self._term_name, new_pin_dict, label=self._label)
 
 
