@@ -522,7 +522,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         use_cybagoa = kwargs.get('use_cybagoa', False)
 
         # initialize template attributes
-        self._grid = kwargs.get('grid', temp_db.grid).copy()
+        self._parent_grid = kwargs.get('grid', temp_db.grid)
+        self._grid = self._parent_grid.copy()
         self._layout = BagLayout(self._grid, use_cybagoa=use_cybagoa)
         self._size = None  # type: Tuple[int, int, int]
         self._ports = {}
@@ -927,7 +928,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 new_params[key] = val
 
         return self.template_db.new_template(params=new_params, temp_cls=self.__class__,
-                                             grid=self.grid)
+                                             grid=self._parent_grid)
 
     def set_size_from_bound_box(self, top_layer_id, bbox, round_up=False,
                                 half_blk_x=True, half_blk_y=True):
