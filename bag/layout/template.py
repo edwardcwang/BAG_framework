@@ -528,6 +528,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._size = None  # type: Tuple[int, int, int]
         self._ports = {}
         self._port_params = {}
+        self._prim_ports = {}
+        self._prim_port_params = {}
         self._array_box = None  # type: BBox
         self._fill_box = None  # type: BBox
         self.prim_top_layer = None
@@ -645,6 +647,17 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     for wire_arr in wire_arr_list:  # type: WireArray
                         for layer_name, bbox in wire_arr.wire_iter(self.grid):
                             self._layout.add_pin(net_name, layer_name, bbox, label=label)
+            self._ports[net_name] = Port(net_name, pin_dict, label=label)
+
+        # construct primitive port objects
+        for net_name, port_params in self._prim_port_params.items():
+            pin_dict = port_params['pins']
+            label = port_params['label']
+            if port_params['show']:
+                label = port_params['label']
+                for layer, box_list in pin_dict.items():
+                    for box in box_list:
+                        self._layout.add_pin(net_name, layer, box, label=label)
             self._ports[net_name] = Port(net_name, pin_dict, label=label)
 
         # finalize layout
@@ -1118,6 +1131,43 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self._ports.keys()
 
+    def get_prim_port(self, name=''):
+        # type: (str) -> Port
+        """Returns the primitive port object with the given name.
+
+        Parameters
+        ----------
+        name : str
+            the port terminal name.  If None or empty, check if this template has only one port,
+            then return it.
+
+        Returns
+        -------
+        port : Port
+            the primitive port object.
+        """
+        if not name:
+            if len(self._prim_ports) != 1:
+                raise ValueError('Template has %d ports != 1.' % len(self._prim_ports))
+            name = next(iter(self._ports))
+        return self._prim_ports[name]
+
+    def has_prim_port(self, port_name):
+        # type: (str) -> bool
+        """Returns True if this template has the given primitive port."""
+        return port_name in self._prim_ports
+
+    def prim_port_names_iter(self):
+        # type: () -> Iterable[str]
+        """Iterates over primitive port names in this template.
+
+        Yields
+        ------
+        port_name : str
+            name of a primitive port in this template.
+        """
+        return self._prim_ports.keys()
+
     def new_template(self, params=None, temp_cls=None, debug=False, **kwargs):
         # type: (Dict[str, Any], Type[TemplateType], bool, **kwargs) -> TemplateType
         """Create a new template.
@@ -1458,12 +1508,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             else:
                 port_pins[layer_id].append(wire_arr)
 
-    def add_pin_primitive(self, net_name, layer, bbox, label=''):
-        # type: (str, str, BBox, str) -> None
+    def add_pin_primitive(self, net_name, layer, bbox, label='', show=True):
+        # type: (str, str, BBox, str, bool) -> None
         """Add a primitive pin to the layout.
-
-        A primitive pin will not show up as a port.  This is mainly used to add necessary
-        label/pin for LVS purposes.
 
         Parameters
         ----------
@@ -1478,8 +1525,28 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             this argument is used if you need the label to be different than net name
             for LVS purposes.  For example, unconnected pins usually need a colon after
             the name to indicate that LVS should short those pins together.
+        show : bool
+            True to draw the pin in layout.
         """
-        self._layout.add_pin(net_name, layer, bbox, label=label)
+        label = label or net_name
+        if net_name in self._prim_port_params:
+            port_params = self._prim_port_params[net_name]
+        else:
+            port_params = self._prim_port_params[net_name] = dict(label=label, pins={}, show=show)
+
+        # check labels is consistent.
+        if port_params['label'] != label:
+            msg = 'Current port label = %s != specified label = %s'
+            raise ValueError(msg % (port_params['label'], label))
+        if port_params['show'] != show:
+            raise ValueError('Conflicting show port specification.')
+
+        port_pins = port_params['pins']
+
+        if layer in port_pins:
+            port_pins[layer].append(bbox)
+        else:
+            port_pins[layer] = [bbox]
 
     def add_label(self, label, layer, bbox):
         # type: (str, Union[str, Tuple[str, str]], BBox) -> None
@@ -3953,3 +4020,48 @@ class CachedTemplate(TemplateBase):
         lib_name = info['lib_name']
         cell_name = info['cell_name']
         self.add_instance_primitive(lib_name, cell_name, (0, 0), inst_name='X0', unit_mode=True)
+
+
+class BlackBoxTemplate(TemplateBase):
+    """A black box template."""
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        return dict(
+            lib_name='The library name.',
+            cell_name='The layout cell name.',
+            top_layer='The top level layer.',
+            size='The width/height of the cell, in resolution units.',
+            ports='The port information dictionary.',
+            show_pins='True to show pins.',
+        )
+
+    def get_layout_basename(self):
+        return self.params['cell_name']
+
+    def draw_layout(self):
+        # type: () -> None
+        lib_name = self.params['lib_name']
+        cell_name = self.params['cell_name']
+        top_layer = self.params['top_layer']
+        size = self.params['size']
+        ports = self.params['ports']
+        show_pins = self.params['show_pins']
+
+        for term_name, pin_dict in ports.items():
+            for lay_name, bbox_list in pin_dict.items():
+                for bbox in bbox_list:
+                    self.add_pin_primitive(term_name, lay_name, bbox, show=show_pins)
+
+        self.add_instance_primitive(lib_name, cell_name, (0, 0), unit_mode=True)
+
+        self.prim_top_layer = top_layer
+        self.prim_bound_box = BBox(0, 0, size[0], size[1], self.grid.resolution, unit_mode=True)
+
+        for layer in range(1, top_layer + 1):
+            self.mark_bbox_used(layer, self.prim_bound_box)
