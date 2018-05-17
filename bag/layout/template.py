@@ -4028,6 +4028,12 @@ class BlackBoxTemplate(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+        self._sch_params = None
+
+    @property
+    def sch_params(self):
+        # type: () -> Dict[str, Any]
+        return self._sch_params
 
     @classmethod
     def get_params_info(cls):
@@ -4065,3 +4071,8 @@ class BlackBoxTemplate(TemplateBase):
 
         for layer in range(1, top_layer + 1):
             self.mark_bbox_used(layer, self.prim_bound_box)
+
+        self._sch_params = dict(
+            lib_name=lib_name,
+            cell_name=cell_name,
+        )
