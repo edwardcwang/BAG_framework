@@ -196,6 +196,7 @@ class TemplateDB(MasterDB):
                                            self._prj.tech_info.via_tech_name,
                                            get_encoding()) as lib:
                 lib.add_layer('prBoundary', 235)
+                lib.add_purpose('label', 237)
                 lib.add_purpose('drawing1', 241)
                 lib.add_purpose('drawing2', 242)
                 lib.add_purpose('drawing3', 243)
