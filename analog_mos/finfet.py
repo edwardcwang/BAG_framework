@@ -788,9 +788,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         od_min_density = kwargs.get('od_min_density', mos_constants['od_min_density'])
+        has_cpo = kwargs.get('has_cpo', mos_constants['has_cpo'])
         od_spy = mos_constants['od_spy']
         od_nfin_min, od_nfin_max = mos_constants['od_fill_h']
-        has_cpo = mos_constants['has_cpo']
         po_spy = mos_constants['po_spy']
         po_od_exty = mos_constants['po_od_exty']
         dpo_edge_spy = mos_constants['dpo_edge_spy']
@@ -2597,7 +2597,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # compute fill Y intervals
         od_y_density = od_min_density / od_x_density
         od_y_list = self._get_dummy_od_yloc(lch_unit, h, None, None, None, None,
-                                            od_min_density=od_y_density)
+                                            od_min_density=od_y_density, has_cpo=False)
         if not od_y_list:
             return
 
