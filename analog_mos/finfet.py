@@ -2625,12 +2625,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fin_h2 = fin_h // 2
         fin_xl = min(fill_xl, od_xl - fb_od_encx)
         fin_xr = max(fill_xr, od_xr + fb_od_encx)
-        fin_yb = fin_p2 - fin_h2
-        fin_yt = ((h - fin_p2 - fin_h2) // fin_p) * fin_p + fin_p2 + fin_h2
         imp_xl = min(fill_xl, od_xl - imp_od_encx)
         imp_xr = max(fill_xr, od_xr + imp_od_encx)
         imp_yb = fill_yb - imp_po_ency
         imp_yt = fill_yt + imp_po_ency
+        fin_yb = ((imp_yb - fin_p2 + fin_h2) // fin_p) * fin_p + fin_p2 - fin_h2
+        fin_yt = -(-(imp_yt - fin_p2 - fin_h2) // fin_p) * fin_p + fin_p2 + fin_h2
         fin_box = BBox(fin_xl, fin_yb, fin_xr, fin_yt, res, unit_mode=True)
         imp_box = BBox(imp_xl, imp_yb, imp_xr, imp_yt, res, unit_mode=True)
         for imp_lay in self.get_mos_layers(mos_type, threshold):
