@@ -3860,7 +3860,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             coord_mid = dim_long0 + margin_le
             do_upper = True
         self._fill_long_edge_helper(layer_id, grid, tot_geo, long_box, coord_mid, is_horiz,
-                                    min_len, sp_max2, new_polys)
+                                    min_len, sp_max2, new_polys, mode=-1 if do_upper else 0)
         if do_upper:
             coord_mid = dim_long1 - margin_le
             if is_horiz:
@@ -3868,7 +3868,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             else:
                 long_box = shgeo.box(xl + margin_le, yt - sp_le_max2, xr - margin_le, yt)
             self._fill_long_edge_helper(layer_id, grid, tot_geo, long_box, coord_mid, is_horiz,
-                                        min_len, sp_max2, new_polys)
+                                        min_len, sp_max2, new_polys, mode=1)
 
         new_polys.append(tot_geo)
         tot_geo = shops.cascaded_union(new_polys)
@@ -3937,8 +3937,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             yield poly
 
     def _fill_long_edge_helper(self, layer_id, grid, tot_geo, long_box, coord_mid, is_horiz,
-                               min_len, sp_max2, new_polys):
-        clower = coord_mid - min_len // 2
+                               min_len, sp_max2, new_polys, mode=0):
+        if mode < 0:
+            clower = coord_mid
+        elif mode == 0:
+            clower = coord_mid - min_len // 2
+        else:
+            clower = coord_mid - min_len
         cupper = clower + min_len
         geo = long_box.difference(tot_geo)
         if isinstance(geo, shgeo.Polygon):
