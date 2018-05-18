@@ -2577,10 +2577,21 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 od_x_list = [(fill_xl, fill_xl + od_w), (fill_xr - od_w, fill_xr)]
                 od_x_density = (2 * od_w) / w
             else:
-                # use maximum number of fingers for all fill
-                od_w = self.get_od_w(lch_unit, dod_fg_max)
-                od_x_list, od_area = fill_symmetric_max_density(fill_w, fill_w, od_w, od_w, od_spx,
-                                                                offset=fill_xl, fill_on_edge=True)
+                # draw regular array
+                fg_tot = -(-(fill_w - 2 * po_od_extx - lch_unit) // sd_pitch) + 3
+                sp_fg = -(-(od_spx - sd_pitch + lch_unit) // sd_pitch)
+                fg_intv_list = fill_symmetric_max_density(fg_tot, fg_tot, dod_fg_min + 2,
+                                                          dod_fg_max + 2, sp_fg,
+                                                          fill_on_edge=True, cyclic=False)[0]
+                tot_w = self.get_od_w(lch_unit, fg_tot - 2)
+                x_off = fill_xl + (fill_w - tot_w) // 2
+                od_x_list = []
+                od_area = 0
+                for fg_start, fg_stop in fg_intv_list:
+                    od_w_cur = self.get_od_w(lch_unit, fg_stop - fg_start - 2)
+                    od_area += od_w_cur
+                    x0 = fg_start * sd_pitch + x_off
+                    od_x_list.append((x0, x0 + od_w_cur))
                 od_x_density = od_area / w
 
         # compute fill Y intervals
