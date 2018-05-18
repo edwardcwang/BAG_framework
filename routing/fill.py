@@ -107,6 +107,9 @@ class PowerFill(TemplateBase):
                         orient_mode=0,  # type: int
                         ):
         # type: (...) -> List[List[Instance]]
+        # TODO: This method does not work when if fill size changes as layer changes.
+        # TODO: Fix in the future.
+
         # number of wire types per fill block
         ntype = 2
 
