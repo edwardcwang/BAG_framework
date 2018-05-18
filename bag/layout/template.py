@@ -4059,10 +4059,14 @@ class BlackBoxTemplate(TemplateBase):
         ports = self.params['ports']
         show_pins = self.params['show_pins']
 
+        res = self.grid.resolution
+        tech_info = self.grid.tech_info
         for term_name, pin_dict in ports.items():
             for lay_name, bbox_list in pin_dict.items():
-                for bbox in bbox_list:
-                    self.add_pin_primitive(term_name, lay_name, bbox, show=show_pins)
+                lay_id = tech_info.get_layer_id(lay_name)
+                for xl, yb, xr, yt in bbox_list:
+                    box = BBox(xl, yb, xr, yt, res, unit_mode=True)
+                    self._register_pin(lay_id, lay_name, term_name, box, show_pins)
 
         self.add_instance_primitive(lib_name, cell_name, (0, 0), unit_mode=True)
 
@@ -4076,3 +4080,31 @@ class BlackBoxTemplate(TemplateBase):
             lib_name=lib_name,
             cell_name=cell_name,
         )
+
+    def _register_pin(self, lay_id, lay_name, term_name, box, show_pins):
+        if lay_id is None:
+            self.add_pin_primitive(term_name, lay_name, box, show=show_pins)
+        else:
+            if self.grid.get_direction(lay_id) == 'x':
+                dim = box.height_unit
+                coord = box.yc_unit
+                lower = box.left_unit
+                upper = box.right_unit
+            else:
+                dim = box.width_unit
+                coord = box.xc_unit
+                lower = box.bottom_unit
+                upper = box.top_unit
+            try:
+                tr_idx = self.grid.coord_to_track(lay_id, coord, unit_mode=True)
+            except ValueError:
+                self.add_pin_primitive(term_name, lay_name, box, show=show_pins)
+                return
+
+            width_ntr = self.grid.get_track_width_inverse(lay_id, dim, unit_mode=True)
+            if self.grid.get_track_width(lay_id, width_ntr, unit_mode=True) == dim:
+                track_id = TrackID(lay_id, tr_idx, width=width_ntr)
+                warr = WireArray(track_id, lower, upper, res=self.grid.resolution, unit_mode=True)
+                self.add_pin(term_name, warr, show=show_pins)
+            else:
+                self.add_pin_primitive(term_name, lay_name, box, show=show_pins)
