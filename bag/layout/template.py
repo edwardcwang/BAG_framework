@@ -3972,11 +3972,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             poly_bnds = poly.bounds
             if poly_bnds:
                 if is_horiz:
-                    lower = poly_bnds[0]
-                    upper = poly_bnds[2]
+                    lower = int(round(poly_bnds[0]))
+                    upper = int(round(poly_bnds[2]))
                 else:
-                    lower = poly_bnds[1]
-                    upper = poly_bnds[3]
+                    lower = int(round(poly_bnds[1]))
+                    upper = int(round(poly_bnds[3]))
                 lower = min(lower, (lower + upper - min_len) // 2)
                 upper = max(upper, lower + min_len)
                 warr = self.add_wires(layer_id, tr, lower, upper, unit_mode=True)
