@@ -3,7 +3,7 @@
 """This module defines the RoutingGrid class.
 """
 
-from typing import TYPE_CHECKING, Sequence, Union, Tuple, List, Optional, Dict
+from typing import TYPE_CHECKING, Sequence, Union, Tuple, List, Optional, Dict, Any
 
 import numpy as np
 
@@ -1521,6 +1521,36 @@ class RoutingGrid(object):
             return q // 2
         else:
             return q / 2
+
+    def coord_to_nearest_fill_track(self, layer_id, coord, fill_config, mode=0,
+                                    unit_mode=False):
+        # type: (int, Union[float, int], Dict[int, Any], int, bool) -> Union[float, int]
+
+        if not unit_mode:
+            coord = int(round(coord / self._resolution))
+
+        tr_w, tr_sp, _, _ = fill_config[layer_id]
+
+        num_htr = int(round(2 * (tr_w + tr_sp)))
+        fill_pitch = num_htr * self.get_track_pitch(layer_id, unit_mode=True) // 2
+        fill_pitch2 = fill_pitch // 2
+        fill_q, fill_r = divmod(coord - fill_pitch2, fill_pitch)
+
+        if fill_r == 0:
+            # exactly on track
+            if mode == -2:
+                # move to lower track
+                fill_q -= 1
+            elif mode == 2:
+                # move to upper track
+                fill_q += 1
+        else:
+            # not on track
+            if mode > 0 or (mode == 0 and fill_r >= fill_pitch2):
+                # round up
+                fill_q += 1
+
+        return self.coord_to_track(layer_id, fill_q * fill_pitch + fill_pitch2, unit_mode=True)
 
     def transform_track(self,  # type: RoutingGrid
                         layer_id,  # type: int
