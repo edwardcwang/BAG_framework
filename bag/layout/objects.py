@@ -789,7 +789,7 @@ class Instance(Arrayable):
                                                      orient=self.orientation, unit_mode=True)
 
     def get_pin(self, name='', row=0, col=0, layer=-1):
-        # type: (Optional[str], int, int, int) -> WireArray
+        # type: (Optional[str], int, int, int) -> Union[WireArray, BBox]
         """Returns the first pin with the given name.
 
         This is an efficient method if you know this instance has exactly one pin.
@@ -809,7 +809,7 @@ class Instance(Arrayable):
 
         Returns
         -------
-        pin : WireArray
+        pin : Union[WireArray, BBox]
             the first pin associated with the port of given name.
         """
         port = self.get_port(name, row, col)
@@ -885,6 +885,11 @@ class Instance(Arrayable):
         # type: (str) -> bool
         """Returns True if this instance has the given port."""
         return self._master.has_port(port_name)
+
+    def has_prim_port(self, port_name):
+        # type: (str) -> bool
+        """Returns True if this instance has the given primitive port."""
+        return self._master.has_prim_port(port_name)
 
     def transform(self, loc=(0, 0), orient='R0', unit_mode=False, copy=False):
         # type: (Tuple[ldim, ldim], str, bool, bool) -> Optional[Figure]
