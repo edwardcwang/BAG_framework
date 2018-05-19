@@ -5,6 +5,8 @@
 
 from typing import Tuple, Union, Generator, Dict, List, Sequence
 
+import numbers
+
 from ...util.search import BinaryIterator
 from ..util import BBox, BBoxArray
 from .grid import RoutingGrid
@@ -491,13 +493,19 @@ class Port(object):
         for geo_list in self._pin_dict.values():
             yield from geo_list
 
+    def get_single_layer(self):
+        # type: () -> Union[int, str]
+        """Returns the layer of this port if it only has a single layer."""
+        if len(self._pin_dict) > 1:
+            raise ValueError('This port has more than one layer.')
+        return next(iter(self._pin_dict))
+
     def _get_layer(self, layer):
         """Get the layer number."""
-        if layer < 0:
-            if len(self._pin_dict) > 1:
-                raise ValueError('This port has more than one layer.')
-            layer = next(iter(self._pin_dict))
-        return layer
+        if isinstance(layer, numbers.Integral):
+            return self.get_single_layer() if layer < 0 else layer
+        else:
+            return self.get_single_layer() if not layer else layer
 
     @property
     def net_name(self):
