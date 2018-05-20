@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import TYPE_CHECKING, Dict, Any, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, Any, List, Optional, Union, Tuple
 from itertools import chain
 from collections import namedtuple
 
@@ -796,6 +796,10 @@ class MOSTechSOIGenericBC(MOSTech):
                               options):
         # type: (TemplateBase, Dict[str, Any], int, int, int, bool, Dict[str, Any]) -> None
         raise ValueError('Decap connection is not supported in this technology.')
+
+    def get_min_fill_dim(self, mos_type, threshold):
+        # type: (str, str) -> Tuple[int, int]
+        raise ValueError('Active fill not yet supported.')
 
     def draw_active_fill(self, template, mos_type, threshold, w, h):
         # type: (TemplateBase, str, str, int, int) -> None

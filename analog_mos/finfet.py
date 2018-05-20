@@ -2528,6 +2528,23 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         for sup_warr in sup_warrs:
             template.add_pin('supply', sup_warr, show=False)
 
+    def get_min_fill_dim(self, mos_type, threshold):
+        # type: (str, str) -> Tuple[int, int]
+
+        lch_unit = self.mos_config['dum_lch']
+        mos_constants = self.get_mos_tech_constants(lch_unit)
+
+        dod_edge_spx = mos_constants['dod_edge_spx']
+        dod_fg_min, dod_fg_max = mos_constants['dod_fill_fg']
+        dpo_edge_spy = mos_constants['dpo_edge_spy']
+        po_od_exty = mos_constants['po_od_exty']
+        od_nfin_min = mos_constants['od_fill_h'][0]
+
+        dum_w_min = self.get_od_w(lch_unit, dod_fg_min)
+        dum_h_min = self.get_od_h(lch_unit, od_nfin_min)
+
+        return dum_w_min + 2 * dod_edge_spx, dum_h_min + 2 * po_od_exty + 2 * dpo_edge_spy
+
     def draw_active_fill(self, template, mos_type, threshold, w, h):
         # type: (TemplateBase, str, str, int, int) -> None
 
@@ -2558,13 +2575,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # check if we can draw anything at all
         dum_w_min = self.get_od_w(lch_unit, dod_fg_min)
-        # worst case, we will allow od_spx / 2 margin on edge
-        if w < od_spx + dum_w_min:
+        if fill_w < dum_w_min:
             return
         # check if we can just draw one dummy
         if fill_w < dum_w_min * 2 + od_spx:
             # get number of fingers. round up to try to meet min edge distance rule
-            fg = min(dod_fg_max, self.get_od_w_inverse(lch_unit, fill_w, round_up=True))
+            fg = min(dod_fg_max, self.get_od_w_inverse(lch_unit, fill_w, round_up=False))
             od_w = self.get_od_w(lch_unit, fg)
             od_xl = (fill_xl + fill_xr - od_w) // 2
             od_x_list = [(od_xl, od_xl + od_w)]

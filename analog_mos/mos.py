@@ -315,6 +315,11 @@ class DummyFillActive(TemplateBase):
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
+    def get_min_fill_dim(cls, tech_info, mos_type, threshold):
+        tech_cls = tech_info.tech_params['layout']['mos_tech_class']
+        return tech_cls.get_min_fill_dim(mos_type, threshold)
+
+    @classmethod
     def get_params_info(cls):
         # type: () -> Dict[str, str]
         return dict(

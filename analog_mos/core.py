@@ -495,6 +495,11 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
+    def get_min_fill_dim(self, mos_type, threshold):
+        # type: (str, str) -> Tuple[int, int]
+        return 0, 0
+
+    @abc.abstractmethod
     def draw_active_fill(self, template, mos_type, threshold, w, h):
         # type: (TemplateBase, str, str, int, int) -> None
         """Draw active fill in the given area.
