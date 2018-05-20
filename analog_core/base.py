@@ -1029,6 +1029,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             a dictionary of ports as WireArrays.  The keys are 'g', 'd', and 's'.
         """
         stack = kwargs.get('stack', 1)
+        flip_lr = kwargs.pop('flip_lr', False)
 
         # sanity checking
         if not isinstance(fg, numbers.Integral):
@@ -1087,7 +1088,6 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             sdir = 2 - sdir
             ddir = 2 - ddir
 
-        loc = xc, yc
         for key, val in row_info['kwargs'].items():
             if key not in kwargs:
                 kwargs[key] = val
@@ -1105,6 +1105,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         conn_params.update(kwargs)
 
         conn_master = self.new_template(params=conn_params, temp_cls=AnalogMOSConn)
+        if flip_lr:
+            orient = 'MY' if orient == 'R0' else 'R180'
+            xc += fg * sd_pitch
+        loc = xc, yc
         conn_inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
 
         return {key: conn_inst.get_pin(name=key, layer=self.mos_conn_layer)
