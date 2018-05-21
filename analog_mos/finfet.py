@@ -2571,6 +2571,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         dpo_edge_spy = mos_constants['dpo_edge_spy']
         po_od_exty = mos_constants['po_od_exty']
         po_od_extx = mos_constants['po_od_extx']
+        po_spx = mos_constants['po_spx']
         sd_pitch = mos_constants['sd_pitch']
         fb_od_encx = mos_constants['fb_od_encx']
         imp_od_encx = mos_constants['imp_od_encx']
@@ -2583,12 +2584,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fill_yt = h - dpo_edge_spy
         fill_w = fill_xr - fill_xl
 
+        dum_spx = max(od_spx - 2 * (sd_pitch - po_od_extx), po_spx)
+
         # check if we can draw anything at all
         dum_w_min = self.get_od_w(lch_unit, dod_fg_min)
         if fill_w < dum_w_min:
             return
         # check if we can just draw one dummy
-        if fill_w < dum_w_min * 2 + od_spx:
+        if fill_w < dum_w_min * 2 + dum_spx:
             # get number of fingers. round up to try to meet min edge distance rule
             fg = min(dod_fg_max, self.get_od_w_inverse(lch_unit, fill_w, round_up=False))
             od_w = self.get_od_w(lch_unit, fg)
@@ -2597,7 +2600,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             od_x_density = od_w / w
         else:
             # check if we can only draw two dummies
-            fg = self.get_od_w_inverse(lch_unit, (fill_w - od_spx) // 2, round_up=False)
+            fg = self.get_od_w_inverse(lch_unit, (fill_w - dum_spx) // 2, round_up=False)
             if fg <= dod_fg_max:
                 od_w = self.get_od_w(lch_unit, fg)
                 od_x_list = [(fill_xl, fill_xl + od_w), (fill_xr - od_w, fill_xr)]
@@ -2605,7 +2608,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             else:
                 # draw regular array
                 fg_tot = -(-(fill_w - 2 * po_od_extx - lch_unit) // sd_pitch) + 3
-                sp_fg = -(-(od_spx - sd_pitch + lch_unit) // sd_pitch)
+                sp_fg = -(-(dum_spx - sd_pitch + lch_unit) // sd_pitch)
                 fg_intv_list = fill_symmetric_max_density(fg_tot, fg_tot, dod_fg_min + 2,
                                                           dod_fg_max + 2, sp_fg,
                                                           fill_on_edge=True, cyclic=False)[0]
