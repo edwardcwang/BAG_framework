@@ -2442,14 +2442,20 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             if not gate_pref_loc:
                 gate_pref_loc = 'd' if ds_code == 2 else 's'
             if gate_pref_loc == 'd':
-                if num_seg == 1 and stack > 1:
+                if num_seg == 1:
+                    if stack == 1:
+                        raise ValueError('Cannot draw transistor connection with 1 finger.')
                     # handle special case of 1 segment
                     g_x_list = [sd_pitch * fg // 2]
                 else:
                     # avoid drawing gate on the left-most source/drain if number of fingers is odd
                     g_x_list = list(range(wire_pitch, num_seg * wire_pitch, 2 * wire_pitch))
             else:
-                if num_seg != 2:
+                if num_seg == 1:
+                    if stack == 1:
+                        raise ValueError('Cannot draw transistor connection with 1 finger.')
+                    g_x_list = [sd_pitch * fg // 2]
+                elif num_seg != 2:
                     g_x_list = list(range(2 * wire_pitch, num_seg * wire_pitch, 2 * wire_pitch))
                 else:
                     g_x_list = [0, 2 * wire_pitch]
