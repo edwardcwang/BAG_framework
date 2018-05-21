@@ -2607,7 +2607,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 od_x_density = (2 * od_w) / w
             else:
                 # draw regular array
-                fg_tot = -(-(fill_w - 2 * po_od_extx - lch_unit) // sd_pitch) + 3
+                fg_tot = ((fill_w - 2 * po_od_extx - lch_unit) // sd_pitch) + 3
                 sp_fg = -(-(dum_spx - sd_pitch + lch_unit) // sd_pitch)
                 fg_intv_list = fill_symmetric_max_density(fg_tot, fg_tot, dod_fg_min + 2,
                                                           dod_fg_max + 2, sp_fg,
