@@ -881,6 +881,7 @@ class TrackManager(object):
                      alignment=0,  # type: int
                      start_idx=0,  # type: Union[float, int]
                      max_sp=10000,  # type: int
+                     sp_override=None,
                      ):
         # type: (...) -> List[Union[float, int]]
         """Spread out the given wires in the given space.
@@ -906,13 +907,19 @@ class TrackManager(object):
             the starting track index.
         max_sp : int
             maximum space.
+        sp_override :
+            tracking spacing override dictionary.
 
         Returns
         -------
         locations : List[Union[float, int]]
             the center track index of each wire.
         """
-        sp_override = {sp_type: {layer_id: 0}}
+        if not sp_override:
+            sp_override = {sp_type: {layer_id: 0}}
+        else:
+            sp_override = sp_override.copy()
+            sp_override[sp_type] = {layer_id: 0}
         cur_sp = int(round(2 * self.get_space(layer_id, sp_type)))
         bin_iter = BinaryIterator(cur_sp, None)
         while bin_iter.has_next():
@@ -927,6 +934,9 @@ class TrackManager(object):
             else:
                 bin_iter.save_info(tmp)
                 bin_iter.up()
+
+        if bin_iter.get_last_save_info() is None:
+            raise ValueError('No solution found.')
 
         num_used, idx_list = bin_iter.get_last_save_info()
         delta = self._get_align_delta(tot_ntr, num_used, alignment)
