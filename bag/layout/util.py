@@ -120,10 +120,14 @@ class BBox(object):
             self._right_unit = int(round(right / resolution))
             self._top_unit = int(round(top / resolution))
         else:
-            self._left_unit = left
-            self._bot_unit = bottom
-            self._right_unit = right
-            self._top_unit = top
+            self._left_unit = int(round(left))
+            self._bot_unit = int(round(bottom))
+            self._right_unit = int(round(right))
+            self._top_unit = int(round(top))
+            # self._left_unit = left
+            # self._bot_unit = bottom
+            # self._right_unit = right
+            # self._top_unit = top
         self._res = resolution
 
     @classmethod
