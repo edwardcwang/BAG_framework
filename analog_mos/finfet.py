@@ -2458,7 +2458,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 elif num_seg != 2:
                     g_x_list = list(range(2 * wire_pitch, num_seg * wire_pitch, 2 * wire_pitch))
                 else:
-                    g_x_list = [0, 2 * wire_pitch]
+                    if stack == 2:
+                        # TODO: hack for serdes tapeout
+                        g_x_list = [sd_pitch, 2 * wire_pitch - sd_pitch]
+                    else:
+                        g_x_list = [0, 2 * wire_pitch]
 
             # draw wires
             _, s_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y,
