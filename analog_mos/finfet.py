@@ -2377,6 +2377,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # type: (...) -> None
 
         stack = options.get('stack', 1)
+        gate_interleave = options.get('gate_interleave', False) and stack > 1
         source_parity = options.get('source_parity', 0)
 
         # NOTE: ignore min_ds_cap.
@@ -2441,35 +2442,46 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         else:
             if not gate_pref_loc:
                 gate_pref_loc = 'd' if ds_code == 2 else 's'
-            if gate_pref_loc == 'd':
-                if num_seg == 1:
-                    if stack == 1:
-                        raise ValueError('Cannot draw transistor connection with 1 finger.')
-                    # handle special case of 1 segment
-                    g_x_list = [sd_pitch * fg // 2]
-                else:
-                    # avoid drawing gate on the left-most source/drain if number of fingers is odd
-                    g_x_list = list(range(wire_pitch, num_seg * wire_pitch, 2 * wire_pitch))
+            if gate_interleave:
+                # TODO: hack for tapeout
+                g_x_list = list(range(sd_pitch, num_seg * wire_pitch, wire_pitch))
             else:
-                if num_seg == 1:
-                    if stack == 1:
-                        raise ValueError('Cannot draw transistor connection with 1 finger.')
-                    g_x_list = [sd_pitch * fg // 2]
-                elif num_seg != 2:
-                    g_x_list = list(range(2 * wire_pitch, num_seg * wire_pitch, 2 * wire_pitch))
-                else:
-                    if stack == 2:
-                        # TODO: hack for serdes tapeout
-                        g_x_list = [sd_pitch, 2 * wire_pitch - sd_pitch]
+                if gate_pref_loc == 'd':
+                    if num_seg == 1:
+                        if stack == 1:
+                            raise ValueError('Cannot draw transistor connection with 1 finger.')
+                        # handle special case of 1 segment
+                        g_x_list = [sd_pitch * fg // 2]
                     else:
-                        g_x_list = [0, 2 * wire_pitch]
+                        # avoid drawing gate on the left-most source/drain if odd fingers
+                        g_x_list = list(range(wire_pitch, num_seg * wire_pitch, 2 * wire_pitch))
+                else:
+                    if num_seg == 1:
+                        if stack == 1:
+                            raise ValueError('Cannot draw transistor connection with 1 finger.')
+                        g_x_list = [sd_pitch * fg // 2]
+                    elif num_seg != 2:
+                        g_x_list = list(range(2 * wire_pitch, num_seg * wire_pitch, 2 * wire_pitch))
+                    else:
+                        if stack == 2:
+                            # TODO: hack for serdes tapeout
+                            g_x_list = [sd_pitch, 2 * wire_pitch - sd_pitch]
+                        else:
+                            g_x_list = [0, 2 * wire_pitch]
+
+            # TODO: hack for tapeout
+            if gate_interleave and sdir == ddir:
+                s_align = d_align = False
+            else:
+                s_align = (ds_code == 1)
+                d_align = (ds_code == 2)
 
             # draw wires
             _, s_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y,
-                                                 md_y, s_x_list, s_x_list, ds_code == 1, sdir, 1,
+                                                 md_y, s_x_list, s_x_list, s_align, sdir, 1,
                                                  source_parity=source_parity)
             _, d_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y,
-                                                 md_y, d_x_list, d_x_list, ds_code == 2, ddir, 2,
+                                                 md_y, d_x_list, d_x_list, d_align, ddir, 2,
                                                  source_parity=drain_parity)
             g_warrs = self.draw_g_connection(template, lch_unit, fg, sd_pitch, 0, od_y, md_y,
                                              g_x_list, is_sub=False)
