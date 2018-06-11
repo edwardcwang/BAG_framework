@@ -416,12 +416,13 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
     def draw_extensions(self,  # type: LaygoTech
                         template,  # type: TemplateBase
                         laygo_info,  # type: LaygoBaseInfo
+                        num_cols,  # type: int
                         w,  # type: int
                         yext,  # type: int
                         bot_ext_list,  # type: List[Tuple[int, Any]]
                         top_ext_list,  # type: List[Tuple[int, Any]]
                         ):
-        # type: (...) -> List[Tuple[int, str, Dict[str, Any]]]
+        # type: (...) -> Tuple[Any, Any]
         """Draw extension rows in the given LaygoBase/DigitalBase template.
 
         Parameters
@@ -430,6 +431,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
             the LaygoBase/DigitalBase object to draw layout in.
         laygo_info : LaygoBaseInfo
             the LaygoBaseInfo object.
+        num_cols : int
+            number of columns.
         w : int
             extension width in number of mos pitches.
         yext : int
@@ -441,20 +444,20 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        ext_edges : List[Tuple[int, str, Dict[str, Any]]]
-            a list of Y coordinate, orientation, and parameters for extension edge blocks.
-            empty list if draw_boundaries is False.
+        edgesl : Optional[Tuple[int, str, Dict[str, Any]]]
+            a tuple of Y coordinate, orientation, and parameters for left edge.
+        edgesr : Optional[Tuple[int, str, Dict[str, Any]]]
+            a tuple of Y coordinate, orientation, and parameters for right edge.
         """
         lch = laygo_info.lch
         top_layer = laygo_info.top_layer
         guard_ring_nf = laygo_info.guard_ring_nf
 
         ext_groups = self.get_row_extension_info(bot_ext_list, top_ext_list)
-        num_ext = len(ext_groups)
 
-        ext_edges = []
-        for idx, (fg_off, fg, bot_info, top_info) in enumerate(ext_groups):
-            if w > 0 or self.draw_zero_extension():
+        edgesl, edgesr = None, None
+        if w > 0 or self.draw_zero_extension():
+            for idx, (fg_off, fg, bot_info, top_info) in enumerate(ext_groups):
                 ext_params = dict(
                     lch=lch,
                     w=w,
@@ -467,7 +470,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                 ext_master = template.new_template(params=ext_params, temp_cls=AnalogMOSExt)
                 template.add_instance(ext_master, loc=(curx, yext), unit_mode=True)
 
-                if idx == 0:
+                if fg_off == 0:
                     adj_blk_info = ext_master.get_left_edge_info()
                     # compute edge parameters
                     cur_ext_edge_params = dict(
@@ -478,9 +481,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                         adj_blk_info=adj_blk_info,
                         is_laygo=True,
                     )
-                    edge_orient = 'R0'
-                    ext_edges.append((yext, edge_orient, cur_ext_edge_params))
-                if idx == num_ext - 1:
+                    edgesl = (yext, cur_ext_edge_params)
+                if fg_off + fg == num_cols:
                     adj_blk_info = ext_master.get_right_edge_info()
                     # compute edge parameters
                     cur_ext_edge_params = dict(
@@ -491,10 +493,9 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                         adj_blk_info=adj_blk_info,
                         is_laygo=True,
                     )
-                    edge_orient = 'MY'
-                    ext_edges.append((yext, edge_orient, cur_ext_edge_params))
+                    edgesr = (yext, cur_ext_edge_params)
 
-        return ext_edges
+        return edgesl, edgesr
 
     def draw_boundaries(self,  # type: LaygoTech
                         template,  # type: TemplateBase
@@ -503,7 +504,8 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                         yt,  # type: int
                         bot_end_master,  # type: LaygoEndRow
                         top_end_master,  # type: LaygoEndRow
-                        edge_infos,  # type: List[Tuple[int, int, str, Dict[str, Any]]]
+                        edgel_infos,  # type: List[Tuple[int, str, Dict[str, Any]]]
+                        edger_infos,  # type: List[Tuple[int, str, Dict[str, Any]]]
                         ):
         # type: (...) -> Tuple[BBox, List[WireArray], List[WireArray]]
         """Draw boundaries for LaygoBase/DigitalBase.
@@ -522,8 +524,10 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
             the bottom LaygoEndRow master.
         top_end_master : LaygoEndRow
             the top LaygoEndRow master.
-        edge_infos:  List[Tuple[int, int, str, Dict[str, Any]]]
-            a list of X/Y coordinate, orientation, and parameters for all edge blocks.
+        edgel_infos:  List[Tuple[int, str, Dict[str, Any]]]
+            a list of Y coordinate, orientation, and parameters for left edge blocks.
+        edger_infos:  List[Tuple[int, str, Dict[str, Any]]]
+            a list of Y coordinate, orientation, and parameters for right edge blocks.
 
         Returns
         -------
@@ -578,10 +582,16 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
                                                             loc=(x, y), unit_mode=True))
 
         # draw edge blocks
-        for x, y, orient, edge_params in edge_infos:
+        for y, flip_ud, edge_params in edgel_infos:
+            orient = 'MX' if flip_ud else 'R0'
             edge_master = template.new_template(params=edge_params, temp_cls=AnalogEdge)
             edge_inst_list.append(template.add_instance(edge_master, orient=orient,
-                                                        loc=(x, y), unit_mode=True))
+                                                        loc=(emargin_l, y), unit_mode=True))
+        for y, flip_ud, edge_params in edger_infos:
+            orient = 'R180' if flip_ud else 'MY'
+            edge_master = template.new_template(params=edge_params, temp_cls=AnalogEdge)
+            edge_inst_list.append(template.add_instance(edge_master, orient=orient,
+                                                        loc=(xr - emargin_r, y), unit_mode=True))
 
         gr_vss_warrs = []
         gr_vdd_warrs = []

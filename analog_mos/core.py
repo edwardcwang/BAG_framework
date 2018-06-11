@@ -494,6 +494,31 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         """
         pass
 
+    @abc.abstractmethod
+    def get_min_fill_dim(self, mos_type, threshold):
+        # type: (str, str) -> Tuple[int, int]
+        return 0, 0
+
+    @abc.abstractmethod
+    def draw_active_fill(self, template, mos_type, threshold, w, h):
+        # type: (TemplateBase, str, str, int, int) -> None
+        """Draw active fill in the given area.
+
+        Parameters
+        ----------
+        template : TemplateBase
+            the TemplateBase object to draw layout in.
+        mos_type : str
+            the transistor type.  Either 'pch' or 'nch'.
+        threshold : str
+            the transistor threshold.
+        w : int
+            the template width, in resolution units.
+        h : int
+            the template height, in resolution units.
+        """
+        pass
+
     def get_mos_conn_modulus(self, lch_unit):
         # type: (int) -> int
         """Returns the source/drain modulus for transistor/dummy connections.

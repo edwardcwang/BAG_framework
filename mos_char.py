@@ -122,7 +122,7 @@ class Transistor(AnalogBase):
         tr_id = self.make_track_id(mos_type, 0, 'g', sb_tr_sp + s_tr_w + gs_tr_sp + (g_tr_w - 1) / 2, width=g_tr_w)
         warr = self.connect_to_tracks(mos_ports['g'], tr_id)
         self.add_pin('g', warr, show=True)
-        tr_id = self.make_track_id(mos_type, 0, 'd', gd_tr_sp + (d_tr_w - 1) / 2, width=d_tr_w)
+        tr_id = self.make_track_id(mos_type, 0, 'ds', gd_tr_sp + (d_tr_w - 1) / 2, width=d_tr_w)
         warr = self.connect_to_tracks(mos_ports['d'], tr_id)
         self.add_pin('d', warr, show=True)
 

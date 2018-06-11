@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import TYPE_CHECKING, Dict, Any, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, Any, List, Optional, Union, Tuple
 from itertools import chain
 from collections import namedtuple
 
@@ -731,6 +731,7 @@ class MOSTechSOIGenericBC(MOSTech):
     def _draw_vertical_vias(self, template, lch_unit, x0, num, pitch, mx_yb, mx_yt, start_layer,
                             end_layer=None):
         # type: (TemplateBase, int, int, int, int, int, int, int, int) -> None
+        res = template.grid.resolution
 
         d_via_info = self.config['mos_analog']['d_via']
         via_id_table = self.config['via_id']
@@ -771,6 +772,15 @@ class MOSTechSOIGenericBC(MOSTech):
             via_enc1 = (w_bot - via_w) // 2
             via_enc2 = (w_top - via_w) // 2
 
+            # add M2 rectangle, so fill tool can detect it
+            if bot_lay_id == 2:
+                xl = x0 - w_bot // 2
+                xr = xl + w_bot
+                yb = mx_yc - via_harr // 2 - via_enc_le
+                yt = yb + via_enc_le * 2 + via_harr
+                template.add_rect(lay_name_table[2], BBox(xl, yb, xr, yt, res, unit_mode=True),
+                                  nx=num, spx=pitch, unit_mode=True)
+
             enc1 = [via_enc1, via_enc1, via_enc_le, via_enc_le]
             enc2 = [via_enc2, via_enc2, via_enc_le, via_enc_le]
             template.add_via_primitive(via_type, loc=[x0, mx_yc], num_rows=num_via, sp_rows=via_sp,
@@ -786,3 +796,11 @@ class MOSTechSOIGenericBC(MOSTech):
                               options):
         # type: (TemplateBase, Dict[str, Any], int, int, int, bool, Dict[str, Any]) -> None
         raise ValueError('Decap connection is not supported in this technology.')
+
+    def get_min_fill_dim(self, mos_type, threshold):
+        # type: (str, str) -> Tuple[int, int]
+        raise ValueError('Active fill not yet supported.')
+
+    def draw_active_fill(self, template, mos_type, threshold, w, h):
+        # type: (TemplateBase, str, str, int, int) -> None
+        raise ValueError('Active fill not yet supported.')

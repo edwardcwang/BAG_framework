@@ -6,6 +6,7 @@
 from typing import TYPE_CHECKING, Dict, Any, Set, Tuple, Optional
 
 from bag import float_to_si_string
+from bag.layout.util import BBox
 from bag.layout.template import TemplateBase
 
 if TYPE_CHECKING:
@@ -303,3 +304,52 @@ class SubRingExt(TemplateBase):
         self._right_edge_info = ext_info['right_edge_info']
         tech_cls.draw_mos(self, self._layout_info)
         self.prim_top_layer = tech_cls.get_mos_conn_layer()
+
+
+class DummyFillActive(TemplateBase):
+    """A template that fills an area with active devices.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_min_fill_dim(cls, tech_info, mos_type, threshold):
+        tech_cls = tech_info.tech_params['layout']['mos_tech_class']
+        return tech_cls.get_min_fill_dim(mos_type, threshold)
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        return dict(
+            mos_type='transistor type.',
+            threshold='transistor threshold.',
+            width='The width of the fill area, in resolution units.',
+            height='The height of the fill area, in resolution units.',
+        )
+
+    def get_layout_basename(self):
+        mos_type = self.params['mos_type']
+        threshold = self.params['threshold']
+        w = self.params['width']
+        h = self.params['height']
+        return '%s_%s_dummy_fill_w%d_h%d' % (mos_type, threshold, w, h)
+
+    def draw_layout(self):
+        mos_type = self.params['mos_type']
+        threshold = self.params['threshold']
+        w = self.params['width']
+        h = self.params['height']
+
+        # draw fill
+        tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
+        tech_cls.draw_active_fill(self, mos_type, threshold, w, h)
+
+        # set size
+        box = BBox(0, 0, w, h, self.grid.resolution, unit_mode=True)
+        self.prim_top_layer = 1
+        self.array_box = self.prim_bound_box = box
+        self.add_cell_boundary(box)
+
+        self.grid.tech_info.draw_device_blockage(self)

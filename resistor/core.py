@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Dict, Set, Tuple, Union, Any
 import abc
 from itertools import chain
 
+from bag.math import lcm
 from bag.layout.util import BBox
 from bag.layout.routing import TrackID, WireArray
 from bag.layout.template import TemplateBase
@@ -159,12 +160,15 @@ class ResArrayBaseInfo(object):
         wblk, hblk = self.grid.get_block_size(top_layer, unit_mode=True,
                                               half_blk_x=half_blk_x,
                                               half_blk_y=half_blk_y)
+        wblk_res, hblk_res = self._tech_cls.get_block_pitch()
+        wblk = lcm([wblk, wblk_res])
+        hblk = lcm([hblk, hblk_res])
         warr = w_edge * 2 + w_core * nx
         harr = h_edge * 2 + h_core * ny
         wtot = -(-max(min_width, warr) // wblk) * wblk
         htot = -(-max(min_height, harr) // hblk) * hblk
-        dx = (wtot - warr) // 2
-        dy = (htot - harr) // 2
+        dx = ((wtot - warr) // 2 // wblk_res) * wblk_res
+        dy = ((htot - harr) // 2 // hblk_res) * hblk_res
 
         if update_grid:
             for lay_id, tr_w, tr_sp, tr_dir in self._grid_layers:
@@ -278,6 +282,15 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
             return self._well_width
         return self._well_width * self.grid.resolution
 
+    def get_res_bbox(self, row_idx, col_idx):
+        # type: (int, int) -> BBox
+        """Returns the bounding box of the given resistor."""
+        x0, y0 = self._core_offset
+        xp, yp = self._core_pitch
+        x0 += xp * col_idx
+        y0 += yp * row_idx
+        return BBox(x0, y0, x0 + xp, y0 + yp, self.grid.resolution, unit_mode=True)
+
     def get_res_ports(self, row_idx, col_idx):
         # type: (int, int) -> Tuple[WireArray, WireArray]
         """Returns the port of the given resistor.
@@ -296,12 +309,10 @@ class ResArrayBase(TemplateBase, metaclass=abc.ABCMeta):
         top_warr : WireArray
             the top port as WireArray.
         """
-        res = self.grid.resolution
-        dx = self._core_offset[0] + self._core_pitch[0] * col_idx
-        dy = self._core_offset[1] + self._core_pitch[1] * row_idx
-        loc = dx * res, dy * res
-        bot_port = self._bot_port.transform(self.grid, loc=loc)
-        top_port = self._top_port.transform(self.grid, loc=loc)
+        loc = (self._core_offset[0] + self._core_pitch[0] * col_idx,
+               self._core_offset[1] + self._core_pitch[1] * row_idx)
+        bot_port = self._bot_port.transform(self.grid, loc=loc, unit_mode=True)
+        top_port = self._top_port.transform(self.grid, loc=loc, unit_mode=True)
         return bot_port.get_pins()[0], top_port.get_pins()[0]
 
     def get_track_offsets(self, row_idx, col_idx):

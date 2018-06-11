@@ -40,7 +40,7 @@ class AnalogMOSConn(TemplateBase):
         # type: () -> Dict[str, Any]
         return dict(
             min_ds_cap=False,
-            gate_pref_loc='d',
+            gate_pref_loc='',
             is_diff=False,
             diode_conn=False,
             gate_ext_mode=0,
