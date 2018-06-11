@@ -9,7 +9,8 @@ import pprint
 
 import numpy as np
 
-__all__ = ['BBox', 'BBoxArray', 'Pin', 'transform_table', 'transform_point']
+__all__ = ['BBox', 'BBoxArray', 'Pin', 'transform_table', 'transform_point',
+           'get_inverse_transform']
 
 transform_table = {'R0': np.array([[1, 0], [0, 1]], dtype=int),
                    'MX': np.array([[1, 0], [0, -1]], dtype=int),
@@ -31,6 +32,20 @@ def transform_point(x, y, loc, orient):
     mat = transform_table[orient]
     ans = np.dot(mat, np.array([x, y])) + shift
     return ans.item(0), ans.item(1)
+
+
+def get_inverse_transform(loc, orient):
+    """Returns the inverse transform"""
+    if orient == 'R90':
+        orient_inv = 'R270'
+    elif orient == 'R270':
+        orient_inv = 'R90'
+    else:
+        orient_inv = orient
+
+    inv_mat = transform_table[orient_inv]
+    new_shift = np.dot(inv_mat, -np.asarray(loc))
+    return (new_shift.item(0), new_shift.item(1)), orient_inv
 
 
 def transform_loc_orient(loc, orient, trans_loc, trans_orient):
@@ -105,10 +120,14 @@ class BBox(object):
             self._right_unit = int(round(right / resolution))
             self._top_unit = int(round(top / resolution))
         else:
-            self._left_unit = left
-            self._bot_unit = bottom
-            self._right_unit = right
-            self._top_unit = top
+            self._left_unit = int(round(left))
+            self._bot_unit = int(round(bottom))
+            self._right_unit = int(round(right))
+            self._top_unit = int(round(top))
+            # self._left_unit = left
+            # self._bot_unit = bottom
+            # self._right_unit = right
+            # self._top_unit = top
         self._res = resolution
 
     @classmethod
@@ -121,7 +140,7 @@ class BBox(object):
         box : bag.layout.util.BBox
             an invalid bounding box.
         """
-        return cls(0.0, 0.0, -1.0, -1.0, 0.1)
+        return cls(0, 0, -1, -1, 0.1, unit_mode=True)
 
     @property
     def left(self):
@@ -286,6 +305,15 @@ class BBox(object):
                     min(self._top_unit, bbox._top_unit),
                     self._res, unit_mode=True)
 
+    def overlaps(self, bbox):
+        # type: (BBox) -> bool
+        """Returns True if this BBox overlaps the given BBox."""
+
+        return ((max(self._left_unit, bbox._left_unit) <
+                 min(self._right_unit, bbox._right_unit)) and
+                (max(self._bot_unit, bbox._bot_unit) <
+                 min(self._top_unit, bbox._top_unit)))
+
     def extend(self, x=None, y=None, unit_mode=False):
         # type: (Union[float, int], Union[float, int], bool) -> BBox
         """Returns an extended BBox that covers the given point.
@@ -343,7 +371,7 @@ class BBox(object):
         return BBox(self._left_unit - dx, self._bot_unit - dy, self._right_unit + dx,
                     self._top_unit + dy, self._res, unit_mode=True)
 
-    def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False):
+    def transform(self, loc=(0, 0), orient='R0', unit_mode=False):
         # type: (Tuple[Union[float, int], Union[float, int]], str, bool) -> BBox
         """Returns a new BBox under the given transformation.
 
@@ -372,7 +400,7 @@ class BBox(object):
                     max(p1[0], p2[0]), max(p1[1], p2[1]),
                     self._res, unit_mode=True)
 
-    def move_by(self, dx=0.0, dy=0.0, unit_mode=False):
+    def move_by(self, dx=0, dy=0, unit_mode=False):
         # type: (Union[float, int], Union[float, int], bool) -> BBox
         """Returns a new BBox shifted by the given amount.
 
@@ -519,7 +547,7 @@ class BBoxArray(object):
         True if layout dimensions are specified in resolution units.
     """
 
-    def __init__(self, bbox, nx=1, ny=1, spx=0.0, spy=0.0, unit_mode=False):
+    def __init__(self, bbox, nx=1, ny=1, spx=0, spy=0, unit_mode=False):
         # type: (BBox, int, int, Union[float, int], Union[float, int], bool) -> None
         if not isinstance(bbox, BBox):
             raise ValueError('%s is not a BBox object' % bbox)
@@ -706,7 +734,7 @@ class BBoxArray(object):
         """
         return self.transform((dx, dy), unit_mode=unit_mode)
 
-    def transform(self, loc=(0.0, 0.0), orient='R0', unit_mode=False):
+    def transform(self, loc=(0, 0), orient='R0', unit_mode=False):
         # type: (Tuple[Union[float, int], Union[float, int]], str, bool) -> BBoxArray
         """Returns a new BBoxArray under the given transformation.
 
@@ -755,7 +783,7 @@ class BBoxArray(object):
         return BBoxArray(new_base, nx=self._nx, ny=self._ny,
                          spx=self._spx_unit, spy=self._spy_unit, unit_mode=True)
 
-    def arrayed_copies(self, nx=1, ny=1, spx=0.0, spy=0.0, unit_mode=False):
+    def arrayed_copies(self, nx=1, ny=1, spx=0, spy=0, unit_mode=False):
         # type: (int, int, Union[float, int], Union[float, int], bool) -> 'BBoxCollection'
         """Returns a BBoxCollection containing arrayed copies of this BBoxArray
 
@@ -898,7 +926,7 @@ class BBoxCollection(object):
 
         return box
 
-    def transform(self, loc=(0.0, 0.0), orient='R0'):
+    def transform(self, loc=(0, 0), orient='R0'):
         """Returns a new BBoxCollection under the given transformation.
 
         rotates first before shift.

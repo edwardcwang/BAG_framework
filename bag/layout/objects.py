@@ -2,21 +2,21 @@
 
 """This module defines various layout objects one can add and manipulate in a template.
 """
-from typing import TYPE_CHECKING, Union, List, Tuple, Optional, Dict, Any, Iterator, Iterable
+from typing import TYPE_CHECKING, Union, List, Tuple, Optional, Dict, Any, Iterator, Iterable, \
+    Generator
 
 import abc
 import numpy as np
 from copy import deepcopy
 
-from .util import transform_table, BBox, BBoxArray, transform_point
+from .util import transform_table, BBox, BBoxArray, transform_point, get_inverse_transform
 from .routing.base import Port, WireArray
-from .routing.fill import UsedTracks
-from .routing.grid import RoutingGrid
 
 import bag.io
 
 if TYPE_CHECKING:
     from .template import TemplateBase
+    from .routing.grid import RoutingGrid
 
 ldim = Union[float, int]
 loc_type = Tuple[ldim, ldim]
@@ -468,30 +468,89 @@ class Instance(Arrayable):
         """
         self._master = self._master.new_template_with(**kwargs)
 
-    def get_used_tracks(self, bot_layer, top_layer, row=0, col=0):
-        # type: (int, int, int, int) -> UsedTracks
-        """Return the used track object of the given instance in the array.
+    def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
+        # type: (int, BBox, int, int) -> Generator[BBox, None, None]
+        # transform the given BBox to master coordinate
+        if self.destroyed:
+            return
 
-        Parameters
-        ----------
-        bot_layer : int
-            the bottom layer ID, inclusive.
-        top_layer : int
-            the top layer ID, inclusive.
-        row : int
-            the instance row index.  Index 0 is the bottom-most row.
-        col : int
-            the instance column index.  Index 0 is the left-most column.
+        base_box = self._master.get_track_bbox(layer_id)
+        if not base_box.is_physical():
+            return
+        base_box = self.translate_master_box(base_box)
+        test = test_box.expand(dx=spx, dy=spy, unit_mode=True)
 
-        Returns
-        -------
-        used_tracks : UsedTracks
-            the UsedTracks object of the given instance.
-        """
-        dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
-        inst_loc = dx + self._loc_unit[0], dy + self._loc_unit[1]
-        return self._master.get_used_tracks().transform(self._parent_grid, bot_layer, top_layer,
-                                                        inst_loc, self._orient, unit_mode=True)
+        inst_spx = max(self.spx_unit, 1)
+        inst_spy = max(self.spy_unit, 1)
+        xl = base_box.left_unit
+        yb = base_box.bottom_unit
+        xr = base_box.right_unit
+        yt = base_box.top_unit
+        nx0 = max(0, -(-(test.left_unit - xr) // inst_spx))
+        nx1 = min(self.nx - 1, (test.right_unit - xl) // inst_spx)
+        ny0 = max(0, -(-(test.bottom_unit - yt) // inst_spy))
+        ny1 = min(self.ny - 1, (test.top_unit - yb) // inst_spy)
+        orient = self._orient
+        x0, y0 = self._loc_unit
+        if (orient == 'R90' or orient == 'R270' or
+                orient == 'MXR90' or orient == 'MYR90'):
+            spx, spy = spy, spx
+        for row in range(ny0, ny1 + 1):
+            for col in range(nx0, nx1 + 1):
+                dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
+                loc = dx + x0, dy + y0
+                inv_loc, inv_orient = get_inverse_transform(loc, orient)
+                cur_box = test_box.transform(inv_loc, inv_orient, unit_mode=True)
+                for box in self._master.blockage_iter(layer_id, cur_box, spx=spx, spy=spy):
+                    yield box.transform(loc, orient, unit_mode=True)
+
+    def all_rect_iter(self):
+        # type: () -> Generator[Tuple[BBox, int, int], None, None]
+        if self.destroyed:
+            return
+
+        orient = self._orient
+        x0, y0 = self._loc_unit
+        flip = (orient == 'R90' or orient == 'R270' or orient == 'MXR90' or orient == 'MYR90')
+        for layer_id, box, sdx, sdy in self._master.all_rect_iter():
+            if flip:
+                sdx, sdy = sdy, sdx
+            for row in range(self.ny):
+                for col in range(self.nx):
+                    dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
+                    loc = dx + x0, dy + y0
+                    yield layer_id, box.transform(loc, orient, unit_mode=True), sdx, sdy
+
+    def intersection_rect_iter(self, layer_id, test_box):
+        # type: () -> Generator[BBox, None, None]
+        if self.destroyed:
+            return
+
+        base_box = self._master.get_track_bbox(layer_id)
+        if not base_box.is_physical():
+            return
+        base_box = self.translate_master_box(base_box)
+
+        inst_spx = max(self.spx_unit, 1)
+        inst_spy = max(self.spy_unit, 1)
+        xl = base_box.left_unit
+        yb = base_box.bottom_unit
+        xr = base_box.right_unit
+        yt = base_box.top_unit
+        nx0 = max(0, -(-(test_box.left_unit - xr) // inst_spx))
+        nx1 = min(self.nx - 1, (test_box.right_unit - xl) // inst_spx)
+        ny0 = max(0, -(-(test_box.bottom_unit - yt) // inst_spy))
+        ny1 = min(self.ny - 1, (test_box.top_unit - yb) // inst_spy)
+        orient = self._orient
+        x0, y0 = self._loc_unit
+        for row in range(ny0, ny1 + 1):
+            for col in range(nx0, nx1 + 1):
+                dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
+                loc = dx + x0, dy + y0
+                inv_loc, inv_orient = get_inverse_transform(loc, orient)
+                cur_box = test_box.transform(inv_loc, inv_orient, unit_mode=True)
+                for box in self._master.intersection_rect_iter(layer_id, cur_box):
+                    yield box.transform(loc, orient, unit_mode=True)
 
     def get_rect_bbox(self, layer):
         """Returns the overall bounding box of all rectangles on the given layer.
@@ -501,7 +560,15 @@ class Instance(Arrayable):
         bbox = self._master.get_rect_bbox(layer)
         if not bbox.is_valid():
             return bbox
-        return self.translate_master_box(bbox)
+        box_arr = BBoxArray(self.translate_master_box(bbox), nx=self.nx, ny=self.ny,
+                            spx=self.spx_unit, spy=self.spy_unit, unit_mode=True)
+        return box_arr.get_overall_bbox()
+
+    def track_bbox_iter(self):
+        for layer_id, bbox in self._master.track_bbox_iter():
+            box_arr = BBoxArray(self.translate_master_box(bbox), nx=self.nx, ny=self.ny,
+                                spx=self.spx_unit, spy=self.spy_unit, unit_mode=True)
+            yield layer_id, box_arr.get_overall_bbox()
 
     @property
     def master(self):
@@ -584,6 +651,19 @@ class Instance(Arrayable):
         master_box = getattr(self._master, 'array_box', None)  # type: BBox
         if master_box is None:
             raise ValueError('Master template array box is not defined.')
+
+        box_arr = BBoxArray(master_box, nx=self.nx, ny=self.ny,
+                            spx=self._spx_unit, spy=self._spy_unit, unit_mode=True)
+        return box_arr.get_overall_bbox().transform(self.location_unit, self.orientation,
+                                                    unit_mode=True)
+
+    @property
+    def fill_box(self):
+        # type: () -> BBox
+        """Returns the array box of this instance."""
+        master_box = getattr(self._master, 'fill_box', None)  # type: BBox
+        if master_box is None:
+            raise ValueError('Master template fill box is not defined.')
 
         box_arr = BBoxArray(master_box, nx=self.nx, ny=self.ny,
                             spx=self._spx_unit, spy=self._spy_unit, unit_mode=True)
@@ -704,13 +784,12 @@ class Instance(Arrayable):
         """
         dx, dy = self.get_item_location(row=row, col=col, unit_mode=True)
         xshift, yshift = self._loc_unit
-        xshift = (xshift + dx) * self.resolution
-        yshift = (yshift + dy) * self.resolution
-        port = self._master.get_port(name)
-        return port.transform(self._parent_grid, loc=(xshift, yshift), orient=self.orientation)
+        loc = (xshift + dx, yshift + dy)
+        return self._master.get_port(name).transform(self._parent_grid, loc=loc,
+                                                     orient=self.orientation, unit_mode=True)
 
-    def get_pin(self, name='', layer=-1):
-        # type: (Optional[str], int) -> WireArray
+    def get_pin(self, name='', row=0, col=0, layer=-1):
+        # type: (Optional[str], int, int, int) -> Union[WireArray, BBox]
         """Returns the first pin with the given name.
 
         This is an efficient method if you know this instance has exactly one pin.
@@ -720,16 +799,20 @@ class Instance(Arrayable):
         name : Optional[str]
             the port terminal name.  If None or empty, check if this
             instance has only one port, then return it.
+        row : int
+            the instance row index.  Index 0 is the bottom-most row.
+        col : int
+            the instance column index.  Index 0 is the left-most column.
         layer : int
             the pin layer.  If negative, check to see if the given port has only one layer.
             If so then use that layer.
 
         Returns
         -------
-        pin : WireArray
+        pin : Union[WireArray, BBox]
             the first pin associated with the port of given name.
         """
-        port = self.get_port(name, 0, 0)
+        port = self.get_port(name, row, col)
         return port.get_pins(layer)[0]
 
     def get_all_port_pins(self, name='', layer=-1):
@@ -802,6 +885,11 @@ class Instance(Arrayable):
         # type: (str) -> bool
         """Returns True if this instance has the given port."""
         return self._master.has_port(port_name)
+
+    def has_prim_port(self, port_name):
+        # type: (str) -> bool
+        """Returns True if this instance has the given primitive port."""
+        return self._master.has_prim_port(port_name)
 
     def transform(self, loc=(0, 0), orient='R0', unit_mode=False, copy=False):
         # type: (Tuple[ldim, ldim], str, bool, bool) -> Optional[Figure]
@@ -884,6 +972,7 @@ class Rect(Arrayable):
         if isinstance(val, str):
             val = (val, 'drawing')
         self._layer = val[0], val[1]
+        print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
 
     @property
     def bbox(self):
@@ -896,6 +985,7 @@ class Rect(Arrayable):
         self.check_destroyed()
         if not val.is_physical():
             raise ValueError('Bounding box %s is not physical' % val)
+        print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
         self._bbox = val
 
     @property
@@ -924,6 +1014,7 @@ class Rect(Arrayable):
         unit_mode : bool
         True if layout dimensions are specified in resolution units.
         """
+        print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
         self._bbox = self._bbox.move_by(dx=dx, dy=dy, unit_mode=unit_mode)
 
     def extend(self, x=None, y=None):
@@ -936,6 +1027,7 @@ class Rect(Arrayable):
         y : float or None
             if not None, make sure the base rectangle overlaps this Y coordinate.
         """
+        print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
         self._bbox = self._bbox.extend(x=x, y=y)
 
     def transform(self, loc=(0, 0), orient='R0', unit_mode=False, copy=False):
@@ -943,11 +1035,18 @@ class Rect(Arrayable):
         """Transform this figure."""
         new_box = self._bbox.transform(loc=loc, orient=orient, unit_mode=unit_mode)
         if copy:
+            print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
             self._bbox = new_box
             return self
         else:
             return Rect(self._layer, new_box, nx=self.nx, ny=self.ny, spx=self.spx_unit,
                         spy=self.spy_unit, unit_mode=True)
+
+    def destroy(self):
+        # type: () -> None
+        """Destroy this instance."""
+        print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
+        Arrayable.destroy(self)
 
 
 class Path(Figure):
@@ -1287,6 +1386,7 @@ class Polygon(Figure):
     unit_mode : bool
         True if the points are given in resolution units.
     """
+
     def __init__(self,
                  resolution,  # type: float
                  layer,  # type: Union[str, Tuple[str, str]]
@@ -1378,6 +1478,7 @@ class Blockage(Polygon):
     unit_mode : bool
         True if the points are given in resolution units.
     """
+
     def __init__(self, resolution, block_type, block_layer, points, unit_mode=False):
         # type: (float, str, str, List[Tuple[Union[float, int], Union[float, int]]], bool) -> None
         Polygon.__init__(self, resolution, block_layer, points, unit_mode=unit_mode)
@@ -1422,6 +1523,7 @@ class Boundary(Polygon):
     unit_mode : bool
         True if the points are given in resolution units.
     """
+
     def __init__(self, resolution, boundary_type, points, unit_mode=False):
         # type: (float, str, List[Tuple[Union[float, int], Union[float, int]]], bool) -> None
         Polygon.__init__(self, resolution, ('', ''), points, unit_mode=unit_mode)

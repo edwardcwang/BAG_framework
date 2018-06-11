@@ -3,7 +3,7 @@
 """This module defines the RoutingGrid class.
 """
 
-from typing import TYPE_CHECKING, Sequence, Union, Tuple, List, Optional, Dict
+from typing import TYPE_CHECKING, Sequence, Union, Tuple, List, Optional, Dict, Any
 
 import numpy as np
 
@@ -73,6 +73,7 @@ class RoutingGrid(object):
         self._resolution = tech_info.resolution
         self._layout_unit = tech_info.layout_unit
         self._flip_parity = {}
+        self._ignore_layers = set()
         self.layers = []
         self.sp_tracks = {}
         self.w_tracks = {}
@@ -163,7 +164,7 @@ class RoutingGrid(object):
                            orient,  # type: str
                            unit_mode=False,  # type: bool
                            ):
-        # type: (...) -> Dict[int, bool]
+        # type: (...) -> Dict[int, Tuple[int, int]]
         """Compute the flip parity dictionary for an instance placed at the given location.
 
         Parameters
@@ -178,6 +179,11 @@ class RoutingGrid(object):
             the instance orientation.
         unit_mode : bool
             True if loc is given in resolution units.
+
+        Returns
+        -------
+        flip_parity : Dict[int, Tuple[int, int]]
+            the flip_parity dictionary.
         """
         if unit_mode:
             xo, yo = loc
@@ -254,11 +260,13 @@ class RoutingGrid(object):
         top_private_layer = self.top_private_layer
 
         # update private block pitches
-        lay_list = [lay for lay in self.layers if lay <= top_private_layer]
+        lay_list = [lay for lay in self.layers
+                    if lay <= top_private_layer and lay not in self._ignore_layers]
         self._update_block_pitch_helper(lay_list)
 
         # update public block pitches
-        lay_list = [lay for lay in self.layers if lay > top_private_layer]
+        lay_list = [lay for lay in self.layers
+                    if lay > top_private_layer and lay not in self._ignore_layers]
         self._update_block_pitch_helper(lay_list)
 
     def _update_block_pitch_helper(self, lay_list):
@@ -446,9 +454,41 @@ class RoutingGrid(object):
         else:
             return min_length
 
+    def get_space(self, layer_id, width_ntr, same_color=False, unit_mode=False):
+        # type: (int, int, bool, bool) -> Union[int, float]
+        """Returns the space needed around a track, in layout/resolution units.
+
+        Parameters
+        ----------
+        layer_id : int
+            the track layer ID
+        width_ntr : int
+            the track width in number of tracks.
+        same_color : bool
+            True to use same-color spacing.
+        unit_mode : bool
+            True to return resolution units.
+
+        Returns
+        -------
+        sp : Union[int, float]
+            minimum space needed around the given track in layout/resolution units.
+        """
+        layer_name = self.tech_info.get_layer_name(layer_id)
+        if isinstance(layer_name, tuple):
+            layer_name = layer_name[0]
+        layer_type = self.tech_info.get_layer_type(layer_name)
+
+        width = self.get_track_width(layer_id, width_ntr, unit_mode=True)
+        sp_min_unit = self.tech_info.get_min_space(layer_type, width, unit_mode=True,
+                                                   same_color=same_color)
+        if unit_mode:
+            return sp_min_unit
+        return sp_min_unit * self._resolution
+
     def get_num_space_tracks(self, layer_id, width_ntr, half_space=False, same_color=False):
         # type: (int, int, bool, bool) -> Union[int, float]
-        """Returns the number of tracks needed to reserve for space around a track of the given width.
+        """Returns the number of tracks needed for space around a track of the given width.
 
         In advance technologies, metal spacing is often a function of the metal width, so for a
         a wide track we may need to reserve empty tracks next to this.  This method computes the
@@ -470,14 +510,8 @@ class RoutingGrid(object):
         num_sp_tracks : Union[int, float]
             minimum space needed around the given track in number of tracks.
         """
-        layer_name = self.tech_info.get_layer_name(layer_id)
-        if isinstance(layer_name, tuple):
-            layer_name = layer_name[0]
-        layer_type = self.tech_info.get_layer_type(layer_name)
-
         width = self.get_track_width(layer_id, width_ntr, unit_mode=True)
-        sp_min_unit = self.tech_info.get_min_space(layer_type, width, unit_mode=True,
-                                                   same_color=same_color)
+        sp_min_unit = self.get_space(layer_id, width_ntr, same_color=same_color, unit_mode=True)
         w_unit = self.w_tracks[layer_id]
         sp_unit = self.sp_tracks[layer_id]
         # if this width is overridden, we may have extra space
@@ -673,10 +707,10 @@ class RoutingGrid(object):
 
         # get bottom layer that has different direction
         bot_layer = layer_id - 1
-        while bot_layer in self.dir_tracks and self.dir_tracks[bot_layer] == top_dir:
+        while bot_layer in self.block_pitch and self.dir_tracks[bot_layer] == top_dir:
             bot_layer -= 1
 
-        if bot_layer not in self.dir_tracks:
+        if bot_layer not in self.block_pitch:
             bot_pitch = (2, 1)
         else:
             bot_pitch = self.block_pitch[bot_layer]
@@ -698,6 +732,60 @@ class RoutingGrid(object):
             return w_pitch, h_pitch
         else:
             return w_pitch * self.resolution, h_pitch * self.resolution
+
+    def get_fill_size(self,  # type: RoutingGrid
+                      top_layer,  # type: int
+                      fill_config,  # type: Dict[int, Tuple[int, int, int, int]]
+                      unit_mode=False,  # type: bool
+                      include_private=False,  # type: bool
+                      half_blk_x=True,  # type: bool
+                      half_blk_y=True,  # type: bool
+                      ):
+        # type: (...) -> Tuple[Union[float, int], Union[float, int]]
+        """Returns unit block size given the top routing layer and power fill configuration.
+
+        Parameters
+        ----------
+        top_layer : int
+            the top layer ID.
+        fill_config : Dict[int, Tuple[int, int, int, int]]
+            the fill configuration dictionary.
+        unit_mode : bool
+            True to return block dimension in resolution units.
+        include_private : bool
+            True to include private layers in block size calculation.
+        half_blk_x : bool
+            True to allow half-block widths.
+        half_blk_y : bool
+            True to allow half-block heights.
+
+        Returns
+        -------
+        block_width : Union[float, int]
+            the block width in layout units.
+        block_height : Union[float, int]
+            the block height in layout units.
+        """
+        blk_w, blk_h = self.get_block_size(top_layer, unit_mode=True,
+                                           include_private=include_private,
+                                           half_blk_x=half_blk_x, half_blk_y=half_blk_y)
+
+        w_list = [blk_w]
+        h_list = [blk_h]
+        for lay, (tr_w, tr_sp, _, _) in fill_config.items():
+            if lay <= top_layer:
+                cur_pitch = self.get_track_pitch(lay, unit_mode=True)
+                cur_dim = (tr_w + tr_sp) * cur_pitch * 2
+                if self.get_direction(lay) == 'x':
+                    h_list.append(cur_dim)
+                else:
+                    w_list.append(cur_dim)
+
+        blk_w = lcm(w_list)
+        blk_h = lcm(h_list)
+        if unit_mode:
+            return blk_w, blk_h
+        return blk_w * self._resolution, blk_h * self._resolution
 
     def size_defined(self, layer_id):
         # type: (int) -> bool
@@ -1060,9 +1148,9 @@ class RoutingGrid(object):
                 continue
             if bot_w > 0 and bot_dir != tr_dir:
                 if tr_dir == 'x':
-                    bbox = BBox(0.0, 0.0, bot_w, width, res, unit_mode=True)
+                    bbox = BBox(0, 0, bot_w, width, res, unit_mode=True)
                 else:
-                    bbox = BBox(0.0, 0.0, width, bot_w, res, unit_mode=True)
+                    bbox = BBox(0, 0, width, bot_w, res, unit_mode=True)
                 vinfo = self.tech_info.get_via_info(bbox, bot_layer_name, layer_name,
                                                     bot_dir, **kwargs)
                 if (vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or
@@ -1071,9 +1159,9 @@ class RoutingGrid(object):
                     continue
             if top_w > 0 and top_dir != tr_dir:
                 if tr_dir == 'x':
-                    bbox = BBox(0.0, 0.0, top_w, width, res, unit_mode=True)
+                    bbox = BBox(0, 0, top_w, width, res, unit_mode=True)
                 else:
-                    bbox = BBox(0.0, 0.0, width, top_w, res, unit_mode=True)
+                    bbox = BBox(0, 0, width, top_w, res, unit_mode=True)
                 vinfo = self.tech_info.get_via_info(bbox, layer_name, top_layer_name,
                                                     tr_dir, **kwargs)
                 if (vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or
@@ -1434,6 +1522,36 @@ class RoutingGrid(object):
         else:
             return q / 2
 
+    def coord_to_nearest_fill_track(self, layer_id, coord, fill_config, mode=0,
+                                    unit_mode=False):
+        # type: (int, Union[float, int], Dict[int, Any], int, bool) -> Union[float, int]
+
+        if not unit_mode:
+            coord = int(round(coord / self._resolution))
+
+        tr_w, tr_sp, _, _ = fill_config[layer_id]
+
+        num_htr = int(round(2 * (tr_w + tr_sp)))
+        fill_pitch = num_htr * self.get_track_pitch(layer_id, unit_mode=True) // 2
+        fill_pitch2 = fill_pitch // 2
+        fill_q, fill_r = divmod(coord - fill_pitch2, fill_pitch)
+
+        if fill_r == 0:
+            # exactly on track
+            if mode == -2:
+                # move to lower track
+                fill_q -= 1
+            elif mode == 2:
+                # move to upper track
+                fill_q += 1
+        else:
+            # not on track
+            if mode > 0 or (mode == 0 and fill_r >= fill_pitch2):
+                # round up
+                fill_q += 1
+
+        return self.coord_to_track(layer_id, fill_q * fill_pitch + fill_pitch2, unit_mode=True)
+
     def transform_track(self,  # type: RoutingGrid
                         layer_id,  # type: int
                         track_idx,  # type: Union[float, int]
@@ -1479,10 +1597,10 @@ class RoutingGrid(object):
             hidx_scale = 1
         elif orient == 'R180':
             hidx_scale = -1
-        elif orient == 'MX' and is_x:
-            hidx_scale = -1
-        elif orient == 'MY' and not is_x:
-            hidx_scale = -1
+        elif orient == 'MX':
+            hidx_scale = -1 if is_x else 1
+        elif orient == 'MY':
+            hidx_scale = 1 if is_x else -1
         else:
             raise ValueError('Unsupported orientation: %s' % orient)
 
@@ -1575,6 +1693,7 @@ class RoutingGrid(object):
         attrs['_resolution'] = self._resolution
         attrs['_layout_unit'] = self._layout_unit
         attrs['_flip_parity'] = self._flip_parity.copy()
+        attrs['_ignore_layers'] = self._ignore_layers.copy()
         attrs['layers'] = list(self.layers)
         attrs['sp_tracks'] = self.sp_tracks.copy()
         attrs['dir_tracks'] = self.dir_tracks.copy()
@@ -1589,26 +1708,19 @@ class RoutingGrid(object):
 
         return result
 
-    def remove_layers_under(self, layer_id):
+    def ignore_layers_under(self, layer_id):
         # type: (int) -> None
-        """Remove all routing layers under the given layer.
+        """Ignore all layers under the given layer (inclusive) when calculating block pitches.
 
         Parameters
         ----------
         layer_id : int
-            all layers under and including this layer will be removed.
+            ignore this layer and below.
         """
-        while self.layers and self.layers[0] <= layer_id:
-            rm_layer = self.layers[0]
-            del self.layers[0]
-            del self.sp_tracks[rm_layer]
-            del self.w_tracks[rm_layer]
-            del self.dir_tracks[rm_layer]
-            del self.block_pitch[rm_layer]
-            self._flip_parity.pop(rm_layer, None)
-            self.offset_tracks.pop(rm_layer, None)
-            self.max_num_tr_tracks.pop(rm_layer, None)
-            self.w_override.pop(rm_layer, None)
+        for lay in self.layers:
+            if lay > layer_id:
+                break
+            self._ignore_layers.add(lay)
 
     def add_new_layer(self, layer_id, tr_space, tr_width, direction,
                       max_num_tr=100, override=False, unit_mode=False, is_private=True):
@@ -1641,6 +1753,8 @@ class RoutingGrid(object):
         is_private : bool
             True if this is a private layer.
         """
+        self._ignore_layers.discard(layer_id)
+
         if not unit_mode:
             sp_unit = 2 * int(round(tr_space / (2 * self.resolution)))
             w_unit = 2 * int(round(tr_width / (2 * self.resolution)))
