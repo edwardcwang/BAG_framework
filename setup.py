@@ -24,6 +24,7 @@ setup(
         'pyzmq>=15.2.0',
         'scipy>=0.17',
         'matplotlib>=1.5',
+        'rtree',
         'h5py',
         'pytest',
     ],

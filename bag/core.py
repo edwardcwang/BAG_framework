@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, Union, Type, Seque
 import os
 import string
 import importlib
+import cProfile
+import pstats
 
 # noinspection PyPackageRequirements
 import yaml
@@ -569,8 +571,9 @@ class BagProject(object):
 
         return self.impl_db.get_cells_in_library(lib_name)
 
-    def make_template_db(self, impl_lib, grid_specs, use_cybagoa=True, gds_lay_file=''):
-        # type: (str, Dict[str, Any], bool, str) -> TemplateDB
+    def make_template_db(self, impl_lib, grid_specs, use_cybagoa=True, gds_lay_file='',
+                         cache_dir=''):
+        # type: (str, Dict[str, Any], bool, str, str) -> TemplateDB
         """Create and return a new TemplateDB instance.
 
         Parameters
@@ -583,6 +586,8 @@ class BagProject(object):
             True to enable cybagoa acceleration if available.
         gds_lay_file : str
             the GDS layout information file.
+        cache_dir : str
+            the cache directory name.
         """
         layers = grid_specs['layers']
         widths = grid_specs['widths']
@@ -593,7 +598,7 @@ class BagProject(object):
         routing_grid = RoutingGrid(self.tech_info, layers, spaces, widths, bot_dir,
                                    width_override=width_override)
         tdb = TemplateDB('template_libs.def', routing_grid, impl_lib, use_cybagoa=use_cybagoa,
-                         gds_lay_file=gds_lay_file)
+                         gds_lay_file=gds_lay_file, cache_dir=cache_dir)
 
         return tdb
 
@@ -603,10 +608,15 @@ class BagProject(object):
                       gen_lay=True,  # type: bool
                       gen_sch=False,  # type: bool
                       run_lvs=False,  # type: bool
+                      run_rcx=False,  # type: bool
                       use_cybagoa=True,  # type: bool
                       debug=False,  # type: bool
+                      profile_fname='',  # type: str
+                      use_cache=False,  # type: bool
+                      save_cache=False,  # type: bool
+                      **kwargs,
                       ):
-        # type: (...) -> None
+        # type: (...) -> Optional[pstats.Stats]
         """Generate layout/schematic of a given cell from specification file.
 
         Parameters
@@ -621,40 +631,85 @@ class BagProject(object):
             True to generate schematics.
         run_lvs : bool
             True to run LVS.
+        run_rcx : bool
+            True to run RCX.
         use_cybagoa : bool
             True to enable cybagoa acceleration if available.
         debug : bool
             True to print debug messages.
+        profile_fname : str
+            If not empty, profile layout generation, and save statistics to this file.
+        use_cache : bool
+            True to use cached layouts.
+        save_cache : bool
+            True to save instances in this template to cache.
+        **kwargs :
+            Additional optional arguments.
+
+        Returns
+        -------
+        stats : pstats.Stats
+            If profiling is enabled, the statistics object.
         """
+        prefix = kwargs.get('prefix', '')
+        suffix = kwargs.get('suffix', '')
+
         impl_lib = specs['impl_lib']
         impl_cell = specs['impl_cell']
         sch_lib = specs['sch_lib']
         sch_cell = specs['sch_cell']
-        gds_lay_file = specs.get('gds_lay_file', '')
         grid_specs = specs['routing_grid']
         params = specs['params']
+        gds_lay_file = specs.get('gds_lay_file', '')
+        cache_dir = specs.get('cache_dir', '')
+        if use_cache:
+            db_cache_dir = specs.get('cache_dir', '')
+        else:
+            db_cache_dir = ''
 
-        temp_db = self.make_template_db(impl_lib, grid_specs, use_cybagoa=use_cybagoa,
-                                        gds_lay_file=gds_lay_file)
+        if gen_lay or gen_sch:
+            temp_db = self.make_template_db(impl_lib, grid_specs, use_cybagoa=use_cybagoa,
+                                            gds_lay_file=gds_lay_file, cache_dir=db_cache_dir)
 
-        name_list = [impl_cell]
-        print('computing layout...')
-        temp = temp_db.new_template(params=params, temp_cls=temp_cls, debug=debug)
-        print('computation done.')
-        temp_list = [temp]
+            name_list = [impl_cell]
+            print('computing layout...')
+            if profile_fname:
+                profiler = cProfile.Profile()
+                profiler.runcall(temp_db.new_template, params=params, temp_cls=temp_cls,
+                                 debug=False)
+                profiler.dump_stats(profile_fname)
+                result = pstats.Stats(profile_fname).strip_dirs()
+            else:
+                result = None
 
-        if gen_lay:
-            print('creating layout...')
-            temp_db.batch_layout(self, temp_list, name_list, debug=debug)
-            print('layout done.')
-        if gen_sch:
-            dsn = self.create_design_module(lib_name=sch_lib, cell_name=sch_cell)
-            print('computing schematic...')
-            dsn.design(**temp.sch_params)
-            print('creating schematic...')
-            dsn.implement_design(impl_lib, top_cell_name=impl_cell)
-            print('schematic done.')
-        if run_lvs:
+            temp = temp_db.new_template(params=params, temp_cls=temp_cls, debug=debug)
+            print('computation done.')
+            temp_list = [temp]
+
+            if save_cache and cache_dir:
+                master_list = [inst.master for inst in temp.instance_iter()]
+                print('saving layouts to cache...')
+                temp_db.save_to_cache(master_list, cache_dir, debug=debug)
+                print('saving done.')
+
+            if gen_lay:
+                print('creating layout...')
+                temp_db.batch_layout(self, temp_list, name_list, debug=debug)
+                print('layout done.')
+
+            if gen_sch:
+                dsn = self.create_design_module(lib_name=sch_lib, cell_name=sch_cell)
+                print('computing schematic...')
+                dsn.design(**temp.sch_params)
+                print('creating schematic...')
+                dsn.implement_design(impl_lib, top_cell_name=impl_cell, prefix=prefix,
+                                     suffix=suffix)
+                print('schematic done.')
+        else:
+            result = None
+
+        lvs_passed = False
+        if run_lvs or run_rcx:
             print('running lvs...')
             lvs_passed, lvs_log = self.run_lvs(impl_lib, impl_cell)
             print('LVS log: %s' % lvs_log)
@@ -662,6 +717,16 @@ class BagProject(object):
                 print('LVS passed!')
             else:
                 print('LVS failed...')
+        if lvs_passed and run_rcx:
+            print('running rcx...')
+            rcx_passed, rcx_log = self.run_rcx(impl_lib, impl_cell)
+            print('RCX log: %s' % rcx_log)
+            if rcx_passed:
+                print('RCX passed!')
+            else:
+                print('RCX failed...')
+
+        return result
 
     def create_library(self, lib_name, lib_path=''):
         # type: (str, str) -> None

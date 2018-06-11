@@ -5,6 +5,8 @@
 
 from typing import Tuple, Union, Generator, Dict, List, Sequence
 
+import numbers
+
 from ...util.search import BinaryIterator
 from ..util import BBox, BBoxArray
 from .grid import RoutingGrid
@@ -76,6 +78,11 @@ class TrackID(object):
         return (self._hidx - 1) / 2
 
     @property
+    def index_htr(self):
+        # type: () -> int
+        return self._hidx
+
+    @property
     def num(self):
         # type: () -> int
         return self._n
@@ -86,6 +93,11 @@ class TrackID(object):
         if self._hpitch % 2 == 0:
             return self._hpitch // 2
         return self._hpitch / 2
+
+    @property
+    def pitch_htr(self):
+        # type: () -> int
+        return self._hpitch
 
     def get_immutable_key(self):
         return self.__class__.__name__, self._layer_id, self._hidx, self._w, self._n, self._hpitch
@@ -110,9 +122,10 @@ class TrackID(object):
         """
         lower, upper = grid.get_wire_bounds(self.layer_id, self.base_index,
                                             width=self.width, unit_mode=True)
-        upper += (self.num - 1) * self.pitch * grid.get_track_pitch(self._layer_id, unit_mode=True)
+        pitch_dim = (self._hpitch * grid.get_track_pitch(self._layer_id, unit_mode=True)) // 2
+        upper += (self.num - 1) * pitch_dim
         if unit_mode:
-            return lower, int(upper)
+            return lower, upper
         else:
             res = grid.resolution
             return lower * res, upper * res
@@ -273,20 +286,22 @@ class WireArray(object):
         # type: (List[WireArray]) -> WireArray
         """Convert a list of WireArrays to a single WireArray.
 
-        this method assumes all WireArrays have the same layer and lower and upper coordinates.
+        this method assumes all WireArrays have the same layer, width, and lower/upper coordinates.
         Overlapping WireArrays will be compacted.
         """
         if len(warr_list) == 1:
             return warr_list[0]
 
-        layer = warr_list[0].layer_id
+        tid0 = warr_list[0].track_id
+        layer = tid0.layer_id
+        width = tid0.width
         res = warr_list[0].resolution
         lower, upper = warr_list[0].lower_unit, warr_list[0].upper_unit
         tid_list = sorted(set((int(idx * 2) for warr in warr_list for idx in warr.track_id)))
         base_idx2 = tid_list[0]
         base_idx = base_idx2 // 2 if base_idx2 % 2 == 0 else base_idx2 / 2
         if len(tid_list) < 2:
-            return WireArray(TrackID(layer, base_idx), lower, upper,
+            return WireArray(TrackID(layer, base_idx, width=width), lower, upper,
                              res=res, unit_mode=True)
         diff = tid_list[1] - tid_list[0]
         for idx in range(1, len(tid_list) - 1):
@@ -294,19 +309,31 @@ class WireArray(object):
                 raise ValueError('pitch mismatch.')
         pitch = diff // 2 if diff % 2 == 0 else diff / 2
 
-        return WireArray(TrackID(layer, base_idx, num=len(tid_list), pitch=pitch), lower, upper,
-                         res=res, unit_mode=True)
+        return WireArray(TrackID(layer, base_idx, width=width, num=len(tid_list), pitch=pitch),
+                         lower, upper, res=res, unit_mode=True)
+
+    @classmethod
+    def single_warr_iter(cls, warr):
+        if isinstance(warr, WireArray):
+            yield from warr.warr_iter()
+        else:
+            for w in warr:
+                yield from w.warr_iter()
 
     def get_immutable_key(self):
         return (self.__class__.__name__, self._track_id.get_immutable_key(), self._lower_unit,
                 self._upper_unit, self._res)
 
     def to_warr_list(self):
+        return list(self.warr_iter())
+
+    def warr_iter(self):
         tid = self._track_id
         layer = tid.layer_id
         width = tid.width
-        return [WireArray(TrackID(layer, tr, width=width), self._lower_unit,
-                          self._upper_unit, res=self._res, unit_mode=True) for tr in tid]
+        for tr in tid:
+            yield WireArray(TrackID(layer, tr, width=width), self._lower_unit,
+                            self._upper_unit, res=self._res, unit_mode=True)
 
     def get_bbox_array(self, grid):
         # type: ('RoutingGrid') -> BBoxArray
@@ -327,14 +354,14 @@ class WireArray(object):
         layer_id = track_id.layer_id
         base_idx = track_id.base_index
         num = track_id.num
-        pitch = track_id.pitch
 
         base_box = grid.get_bbox(layer_id, base_idx, self._lower_unit, self._upper_unit,
                                  width=tr_w, unit_mode=True)
+        tot_pitch = (track_id.pitch_htr * grid.get_track_pitch(layer_id, unit_mode=True)) // 2
         if grid.get_direction(layer_id) == 'x':
-            return BBoxArray(base_box, ny=num, spy=pitch * grid.get_track_pitch(layer_id))
+            return BBoxArray(base_box, ny=num, spy=tot_pitch, unit_mode=True)
         else:
-            return BBoxArray(base_box, nx=num, spx=pitch * grid.get_track_pitch(layer_id))
+            return BBoxArray(base_box, nx=num, spx=tot_pitch, unit_mode=True)
 
     def wire_iter(self, grid):
         """Iterate over all wires in this WireArray as layer/BBox pair.
@@ -386,7 +413,7 @@ class WireArray(object):
             base_idx = track_idx.base_index
             cur_layer = grid.get_layer_name(layer_id, base_idx)
             cur_num = track_idx.num
-            wire_pitch = track_idx.pitch * track_pitch
+            wire_pitch = (track_idx.pitch_htr * track_pitch) // 2
             tl, tu = grid.get_wire_bounds(layer_id, base_idx, width=tr_width, unit_mode=True)
             if is_x:
                 base_box = BBox(self._lower_unit, tl, self._upper_unit, tu, res, unit_mode=True)
@@ -463,17 +490,22 @@ class Port(object):
 
         the iteration order is not guaranteed.
         """
-        for wire_arr_list in self._pin_dict.values():
-            for wire_arr in wire_arr_list:
-                yield wire_arr
+        for geo_list in self._pin_dict.values():
+            yield from geo_list
+
+    def get_single_layer(self):
+        # type: () -> Union[int, str]
+        """Returns the layer of this port if it only has a single layer."""
+        if len(self._pin_dict) > 1:
+            raise ValueError('This port has more than one layer.')
+        return next(iter(self._pin_dict))
 
     def _get_layer(self, layer):
         """Get the layer number."""
-        if layer < 0:
-            if len(self._pin_dict) > 1:
-                raise ValueError('This port has more than one layer.')
-            layer = next(iter(self._pin_dict))
-        return layer
+        if isinstance(layer, numbers.Integral):
+            return self.get_single_layer() if layer < 0 else layer
+        else:
+            return self.get_single_layer() if not layer else layer
 
     @property
     def net_name(self):
@@ -496,11 +528,11 @@ class Port(object):
 
         Returns
         -------
-        track_bus_list : list[:class:`~bag.layout.routing.WireArray`]
+        track_bus_list : Union[WireArray, BBox]
             pins on the given layer representing as WireArrays.
         """
-        layer_id = self._get_layer(layer)
-        return self._pin_dict.get(layer_id, [])
+        layer = self._get_layer(layer)
+        return self._pin_dict.get(layer, [])
 
     def get_bounding_box(self, grid, layer=-1):
         """Calculate the overall bounding box of this port on the given layer.
@@ -515,29 +547,47 @@ class Port(object):
 
         Returns
         -------
-        bbox : :class:`~bag.layout.util.BBox`
+        bbox : BBox
             the bounding box.
         """
         layer = self._get_layer(layer)
         box = BBox.get_invalid_bbox()
-        for warr in self._pin_dict[layer]:
-            box = box.merge(warr.get_bbox_array(grid).get_overall_bbox())
+        for geo in self._pin_dict[layer]:
+            if isinstance(geo, BBox):
+                box = box.merge(geo)
+            else:
+                box = box.merge(geo.get_bbox_array(grid).get_overall_bbox())
         return box
 
-    def transform(self, grid, loc=(0, 0), orient='R0'):
+    def transform(self, grid, loc=(0, 0), orient='R0', unit_mode=False):
+        # type: (RoutingGrid, Tuple[Union[float, int], Union[float, int]], str, bool) -> Port
         """Return a new transformed Port.
 
         Parameters
         ----------
-        grid : :class:`bag.layout.routing.RoutingGrid`
+        grid : RoutingGrid
             the RoutingGrid of this Port.
-        loc : tuple(float, float)
+        loc : Tuple[Union[float, int], Union[float, int]]
             the X/Y coordinate shift.
-        orient : string
+        orient : str
             the new orientation.
+        unit_mode: bool
+            True if location is in resolution units.
         """
-        new_pin_dict = {lay: [wa.transform(grid, loc=loc, orient=orient) for wa in wa_list]
-                        for lay, wa_list in self._pin_dict.items()}
+        if not unit_mode:
+            res = grid.resolution
+            loc = (int(round(loc[0] / res)), int(round(loc[1] / res)))
+
+        new_pin_dict = {}
+        for lay, geo_list in self._pin_dict.items():
+            new_geo_list = []
+            for geo in geo_list:
+                if isinstance(geo, BBox):
+                    new_geo_list.append(geo.transform(loc=loc, orient=orient, unit_mode=True))
+                else:
+                    new_geo_list.append(geo.transform(grid, loc=loc, orient=orient, unit_mode=True))
+            new_pin_dict[lay] = new_geo_list
+
         return Port(self._term_name, new_pin_dict, label=self._label)
 
 
@@ -831,6 +881,7 @@ class TrackManager(object):
                      alignment=0,  # type: int
                      start_idx=0,  # type: Union[float, int]
                      max_sp=10000,  # type: int
+                     sp_override=None,
                      ):
         # type: (...) -> List[Union[float, int]]
         """Spread out the given wires in the given space.
@@ -856,13 +907,19 @@ class TrackManager(object):
             the starting track index.
         max_sp : int
             maximum space.
+        sp_override :
+            tracking spacing override dictionary.
 
         Returns
         -------
         locations : List[Union[float, int]]
             the center track index of each wire.
         """
-        sp_override = {sp_type: {layer_id: 0}}
+        if not sp_override:
+            sp_override = {sp_type: {layer_id: 0}}
+        else:
+            sp_override = sp_override.copy()
+            sp_override[sp_type] = {layer_id: 0}
         cur_sp = int(round(2 * self.get_space(layer_id, sp_type)))
         bin_iter = BinaryIterator(cur_sp, None)
         while bin_iter.has_next():
@@ -877,6 +934,9 @@ class TrackManager(object):
             else:
                 bin_iter.save_info(tmp)
                 bin_iter.up()
+
+        if bin_iter.get_last_save_info() is None:
+            raise ValueError('No solution found.')
 
         num_used, idx_list = bin_iter.get_last_save_info()
         delta = self._get_align_delta(tot_ntr, num_used, alignment)
