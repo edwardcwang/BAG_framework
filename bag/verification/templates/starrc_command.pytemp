@@ -1,0 +1,146 @@
+************************************************************************************
+* The information contained herein is confidential and is the property of          *
+* GLOBALFOUNDRIES and/or its licensors.  GLOBALFOUNDRIES reserves all              *
+* proprietary, design, manufacturing, reproduction, use, sales and other rights    *
+* in the information herein, in its products and services, and to any article or   *
+* process utilizing such information, except to the extent that rights are         *
+* expressly granted to others.                                                     *
+*                                                                                  *
+* This document is for informational purposes only, is current only as of the      *
+* date of publication and is subject to change by GLOBALFOUNDRIES at any time      *
+* without notice.  While precautions have been taken in the preparation of the     *
+* information herein, it may contain technical inaccuracies, omissions and         *
+* typographical errors. GLOBALFOUNDRIES is under no obligation to update or        *
+* otherwise correct this information.                                              *
+*                                                                                  *
+* All information contained herein is provided "AS IS."  GLOBALFOUNDRIES MAKES     *
+* NO REPRESENTATIONS AND DISCLAIMS ALL WARRANTIES OF ANY KIND, EXPRESS OR          *
+* IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OF                  *
+* NONINFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE, WITH       *
+* RESPECT TO THE INFORMATION CONTAINED HEREIN.                                     *
+*                                                                                  *
+* Terms and conditions applicable to the purchase, quality and use of              *
+* GLOBALFOUNDRIES' products and services are as set forth in your organization's   *
+* signed agreement with GLOBALFOUNDRIES or in GLOBALFOUNDRIES' Standard Terms      *
+* and Conditions of Sale.  Unless otherwise authorized in a signed agreement       *
+* with GLOBALFOUNDRIES, GLOBALFOUNDRIES' products and services are NOT intended    *
+* for use in applications such as implantation, life support, or other hazardous   *
+* uses where malfunction could result in death, bodily injury, or catastrophic     *
+* property damage.                                                                 *
+*                                                                                  *
+* GLOBALFOUNDRIES, the GLOBALFOUNDRIES logo and combinations thereof are           *
+* trademarks of GLOBALFOUNDRIES Inc. in the United States and/or other             *
+* jurisdictions. Other product or service names are for identification purposes    *
+* only and may be trademarks or service marks of their respective owners.          *
+*                                                                                  *
+* (c) GLOBALFOUNDRIES Inc. 2016. Unless otherwise indicated, all rights reserved.  *
+* Do not copy or redistribute except as expressly permitted by GLOBALFOUNDRIES.    *
+************************************************************************************
+
+*StarRC template for 14LPP
+
+**************************************
+* Star-RCXT command file sample      *
+**************************************
+
+*ICV_RUNSET_REPORT_FILE:         * for ICV LVS
+*ICV_ANNOTATION_FILE:            * for ICV LVS
+
+CALIBRE_RUNSET : {{runset_path}}           	* for Calibre LVS
+*=> CALIBRE_RUNSET is not supported from post V1.3, LVS REPORT SETTINGS flow is supported in query.input file.
+CALIBRE_QUERY_FILE :  {{query_input}}	* for Calibre LVS
+*CALIBRE_PDBA_FILE : {{pdsp}}			* for Calibre LVS
+*=> If LVS_PUSH_DEVICES is set to TRUE during CalibreLVS, pdsp file needs to be specified.
+
+BLOCK: {{cell_name}}
+TCAD_GRD_FILE: {{tcad_grd_file}}
+MAPPING FILE: {{mapping_file}}
+TRANSLATE_RETAIN_BULK_LAYERS: YES
+NETLIST_PASSIVE_PARAMS: YES
+
+** Cof hanled by PEX **
+** Following setting should be observed
+IGNORE_CAPACITANCE: ALL RETAIN_GATE_DIFFUSION_COUPLING
+HIERARCHICAL_SEPARATOR: |
+
+EXTRACTION: {{extract_type}}
+*MODE: 400
+COUPLE_TO_GROUND:	NO
+COUPLING_ABS_THRESHOLD:	0
+COUPLING_REL_THRESHOLD:	0
+COUPLING_REPORT_FILE:
+NETLIST_FORMAT:
+SKIP_CELLS:	!*
+XREF:			YES
+OPERATING_TEMPERATURE:
+NETLIST_INSTANCE_SECTION:
+REDUCTION:		HIGH
+*|YES|LAYER|NO
+NETLIST_SUBCKT:
+CASE_SENSITIVE:
+POWER_EXTRACT:		YES
+*|NO|RONLY|DEVICE_LAYERS
+EXTRACT_VIA_CAPS: YES
+EXTRACT_RES_BODY_COUPLING: YES
+HN_NETLIST_SPICE_TYPE: <device> X
+TRENCH_CONTACT_VIRTUAL_VIA_SEGMENTATION_RATIO: 1
+
+REFERENCE_DIRECTION: VERTICAL
+*=> VERTICAL|HORIZONTAL, PC direction
+
+
+TRANSLATE_FLOATING_AS_FILL: 	YES
+*=> YES is recommended for Calibre LVS to StarRC
+
+*ANALOG_SYMMETRIC_NETS:		YES
+*|NO
+*=> YES could be accurate for certain cells but will take more run-time
+
+MULTIGATE_MODELS: YES
+
+
+*DPT: YES
+*=> If DPT corner is used, this command needs to be set to YES.
+
+
+LPE_PARAM : pre_layout_local  RC 0 NORC 1 R 2 C 3 PINOPERATION OR PINEXCEPT 3
+LPE_DEVICES : pre_layout_local nfet pfet lvtnfet lvtpfet slvtnfet slvtpfet egnfet egpfet egvnfet egvpfet egunfet egupfet hvtnfet hvtpfet
+LPE_DEVICES : pre_layout_local nfet_flt pfet_flt lvtnfet_flt lvtpfet_flt slvtnfet_flt slvtpfet_flt egnfet_flt egpfet_flt egvnfet_flt egvpfet_flt egunfet_flt egupfet_flt hvtnfet_flt
+LPE_DEVICES : pre_layout_local nfet_tied pfet_tied lvtnfet_tied lvtpfet_tied slvtnfet_tied slvtpfet_tied egnfet_tied egpfet_tied egvnfet_tied egvpfet_tied egunfet_tied hvtnfet_tied
+LPE_DEVICES : pre_layout_local dswnfetpd dswnfetwl dswpfetpu lshnfetpd lshnfetwl lshpfetpu lslnfetpd lslnfetwl lslpfetpu lsmnfetpd lsmnfetwl lsmpfetpu lsnnfetpd lsnnfetwl lsnpfetpu
+LPE_DEVICES : pre_layout_local esdvpnp esdvpnp_eg esdndsx esdndsx_eg tcmnfetwl tcmnfetpd tcmpfetpu tcmnfet rmres nfetrfe nfetrfe_6t lvtnfetrfe lvtnfetrfe_6t egvnfetrfe egvnfetrfe_6t egunfetrfe egunfetrfe_6t egnfetrfe egnfetrfe_6t pfetrfe pfetrfe_5t lvtpfetrfe lvtpfetrfe_5t egvpfetrfe egvpfetrfe_5t egupfetrfe egupfetrfe_5t egpfetrfe egpfetrfe_5t
+
+LPE_PARAM : pre_layout_local_rd  RC 0 NORC 1 R 0 C 1 PINOPERATION OR PINEXCEPT 1 2 3
+LPE_DEVICES : pre_layout_local_rd nfet_flt nfet_tied nfet nfet lvtnfet_flt lvtnfet_tied lvtnfet lvtnfet hvtnfet_flt hvtnfet_tied hvtnfet hvtnfet slvtnfet_flt slvtnfet_tied slvtnfet slvtnfet egvnfet_flt egvnfet_tied egvnfet egvnfet egunfet_flt egunfet_tied egunfet egunfet egnfet_flt egnfet_tied egnfet egnfet pfet_flt pfet_tied pfet lvtpfet_flt lvtpfet_tied lvtpfet hvtpfet_flt hvtpfet_tied hvtpfet slvtpfet_flt slvtpfet_tied slvtpfet egvpfet_flt egvpfet_tied egvpfet egupfet_flt egupfet_tied egupfet egpfet_flt egpfet_tied egpfet lshnfetwl lshnfetpd lshpfetpu dswnfetwl dswnfetpd dswpfetpu dplnfetwl dplnfetpd dplpfetpu lslnfetwl lslnfetpd lslpfetpu lslnfet tcmnfetwl tcmnfetpd tcmpfetpu tcmnfet nfetrfe nfetrfe_6t lvtnfetrfe lvtnfetrfe_6t egvnfetrfe egvnfetrfe_6t egunfetrfe egunfetrfe_6t egnfetrfe egnfetrfe_6t pfetrfe pfetrfe_5t lvtpfetrfe lvtpfetrfe_5t egvpfetrfe egvpfetrfe_5t egupfetrfe egupfetrfe_5t egpfetrfe egpfetrfe_5t
+LPE_PARAM : pre_layout_local_rs  RC 0 NORC 1 R 0 C 1 PINOPERATION OR PINEXCEPT 0 1 3
+LPE_DEVICES : pre_layout_local_rs nfet_flt nfet_tied nfet nfet lvtnfet_flt lvtnfet_tied lvtnfet lvtnfet hvtnfet_flt hvtnfet_tied hvtnfet hvtnfet slvtnfet_flt slvtnfet_tied slvtnfet slvtnfet egvnfet_flt egvnfet_tied egvnfet egvnfet egunfet_flt egunfet_tied egunfet egunfet egnfet_flt egnfet_tied egnfet egnfet pfet_flt pfet_tied pfet lvtpfet_flt lvtpfet_tied lvtpfet hvtpfet_flt hvtpfet_tied hvtpfet slvtpfet_flt slvtpfet_tied slvtpfet egvpfet_flt egvpfet_tied egvpfet egupfet_flt egupfet_tied egupfet egpfet_flt egpfet_tied egpfet lshnfetwl lshnfetpd lshpfetpu dswnfetwl dswnfetpd dswpfetpu dplnfetwl dplnfetpd dplpfetpu lslnfetwl lslnfetpd lslpfetpu lslnfet tcmnfetwl tcmnfetpd tcmpfetpu tcmnfet nfetrfe nfetrfe_6t lvtnfetrfe lvtnfetrfe_6t egvnfetrfe egvnfetrfe_6t egunfetrfe egunfetrfe_6t egnfetrfe egnfetrfe_6t pfetrfe pfetrfe_5t lvtpfetrfe lvtpfetrfe_5t egvpfetrfe egvpfetrfe_5t egupfetrfe egupfetrfe_5t egpfetrfe egpfetrfe_5t
+LPE_PARAM : pre_layout_local_rg RC 0 NORC 1 R 0 C 1 PINOPERATION OR PINEXCEPT 0 2 3
+LPE_DEVICES : pre_layout_local_rg nfet_flt nfet_tied nfet nfet lvtnfet_flt lvtnfet_tied lvtnfet lvtnfet hvtnfet_flt hvtnfet_tied hvtnfet hvtnfet slvtnfet_flt slvtnfet_tied slvtnfet slvtnfet egvnfet_flt egvnfet_tied egvnfet egvnfet egunfet_flt egunfet_tied egunfet egunfet egnfet_flt egnfet_tied egnfet egnfet pfet_flt pfet_tied pfet lvtpfet_flt lvtpfet_tied lvtpfet hvtpfet_flt hvtpfet_tied hvtpfet slvtpfet_flt slvtpfet_tied slvtpfet egvpfet_flt egvpfet_tied egvpfet egupfet_flt egupfet_tied egupfet egpfet_flt egpfet_tied egpfet lshnfetwl lshnfetpd lshpfetpu dswnfetwl dswnfetpd dswpfetpu dplnfetwl dplnfetpd dplpfetpu lslnfetwl lslnfetpd lslpfetpu lslnfet tcmnfetwl tcmnfetpd tcmpfetpu tcmnfet nfetrfe nfetrfe_6t lvtnfetrfe lvtnfetrfe_6t egvnfetrfe egvnfetrfe_6t egunfetrfe egunfetrfe_6t egnfetrfe egnfetrfe_6t pfetrfe pfetrfe_5t lvtpfetrfe lvtpfetrfe_5t egvpfetrfe egvpfetrfe_5t egupfetrfe egupfetrfe_5t egpfetrfe egpfetrfe_5t
+
+*NETS:!*
+
+WIDE_DEVICE_TERM_RESISTANCE: RES
+
+MOS_GATE_DELTA_RESISTANCE: YES
+NETLIST_NODENAME_NETNAME: YES
+
+XREF_SWAP_MOS_SD_PROPERTY: asej adej
+XREF_SWAP_MOS_SD_PROPERTY: psej pdej
+
+** Setting for Rapid3D Engine *******************
+*FSCOMPARE_OPTIONS: -perc_self 0.2 -np 4
+*FSCOMPARE_THRESHOLD: 0
+*FSCOMPARE_COUPLING_RATIO: 0
+*FS_EXTRACT_NETS: *
+*FS_DP_STRING :	bsub -q rapid3d
+*FS_RECONNECT_MODE: 1
+*PRINT_FSCOMPARE_REPORT: YES
+*************************************************
+
+
+** To ignore parasitic RC of capacitor devices within PCELL **
+** LVS run must be hierarchy extraction to enable the following options.
+** PEX cannot ignore parasitic RC with LVS flat run.
+** 'skip_pcell_layers_file.txt' file is included in this package
+SKIP_PCELLS: vncap_2t* vncap* egncap_2t* egncap* ncap_2t* ncap* pcap* egpcap* pcap_2t* egpcap_2t* cmptcoil* inds4* indsym* tcoil3* coupledcpw* singlecpw* pkind* apmom* esd*_fin*
+COUPLE_TO_PCELL_PINS: YES AUTOMATIC_CG_HANDLING
