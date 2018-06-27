@@ -54,7 +54,7 @@ CALIBRE_QUERY_FILE :  {{query_input}}	* for Calibre LVS
 
 BLOCK: {{cell_name}}
 TCAD_GRD_FILE: {{tcad_grd_file}}
-MAPPING FILE: {{mapping_file}}
+MAPPING_FILE: {{mapping_file}}
 TRANSLATE_RETAIN_BULK_LAYERS: YES
 NETLIST_PASSIVE_PARAMS: YES
 
