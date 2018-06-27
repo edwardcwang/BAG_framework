@@ -171,8 +171,6 @@ class Calibre(VirtuosoChecker):
 
         # generate new runset
         runset_content = self.modify_lvs_runset(lib_name, cell_name, lay_view, lay_file, sch_file, lvs_params_actual)
-        print('lvs_params_actual = ', lvs_params_actual)
-        print('runset_content = ', runset_content)
 
         # save runset
         with open_temp(dir=run_dir, delete=False) as runset_file:
@@ -228,7 +226,7 @@ class Calibre(VirtuosoChecker):
             # copy query.input from PDK_INSTALL_DIR to rcx_run_dir if it isn't already there
             query_input_pdk = rcx_params_actual['query_input']
             query_input = os.path.join(self.rcx_run_dir, 'query.input')
-            if 'query.input' not in self.rcx_run_dir:
+            if not os.path.exists(query_input):
                 copyfile(query_input_pdk, query_input)
 
             cmd = ['calibre', '-query_input', query_input, '-query', self.rcx_run_dir+'/svdb', cell_name]
