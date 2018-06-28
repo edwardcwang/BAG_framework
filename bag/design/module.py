@@ -5,7 +5,8 @@
 
 import os
 import abc
-from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Type, Set, Sequence, Callable
+from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Type, Set, Sequence, \
+    Callable, Union
 
 from bag import float_to_si_string
 from bag.io import read_yaml
@@ -383,7 +384,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         design_args = kwargs['design_args']
 
         self.tech_info = database.tech_info
-        self.instances = {}
+        self.instances = {}  # type: Dict[str, Union[SchInstance, List[SchInstance]]]
         self.pin_map = {}
         self.new_pins = []
         self.parameters = {}
@@ -828,7 +829,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 for name in sorted(bias_dict.keys()):
                     value_tuple = bias_dict[name]
                     pname, nname, bias_val = value_tuple[:3]
-                    param_dict = value_tuple[3] if len(value_tuple) > 3 else None
+                    param_dict = value_tuple[3] if len(value_tuple) > 3 \
+                        else None  # type: Optional[Dict]
                     term_list.append(dict(PLUS=pname, MINUS=nname))
                     name_list.append(name_template % name)
                     param_dict_list.append(param_dict)
