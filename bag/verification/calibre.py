@@ -204,8 +204,7 @@ class Calibre(VirtuosoChecker):
 
         if self.rcx_mode == 'starrc':
             # generate new runset for LVS
-            runset_content, result = self.modify_starrc_calibre_run(lib_name, cell_name, lay_file,
-                                                               sch_file, rcx_params_actual)
+            runset_content, result = self.modify_starrc_calibre_run(cell_name, lay_file, sch_file)
 
             # save runset for LVS
             with open_temp(dir=run_dir, delete=False) as runset_file:
@@ -216,7 +215,8 @@ class Calibre(VirtuosoChecker):
             with open_temp(prefix='lvsLog', dir=run_dir, delete=False) as lvsf:
                 lvs_file = lvsf.name
 
-            cmd = ['calibre', '-lvs', '-hier', '-spice', sch_file, runset_fname]
+            sp_file = os.path.join(self.rcx_run_dir, cell_name + '.sp')
+            cmd = ['calibre', '-lvs', '-hier', '-spice', sp_file, runset_fname]
             flow_list.append((cmd, lvs_file, None, self.rcx_run_dir, lambda rc, lf: lvs_passed(rc, lf)[0]))
 
             # now query the LVS file using query.input
@@ -233,7 +233,7 @@ class Calibre(VirtuosoChecker):
             flow_list.append((cmd, query_file, None, self.rcx_run_dir, lambda rc, lf: query_passed(rc, lf)[0]))
 
             # generate new cmd for StarXtract
-            cmd_content, result = self.modify_starrc_cmd(cell_name, rcx_params_actual, runset_path, query_input)
+            cmd_content, result = self.modify_starrc_cmd(cell_name, rcx_params_actual, runset_path, query_input, sch_file)
 
             # save cmd for StarXtract
             with open_temp(dir=run_dir, delete=False) as cmd_file:
@@ -440,23 +440,17 @@ class Calibre(VirtuosoChecker):
 
         return content, os.path.join(run_dir, output_name)
 
-    def modify_starrc_calibre_run(self, lib_name, cell_name, gds_file, netlist, starrc_params=None):
+    def modify_starrc_calibre_run(self, cell_name, gds_file, netlist):
         """Modify the calibre_run file.
 
                 Parameters
                 ----------
-                lib_name : str
-                    the library name.
                 cell_name : str
                     the cell name.
-                lay_view : str
-                    the layout view. ???
                 gds_file : str
                     the layout gds file name.
                 netlist : str
                     the schematic netlist file.
-                starrc_params : dict[str, any]
-                    override StarRC parameters.  ???
 
                 Returns
                 -------
@@ -478,27 +472,21 @@ class Calibre(VirtuosoChecker):
 
         return calibre_run, os.path.join(run_dir, output_name)
 
-    def modify_starrc_cmd(self, cell_name, starrc_params, runset_path, query_input):
+    def modify_starrc_cmd(self, cell_name, starrc_params, runset_path, query_input, sch_file):
         """Modify the cmd file.
 
                 Parameters
                 ----------
-                lib_name : str
-                    the library name.
                 cell_name : str
                     the cell name.
-                lay_view : str
-                    the layout view. ???
-                gds_file : str
-                    the layout gds file name.
-                netlist : str
-                    the schematic netlist file.
                 starrc_params : dict[str, any]
-                    override StarRC parameters.  ???
+                    override StarRC parameters.
                 runset_path : str
                     the calibre.run runset file
                 query_input : str
                     the path to query.input file
+                sch_file : str
+                    the schematic netlist
 
                 Returns
                 -------
@@ -518,7 +506,7 @@ class Calibre(VirtuosoChecker):
                                                tcad_grd_file=starrc_params.get('tcad_grd_file'),
                                                mapping_file=starrc_params.get('mapping_file'),
                                                extract_type=starrc_params['extract'].get('type'),
-                                               # svdb=os.path.join(run_dir, 'svdb'),
+                                               sch_file=sch_file,
                                                )
 
         return starrc_cmd, os.path.join(run_dir, output_name)
