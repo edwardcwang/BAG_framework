@@ -46,3 +46,5 @@ ERC MAXIMUM VERTEX 4096
 DRC ICSTATION YES
 
 }
+
+source {{lvs_source_file}}
