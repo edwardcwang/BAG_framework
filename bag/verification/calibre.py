@@ -204,7 +204,7 @@ class Calibre(VirtuosoChecker):
 
         if self.rcx_mode == 'starrc':
             # generate new runset for LVS
-            runset_content, result = self.modify_starrc_calibre_run(cell_name, lay_file, sch_file)
+            runset_content, result = self.modify_starrc_calibre_run(cell_name, lay_file, sch_file, rcx_params_actual)
 
             # save runset for LVS
             with open_temp(dir=run_dir, delete=False) as runset_file:
@@ -440,7 +440,7 @@ class Calibre(VirtuosoChecker):
 
         return content, os.path.join(run_dir, output_name)
 
-    def modify_starrc_calibre_run(self, cell_name, gds_file, netlist):
+    def modify_starrc_calibre_run(self, cell_name, gds_file, netlist, starrc_params):
         """Modify the calibre_run file.
 
                 Parameters
@@ -451,6 +451,8 @@ class Calibre(VirtuosoChecker):
                     the layout gds file name.
                 netlist : str
                     the schematic netlist file.
+                starrc_params : dict[str, any]
+                    override StarRC parameters.
 
                 Returns
                 -------
@@ -468,6 +470,7 @@ class Calibre(VirtuosoChecker):
                                                 lvs_report=cell_name + ".lvs.report",
                                                 erc_results=cell_name + ".erc.results",
                                                 erc_summary=cell_name + ".erc.summary",
+                                                lvs_source_file=starrc_params.get('lvs_source_file')
                                                 )
 
         return calibre_run, os.path.join(run_dir, output_name)
