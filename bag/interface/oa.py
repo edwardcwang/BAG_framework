@@ -60,8 +60,6 @@ class OAInterface(DbAccess):
 
     def __init__(self, dealer, tmp_dir, db_config):
         # type: (ZMQDealer, str, Dict[str, Any]) -> None
-        """Initialize a new OAInterface object.
-        """
         DbAccess.__init__(self, tmp_dir, db_config)
         self.handler = dealer
         self._rcx_jobs = {}
@@ -150,7 +148,7 @@ class OAInterface(DbAccess):
         raise NotImplementedError('Not implemented yet.')
 
     def configure_testbench(self, tb_lib, tb_cell):
-        # type: (str, str) -> Tuple[str, List[str], Dict[str, str]]
+        # type: (str, str) -> Tuple[str, List[str], Dict[str, str], Dict[str, str]]
         raise NotImplementedError('Not implemented yet.')
 
     def get_testbench_info(self, tb_lib, tb_cell):

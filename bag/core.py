@@ -535,6 +535,18 @@ class BagProject(object):
             self.sim.close()
             self.sim = None
 
+    def import_sch_cellview(self, lib_name, cell_name):
+        # type: (str, str) -> None
+        """Import the given schematic and symbol template into Python.
+
+        This import process is done recursively.
+        """
+        if self.impl_db is None:
+            raise Exception('BAG Server is not set up.')
+
+        new_lib_path = self.bag_config['new_lib_path']
+        self.impl_db.import_sch_cellview(lib_name, cell_name, self.dsn_db, new_lib_path)
+
     def import_design_library(self, lib_name):
         # type: (str) -> None
         """Import all design templates in the given library from CAD database.

@@ -225,7 +225,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def configure_testbench(self, tb_lib, tb_cell):
-        # type: (str, str) -> Tuple[str, List[str], Dict[str, str]]
+        # type: (str, str) -> Tuple[str, List[str], Dict[str, str], Dict[str, str]]
         """Update testbench state for the given testbench.
 
         This method fill in process-specific information for the given testbench.
@@ -245,8 +245,10 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             a list of available simulation environments.
         parameters : Dict[str, str]
             a list of testbench parameter values, represented as string.
+        outputs : Dict[str, str]
+            a dictionary of output expressions
         """
-        return "", [], {}
+        return "", [], {}, {}
 
     @abc.abstractmethod
     def get_testbench_info(self, tb_lib, tb_cell):

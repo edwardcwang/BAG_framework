@@ -3,7 +3,7 @@
 """This module implements all CAD database manipulations using skill commands.
 """
 
-from typing import List, Dict, Optional, Any, Tuple
+from typing import TYPE_CHECKING, Sequence, List, Dict, Optional, Any, Tuple
 
 import os
 import shutil
@@ -21,6 +21,10 @@ try:
     import cybagoa
 except ImportError:
     cybagoa = None
+
+if TYPE_CHECKING:
+    from .zmqwrapper import ZMQDealer
+    from ..design.module import ModuleDB
 
 
 def _dict_to_pcell_params(table):
@@ -107,24 +111,17 @@ class SkillInterface(DbAccess):
     ----------
     dealer : :class:`bag.interface.ZMQDealer`
         the socket used to communicate with :class:`~bag.interface.SkillOceanServer`.
-    tmp_dir : string
+    tmp_dir : str
         temporary file directory for DbAccess.
-    db_config : dict[str, any]
+    db_config : Dict[str, Any]
         the database configuration dictionary.
     """
 
     def __init__(self, dealer, tmp_dir, db_config):
-        """Initialize a new SkillInterface object.
-        """
+        # type: (ZMQDealer, str, Dict[str, Any]) -> None
         DbAccess.__init__(self, tmp_dir, db_config)
         self.handler = dealer
         self._rcx_jobs = {}
-
-    def close(self):
-        """Terminate the database server gracefully.
-        """
-        self.handler.send_obj(dict(type='exit'))
-        self.handler.close()
 
     def _eval_skill(self, expr, input_files=None, out_file=None):
         # type: (str, Optional[Dict[str, Any]], Optional[str]) -> str
@@ -179,71 +176,25 @@ class SkillInterface(DbAccess):
         reply = self.handler.recv_obj()
         return _handle_reply(reply)
 
-    def parse_schematic_template(self, lib_name, cell_name):
-        """Parse the given schematic template.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the library.
-        cell_name : str
-            name of the cell.
-
-        Returns
-        -------
-        template : str
-            the content of the netlist structure file.
-        """
-        cmd = 'parse_cad_sch( "%s" "%s" {netlist_info} )' % (lib_name, cell_name)
-        return self._eval_skill(cmd, out_file='netlist_info')
+    def close(self):
+        # type: () -> None
+        self.handler.send_obj(dict(type='exit'))
+        self.handler.close()
 
     def get_cells_in_library(self, lib_name):
-        """Get a list of cells in the given library.
-
-        Returns an empty list if the given library does not exist.
-
-        Parameters
-        ----------
-        lib_name : str
-            the library name.
-
-        Returns
-        -------
-        cell_list : list[str]
-            a list of cells in the library
-        """
+        # type: (str) -> List[str]
         cmd = 'get_cells_in_library_file( "%s" {cell_file} )' % lib_name
         return self._eval_skill(cmd, out_file='cell_file').split()
 
     def create_library(self, lib_name, lib_path=''):
-        """Create a new library if one does not exist yet.
-
-        Parameters
-        ----------
-        lib_name : string
-            the library name.
-        lib_path : string
-            directory to create the library in.  If Empty, use default location.
-        """
+        # type: (str, str) -> None
         lib_path = lib_path or self.default_lib_path
         tech_lib = self.db_config['schematic']['tech_lib']
-        return self._eval_skill(
+        self._eval_skill(
             'create_or_erase_library("%s" "%s" "%s" nil)' % (lib_name, tech_lib, lib_path))
 
     def create_implementation(self, lib_name, template_list, change_list, lib_path=''):
-        """Create implementation of a design in the CAD database.
-
-        Parameters
-        ----------
-        lib_name : str
-            implementation library name.
-        template_list : list
-            a list of schematic templates to copy to the new library.
-        change_list :
-            a list of changes to be performed on each copied templates.
-        lib_path : str
-            directory to create the library in.  If Empty, use default location.
-        """
+        # type: (str, Sequence[Any], Sequence[Any], str) -> None
         lib_path = lib_path or self.default_lib_path
         tech_lib = self.db_config['schematic']['tech_lib']
 
@@ -288,29 +239,10 @@ class SkillInterface(DbAccess):
                '{change_list} %s %s %s %s %s %s)' % (lib_name, tech_lib, lib_path,
                                                      sympin, ipin, opin, iopin, simulators, copy))
 
-        return self._eval_skill(cmd, input_files=in_files)
+        self._eval_skill(cmd, input_files=in_files)
 
     def configure_testbench(self, tb_lib, tb_cell):
-        """Update testbench state for the given testbench.
-
-        This method fill in process-specific information for the given testbench.
-
-        Parameters
-        ----------
-        tb_lib : str
-            testbench library name.
-        tb_cell : str
-            testbench cell name.
-
-        Returns
-        -------
-        cur_env : str
-            the current simulation environment.
-        envs : list[str]
-            a list of available simulation environments.
-        parameters : dict[str, str]
-            a list of testbench parameter values, represented as string.
-        """
+        # type: (str, str) -> Tuple[str, List[str], Dict[str, str], Dict[str, str]]
 
         tb_config = self.db_config['testbench']
 
@@ -332,26 +264,7 @@ class SkillInterface(DbAccess):
         return tb_config['default_env'], output['corners'], output['parameters'], output['outputs']
 
     def get_testbench_info(self, tb_lib, tb_cell):
-        """Returns information about an existing testbench.
-
-        Parameters
-        ----------
-        tb_lib : str
-            testbench library.
-        tb_cell : str
-            testbench cell.
-
-        Returns
-        -------
-        cur_envs : list[str]
-            the current simulation environments.
-        envs : list[str]
-            a list of available simulation environments.
-        parameters : dict[str, str]
-            a list of testbench parameter values, represented as string.
-        outputs : dict[str, str]
-            a list of testbench output expressions.
-        """
+        # type: (str, str) -> Tuple[List[str], List[str], Dict[str, str], Dict[str, str]]
         cmd = 'get_testbench_info("{tb_lib}" "{tb_cell}" {result_file})'
         cmd = cmd.format(tb_lib=tb_lib,
                          tb_cell=tb_cell,
@@ -368,24 +281,6 @@ class SkillInterface(DbAccess):
                          env_parameters,  # type: List[List[Tuple[str, str]]]
                          ):
         # type: (...) -> None
-        """Update the given testbench configuration.
-
-        Parameters
-        ----------
-        lib : str
-            testbench library.
-        cell : str
-            testbench cell.
-        parameters : Dict[str, str]
-            testbench parameters.
-        sim_envs : List[str]
-            list of enabled simulation environments.
-        config_rules : List[List[str]]
-            config view mapping rules, list of (lib, cell, view) rules.
-        env_parameters : List[List[Tuple[str, str]]]
-            list of param/value list for each simulation environment.
-        """
-
         cmd = 'modify_testbench("%s" "%s" {conf_rules} ' \
               '{run_opts} {sim_envs} {params} {env_params})' % (lib, cell)
         in_files = {'conf_rules': config_rules,
@@ -398,25 +293,7 @@ class SkillInterface(DbAccess):
 
     def instantiate_layout_pcell(self, lib_name, cell_name, view_name,
                                  inst_lib, inst_cell, params, pin_mapping):
-        """Create a layout cell with a single pcell instance.
-
-        Parameters
-        ----------
-        lib_name : str
-            layout library name.
-        cell_name : str
-            layout cell name.
-        view_name : str
-            layout view name, default is "layout".
-        inst_lib : str
-            pcell library name.
-        inst_cell : str
-            pcell cell name.
-        params : dict[str, any]
-            the parameter dictionary.
-        pin_mapping: dict[str, str]
-            the pin mapping dictionary.
-        """
+        # type: (str, str, str, str, str, Dict[str, Any], Dict[str, str]) -> None
         # create library in case it doesn't exist
         self.create_library(lib_name)
 
@@ -427,22 +304,10 @@ class SkillInterface(DbAccess):
                '{params} {pin_mapping} )' % (lib_name, cell_name,
                                              view_name, inst_lib, inst_cell))
         in_files = {'params': param_list, 'pin_mapping': list(pin_mapping.items())}
-        return self._eval_skill(cmd, input_files=in_files)
+        self._eval_skill(cmd, input_files=in_files)
 
     def instantiate_layout(self, lib_name, view_name, via_tech, layout_list):
-        """Create a batch of layouts.
-
-        Parameters
-        ----------
-        lib_name : str
-            layout library name.
-        view_name : str
-            layout view name.
-        via_tech : str
-            via technology library name.
-        layout_list : list[any]
-            a list of layouts to create
-        """
+        # type: (str, str, str, Sequence[Any]) -> None
         # create library in case it doesn't exist
         self.create_library(lib_name)
 
@@ -462,42 +327,17 @@ class SkillInterface(DbAccess):
 
         cmd = 'create_layout( "%s" "%s" "%s" {layout_list} )' % (lib_name, view_name, via_tech)
         in_files = {'layout_list': new_layout_list}
-        return self._eval_skill(cmd, input_files=in_files)
+        self._eval_skill(cmd, input_files=in_files)
 
     def release_write_locks(self, lib_name, cell_view_list):
-        """Release write locks from all the given cells.
-
-        Parameters
-        ----------
-        lib_name : string
-            the library name.
-        cell_view_list : List[(string, string)]
-            list of cell/view name tuples.
-        """
+        # type: (str, Sequence[Tuple[str, str]]) -> None
         cmd = 'release_write_locks( "%s" {cell_view_list} )' % lib_name
         in_files = {'cell_view_list': cell_view_list}
-        return self._eval_skill(cmd, input_files=in_files)
+        self._eval_skill(cmd, input_files=in_files)
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
         # type: (str, str, str, Optional[str], **kwargs) -> None
-        """Create a schematic from a netlist.
-
-        This is mainly used to create extracted schematic from an extracted netlist.
-
-        Parameters
-        ----------
-        netlist : str
-            the netlist file name.
-        lib_name : str
-            library name.
-        cell_name : str
-            cell_name
-        sch_view : Optional[str]
-            schematic view name.  The default value is implemendation dependent.
-        **kwargs
-            additional implementation-dependent arguments.
-        """
         calview_config = self.db_config.get('calibreview', None)
         use_calibreview = self.db_config.get('use_calibreview', True)
         if calview_config is not None and use_calibreview:
@@ -568,19 +408,6 @@ class SkillInterface(DbAccess):
 
     def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
         # type: (str, str, str, **kwargs) -> None
-        """Create a verilog view for mix-signal simulation.
-
-        Parameters
-        ----------
-        verilog_file : str
-            the verilog file name.
-        lib_name : str
-            library name.
-        cell_name : str
-            cell name.
-        **kwargs
-            additional implementation-dependent arguments.
-        """
         # delete old verilog view
         cmd = 'delete_cellview( "%s" "%s" "verilog" )' % (lib_name, cell_name)
         self._eval_skill(cmd)
@@ -588,33 +415,11 @@ class SkillInterface(DbAccess):
         self._eval_skill(cmd)
 
     def import_sch_cellview(self, lib_name, cell_name, dsn_db, new_lib_path):
-        """Recursively import the given schematic and symbol cellview.
-
-        Parameters
-        ----------
-        lib_name : str
-            library name.
-        cell_name : str
-            cell name.
-        dsn_db : ModuleDB
-            the design database object.
-        new_lib_path: str
-            location to import new libraries to.
-        """
+        # type: (str, str, ModuleDB, str) -> None
         self._import_design(lib_name, cell_name, set(), dsn_db, new_lib_path)
 
     def import_design_library(self, lib_name, dsn_db, new_lib_path):
-        """Import all design templates in the given library from CAD database.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the library.
-        dsn_db : ModuleDB
-            the design database object.
-        new_lib_path: str
-            location to import new libraries to.
-        """
+        # type: (str, ModuleDB, str) -> None
         imported_cells = set()
         for cell_name in self.get_cells_in_library(lib_name):
             self._import_design(lib_name, cell_name, imported_cells, dsn_db, new_lib_path)
@@ -664,3 +469,22 @@ class SkillInterface(DbAccess):
                 inst_cell_name = inst_attrs['cell_name']
                 self._import_design(inst_lib_name, inst_cell_name, imported_cells, dsn_db,
                                     new_lib_path)
+
+    def parse_schematic_template(self, lib_name, cell_name):
+        # type: (str, str) -> str
+        """Parse the given schematic template.
+
+        Parameters
+        ----------
+        lib_name : str
+            name of the library.
+        cell_name : str
+            name of the cell.
+
+        Returns
+        -------
+        template : str
+            the content of the netlist structure file.
+        """
+        cmd = 'parse_cad_sch( "%s" "%s" {netlist_info} )' % (lib_name, cell_name)
+        return self._eval_skill(cmd, out_file='netlist_info')
