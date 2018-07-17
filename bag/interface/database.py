@@ -10,13 +10,13 @@ import abc
 import traceback
 
 from jinja2 import Template
-import yaml
 
 import bag.io
 from ..verification import make_checker
 
 if TYPE_CHECKING:
     from ..verification import Checker
+    from ..design.module import ModuleDB
 
 
 def dict_to_item_list(table):
@@ -60,67 +60,19 @@ def format_inst_map(inst_map):
     return ans
 
 
-def get_python_template(lib_name, cell_name, primitive_table):
-    """Returns the default Python Module template for the given schematic.
-
-    Parameters
-    ----------
-    lib_name : str
-        the library name.
-    cell_name : str
-        the cell name.
-    primitive_table : dict[str, str]
-        a dictionary from primitive cell name to module template file name.
-
-    Returns
-    -------
-    template : str
-        the default Python Module template.
-    """
-    param_dict = dict(lib_name=lib_name, cell_name=cell_name)
-    if lib_name == 'BAG_prim':
-        if cell_name in primitive_table:
-            # load template from user defined file
-            content = bag.io.read_file(primitive_table[cell_name])
-        else:
-            if cell_name.startswith('nmos4_') or cell_name.startswith('pmos4_'):
-                # transistor template
-                module_name = 'MosModuleBase'
-            elif cell_name == 'res_ideal':
-                # ideal resistor template
-                module_name = 'ResIdealModuleBase'
-            elif cell_name == 'res_metal':
-                module_name = 'ResMetalModule'
-            elif cell_name == 'cap_ideal':
-                # ideal capacitor template
-                module_name = 'CapIdealModuleBase'
-            elif cell_name.startswith('res_'):
-                # physical resistor template
-                module_name = 'ResPhysicalModuleBase'
-            else:
-                raise Exception('Unknown primitive cell: %s' % cell_name)
-
-            content = bag.io.read_resource(__name__, os.path.join('templates', 'PrimModule.pytemp'))
-            param_dict['module_name'] = module_name
-    else:
-        # use default empty template.
-        content = bag.io.read_resource(__name__, os.path.join('templates', 'Module.pytemp'))
-
-    return Template(content).render(**param_dict)
-
-
 class DbAccess(object, metaclass=abc.ABCMeta):
     """A class that manipulates the CAD database.
 
     Parameters
     ----------
-    tmp_dir : string
+    tmp_dir : str
         temporary file directory for DbAccess.
-    db_config : dict[string, any]
+    db_config : Dict[str, Any]
         the database configuration dictionary.
     """
 
     def __init__(self, tmp_dir, db_config):
+        # type: (str, Dict[str, Any]) -> None
         """Create a new DbAccess object.
         """
         self.tmp_dir = bag.io.make_temp_dir('dbTmp', parent_dir=tmp_dir)
@@ -142,6 +94,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
     @classmethod
     def get_default_lib_path(cls, db_config):
+        # type: (Dict[str, Any]) -> str
         lib_path_fallback = os.path.abspath('.')
         default_lib_path = os.path.abspath(db_config.get('default_lib_path', lib_path_fallback))
         if not os.path.isdir(default_lib_path):
@@ -149,43 +102,79 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
         return default_lib_path
 
+    @classmethod
+    def get_python_template(cls, lib_name, cell_name, primitive_table):
+        # type: (str, str, Dict[str, str]) -> str
+        """Returns the default Python Module template for the given schematic.
+
+        Parameters
+        ----------
+        lib_name : str
+            the library name.
+        cell_name : str
+            the cell name.
+        primitive_table : Dict[str, str]
+            a dictionary from primitive cell name to module template file name.
+
+        Returns
+        -------
+        template : str
+            the default Python Module template.
+        """
+        param_dict = dict(lib_name=lib_name, cell_name=cell_name)
+        if lib_name == 'BAG_prim':
+            if cell_name in primitive_table:
+                # load template from user defined file
+                content = bag.io.read_file(primitive_table[cell_name])
+            else:
+                if cell_name.startswith('nmos4_') or cell_name.startswith('pmos4_'):
+                    # transistor template
+                    module_name = 'MosModuleBase'
+                elif cell_name == 'res_ideal':
+                    # ideal resistor template
+                    module_name = 'ResIdealModuleBase'
+                elif cell_name == 'res_metal':
+                    module_name = 'ResMetalModule'
+                elif cell_name == 'cap_ideal':
+                    # ideal capacitor template
+                    module_name = 'CapIdealModuleBase'
+                elif cell_name.startswith('res_'):
+                    # physical resistor template
+                    module_name = 'ResPhysicalModuleBase'
+                else:
+                    raise Exception('Unknown primitive cell: %s' % cell_name)
+
+                content = bag.io.read_resource(__name__,
+                                               os.path.join('templates', 'PrimModule.pytemp'))
+                param_dict['module_name'] = module_name
+        else:
+            # use default empty template.
+            content = bag.io.read_resource(__name__, os.path.join('templates', 'Module.pytemp'))
+
+        return Template(content).render(**param_dict)
+
     @property
     def default_lib_path(self):
+        # type: () -> str
         """Returns the default directory to create new libraries in.
 
         Returns
         -------
-        lib_path : string
+        lib_path : str
             directory to create new libraries in.
         """
         return self._default_lib_path
 
     @abc.abstractmethod
     def close(self):
+        # type: () -> None
         """Terminate the database server gracefully.
         """
         pass
 
     @abc.abstractmethod
-    def parse_schematic_template(self, lib_name, cell_name):
-        """Parse the given schematic template.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the library.
-        cell_name : str
-            name of the cell.
-
-        Returns
-        -------
-        template : str
-            the content of the netlist structure file.
-        """
-        return ""
-
-    @abc.abstractmethod
     def get_cells_in_library(self, lib_name):
+        # type: (str) -> List[str]
         """Get a list of cells in the given library.
 
         Returns an empty list if the given library does not exist.
@@ -197,35 +186,37 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        cell_list : list[str]
+        cell_list : List[str]
             a list of cells in the library
         """
         return []
 
     @abc.abstractmethod
     def create_library(self, lib_name, lib_path=''):
+        # type: (str, str) -> None
         """Create a new library if one does not exist yet.
 
         Parameters
         ----------
-        lib_name : string
+        lib_name : str
             the library name.
-        lib_path : string
+        lib_path : str
             directory to create the library in.  If Empty, use default location.
         """
         pass
 
     @abc.abstractmethod
     def create_implementation(self, lib_name, template_list, change_list, lib_path=''):
+        # type: (str, Sequence[Any], Sequence[Any], str) -> None
         """Create implementation of a design in the CAD database.
 
         Parameters
         ----------
         lib_name : str
             implementation library name.
-        template_list : list
+        template_list : Sequence[Any]
             a list of schematic templates to copy to the new library.
-        change_list :
+        change_list : Sequence[Any]
             a list of changes to be performed on each copied templates.
         lib_path : str
             directory to create the library in.  If Empty, use default location.
@@ -234,7 +225,8 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def configure_testbench(self, tb_lib, tb_cell):
-        """Configure testbench state for the given testbench.
+        # type: (str, str) -> Tuple[str, List[str], Dict[str, str]]
+        """Update testbench state for the given testbench.
 
         This method fill in process-specific information for the given testbench.
 
@@ -249,15 +241,16 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         -------
         cur_env : str
             the current simulation environment.
-        envs : list[str]
+        envs : List[str]
             a list of available simulation environments.
-        parameters : dict[str, str]
+        parameters : Dict[str, str]
             a list of testbench parameter values, represented as string.
         """
         return "", [], {}
 
     @abc.abstractmethod
     def get_testbench_info(self, tb_lib, tb_cell):
+        # type: (str, str) -> Tuple[List[str], List[str], Dict[str, str], Dict[str, str]]
         """Returns information about an existing testbench.
 
         Parameters
@@ -269,13 +262,13 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        cur_envs : list[str]
+        cur_envs : List[str]
             the current simulation environments.
-        envs : list[str]
+        envs : List[str]
             a list of available simulation environments.
-        parameters : dict[str, str]
+        parameters : Dict[str, str]
             a list of testbench parameter values, represented as string.
-        outputs : dict[str, str]
+        outputs : Dict[str, str]
             a list of testbench output expressions.
         """
         return [], [], {}, {}
@@ -312,6 +305,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def instantiate_layout_pcell(self, lib_name, cell_name, view_name,
                                  inst_lib, inst_cell, params, pin_mapping):
+        # type: (str, str, str, str, str, Dict[str, Any], Dict[str, str]) -> None
         """Create a layout cell with a single pcell instance.
 
         Parameters
@@ -326,9 +320,9 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             pcell library name.
         inst_cell : str
             pcell cell name.
-        params : dict[str, any]
+        params : Dict[str, Any]
             the parameter dictionary.
-        pin_mapping: dict[str, str]
+        pin_mapping: Dict[str, str]
             the pin mapping dictionary.
         """
         pass
@@ -403,6 +397,40 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             cell name.
         **kwargs
             additional implementation-dependent arguments.
+        """
+        pass
+
+    @abc.abstractmethod
+    def import_sch_cellview(self, lib_name, cell_name, dsn_db, new_lib_path):
+        # type: (str, str, ModuleDB, str) -> None
+        """Recursively import the given schematic and symbol cellview.
+
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        dsn_db : ModuleDB
+            the design database object.
+        new_lib_path: str
+            location to import new libraries to.
+        """
+        pass
+
+    @abc.abstractmethod
+    def import_design_library(self, lib_name, dsn_db, new_lib_path):
+        # type: (str, ModuleDB, str) -> None
+        """Import all design templates in the given library from CAD database.
+
+        Parameters
+        ----------
+        lib_name : str
+            name of the library.
+        dsn_db : ModuleDB
+            the design database object.
+        new_lib_path: str
+            location to import new libraries to.
         """
         pass
 
@@ -518,68 +546,6 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
         return await self.checker.async_export_layout(lib_name, cell_name, out_file,
                                                       *args, **kwargs)
-
-    def import_design_library(self, lib_name, dsn_db, new_lib_path):
-        """Import all design templates in the given library from CAD database.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the library.
-        dsn_db : ModuleDB
-            the design database object.
-        new_lib_path: str
-            location to import new libraries to.
-        """
-        imported_cells = set()
-        for cell_name in self.get_cells_in_library(lib_name):
-            self._import_design(lib_name, cell_name, imported_cells, dsn_db, new_lib_path)
-
-    def _import_design(self, lib_name, cell_name, imported_cells, dsn_db, new_lib_path):
-        """Recursive helper for import_design_library.
-        """
-        # check if we already imported this schematic
-        key = '%s__%s' % (lib_name, cell_name)
-        if key in imported_cells:
-            return
-        imported_cells.add(key)
-
-        # create root directory if missing
-        root_path = dsn_db.get_library_path(lib_name)
-        if root_path is None:
-            root_path = new_lib_path
-            dsn_db.append_library(lib_name, new_lib_path)
-
-        package_path = os.path.join(root_path, lib_name)
-        python_file = os.path.join(package_path, '%s.py' % cell_name)
-        yaml_file = os.path.join(package_path, 'netlist_info', '%s.yaml' % cell_name)
-        yaml_dir = os.path.dirname(yaml_file)
-        if not os.path.exists(yaml_dir):
-            os.makedirs(yaml_dir)
-            bag.io.write_file(os.path.join(package_path, '__init__.py'), '\n',
-                              mkdir=False)
-
-        # update netlist file
-        content = self.parse_schematic_template(lib_name, cell_name)
-        sch_info = yaml.load(content)
-        try:
-            bag.io.write_file(yaml_file, content)
-        except IOError:
-            print('Warning: cannot write to %s.' % yaml_file)
-
-        # generate new design module file if necessary.
-        if not os.path.exists(python_file):
-            content = get_python_template(lib_name, cell_name,
-                                          self.db_config.get('prim_table', {}))
-            bag.io.write_file(python_file, content + '\n', mkdir=False)
-
-        # recursively import all children
-        for inst_name, inst_attrs in sch_info['instances'].items():
-            inst_lib_name = inst_attrs['lib_name']
-            if inst_lib_name not in self.exc_libs:
-                inst_cell_name = inst_attrs['cell_name']
-                self._import_design(inst_lib_name, inst_cell_name, imported_cells, dsn_db,
-                                    new_lib_path)
 
     def instantiate_schematic(self, lib_name, content_list, lib_path=''):
         """Create the given schematics in CAD database.
