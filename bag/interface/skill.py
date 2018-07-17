@@ -435,7 +435,7 @@ class SkillInterface(DbAccess):
 
         # create root directory if missing
         root_path = dsn_db.get_library_path(lib_name)
-        if root_path is None:
+        if not root_path:
             root_path = new_lib_path
             dsn_db.append_library(lib_name, new_lib_path)
 

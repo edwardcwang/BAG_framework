@@ -234,18 +234,18 @@ class OAInterface(DbAccess):
 
     def import_sch_cellview(self, lib_name, cell_name, dsn_db, new_lib_path):
         # type: (str, str, ModuleDB, str) -> None
-        # create root directory if missing
-        root_path = dsn_db.get_library_path(lib_name)
-        if root_path is None:
-            root_path = new_lib_path
-            dsn_db.append_library(lib_name, new_lib_path)
 
         # read schematic information
-        cell_list = self._oa_db.read_sch_recursive(lib_name, cell_name, "schematic",
-                                                   root_path, self.exc_libs)
+        cell_list = self._oa_db.read_sch_recursive(lib_name, cell_name, "schematic", new_lib_path,
+                                                   dsn_db.get_library_mapping(), self.exc_libs)
 
         # create python templates
         for lib, cell in cell_list:
+            root_path = dsn_db.get_library_path(lib)
+            if not root_path:
+                root_path = new_lib_path
+                dsn_db.append_library(lib, new_lib_path)
+
             python_file = os.path.join(root_path, lib, '%s.py' % cell)
             if not os.path.exists(python_file):
                 content = self.get_python_template(lib, cell,

@@ -78,8 +78,7 @@ class ClassImporter(object):
         path to the design library definition file.
     """
     def __init__(self, lib_defs):
-        """Create a new design database instance.
-        """
+        # type: (str) -> None
         lib_defs = os.path.abspath(lib_defs)
         if not os.path.exists(lib_defs):
             raise Exception("design library definition file %s not found" % lib_defs)
@@ -101,6 +100,7 @@ class ClassImporter(object):
                 self.libraries[lib_name] = lib_path
 
     def append_library(self, lib_name, lib_path):
+        # type: (str, str) -> None
         """Adds a new library to the library definition file.
 
         Parameters
@@ -116,6 +116,7 @@ class ClassImporter(object):
             write_file(self.lib_defs, '%s %s\n' % (lib_name, lib_path), append=True)
 
     def get_library_path(self, lib_name):
+        # type: (str) -> str
         """Returns the location of the given library.
 
         Parameters
@@ -125,12 +126,18 @@ class ClassImporter(object):
 
         Returns
         -------
-        lib_path : str or None
-            the location of the library, or None if library not defined.
+        lib_path : str
+            the location of the library, or empty string if library not defined.
         """
-        return self.libraries.get(lib_name, None)
+        return self.libraries.get(lib_name, '')
+
+    def get_library_mapping(self):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary from library name to the library path."""
+        return self.libraries
 
     def get_class(self, lib_name, cell_name):
+        # type: (str, str) -> Any
         """Returns the Python class with the given library and cell name.
 
         Parameters
@@ -142,7 +149,7 @@ class ClassImporter(object):
 
         Returns
         -------
-        cls : class
+        cls : Any
             the corresponding Python class.
         """
 
@@ -519,7 +526,7 @@ class MasterDB(abc.ABC):
         self._importer.append_library(lib_name, lib_path)
 
     def get_library_path(self, lib_name):
-        # type: (str) -> Optional[str]
+        # type: (str) -> str
         """Returns the location of the given library.
 
         Parameters
@@ -529,14 +536,19 @@ class MasterDB(abc.ABC):
 
         Returns
         -------
-        lib_path : Optional[str]
-            the location of the library, or None if library not defined.
+        lib_path : str
+            the location of the library, or empty string if library not defined.
         """
         if self._importer is None:
             raise ValueError('Cannot get generator library path; '
                              'library definition file not specified.')
 
         return self._importer.get_library_path(lib_name)
+
+    def get_library_mapping(self):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary from library name to the library path."""
+        return self._importer.get_library_mapping()
 
     def get_generator_class(self, lib_name, cell_name):
         # type: (str, str) -> Any
