@@ -47,21 +47,11 @@ class VirtuosoException(Exception):
 
 class OAInterface(DbAccess):
     """OpenAccess interface between bag and Virtuoso.
-
-    Parameters
-    ----------
-    dealer : :class:`bag.interface.ZMQDealer`
-        the socket used to communicate with :class:`~bag.interface.SkillOceanServer`.
-    tmp_dir : str
-        temporary file directory for DbAccess.
-    db_config : Dict[str, Any]
-        the database configuration dictionary.
     """
 
     def __init__(self, dealer, tmp_dir, db_config):
         # type: (ZMQDealer, str, Dict[str, Any]) -> None
-        DbAccess.__init__(self, tmp_dir, db_config)
-        self.handler = dealer
+        DbAccess.__init__(self, dealer, tmp_dir, db_config)
         self._rcx_jobs = {}
 
         if 'lib_def_path' in db_config:
@@ -98,11 +88,11 @@ class OAInterface(DbAccess):
 
         Parameters
         ----------
-        expr : str
+        expr : string
             the skill expression to evaluate.
-        input_files : Optional[Dict[str, Any]]
+        input_files : dict[string, any] or None
             A dictionary of input files content.
-        out_file : Optional[str]
+        out_file : string or None
             the output file name argument in expr.
 
         Returns
@@ -122,16 +112,19 @@ class OAInterface(DbAccess):
             out_file=out_file,
         )
 
-        self.handler.send_obj(request)
-        reply = self.handler.recv_obj()
+        reply = self.send(request)
         return _handle_reply(reply)
 
     def close(self):
         # type: () -> None
-        self.handler.send_obj(dict(type='exit'))
-        self.handler.close()
-        self._oa_db.close()
-        self._oa_db = None
+        DbAccess.close(self)
+        if self._oa_db is not None:
+            self._oa_db.close()
+            self._oa_db = None
+
+    def get_exit_object(self):
+        # type: () -> Any
+        return {'type': 'exit'}
 
     def get_cells_in_library(self, lib_name):
         # type: (str) -> List[str]

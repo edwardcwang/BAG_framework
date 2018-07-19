@@ -15,6 +15,7 @@ import bag.io
 from ..verification import make_checker
 
 if TYPE_CHECKING:
+    from .zmqwrapper import ZMQDealer
     from ..verification import Checker
     from ..design.module import ModuleDB
 
@@ -65,16 +66,19 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
     Parameters
     ----------
+    dealer : Optional[ZMQDealer]
+        an optional socket that can be used to communicate with the CAD database.
     tmp_dir : str
         temporary file directory for DbAccess.
     db_config : Dict[str, Any]
         the database configuration dictionary.
     """
 
-    def __init__(self, tmp_dir, db_config):
-        # type: (str, Dict[str, Any]) -> None
+    def __init__(self, dealer, tmp_dir, db_config):
+        # type: (ZMQDealer, str, Dict[str, Any]) -> None
         """Create a new DbAccess object.
         """
+        self.handler = dealer
         self.tmp_dir = bag.io.make_temp_dir('dbTmp', parent_dir=tmp_dir)
         self.db_config = db_config
         self.exc_libs = set(db_config['schematic']['exclude_libraries'])
@@ -166,11 +170,13 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         return self._default_lib_path
 
     @abc.abstractmethod
-    def close(self):
-        # type: () -> None
-        """Terminate the database server gracefully.
+    def get_exit_object(self):
+        # type: () -> Any
+        """Returns an object to send to the server to shut it down.
+
+        Return None if this option is not supported.
         """
-        pass
+        return None
 
     @abc.abstractmethod
     def get_cells_in_library(self, lib_name):
@@ -435,6 +441,27 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             location to import new libraries to.
         """
         pass
+
+    def send(self, obj):
+        # type; (Any) -> Any
+        """Send the given Python object to the server, and return result."""
+        if self.handler is None:
+            raise Exception('BAG Server is not set up.')
+
+        self.handler.send_obj(obj)
+        reply = self.handler.recv_obj()
+        return reply
+
+    def close(self):
+        # type: () -> None
+        """Terminate the database server gracefully.
+        """
+        if self.handler is not None:
+            exit_obj = self.get_exit_object()
+            if exit_obj is not None:
+                self.handler.send(exit_obj)
+            self.handler.close()
+            self.handler = None
 
     def _process_rcx_output(self, netlist, log_fname, lib_name, cell_name, create_schematic):
         if create_schematic:

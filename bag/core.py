@@ -505,12 +505,12 @@ class BagProject(object):
         if port is not None:
             # make DbAccess instance.
             dealer = ZMQDealer(port, **dealer_kwargs)
-            db_cls = _import_class_from_str(self.bag_config['database']['class'])
-            self.impl_db = db_cls(dealer, bag_tmp_dir, self.bag_config['database'])
-            self._default_lib_path = self.impl_db.default_lib_path
         else:
-            self.impl_db = None  # type: Optional[DbAccess]
-            self._default_lib_path = DbAccess.get_default_lib_path(self.bag_config['database'])
+            dealer = None
+
+        db_cls = _import_class_from_str(self.bag_config['database']['class'])
+        self.impl_db = db_cls(dealer, bag_tmp_dir, self.bag_config['database'])
+        self._default_lib_path = self.impl_db.default_lib_path
 
         # make SimAccess instance.
         sim_cls = _import_class_from_str(self.bag_config['simulation']['class'])
@@ -524,9 +524,8 @@ class BagProject(object):
     def close_bag_server(self):
         # type: () -> None
         """Close the BAG database server."""
-        if self.impl_db is not None:
-            self.impl_db.close()
-            self.impl_db = None
+        self.impl_db.close()
+        self.impl_db = None
 
     def close_sim_server(self):
         # type: () -> None
@@ -541,9 +540,6 @@ class BagProject(object):
 
         This import process is done recursively.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         new_lib_path = self.bag_config['new_lib_path']
         self.impl_db.import_sch_cellview(lib_name, cell_name, self.dsn_db, new_lib_path)
 
@@ -556,9 +552,6 @@ class BagProject(object):
         lib_name : str
             name of the library.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         new_lib_path = self.bag_config['new_lib_path']
         self.impl_db.import_design_library(lib_name, self.dsn_db, new_lib_path)
 
@@ -578,9 +571,6 @@ class BagProject(object):
         cell_list : Sequence[str]
             a list of cells in the library
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         return self.impl_db.get_cells_in_library(lib_name)
 
     def make_template_db(self, impl_lib, grid_specs, use_cybagoa=True, gds_lay_file='',
@@ -751,9 +741,6 @@ class BagProject(object):
         lib_path : str
             directory to create the library in.  If Empty, use default location.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         return self.impl_db.create_library(lib_name, lib_path=lib_path)
 
     # noinspection PyUnusedLocal
@@ -834,9 +821,6 @@ class BagProject(object):
         lib_path : str
             the path to create the library in.  If empty, use default location.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         self.impl_db.instantiate_schematic(lib_name, content_list, lib_path=lib_path)
 
     def batch_schematic(self,  # type: BagProject
@@ -894,8 +878,6 @@ class BagProject(object):
         tb : :class:`bag.core.Testbench`
             the :class:`~bag.core.Testbench` instance.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
         if self.sim is None:
             raise Exception('SimAccess is not set up.')
 
@@ -918,8 +900,6 @@ class BagProject(object):
         tb : :class:`bag.core.Testbench`
             the :class:`~bag.core.Testbench` instance.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
         if self.sim is None:
             raise Exception('SimAccess is not set up.')
 
@@ -949,9 +929,6 @@ class BagProject(object):
         view_name : str
             layout view name, default is "layout".
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         pin_mapping = pin_mapping or {}
         self.impl_db.instantiate_layout_pcell(lib_name, cell_name, view_name,
                                               inst_lib, inst_cell, params, pin_mapping)
@@ -971,9 +948,6 @@ class BagProject(object):
         layout_list : Sequence[Any]
             a list of layouts to create
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         self.impl_db.instantiate_layout(lib_name, view_name, via_tech, layout_list)
 
     def release_write_locks(self, lib_name, cell_view_list):
@@ -987,9 +961,6 @@ class BagProject(object):
         cell_view_list : Sequence[Tuple[str, str]]
             list of cell/view name tuples.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         self.impl_db.release_write_locks(lib_name, cell_view_list)
 
     def run_lvs(self,  # type: BagProject
@@ -1016,9 +987,6 @@ class BagProject(object):
         log_fname : str
             name of the LVS log file.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         coro = self.impl_db.async_run_lvs(lib_name, cell_name, **kwargs)
         results = batch_async_task([coro])
         if results is None or isinstance(results[0], Exception):
@@ -1062,9 +1030,6 @@ class BagProject(object):
         log_fname : str
             name of the RCX log file.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         create_schematic = kwargs.get('create_schematic', True)
 
         coro = self.impl_db.async_run_rcx(lib_name, cell_name, **kwargs)
@@ -1096,9 +1061,6 @@ class BagProject(object):
         log_fname : str
             log file name.  Empty if task cancelled.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         coro = self.impl_db.async_export_layout(lib_name, cell_name, out_file, **kwargs)
         results = batch_async_task([coro])
         if results is None or isinstance(results[0], Exception):
@@ -1131,9 +1093,6 @@ class BagProject(object):
             If task is cancelled, return None.  Otherwise, this is a
             list of log file names.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         coro_list = [self.impl_db.async_export_layout(*info) for info in info_list]
         temp_results = batch_async_task(coro_list)
         if temp_results is None:
@@ -1161,9 +1120,6 @@ class BagProject(object):
         log_fname : str
             name of the LVS log file.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         return await self.impl_db.async_run_lvs(lib_name, cell_name, **kwargs)
 
     async def async_run_rcx(self,  # type: BagProject
@@ -1203,9 +1159,6 @@ class BagProject(object):
         log_fname : str
             name of the RCX log file.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         return await self.impl_db.async_run_rcx(lib_name, cell_name, **kwargs)
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
@@ -1228,9 +1181,6 @@ class BagProject(object):
         **kwargs
             additional implementation-dependent arguments.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         return self.impl_db.create_schematic_from_netlist(netlist, lib_name, cell_name,
                                                           sch_view=sch_view, **kwargs)
 
@@ -1249,9 +1199,6 @@ class BagProject(object):
         **kwargs
             additional implementation-dependent arguments.
         """
-        if self.impl_db is None:
-            raise Exception('BAG Server is not set up.')
-
         verilog_file = os.path.abspath(verilog_file)
         if not os.path.isfile(verilog_file):
             raise ValueError('%s is not a file.' % verilog_file)

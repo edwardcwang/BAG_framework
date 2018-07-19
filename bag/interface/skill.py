@@ -106,21 +106,11 @@ class SkillInterface(DbAccess):
 
     This class sends all bag's database and simulation operations to
     an external Virtuoso process, then get the result from it.
-
-    Parameters
-    ----------
-    dealer : :class:`bag.interface.ZMQDealer`
-        the socket used to communicate with :class:`~bag.interface.SkillOceanServer`.
-    tmp_dir : str
-        temporary file directory for DbAccess.
-    db_config : Dict[str, Any]
-        the database configuration dictionary.
     """
 
     def __init__(self, dealer, tmp_dir, db_config):
         # type: (ZMQDealer, str, Dict[str, Any]) -> None
-        DbAccess.__init__(self, tmp_dir, db_config)
-        self.handler = dealer
+        DbAccess.__init__(self, dealer, tmp_dir, db_config)
         self._rcx_jobs = {}
 
     def _eval_skill(self, expr, input_files=None, out_file=None):
@@ -172,14 +162,12 @@ class SkillInterface(DbAccess):
             out_file=out_file,
         )
 
-        self.handler.send_obj(request)
-        reply = self.handler.recv_obj()
+        reply = self.send(request)
         return _handle_reply(reply)
 
-    def close(self):
-        # type: () -> None
-        self.handler.send_obj(dict(type='exit'))
-        self.handler.close()
+    def get_exit_object(self):
+        # type: () -> Any
+        return {'type': 'exit'}
 
     def get_cells_in_library(self, lib_name):
         # type: (str) -> List[str]
