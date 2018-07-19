@@ -12,9 +12,9 @@ import bag.io
 from .database import DbAccess
 
 try:
-    import pybagoa
+    import pybag
 except ImportError:
-    raise ImportError('Cannot import pybagoa library.  Do you have the right shared library file?')
+    raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
 if TYPE_CHECKING:
     from .zmqwrapper import ZMQDealer
@@ -61,7 +61,7 @@ class OAInterface(DbAccess):
         else:
             cds_lib_path = os.path.abspath('./cds.lib')
 
-        self._oa_db = pybagoa.PyOADatabase(cds_lib_path, bag.io.get_encoding())
+        self._oa_db = pybag.PyOADatabase(cds_lib_path, bag.io.get_encoding())
 
     def _eval_skill(self, expr, input_files=None, out_file=None):
         # type: (str, Optional[Dict[str, Any]], Optional[str]) -> str
