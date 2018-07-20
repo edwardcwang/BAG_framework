@@ -5,12 +5,17 @@
 
 import os
 import abc
-from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Type, Set, Sequence, \
-    Callable, Union
+from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Type, Set, Sequence, Callable, \
+    Union
 
 from bag import float_to_si_string
-from bag.io import read_yaml
+from bag.io import get_encoding
 from bag.util.cache import DesignMaster, MasterDB
+
+try:
+    import pybag
+except ImportError:
+    raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
 if TYPE_CHECKING:
     from bag.core import BagProject
@@ -124,233 +129,6 @@ class ModuleDB(MasterDB):
         return lib_name in self._exc_libs
 
 
-class SchInstance(object):
-    """A class representing a schematic instance.
-
-    Parameters
-    ----------
-    database : ModuleDB
-        the schematic generator database.
-    gen_lib_name : str
-        the schematic generator library name.
-    gen_cell_name : str
-        the schematic generator cell name.
-    inst_name : str
-        name of this instance.
-    static : bool
-        True if the schematic generator is static.
-    connections : Optional[Dict[str, str]]
-        If given, initialize instance terminal connections to this dictionary.
-    master : Optional[Module]
-        If given, set the master of this instance.
-    parameters : Optional[Dict[str, Any]]
-        If given, set the instance parameters to this dictionary.
-    """
-
-    def __init__(self,
-                 database,  # type: MasterDB
-                 gen_lib_name,  # type: str
-                 gen_cell_name,  # type: str
-                 inst_name,  # type: str
-                 static=False,  # type: bool
-                 connections=None,  # type: Optional[Dict[str, str]]
-                 master=None,  # type: Optional[Module]
-                 parameters=None,  # type: Optional[Dict[str, Any]]
-                 ):
-        # type: (...) -> None
-        self._db = database
-        self._master = master
-        self._name = inst_name
-        self._gen_lib_name = gen_lib_name
-        self._gen_cell_name = gen_cell_name
-        self._static = static
-        self._term_mapping = {} if connections is None else connections
-        self.parameters = {} if parameters is None else parameters
-
-    def change_generator(self, gen_lib_name, gen_cell_name, static=False):
-        # type: (str, str, bool) -> None
-        """Change the master associated with this instance.
-
-        All instance parameters and terminal mappings will be reset.
-
-        Parameters
-        ----------
-        gen_lib_name : str
-            the new schematic generator library name.
-        gen_cell_name : str
-            the new schematic generator cell name.
-        static : bool
-            True if the schematic generator is static.
-        """
-        self._master = None
-        self._gen_lib_name = gen_lib_name
-        self._gen_cell_name = gen_cell_name
-        self._static = static
-        self.parameters.clear()
-        self._term_mapping.clear()
-
-    @property
-    def name(self):
-        # type: () -> str
-        """Returns the instance name."""
-        return self._name
-
-    @property
-    def connections(self):
-        # type: () -> Dict[str, str]
-        """Returns the instance terminals connection dictionary."""
-        return self._term_mapping
-
-    @property
-    def is_primitive(self):
-        # type: () -> bool
-        """Returns true if this is an instance of a primitive schematic generator."""
-        if self._static:
-            return True
-        if self._master is None:
-            raise ValueError('Instance %s has no master.  '
-                             'Did you forget to call design()?' % self._name)
-        return self._master.is_primitive()
-
-    @property
-    def should_delete(self):
-        # type: () -> bool
-        """Returns true if this instance should be deleted."""
-        return self._master is not None and self._master.should_delete_instance()
-
-    @property
-    def master(self):
-        # type: () -> Optional[Module]
-        return self._master
-
-    @property
-    def master_cell_name(self):
-        # type: () -> str
-        """Returns the schematic master cell name."""
-        return self._gen_cell_name if self._master is None else self._master.cell_name
-
-    @property
-    def master_key(self):
-        # type: () -> Any
-        return self._master.key
-
-    def copy(self, inst_name, connections=None):
-        # type: (str, Optional[Dict[str, str]]) -> SchInstance
-        """Returns a copy of this SchInstance.
-
-        Parameters
-        ----------
-        inst_name : str
-            the new instance name.
-        connections : Optional[Dict[str, str]]
-            If given, will set the connections of this instance to this dictionary.
-
-        Returns
-        -------
-        sch_inst : SchInstance
-            a copy of this SchInstance, with connections potentially updated.
-        """
-        if connections is None:
-            connections = self._term_mapping.copy()
-        return SchInstance(self._db, self._gen_lib_name, self._gen_cell_name, inst_name,
-                           static=self._static, connections=connections, master=self._master,
-                           parameters=self.parameters.copy())
-
-    def get_master_lib_name(self, impl_lib):
-        # type: (str) -> str
-        """Returns the schematic master library name.
-
-        Parameters
-        ----------
-        impl_lib : str
-            library where schematic masters will be created.
-
-        Returns
-        -------
-        master_lib : str
-            the schematic master library name.
-        """
-        return self._gen_lib_name if self.is_primitive else impl_lib
-
-    def design_specs(self, *args, **kwargs):
-        # type: (*args, **kwargs) -> None
-        """Update the instance master."""
-        self._update_master('design_specs', args, kwargs)
-
-    def design(self, *args, **kwargs):
-        # type: (*args, **kwargs) -> None
-        """Update the instance master."""
-        self._update_master('design', args, kwargs)
-
-    def _update_master(self, design_fun, args, kwargs):
-        # type: (str, Tuple[Any, ...], Dict[str, Any]) -> None
-        """Create a new master."""
-        if args:
-            key = 'args'
-            idx = 1
-            while key in kwargs:
-                key = 'args_%d' % idx
-                idx += 1
-            kwargs[key] = args
-        else:
-            key = None
-        self._master = self._db.new_master(self._gen_lib_name, self._gen_cell_name,
-                                           params=kwargs, design_args=key,
-                                           design_fun=design_fun)  # type: Module
-        if self._master.is_primitive():
-            self.parameters.update(self._master.get_schematic_parameters())
-
-    def implement_design(self, lib_name, top_cell_name='', prefix='', suffix='', **kwargs):
-        # type: (str, str, str, str, **kwargs) -> None
-        """Implement this design module in the given library.
-
-        If the given library already exists, this method will not delete or override
-        any pre-existing cells in that library.
-
-        If you use this method, you do not need to call update_structure(),
-        as this method calls it for you.
-
-        This method only works if BagProject is given.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the new library to put the generated schematics.
-        top_cell_name : str
-            the cell name of the top level design.
-        prefix : str
-            prefix to add to cell names.
-        suffix : str
-            suffix to add to cell names.
-        **kwargs :
-            additional arguments.
-        """
-        if 'erase' in kwargs:
-            print('DEPRECATED WARNING: erase is no longer supported '
-                  'in implement_design() and has no effect')
-
-        debug = kwargs.get('debug', False)
-        rename_dict = kwargs.get('rename_dict', None)
-
-        if not top_cell_name:
-            top_cell_name = None
-
-        if 'lib_path' in kwargs:
-            self._db.lib_path = kwargs['lib_path']
-        self._db.cell_prefix = prefix
-        self._db.cell_suffix = suffix
-        self._db.instantiate_masters([self._master], [top_cell_name], lib_name=lib_name,
-                                     debug=debug, rename_dict=rename_dict)
-
-    def get_layout_params(self, **kwargs):
-        # type: (**kwargs) -> Dict[str, Any]
-        """Backwards compatibility function."""
-        if hasattr(self._master, 'get_layout_params'):
-            return getattr(self._master, 'get_layout_params')(**kwargs)
-        else:
-            return kwargs
-
-
 class Module(DesignMaster, metaclass=abc.ABCMeta):
     """The base class of all schematic generators.  This represents a schematic master.
 
@@ -384,39 +162,37 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         design_args = kwargs['design_args']
 
         self.tech_info = database.tech_info
-        self.instances = {}  # type: Dict[str, Union[SchInstance, List[SchInstance]]]
-        self.pin_map = {}
-        self.new_pins = []
-        self.parameters = {}
-        self._pin_list = None
 
         self._yaml_fname = os.path.abspath(yaml_fname)
-        self.sch_info = read_yaml(self._yaml_fname)
+        self._cv = pybag.PySchCellView(self._yaml_fname, get_encoding())
+        # get library/cell name from YAML file name
+        dir_name, f_name = os.path.split(self._yaml_fname)
+        self._orig_lib_name = self._cv.lib_name
+        self._orig_cell_name = self._cv.cell_name
 
-        self._orig_lib_name = self.sch_info['lib_name']
-        self._orig_cell_name = self.sch_info['cell_name']
         self._design_fun = design_fun
         self._design_args = design_args
+        self.instances = self._cv.get_instances(database)
 
-        # create initial instances and populate instance map
-        for inst_name, inst_attr in self.sch_info['instances'].items():
-            lib_name = inst_attr['lib_name']
-            cell_name = inst_attr['cell_name']
-            static = database.is_lib_excluded(lib_name)
-            self.instances[inst_name] = SchInstance(database, lib_name, cell_name, inst_name,
-                                                    static=static)
-
-        # fill in pin map
-        for pin in self.sch_info['pins']:
-            self.pin_map[pin] = pin
+        self._inputs = self._outputs = self._inouts = None
 
         # initialize schematic master
         DesignMaster.__init__(self, database, lib_name, params, used_names)
 
     @property
-    def pin_list(self):
-        # type: () -> List[str]
-        return self._pin_list
+    def inputs(self):
+        # type: () -> Set[str]
+        return self._inputs
+
+    @property
+    def outputs(self):
+        # type: () -> Set[str]
+        return self._outputs
+
+    @property
+    def inouts(self):
+        # type: () -> Set[str]
+        return self._inouts
 
     @abc.abstractmethod
     def design(self, **kwargs):
@@ -439,6 +215,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         pass
 
+    def set_param(self, key, val):
+        # type: (str, Union[int, float, str, bool]) -> None
+        self._cv.set_param(key, val)
+
     def finalize(self):
         # type: () -> None
         """Finalize this master instance.
@@ -451,26 +231,14 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         else:
             fun(**self.params)
 
-        # backwards compatibility
-        if self.key is None:
-            self.params.clear()
-            self.params.update(self.parameters)
-            self.update_master_info()
+        # get set of children master keys
+        self.children = {inst.master_key for inst in self.instances.values()
+                         if not inst.is_primitive}
 
-        self.children = set()
-        for inst_list in self.instances.values():
-
-            if isinstance(inst_list, SchInstance):
-                if not inst_list.is_primitive:
-                    self.children.add(inst_list.master_key)
-            else:
-                for inst in inst_list:
-                    if not inst.is_primitive:
-                        self.children.add(inst.master_key)
-
-        # compute pins
-        self._pin_list = [pin_name for pin_name, _ in self.new_pins]
-        self._pin_list.extend((val for val in self.pin_map.values() if val))
+        # get pins
+        self._inputs = self._cv.get_inputs()
+        self._outputs = self._cv.get_outputs()
+        self._inouts = self._cv.get_inouts()
 
         # call super finalize routine
         super(Module, self).finalize()
@@ -517,27 +285,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         if self.is_primitive():
             return None
 
-        # populate instance transform mapping dictionary
-        inst_map = {}
-        for inst_name, inst_list in self.instances.items():
-            if isinstance(inst_list, SchInstance):
-                inst_list = [inst_list]
-
-            info_list = []
-            for inst in inst_list:
-                if not inst.should_delete:
-                    cur_lib = inst.get_master_lib_name(lib_name)
-                    info_list.append(dict(
-                        name=inst.name,
-                        lib_name=cur_lib,
-                        cell_name=rename_fun(inst.master_cell_name),
-                        params=inst.parameters,
-                        term_mapping=inst.connections,
-                    ))
-            inst_map[inst_name] = info_list
-
-        return (self._orig_lib_name, self._orig_cell_name, rename_fun(self.cell_name),
-                self.pin_map, inst_map, self.new_pins)
+        return rename_fun(self.cell_name), self._cv
 
     @property
     def cell_name(self):
@@ -628,6 +376,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         new_pin : str
             the new pin name.
         """
+        # TODO: start from here again
         self.pin_map[old_pin] = new_pin
 
     def add_pin(self, new_pin, pin_type):
