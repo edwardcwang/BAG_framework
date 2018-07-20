@@ -16,7 +16,7 @@ import yaml
 
 from .interface import ZMQDealer
 from .interface.database import DbAccess
-from .design import ModuleDB, SchInstance
+from .design import ModuleDB
 from .layout.routing import RoutingGrid
 from .layout.template import TemplateDB
 from .layout.core import DummyTechInfo

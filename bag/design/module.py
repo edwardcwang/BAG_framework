@@ -376,8 +376,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         new_pin : str
             the new pin name.
         """
-        # TODO: start from here again
-        self.pin_map[old_pin] = new_pin
+        self._cv.rename_pin(old_pin, new_pin)
 
     def add_pin(self, new_pin, pin_type):
         # type: (str, str) -> None
@@ -393,32 +392,75 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         pin_type : str
             the new pin type.  We current support "input", "output", or "inputOutput"
         """
-        self.new_pins.append([new_pin, pin_type])
+        self._cv.add_pin(new_pin, pin_type)
 
     def remove_pin(self, remove_pin):
-        # type: (str) -> None
+        # type: (str) -> bool
         """Removes a pin from this schematic.
 
         Parameters
         ----------
         remove_pin : str
             the pin to remove.
-        """
-        self.rename_pin(remove_pin, '')
 
-    def delete_instance(self, inst_name):
-        # type: (str) -> None
-        """Delete the instance with the given name.
+        Returns
+        -------
+        success : bool
+            True if the pin is successfully found and removed.
+        """
+        return self._cv.remove_pin(remove_pin)
+
+    def rename_instance(self, old_name, new_name):
+        # type: (str, str) -> None
+        """Renames an instance in this schematic.
+
+        Parameters
+        ----------
+        old_name : str
+            the old instance name.
+        new_name : str
+            the new instance name.
+        """
+        self._cv.rename_instance(old_name, new_name)
+        self.instances[new_name] = self.instances.pop(old_name)
+
+    def remove_instance(self, inst_name):
+        # type: (str) -> bool
+        """Remove the instance with the given name.
 
         Parameters
         ----------
         inst_name : str
             the child instance to delete.
-        """
-        self.instances[inst_name] = []
 
-    def replace_instance_master(self, inst_name, lib_name, cell_name, static=False, index=None):
-        # type: (str, str, str, bool, Optional[int]) -> None
+        Returns
+        -------
+        success : bool
+            True if the instance is successfully found and removed.
+        """
+        return self._cv.remove_instance(inst_name)
+
+    def delete_instance(self, inst_name):
+        # type: (str) -> bool
+        """Delete the instance with the given name.
+
+        This method is identical to remove_instance().  It's here only for backwards
+        compatibility.
+
+        Parameters
+        ----------
+        inst_name : str
+            the child instance to delete.
+
+        Returns
+        -------
+        success : bool
+            True if the instance is successfully found and removed.
+        """
+        return self._cv.remove_instance(inst_name)
+
+    def replace_instance_master(self, inst_name, lib_name, cell_name, static=False):
+        # type: (str, str, str, bool) -> None
         """Replace the master of the given instance.
 
         NOTE: all terminal connections will be reset.  Call reconnect_instance_terminal() to modify
@@ -434,23 +476,13 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             the new cell name.
         static : bool
             True if we're replacing instance with a static schematic instead of a design module.
-        index : Optional[int]
-            If index is not None and the child instance has been arrayed, this is the instance
-            array index that we are replacing.
-            If index is None, the entire child instance (whether arrayed or not) will be replaced
-            by a single new instance.
         """
         if inst_name not in self.instances:
             raise ValueError('Cannot find instance with name: %s' % inst_name)
 
-        # check if this is arrayed
-        if index is not None and isinstance(self.instances[inst_name], list):
-            self.instances[inst_name][index].change_generator(lib_name, cell_name, static=static)
-        else:
-            self.instances[inst_name] = SchInstance(self.master_db, lib_name, cell_name, inst_name,
-                                                    static=static)
+        self.instances[inst_name].change_generator(lib_name, cell_name, static=static)
 
-    def reconnect_instance_terminal(self, inst_name, term_name, net_name, index=None):
+    def reconnect_instance_terminal(self, inst_name, term_name, net_name):
         """Reconnect the instance terminal to a new net.
 
         Parameters
@@ -463,44 +495,12 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         net_name : Union[str, List[str]]
             the net to connect the instance terminal to.
             If a list is given, it is applied to each arrayed instance.
-        index : Optional[int]
-            If not None and the given instance is arrayed, will only modify terminal
-            connection for the instance at the given index.
-            If None and the given instance is arrayed, all instances in the array
-            will be reconnected.
         """
-        if index is not None:
-            # only modify terminal connection for one instance in the array
-            if isinstance(term_name, str) and isinstance(net_name, str):
-                self.instances[inst_name][index].connections[term_name] = net_name
-            else:
-                raise ValueError('If index is not None, '
-                                 'both term_name and net_name must be string.')
-        else:
-            # modify terminal connection for all instances in the array
-            cur_inst_list = self.instances[inst_name]
-            if isinstance(cur_inst_list, SchInstance):
-                cur_inst_list = [cur_inst_list]
+        inst = self.instances.get(inst_name, None)
+        if inst is None:
+            raise ValueError('Cannot find instance {}'.format(inst_name))
 
-            num_insts = len(cur_inst_list)
-            if not isinstance(term_name, list) and not isinstance(term_name, tuple):
-                if not isinstance(term_name, str):
-                    raise ValueError('term_name = %s must be string.' % term_name)
-                term_name = [term_name] * num_insts
-            else:
-                if len(term_name) != num_insts:
-                    raise ValueError('term_name length = %d != %d' % (len(term_name), num_insts))
-
-            if not isinstance(net_name, list) and not isinstance(net_name, tuple):
-                if not isinstance(net_name, str):
-                    raise ValueError('net_name = %s must be string.' % net_name)
-                net_name = [net_name] * num_insts
-            else:
-                if len(net_name) != num_insts:
-                    raise ValueError('net_name length = %d != %d' % (len(net_name), num_insts))
-
-            for inst, tname, nname in zip(cur_inst_list, term_name, net_name):
-                inst.connections[tname] = nname
+        inst.update_connection(term_name, net_name)
 
     def array_instance(self, inst_name, inst_name_list, term_list=None):
         # type: (str, List[str], Optional[List[Dict[str, str]]]) -> None
@@ -522,19 +522,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             should be listed here.
             If None, assume terminal connections are not changed.
         """
-        num_inst = len(inst_name_list)
-        if not term_list:
-            term_list = [None] * num_inst
-        if num_inst != len(term_list):
-            msg = 'len(inst_name_list) = %d != len(term_list) = %d'
-            raise ValueError(msg % (num_inst, len(term_list)))
-
-        orig_inst = self.instances[inst_name]
-        if not isinstance(orig_inst, SchInstance):
-            raise ValueError('Instance %s is already arrayed.' % inst_name)
-
-        self.instances[inst_name] = [orig_inst.copy(iname, connections=iterm)
-                                     for iname, iterm in zip(inst_name_list, term_list)]
+        print('WARNING: not supported yet.')
+        pass
 
     def design_dc_bias_sources(self,  # type: Module
                                vbias_dict,  # type: Optional[Dict[str, List[str]]]
@@ -592,9 +581,9 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                                          'not supported' % (bias_val, type(bias_val)))
 
                 self.array_instance(inst_name, name_list, term_list=term_list)
-                for inst, val, param_dict in zip(self.instances[inst_name], val_list,
-                                                 param_dict_list):
-                    inst.parameters[param_name] = val
+                for name, val, param_dict in zip(name_list, val_list, param_dict_list):
+                    inst = self.instances[name]
+                    inst.set_param(param_name, val)
                     if param_dict is not None:
                         for k, v in param_dict.items():
                             if isinstance(v, str):
@@ -604,9 +593,9 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                             else:
                                 raise ValueError('value %s of type %s not supported' % (v, type(v)))
 
-                            inst.parameters[k] = v
+                            inst.set_param(k, v)
             else:
-                self.delete_instance(inst_name)
+                self.remove_instance(inst_name)
 
     def design_dummy_transistors(self, dum_info, inst_name, vdd_name, vss_name, net_map=None):
         # type: (List[Tuple[Any]], str, str, str, Optional[Dict[str, str]]) -> None
@@ -630,13 +619,13 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             optional net name transformation mapping.
         """
         if not dum_info:
-            self.delete_instance(inst_name)
+            self.remove_instance(inst_name)
         else:
             num_arr = len(dum_info)
             arr_name_list = ['XDUMMY%d' % idx for idx in range(num_arr)]
             self.array_instance(inst_name, arr_name_list)
 
-            for idx, ((mos_type, w, lch, th, s_net, d_net), fg) in enumerate(dum_info):
+            for name, ((mos_type, w, lch, th, s_net, d_net), fg) in zip(arr_name_list, dum_info):
                 if mos_type == 'pch':
                     cell_name = 'pmos4_standard'
                     sup_name = vdd_name
@@ -648,13 +637,13 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                     d_net = net_map.get(d_net, d_net)
                 s_name = s_net if s_net else sup_name
                 d_name = d_net if d_net else sup_name
-
-                self.replace_instance_master(inst_name, 'BAG_prim', cell_name, index=idx)
-                self.reconnect_instance_terminal(inst_name, 'G', sup_name, index=idx)
-                self.reconnect_instance_terminal(inst_name, 'B', sup_name, index=idx)
-                self.reconnect_instance_terminal(inst_name, 'D', d_name, index=idx)
-                self.reconnect_instance_terminal(inst_name, 'S', s_name, index=idx)
-                self.instances[inst_name][idx].design(w=w, l=lch, nf=fg, intent=th)
+                inst = self.instances[name]
+                inst.change_generator('BAG_prim', cell_name)
+                inst.update_connection('G', sup_name)
+                inst.update_connection('B', sup_name)
+                inst.update_connection('D', d_name)
+                inst.update_connection('S', s_name)
+                inst.design(w=w, l=lch, nf=fg, intent=th)
 
 
 class MosModuleBase(Module):
@@ -702,7 +691,7 @@ class MosModuleBase(Module):
     def get_cell_name_from_parameters(self):
         # type: () -> str
         mos_type = self.orig_cell_name.split('_')[0]
-        return '%s_%s' % (mos_type, self.params['intent'])
+        return '{}_{}'.format(mos_type, self.params['intent'])
 
     def is_primitive(self):
         # type: () -> bool
@@ -752,7 +741,7 @@ class ResPhysicalModuleBase(Module):
 
     def get_cell_name_from_parameters(self):
         # type: () -> str
-        return 'res_%s' % self.params['intent']
+        return 'res_{}'.format(self.params['intent'])
 
     def is_primitive(self):
         # type: () -> bool
@@ -806,23 +795,27 @@ class ResMetalModule(Module):
         l_name = tech_dict['l_name']
         w_name = tech_dict['w_name']
         layer_name = tech_dict.get('layer_name', None)
+        precision = tech_dict.get('precision', 6)
         cell_name = tech_dict['cell_table'][layer]
+
+        inst = self.instances['R0']
 
         if layer_name is None:
             # replace resistor cellview
-            self.replace_instance_master('R0', lib_name, cell_name, static=True)
+            inst.change_generator(lib_name, cell_name, static=True)
         else:
-            self.instances['R0'].parameters[layer_name] = cell_name
-        self.instances['R0'].parameters[l_name] = float_to_si_string(l, precision=6)
-        self.instances['R0'].parameters[w_name] = float_to_si_string(w, precision=6)
+            inst.set_param(layer_name, cell_name)
+
+        inst.set_param(l_name, float_to_si_string(l, precision=precision))
+        inst.set_param(w_name, float_to_si_string(w, precision=precision))
         for key, val in tech_dict['others'].items():
             if isinstance(val, float):
                 val = float_to_si_string(val, precision=6)
             elif isinstance(val, int):
-                val = '%d' % val
+                val = '{:d}'.format(val)
             elif isinstance(val, bool) or isinstance(val, str):
                 pass
             else:
                 raise ValueError('unsupported type: %s' % type(val))
 
-            self.instances['R0'].parameters[key] = val
+            inst.set_param(key, val)
