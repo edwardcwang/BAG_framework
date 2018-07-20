@@ -23,6 +23,11 @@ from .layout.core import DummyTechInfo
 from .io import read_file, sim_data
 from .concurrent.core import batch_async_task
 
+try:
+    from pybag import DesignInstance
+except ImportError:
+    raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
+
 if TYPE_CHECKING:
     from .interface.simulator import SimAccess
     from .layout.template import TemplateBase
@@ -745,7 +750,7 @@ class BagProject(object):
 
     # noinspection PyUnusedLocal
     def create_design_module(self, lib_name, cell_name, **kwargs):
-        # type: (str, str, **kwargs) -> SchInstance
+        # type: (str, str, **kwargs) -> DesignInstance
         """Create a new top level design module for the given schematic template
 
         Parameters
@@ -759,47 +764,10 @@ class BagProject(object):
 
         Returns
         -------
-        dsn : SchInstance
-            a configurable schematic instance of the given schematic generator.
+        dsn : DesignInstance
+            a configurable design instance of the given schematic generator.
         """
-        return SchInstance(self.dsn_db, lib_name, cell_name, 'XTOP', static=False)
-
-    def new_schematic_instance(self, lib_name='', cell_name='', params=None, sch_cls=None,
-                               debug=False, **kwargs):
-        # type: (str, str, Dict[str, Any], Type[ModuleType], bool, **kwargs) -> SchInstance
-        """Create a new schematic instance
-
-        This method is the schematic equivalent of TemplateDB's new_template() method.
-        By default, we assume the design() function is used to set the schematic parameters.
-        If you use another function (such as design_specs()), then you should specify
-        an optional parameter design_fun equal to the name of that function.
-
-        Parameters
-        ----------
-        lib_name : str
-            schematic library name.
-        cell_name : str
-            schematic name
-        params : Dict[str, Any]
-            the parameter dictionary.
-        sch_cls : Type[TemplateType]
-            the schematic generator class to instantiate.
-        debug : bool
-            True to print debug messages.
-        **kwargs
-            optional parameters.
-
-        Returns
-        -------
-        dsn : SchInstance
-            a schematic instance of the given schematic generator.
-        """
-        design_fun = kwargs.get('design_fun', 'design')
-        master = self.dsn_db.new_master(lib_name, cell_name, gen_cls=sch_cls, params=params,
-                                        debug=debug, design_args=None, design_fun=design_fun)
-
-        return SchInstance(self.dsn_db, lib_name, cell_name, 'XTOP', static=False,
-                           master=master)
+        return DesignInstance(self.dsn_db, lib_name, cell_name)
 
     def clear_schematic_database(self):
         # type: () -> None
@@ -825,7 +793,7 @@ class BagProject(object):
 
     def batch_schematic(self,  # type: BagProject
                         lib_name,  # type: str
-                        sch_inst_list,  # type: Sequence[SchInstance]
+                        sch_inst_list,  # type: Sequence[DesignInstance]
                         name_list=None,  # type: Optional[Sequence[Optional[str]]]
                         prefix='',  # type: str
                         suffix='',  # type: str
@@ -839,8 +807,8 @@ class BagProject(object):
         ----------
         lib_name : str
             name of the new library to put the schematic instances.
-        sch_inst_list : Sequence[SchInstance]
-            list of SchInstance objects.
+        sch_inst_list : Sequence[DesignInstance]
+            list of DesignInstance objects.
         name_list : Optional[Sequence[Optional[str]]]
             list of master cell names.  If not given, default names will be used.
         prefix : str
