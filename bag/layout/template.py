@@ -156,19 +156,8 @@ class TemplateDB(MasterDB):
         # noinspection PyCallingNonCallable
         return gen_cls(self, lib_name, params, used_cell_names, **kwargs)
 
-    def create_masters_in_db(self, lib_name, content_list, debug=False):
-        # type: (str, Sequence[Any], bool) -> None
-        """Create the masters in the design database.
-
-        Parameters
-        ----------
-        lib_name : str
-            library to create the designs in.
-        content_list : Sequence[Any]
-            a list of the master contents.  Must be created in this order.
-        debug : bool
-            True to print debug messages
-        """
+    def create_masters_in_db(self, lib_name, content_list, debug=False, output=''):
+        # type: (str, Sequence[Any], bool, str) -> None
         if self._prj is None:
             raise ValueError('BagProject is not defined.')
 

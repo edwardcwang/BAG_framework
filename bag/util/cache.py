@@ -442,8 +442,8 @@ class MasterDB(abc.ABC):
         raise NotImplementedError('not implemented')
 
     @abc.abstractmethod
-    def create_masters_in_db(self, lib_name, content_list, debug=False):
-        # type: (str, Sequence[Any], bool) -> None
+    def create_masters_in_db(self, lib_name, content_list, debug=False, output=''):
+        # type: (str, Sequence[Any], bool, str) -> None
         """Create the masters in the design database.
 
         Parameters
@@ -454,6 +454,8 @@ class MasterDB(abc.ABC):
             a list of the master contents.  Must be created in this order.
         debug : bool
             True to print debug messages
+        output : str
+            the output type.  Default output type is represented by an empty string
         """
         pass
 
@@ -662,6 +664,7 @@ class MasterDB(abc.ABC):
                             lib_name='',  # type: str
                             debug=False,  # type: bool
                             rename_dict=None,  # type: Optional[Dict[str, str]]
+                            output='',  # type: str
                             ):
         # type: (...) -> None
         """create all given masters in the database.
@@ -678,6 +681,8 @@ class MasterDB(abc.ABC):
             True to print debugging messages
         rename_dict : Optional[Dict[str, str]]
             optional master cell renaming dictionary.
+        output : str
+            the output type.  Default output type is represented by an empty string
         """
         if name_list is None:
             name_list = [None] * len(master_list)  # type: Sequence[Optional[str]]
@@ -734,7 +739,7 @@ class MasterDB(abc.ABC):
         if debug:
             print('master content retrieval took %.4g seconds' % (end - start))
 
-        self.create_masters_in_db(lib_name, content_list, debug=debug)
+        self.create_masters_in_db(lib_name, content_list, debug=debug, output=output)
 
     def _instantiate_master_helper(self, info_dict, master):
         # type: (Dict[str, DesignMaster], DesignMaster) -> None

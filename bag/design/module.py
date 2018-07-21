@@ -88,23 +88,15 @@ class ModuleDB(MasterDB):
         # noinspection PyTypeChecker
         return gen_cls(self, **kwargs)
 
-    def create_masters_in_db(self, lib_name, content_list, debug=False):
-        # type: (str, Sequence[Any], bool) -> None
-        """Create the masters in the design database.
-
-        Parameters
-        ----------
-        lib_name : str
-            library to create the designs in.
-        content_list : Sequence[Any]
-            a list of the master contents.  Must be created in this order.
-        debug : bool
-            True to print debug messages
-        """
+    def create_masters_in_db(self, lib_name, content_list, debug=False, output=''):
+        # type: (str, Sequence[Any], bool, str) -> None
         if self._prj is None:
             raise ValueError('BagProject is not defined.')
 
-        self._prj.instantiate_schematic(lib_name, content_list, lib_path=self.lib_path)
+        if output == 'schematic':
+            self._prj.instantiate_schematic(lib_name, content_list, lib_path=self.lib_path)
+        else:
+            raise ValueError('Unsupported output type: {}'.format(output))
 
     @property
     def tech_info(self):
@@ -522,8 +514,9 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             should be listed here.
             If None, assume terminal connections are not changed.
         """
-        print('WARNING: not supported yet.')
-        pass
+        if term_list is None:
+            term_list = [{}] * len(inst_name_list)
+        self._cv.array_instance(self.instances, inst_name, inst_name_list, term_list)
 
     def design_dc_bias_sources(self,  # type: Module
                                vbias_dict,  # type: Optional[Dict[str, List[str]]]
