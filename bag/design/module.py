@@ -430,7 +430,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         success : bool
             True if the instance is successfully found and removed.
         """
-        return self._cv.remove_instance(inst_name)
+        success = self._cv.remove_instance(inst_name)
+        if success:
+            del self.instances[inst_name]
+        return success
 
     def delete_instance(self, inst_name):
         # type: (str) -> bool
