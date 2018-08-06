@@ -88,13 +88,15 @@ class ModuleDB(MasterDB):
         # noinspection PyTypeChecker
         return gen_cls(self, **kwargs)
 
-    def create_masters_in_db(self, lib_name, content_list, debug=False, output=''):
-        # type: (str, Sequence[Any], bool, str) -> None
+    def create_masters_in_db(self, lib_name, content_list, debug=False, output='', **kwargs):
+        # type: (str, Sequence[Any], bool, str, Any) -> None
         if self._prj is None:
             raise ValueError('BagProject is not defined.')
 
         if output == 'schematic':
             self._prj.instantiate_schematic(lib_name, content_list, lib_path=self.lib_path)
+        elif output == 'netlist':
+            pass
         else:
             raise ValueError('Unsupported output type: {}'.format(output))
 

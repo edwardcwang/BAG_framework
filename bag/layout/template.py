@@ -130,7 +130,7 @@ class TemplateDB(MasterDB):
             print('cache loading took %.5g seconds.' % (end - start))
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[TemplateType], str, Dict[str, Any], Set[str], **kwargs) -> TemplateType
+        # type: (Type[TemplateType], str, Dict[str, Any], Set[str], Any) -> TemplateType
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.
@@ -156,8 +156,8 @@ class TemplateDB(MasterDB):
         # noinspection PyCallingNonCallable
         return gen_cls(self, lib_name, params, used_cell_names, **kwargs)
 
-    def create_masters_in_db(self, lib_name, content_list, debug=False, output=''):
-        # type: (str, Sequence[Any], bool, str) -> None
+    def create_masters_in_db(self, lib_name, content_list, debug=False, output='', **kwargs):
+        # type: (str, Sequence[Any], bool, str, Any) -> None
         if self._prj is None:
             raise ValueError('BagProject is not defined.')
 
@@ -224,7 +224,7 @@ class TemplateDB(MasterDB):
 
     def new_template(self, lib_name='', temp_name='', params=None, temp_cls=None, debug=False,
                      **kwargs):
-        # type: (str, str, Dict[str, Any], Type[TemplateType], bool, **kwargs) -> TemplateType
+        # type: (str, str, Dict[str, Any], Type[TemplateType], bool, Any) -> TemplateType
         """Create a new template.
 
         Parameters
@@ -506,7 +506,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
 
         use_cybagoa = kwargs.get('use_cybagoa', False)
 
@@ -553,7 +553,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         pass
 
     def populate_params(self, table, params_info, default_params, **kwargs):
-        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **kwargs) -> None
+        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], Any) -> None
         """Fill params dictionary with values from table and default_params"""
         DesignMaster.populate_params(self, table, params_info, default_params, **kwargs)
 
@@ -806,7 +806,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 yield from inst.all_rect_iter()
 
     def intersection_rect_iter(self, layer_id, box):
-        # type: () -> Generator[BBox, None, None]
+        # type: (int, BBox) -> Generator[BBox, None, None]
         yield from self._used_tracks.intersection_rect_iter(layer_id, box)
         if not self._merge_used_tracks:
             for inst in self._layout.inst_iter():
@@ -912,7 +912,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self._track_boxes.items()
 
     def new_template_with(self, **kwargs):
-        # type: (**kwargs) -> TemplateBase
+        # type: (Any) -> TemplateBase
         """Create a new template with the given parameters.
 
         This method will update the parameter values with the given dictionary,
@@ -1158,7 +1158,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self._prim_ports.keys()
 
     def new_template(self, params=None, temp_cls=None, debug=False, **kwargs):
-        # type: (Dict[str, Any], Type[TemplateType], bool, **kwargs) -> TemplateType
+        # type: (Dict[str, Any], Type[TemplateType], bool, Any) -> TemplateType
         """Create a new template.
 
         Parameters
@@ -1265,7 +1265,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                spy=0,  # type: Union[float, int]
                                params=None,  # type: Optional[Dict[str, Any]]
                                unit_mode=False,  # type: bool
-                               **kwargs  # type: **kwargs
+                               **kwargs  # type: Any
                                ):
         # type: (...) -> None
         """Adds a new (arrayed) primitive instance to layout.
@@ -1347,7 +1347,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return rect
 
     def add_res_metal(self, layer_id, bbox, **kwargs):
-        # type: (int, Union[BBox, BBoxArray], **kwargs) -> List[Rect]
+        # type: (int, Union[BBox, BBoxArray], Any) -> List[Rect]
         """Add a new metal resistor.
 
         Parameters
@@ -1950,11 +1950,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     cap_box,  # type: BBox
                     bot_layer,  # type: int
                     num_layer,  # type: int
-                    port_widths=1,  # type: Union[int, List[int], Dict[int, int]
+                    port_widths=1,  # type: Union[int, List[int], Dict[int, int]]
                     port_parity=None,
                     # type: Optional[Union[Tuple[int, int], Dict[int, Tuple[int, int]]]]
                     array=False,  # type: bool
-                    **kwargs,
+                    **kwargs,  # type: Any
                     ):
         # type: (...) -> Any
         """Draw mom cap in the defined bounding box."""
@@ -3982,7 +3982,7 @@ class CachedTemplate(TemplateBase):
     """A template that's cached in file."""
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
@@ -4020,7 +4020,7 @@ class BlackBoxTemplate(TemplateBase):
     """A black box template."""
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._sch_params = None
 

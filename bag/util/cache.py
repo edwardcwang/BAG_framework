@@ -18,7 +18,7 @@ from .search import BinaryIterator
 
 
 def _get_unique_name(basename, *args):
-    # type: (str, *args) -> str
+    # type: (str, Any) -> str
     """Returns a unique name that's not used yet.
 
     This method appends an index to the given basename.  Binary
@@ -184,7 +184,7 @@ class DesignMaster(abc.ABC):
         optional parameters.
     """
     def __init__(self, master_db, lib_name, params, used_names, **kwargs):
-        # type: (MasterDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        # type: (MasterDB, str, Dict[str, Any], Set[str], Any) -> None
         self._master_db = master_db
         self._lib_name = lib_name
         self._used_names = used_names
@@ -213,7 +213,7 @@ class DesignMaster(abc.ABC):
         self._key = self.compute_unique_key()
 
     def populate_params(self, table, params_info, default_params, **kwargs):
-        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **kwargs) -> None
+        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], Any) -> None
         """Fill params dictionary with values from table and default_params"""
         for key, desc in params_info.items():
             if key not in table:
@@ -416,7 +416,7 @@ class MasterDB(abc.ABC):
 
     @abc.abstractmethod
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[MasterType], str, Dict[str, Any], Set[str], **kwargs) -> MasterType
+        # type: (Type[MasterType], str, Dict[str, Any], Set[str], Any) -> MasterType
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.
@@ -442,8 +442,8 @@ class MasterDB(abc.ABC):
         raise NotImplementedError('not implemented')
 
     @abc.abstractmethod
-    def create_masters_in_db(self, lib_name, content_list, debug=False, output=''):
-        # type: (str, Sequence[Any], bool, str) -> None
+    def create_masters_in_db(self, lib_name, content_list, debug=False, output='', **kwargs):
+        # type: (str, Sequence[Any], bool, str, Any) -> None
         """Create the masters in the design database.
 
         Parameters
@@ -456,6 +456,8 @@ class MasterDB(abc.ABC):
             True to print debug messages
         output : str
             the output type.  Default output type is represented by an empty string
+        **kwargs :
+            parameters associated with the given output type.
         """
         pass
 
@@ -665,6 +667,7 @@ class MasterDB(abc.ABC):
                             debug=False,  # type: bool
                             rename_dict=None,  # type: Optional[Dict[str, str]]
                             output='',  # type: str
+                            **kwargs,  # type: Any
                             ):
         # type: (...) -> None
         """create all given masters in the database.
@@ -683,6 +686,8 @@ class MasterDB(abc.ABC):
             optional master cell renaming dictionary.
         output : str
             the output type.  Default output type is represented by an empty string
+        **kwargs :
+            parameters associated with the given output type.
         """
         if name_list is None:
             name_list = [None] * len(master_list)  # type: Sequence[Optional[str]]
@@ -739,7 +744,7 @@ class MasterDB(abc.ABC):
         if debug:
             print('master content retrieval took %.4g seconds' % (end - start))
 
-        self.create_masters_in_db(lib_name, content_list, debug=debug, output=output)
+        self.create_masters_in_db(lib_name, content_list, debug=debug, output=output, **kwargs)
 
     def _instantiate_master_helper(self, info_dict, master):
         # type: (Dict[str, DesignMaster], DesignMaster) -> None

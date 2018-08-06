@@ -20,7 +20,7 @@ class RectIndex(object):
     """A R-tree that stores all tracks on a layer."""
 
     def __init__(self, resolution, basename=None, overwrite=False):
-        # type: (float) -> None
+        # type: (float, Optional[str], bool) -> None
         self._res = resolution
         self._cnt = 0
         if basename is None:
@@ -79,7 +79,7 @@ class UsedTracks(object):
     """
 
     def __init__(self, save_file_basename=None, overwrite=False):
-        # type: (Optional[str]) -> None
+        # type: (Optional[str], bool) -> None
         self._idx_table = {}
         self._save_file_basename = save_file_basename
         self._overwrite = overwrite
@@ -169,7 +169,7 @@ class UsedTracks(object):
                 yield layer_id, box, dx, dy
 
     def intersection_rect_iter(self, layer_id, box):
-        # type: (BBox) -> Generator[BBox, None, None]
+        # type: (int, BBox) -> Generator[BBox, None, None]
         """Finds all bounding box that intersects the given box."""
         if layer_id in self._idx_table:
             yield from self._idx_table[layer_id].intersection_rect_iter(box)
