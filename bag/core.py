@@ -20,11 +20,11 @@ from .design import ModuleDB
 from .layout.routing import RoutingGrid
 from .layout.template import TemplateDB
 from .layout.core import DummyTechInfo
-from .io import read_file, sim_data
+from .io import read_file, sim_data, get_encoding
 from .concurrent.core import batch_async_task
 
 try:
-    from pybag import DesignInstance
+    import pybag
 except ImportError:
     raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
@@ -750,7 +750,7 @@ class BagProject(object):
 
     # noinspection PyUnusedLocal
     def create_design_module(self, lib_name, cell_name, **kwargs):
-        # type: (str, str, Any) -> DesignInstance
+        # type: (str, str, Any) -> pybag.DesignInstance
         """Create a new top level design module for the given schematic template
 
         Parameters
@@ -764,10 +764,10 @@ class BagProject(object):
 
         Returns
         -------
-        dsn : DesignInstance
+        dsn : pybag.DesignInstance
             a configurable design instance of the given schematic generator.
         """
-        return DesignInstance(self.dsn_db, lib_name, cell_name)
+        return pybag.DesignInstance(self.dsn_db, lib_name, cell_name)
 
     def clear_schematic_database(self):
         # type: () -> None
@@ -778,7 +778,7 @@ class BagProject(object):
         # type: (str, Sequence[Any], str) -> None
         """Create the given schematic contents in CAD database.
 
-        NOTE: this is BAG's internal method.  TO create schematics, call batch_schematic() instead.
+        NOTE: this is BAG's internal method.  To create schematics, call batch_schematic() instead.
 
         Parameters
         ----------
@@ -791,9 +791,35 @@ class BagProject(object):
         """
         self.impl_db.instantiate_schematic(lib_name, content_list, lib_path=lib_path)
 
+    def instantiate_netlist(self, lib_name, content_list, **kwargs):
+        # type: (str, Sequence[Any], Any) -> None
+        """Create netlists from the given schematic contents.
+
+        NOTE: this is BAG's internal method.
+
+        Parameters
+        ----------
+        lib_name : str
+            the output library name.  Only used when generating hierarchical netlists.
+        content_list : Sequence[Any]
+            list of schematics to create.
+        **kwargs
+            parameters
+        """
+        fmt = kwargs.get('format', 'spice')
+        encoding = kwargs.get('encoding', get_encoding())
+        flat = kwargs.get('flat', True)
+        cell_map = self.bag_config['netlist'][fmt]
+        if flat:
+            fname = kwargs['fname']
+            pybag.implement_netlist(content_list, cell_map, fmt, fname,
+                                    encoding=encoding, flat=True)
+        else:
+            raise NotImplementedError('Hierarchical netlist not implemented yet')
+
     def batch_schematic(self,  # type: BagProject
                         lib_name,  # type: str
-                        sch_inst_list,  # type: Sequence[DesignInstance]
+                        sch_inst_list,  # type: Sequence[pybag.DesignInstance]
                         name_list=None,  # type: Optional[Sequence[Optional[str]]]
                         prefix='',  # type: str
                         suffix='',  # type: str
@@ -807,7 +833,7 @@ class BagProject(object):
         ----------
         lib_name : str
             name of the new library to put the schematic instances.
-        sch_inst_list : Sequence[DesignInstance]
+        sch_inst_list : Sequence[pybag.DesignInstance]
             list of DesignInstance objects.
         name_list : Optional[Sequence[Optional[str]]]
             list of master cell names.  If not given, default names will be used.

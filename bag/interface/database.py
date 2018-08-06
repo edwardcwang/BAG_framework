@@ -370,7 +370,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
-        # type: (str, str, str, Optional[str], **kwargs) -> None
+        # type: (str, str, str, Optional[str], Any) -> None
         """Create a schematic from a netlist.
 
         This is mainly used to create extracted schematic from an extracted netlist.
@@ -392,7 +392,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
-        # type: (str, str, str, **kwargs) -> None
+        # type: (str, str, str, Any) -> None
         """Create a verilog view for mix-signal simulation.
 
         Parameters
@@ -475,7 +475,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             return netlist, log_fname
 
     async def async_run_lvs(self, lib_name, cell_name, **kwargs):
-        # type: (str, str, **kwargs) -> Tuple[bool, str]
+        # type: (str, str, Any) -> Tuple[bool, str]
         """A coroutine for running LVS.
 
         Parameters
@@ -505,7 +505,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
                             lib_name,  # type: str
                             cell_name,  # type: str
                             create_schematic=True,  # type: bool
-                            **kwargs  # type: **kwargs
+                            **kwargs  # type: Any
                             ):
         # type: (...) -> Tuple[Union[bool, Optional[str]], str]
         """Run RCX on the given cell.
@@ -549,7 +549,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         return self._process_rcx_output(netlist, log_fname, lib_name, cell_name, create_schematic)
 
     async def async_export_layout(self, lib_name, cell_name, out_file, *args, **kwargs):
-        # type: (str, str, str, *args, **kwargs) -> str
+        # type: (str, str, str, Any, Any) -> str
         """export layout.
 
         Parameters

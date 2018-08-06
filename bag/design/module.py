@@ -96,7 +96,7 @@ class ModuleDB(MasterDB):
         if output == 'schematic':
             self._prj.instantiate_schematic(lib_name, content_list, lib_path=self.lib_path)
         elif output == 'netlist':
-            pass
+            self._prj.instantiate_netlist(lib_name, content_list, **kwargs)
         else:
             raise ValueError('Unsupported output type: {}'.format(output))
 
