@@ -176,7 +176,7 @@ class OAInterface(DbAccess):
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
-        # type: (str, str, str, Optional[str], **kwargs) -> None
+        # type: (str, str, str, Optional[str], Any) -> None
         # get netlists to copy
         netlist_dir = os.path.dirname(netlist)
         netlist_files = self.checker.get_rcx_netlists(lib_name, cell_name)
@@ -218,7 +218,7 @@ class OAInterface(DbAccess):
         return os.path.join(self._oa_db.get_lib_path(lib_name), cell_name)
 
     def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
-        # type: (str, str, str, **kwargs) -> None
+        # type: (str, str, str, Any) -> None
         # delete old verilog view
         cmd = 'delete_cellview( "%s" "%s" "verilog" )' % (lib_name, cell_name)
         self._eval_skill(cmd)
