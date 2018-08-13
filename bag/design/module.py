@@ -234,6 +234,12 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         self._outputs = self._cv.get_outputs()
         self._inouts = self._cv.get_inouts()
 
+        # update cell name
+        old_cell_name = self._cv.cell_name
+        new_cell_name = self.cell_name
+        if old_cell_name != new_cell_name:
+            self._cv.cell_name = new_cell_name
+
         # call super finalize routine
         super(Module, self).finalize()
 
