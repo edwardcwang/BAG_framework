@@ -809,13 +809,14 @@ class BagProject(object):
         fmt = kwargs.get('format', 'cdl')
         encoding = kwargs.get('encoding', get_encoding())
         flat = kwargs.get('flat', True)
+        shell = kwargs.get('shell', False)
         cell_map = self.bag_config['netlist'][fmt]['cell_map']
         inc_list = self.bag_config['netlist'][fmt]['includes']
 
         if flat:
             fname = kwargs['fname']
             pybag.implement_netlist(content_list, cell_map, inc_list, fmt, fname,
-                                    encoding=encoding, flat=True)
+                                    encoding=encoding, flat=True, shell=shell)
         else:
             raise NotImplementedError('Hierarchical netlist not implemented yet')
 
