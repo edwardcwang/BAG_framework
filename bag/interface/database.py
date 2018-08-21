@@ -336,6 +336,22 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
+    def instantiate_schematic(self, lib_name, content_list, lib_path=''):
+        # type: (str, Sequence[Any], str) -> None
+        """Create the given schematics in CAD database.
+
+        Parameters
+        ----------
+        lib_name : str
+            name of the new library to put the concrete schematics.
+        content_list : Sequence[Any]
+            list of schematics to create.
+        lib_path : str
+            the path to create the library in.  If empty, use default location.
+        """
+        pass
+
+    @abc.abstractmethod
     def instantiate_layout(self, lib_name, view_name, via_tech, layout_list):
         # type: (str, str, str, Sequence[Any]) -> None
         """Create a batch of layouts.
@@ -575,34 +591,3 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
         return await self.checker.async_export_layout(lib_name, cell_name, out_file,
                                                       *args, **kwargs)
-
-    def instantiate_schematic(self, lib_name, content_list, lib_path=''):
-        """Create the given schematics in CAD database.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the new library to put the concrete schematics.
-        content_list : Sequence[Any]
-            list of schematics to create.
-        lib_path : str
-            the path to create the library in.  If empty, use default location.
-        """
-        template_list, change_list = [], []
-        for content in content_list:
-            if content is not None:
-                master_lib, master_cell, impl_cell, pin_map, inst_map, new_pins = content
-
-                # add to template list
-                template_list.append([master_lib, master_cell, impl_cell])
-
-                # construct change object
-                change = dict(
-                    name=impl_cell,
-                    pin_map=dict_to_item_list(pin_map),
-                    inst_list=format_inst_map(inst_map),
-                    new_pins=new_pins,
-                )
-                change_list.append(change)
-
-        self.create_implementation(lib_name, template_list, change_list, lib_path=lib_path)

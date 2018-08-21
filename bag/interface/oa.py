@@ -159,6 +159,10 @@ class OAInterface(DbAccess):
         # type: (...) -> None
         raise NotImplementedError('Not implemented yet.')
 
+    def instantiate_schematic(self, lib_name, content_list, lib_path=''):
+        # type: (str, Sequence[Any], str) -> None
+        pass
+
     def instantiate_layout_pcell(self, lib_name, cell_name, view_name,
                                  inst_lib, inst_cell, params, pin_mapping):
         # type: (str, str, str, str, str, Dict[str, Any], Dict[str, str]) -> None
@@ -229,7 +233,7 @@ class OAInterface(DbAccess):
         # type: (str, str, ModuleDB, str) -> None
 
         # read schematic information
-        cell_list = self._oa_db.read_sch_recursive(lib_name, cell_name, "schematic", new_lib_path,
+        cell_list = self._oa_db.read_sch_recursive(lib_name, cell_name, 'schematic', new_lib_path,
                                                    dsn_db.get_library_mapping(), self.exc_libs)
 
         # create python templates
