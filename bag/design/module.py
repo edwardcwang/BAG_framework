@@ -158,9 +158,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         self.tech_info = database.tech_info
 
         self._yaml_fname = os.path.abspath(yaml_fname)
-        self._cv = pybag.PySchCellView(self._yaml_fname, get_encoding())
-        # get library/cell name from YAML file name
-        dir_name, f_name = os.path.split(self._yaml_fname)
+        self._cv = pybag.PySchCellView(self._yaml_fname, 'symbol', get_encoding())
         self._orig_lib_name = self._cv.lib_name
         self._orig_cell_name = self._cv.cell_name
 
