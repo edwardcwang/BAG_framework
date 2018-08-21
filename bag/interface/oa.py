@@ -161,7 +161,11 @@ class OAInterface(DbAccess):
 
     def instantiate_schematic(self, lib_name, content_list, lib_path=''):
         # type: (str, Sequence[Any], str) -> None
-        pass
+        self.create_library(lib_name, lib_path=lib_path)
+        for cell_name, cv in content_list:
+            sym_created = self._oa_db.implement_schematic(lib_name, cell_name, cv)
+            # TODO: check and save schematics
+            pass
 
     def instantiate_layout_pcell(self, lib_name, cell_name, view_name,
                                  inst_lib, inst_cell, params, pin_mapping):
