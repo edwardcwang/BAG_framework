@@ -945,6 +945,27 @@ procedure( modify_instance_terminal(sch inst wire_list net_map term_mapping "ggl
     )
 )
 
+; given a copied template cell, modify it to a concrete schematic.
+procedure( check_and_save_cell(lib_name cell_name sch_view sym_view "tttt")
+    let( (cv errs )
+        ; refresh cellviews
+        when( cv = dbOpenCellViewByType(lib_name cell_name sym_view nil "r")
+            dbRefreshCellView(cv)
+            dbClose(cv)
+        )
+        when( cv = dbOpenCellViewByType(lib_name cell_name sch_view nil "r")
+            dbRefreshCellView(cv)
+            dbClose(cv)
+        )
+        ; attempt to open schematic in append mode
+        unless( cv = dbOpenCellViewByType(lib_name cell_name sch_view nil "a")
+            error("Cannot open %s__%s (schematic) in append mode." lib_name cell_name)
+        )
+        ; check and save schematic
+        check_and_save_schematic(sch)
+    )
+)
+
 ; Perform check-and-save on the given schematic database object, then close it.
 procedure( check_and_save_schematic(sch "g")
     let( (errs)

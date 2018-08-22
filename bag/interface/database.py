@@ -336,8 +336,9 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def instantiate_schematic(self, lib_name, content_list, lib_path=''):
-        # type: (str, Sequence[Any], str) -> None
+    def instantiate_schematic(self, lib_name, content_list, lib_path='',
+                              sch_view='schematic', sym_view='symbol'):
+        # type: (str, Sequence[Any], str, str, str) -> None
         """Create the given schematics in CAD database.
 
         Parameters
@@ -348,6 +349,10 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             list of schematics to create.
         lib_path : str
             the path to create the library in.  If empty, use default location.
+        sch_view : str
+            schematic view name.
+        sym_view : str
+            symbol view name.
         """
         pass
 

@@ -279,8 +279,9 @@ class SkillInterface(DbAccess):
                     }
         self._eval_skill(cmd, input_files=in_files)
 
-    def instantiate_schematic(self, lib_name, content_list, lib_path=''):
-        # type: (str, Sequence[Any], str) -> None
+    def instantiate_schematic(self, lib_name, content_list, lib_path='',
+                              sch_view='schematic', sym_view='symbol'):
+        # type: (str, Sequence[Any], str, str, str) -> None
         raise NotImplementedError('Not implemented yet.')
 
     def instantiate_layout_pcell(self, lib_name, cell_name, view_name,

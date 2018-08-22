@@ -159,13 +159,27 @@ class OAInterface(DbAccess):
         # type: (...) -> None
         raise NotImplementedError('Not implemented yet.')
 
-    def instantiate_schematic(self, lib_name, content_list, lib_path=''):
-        # type: (str, Sequence[Any], str) -> None
+    def instantiate_schematic(self, lib_name, content_list, lib_path='',
+                              sch_view='schematic', sym_view='symbol'):
+        # type: (str, Sequence[Any], str, str, str) -> None
+        # release write locks
+        cell_view_list = []
+        for cell_name, _ in content_list:
+            cell_view_list.append((cell_name, 'schematic'))
+            cell_view_list.append((cell_name, 'symbol'))
+        self.release_write_locks(lib_name, cell_view_list)
+
+        # create the schematics
+        encoding = bag.io.get_encoding()
+        bsch = sch_view.encode(encoding)
+        bsym = sym_view.encode(encoding)
         self.create_library(lib_name, lib_path=lib_path)
         for cell_name, cv in content_list:
-            sym_created = self._oa_db.implement_schematic(lib_name, cell_name, cv)
-            # TODO: check and save schematics
-            pass
+            self._oa_db.implement_schematic(lib_name, cell_name, cv,
+                                            sch_view=bsch, sym_view=bsym)
+            self._eval_skill(
+                'check_and_save_cell( "{}" "{}" "{}" "{}" )'.format(lib_name, cell_name,
+                                                                    sch_view, sym_view))
 
     def instantiate_layout_pcell(self, lib_name, cell_name, view_name,
                                  inst_lib, inst_cell, params, pin_mapping):
