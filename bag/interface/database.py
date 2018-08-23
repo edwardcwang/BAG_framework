@@ -389,6 +389,36 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
+    def refresh_cellviews(self, lib_name, cell_view_list):
+        # type: (str, Sequence[Tuple[str, str]]) -> None
+        """Refresh the given cellviews in the database.
+
+        Parameters
+        ----------
+        lib_name : str
+            the library name.
+        cell_view_list : Sequence[Tuple[str, str]]
+            list of cell/view name tuples.
+        """
+        pass
+
+    @abc.abstractmethod
+    def perform_checks_on_cell(self, lib_name, cell_name, view_name):
+        # type: (str, str, str) -> None
+        """Perform checks on the given cell.
+
+        Parameters
+        ----------
+        lib_name : str
+            the library name.
+        cell_name : str
+            the cell name.
+        view_name : str
+            the view name.
+        """
+        pass
+
+    @abc.abstractmethod
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
         # type: (str, str, str, Optional[str], Any) -> None

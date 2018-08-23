@@ -960,6 +960,34 @@ class BagProject(object):
         """
         self.impl_db.release_write_locks(lib_name, cell_view_list)
 
+    def refresh_cellviews(self, lib_name, cell_view_list):
+        # type: (str, Sequence[Tuple[str, str]]) -> None
+        """Refresh the given cellviews in the database.
+
+        Parameters
+        ----------
+        lib_name : str
+            the library name.
+        cell_view_list : Sequence[Tuple[str, str]]
+            list of cell/view name tuples.
+        """
+        self.impl_db.refresh_cellviews(lib_name, cell_view_list)
+
+    def perform_checks_on_cell(self, lib_name, cell_name, view_name):
+        # type: (str, str, str) -> None
+        """Perform checks on the given cell.
+
+        Parameters
+        ----------
+        lib_name : str
+            the library name.
+        cell_name : str
+            the cell name.
+        view_name : str
+            the view name.
+        """
+        self.impl_db.perform_checks_on_cell(lib_name, cell_name, view_name)
+
     def run_lvs(self,  # type: BagProject
                 lib_name,  # type: str
                 cell_name,  # type: str

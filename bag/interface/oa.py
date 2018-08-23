@@ -177,9 +177,8 @@ class OAInterface(DbAccess):
         for cell_name, cv in content_list:
             self._oa_db.implement_schematic(lib_name, cell_name, cv,
                                             sch_view=bsch, sym_view=bsym)
-            self._eval_skill(
-                'check_and_save_cell( "{}" "{}" "{}" "{}" )'.format(lib_name, cell_name,
-                                                                    sch_view, sym_view))
+
+        self.refresh_cellviews(lib_name, cell_view_list)
 
     def instantiate_layout_pcell(self, lib_name, cell_name, view_name,
                                  inst_lib, inst_cell, params, pin_mapping):
@@ -195,6 +194,17 @@ class OAInterface(DbAccess):
         cmd = 'release_write_locks( "%s" {cell_view_list} )' % lib_name
         in_files = {'cell_view_list': cell_view_list}
         self._eval_skill(cmd, input_files=in_files)
+
+    def refresh_cellviews(self, lib_name, cell_view_list):
+        # type: (str, Sequence[Tuple[str, str]]) -> None
+        cmd = 'refresh_cellviews( "%s" {cell_view_list} )' % lib_name
+        in_files = {'cell_view_list': cell_view_list}
+        self._eval_skill(cmd, input_files=in_files)
+
+    def perform_checks_on_cell(self, lib_name, cell_name, view_name):
+        # type: (str, str, str) -> None
+        self._eval_skill(
+            'check_and_save_cell( "{}" "{}" "{}" )'.format(lib_name, cell_name, view_name))
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):

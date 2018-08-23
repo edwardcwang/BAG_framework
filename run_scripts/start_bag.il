@@ -946,20 +946,11 @@ procedure( modify_instance_terminal(sch inst wire_list net_map term_mapping "ggl
 )
 
 ; given a copied template cell, modify it to a concrete schematic.
-procedure( check_and_save_cell(lib_name cell_name sch_view sym_view "tttt")
+procedure( check_and_save_cell(lib_name cell_name view_name "ttt")
     let( (cv errs )
-        ; refresh cellviews
-        when( cv = dbOpenCellViewByType(lib_name cell_name sym_view nil "r")
-            dbRefreshCellView(cv)
-            dbClose(cv)
-        )
-        when( cv = dbOpenCellViewByType(lib_name cell_name sch_view nil "r")
-            dbRefreshCellView(cv)
-            dbClose(cv)
-        )
         ; attempt to open schematic in append mode
-        unless( cv = dbOpenCellViewByType(lib_name cell_name sch_view nil "a")
-            error("Cannot open %s__%s (schematic) in append mode." lib_name cell_name)
+        unless( cv = dbOpenCellViewByType(lib_name cell_name view_name nil "a")
+            error("Cannot open %s__%s (%s) in append mode." lib_name cell_name view_name)
         )
         ; check and save schematic
         check_and_save_schematic(sch)
@@ -1505,6 +1496,22 @@ procedure( release_write_locks( lib_name cell_view_list_f "tt" )
                 when( cv = dbFindOpenCellView( lib_obj car(info) cadr(info) )
                     dbReopen(cv, "r")
                     dbClose(cv)
+                )
+            )
+            ddReleaseObj(lib_obj)
+        )
+        t
+    )
+)
+
+; refresh all given cell views
+procedure( refresh_cellviews( lib_name cell_view_list_f "tt" )
+    let( (cell_view_list lib_obj cv)
+        cell_view_list = parse_data_from_file(cell_view_list_f)
+        when( lib_obj = ddGetObj(lib_name nil nil nil nil "r")
+            foreach( info cell_view_list
+                when( cv = dbFindOpenCellView( lib_obj car(info) cadr(info) )
+                    dbRefreshCellView(cv)
                 )
             )
             ddReleaseObj(lib_obj)
