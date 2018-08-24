@@ -265,6 +265,19 @@ class OAInterface(DbAccess):
                                                    dsn_db.get_library_mapping(), self.exc_libs)
 
         # create python templates
+        self._create_sch_templates(cell_list, dsn_db, new_lib_path)
+
+    def import_design_library(self, lib_name, dsn_db, new_lib_path):
+        # type: (str, ModuleDB, str) -> None
+
+        # read schematic information
+        cell_list = self._oa_db.read_library(lib_name, 'schematic', new_lib_path,
+                                             dsn_db.get_library_mapping(), self.exc_libs)
+
+        # create python templates
+        self._create_sch_templates(cell_list, dsn_db, new_lib_path)
+
+    def _create_sch_templates(self, cell_list, dsn_db, new_lib_path):
         for lib, cell in cell_list:
             root_path = dsn_db.get_library_path(lib)
             if not root_path:
@@ -276,7 +289,3 @@ class OAInterface(DbAccess):
                 content = self.get_python_template(lib, cell,
                                                    self.db_config.get('prim_table', {}))
                 bag.io.write_file(python_file, content + '\n', mkdir=False)
-
-    def import_design_library(self, lib_name, dsn_db, new_lib_path):
-        # type: (str, ModuleDB, str) -> None
-        raise NotImplementedError('Not implemented yet.')

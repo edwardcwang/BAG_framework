@@ -503,8 +503,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
         inst.update_connection(term_name, net_name)
 
-    def array_instance(self, inst_name, inst_name_list, term_list=None):
-        # type: (str, List[str], Optional[List[Dict[str, str]]]) -> None
+    def array_instance(self, inst_name, inst_name_list, term_list=None, dx=0, dy=0):
+        # type: (str, List[str], Optional[List[Dict[str, str]]], int, int) -> None
         """Replace the given instance by an array of instances.
 
         This method will replace self.instances[inst_name] by a list of
@@ -522,10 +522,15 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             them to.  Only terminal connections different than the parent instance
             should be listed here.
             If None, assume terminal connections are not changed.
+        dx : int
+            the X coordinate shift.  If dx = dy = 0, default to shift right.
+        dy : int
+            the Y coordinate shift.  If dx = dy = 0, default to shift right.
         """
         if term_list is None:
             term_list = [{}] * len(inst_name_list)
-        self._cv.array_instance(self.instances, inst_name, inst_name_list, term_list)
+        self._cv.array_instance(self.instances, inst_name, inst_name_list, term_list,
+                                dx=dy, dy=dy)
 
     def design_dc_bias_sources(self,  # type: Module
                                vbias_dict,  # type: Optional[Dict[str, List[str]]]
