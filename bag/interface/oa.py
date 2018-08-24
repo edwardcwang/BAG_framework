@@ -134,7 +134,7 @@ class OAInterface(DbAccess):
         # type: (str, str) -> None
         lib_path = lib_path or self.default_lib_path
         tech_lib = self.db_config['schematic']['tech_lib']
-        self._oa_db.create_lib(self, lib_name, lib_path, tech_lib)
+        self._oa_db.create_lib(lib_name, lib_path, tech_lib)
 
     def create_implementation(self, lib_name, template_list, change_list, lib_path=''):
         # type: (str, Sequence[Any], Sequence[Any], str) -> None

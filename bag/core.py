@@ -26,7 +26,7 @@ from .concurrent.core import batch_async_task
 try:
     import pybag
 except ImportError:
-    raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
+    pybag = None
 
 if TYPE_CHECKING:
     from .interface.simulator import SimAccess

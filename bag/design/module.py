@@ -8,9 +8,9 @@ import abc
 from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Type, Set, Sequence, Callable, \
     Union
 
-from bag import float_to_si_string
-from bag.io import get_encoding
-from bag.util.cache import DesignMaster, MasterDB
+from ..math import float_to_si_string
+from ..io import get_encoding
+from ..util.cache import DesignMaster, MasterDB
 
 try:
     import pybag
@@ -18,8 +18,8 @@ except ImportError:
     raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
 if TYPE_CHECKING:
-    from bag.core import BagProject
-    from bag.layout.core import TechInfo
+    from ..core import BagProject
+    from ..layout.core import TechInfo
 
 
 class ModuleDB(MasterDB):
