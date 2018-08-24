@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, Dict, Set, Tuple, Any, List, Optional, Union
 
 import abc
 
-from bag import float_to_si_string
-from bag.math import lcm
+from bag.math import float_to_si_string, lcm
 from bag.util.search import BinaryIterator
 from bag.layout.template import TemplateBase, TemplateDB
 from bag.layout.routing import RoutingGrid

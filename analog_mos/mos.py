@@ -5,7 +5,7 @@
 
 from typing import TYPE_CHECKING, Dict, Any, Set, Tuple, Optional
 
-from bag import float_to_si_string
+from bag.math import float_to_si_string
 from bag.layout.util import BBox
 from bag.layout.template import TemplateBase
 

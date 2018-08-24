@@ -2,7 +2,7 @@
 
 from typing import Dict, Any, Set
 
-from bag import float_to_si_string
+from bag.math import float_to_si_string
 from bag.layout.template import TemplateBase, TemplateDB
 
 from .tech import LaygoTech

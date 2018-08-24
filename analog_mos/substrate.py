@@ -2,8 +2,7 @@
 
 from typing import Dict, Any, Set
 
-from bag import float_to_si_string
-from bag.math import lcm
+from bag.math import float_to_si_string, lcm
 from bag.layout.template import TemplateBase, TemplateDB
 
 

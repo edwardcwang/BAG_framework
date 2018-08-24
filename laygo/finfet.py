@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Dict, Any, List, Tuple, Union
 
 import abc
 
-from bag import float_to_si_string
+from bag.math import float_to_si_string
 from bag.layout.routing.fill import fill_symmetric_max_density
 
 from .tech import LaygoTech
