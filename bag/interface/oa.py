@@ -162,22 +162,18 @@ class OAInterface(DbAccess):
     def instantiate_schematic(self, lib_name, content_list, lib_path='',
                               sch_view='schematic', sym_view='symbol'):
         # type: (str, Sequence[Any], str, str, str) -> None
+
         # release write locks
         cell_view_list = []
         for cell_name, _ in content_list:
             cell_view_list.append((cell_name, 'schematic'))
             cell_view_list.append((cell_name, 'symbol'))
         self.release_write_locks(lib_name, cell_view_list)
-
         # create the schematics
-        encoding = bag.io.get_encoding()
-        bsch = sch_view.encode(encoding)
-        bsym = sym_view.encode(encoding)
         self.create_library(lib_name, lib_path=lib_path)
-        for cell_name, cv in content_list:
-            self._oa_db.implement_schematic(lib_name, cell_name, cv,
-                                            sch_view=bsch, sym_view=bsym)
-
+        self._oa_db.implement_sch_list(lib_name, content_list, sch_view=sch_view,
+                                       sym_view=sym_view)
+        # refresh cell views
         self.refresh_cellviews(lib_name, cell_view_list)
 
     def instantiate_layout_pcell(self, lib_name, cell_name, view_name,

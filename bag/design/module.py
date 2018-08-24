@@ -224,8 +224,11 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             fun(**self.params)
 
         # get set of children master keys
-        self.children = {inst.master_key for inst in self.instances.values()
-                         if not inst.is_primitive}
+        self.children = set()
+        for inst in self.instances.values():
+            inst.set_cinst_prim_flag()
+            if not inst.is_primitive:
+                self.children.add(inst.master_key)
 
         # get pins
         self._inputs = self._cv.get_inputs()
