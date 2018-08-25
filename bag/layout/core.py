@@ -472,7 +472,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_res_em_specs(self, res_type, w, l=-1, **kwargs):
-        # type: (str, float, float, **kwargs) -> Tuple[float, float, float]
+        # type: (str, float, float, Any) -> Tuple[float, float, float]
         """Returns a tuple of EM current/resistance specs of the given resistor.
 
         Parameters
@@ -1399,8 +1399,9 @@ class BagLayout(object):
                                sp_cols=0,  # type: Union[float, int]
                                params=None,  # type: Optional[Dict[str, Any]]
                                unit_mode=False,  # type: bool
-                               **kwargs  # type: **kwargs
+                               **kwargs  # type: Any
                                ):
+        # type: (...) -> None
         """Adds a new (arrayed) primitive instance to this layout.
 
         Parameters
