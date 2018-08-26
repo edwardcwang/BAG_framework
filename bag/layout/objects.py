@@ -219,7 +219,7 @@ class Arrayable(Figure, metaclass=abc.ABCMeta):
         return not self.destroyed and self.nx >= 1 and self.ny >= 1
 
     def get_item_location(self, row=0, col=0, unit_mode=False):
-        # type: (int, int) -> Tuple[ldim, ldim]
+        # type: (int, int, bool) -> Tuple[ldim, ldim]
         """Returns the location of the given item in the array.
 
         Parameters
@@ -522,7 +522,7 @@ class Instance(Arrayable):
                     yield layer_id, box.transform(loc, orient, unit_mode=True), sdx, sdy
 
     def intersection_rect_iter(self, layer_id, test_box):
-        # type: () -> Generator[BBox, None, None]
+        # type: (int, BBox) -> Generator[BBox, None, None]
         if self.destroyed:
             return
 
