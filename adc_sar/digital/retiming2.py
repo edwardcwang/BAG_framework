@@ -5,7 +5,7 @@
 
 from typing import Dict, Set, Any, Optional, List
 
-from bag.layout.template import TemplateDB
+from bag.layout.template import TemplateDB, TemplateBase
 from bag.layout.digital import StdCellTemplate, StdCellBase
 from bag.layout.routing import TrackID
 
@@ -112,6 +112,7 @@ class RetimeLatchRow(StdCellBase):
         if num_bits % cells_per_tap != 0:
             raise ValueError('num_bits = %d must be multiple of cells_per_tap = %d' % (num_bits, cells_per_tap))
 
+        self.set_draw_boundaries(True)
         # use standard cell routing grid
         self.update_routing_grid()
 
@@ -144,9 +145,13 @@ class RetimeLatchRow(StdCellBase):
             xcur = add_tap(self, xcur, tap_master, num_row, port_table)
 
         # set template size
+        if self.set_draw_boundaries:
+            adc_width = adc_width - 2 * self._bound_params['lr_width']
         self.set_std_size((adc_width, num_row))
         # fill spaces
         self.fill_space()
+
+        self.draw_boundaries()
 
         # connect and export clock.
         clk_layer = clkb_list[0].layer_id + 1
@@ -216,6 +221,7 @@ class RetimeSpaceRow(StdCellBase):
         if num_bits % cells_per_tap != 0:
             raise ValueError('num_bits = %d must be multiple of cells_per_tap = %d' % (num_bits, cells_per_tap))
 
+        self.set_draw_boundaries(True)
         # use standard cell routing grid
         self.update_routing_grid()
 
@@ -239,9 +245,13 @@ class RetimeSpaceRow(StdCellBase):
             xcur = add_tap(self, xcur, tap_master, num_row, port_table)
 
         # set template size
+        if self.set_draw_boundaries:
+            adc_width = adc_width - 2 * self._bound_params['lr_width']
         self.set_std_size((adc_width, num_row))
         # fill spaces
         self.fill_space()
+
+        self.draw_boundaries()
 
         # export supplies
         self.add_pin('VDD', port_table['VDD'], show=False)
@@ -313,6 +323,7 @@ class RetimeBufferRow(StdCellBase):
         num_buf_dig_max = (num_bits - num_buf) // 2
         if num_buf_dig_max < num_buf_dig:
             raise ValueError('Must have num_buf_out = %d <= %d' % (num_buf_dig, num_buf_dig_max))
+        self.set_draw_boundaries(True)
         # use standard cell routing grid
         self.update_routing_grid()
 
@@ -360,9 +371,13 @@ class RetimeBufferRow(StdCellBase):
                 cur_buf_idx += 1
 
         # set template size
+        if self.set_draw_boundaries:
+            adc_width = adc_width - 2 * self._bound_params['lr_width']
         self.set_std_size((adc_width, 1))
         # fill spaces
         self.fill_space()
+
+        self.draw_boundaries()
 
         if in_list:
             # find input/output track ID
@@ -392,7 +407,7 @@ class RetimeBufferRow(StdCellBase):
         self.add_pin('VSS', port_table['VSS'], show=False)
 
 
-class Retimer(StdCellBase):
+class Retimer(TemplateBase):
     """First stage retime latch for a ADC block.
 
     Parameters
@@ -450,9 +465,9 @@ class Retimer(StdCellBase):
         reserve_tracks = self.params['reserve_tracks']
         buf_ck_width = 5
 
-        self.set_draw_boundaries(True)
+        # self.set_draw_boundaries(True)
 
-        self.update_routing_grid()
+        # self.update_routing_grid()
 
         lat_params = dict(
             parity=0,
@@ -487,14 +502,33 @@ class Retimer(StdCellBase):
         buf_params['num_buf'] = 0
         buf_fill_master = self.new_template(params=buf_params, temp_cls=RetimeBufferRow)
 
-        spx = lat_master0.std_size[0]
-        spy = lat_master0.std_size[1]
+        spx = lat_master0.std_size[0] * lat_master0.std_col_width_unit
+        spy = lat_master0.std_size[1] * lat_master0.std_row_height_unit
         ck_dict = {}
 
+        # finding clock_bar phases <- added by Jaeduk
+        # rules:
+        # 1) last stage latches: num_adc-1
+        # 2) second last stage latches: int(num_adc/2)-1
+        # 3) the first half of first stage latches: int((int(num_adc/2)+1)%num_adc)
+        # 4) the second half of first stage latches: 1
+        # 5) the output phase = the second last latch phase
+        ck_phase_2 = num_adc - 1
+        ck_phase_1 = int(num_adc / 2) - 1
+        ck_phase_0_0 = int((int(num_adc / 2) + 1) % num_adc)
+        ck_phase_0_1 = 1
+        ck_phase_out = ck_phase_1
+        ck_phase_buf = sorted(set([ck_phase_2, ck_phase_1, ck_phase_0_0, ck_phase_0_1]))
+        print('clocking phases:', ck_phase_2, ck_phase_1, ck_phase_0_0, ck_phase_0_1, ck_phase_out, ck_phase_buf)
+        ck_dict[ck_phase_2] = []
+        ck_dict[ck_phase_1] = []
+        ck_dict[ck_phase_0_0] = []
+        ck_dict[ck_phase_0_1] = []
+
         # last stage latches
-        inst2 = self.add_std_instance(lat_master0, 'X2', nx=num_adc, spx=spx)
+        inst2 = self.add_instance(lat_master0, 'X2', nx=num_adc, spx=spx, unit_mode=True)
         ck_list = inst2.get_all_port_pins('clkb')
-        ck_dict[num_adc-1] = self.connect_wires(ck_list)
+        ck_dict[ck_phase_2] = self.connect_wires(ck_list)
 
         self._export_output(inst2, adc_order, num_bits)
         io_wires = []
@@ -504,9 +538,9 @@ class Retimer(StdCellBase):
         vss_list = inst2.get_all_port_pins('VSS')
 
         # second-to-last stage latches
-        inst1 = self.add_std_instance(lat_master1, 'X1', loc=(0, spy), nx=num_adc, spx=spx)
+        inst1 = self.add_instance(lat_master1, 'X1', loc=(0, spy), nx=num_adc, spx=spx, unit_mode=True)
         ck_list = inst1.get_all_port_pins('clkb')
-        ck_dict[int(num_adc/2)-1] = self.connect_wires(ck_list)
+        ck_dict[ck_phase_1] = self.connect_wires(ck_list)
 
         self._collect_io_wires(inst1, 'out', num_bits, io_wires)
         self.connect_wires(io_wires)
@@ -517,11 +551,21 @@ class Retimer(StdCellBase):
         vss_list.extend(inst1.get_all_port_pins('VSS'))
 
         # set template size
-        cb_nrow = buf_master.std_size[1]
-        self.set_std_size((adc_width * num_adc, 4 * spy + cb_nrow))
+        cb_nrow = buf_master.std_size[1] * buf_master.std_row_height_unit
+        blk_h = 4 * spy + cb_nrow
+
+        buf_top_layer = buf_master.prim_top_layer
+        if self.grid.dir_tracks[buf_top_layer] == 'x':
+            size_y = blk_h / self.grid.get_track_pitch(buf_top_layer, unit_mode=True)
+        else:
+            size_y = blk_h / self.grid.get_track_pitch(buf_top_layer + 1, unit_mode=True)
+
+        self.size = [buf_top_layer, adc_width * num_adc, size_y]
+
         # draw boundaries
-        self.draw_boundaries()
-        blk_w, blk_h = self.bound_box.width_unit, self.bound_box.height_unit
+        # self.draw_boundaries()
+        # blk_w, blk_h = self.bound_box.width_unit, self.bound_box.height_unit
+
 
         # first stage latches, clock buffers, and fills
         ck1_list = []
@@ -530,12 +574,12 @@ class Retimer(StdCellBase):
         out_dig_warr = None
         for col_idx, adc_idx in enumerate(adc_order):
             if adc_idx < int(num_adc/2):
-                finst = self.add_std_instance(space_master, loc=(spx * col_idx, 2 * spy))
-                inst = self.add_std_instance(lat_master0, loc=(spx * col_idx, 3 * spy))
+                finst = self.add_instance(space_master, loc=(spx * col_idx, 2 * spy), unit_mode=True)
+                inst = self.add_instance(lat_master0, loc=(spx * col_idx, 3 * spy), unit_mode=True)
                 ck_list = ck5_list
             else:
-                finst = self.add_std_instance(space_master, loc=(spx * col_idx, 3 * spy))
-                inst = self.add_std_instance(lat_master0, loc=(spx * col_idx, 2 * spy))
+                finst = self.add_instance(space_master, loc=(spx * col_idx, 3 * spy), unit_mode=True)
+                inst = self.add_instance(lat_master0, loc=(spx * col_idx, 2 * spy), unit_mode=True)
                 ck_list = ck1_list
             # connect clk/vdd/vss/output
             ck_list.extend(inst.get_all_port_pins('clkb'))
@@ -551,12 +595,12 @@ class Retimer(StdCellBase):
                 name = 'in_%d<%d>' % (adc_idx, bit_idx)
                 self.add_pin(name, in_pin, show=True)
             # clock buffers/fills
-            if adc_idx in [1, 3, 5, 7]:
-                if adc_idx == 3:
+            if adc_idx in ck_phase_buf:
+                if adc_idx == ck_phase_out:
                     cur_master = buf_dig_master
                 else:
                     cur_master = buf_master
-                cfinst = self.add_std_instance(cur_master, loc=(spx * col_idx, 4 * spy))
+                cfinst = self.add_instance(cur_master, loc=(spx * col_idx, 4 * spy), unit_mode=True)
                 vdd_list.extend(cfinst.get_all_port_pins('VDD'))
                 vss_list.extend(cfinst.get_all_port_pins('VSS'))
                 in_pin = cfinst.get_port('in').get_pins()[0]
@@ -566,15 +610,15 @@ class Retimer(StdCellBase):
                 if cfinst.has_port('out_dig'):
                     out_dig_warr = cfinst.get_port('out_dig').get_pins()[0]
             else:
-                cfinst = self.add_std_instance(buf_fill_master, loc=(spx * col_idx, 4 * spy))
+                cfinst = self.add_instance(buf_fill_master, loc=(spx * col_idx, 4 * spy), unit_mode=True)
                 vdd_list.extend(cfinst.get_all_port_pins('VDD'))
                 vss_list.extend(cfinst.get_all_port_pins('VSS'))
 
         self.connect_wires(io_wires)
-        ck_dict[1] = self.connect_wires(ck1_list)
-        ck_dict[5] = self.connect_wires(ck5_list)
+        ck_dict[ck_phase_0_1] = self.connect_wires(ck1_list)
+        ck_dict[ck_phase_0_0] = self.connect_wires(ck5_list)
 
-        for ck_idx in [1, 3, 5, 7]:
+        for ck_idx in ck_phase_buf:
             buf_out = buf_dict[ck_idx]
             buf_layer = buf_out.layer_id
             ck_wires = ck_dict[ck_idx]
@@ -601,6 +645,7 @@ class Retimer(StdCellBase):
         vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
                                                 fill_width=2, fill_space=1, space=0, space_le=0)
         sup_layer += 1
+
         vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
                                                 space=0, space_le=0)
 
