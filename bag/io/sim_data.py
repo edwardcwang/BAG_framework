@@ -214,7 +214,7 @@ def save_sim_results(results, fname, compression='gzip'):
             for var in swp_vars:
                 if var not in f:
                     swp_data = results[var]
-                    if np.issubdtype(swp_data.dtype, str):
+                    if np.issubdtype(swp_data.dtype, np.unicode_):
                         # we need to explicitly encode unicode strings to bytes
                         swp_data = [v.encode(encoding=bag_encoding, errors=bag_codec_error) for v in swp_data]
 
@@ -243,7 +243,7 @@ def load_sim_file(fname):
         for name in f:
             dset = f[name]
             dset_data = dset[()]
-            if np.issubdtype(dset.dtype, bytes):
+            if np.issubdtype(dset.dtype, np.bytes_):
                 # decode byte values to unicode arrays
                 dset_data = np.array([v.decode(encoding=bag_encoding, errors=bag_codec_error) for v in dset_data])
 
