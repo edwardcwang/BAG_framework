@@ -2154,9 +2154,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             else:
                 warr_list.extend(self._gr_vss_warrs)
 
-            track_warr = self.connect_to_tracks(warr_list, track_id, track_lower=lower,
-                                                track_upper=upper, unit_mode=unit_mode)
-            sub_warr_list.append(track_warr)
+            if warr_list:
+                track_warr = self.connect_to_tracks(warr_list, track_id, track_lower=lower,
+                                                    track_upper=upper, unit_mode=unit_mode)
+                sub_warr_list.append(track_warr)
             if sup_wires is not None:
                 wlower, wupper = warr_list[0].lower_unit, warr_list[0].upper_unit
                 for conn_warr in sup_wires:
