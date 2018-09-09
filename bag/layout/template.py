@@ -4,9 +4,8 @@
 """
 
 from typing import TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, \
-    Optional, Tuple, Iterable, Sequence, Callable, Generator
+    Optional, Tuple, Iterable, Sequence, Callable
 
-import os
 import abc
 import copy
 import time
@@ -15,37 +14,29 @@ import pickle
 from itertools import islice, product, chain
 
 import yaml
-import shapely.ops as shops
-import shapely.geometry as shgeo
 
 from bag.util.cache import DesignMaster, MasterDB
 from bag.util.interval import IntervalSet
-from .core import BagLayout
-from .util import BBox, BBoxArray
 from ..io import get_encoding, open_file
 from .routing import Port, TrackID, WireArray
 from .routing.fill import UsedTracks, fill_symmetric_max_num_info, fill_symmetric_interval, \
     NoFillChoiceError
-from .objects import Instance, Rect, Via, Path
 
 if TYPE_CHECKING:
     from bag.core import BagProject
-    from .objects import Polygon, Blockage, Boundary
-    from .objects import InstanceInfo, ViaInfo, PinInfo
     from .routing import RoutingGrid
 
 # try to import optional modules
 try:
-    import cybagoa
+    from pybag.layout.pyutil import Orientation
+    from pybag.layout.util import BBox, BBoxArray
+    from pybag.layout.cellview import PyCellView, PyLayInstance, PyRect, PyVia, PyPath
 except ImportError:
-    cybagoa = None
-try:
-    # noinspection PyPackageRequirements
-    import gdspy
-except ImportError:
-    gdspy = None
+    raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
 TemplateType = TypeVar('TemplateType', bound='TemplateBase')
+
+_io_encoding = get_encoding()
 
 
 class TemplateDB(MasterDB):
@@ -56,8 +47,6 @@ class TemplateDB(MasterDB):
 
     Parameters
     ----------
-    lib_defs : str
-        path to the template library definition file.
     routing_grid : RoutingGrid
         the default RoutingGrid object.
     lib_name : str
@@ -68,8 +57,6 @@ class TemplateDB(MasterDB):
         generated layout name prefix.
     name_suffix : str
         generated layout name suffix.
-    use_cybagoa : bool
-        True to use cybagoa module to accelerate layout.
     gds_lay_file : str
         The GDS layer/purpose mapping file.
     flatten : bool
@@ -79,55 +66,24 @@ class TemplateDB(MasterDB):
     """
 
     def __init__(self,  # type: TemplateDB
-                 lib_defs,  # type: str
                  routing_grid,  # type: RoutingGrid
                  lib_name,  # type: str
                  prj=None,  # type: Optional[BagProject]
                  name_prefix='',  # type: str
                  name_suffix='',  # type: str
-                 use_cybagoa=False,  # type: bool
                  gds_lay_file='',  # type: str
                  flatten=False,  # type: bool
                  **kwargs):
         # type: (...) -> None
-        MasterDB.__init__(self, lib_name, lib_defs=lib_defs,
-                          name_prefix=name_prefix, name_suffix=name_suffix)
+        MasterDB.__init__(self, lib_name, name_prefix=name_prefix, name_suffix=name_suffix)
 
         pure_oa = kwargs.get('pure_oa', False)
-        cache_dir = kwargs.get('cache_dir', '')
-
-        if gds_lay_file:
-            if gdspy is None:
-                raise ValueError('gdspy module not found; cannot export GDS.')
-            # GDS export takes precedence over other options
-            use_cybagoa = pure_oa = False
-        if pure_oa:
-            if cybagoa is None:
-                raise ValueError('Cannot use pure OA mode when cybagoa is not found.')
-            use_cybagoa = True
 
         self._prj = prj
         self._grid = routing_grid
-        self._use_cybagoa = use_cybagoa and cybagoa is not None
         self._gds_lay_file = gds_lay_file
         self._flatten = flatten
         self._pure_oa = pure_oa
-
-        if cache_dir and os.path.isdir(cache_dir):
-            print('loading template cache...')
-            start = time.time()
-            cache_dir = os.path.realpath(cache_dir)
-            with open(os.path.join(cache_dir, 'db_mapping.pickle'), 'rb') as f:
-                info = pickle.load(f)
-            for key, fname in info.items():
-                params = dict(cache_fname=fname)
-                master = CachedTemplate(self, lib_name, params, self.used_cell_names,
-                                        use_cybagoa=self._use_cybagoa)
-                master.finalize()
-                self.register_master(key, master)
-                self.register_master(master.key, master)
-            end = time.time()
-            print('cache loading took %.5g seconds.' % (end - start))
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
         # type: (Type[TemplateType], str, Dict[str, Any], Set[str], Any) -> TemplateType
@@ -161,60 +117,20 @@ class TemplateDB(MasterDB):
         if self._prj is None:
             raise ValueError('BagProject is not defined.')
 
-        if self._gds_lay_file:
-            self._create_gds(lib_name, content_list, debug=debug)
-        elif self._use_cybagoa:
-            # remove write locks from old layouts
-            cell_view_list = [(item[0], 'layout') for item in content_list]
-            if self._pure_oa:
-                pass
-            else:
-                # create library if it does not exist
-                self._prj.create_library(self._lib_name)
-                self._prj.release_write_locks(self._lib_name, cell_view_list)
+        # create library if it does not exist
+        self._prj.create_library(self._lib_name)
+        # release any write locks
+        cell_view_list = [(item[0], 'layout') for item in content_list]
+        self._prj.release_write_locks(self._lib_name, cell_view_list)
 
-            if debug:
-                print('Instantiating layout')
-            # create OALayouts
-            start = time.time()
-            if 'CDSLIBPATH' in os.environ:
-                cds_lib_path = os.path.abspath(os.path.join(os.environ['CDSLIBPATH'], 'cds.lib'))
-            else:
-                cds_lib_path = os.path.abspath('./cds.lib')
-            with cybagoa.PyOALayoutLibrary(cds_lib_path, self._lib_name, self._prj.default_lib_path,
-                                           self._prj.tech_info.via_tech_name,
-                                           get_encoding()) as lib:
-                lib.add_layer('prBoundary', 235)
-                lib.add_purpose('label', 237)
-                lib.add_purpose('drawing1', 241)
-                lib.add_purpose('drawing2', 242)
-                lib.add_purpose('drawing3', 243)
-                lib.add_purpose('drawing4', 244)
-                lib.add_purpose('drawing5', 245)
-                lib.add_purpose('drawing6', 246)
-                lib.add_purpose('drawing7', 247)
-                lib.add_purpose('drawing8', 248)
-                lib.add_purpose('drawing9', 249)
-                lib.add_purpose('boundary', 250)
-                lib.add_purpose('pin', 251)
+        # create layouts
+        via_tech_name = self._grid.tech_info.via_tech_name
+        start = time.time()
+        self._prj.instantiate_layout(self._lib_name, 'layout', via_tech_name, content_list)
+        end = time.time()
 
-                for cell_name, oa_layout in content_list:
-                    lib.create_layout(cell_name, 'layout', oa_layout)
-            end = time.time()
-            if debug:
-                print('layout instantiation took %.4g seconds' % (end - start))
-        else:
-            # create library if it does not exist
-            self._prj.create_library(self._lib_name)
-
-            if debug:
-                print('Instantiating layout')
-            via_tech_name = self._grid.tech_info.via_tech_name
-            start = time.time()
-            self._prj.instantiate_layout(self._lib_name, 'layout', via_tech_name, content_list)
-            end = time.time()
-            if debug:
-                print('layout instantiation took %.4g seconds' % (end - start))
+        if debug:
+            print('layout instantiation took %.4g seconds' % (end - start))
 
     @property
     def grid(self):
@@ -247,7 +163,6 @@ class TemplateDB(MasterDB):
         template : TemplateType
             the new template instance.
         """
-        kwargs['use_cybagoa'] = self._use_cybagoa
         master = self.new_master(lib_name=lib_name, cell_name=temp_name, params=params,
                                  gen_cls=temp_cls, debug=debug, **kwargs)
 
@@ -302,177 +217,6 @@ class TemplateDB(MasterDB):
         self.instantiate_masters(template_list, name_list=name_list, lib_name=lib_name,
                                  debug=debug, rename_dict=rename_dict)
 
-    def save_to_cache(self, temp_list, dir_name, debug=False):
-        os.makedirs(dir_name, exist_ok=True)
-
-        info = {}
-        cnt = 0
-        for master in temp_list:
-            fname = os.path.join(dir_name, str(cnt))
-            key = master.key
-            if key not in info:
-                master.write_to_disk(fname, self.lib_name, master.cell_name, debug=debug)
-                info[key] = fname
-            cnt += 1
-
-        with open(os.path.join(dir_name, 'db_mapping.pickle'), 'wb') as f:
-            pickle.dump(info, f, protocol=-1)
-
-    def _create_gds(self, lib_name, content_list, debug=False):
-        # type: (str, Sequence[Any], bool) -> None
-        """Create a GDS file containing the given layouts
-
-        Parameters
-        ----------
-        lib_name : str
-            library to create the designs in.
-        content_list : Sequence[Any]
-            a list of the master contents.  Must be created in this order.
-        debug : bool
-            True to print debug messages
-        """
-        tech_info = self.grid.tech_info
-        lay_unit = tech_info.layout_unit
-        res = tech_info.resolution
-
-        with open(self._gds_lay_file, 'r') as f:
-            lay_info = yaml.load(f)
-            lay_map = lay_info['layer_map']
-            via_info = lay_info['via_info']
-
-        out_fname = '%s.gds' % lib_name
-        gds_lib = gdspy.GdsLibrary(name=lib_name)
-        cell_dict = gds_lib.cell_dict
-        if debug:
-            print('Instantiating layout')
-
-        start = time.time()
-        for content in content_list:
-            (cell_name, inst_tot_list, rect_list, via_list, pin_list,
-             path_list, blockage_list, boundary_list, polygon_list) = content
-            gds_cell = gdspy.Cell(cell_name, exclude_from_current=True)
-            gds_lib.add(gds_cell)
-
-            # add instances
-            for inst_info in inst_tot_list:  # type: InstanceInfo
-                if inst_info.params is not None:
-                    raise ValueError('Cannot instantiate PCells in GDS.')
-                num_rows = inst_info.num_rows
-                num_cols = inst_info.num_cols
-                angle, reflect = inst_info.angle_reflect
-                if num_rows > 1 or num_cols > 1:
-                    cur_inst = gdspy.CellArray(cell_dict[inst_info.cell], num_cols, num_rows,
-                                               (inst_info.sp_cols, inst_info.sp_rows),
-                                               origin=inst_info.loc, rotation=angle,
-                                               x_reflection=reflect)
-                else:
-                    cur_inst = gdspy.CellReference(cell_dict[inst_info.cell], origin=inst_info.loc,
-                                                   rotation=angle, x_reflection=reflect)
-                gds_cell.add(cur_inst)
-
-            # add rectangles
-            for rect in rect_list:
-                nx, ny = rect.get('arr_nx', 1), rect.get('arr_ny', 1)
-                (x0, y0), (x1, y1) = rect['bbox']
-                lay_id, purp_id = lay_map[tuple(rect['layer'])]
-
-                if nx > 1 or ny > 1:
-                    spx, spy = rect['arr_spx'], rect['arr_spy']
-                    for xidx in range(nx):
-                        dx = xidx * spx
-                        for yidx in range(ny):
-                            dy = yidx * spy
-                            cur_rect = gdspy.Rectangle((x0 + dx, y0 + dy), (x1 + dx, y1 + dy),
-                                                       layer=lay_id, datatype=purp_id)
-                            gds_cell.add(cur_rect)
-                else:
-                    cur_rect = gdspy.Rectangle((x0, y0), (x1, y1), layer=lay_id, datatype=purp_id)
-                    gds_cell.add(cur_rect)
-
-            # add vias
-            for via in via_list:  # type: ViaInfo
-                via_lay_info = via_info[via.id]
-
-                nx, ny = via.arr_nx, via.arr_ny
-                x0, y0 = via.loc
-                if nx > 1 or ny > 1:
-                    spx, spy = via.arr_spx, via.arr_spy
-                    for xidx in range(nx):
-                        xc = x0 + xidx * spx
-                        for yidx in range(ny):
-                            yc = y0 + yidx * spy
-                            self._add_gds_via(gds_cell, via, lay_map, via_lay_info, xc, yc)
-                else:
-                    self._add_gds_via(gds_cell, via, lay_map, via_lay_info, x0, y0)
-
-            # add pins
-            for pin in pin_list:  # type: PinInfo
-                lay_id, purp_id = lay_map[pin.layer]
-                bbox = pin.bbox
-                label = pin.label
-                if pin.make_rect:
-                    cur_rect = gdspy.Rectangle((bbox.left, bbox.bottom), (bbox.right, bbox.top),
-                                               layer=lay_id, datatype=purp_id)
-                    gds_cell.add(cur_rect)
-                angle = 90 if bbox.height_unit > bbox.width_unit else 0
-                cur_lbl = gdspy.Label(label, (bbox.xc, bbox.yc), rotation=angle,
-                                      layer=lay_id, texttype=purp_id)
-                gds_cell.add(cur_lbl)
-
-            for path in path_list:
-                pass
-
-            for blockage in blockage_list:
-                pass
-
-            for boundary in boundary_list:
-                pass
-
-            for polygon in polygon_list:
-                lay_id, purp_id = lay_map[polygon['layer']]
-                cur_poly = gdspy.Polygon(polygon['points'], layer=lay_id, datatype=purp_id,
-                                         verbose=False)
-                gds_cell.add(cur_poly.fracture(precision=res))
-
-        gds_lib.write_gds(out_fname, unit=lay_unit, precision=res * lay_unit)
-        end = time.time()
-        if debug:
-            print('layout instantiation took %.4g seconds' % (end - start))
-
-    def _add_gds_via(self, gds_cell, via, lay_map, via_lay_info, x0, y0):
-        blay, bpurp = lay_map[via_lay_info['bot_layer']]
-        tlay, tpurp = lay_map[via_lay_info['top_layer']]
-        vlay, vpurp = lay_map[via_lay_info['via_layer']]
-        cw, ch = via.cut_width, via.cut_height
-        if cw < 0:
-            cw = via_lay_info['cut_width']
-        if ch < 0:
-            ch = via_lay_info['cut_height']
-
-        num_cols, num_rows = via.num_cols, via.num_rows
-        sp_cols, sp_rows = via.sp_cols, via.sp_rows
-        w_arr = num_cols * cw + (num_cols - 1) * sp_cols
-        h_arr = num_rows * ch + (num_rows - 1) * sp_rows
-        x0 -= w_arr / 2
-        y0 -= h_arr / 2
-        bl, br, bt, bb = via.enc1
-        tl, tr, tt, tb = via.enc2
-        bot_p0, bot_p1 = (x0 - bl, y0 - bb), (x0 + w_arr + br, y0 + h_arr + bt)
-        top_p0, top_p1 = (x0 - tl, y0 - tb), (x0 + w_arr + tr, y0 + h_arr + tt)
-
-        cur_rect = gdspy.Rectangle(bot_p0, bot_p1, layer=blay, datatype=bpurp)
-        gds_cell.add(cur_rect)
-        cur_rect = gdspy.Rectangle(top_p0, top_p1, layer=tlay, datatype=tpurp)
-        gds_cell.add(cur_rect)
-
-        for xidx in range(num_cols):
-            dx = xidx * (cw + sp_cols)
-            for yidx in range(num_rows):
-                dy = yidx * (ch + sp_rows)
-                cur_rect = gdspy.Rectangle((x0 + dx, y0 + dy), (x0 + cw + dx, y0 + ch + dy),
-                                           layer=vlay, datatype=vpurp)
-                gds_cell.add(cur_rect)
-
 
 class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     """The base template class.
@@ -508,12 +252,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
 
-        use_cybagoa = kwargs.get('use_cybagoa', False)
-
         # initialize template attributes
         self._parent_grid = kwargs.get('grid', temp_db.grid)
         self._grid = self._parent_grid.copy()
-        self._layout = BagLayout(self._grid, use_cybagoa=use_cybagoa)
+        self._layout = PyCellView(self._grid.tech_info, get_encoding())
         self._size = None  # type: Tuple[int, int, int]
         self._ports = {}
         self._port_params = {}
@@ -523,9 +265,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._fill_box = None  # type: BBox
         self.prim_top_layer = None
         self.prim_bound_box = None
-        self._used_tracks = UsedTracks()
-        self._track_boxes = {}
-        self._merge_used_tracks = False
 
         # add hidden parameters
         if 'hidden_params' in kwargs:
@@ -593,7 +332,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self.__class__.__name__
 
     def get_content(self, lib_name, rename_fun):
-        # type: (str, Callable[[str], str]) -> Union[List[Any], Tuple[str, 'cybagoa.PyOALayout']]
+        # type: (str, Callable[[str], str]) -> Tuple[str, PyCellView]
         """Returns the content of this master instance.
 
         Parameters
@@ -654,24 +393,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # get set of children keys
         self.children = self._layout.get_masters_set()
 
-        for layer_id, bbox in self._used_tracks.track_box_iter():
-            self._track_boxes[layer_id] = bbox
-        if not self._merge_used_tracks:
-            for inst in self._layout.inst_iter():
-                for layer_id, bbox in inst.track_bbox_iter():
-                    if layer_id not in self._track_boxes:
-                        self._track_boxes[layer_id] = bbox
-                    else:
-                        self._track_boxes[layer_id] = bbox.merge(self._track_boxes[layer_id])
-
         # call super finalize routine
         DesignMaster.finalize(self)
-
-    @classmethod
-    def get_cache_properties(cls):
-        # type: () -> List[str]
-        """Returns a list of properties to cache."""
-        return []
 
     @property
     def template_db(self):
@@ -769,11 +492,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         else:
             raise RuntimeError('Template already finalized.')
 
-    @property
-    def used_tracks(self):
-        # type: () -> UsedTracks
-        return self._used_tracks
-
     def _update_flip_parity(self):
         # type: () -> None
         """Update all instances in this template to have the correct track parity.
@@ -785,99 +503,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             fp_dict = self.grid.get_flip_parity_at(bot_layer, top_layer, loc,
                                                    inst.orientation, unit_mode=True)
             inst.new_master_with(flip_parity=fp_dict)
-
-    def instance_iter(self):
-        return self._layout.inst_iter()
-
-    def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
-        # type: (int, BBox, int, int) -> Generator[BBox, None, None]
-        """Returns all block intersecting the given rectangle."""
-        yield from self._used_tracks.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
-        if not self._merge_used_tracks:
-            for inst in self._layout.inst_iter():
-                yield from inst.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
-
-    def all_rect_iter(self):
-        # type: () -> Generator[Tuple[int, BBox, int, int], None, None]
-        """Returns all rectangle objects in this """
-        yield from self._used_tracks.all_rect_iter()
-        if not self._merge_used_tracks:
-            for inst in self._layout.inst_iter():
-                yield from inst.all_rect_iter()
-
-    def intersection_rect_iter(self, layer_id, box):
-        # type: (int, BBox) -> Generator[BBox, None, None]
-        yield from self._used_tracks.intersection_rect_iter(layer_id, box)
-        if not self._merge_used_tracks:
-            for inst in self._layout.inst_iter():
-                yield from inst.intersection_rect_iter(layer_id, box)
-
-    def open_interval_iter(self,  # type: TemplateBase
-                           track_id,  # type: TrackID
-                           lower,  # type: int
-                           upper,  # type: int
-                           sp=0,  # type: int
-                           sp_le=0,  # type: int
-                           min_len=0,  # type: int
-                           ):
-        # type: (...) -> Generator[Tuple[int, int], None, None]
-
-        res = self.grid.resolution
-        layer_id = track_id.layer_id
-        width = track_id.width
-        intv_dir = self.grid.get_direction(layer_id)
-        warr = WireArray(track_id, lower, upper, res=res, unit_mode=True)
-        test_box = warr.get_bbox_array(self.grid).base
-        sp = max(sp, self.grid.get_space(layer_id, width, unit_mode=True))
-        sp_le = max(sp_le, self.grid.get_line_end_space(layer_id, width, unit_mode=True))
-        if intv_dir == 'x':
-            spx, spy = sp_le, sp
-        else:
-            spx, spy = sp, sp_le
-
-        intv_set = IntervalSet()
-        for box in self.blockage_iter(layer_id, test_box, spx=spx, spy=spy):
-            bl, bu = box.get_interval(intv_dir, unit_mode=True)
-            intv_set.add((max(bl, lower), min(bu, upper)), merge=True, abut=True)
-
-        for intv in intv_set.complement_iter((lower, upper)):
-            if intv[1] - intv[0] >= min_len:
-                yield intv
-
-    def is_track_available(self,  # type: TemplateBase
-                           layer_id,  # type: int
-                           tr_idx,  # type: Union[float, int]
-                           lower,  # type: Union[float, int]
-                           upper,  # type: Union[float, int]
-                           width=1,  # type: int
-                           sp=0,  # type: Union[float, int]
-                           sp_le=0,  # type: Union[float, int]
-                           unit_mode=False,  # type: bool
-                           ):
-        """Returns True if the given track is available."""
-        res = self.grid.resolution
-        if not unit_mode:
-            lower = int(round(lower / res))
-            upper = int(round(upper / res))
-            sp = int(round(sp / res))
-            sp_le = int(round(sp_le / res))
-
-        intv_dir = self.grid.get_direction(layer_id)
-        track_id = TrackID(layer_id, tr_idx, width=width)
-        warr = WireArray(track_id, lower, upper, res=res, unit_mode=True)
-        test_box = warr.get_bbox_array(self.grid).base
-        sp = max(sp, self.grid.get_space(layer_id, width, unit_mode=True))
-        sp_le = max(sp_le, self.grid.get_line_end_space(layer_id, width, unit_mode=True))
-        if intv_dir == 'x':
-            spx, spy = sp_le, sp
-        else:
-            spx, spy = sp, sp_le
-
-        try:
-            next(self.blockage_iter(layer_id, test_box, spx=spx, spy=spy))
-        except StopIteration:
-            return True
-        return False
 
     def get_rect_bbox(self, layer):
         # type: (Union[str, Tuple[str, str]]) -> BBox
@@ -896,20 +521,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the overall bounding box of the given layer.
         """
         return self._layout.get_rect_bbox(layer)
-
-    def get_track_bbox(self, layer_id):
-        """Returns the bounding box of all tracks on the given layer."""
-        if not self.finalized:
-            raise ValueError('This method only works after being finalized.')
-        if layer_id in self._track_boxes:
-            return self._track_boxes[layer_id]
-        return BBox.get_invalid_bbox()
-
-    def track_bbox_iter(self):
-        """Returns the bounding box of all tracks on the given layer."""
-        if not self.finalized:
-            raise ValueError('This method only works after being finalized.')
-        return self._track_boxes.items()
 
     def new_template_with(self, **kwargs):
         # type: (Any) -> TemplateBase
@@ -1016,52 +627,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         with open_file(fname, 'w') as f:
             yaml.dump(info, f)
-
-    def write_to_disk(self, fname, lib_name, cell_name, debug=False):
-        # type: (str, str, str, bool) -> None
-        """Create a cache file for this template."""
-        if not self.finalized:
-            raise ValueError('Cannot write non-final template to disk.')
-
-        if debug:
-            print('Writing %s to disk...' % self.__class__.__name__)
-
-        start = time.time()
-        prop_dict = {key: getattr(self, key) for key in self.get_cache_properties()}
-
-        res = self.grid.resolution
-        save_tracks = UsedTracks(fname, overwrite=True)
-        for layer_id, box, dx, dy in self.all_rect_iter():
-            save_tracks.record_box(layer_id, box, dx, dy, res)
-        save_tracks.close()
-
-        template_info = dict(
-            lib_name=lib_name,
-            cell_name=cell_name,
-            size=self._size,
-            port_params=self._port_params,
-            prim_top_layer=self.prim_top_layer,
-            prim_bound_box=self.prim_bound_box,
-            array_box=self.array_box,
-            properties=prop_dict,
-        )
-
-        with open(fname + '_info.pickle', 'wb') as f:
-            pickle.dump(template_info, f, protocol=-1)
-
-        stop = time.time()
-        if debug:
-            print('Writing to disk took %.4g seconds.' % (stop - start))
-
-    def merge_inst_tracks(self):
-        # type: () -> None
-        """Flatten all rectangles from instances into the UsedTracks data structure."""
-        if not self._merge_used_tracks:
-            self._merge_used_tracks = True
-            res = self.grid.resolution
-            for inst in self._layout.inst_iter():
-                for layer_id, box, dx, dy in inst.all_rect_iter():
-                    self._used_tracks.record_box(layer_id, box, dx, dy, res)
 
     def get_pin_name(self, name):
         # type: (str) -> str
@@ -1181,36 +746,35 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self.template_db.new_template(params=params, temp_cls=temp_cls, debug=debug,
                                              **kwargs)
 
-    def move_all_by(self, dx=0.0, dy=0.0, unit_mode=False):
-        # type: (Union[float, int], Union[float, int], bool) -> None
+    def move_all_by(self, dx=0, dy=0, unit_mode=True):
+        # type: (int, int, bool) -> None
         """Move all layout objects Except pins in this layout by the given amount.
 
-        primitive pins will be moved, but pins on routing grid will not.
+        Note: this method invalidates all WireArray objects and non-primitive pins.
 
         Parameters
         ----------
-        dx : Union[float, int]
+        dx : int
             the X shift.
-        dy : Union[float, int]
+        dy : int
             the Y shift.
         unit_mode : bool
-            true if given shift values are in resolution units.
+            deprecated parameter.
         """
-        print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
-        self._layout.move_all_by(dx=dx, dy=dy, unit_mode=unit_mode)
+        raise NotImplementedError("Not implemented")
 
     def add_instance(self,  # type: TemplateBase
                      master,  # type: TemplateBase
                      inst_name=None,  # type: Optional[str]
-                     loc=(0, 0),  # type: Tuple[Union[float, int], Union[float, int]]
+                     loc=(0, 0),  # type: Tuple[int, int]
                      orient="R0",  # type: str
                      nx=1,  # type: int
                      ny=1,  # type: int
-                     spx=0,  # type: Union[float, int]
-                     spy=0,  # type: Union[float, int]
-                     unit_mode=False,  # type: bool
+                     spx=0,  # type: int
+                     spy=0,  # type: int
+                     unit_mode=True,  # type: bool
                      ):
-        # type: (...) -> Instance
+        # type: (...) -> PyLayInstance
         """Adds a new (arrayed) instance to layout.
 
         Parameters
@@ -1233,38 +797,32 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         spy : Union[float, int]
             row pitch.  Used for arraying given instance.
         unit_mode : bool
-            True if dimensions are given in resolution units.
+            deprecated parameter.
 
         Returns
         -------
         inst : Instance
             the added instance.
         """
-        res = self.grid.resolution
         if not unit_mode:
-            loc = int(round(loc[0] / res)), int(round(loc[1] / res))
-            spx = int(round(spx / res))
-            spy = int(round(spy / res))
+            raise ValueError('unit_mode = False not supported.')
 
-        inst = Instance(self.grid, self._lib_name, master, loc=loc, orient=orient,
-                        name=inst_name, nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=True)
-
-        self._layout.add_instance(inst)
-        return inst
+        return self._layout.add_instance(self.grid, master, self._lib_name, inst_name,
+                                         loc[0], loc[1], Orientation[orient].value,
+                                         nx, ny, spx, spy)
 
     def add_instance_primitive(self,  # type: TemplateBase
                                lib_name,  # type: str
                                cell_name,  # type: str
-                               loc,  # type: Tuple[Union[float, int], Union[float, int]]
+                               loc,  # type: Tuple[int, int]
                                view_name='layout',  # type: str
                                inst_name=None,  # type: Optional[str]
                                orient="R0",  # type: str
                                nx=1,  # type: int
                                ny=1,  # type: int
-                               spx=0,  # type: Union[float, int]
-                               spy=0,  # type: Union[float, int]
+                               spx=0,  # type: int
+                               spy=0,  # type: int
                                params=None,  # type: Optional[Dict[str, Any]]
-                               unit_mode=False,  # type: bool
                                **kwargs  # type: Any
                                ):
         # type: (...) -> None
@@ -1276,7 +834,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             instance library name.
         cell_name : str
             instance cell name.
-        loc : Tuple[Union[float, int], Union[float, int]]
+        loc : Tuple[int, int]
             instance location.
         view_name : str
             instance view name.  Defaults to 'layout'.
@@ -1289,22 +847,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             number of columns.  Must be positive integer.
         ny : int
             number of rows.  Must be positive integer.
-        spx : Union[float, int]
+        spx : int
             column pitch.  Used for arraying given instance.
-        spy : Union[float, int]
+        spy : int
             row pitch.  Used for arraying given instance.
         params : Optional[Dict[str, Any]]
             the parameter dictionary.  Used for adding pcell instance.
-        unit_mode : bool
-            True if distances are specified in resolution units.
         **kwargs
             additional arguments.  Usually implementation specific.
         """
-        self._layout.add_instance_primitive(lib_name, cell_name, loc,
-                                            view_name=view_name, inst_name=inst_name,
-                                            orient=orient, num_rows=ny, num_cols=nx,
-                                            sp_rows=spy, sp_cols=spx,
-                                            params=params, unit_mode=unit_mode, **kwargs)
+        if not params:
+            params = kwargs
+        else:
+            params.update(kwargs)
+
+        self._layout.add_prim_instance(lib_name, cell_name, view_name, inst_name, params, loc[0],
+                                       loc[1], Orientation[orient].value, nx, ny, spx, spy)
 
     def add_rect(self,  # type: TemplateBase
                  layer,  # type: Union[str, Tuple[str, str]]
@@ -1343,7 +901,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         rect = Rect(layer, bbox, nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=unit_mode)
         self._layout.add_rect(rect)
-        self._used_tracks.record_rect(self.grid, layer, rect.bbox_array)
         return rect
 
     def add_res_metal(self, layer_id, bbox, **kwargs):
@@ -1372,7 +929,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return rect_list
 
     def add_path(self, path):
-        # type: (Path) -> Path
+        # type: (PyPath) -> Path
         """Add a new path.
 
         Parameters
