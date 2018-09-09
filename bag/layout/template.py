@@ -30,11 +30,16 @@ if TYPE_CHECKING:
 try:
     from pybag.layout.pyutil import Orientation
     from pybag.layout.util import BBox, BBoxArray
-    from pybag.layout.cellview import PyCellView, PyLayInstance, PyRect, PyVia, PyPath
+    from pybag.layout.cellview import PyCellView, PyLayInstance, PyRect, PyVia, PyPath, PyBlockage
+    from pybag.layout.cellview import PyBoundary
 except ImportError:
     raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
 TemplateType = TypeVar('TemplateType', bound='TemplateBase')
+CoordType = int
+LayerType = Union[str, Tuple[str, str]]
+PointType = Tuple[CoordType, CoordType]
+SizeType = Tuple[int, int, int]
 
 _io_encoding = get_encoding()
 
@@ -256,7 +261,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._parent_grid = kwargs.get('grid', temp_db.grid)
         self._grid = self._parent_grid.copy()
         self._layout = PyCellView(self._grid.tech_info, get_encoding())
-        self._size = None  # type: Tuple[int, int, int]
+        self._size = None  # type: SizeType
         self._ports = {}
         self._port_params = {}
         self._prim_ports = {}
@@ -344,8 +349,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        content : Union[List[Any], Tuple[str, 'cybagoa.PyOALayout']]
-            a list describing this layout, or PyOALayout if cybagoa is enabled.
+        content : Tuple[str, PyCellView]
+            the content of this TemplateBase.
         """
         if not self.finalized:
             raise ValueError('This template is not finalized yet')
@@ -466,7 +471,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     @property
     def size(self):
-        # type: () -> Optional[Tuple[int, int, int]]
+        # type: () -> Optional[SizeType]
         """The size of this template, in (layer, num_x_block,  num_y_block) format."""
         return self._size
 
@@ -485,7 +490,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     @size.setter
     def size(self, new_size):
-        # type: (Tuple[int, int, int]) -> None
+        # type: (SizeType) -> None
         """Sets the size of this template."""
         if not self._finalized:
             self._size = new_size
@@ -505,14 +510,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             inst.new_master_with(flip_parity=fp_dict)
 
     def get_rect_bbox(self, layer):
-        # type: (Union[str, Tuple[str, str]]) -> BBox
+        # type: (LayerType) -> BBox
         """Returns the overall bounding box of all rectangles on the given layer.
 
         Note: currently this does not check primitive instances or vias.
 
         Parameters
         ----------
-        layer : Union[str, Tuple[str, str]]
+        layer : LayerType
             the layer name.
 
         Returns
@@ -766,12 +771,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def add_instance(self,  # type: TemplateBase
                      master,  # type: TemplateBase
                      inst_name=None,  # type: Optional[str]
-                     loc=(0, 0),  # type: Tuple[int, int]
-                     orient="R0",  # type: str
+                     loc=(0, 0),  # type: PointType
+                     orient='R0',  # type: OrientType
                      nx=1,  # type: int
                      ny=1,  # type: int
-                     spx=0,  # type: int
-                     spy=0,  # type: int
+                     spx=0,  # type: CoordType
+                     spy=0,  # type: CoordType
                      unit_mode=True,  # type: bool
                      ):
         # type: (...) -> PyLayInstance
@@ -784,17 +789,17 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         inst_name : Optional[str]
             instance name.  If None or an instance with this name already exists,
             a generated unique name is used.
-        loc : Tuple[Union[float, int], Union[float, int]]
+        loc : PointType
             instance location.
         orient : str
-            instance orientation.  Defaults to "R0"
+            instance orientation.  Defaults to 'R0'.
         nx : int
             number of columns.  Must be positive integer.
         ny : int
             number of rows.  Must be positive integer.
-        spx : Union[float, int]
+        spx : CoordType
             column pitch.  Used for arraying given instance.
-        spy : Union[float, int]
+        spy : CoordType
             row pitch.  Used for arraying given instance.
         unit_mode : bool
             deprecated parameter.
@@ -814,14 +819,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def add_instance_primitive(self,  # type: TemplateBase
                                lib_name,  # type: str
                                cell_name,  # type: str
-                               loc,  # type: Tuple[int, int]
+                               loc,  # type: PointType
                                view_name='layout',  # type: str
                                inst_name=None,  # type: Optional[str]
-                               orient="R0",  # type: str
+                               orient='R0',  # type: str
                                nx=1,  # type: int
                                ny=1,  # type: int
-                               spx=0,  # type: int
-                               spy=0,  # type: int
+                               spx=0,  # type: CoordType
+                               spy=0,  # type: CoordType
                                params=None,  # type: Optional[Dict[str, Any]]
                                **kwargs  # type: Any
                                ):
@@ -834,7 +839,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             instance library name.
         cell_name : str
             instance cell name.
-        loc : Tuple[int, int]
+        loc : PointType
             instance location.
         view_name : str
             instance view name.  Defaults to 'layout'.
@@ -847,9 +852,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             number of columns.  Must be positive integer.
         ny : int
             number of rows.  Must be positive integer.
-        spx : int
+        spx : CoordType
             column pitch.  Used for arraying given instance.
-        spy : int
+        spy : CoordType
             row pitch.  Used for arraying given instance.
         params : Optional[Dict[str, Any]]
             the parameter dictionary.  Used for adding pcell instance.
@@ -864,120 +869,100 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._layout.add_prim_instance(lib_name, cell_name, view_name, inst_name, params, loc[0],
                                        loc[1], Orientation[orient].value, nx, ny, spx, spy)
 
-    def add_rect(self,  # type: TemplateBase
-                 layer,  # type: Union[str, Tuple[str, str]]
-                 bbox,  # type: Union[BBox, BBoxArray]
-                 nx=1,  # type: int
-                 ny=1,  # type: int
-                 spx=0,  # type: Union[float, int]
-                 spy=0,  # type: Union[float, int]
-                 unit_mode=False,  # type: bool
-                 ):
-        # type: (...) -> Rect
+    def add_rect(self, layer, bbox):
+        # type: (LayerType, BBox) -> PyRect
         """Add a new (arrayed) rectangle.
 
         Parameters
         ----------
-        layer: Union[str, Tuple[str, str]]
+        layer: LayerType
             the layer name, or the (layer, purpose) pair.
-        bbox : Union[BBox, BBoxArray]
-            the rectangle bounding box.  If BBoxArray is given, its arraying parameters will
-            be used instead.
-        nx : int
-            number of columns.
-        ny : int
-            number of rows.
-        spx : Union[float, int]
-            column pitch.
-        spy : Union[float, int]
-            row pitch.
-        unit_mode : bool
-            True if spx and spy are given in resolution units.
+        bbox : BBox
+            the rectangle bounding box.
 
         Returns
         -------
-        rect : Rect
+        rect : PyRect
             the added rectangle.
         """
-        rect = Rect(layer, bbox, nx=nx, ny=ny, spx=spx, spy=spy, unit_mode=unit_mode)
-        self._layout.add_rect(rect)
-        return rect
+        return self._layout.add_rect(layer, bbox)
 
-    def add_res_metal(self, layer_id, bbox, **kwargs):
-        # type: (int, Union[BBox, BBoxArray], Any) -> List[Rect]
+    def add_res_metal(self, layer_id, bbox):
+        # type: (int, BBox) -> List[PyRect]
         """Add a new metal resistor.
 
         Parameters
         ----------
         layer_id : int
             the metal layer ID.
-        bbox : Union[BBox, BBoxArray]
-            the resistor bounding box.  If BBoxArray is given, its arraying parameters will
-            be used instead.
-        **kwargs :
-            optional arguments to add_rect()
-
+        bbox : BBox
+            the resistor bounding box.
         Returns
         -------
-        rect_list : List[Rect]
+        rect_list : List[PyRect]
             list of rectangles defining the metal resistor.
         """
         rect_list = []
         rect_layers = self.grid.tech_info.get_res_metal_layers(layer_id)
         for lay in rect_layers:
-            rect_list.append(self.add_rect(lay, bbox, **kwargs))
+            rect_list.append(self.add_rect(lay, bbox))
         return rect_list
 
-    def add_path(self, path):
-        # type: (PyPath) -> Path
+    def add_path(self, layer, points):
+        # type: (LayerType, Sequence[PointType]) -> PyPath
         """Add a new path.
 
         Parameters
         ----------
-        path : Path
-            the path to add.
+        layer : LayerType
+            the path layer.
+        points : Sequence[PointType]
+            points defining this path.
 
         Returns
         -------
-        path : Path
+        path : PyPath
             the added path object.
         """
-        self._layout.add_path(path)
-        return path
+        raise NotImplementedError('Not implemented yet.')
 
-    def add_polygon(self, polygon):
-        # type: (Polygon) -> Polygon
+    def add_polygon(self, layer, points):
+        # type: (LayerType, Sequence[PointType]) -> PyPolygon
         """Add a new polygon.
 
         Parameters
         ----------
-        polygon : Polygon
-            the blockage to add.
+        layer : LayerType
+            the polygon layer.
+        points : Sequence[PointType]
+            vertices of the polygon.
 
         Returns
         -------
-        polygon : Polygon
-            the added blockage object.
+        polygon : PyPolygon
+            the added polygon object.
         """
-        self._layout.add_polygon(polygon)
-        return polygon
+        raise NotImplementedError('Not implemented yet.')
 
-    def add_blockage(self, blockage):
-        # type: (Blockage) -> Blockage
-        """Add a new blockage.
+    def add_blockage(self, layer, blk_type, points):
+        # type: (LayerType, str, Sequence[PointType]) -> PyBlockage
+        """Add a new polygon.
 
         Parameters
         ----------
-        blockage : Blockage
-            the blockage to add.
+        layer : LayerType
+            the path layer.
+        blk_type : str
+            the blockage type.
+        points : Sequence[PointType]
+            vertices of the blockage object.
 
         Returns
         -------
-        blockage : Blockage
+        blockage : PyBlockage
             the added blockage object.
         """
-        self._layout.add_blockage(blockage)
-        return blockage
+        raise NotImplementedError('Not implemented yet.')
 
     def add_cell_boundary(self, box):
         # type: (BBox) -> None
@@ -992,22 +977,25 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         self._grid.tech_info.add_cell_boundary(self, box)
 
-    def add_boundary(self, boundary):
-        # type: (Boundary) -> Boundary
+    def add_boundary(self, layer, bnd_type, points):
+        # type: (LayerType, str, Sequence[PointType]) -> PyBoundary
         """Add a new boundary.
 
         Parameters
         ----------
-        boundary : Boundary
-            the boundary to add.
+        layer : LayerType
+            the path layer.
+        bnd_type : str
+            the boundary type.
+        points : Sequence[PointType]
+            vertices of the boundary object.
 
         Returns
         -------
-        boundary : Boundary
+        boundary : PyBoundary
             the added boundary object.
         """
-        self._layout.add_boundary(boundary)
-        return boundary
+        raise NotImplementedError('Not implemented yet.')
 
     def reexport(self, port, net_name='', label='', show=True):
         # type: (Port, str, str, bool) -> None
