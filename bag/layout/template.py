@@ -5,13 +5,12 @@
 
 from typing import TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, \
     Optional, Tuple, Iterable, Sequence, Callable
+from bag.typing import CoordType, LayerType, PointType, SizeType, TrackType
 
 import abc
 import copy
 import time
-import bisect
-import pickle
-from itertools import islice, product, chain
+from itertools import islice, product
 
 import yaml
 
@@ -19,8 +18,6 @@ from bag.util.cache import DesignMaster, MasterDB
 from bag.util.interval import IntervalSet
 from ..io import get_encoding, open_file
 from .routing import Port, TrackID, WireArray
-from .routing.fill import UsedTracks, fill_symmetric_max_num_info, fill_symmetric_interval, \
-    NoFillChoiceError
 
 if TYPE_CHECKING:
     from bag.core import BagProject
@@ -30,16 +27,12 @@ if TYPE_CHECKING:
 try:
     from pybag.layout.pyutil import Orientation
     from pybag.layout.util import BBox, BBoxArray
-    from pybag.layout.cellview import PyCellView, PyLayInstance, PyRect, PyVia, PyPath, PyBlockage
-    from pybag.layout.cellview import PyBoundary
+    from pybag.layout.cellview import PyCellView, PyLayInstance, PyRect, PyPolygon, PyVia
+    from pybag.layout.cellview import PyPath, PyBlockage, PyBoundary
 except ImportError:
     raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
 TemplateType = TypeVar('TemplateType', bound='TemplateBase')
-CoordType = int
-LayerType = Union[str, Tuple[str, str]]
-PointType = Tuple[CoordType, CoordType]
-SizeType = Tuple[int, int, int]
 
 _io_encoding = get_encoding()
 
@@ -772,7 +765,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                      master,  # type: TemplateBase
                      inst_name=None,  # type: Optional[str]
                      loc=(0, 0),  # type: PointType
-                     orient='R0',  # type: OrientType
+                     orient='R0',  # type: str
                      nx=1,  # type: int
                      ny=1,  # type: int
                      spx=0,  # type: CoordType
@@ -871,7 +864,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     def add_rect(self, layer, bbox):
         # type: (LayerType, BBox) -> PyRect
-        """Add a new (arrayed) rectangle.
+        """Add a new rectangle.
 
         Parameters
         ----------
@@ -886,6 +879,32 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the added rectangle.
         """
         return self._layout.add_rect(layer, bbox)
+
+    def add_rect_arr(self, layer, bbox, nx=1, ny=1, spx=0, spy=0):
+        # type: (LayerType, BBox, int, int, CoordType, CoordType) -> PyRect
+        """Add a new rectangle.
+
+        Parameters
+        ----------
+        layer: LayerType
+            the layer name, or the (layer, purpose) pair.
+        bbox : BBox
+            the rectangle bounding box.
+        nx : int
+            number of columns.
+        ny : int
+            number of rows.
+        spx : int
+            column pitch.
+        spy : int
+            row pitch.
+
+        Returns
+        -------
+        rect : PyRect
+            the added rectangle.
+        """
+        self._layout.add_rect_arr(layer, bbox, nx, ny, spx, spy)
 
     def add_res_metal(self, layer_id, bbox):
         # type: (int, BBox) -> List[PyRect]
@@ -1083,7 +1102,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             port_pins[layer] = [bbox]
 
     def add_label(self, label, layer, bbox):
-        # type: (str, Union[str, Tuple[str, str]], BBox) -> None
+        # type: (str, LayerType, BBox) -> None
         """Adds a label to the layout.
 
         This is mainly used to add voltage text labels.
@@ -1092,12 +1111,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         label : str
             the label text.
-        layer : Union[str, Tuple[str, str]]
+        layer : LayerType
             the pin layer name.
         bbox : BBox
             the pin bounding box.
         """
-        self._layout.add_label(label, layer, bbox)
+        raise NotImplementedError('Not implemented yet.')
 
     def add_pin(self, net_name, wire_arr_list, label='', show=True, edge_mode=0):
         # type: (str, Union[WireArray, List[WireArray]], str, bool, int) -> None
@@ -1164,28 +1183,28 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     def add_via(self,  # type: TemplateBase
                 bbox,  # type: BBox
-                bot_layer,  # type: Union[str, Tuple[str, str]]
-                top_layer,  # type: Union[str, Tuple[str, str]]
+                bot_layer,  # type: LayerType
+                top_layer,  # type: LayerType
                 bot_dir,  # type: str
                 nx=1,  # type: int
                 ny=1,  # type: int
-                spx=0.0,  # type: Union[float, int]
-                spy=0.0,  # type: Union[float, int]
+                spx=0,  # type: CoordType
+                spy=0,  # type: CoordType
                 extend=True,  # type: bool
                 top_dir=None,  # type: Optional[str]
-                unit_mode=False,  # type: bool
+                unit_mode=True,  # type: bool
                 ):
-        # type: (...) -> Via
+        # type: (...) -> PyVia
         """Adds a (arrayed) via object to the layout.
 
         Parameters
         ----------
         bbox : BBox
             the via bounding box, not including extensions.
-        bot_layer : Union[str, Tuple[str, str]]
+        bot_layer : LayerType
             the bottom layer name, or a tuple of layer name and purpose name.
             If purpose name not given, defaults to 'drawing'.
-        top_layer : Union[str, Tuple[str, str]]
+        top_layer : LayerType
             the top layer name, or a tuple of layer name and purpose name.
             If purpose name not given, defaults to 'drawing'.
         bot_dir : str
@@ -1194,44 +1213,39 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             number of columns.
         ny : int
             number of rows.
-        spx : Union[float, int]
+        spx : CoordType
             column pitch.
-        spy : Union[float, int]
+        spy : CoordType
             row pitch.
         extend : bool
             True if via extension can be drawn outside of the box.
         top_dir : Optional[str]
             top layer extension direction.  Can force to extend in same direction as bottom.
         unit_mode : bool
-            True if spx/spy are specified in resolution units.
+            deprecated parameter.
         Returns
         -------
         via : Via
             the created via object.
         """
-        via = Via(self.grid.tech_info, bbox, bot_layer, top_layer, bot_dir,
-                  nx=nx, ny=ny, spx=spx, spy=spy, extend=extend, top_dir=top_dir,
-                  unit_mode=unit_mode)
-        self._layout.add_via(via)
-
-        return via
+        raise NotImplementedError('Not implemented yet.')
 
     def add_via_primitive(self, via_type,  # type: str
-                          loc,  # type: List[float]
+                          loc,  # type: PointType
                           num_rows=1,  # type: int
                           num_cols=1,  # type: int
-                          sp_rows=0.0,  # type: float
-                          sp_cols=0.0,  # type: float
-                          enc1=None,  # type: Optional[List[float]]
-                          enc2=None,  # type: Optional[List[float]]
+                          sp_rows=0,  # type: CoordType
+                          sp_cols=0,  # type: CoordType
+                          enc1=None,  # type: Optional[List[CoordType]]
+                          enc2=None,  # type: Optional[List[CoordType]]
                           orient='R0',  # type: str
-                          cut_width=None,  # type: Optional[float]
-                          cut_height=None,  # type: Optional[float]
+                          cut_width=None,  # type: Optional[CoordType]
+                          cut_height=None,  # type: Optional[CoordType]
                           nx=1,  # type: int
                           ny=1,  # type: int
-                          spx=0.0,  # type: float
-                          spy=0.0,  # type: float
-                          unit_mode=False,  # type: bool
+                          spx=0,  # type: CoordType
+                          spy=0,  # type: CoordType
+                          unit_mode=True,  # type: bool
                           ):
         # type: (...) -> None
         """Adds a via by specifying all parameters.
@@ -1240,72 +1254,52 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         via_type : str
             the via type name.
-        loc : List[float]
+        loc : PointType
             the via location as a two-element list.
         num_rows : int
             number of via cut rows.
         num_cols : int
             number of via cut columns.
-        sp_rows : float
+        sp_rows : CoordType
             spacing between via cut rows.
-        sp_cols : float
+        sp_cols : CoordType
             spacing between via cut columns.
-        enc1 : Optional[List[float]]
+        enc1 : Optional[List[CoordType]]
             a list of left, right, top, and bottom enclosure values on bottom layer.
             Defaults to all 0.
-        enc2 : Optional[List[float]]
+        enc2 : Optional[List[CoordType]]
             a list of left, right, top, and bottom enclosure values on top layer.
             Defaults to all 0.
         orient : str
             orientation of the via.
-        cut_width : Optional[float]
+        cut_width : Optional[CoordType]
             via cut width.  This is used to create rectangle via.
-        cut_height : Optional[float]
+        cut_height : Optional[CoordType]
             via cut height.  This is used to create rectangle via.
         nx : int
             number of columns.
         ny : int
             number of rows.
-        spx : float
+        spx : CoordType
             column pitch.
-        spy : float
+        spy : CoordType
             row pitch.
         unit_mode : bool
             True if all given dimensions are in resolution units.
         """
-        if unit_mode:
-            res = self.grid.resolution
-            loc = (loc[0] * res, loc[1] * res)
-            sp_rows *= res
-            sp_cols *= res
-            if enc1 is not None:
-                enc1 = [v * res for v in enc1]
-            if enc2 is not None:
-                enc2 = [v * res for v in enc2]
-            if cut_width is not None:
-                cut_width *= res
-            if cut_height is not None:
-                cut_height *= res
-            spx *= res
-            spy *= res
-
-        self._layout.add_via_primitive(via_type, loc, num_rows=num_rows, num_cols=num_cols,
-                                       sp_rows=sp_rows, sp_cols=sp_cols,
-                                       enc1=enc1, enc2=enc2, orient=orient,
-                                       cut_width=cut_width, cut_height=cut_height,
-                                       arr_nx=nx, arr_ny=ny, arr_spx=spx, arr_spy=spy)
+        raise NotImplementedError('Not implemented yet.')
 
     def add_via_on_grid(self, bot_layer_id, bot_track, top_track, bot_width=1, top_width=1):
-        # type: (int, Union[float, int], Union[float, int], int, int) -> Via
+        # type: (int, TrackType, TrackType, int, int) -> PyVia
         """Add a via on the routing grid.
 
         Parameters
         ----------
         bot_layer_id : int
             the bottom layer ID.
-        bot_track : Union[float, int]
+        bot_track : TrackType
             the bottom track index.
-        top_track : Union[float, int]
+        top_track : TrackType
             the top track index.
         bot_width : int
             the bottom track width.
@@ -1328,9 +1322,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     def extend_wires(self,  # type: TemplateBase
                      warr_list,  # type: Union[WireArray, List[Optional[WireArray]]]
-                     lower=None,  # type: Optional[Union[float, int]]
-                     upper=None,  # # type: Optional[Union[float, int]]
-                     unit_mode=False,  # type: bool
+                     lower=None,  # type: Optional[CoordType]
+                     upper=None,  # # type: Optional[CoordType]
+                     unit_mode=True,  # type: bool
                      min_len_mode=None,  # type: Optional[int]
                      ):
         # type: (...) -> List[WireArray]
@@ -1340,9 +1334,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         warr_list : Union[WireArray, List[Optional[WireArray]]]
             the wires to extend.
-        lower : Optional[Union[float, int]]
+        lower : Optional[CoordType]
             the wire lower coordinate.
-        upper : Optional[Union[float, int]]
+        upper : Optional[CoordType]
             the wire upper coordinate.
         unit_mode: bool
             True if lower/upper/fill_margin is given in resolution units.
@@ -1409,13 +1403,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     def add_wires(self,  # type: TemplateBase
                   layer_id,  # type: int
-                  track_idx,  # type: Union[float, int]
-                  lower,  # type: Union[float, int]
-                  upper,  # type: Union[float, int]
+                  track_idx,  # type: TrackType
+                  lower,  # type: CoordType
+                  upper,  # type: CoordType
                   width=1,  # type: int
                   num=1,  # type: int
-                  pitch=0,  # type: Union[float, int]
-                  unit_mode=False  # type: bool
+                  pitch=0,  # type: TrackType
+                  unit_mode=True  # type: bool
                   ):
         # type: (...) -> WireArray
         """Add the given wire(s) to this layout.
@@ -1424,17 +1418,17 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         layer_id : int
             the wire layer ID.
-        track_idx : Union[float, int]
+        track_idx : TrackType
             the smallest wire track index.
-        lower : Union[float, int]
+        lower : CoordType
             the wire lower coordinate.
-        upper : Union[float, int]
+        upper : CoordType
             the wire upper coordinate.
         width : int
             the wire width in number of tracks.
         num : int
             number of wires.
-        pitch : Union[float, int]
+        pitch : TrackType
             the wire pitch.
         unit_mode: bool
             True if lower/upper is given in resolution units.
@@ -1459,9 +1453,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     def add_res_metal_warr(self,  # type: TemplateBase
                            layer_id,  # type: int
-                           track_idx,  # type: Union[float, int]
-                           lower,  # type: Union[float, int]
-                           upper,  # type: Union[float, int]
+                           track_idx,  # type: TrackType
+                           lower,  # type: CoordType
+                           upper,  # type: CoordType
                            **kwargs):
         # type: (...) -> WireArray
         """Add metal resistor as WireArray to this layout.
@@ -1470,11 +1464,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         layer_id : int
             the wire layer ID.
-        track_idx : Union[float, int]
+        track_idx : TrackType
             the smallest wire track index.
-        lower : Union[float, int]
+        lower : CoordType
             the wire lower coordinate.
-        upper : Union[float, int]
+        upper : CoordType
             the wire upper coordinate.
         **kwargs :
             optional arguments to add_wires()
@@ -1765,10 +1759,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     def reserve_tracks(self,  # type: TemplateBase
                        layer_id,  # type: int
-                       track_idx,  # type: Union[float, int]
+                       track_idx,  # type: TrackType
                        width=1,  # type: int
                        num=1,  # type: int
-                       pitch=0,  # type: Union[float, int]
+                       pitch=0,  # type: TrackType
                        ):
         # type: (...) -> None
         """Reserve the given routing tracks so that power fill will not fill these tracks.
@@ -1779,16 +1773,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         layer_id : int
             the wire layer ID.
-        track_idx : Union[float, int]
+        track_idx : TrackType
             the smallest wire track index.
         width : int
             the wire width in number of tracks.
         num : int
             number of wires.
-        pitch : Union[float, int]
+        pitch : TrackType
             the wire pitch.
         """
-
         bnd_box = self.bound_box
         tid = TrackID(layer_id, track_idx, width=width, num=num, pitch=pitch)
         if self.grid.get_direction(layer_id) == 'x':
@@ -1798,14 +1791,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         warr = WireArray(tid, 0, upper, res=self.grid.resolution, unit_mode=True)
 
         lay_name = self.grid.get_layer_name(layer_id, track_idx)
-        self._used_tracks.record_rect(self.grid, lay_name, warr.get_bbox_array(self.grid))
+        # self._used_tracks.record_rect(self.grid, lay_name, warr.get_bbox_array(self.grid))
+        raise NotImplementedError('Not implemented yet.')
 
     def connect_wires(self,  # type: TemplateBase
                       wire_arr_list,  # type: Union[WireArray, List[WireArray]]
-                      lower=None,  # type: Optional[Union[int, float]]
-                      upper=None,  # type: Optional[Union[int, float]]
+                      lower=None,  # type: Optional[CoordType]
+                      upper=None,  # type: Optional[CoordType]
                       debug=False,  # type: bool
-                      unit_mode=False,  # type: bool
+                      unit_mode=True,  # type: bool
                       ):
         # type: (...) -> List[WireArray]
         """Connect all given WireArrays together.
@@ -1816,9 +1810,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         wire_arr_list : Union[WireArr, List[WireArr]]
             WireArrays to connect together.
-        lower : Optional[Union[int, float]]
+        lower : Optional[CoordType]
             if given, extend connection wires to this lower coordinate.
-        upper : Optional[Union[int, float]]
+        upper : Optional[CoordType]
             if given, extend connection wires to this upper coordinate.
         debug : bool
             True to print debug messages.
@@ -1961,7 +1955,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     def _draw_via_on_track(self, wlayer, box_arr, track_id, tl_unit=None,
                            tu_unit=None):
-        # type: (str, BBoxArray, TrackID, float, float) -> Tuple[float, float]
+        # type: (str, BBoxArray, TrackID, int, int) -> Tuple[int, int]
         """Helper method.  Draw vias on the intersection of the BBoxArray and TrackID."""
         grid = self.grid
         res = grid.resolution
@@ -2023,12 +2017,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                layer_name,  # type: str
                                box_arr,  # type: Union[BBox, BBoxArray]
                                track_id,  # type: TrackID
-                               track_lower=None,  # type: Optional[Union[int, float]]
-                               track_upper=None,  # type: Optional[Union[int, float]]
-                               unit_mode=False,  # type: bool
+                               track_lower=None,  # type: Optional[CoordType]
+                               track_upper=None,  # type: Optional[CoordType]
+                               unit_mode=True,  # type: bool
                                min_len_mode=None,  # type: Optional[int]
-                               wire_lower=None,  # type: Optional[Union[float, int]]
-                               wire_upper=None,  # type: Optional[Union[float, int]]
+                               wire_lower=None,  # type: Optional[CoordType]
+                               wire_upper=None,  # type: Optional[CoordType]
                                ):
         # type: (...) -> WireArray
         """Connect the given primitive wire to given tracks.
@@ -2041,18 +2035,18 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             bounding box of the wire(s) to connect to tracks.
         track_id : TrackID
             TrackID that specifies the track(s) to connect the given wires to.
-        track_lower : Optional[Union[int, float]]
+        track_lower : Optional[CoordType]
             if given, extend track(s) to this lower coordinate.
-        track_upper : Optional[Union[int, float]]
+        track_upper : Optional[CoordType]
             if given, extend track(s) to this upper coordinate.
         unit_mode: bool
             True if track_lower/track_upper/fill_margin is given in resolution units.
         min_len_mode : Optional[int]
             If not None, will extend track so it satisfy minimum length requirement.
             Use -1 to extend lower bound, 1 to extend upper bound, 0 to extend both equally.
-        wire_lower : Optional[Union[float, int]]
+        wire_lower : Optional[CoordType]
             if given, extend wire(s) to this lower coordinate.
-        wire_upper : Optional[Union[float, int]]
+        wire_upper : Optional[CoordType]
             if given, extend wire(s) to this upper coordinate.
 
         Returns
@@ -2088,13 +2082,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         tr_dir = grid.get_direction(tr_layer)
         base = box_arr.base
         if tr_dir == 'x':
-            self.add_rect(layer_name,
-                          base.extend(y=tl, unit_mode=True).extend(y=tu, unit_mode=True),
-                          nx=box_arr.nx, ny=box_arr.ny, spx=box_arr.spx, spy=box_arr.spy)
+            self.add_rect_arr(layer_name,
+                              base.extend(y=tl, unit_mode=True).extend(y=tu, unit_mode=True),
+                              nx=box_arr.nx, ny=box_arr.ny, spx=box_arr.spx, spy=box_arr.spy)
         else:
-            self.add_rect(layer_name,
-                          base.extend(x=tl, unit_mode=True).extend(x=tu, unit_mode=True),
-                          nx=box_arr.nx, ny=box_arr.ny, spx=box_arr.spx, spy=box_arr.spy)
+            self.add_rect_arr(layer_name,
+                              base.extend(x=tl, unit_mode=True).extend(x=tu, unit_mode=True),
+                              nx=box_arr.nx, ny=box_arr.ny, spx=box_arr.spx, spy=box_arr.spy)
 
         # draw vias
         tl_unit, tu_unit = self._draw_via_on_track(layer_name, box_arr, track_id,
@@ -2127,12 +2121,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                             pbox,  # type: Union[BBox, BBoxArray]
                                             nbox,  # type: Union[BBox, BBoxArray]
                                             tr_layer_id,  # type: int
-                                            ptr_idx,  # type: Union[int, float]
-                                            ntr_idx,  # type: Union[int, float]
+                                            ptr_idx,  # type: TrackType
+                                            ntr_idx,  # type: TrackType
                                             width=1,  # type: int
-                                            track_lower=None,  # type: Optional[Union[float, int]]
-                                            track_upper=None,  # type: Optional[Union[float, int]]
-                                            unit_mode=False,  # type: bool
+                                            track_lower=None,  # type: Optional[CoordType]
+                                            track_upper=None,  # type: Optional[CoordType]
+                                            unit_mode=True,  # type: bool
                                             ):
         # type: (...) -> Tuple[Optional[WireArray], Optional[WireArray]]
         """Connect the given differential primitive wires to two tracks symmetrically.
@@ -2149,15 +2143,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             negative signal wires to connect.
         tr_layer_id : int
             track layer ID.
-        ptr_idx : Union[int, float]
+        ptr_idx : TrackType
             positive track index.
-        ntr_idx : Union[int, float]
+        ntr_idx : TrackType
             negative track index.
         width : int
             track width in number of tracks.
-        track_lower : Optional[Union[float, int]]
+        track_lower : Optional[CoordType]
             if given, extend track(s) to this lower coordinate.
-        track_upper : Optional[Union[float, int]]
+        track_upper : Optional[CoordType]
             if given, extend track(s) to this upper coordinate.
         unit_mode: bool
             True if track_lower/track_upper/fill_margin is given in resolution units.
@@ -2180,11 +2174,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                         layer_name,  # type: str
                                         box_arr_list,  # type: List[Union[BBox, BBoxArray]]
                                         tr_layer_id,  # type: int
-                                        tr_idx_list,  # type: List[Union[int, float]]
+                                        tr_idx_list,  # type: List[TrackType]
                                         width=1,  # type: int
-                                        track_lower=None,  # type: Optional[Union[int, float]]
-                                        track_upper=None,  # type: Optional[Union[int, float]]
-                                        unit_mode=False  # type: bool
+                                        track_lower=None,  # type: Optional[CoordType]
+                                        track_upper=None,  # type: Optional[CoordType]
+                                        unit_mode=True  # type: bool
                                         ):
         # type: (...) -> List[Optional[WireArray]]
         """Connect the given primitive wire to given tracks.
@@ -2197,13 +2191,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             bounding box of the wire(s) to connect to tracks.
         tr_layer_id : int
             track layer ID.
-        tr_idx_list : List[Union[int, float]]
+        tr_idx_list : List[TrackType]
             list of track indices.
         width : int
             track width in number of tracks.
-        track_lower : Optional[Union[int, float]]
+        track_lower : Optional[CoordType]
             if given, extend track(s) to this lower coordinate.
-        track_upper : Optional[Union[int, float]]
+        track_upper : Optional[CoordType]
             if given, extend track(s) to this upper coordinate.
         unit_mode: bool
             True if track_lower/track_upper/fill_margin is given in resolution units.
@@ -2297,11 +2291,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def connect_to_tracks(self,  # type: TemplateBase
                           wire_arr_list,  # type: Union[WireArray, List[WireArray]]
                           track_id,  # type: TrackID
-                          wire_lower=None,  # type: Optional[Union[float, int]]
-                          wire_upper=None,  # type: Optional[Union[float, int]]
-                          track_lower=None,  # type: Optional[Union[float, int]]
-                          track_upper=None,  # type: Optional[Union[float, int]]
-                          unit_mode=False,  # type: bool
+                          wire_lower=None,  # type: Optional[CoordType]
+                          wire_upper=None,  # type: Optional[CoordType]
+                          track_lower=None,  # type: Optional[CoordType]
+                          track_upper=None,  # type: Optional[CoordType]
+                          unit_mode=True,  # type: bool
                           min_len_mode=None,  # type: Optional[int]
                           return_wires=False,  # type: bool
                           debug=False,  # type: bool
@@ -2317,13 +2311,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             list of WireArrays to connect to track.
         track_id : TrackID
             TrackID that specifies the track(s) to connect the given wires to.
-        wire_lower : Optional[Union[float, int]]
+        wire_lower : Optional[CoordType]
             if given, extend wire(s) to this lower coordinate.
-        wire_upper : Optional[Union[float, int]]
+        wire_upper : Optional[CoordType]
             if given, extend wire(s) to this upper coordinate.
-        track_lower : Optional[Union[float, int]]
+        track_lower : Optional[CoordType]
             if given, extend track(s) to this lower coordinate.
-        track_upper : Optional[Union[float, int]]
+        track_upper : Optional[CoordType]
             if given, extend track(s) to this upper coordinate.
         unit_mode : bool
             True if track_lower/track_upper is given in resolution units.
@@ -2763,12 +2757,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                     pwarr_list,  # type: Union[WireArray, List[WireArray]]
                                     nwarr_list,  # type: Union[WireArray, List[WireArray]]
                                     tr_layer_id,  # type: int
-                                    ptr_idx,  # type: Union[int, float]
-                                    ntr_idx,  # type: Union[int, float]
+                                    ptr_idx,  # type: TrackType
+                                    ntr_idx,  # type: TrackType
                                     width=1,  # type: int
-                                    track_lower=None,  # type: Optional[Union[float, int]]
-                                    track_upper=None,  # type: Optional[Union[float, int]]
-                                    unit_mode=False,  # type: bool
+                                    track_lower=None,  # type: Optional[CoordType]
+                                    track_upper=None,  # type: Optional[CoordType]
+                                    unit_mode=True,  # type: bool
                                     debug=False  # type: bool
                                     ):
         # type: (...) -> Tuple[Optional[WireArray], Optional[WireArray]]
@@ -2784,15 +2778,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             negative signal wires to connect.
         tr_layer_id : int
             track layer ID.
-        ptr_idx : Union[int, float]
+        ptr_idx : TrackType
             positive track index.
-        ntr_idx : Union[int, float]
+        ntr_idx : TrackType
             negative track index.
         width : int
             track width in number of tracks.
-        track_lower : Optional[Union[float, int]]
+        track_lower : Optional[CoordType]
             if given, extend track(s) to this lower coordinate.
-        track_upper : Optional[Union[float, int]]
+        track_upper : Optional[CoordType]
             if given, extend track(s) to this upper coordinate.
         unit_mode: bool
             True if track_lower/track_upper is given in resolution units.
@@ -2819,9 +2813,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                    nin_warrs,  # type: Union[WireArray, List[WireArray]]
                                    pout_warr,  # type: WireArray
                                    nout_warr,  # type: WireArray
-                                   track_lower=None,  # type: Optional[Union[float, int]]
-                                   track_upper=None,  # type: Optional[Union[float, int]]
-                                   unit_mode=False,  # type: bool
+                                   track_lower=None,  # type: Optional[CoordType]
+                                   track_upper=None,  # type: Optional[CoordType]
+                                   unit_mode=True,  # type: bool
                                    debug=False  # type: bool
                                    ):
         # type: (...) -> Tuple[Optional[WireArray], Optional[WireArray]]
@@ -2854,11 +2848,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def connect_matching_tracks(self,  # type: TemplateBase
                                 warr_list_list,  # type: List[Union[WireArray, List[WireArray]]]
                                 tr_layer_id,  # type: int
-                                tr_idx_list,  # type: List[Union[int, float]]
+                                tr_idx_list,  # type: List[TrackType]
                                 width=1,  # type: int
-                                track_lower=None,  # type: Optional[Union[float, int]]
-                                track_upper=None,  # type: Optional[Union[float, int]]
-                                unit_mode=False,  # type: bool
+                                track_lower=None,  # type: Optional[CoordType]
+                                track_upper=None,  # type: Optional[CoordType]
+                                unit_mode=True,  # type: bool
                                 debug=False  # type: bool
                                 ):
         # type: (...) -> List[Optional[WireArray]]
@@ -2872,13 +2866,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             list of signal wires to connect.
         tr_layer_id : int
             track layer ID.
-        tr_idx_list : List[Union[int, float]]
+        tr_idx_list : List[TrackType]
             list of track indices.
         width : int
             track width in number of tracks.
-        track_lower : Optional[Union[float, int]]
+        track_lower : Optional[CoordType]
             if given, extend track(s) to this lower coordinate.
-        track_upper : Optional[Union[float, int]]
+        track_upper : Optional[CoordType]
             if given, extend track(s) to this upper coordinate.
         unit_mode: bool
             True if track_lower/track_upper is given in resolution units.
@@ -2917,8 +2911,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # separate wire arrays into bottom/top tracks, compute wire/track lower/upper coordinates
         bot_warrs = [[] for _ in range(num_tracks)]
         top_warrs = [[] for _ in range(num_tracks)]
-        bot_bounds = [None, None]  # type: List[Union[float, int]]
-        top_bounds = [None, None]  # type: List[Union[float, int]]
+        bot_bounds = [None, None]  # type: List[CoordType]
+        top_bounds = [None, None]  # type: List[CoordType]
         for idx, warr_list in enumerate(warr_list_list):
             # convert to WireArray list
             if isinstance(warr_list, WireArray):
@@ -3041,98 +3035,42 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # type: (int, BBox) -> None
         """Marks the given bounding-box region as used in this Template."""
         layer_name = self.grid.get_layer_name(layer_id, 0)
-        self._used_tracks.record_rect(self.grid, layer_name, BBoxArray(bbox, unit_mode=True),
-                                      dx=0, dy=0)
+        # self._used_tracks.record_rect(self.grid, layer_name, BBoxArray(bbox, unit_mode=True),
+        #                               dx=0, dy=0)
+        raise NotImplementedError('Not implemented yet')
 
     def get_available_tracks(self,  # type: TemplateBase
                              layer_id,  # type: int
                              tr_idx_list,  # type: List[int]
-                             lower,  # type: Union[float, int]
-                             upper,  # type: Union[float, int]
+                             lower,  # type: CoordType
+                             upper,  # type: CoordType
                              width=1,  # type: int
-                             margin=0,  # type: Union[float, int]
-                             unit_mode=False,  # type: bool
+                             margin=0,  # type: CoordType
+                             unit_mode=True,  # type: bool
                              ):
         # type: (...) -> List[int]
         """Returns empty tracks"""
-        if not unit_mode:
-            res = self.grid.resolution
-            lower = int(round(lower / res))
-            upper = int(round(upper / res))
-            margin = int(round(margin / res))
-
-        return [tr_idx for tr_idx in tr_idx_list
-                if self.is_track_available(layer_id, tr_idx, lower, upper, width=width,
-                                           sp=margin, sp_le=margin, unit_mode=True)]
+        raise NotImplementedError('Not implemented yet')
 
     def do_power_fill(self,  # type: TemplateBase
                       layer_id,  # type: int
-                      space,  # type: Union[float, int]
-                      space_le,  # type: Union[float, int]
+                      space,  # type: CoordType
+                      space_le,  # type: CoordType
                       vdd_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
                       vss_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
                       bound_box=None,  # type: Optional[BBox]
                       fill_width=1,  # type: int
                       fill_space=0,  # type: int
-                      x_margin=0,  # type: Union[float, int]
-                      y_margin=0,  # type: Union[float, int]
-                      tr_offset=0,  # type: Union[float, int]
-                      min_len=0,  # type: Union[float, int]
+                      x_margin=0,  # type: CoordType
+                      y_margin=0,  # type: CoordType
+                      tr_offset=0,  # type: CoordType
+                      min_len=0,  # type: CoordType
                       flip=False,  # type: bool
-                      unit_mode=False,  # type: bool
+                      unit_mode=True,  # type: bool
                       ):
         # type: (...) -> Tuple[List[WireArray], List[WireArray]]
         """Draw power fill on the given layer."""
-        res = self.grid.resolution
-        if not unit_mode:
-            space = int(round(space / res))
-            space_le = int(round(space_le / res))
-            x_margin = int(round(x_margin / res))
-            y_margin = int(round(y_margin / res))
-            tr_offset = int(round(tr_offset / res))
-            min_len = int(round(min_len / res))
-
-        min_len = max(min_len, self.grid.get_min_length(layer_id, fill_width, unit_mode=True))
-        if bound_box is None:
-            bound_box = self.bound_box
-
-        bound_box = bound_box.expand(dx=-x_margin, dy=-y_margin, unit_mode=True)
-
-        tr_off = self.grid.coord_to_track(layer_id, tr_offset, unit_mode=True)
-        htr0 = int(tr_off * 2) + 1 + fill_width + fill_space
-        htr_pitch = 2 * (fill_width + fill_space)
-        is_horizontal = (self.grid.get_direction(layer_id) == 'x')
-        if is_horizontal:
-            cl, cu = bound_box.bottom_unit, bound_box.top_unit
-            lower, upper = bound_box.left_unit, bound_box.right_unit
-        else:
-            cl, cu = bound_box.left_unit, bound_box.right_unit
-            lower, upper = bound_box.bottom_unit, bound_box.top_unit
-
-        tr_bot = self.grid.find_next_track(layer_id, cl, tr_width=fill_width, half_track=True,
-                                           mode=1, unit_mode=True)
-        tr_top = self.grid.find_next_track(layer_id, cu, tr_width=fill_width, half_track=True,
-                                           mode=-1, unit_mode=True)
-        n0 = - (-(int(tr_bot * 2) + 1 - htr0) // htr_pitch)
-        n1 = (int(tr_top * 2) + 1 - htr0) // htr_pitch
-        top_vdd, top_vss = [], []
-        for ncur in range(n0, n1 + 1):
-            tr_idx = (htr0 + ncur * htr_pitch - 1) / 2
-            tid = TrackID(layer_id, tr_idx, width=fill_width)
-            cur_list = top_vss if (ncur % 2 == 0) != flip else top_vdd
-            for tl, tu in self.open_interval_iter(tid, lower, upper, sp=space, sp_le=space_le,
-                                                  min_len=min_len):
-                cur_list.append(WireArray(tid, tl, tu, res=res, unit_mode=True))
-
-        for warr in chain(top_vdd, top_vss):
-            for lay, box_arr in warr.wire_arr_iter(self.grid):
-                self.add_rect(lay, box_arr)
-
-        if vdd_warrs:
-            self.draw_vias_on_intersections(vdd_warrs, top_vdd)
-        if vss_warrs:
-            self.draw_vias_on_intersections(vss_warrs, top_vss)
-        return top_vdd, top_vss
+        raise NotImplementedError('Not implemented yet')
 
     def do_max_space_fill2(self,  # type: TemplateBase
                            layer_id,  # type: int
@@ -3140,425 +3078,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                            ):
         # type: (...) -> None
         """Draw density fill on the given layer."""
-        grid = self.grid
-        tech_info = grid.tech_info
-
-        fill_config = tech_info.tech_params['layout']['dummy_fill'][layer_id]
-        density = fill_config['density']
-        sp_max = fill_config['sp_max']
-        sp_le_max = fill_config['sp_le_max']
-        ip_margin = fill_config['margin']
-        ip_margin_le = fill_config['margin_le']
-        sp_max2 = sp_max // 2
-        sp_le_max2 = sp_le_max // 2
-        margin = sp_max2 // 2
-        margin_le = sp_le_max2 // 2
-
-        if bound_box is None:
-            bound_box = self.bound_box
-
-        # get tracks information
-        long_dir = grid.get_direction(layer_id)
-        if long_dir == 'y':
-            tran_dir = 'x'
-            spx = sp_max2
-            spy = sp_le_max2
-        else:
-            tran_dir = 'y'
-            spx = sp_le_max2
-            spy = sp_max2
-        dim_tran0, dim_tran1 = bound_box.get_interval(tran_dir, unit_mode=True)
-        dim_long0, dim_long1 = bound_box.get_interval(long_dir, unit_mode=True)
-        dim_tranl = min(dim_tran1, dim_tran0 + sp_max2)
-        dim_tranu = max(dim_tran0, dim_tran1 - sp_max2)
-        dim_longl = min(dim_long1, dim_long0 + sp_le_max2)
-        dim_longu = max(dim_long0, dim_long1 - sp_le_max2)
-        dim_tran = dim_tran1 - dim_tran0
-        dim_long = dim_long1 - dim_long0
-
-        self.add_rect(tech_info.get_exclude_layer(layer_id), bound_box)
-        if dim_tran <= ip_margin or dim_long <= ip_margin_le:
-            return
-
-        min_len = grid.get_min_length(layer_id, 1, unit_mode=True)
-        htr0 = self.grid.coord_to_nearest_track(layer_id, dim_tranl, half_track=True,
-                                                mode=-1, unit_mode=True)
-        htr1 = self.grid.coord_to_nearest_track(layer_id, dim_tranu, half_track=True,
-                                                mode=1, unit_mode=True)
-        htr0 = int(round(htr0 * 2 + 1))
-        htr1 = int(round(htr1 * 2 + 1))
-        num_htr_tot = htr1 - htr0 + 1
-
-        # calculate track pitch based on density/max space
-        tr_w, tr_sp = grid.get_track_info(layer_id, unit_mode=True)
-        sp_le = grid.get_line_end_space(layer_id, 1, unit_mode=True)
-        tr_pitch2 = grid.get_track_pitch(layer_id, unit_mode=True) // 2
-        num_tracks = int(round(-(-(dim_tran * density) // tr_w)))
-        num_tracks = min(max(num_tracks, -(-num_htr_tot // ((sp_max - tr_sp) // tr_pitch2 + 2))),
-                         num_htr_tot // 2)
-
-        fill_info = None
-        invert = False
-        for _ in range(100):
-            try:
-                fill_info, invert = fill_symmetric_max_num_info(num_htr_tot, num_tracks, 1, 1, 1,
-                                                                fill_on_edge=True, cyclic=False)
-            except NoFillChoiceError:
-                num_tracks -= 1
-        if fill_info is None:
-            raise ValueError('no fill solution.')
-
-        intv_list = fill_symmetric_interval(*fill_info[1], offset=htr0, invert=invert)[0]
-
-        # create interval sets
-        intv_tran0 = IntervalSet()
-        intv_tran1 = IntervalSet()
-        htr_list = [intv[0] for intv in intv_list]
-        num_htr = len(htr_list)
-        set_long0 = set(htr_list)
-        set_long1 = set_long0.copy()
-        intv_list = [IntervalSet() for _ in range(num_htr)]
-
-        # handle blockages
-        for blk_box in self.blockage_iter(layer_id, bound_box, spx=spx, spy=spy):
-            b_tran0, b_tran1 = blk_box.get_interval(tran_dir, unit_mode=True)
-            b_long0, b_long1 = blk_box.get_interval(long_dir, unit_mode=True)
-            b_long0_lim = max(b_long0, dim_longl)
-            b_long1_lim = min(b_long1, dim_longu)
-            blk_intv = (b_long0_lim, b_long1_lim)
-            if b_long0_lim < b_long1_lim:
-                # handle lower/upper transverse edges
-                if b_tran0 <= dim_tran0 and dim_tranl <= b_tran1:
-                    intv_tran0.add(blk_intv, merge=True, abut=True)
-                if b_tran0 <= dim_tranu and dim_tran1 <= b_tran1:
-                    intv_tran1.add(blk_intv, merge=True, abut=True)
-            cur_htr0 = self.grid.find_next_track(layer_id, b_tran0, half_track=True, mode=1,
-                                                 unit_mode=True)
-            cur_htr1 = self.grid.find_next_track(layer_id, b_tran1, half_track=True, mode=-1,
-                                                 unit_mode=True)
-            cur_htr0 = max(htr0, int(round(cur_htr0 * 2 + 1)))
-            cur_htr1 = min(htr1, int(round(cur_htr1 * 2 + 1)))
-            htr_idx0 = bisect.bisect_left(htr_list, cur_htr0)
-            if htr_idx0 < num_htr and htr_list[htr_idx0] <= cur_htr1:
-                htr_idx1 = min(num_htr - 1, bisect.bisect_right(htr_list, cur_htr1, lo=htr_idx0))
-                for htr_idx in range(htr_idx0, htr_idx1 + 1):
-                    htr = htr_list[htr_idx]
-                    # handle lower/upper longitudinal edges
-                    if b_long0 <= dim_long0 and dim_longl <= b_long1:
-                        set_long0.discard(htr)
-                    if b_long0 <= dim_longu and dim_long1 <= b_long1:
-                        set_long1.discard(htr)
-                    if b_long0_lim < b_long1_lim:
-                        intv_list[htr_idx].add(blk_intv, merge=True, abut=True)
-
-        # add fill in edges on transverse sides
-        trl = self.grid.coord_to_nearest_track(layer_id, dim_tran0 + margin, half_track=True,
-                                               mode=-1, unit_mode=True)
-        trr = self.grid.coord_to_nearest_track(layer_id, dim_tran1 - margin, half_track=True,
-                                               mode=1, unit_mode=True)
-        if trr < trl + 1:
-            # handle cases where the given bounding box is small
-            dim_mid = (dim_tran0 + dim_tran1) // 2
-            trl = self.grid.coord_to_nearest_track(layer_id, dim_mid, half_track=True,
-                                                   mode=0, unit_mode=True)
-            tran_edge_iter = ((intv_tran0, trl),)
-        else:
-            tran_edge_iter = ((intv_tran0, trl), (intv_tran1, trr))
-
-        intv_long = (dim_longl, dim_longu)
-        for intv_set, tidx in tran_edge_iter:
-            for long0, long1 in intv_set.complement_iter(intv_long):
-                if long1 - long0 < min_len:
-                    long0 = (long0 + long1 - min_len) // 2
-                    long1 = long0 + min_len
-                self.add_wires(layer_id, tidx, long0, long1, unit_mode=True)
-
-        # add fill in edges on longitude sides
-        if dim_long0 + 2 * (margin_le + min_len) + sp_le > dim_long1:
-            # handle cases where the giving bounding box is small
-            long_lower = min(dim_long0 + margin_le, (dim_long0 + dim_long1 - min_len) // 2)
-            long_upper = max(dim_long1 - margin_le, long_lower + min_len)
-            long_edge_iter = ((set_long0, long_lower, long_upper),)
-        else:
-            long_lower = dim_long0 + margin_le - min_len // 2
-            long_upper = dim_long1 - margin_le + min_len // 2
-            long_edge_iter = ((set_long0, long_lower, long_lower + min_len),
-                              (set_long1, long_upper - min_len, long_upper))
-
-        for set_long_edge, lower, upper in long_edge_iter:
-            intv_mark = (max(dim_longl, lower - sp_le_max2), min(dim_longu, upper + sp_le_max2))
-            for htr in set_long_edge:
-                htr_idx = bisect.bisect_left(htr_list, htr)
-                intv_list[htr_idx].add(intv_mark, merge=True, abut=True)
-                self.add_wires(layer_id, (htr - 1) / 2, lower, upper, unit_mode=True)
-
-        # add rest of fill
-        for htr, intv_set in zip(htr_list, intv_list):
-            tidx = (htr - 1) / 2
-            for long0, long1 in intv_set.complement_iter(intv_long):
-                if long1 - long0 < min_len:
-                    long0 = (long0 + long1 - min_len) // 2
-                    long1 = long0 + min_len
-                self.add_wires(layer_id, tidx, long0, long1, unit_mode=True)
+        raise NotImplementedError('Not implemented yet')
 
     def do_max_space_fill(self,  # type: TemplateBase
                           layer_id,  # type: int
                           bound_box=None,  # type: Optional[BBox]
-                          fill_pitch=1,  # type: Union[float, int]
+                          fill_pitch=1,  # type: TrackType
                           ):
         # type: (...) -> None
         """Draw density fill on the given layer."""
-
-        grid = self.grid
-        tech_info = grid.tech_info
-
-        fill_config = tech_info.tech_params['layout']['dummy_fill'][layer_id]
-        sp_max = fill_config['sp_max']
-        sp_le_max = fill_config['sp_le_max']
-        ip_margin = fill_config['margin']
-        ip_margin_le = fill_config['margin_le']
-        sp_max2 = sp_max // 2
-        sp_le_max2 = sp_le_max // 2
-        margin = sp_max2 // 2
-        margin_le = sp_le_max2 // 2
-
-        min_len = grid.get_min_length(layer_id, 1, unit_mode=True)
-        long_dir = grid.get_direction(layer_id)
-        is_horiz = (long_dir == 'x')
-
-        if bound_box is None:
-            bound_box = self.bound_box
-
-        xl = bound_box.left_unit
-        xr = bound_box.right_unit
-        yb = bound_box.bottom_unit
-        yt = bound_box.top_unit
-        if is_horiz:
-            tran_box = shgeo.box(xl + margin_le, yb, xr - margin_le, yb + sp_max2)
-            long_box = shgeo.box(xl, yb + margin_le, xl + sp_le_max2, yt - margin_le)
-            dim_tran0 = yb
-            dim_tran1 = yt
-            dim_long0 = xl
-            dim_long1 = xr
-        else:
-            tran_box = shgeo.box(xl, yb + margin_le, xl + sp_max2, yt - margin_le)
-            long_box = shgeo.box(xl + margin_le, yb, xr - margin_le, yb + sp_le_max2)
-            dim_tran0 = xl
-            dim_tran1 = xr
-            dim_long0 = yb
-            dim_long1 = yt
-
-        dim_tran = dim_tran1 - dim_tran0
-        dim_long = dim_long1 - dim_long0
-        self.add_rect(tech_info.get_exclude_layer(layer_id), bound_box)
-        if dim_tran <= ip_margin or dim_long <= ip_margin_le:
-            return
-
-        box_list = [shgeo.box(*box.get_bounds(unit_mode=True))
-                    for box in self.intersection_rect_iter(layer_id, bound_box)]
-        tot_geo = shops.cascaded_union(box_list)
-        tot_geo = tot_geo.buffer(sp_max2, cap_style=2, join_style=2)
-
-        # fill transverse edges
-        new_polys = []
-        if sp_max2 * 2 >= dim_tran:
-            tr = grid.coord_to_nearest_track(layer_id, (dim_tran0 + dim_tran1) // 2,
-                                             half_track=True, unit_mode=True)
-            do_upper = False
-        else:
-            tr = grid.coord_to_nearest_track(layer_id, dim_tran0 + margin, half_track=True,
-                                             mode=-1, unit_mode=True)
-            do_upper = True
-        self._fill_tran_edge_helper(layer_id, grid, tot_geo, tran_box, tr, is_horiz,
-                                    min_len, sp_max2, new_polys)
-
-        if do_upper:
-            tr = grid.coord_to_nearest_track(layer_id, dim_tran1 - margin, half_track=True,
-                                             mode=1, unit_mode=True)
-            if is_horiz:
-                tran_box = shgeo.box(xl + margin_le, yt - sp_max2, xr - margin_le, yt)
-            else:
-                tran_box = shgeo.box(xr - sp_max2, yb + margin_le, xr, yt - margin_le)
-            self._fill_tran_edge_helper(layer_id, grid, tot_geo, tran_box, tr, is_horiz,
-                                        min_len, sp_max2, new_polys)
-
-        new_polys.append(tot_geo)
-        tot_geo = shops.cascaded_union(new_polys)
-
-        # fill longitudinal edges
-        new_polys.clear()
-        if sp_le_max2 * 2 >= dim_long:
-            coord_mid = (dim_long1 + dim_long0) // 2
-            do_upper = False
-        else:
-            coord_mid = dim_long0 + margin_le
-            do_upper = True
-        self._fill_long_edge_helper(layer_id, grid, tot_geo, long_box, coord_mid, is_horiz,
-                                    min_len, sp_max2, new_polys, mode=-1 if do_upper else 0)
-        if do_upper:
-            coord_mid = dim_long1 - margin_le
-            if is_horiz:
-                long_box = shgeo.box(xr - sp_le_max2, yb + margin_le, xr, yt - margin_le)
-            else:
-                long_box = shgeo.box(xl + margin_le, yt - sp_le_max2, xr - margin_le, yt)
-            self._fill_long_edge_helper(layer_id, grid, tot_geo, long_box, coord_mid, is_horiz,
-                                        min_len, sp_max2, new_polys, mode=1)
-
-        new_polys.append(tot_geo)
-        tot_geo = shops.cascaded_union(new_polys)
-
-        # fill interior
-        min_len2 = -(-min_len // 2)
-        tot_box = shgeo.box(*bound_box.get_bounds(unit_mode=True))
-        geo = tot_box.difference(tot_geo)
-        for poly in self._get_flat_poly_iter(geo):
-            if not poly.is_empty:
-                self._fill_poly_bounds(poly, layer_id, is_horiz, min_len2, fill_pitch)
-
-    def _fill_poly_bounds(self, poly, layer_id, is_horiz, min_len2, fill_pitch):
-        grid = self.grid
-        bounds = poly.bounds
-        xl = int(round(bounds[0]))
-        yb = int(round(bounds[1]))
-        xr = int(round(bounds[2]))
-        yt = int(round(bounds[3]))
-        tr_p2 = grid.get_track_pitch(layer_id, unit_mode=True) // 2
-        fill_htr = int(round(2 * fill_pitch))
-        if is_horiz:
-            tr0 = grid.coord_to_nearest_track(layer_id, yb, half_track=True,
-                                              mode=-1, unit_mode=True)
-            tr1 = grid.coord_to_nearest_track(layer_id, yt, half_track=True,
-                                              mode=1, unit_mode=True)
-            wl, wu = grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True)
-            comb = shgeo.MultiPolygon([shgeo.box(xl, wl + tr_p2 * idx, xr, wu + tr_p2 * idx)
-                                       for idx in range(0, int(round(2 * (tr1 - tr0))) + 2,
-                                                        fill_htr)])
-        else:
-            tr0 = grid.coord_to_nearest_track(layer_id, xl, half_track=True,
-                                              mode=-1, unit_mode=True)
-            tr1 = grid.coord_to_nearest_track(layer_id, xr, half_track=True,
-                                              mode=1, unit_mode=True)
-            wl, wu = grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True)
-            comb = shgeo.MultiPolygon([shgeo.box(wl + tr_p2 * idx, yb, wu + tr_p2 * idx, yt)
-                                       for idx in range(0, int(round(2 * (tr1 - tr0))) + 2,
-                                                        fill_htr)])
-
-        htr0 = int(round(tr0 * 2)) + 1
-        pitch = fill_htr * tr_p2
-        for p in self._get_flat_poly_iter(poly.intersection(comb)):
-            p_bnds = p.bounds
-            if p_bnds:
-                if is_horiz:
-                    htr = htr0 + (int(round(p_bnds[1])) - wl) // pitch * fill_htr
-                    pl = int(round(p_bnds[0]))
-                    pu = int(round(p_bnds[2]))
-                else:
-                    htr = htr0 + (int(round(p_bnds[0])) - wl) // pitch * fill_htr
-                    pl = int(round(p_bnds[1]))
-                    pu = int(round(p_bnds[3]))
-                pc = (pl + pu) // 2
-
-                self.add_wires(layer_id, (htr - 1) / 2, min(pl, pc - min_len2),
-                               max(pu, pc + min_len2), unit_mode=True)
-
-    @classmethod
-    def _get_flat_poly_iter(cls, poly):
-        if (isinstance(poly, shgeo.MultiPolygon) or
-                isinstance(poly, shgeo.MultiLineString) or
-                isinstance(poly, shgeo.GeometryCollection)):
-            yield from poly
-        else:
-            yield poly
-
-    def _fill_long_edge_helper(self, layer_id, grid, tot_geo, long_box, coord_mid, is_horiz,
-                               min_len, sp_max2, new_polys, mode=0):
-        if mode < 0:
-            clower = coord_mid
-        elif mode == 0:
-            clower = coord_mid - min_len // 2
-        else:
-            clower = coord_mid - min_len
-        cupper = clower + min_len
-        geo = long_box.difference(tot_geo)
-        if isinstance(geo, shgeo.Polygon):
-            geo = [geo]
-        for poly in geo:
-            poly_bnds = poly.bounds
-            if poly_bnds:
-                if is_horiz:
-                    lower = poly_bnds[1]
-                    upper = poly_bnds[3]
-                else:
-                    lower = poly_bnds[0]
-                    upper = poly_bnds[2]
-                htr0 = grid.coord_to_nearest_track(layer_id, lower, half_track=True, mode=-1,
-                                                   unit_mode=True)
-                htr1 = grid.coord_to_nearest_track(layer_id, upper, half_track=True, mode=1,
-                                                   unit_mode=True)
-                htr0 = int(round(htr0 * 2 + 1))
-                htr1 = int(round(htr1 * 2 + 1))
-                for htr in range(htr0, htr1 + 1, 2):
-                    warr = self.add_wires(layer_id, (htr - 1) / 2, clower, cupper, unit_mode=True)
-                    wbox = shgeo.box(*warr.get_bbox_array(grid).base.get_bounds(unit_mode=True))
-                    new_polys.append(wbox.buffer(sp_max2, cap_style=2, join_style=2))
-
-    def _fill_tran_edge_helper(self, layer_id, grid, tot_geo, tran_box, tr, is_horiz, min_len,
-                               sp_max2, new_polys):
-        geo = tran_box.difference(tot_geo)
-        if isinstance(geo, shgeo.Polygon):
-            geo = [geo]
-        for poly in geo:
-            poly_bnds = poly.bounds
-            if poly_bnds:
-                if is_horiz:
-                    lower = int(round(poly_bnds[0]))
-                    upper = int(round(poly_bnds[2]))
-                else:
-                    lower = int(round(poly_bnds[1]))
-                    upper = int(round(poly_bnds[3]))
-                lower = min(lower, (lower + upper - min_len) // 2)
-                upper = max(upper, lower + min_len)
-                warr = self.add_wires(layer_id, tr, lower, upper, unit_mode=True)
-                wbox = shgeo.box(*warr.get_bbox_array(grid).base.get_bounds(unit_mode=True))
-                new_polys.append(wbox.buffer(sp_max2, cap_style=2, join_style=2))
-
-
-class CachedTemplate(TemplateBase):
-    """A template that's cached in file."""
-
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-
-    @classmethod
-    def get_params_info(cls):
-        # type: () -> Dict[str, str]
-        return dict(
-            cache_fname='the cache file name.',
-        )
-
-    def draw_layout(self):
-        # type: () -> None
-        fname = self.params['cache_fname']
-
-        with open(fname + '_info.pickle', 'rb') as f:
-            info = pickle.load(f)
-        self._size = info['size']
-        self._port_params = info['port_params']
-        self.prim_top_layer = info['prim_top_layer']
-        self.prim_bound_box = info['prim_bound_box']
-        self.array_box = info['array_box']
-
-        self._merge_used_tracks = True
-        self._used_tracks = UsedTracks(fname, overwrite=False)
-
-        prop_dict = info['properties']
-        for key, val in prop_dict.items():
-            setattr(self, key, val)
-
-        lib_name = info['lib_name']
-        cell_name = info['cell_name']
-        self.add_instance_primitive(lib_name, cell_name, (0, 0), inst_name='X0', unit_mode=True)
+        raise NotImplementedError('Not implemented yet')
 
 
 class BlackBoxTemplate(TemplateBase):
