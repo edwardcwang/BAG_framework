@@ -212,24 +212,6 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def create_implementation(self, lib_name, template_list, change_list, lib_path=''):
-        # type: (str, Sequence[Any], Sequence[Any], str) -> None
-        """Create implementation of a design in the CAD database.
-
-        Parameters
-        ----------
-        lib_name : str
-            implementation library name.
-        template_list : Sequence[Any]
-            a list of schematic templates to copy to the new library.
-        change_list : Sequence[Any]
-            a list of changes to be performed on each copied templates.
-        lib_path : str
-            directory to create the library in.  If Empty, use default location.
-        """
-        pass
-
-    @abc.abstractmethod
     def configure_testbench(self, tb_lib, tb_cell):
         # type: (str, str) -> Tuple[str, List[str], Dict[str, str], Dict[str, str]]
         """Update testbench state for the given testbench.
@@ -357,20 +339,20 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def instantiate_layout(self, lib_name, view_name, via_tech, layout_list):
-        # type: (str, str, str, Sequence[Any]) -> None
+    def instantiate_layout(self, lib_name, content_list, lib_path='', view='layout'):
+        # type: (str, Sequence[Any], str, str) -> None
         """Create a batch of layouts.
 
         Parameters
         ----------
         lib_name : str
             layout library name.
-        view_name : str
+        content_list : Sequence[Any]
+            list of layouts to create
+        lib_path : str
+            the path to create the library in.  If empty, use default location.
+        view : str
             layout view name.
-        via_tech : str
-            via technology library name.
-        layout_list : Sequence[Any]
-            a list of layouts to create
         """
         pass
 

@@ -299,14 +299,14 @@ class SkillInterface(DbAccess):
         in_files = {'params': param_list, 'pin_mapping': list(pin_mapping.items())}
         self._eval_skill(cmd, input_files=in_files)
 
-    def instantiate_layout(self, lib_name, view_name, via_tech, layout_list):
-        # type: (str, str, str, Sequence[Any]) -> None
+    def instantiate_layout(self, lib_name, content_list, lib_path='', view='layout'):
+        # type: (str, Sequence[Any], str, str) -> None
         # create library in case it doesn't exist
         self.create_library(lib_name)
 
         # convert parameter dictionary to pcell params list format
         new_layout_list = []
-        for info_list in layout_list:
+        for info_list in content_list:
             new_inst_list = []
             for inst in info_list[1]:
                 if 'params' in inst:
@@ -318,7 +318,8 @@ class SkillInterface(DbAccess):
             new_info_list[1] = new_inst_list
             new_layout_list.append(new_info_list)
 
-        cmd = 'create_layout( "%s" "%s" "%s" {layout_list} )' % (lib_name, view_name, via_tech)
+        tech_lib = self.db_config['schematic']['tech_lib']
+        cmd = 'create_layout( "%s" "%s" "%s" {layout_list} )' % (lib_name, view, tech_lib)
         in_files = {'layout_list': new_layout_list}
         self._eval_skill(cmd, input_files=in_files)
 
@@ -341,7 +342,7 @@ class SkillInterface(DbAccess):
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
-        # type: (str, str, str, Optional[str], **kwargs) -> None
+        # type: (str, str, str, Optional[str], Any) -> None
         calview_config = self.db_config.get('calibreview', None)
         use_calibreview = self.db_config.get('use_calibreview', True)
         if calview_config is not None and use_calibreview:
@@ -411,7 +412,7 @@ class SkillInterface(DbAccess):
         return os.path.join(lib_dir, cell_name)
 
     def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
-        # type: (str, str, str, **kwargs) -> None
+        # type: (str, str, str, Any) -> None
         # delete old verilog view
         cmd = 'delete_cellview( "%s" "%s" "verilog" )' % (lib_name, cell_name)
         self._eval_skill(cmd)

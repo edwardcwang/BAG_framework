@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 try:
     from pybag.layout.pyutil import Orientation
     from pybag.layout.util import BBox, BBoxArray
-    from pybag.layout.cellview import PyCellView, PyLayInstance, PyRect, PyPolygon, PyVia
+    from pybag.layout.cellview import PyLayCellView, PyLayInstance, PyRect, PyPolygon, PyVia
     from pybag.layout.cellview import PyPath, PyBlockage, PyBoundary
 except ImportError:
     raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
@@ -115,16 +115,9 @@ class TemplateDB(MasterDB):
         if self._prj is None:
             raise ValueError('BagProject is not defined.')
 
-        # create library if it does not exist
-        self._prj.create_library(self._lib_name)
-        # release any write locks
-        cell_view_list = [(item[0], 'layout') for item in content_list]
-        self._prj.release_write_locks(self._lib_name, cell_view_list)
-
         # create layouts
-        via_tech_name = self._grid.tech_info.via_tech_name
         start = time.time()
-        self._prj.instantiate_layout(self._lib_name, 'layout', via_tech_name, content_list)
+        self._prj.instantiate_layout(self._lib_name, content_list)
         end = time.time()
 
         if debug:
@@ -253,7 +246,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # initialize template attributes
         self._parent_grid = kwargs.get('grid', temp_db.grid)
         self._grid = self._parent_grid.copy()
-        self._layout = PyCellView(self._grid.tech_info, get_encoding())
         self._size = None  # type: SizeType
         self._ports = {}
         self._port_params = {}
@@ -277,6 +269,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         fp_dict = self.params['flip_parity']
         if fp_dict is not None:
             self._grid.set_flip_parity(fp_dict)
+
+        # create Cython wrapper object
+        self._layout = PyLayCellView(self._grid.tech_info, self.cell_name, get_encoding())
 
     @abc.abstractmethod
     def draw_layout(self):
@@ -330,7 +325,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self.__class__.__name__
 
     def get_content(self, lib_name, rename_fun):
-        # type: (str, Callable[[str], str]) -> Tuple[str, PyCellView]
+        # type: (str, Callable[[str], str]) -> Tuple[str, PyLayCellView]
         """Returns the content of this master instance.
 
         Parameters
@@ -342,7 +337,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        content : Tuple[str, PyCellView]
+        content : Tuple[str, PyLayCellView]
             the content of this TemplateBase.
         """
         if not self.finalized:

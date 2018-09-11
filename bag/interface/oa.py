@@ -136,10 +136,6 @@ class OAInterface(DbAccess):
         tech_lib = self.db_config['schematic']['tech_lib']
         self._oa_db.create_lib(lib_name, lib_path, tech_lib)
 
-    def create_implementation(self, lib_name, template_list, change_list, lib_path=''):
-        # type: (str, Sequence[Any], Sequence[Any], str) -> None
-        raise NotImplementedError('Not implemented yet.')
-
     def configure_testbench(self, tb_lib, tb_cell):
         # type: (str, str) -> Tuple[str, List[str], Dict[str, str], Dict[str, str]]
         raise NotImplementedError('Not implemented yet.')
@@ -166,10 +162,10 @@ class OAInterface(DbAccess):
         # release write locks
         cell_view_list = []
         for cell_name, _ in content_list:
-            cell_view_list.append((cell_name, 'schematic'))
-            cell_view_list.append((cell_name, 'symbol'))
+            cell_view_list.append((cell_name, sch_view))
+            cell_view_list.append((cell_name, sym_view))
         self.release_write_locks(lib_name, cell_view_list)
-        # create the schematics
+        # create schematics
         self.create_library(lib_name, lib_path=lib_path)
         self._oa_db.implement_sch_list(lib_name, content_list, sch_view=sch_view,
                                        sym_view=sym_view)
@@ -181,8 +177,18 @@ class OAInterface(DbAccess):
         # type: (str, str, str, str, str, Dict[str, Any], Dict[str, str]) -> None
         raise NotImplementedError('Not implemented yet.')
 
-    def instantiate_layout(self, lib_name, view_name, via_tech, layout_list):
-        # type: (str, str, str, Sequence[Any]) -> None
+    def instantiate_layout(self, lib_name, content_list, lib_path='', view='layout'):
+        # type: (str, Sequence[Any], str, str) -> None
+        cell_view_list = []
+        for cell_name, _ in content_list:
+            cell_view_list.append((cell_name, view))
+        self.release_write_locks(lib_name, cell_view_list)
+        # create layouts
+        self.create_library(lib_name, lib_path=lib_path)
+        self._oa_db.implement_lay_list(lib_name, content_list, view=view)
+        # refresh cell views
+        self.refresh_cellviews(lib_name, cell_view_list)
+
         raise NotImplementedError('Not implemented yet.')
 
     def release_write_locks(self, lib_name, cell_view_list):

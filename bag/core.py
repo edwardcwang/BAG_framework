@@ -578,9 +578,8 @@ class BagProject(object):
         """
         return self.impl_db.get_cells_in_library(lib_name)
 
-    def make_template_db(self, impl_lib, grid_specs, use_cybagoa=True, gds_lay_file='',
-                         cache_dir=''):
-        # type: (str, Dict[str, Any], bool, str, str) -> TemplateDB
+    def make_template_db(self, impl_lib, grid_specs, **kwargs):
+        # type: (str, Dict[str, Any], Any) -> TemplateDB
         """Create and return a new TemplateDB instance.
 
         Parameters
@@ -589,13 +588,9 @@ class BagProject(object):
             the library name to put generated layouts in.
         grid_specs : Dict[str, Any]
             the routing grid specification dictionary.
-        use_cybagoa : bool
-            True to enable cybagoa acceleration if available.
-        gds_lay_file : str
-            the GDS layout information file.
-        cache_dir : str
-            the cache directory name.
         """
+        gds_lay_file = kwargs.get('gds_lay_file', '')
+
         layers = grid_specs['layers']
         widths = grid_specs['widths']
         spaces = grid_specs['spaces']
@@ -604,8 +599,7 @@ class BagProject(object):
 
         routing_grid = RoutingGrid(self.tech_info, layers, spaces, widths, bot_dir,
                                    width_override=width_override)
-        tdb = TemplateDB('template_libs.def', routing_grid, impl_lib, use_cybagoa=use_cybagoa,
-                         gds_lay_file=gds_lay_file, cache_dir=cache_dir)
+        tdb = TemplateDB(routing_grid, impl_lib, prj=self, gds_lay_file=gds_lay_file)
 
         return tdb
 
@@ -616,11 +610,8 @@ class BagProject(object):
                       gen_sch=False,  # type: bool
                       run_lvs=False,  # type: bool
                       run_rcx=False,  # type: bool
-                      use_cybagoa=True,  # type: bool
                       debug=False,  # type: bool
                       profile_fname='',  # type: str
-                      use_cache=False,  # type: bool
-                      save_cache=False,  # type: bool
                       **kwargs,
                       ):
         # type: (...) -> Optional[pstats.Stats]
@@ -640,16 +631,10 @@ class BagProject(object):
             True to run LVS.
         run_rcx : bool
             True to run RCX.
-        use_cybagoa : bool
-            True to enable cybagoa acceleration if available.
         debug : bool
             True to print debug messages.
         profile_fname : str
             If not empty, profile layout generation, and save statistics to this file.
-        use_cache : bool
-            True to use cached layouts.
-        save_cache : bool
-            True to save instances in this template to cache.
         **kwargs :
             Additional optional arguments.
 
@@ -668,15 +653,9 @@ class BagProject(object):
         grid_specs = specs['routing_grid']
         params = specs['params']
         gds_lay_file = specs.get('gds_lay_file', '')
-        cache_dir = specs.get('cache_dir', '')
-        if use_cache:
-            db_cache_dir = specs.get('cache_dir', '')
-        else:
-            db_cache_dir = ''
 
         if gen_lay or gen_sch:
-            temp_db = self.make_template_db(impl_lib, grid_specs, use_cybagoa=use_cybagoa,
-                                            gds_lay_file=gds_lay_file, cache_dir=db_cache_dir)
+            temp_db = self.make_template_db(impl_lib, grid_specs, gds_lay_file=gds_lay_file)
 
             name_list = [impl_cell]
             print('computing layout...')
@@ -692,12 +671,6 @@ class BagProject(object):
             temp = temp_db.new_template(params=params, temp_cls=temp_cls, debug=debug)
             print('computation done.')
             temp_list = [temp]
-
-            if save_cache and cache_dir:
-                master_list = [inst.master for inst in temp.instance_iter()]
-                print('saving layouts to cache...')
-                temp_db.save_to_cache(master_list, cache_dir, debug=debug)
-                print('saving done.')
 
             if gen_lay:
                 print('creating layout...')
@@ -930,22 +903,22 @@ class BagProject(object):
         self.impl_db.instantiate_layout_pcell(lib_name, cell_name, view_name,
                                               inst_lib, inst_cell, params, pin_mapping)
 
-    def instantiate_layout(self, lib_name, view_name, via_tech, layout_list):
-        # type: (str, str, str, Sequence[Any]) -> None
+    def instantiate_layout(self, lib_name, content_list, lib_path='', view='layout'):
+        # type: (str, Sequence[Any], str, str) -> None
         """Create a batch of layouts.
 
         Parameters
         ----------
         lib_name : str
             layout library name.
-        view_name : str
+        content_list : Sequence[Any]
+            list of layouts to create
+        lib_path : str
+            the path to create the library in.  If empty, use default location.
+        view : str
             layout view name.
-        via_tech : str
-            via technology name.
-        layout_list : Sequence[Any]
-            a list of layouts to create
         """
-        self.impl_db.instantiate_layout(lib_name, view_name, via_tech, layout_list)
+        self.impl_db.instantiate_layout(lib_name, content_list, lib_path=lib_path, view=view)
 
     def release_write_locks(self, lib_name, cell_view_list):
         # type: (str, Sequence[Tuple[str, str]]) -> None
