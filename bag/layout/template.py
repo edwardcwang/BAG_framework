@@ -367,8 +367,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 for wire_arr_list in pin_dict.values():
                     for wire_arr in wire_arr_list:  # type: WireArray
                         for layer_name, bbox in wire_arr.wire_iter(self.grid):
-                            self._layout.add_pin(net_name, layer_name, bbox, label=label)
-            self._ports[net_name] = Port(net_name, pin_dict, label=label)
+                            self._layout.add_pin(net_name, layer_name, bbox, label)
+            self._ports[net_name] = Port(net_name, pin_dict, label)
 
         # construct primitive port objects
         for net_name, port_params in self._prim_port_params.items():
@@ -376,10 +376,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             label = port_params['label']
             if port_params['show']:
                 label = port_params['label']
-                for layer, box_list in pin_dict.items():
+                for layer_name, box_list in pin_dict.items():
                     for box in box_list:
-                        self._layout.add_pin(net_name, layer, box, label=label)
-            self._ports[net_name] = Port(net_name, pin_dict, label=label)
+                        self._layout.add_pin(net_name, layer_name, box, label)
+            self._ports[net_name] = Port(net_name, pin_dict, label)
 
         # finalize layout
         self._layout.finalize()
