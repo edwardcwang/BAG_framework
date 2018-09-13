@@ -9,7 +9,7 @@ import abc
 import numpy as np
 from copy import deepcopy
 
-from .util import transform_table, BBox, BBoxArray, transform_point, get_inverse_transform
+from .util import BBox, BBoxArray
 from .routing.base import Port, WireArray
 
 import bag.io

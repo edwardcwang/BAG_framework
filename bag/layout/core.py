@@ -16,11 +16,11 @@ from .objects import Rect, Via, ViaInfo, Instance, InstanceInfo, PinInfo
 from .objects import Path, Polygon, Blockage, Boundary
 from bag.util.search import BinaryIterator
 
-# try to import cybagoa module
+# try to import cython classes
 try:
-    import cybagoa
+    from pybag.layout.cellview import PyTech
 except ImportError:
-    cybagoa = None
+    raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
 
 class TechInfo(object, metaclass=abc.ABCMeta):
@@ -51,6 +51,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         self._layout_unit = layout_unit
         self._via_tech = via_tech
         self.tech_params = process_params
+        self.pybag_tech = PyTech(process_params['pybag'], bag.io.get_encoding())
 
     @abc.abstractmethod
     def get_well_layers(self, sub_type):

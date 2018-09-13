@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from bag.core import BagProject
     from .routing import RoutingGrid
 
-# try to import optional modules
+# try to import cython modules
 try:
     from pybag.layout.pyutil import Orientation
     from pybag.layout.util import BBox, BBoxArray
@@ -271,7 +271,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             self._grid.set_flip_parity(fp_dict)
 
         # create Cython wrapper object
-        self._layout = PyLayCellView(self._grid.tech_info, self.cell_name, get_encoding())
+        self._layout = PyLayCellView(self._grid.tech_info.pybag_tech, self.cell_name, get_encoding())
 
     @abc.abstractmethod
     def draw_layout(self):
@@ -876,7 +876,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self._layout.add_rect(layer, bbox)
 
     def add_rect_arr(self, layer, bbox, nx=1, ny=1, spx=0, spy=0):
-        # type: (LayerType, BBox, int, int, CoordType, CoordType) -> PyRect
+        # type: (LayerType, BBox, int, int, CoordType, CoordType) -> None
         """Add a new rectangle.
 
         Parameters
@@ -893,11 +893,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             column pitch.
         spy : int
             row pitch.
-
-        Returns
-        -------
-        rect : PyRect
-            the added rectangle.
         """
         self._layout.add_rect_arr(layer, bbox, nx, ny, spx, spy)
 
@@ -1442,7 +1437,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         warr = WireArray(tid, lower, upper, res=res, unit_mode=True)
 
         for layer_name, bbox_arr in warr.wire_arr_iter(self.grid):
-            self.add_rect(layer_name, bbox_arr)
+            self.add_rect_arr(layer_name, bbox_arr.base, nx=bbox_arr.nx, ny=bbox_arr.ny,
+                              spx=bbox_arr.spx_unit, spy=bbox_arr.spy_unit)
 
         return warr
 
