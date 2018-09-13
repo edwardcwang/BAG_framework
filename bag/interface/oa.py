@@ -189,8 +189,6 @@ class OAInterface(DbAccess):
         # refresh cell views
         self.refresh_cellviews(lib_name, cell_view_list)
 
-        raise NotImplementedError('Not implemented yet.')
-
     def release_write_locks(self, lib_name, cell_view_list):
         # type: (str, Sequence[Tuple[str, str]]) -> None
         cmd = 'release_write_locks( "%s" {cell_view_list} )' % lib_name

@@ -224,7 +224,6 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             fun(**self.params)
 
         # get set of children master keys
-        self.children = set()
         for inst in self.instances.values():
             inst.set_cinst_prim_flag()
             if not inst.is_primitive:
@@ -267,14 +266,12 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self._orig_cell_name
 
-    def get_content(self, lib_name, rename_fun):
-        # type: (str, Callable[[str], str]) -> Optional[Tuple[Any,...]]
+    def get_content(self, rename_fun):
+        # type: (Callable[[str], str]) -> Optional[Tuple[Any,...]]
         """Returns the content of this master instance.
 
         Parameters
         ----------
-        lib_name : str
-            the library to create the design masters in.
         rename_fun : Callable[[str], str]
             a function that renames design masters.
 

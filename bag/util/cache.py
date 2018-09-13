@@ -205,7 +205,7 @@ class DesignMaster(abc.ABC):
             self._prelim_key = self.compute_unique_key()
             self.update_master_info()
 
-        self.children = None
+        self.children = set()
         self._finalized = False
 
     def update_master_info(self):
@@ -293,14 +293,12 @@ class DesignMaster(abc.ABC):
         return ''
 
     @abc.abstractmethod
-    def get_content(self, lib_name, rename_fun):
-        # type: (str, Callable[[str], str]) -> Any
+    def get_content(self, rename_fun):
+        # type: (Callable[[str], str]) -> Any
         """Returns the content of this master instance.
 
         Parameters
         ----------
-        lib_name : str
-            the library to create the design masters in.
         rename_fun : Callable[[str], str]
             a function that renames design masters.
 
@@ -738,7 +736,7 @@ class MasterDB(abc.ABC):
         if not lib_name:
             raise ValueError('master library name is not specified.')
 
-        content_list = [master.get_content(lib_name, self.format_cell_name)
+        content_list = [master.get_content(self.format_cell_name)
                         for master in info_dict.values()]
 
         if debug:

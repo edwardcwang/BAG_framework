@@ -324,14 +324,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self.__class__.__name__
 
-    def get_content(self, lib_name, rename_fun):
-        # type: (str, Callable[[str], str]) -> Tuple[str, PyLayCellView]
+    def get_content(self, rename_fun):
+        # type: (Callable[[str], str]) -> Tuple[str, PyLayCellView]
         """Returns the content of this master instance.
 
         Parameters
         ----------
-        lib_name : str
-            the library to create the design masters in.
         rename_fun : Callable[[str], str]
             a function that renames design masters.
 
@@ -342,7 +340,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         if not self.finalized:
             raise ValueError('This template is not finalized yet')
-        return self._layout.get_content(lib_name, self.cell_name, rename_fun)
+
+        return rename_fun(self._layout.cell_name), self._layout
 
     def finalize(self):
         # type: () -> None
@@ -380,11 +379,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     for box in box_list:
                         self._layout.add_pin(net_name, layer_name, box, label)
             self._ports[net_name] = Port(net_name, pin_dict, label)
-
-        # finalize layout
-        self._layout.finalize()
-        # get set of children keys
-        self.children = self._layout.get_masters_set()
 
         # call super finalize routine
         DesignMaster.finalize(self)
@@ -800,6 +794,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if not unit_mode:
             raise ValueError('unit_mode = False not supported.')
 
+        self.children.add(master.key)
         return self._layout.add_instance(self.grid, master, self._lib_name, inst_name,
                                          loc[0], loc[1], Orientation[orient].value,
                                          nx, ny, spx, spy)
