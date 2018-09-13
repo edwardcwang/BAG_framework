@@ -19,18 +19,15 @@ from bag.util.interval import IntervalSet
 from ..io import get_encoding, open_file
 from .routing import Port, TrackID, WireArray
 
+# try to import cython modules
+from pybag.layout.pyutil import Orientation
+from pybag.layout import BBox, BBoxArray
+from pybag.layout import PyPath, PyBlockage, PyBoundary
+from pybag.layout import PyLayCellView, PyLayInstance, PyRect, PyPolygon, PyVia
+
 if TYPE_CHECKING:
     from bag.core import BagProject
     from .routing import RoutingGrid
-
-# try to import cython modules
-try:
-    from pybag.layout.pyutil import Orientation
-    from pybag.layout.util import BBox, BBoxArray
-    from pybag.layout.cellview import PyLayCellView, PyLayInstance, PyRect, PyPolygon, PyVia
-    from pybag.layout.cellview import PyPath, PyBlockage, PyBoundary
-except ImportError:
-    raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
 TemplateType = TypeVar('TemplateType', bound='TemplateBase')
 
@@ -913,8 +910,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             rect_list.append(self.add_rect(lay, bbox))
         return rect_list
 
-    def add_path(self, layer, points):
-        # type: (LayerType, Sequence[PointType]) -> PyPath
+    def add_path(self, layer, width, points, start_style, stop_style, join_style):
+        # type: (LayerType, int, Sequence[PointType], str, str, str) -> PyPath
         """Add a new path.
 
         Parameters
@@ -929,6 +926,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         path : PyPath
             the added path object.
         """
+
         raise NotImplementedError('Not implemented yet.')
 
     def add_polygon(self, layer, points):

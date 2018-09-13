@@ -3,10 +3,8 @@
 """This module contains utility classes used for layout
 """
 
-try:
-    from pybag.layout.util import BBox, BBoxArray, BBoxCollection
-except ImportError:
-    raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
+# noinspection PyUnresolvedReferences
+from pybag.layout import BBox, BBoxArray, BBoxCollection
 
 
 class PortSpec(object):
