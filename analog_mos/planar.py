@@ -1562,9 +1562,8 @@ class MOSTechPlanarGeneric(MOSTech):
         enc2 = [m1_encx, m1_encx, via_enc2, via_enc2]
         if has_od:
             # draw via to PO only if this is not drain/source dummy.
-            template.add_via_primitive(via_type, loc=[po_xc, m1_yc + dy], enc1=enc1, enc2=enc2,
-                                       cut_width=v0_w, cut_height=v0_h, nx=fg, spx=sd_pitch,
-                                       unit_mode=True)
+            template.add_via_primitive(via_type, (po_xc, m1_yc + dy), enc1=enc1, enc2=enc2,
+                                       nx=fg, spx=sd_pitch)
 
         # draw M1 rectangle
         if m1_xl is None:
@@ -1586,9 +1585,9 @@ class MOSTechPlanarGeneric(MOSTech):
             m2_ency = (m2_w - v1_h) // 2
             enc1 = [m1_encx, m1_encx, m1_ency, m1_ency]
             enc2 = [m2_encx, m2_encx, m2_ency, m2_ency]
-            template.add_via_primitive(via_type, loc=[fg * sd_pitch // 2, m1_yc + dy], enc1=enc1,
-                                       enc2=enc2, num_cols=fg - 1, sp_cols=sd_pitch - v1_w,
-                                       cut_width=v1_w, cut_height=v1_h, unit_mode=True)
+            template.add_via_primitive(via_type, (fg * sd_pitch // 2, m1_yc + dy), v1_w, v1_h,
+                                       enc1=enc1, enc2=enc2, num_cols=fg - 1,
+                                       sp_cols=sd_pitch - v1_w)
             m2_yb = m1_yc + dy - m2_w // 2
             m2_yt = m1_yc + dy + m2_w // 2
 
@@ -1625,8 +1624,7 @@ class MOSTechPlanarGeneric(MOSTech):
 
         for tid in tid_list:
             xc = grid.track_to_coord(mos_conn_layer, tid, unit_mode=True)
-            template.add_via_primitive(via_type, loc=[xc, m1_yc + dy], enc1=enc1, enc2=enc2,
-                                       cut_width=vh_w, cut_height=vh_h, unit_mode=True)
+            template.add_via_primitive(via_type, (xc, m1_yc + dy), vh_w, vh_h, enc1=enc1, enc2=enc2)
 
             # draw rest of vertical wires to the top
             self._draw_vertical_vias(template, lch_unit, xc, 1, 0, mx_yb, mx_yt, horiz_layer + 1,
@@ -1766,9 +1764,8 @@ class MOSTechPlanarGeneric(MOSTech):
 
         enc1 = [via_enc1, via_enc1, mbot_yt - via_yt, via_yb - mbot_yb]
         enc2 = [via_enc2, via_enc2, mtop_yt - via_yt, via_yb - mtop_yb]
-        template.add_via_primitive(via_type, loc=[x0, via_yc], num_rows=num_via,
-                                   sp_rows=via_sp, enc1=enc1, enc2=enc2, cut_width=via_w,
-                                   cut_height=via_h, nx=num_sd, spx=sd_pitch, unit_mode=True)
+        template.add_via_primitive(via_type, (x0, via_yc), num_rows=num_via, sp_rows=via_sp,
+                                   enc1=enc1, enc2=enc2, nx=num_sd, spx=sd_pitch)
         return True
 
     def _get_wire_array(self, layer_id, tr0, num, lower, upper, pitch=1):

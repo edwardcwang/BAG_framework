@@ -576,9 +576,8 @@ class MOSTechSOIGenericBC(MOSTech):
         via_enc2 = (m1_w_g - via_h) // 2
         enc1 = [via_enc_le, via_enc_le, via_enc1, via_enc1]
         enc2 = [via_enc_le, via_enc_le, via_enc2, via_enc2]
-        template.add_via_primitive(via_type, loc=[via_xc, via_yc - sd_yc], num_cols=fg - 1,
-                                   sp_cols=sd_pitch - via_w, enc1=enc1, enc2=enc2, cut_width=via_w,
-                                   cut_height=via_h, unit_mode=True)
+        template.add_via_primitive(via_type, (via_xc, via_yc - sd_yc), via_w, via_h,
+                                   num_cols=fg - 1, sp_cols=sd_pitch - via_w, enc1=enc1, enc2=enc2)
         # draw gate M1 bar
         m1_bbox = BBox(0, -m1_w_g // 2, width, m1_w_g // 2, res, unit_mode=True)
         m1_bbox = m1_bbox.move_by(dy=via_yc - sd_yc, unit_mode=True)
@@ -608,9 +607,8 @@ class MOSTechSOIGenericBC(MOSTech):
         enc1 = [via_enc_le1, via_enc_le1, via_enc1, via_enc1]
         enc2 = [via_enc2, via_enc2, via_enc_top2, via_enc_bot2]
         via_type = via_id_table[(m1_name, m2_name)]
-        template.add_via_primitive(via_type, loc=[g_x0, via_yc - sd_yc], enc1=enc1, enc2=enc2,
-                                   cut_width=via_w, cut_height=via_h, nx=num_g, spx=2 * wire_pitch,
-                                   unit_mode=True)
+        template.add_via_primitive(via_type, (g_x0, via_yc - sd_yc), via_w, via_h, enc1=enc1,
+                                   enc2=enc2, nx=num_g, spx=2 * wire_pitch)
         # draw gate vias to connection layer
         self._draw_vertical_vias(template, lch_unit, g_x0, num_g, 2 * wire_pitch,
                                  g_y_list[2][0] - sd_yc, g_y_list[2][1] - sd_yc, 2)
@@ -628,10 +626,9 @@ class MOSTechSOIGenericBC(MOSTech):
         enc2 = b_via_info['enc2']
         b_m1_yb, b_m1_yt = b_y_list[1]
         via_yc = (b_m1_yb + b_m1_yt) // 2
-        template.add_via_primitive(via_type, loc=[sd_pitch // 2, via_yc - sd_yc],
+        template.add_via_primitive(via_type, (sd_pitch // 2, via_yc - sd_yc), via_w, via_h,
                                    num_rows=num_via_body, sp_rows=via_sp, enc1=enc1, enc2=enc2,
-                                   cut_width=via_w, cut_height=via_h, nx=fg, spx=sd_pitch,
-                                   unit_mode=True)
+                                   nx=fg, spx=sd_pitch)
         # draw body M1 bar
         m1_box = BBox(0, b_m1_yb, width, b_m1_yt, res, unit_mode=True)
         m1_box = m1_box.move_by(dy=-sd_yc, unit_mode=True)
@@ -783,9 +780,8 @@ class MOSTechSOIGenericBC(MOSTech):
 
             enc1 = [via_enc1, via_enc1, via_enc_le, via_enc_le]
             enc2 = [via_enc2, via_enc2, via_enc_le, via_enc_le]
-            template.add_via_primitive(via_type, loc=[x0, mx_yc], num_rows=num_via, sp_rows=via_sp,
-                                       enc1=enc1, enc2=enc2, cut_width=via_w, cut_height=via_h,
-                                       nx=num, spx=pitch, unit_mode=True)
+            template.add_via_primitive(via_type, (x0, mx_yc), via_w, via_h, num_rows=num_via,
+                                       sp_rows=via_sp, enc1=enc1, enc2=enc2, nx=num, spx=pitch)
 
     def _get_wire_array(self, layer_id, tr0, num, lower, upper, pitch=1):
         res = self.config['resolution']
