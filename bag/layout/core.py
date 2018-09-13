@@ -615,10 +615,10 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             the bottom wire direction.  Either 'x' or 'y'.
         top_dir : str
             the top wire direction.  Either 'x' or 'y'.
-        w : float
-            width of the via array bounding box, in layout units.
-        h : float
-            height of the via array bounding box, in layout units.
+        w : int
+            width of the via array bounding box.
+        h : int
+            height of the via array bounding box.
         extend : bool
             True if via can extend beyond bounding box.
 
@@ -637,10 +637,6 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         via_arr_dim : Tuple[int, int]
             the via array width/height, in resolution units.
         """
-        res = self._resolution
-        w = int(round(w / res))
-        h = int(round(h / res))
-
         if bot_dir == 'x':
             bb, be = h, w
         else:
@@ -876,7 +872,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             top_dir = 'x' if bot_dir == 'y' else 'y'
 
         via_result = self.get_best_via_array(vname, bmtype, tmtype, bot_dir, top_dir,
-                                             bbox.width, bbox.height, extend)
+                                             bbox.w, bbox.h, extend)
         if via_result is None:
             # no solution found
             return None
@@ -893,10 +889,10 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         htop_norm = mdim_list[1][1]
 
         # OpenAccess Via can't handle even + odd enclosure, so we truncate.
-        enc1_x = (wbot_norm - warr_norm) // 2 * res
-        enc1_y = (hbot_norm - harr_norm) // 2 * res
-        enc2_x = (wtop_norm - warr_norm) // 2 * res
-        enc2_y = (htop_norm - harr_norm) // 2 * res
+        enc1_x = (wbot_norm - warr_norm) // 2
+        enc1_y = (hbot_norm - harr_norm) // 2
+        enc2_x = (wtop_norm - warr_norm) // 2
+        enc2_y = (htop_norm - harr_norm) // 2
 
         # compute EM rule dimensions
         if bot_dir == 'x':
@@ -919,17 +915,17 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                                                  array=nx > 1 or ny > 1, **kwargs)
 
         params = {'id': self.get_via_id(bot_layer, top_layer),
-                  'loc': (xc_norm * res, yc_norm * res),
+                  'loc': (xc_norm, yc_norm),
                   'orient': 'R0',
                   'num_rows': ny,
                   'num_cols': nx,
-                  'sp_rows': spy * res,
-                  'sp_cols': spx * res,
+                  'sp_rows': spy,
+                  'sp_cols': spx,
                   # increase left/bottom enclusion if off-center.
                   'enc1': [enc1_x, enc1_x, enc1_y, enc1_y],
                   'enc2': [enc2_x, enc2_x, enc2_y, enc2_y],
-                  'cut_width': vdim[0] * res,
-                  'cut_height': vdim[1] * res,
+                  'cut_width': vdim[0],
+                  'cut_height': vdim[1],
                   }
 
         ntot = nx * ny

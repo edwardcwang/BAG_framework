@@ -271,7 +271,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             self._grid.set_flip_parity(fp_dict)
 
         # create Cython wrapper object
-        self._layout = PyLayCellView(self._grid.tech_info.pybag_tech, self.cell_name, get_encoding())
+        self._layout = PyLayCellView(self._grid.tech_info.pybag_tech, self.cell_name,
+                                     get_encoding())
 
     @abc.abstractmethod
     def draw_layout(self):
@@ -1177,6 +1178,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 spy=0,  # type: CoordType
                 extend=True,  # type: bool
                 top_dir=None,  # type: Optional[str]
+                add_layers=False,  # type: bool
                 unit_mode=True,  # type: bool
                 ):
         # type: (...) -> PyVia
@@ -1206,17 +1208,40 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             True if via extension can be drawn outside of the box.
         top_dir : Optional[str]
             top layer extension direction.  Can force to extend in same direction as bottom.
+        add_layers : bool
+            True to add metal rectangles on top and bottom layers.
         unit_mode : bool
             deprecated parameter.
+
         Returns
         -------
-        via : Via
-            the created via object.
+        via : PyVia
+            the via object at position (0, 0) of the array.
         """
-        raise NotImplementedError('Not implemented yet.')
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
+        params = self._grid.tech_info.get_via_info(bbox, bot_layer, top_layer, bot_dir,
+                                                   top_dir=top_dir, extend=extend)['params']
+        loc = params['loc']
+        orient = params['orient']
+        cut_width = params['cut_width']
+        cut_height = params['cut_height']
+        cnx = params['num_cols']
+        cny = params['num_rows']
+        cspx = params['sp_cols']
+        cspy = params['sp_rows']
+        enc1 = params['enc1']
+        enc2 = params['enc2']
+
+        return self._layout.add_via_arr(params['id'], enc1, enc2, loc[0], loc[1],
+                                        Orientation[orient].value, cut_width, cut_height,
+                                        cnx, cny, cspx, cspy, nx, ny, spx, spy, add_layers)
 
     def add_via_primitive(self, via_type,  # type: str
                           loc,  # type: PointType
+                          cut_width,  # type: Optional[CoordType]
+                          cut_height,  # type: Optional[CoordType]
                           num_rows=1,  # type: int
                           num_cols=1,  # type: int
                           sp_rows=0,  # type: CoordType
@@ -1224,16 +1249,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           enc1=None,  # type: Optional[List[CoordType]]
                           enc2=None,  # type: Optional[List[CoordType]]
                           orient='R0',  # type: str
-                          cut_width=None,  # type: Optional[CoordType]
-                          cut_height=None,  # type: Optional[CoordType]
                           nx=1,  # type: int
                           ny=1,  # type: int
                           spx=0,  # type: CoordType
                           spy=0,  # type: CoordType
+                          add_layers=False,  # type: bool
                           unit_mode=True,  # type: bool
                           ):
-        # type: (...) -> None
-        """Adds a via by specifying all parameters.
+        # type: (...) -> PyVia
+        """Adds via(s) by specifying all parameters.
 
         Parameters
         ----------
@@ -1241,6 +1265,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the via type name.
         loc : PointType
             the via location as a two-element list.
+        cut_width : CoordType
+            via cut width.  This is used to create rectangle via.
+        cut_height : CoordType
+            via cut height.  This is used to create rectangle via.
         num_rows : int
             number of via cut rows.
         num_cols : int
@@ -1257,10 +1285,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             Defaults to all 0.
         orient : str
             orientation of the via.
-        cut_width : Optional[CoordType]
-            via cut width.  This is used to create rectangle via.
-        cut_height : Optional[CoordType]
-            via cut height.  This is used to create rectangle via.
         nx : int
             number of columns.
         ny : int
@@ -1269,10 +1293,25 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             column pitch.
         spy : CoordType
             row pitch.
+        add_layers : bool
+            True to add metal rectangles on top and bottom layers.
         unit_mode : bool
-            True if all given dimensions are in resolution units.
+            Deprecated parameter.
+
+        Returns
+        -------
+        via : PyVia
+            the via object at position (0, 0) of the array.
         """
-        raise NotImplementedError('Not implemented yet.')
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
+        default_enc = [0, 0, 0, 0]
+        enc1 = enc1 or default_enc
+        enc2 = enc2 or default_enc
+        self._layout.add_via_arr(via_type, enc1, enc2, loc[0], loc[1], Orientation[orient].value,
+                                 cut_width, cut_height, num_cols, num_rows, sp_cols, sp_rows,
+                                 nx, ny, spx, spy, add_layers)
 
     def add_via_on_grid(self, bot_layer_id, bot_track, top_track, bot_width=1, top_width=1):
         # type: (int, TrackType, TrackType, int, int) -> PyVia
@@ -1949,7 +1988,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         tr_layer_id = track_id.layer_id
         tr_width = track_id.width
         tr_dir = grid.get_direction(tr_layer_id)
-        tr_pitch = grid.get_track_pitch(tr_layer_id)
+        tr_pitch = grid.get_track_pitch(tr_layer_id, unit_mode=True)
 
         w_layer_id = grid.tech_info.get_layer_id(wlayer)
         w_dir = 'x' if tr_dir == 'y' else 'y'
@@ -1969,7 +2008,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if tr_dir == 'x':
                 via_box = BBox(wbase.left_unit, tl, wbase.right_unit, tu, res, unit_mode=True)
                 nx, ny = box_arr.nx, sub_track_id.num
-                spx, spy = box_arr.spx, sub_track_id.pitch * tr_pitch
+                spx, spy = box_arr.spx_unit, sub_track_id.pitch * tr_pitch
                 via = self.add_via(via_box, bot_layer, top_layer, bot_dir,
                                    nx=nx, ny=ny, spx=spx, spy=spy)
                 vtbox = via.bottom_box if w_layer_id > tr_layer_id else via.top_box
@@ -1984,7 +2023,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             else:
                 via_box = BBox(tl, wbase.bottom_unit, tu, wbase.top_unit, res, unit_mode=True)
                 nx, ny = sub_track_id.num, box_arr.ny
-                spx, spy = sub_track_id.pitch * tr_pitch, box_arr.spy
+                spx, spy = sub_track_id.pitch * tr_pitch, box_arr.spy_unit
                 via = self.add_via(via_box, bot_layer, top_layer, bot_dir,
                                    nx=nx, ny=ny, spx=spx, spy=spy)
                 vtbox = via.bottom_box if w_layer_id > tr_layer_id else via.top_box
