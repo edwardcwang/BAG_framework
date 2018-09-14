@@ -20,7 +20,7 @@ from ..io import get_encoding, open_file
 from .routing import Port, TrackID, WireArray
 
 # try to import cython modules
-from pybag.layout.pyutil import Orientation
+from pybag.layout.pyutil import Orientation, PathStyle, BlockageType, BoundaryType
 from pybag.layout import BBox, BBoxArray
 from pybag.layout import PyPath, PyBlockage, PyBoundary
 from pybag.layout import PyLayCellView, PyLayInstance, PyRect, PyPolygon, PyVia
@@ -481,6 +481,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # type: () -> None
         """Update all instances in this template to have the correct track parity.
         """
+        # TODO: fix this
         for inst in self._layout.inst_iter():
             top_layer = inst.master.top_layer
             bot_layer = self.grid.get_bot_common_layer(inst.master.grid, top_layer)
@@ -910,7 +911,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             rect_list.append(self.add_rect(lay, bbox))
         return rect_list
 
-    def add_path(self, layer, width, points, start_style, stop_style, join_style):
+    def add_path(self, layer, width, points, start_style, join_style, stop_style=''):
         # type: (LayerType, int, Sequence[PointType], str, str, str) -> PyPath
         """Add a new path.
 
@@ -918,16 +919,64 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         layer : LayerType
             the path layer.
+        width : int
+            the path width.
         points : Sequence[PointType]
             points defining this path.
+        start_style : str
+            the path beginning style.
+        join_style : str
+            path style for the joints.
+        stop_style : str
+            the path ending style.  Defaults to start style.
 
         Returns
         -------
         path : PyPath
             the added path object.
         """
+        stop_style = stop_style or start_style
+        return self._layout.add_path(layer, points, width, PathStyle[start_style].value,
+                                     PathStyle[stop_style].value, PathStyle[join_style].value)
 
-        raise NotImplementedError('Not implemented yet.')
+    def add_path45_bus(self,
+                       layer,  # type: LayerType
+                       points,  # type: Sequence[PointType]
+                       widths,  # type: Sequence[int]
+                       spaces,  # type: Sequence[int]
+                       start_style,  # type: str
+                       join_style='round',  # type: str
+                       stop_style='',  # type: str
+                       ):
+        # type: (...) -> PyPath
+        """Add a path bus that only contains 45 degree turns.
+
+        Parameters
+        ----------
+        layer : LayerType
+            the path layer.
+        points : Sequence[PointType]
+            points defining this path.
+        widths : Sequence[int]
+            width of each path in the bus.
+        spaces : Sequence[int]
+            space between each path.
+        start_style : str
+            the path beginning style.
+        join_style : str
+            path style for the joints.
+        stop_style : str
+            the path ending style.  Defaults to start style.
+
+        Returns
+        -------
+        path : PyPath
+            the added path object.
+        """
+        stop_style = stop_style or start_style
+        return self._layout.add_path45_bus(layer, points, widths, spaces,
+                                           PathStyle[start_style].value,
+                                           PathStyle[stop_style].value, PathStyle[join_style].value)
 
     def add_polygon(self, layer, points):
         # type: (LayerType, Sequence[PointType]) -> PyPolygon
@@ -945,7 +994,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         polygon : PyPolygon
             the added polygon object.
         """
-        raise NotImplementedError('Not implemented yet.')
+        return self._layout.add_polygon(layer, points)
 
     def add_blockage(self, layer, blk_type, points):
         # type: (LayerType, str, Sequence[PointType]) -> PyBlockage
@@ -965,7 +1014,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         blockage : PyBlockage
             the added blockage object.
         """
-        raise NotImplementedError('Not implemented yet.')
+        return self._layout.add_blockage(layer, points, BlockageType[blk_type].value)
 
     def add_cell_boundary(self, box):
         # type: (BBox) -> None
@@ -980,14 +1029,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         self._grid.tech_info.add_cell_boundary(self, box)
 
-    def add_boundary(self, layer, bnd_type, points):
-        # type: (LayerType, str, Sequence[PointType]) -> PyBoundary
+    def add_boundary(self, bnd_type, points):
+        # type: (str, Sequence[PointType]) -> PyBoundary
         """Add a new boundary.
 
         Parameters
         ----------
-        layer : LayerType
-            the path layer.
         bnd_type : str
             the boundary type.
         points : Sequence[PointType]
@@ -998,7 +1045,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         boundary : PyBoundary
             the added boundary object.
         """
-        raise NotImplementedError('Not implemented yet.')
+        return self._layout.add_boundary(points, BoundaryType[bnd_type].value)
 
     def reexport(self, port, net_name='', label='', show=True):
         # type: (Port, str, str, bool) -> None
@@ -1307,9 +1354,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         default_enc = [0, 0, 0, 0]
         enc1 = enc1 or default_enc
         enc2 = enc2 or default_enc
-        self._layout.add_via_arr(via_type, enc1, enc2, loc[0], loc[1], Orientation[orient].value,
-                                 cut_width, cut_height, num_cols, num_rows, sp_cols, sp_rows,
-                                 nx, ny, spx, spy, add_layers)
+        return self._layout.add_via_arr(via_type, enc1, enc2, loc[0], loc[1],
+                                        Orientation[orient].value, cut_width, cut_height, num_cols,
+                                        num_rows, sp_cols, sp_rows, nx, ny, spx, spy, add_layers)
 
     def add_via_on_grid(self, bot_layer_id, bot_track, top_track, bot_width=1, top_width=1):
         # type: (int, TrackType, TrackType, int, int) -> PyVia
@@ -1805,6 +1852,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         pitch : TrackType
             the wire pitch.
         """
+        # TODO: fix this method
         bnd_box = self.bound_box
         tid = TrackID(layer_id, track_idx, width=width, num=num, pitch=pitch)
         if self.grid.get_direction(layer_id) == 'x':
@@ -2107,11 +2155,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if tr_dir == 'x':
             self.add_rect_arr(layer_name,
                               base.extend(y=tl, unit_mode=True).extend(y=tu, unit_mode=True),
-                              nx=box_arr.nx, ny=box_arr.ny, spx=box_arr.spx, spy=box_arr.spy)
+                              nx=box_arr.nx, ny=box_arr.ny, spx=box_arr.spx_unit,
+                              spy=box_arr.spy_unit)
         else:
             self.add_rect_arr(layer_name,
                               base.extend(x=tl, unit_mode=True).extend(x=tu, unit_mode=True),
-                              nx=box_arr.nx, ny=box_arr.ny, spx=box_arr.spx, spy=box_arr.spy)
+                              nx=box_arr.nx, ny=box_arr.ny, spx=box_arr.spx_unit,
+                              spy=box_arr.spy_unit)
 
         # draw vias
         tl_unit, tu_unit = self._draw_via_on_track(layer_name, box_arr, track_id,
@@ -3057,6 +3107,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def mark_bbox_used(self, layer_id, bbox):
         # type: (int, BBox) -> None
         """Marks the given bounding-box region as used in this Template."""
+        # TODO: fix this method
         layer_name = self.grid.get_layer_name(layer_id, 0)
         # self._used_tracks.record_rect(self.grid, layer_name, BBoxArray(bbox, unit_mode=True),
         #                               dx=0, dy=0)
