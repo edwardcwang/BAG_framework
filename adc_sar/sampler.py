@@ -412,18 +412,12 @@ class NPassGateWClk(TemplateBase):
         self.set_size_from_bound_box(top_layer, BBox(0, 0, tot_width, height, res, unit_mode=True))
 
         # fill and export supplies
-        # sup_width = 2
-        # fill_margin = 0.5
-        # edge_margin = 0.2
         lay_id = vdd_lay_id + 1
         vdd_warrs, vss_warrs = self.do_power_fill(lay_id, vdd_warrs=vdd_warrs, vss_warrs=vss_warrs, unit_mode=True,
                                                   fill_width=2, fill_space=1, space=0, space_le=0)
         lay_id += 1
-        # edge_margin = 0
         vdd_warrs, vss_warrs = self.do_power_fill(lay_id, vdd_warrs=vdd_warrs, vss_warrs=vss_warrs, unit_mode=True,
                                                   space=0, space_le=0)
-        #                                           ) #sup_width=sup_width, fill_margin=fill_margin,
-        #                                           #edge_margin=edge_margin)
 
         self.add_pin('VSS', vss_warrs, show=show_pins)
         self.add_pin('VDD', vdd_warrs, show=show_pins)

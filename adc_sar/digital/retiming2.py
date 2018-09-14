@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""This module contains classes for ADC retimer layout.
+"""This module contains classes for ADC retimer layout, and adds boundary around StdCellBase blocks.
 """
 
 from typing import Dict, Set, Any, Optional, List
@@ -158,7 +158,7 @@ class RetimeLatchRow(StdCellBase):
         clk_pitch = self.grid.get_track_pitch(clk_layer, unit_mode=True)
         num_tracks = self.bound_box.height_unit // clk_pitch
         clk_tidx = (num_tracks - 1) / 2
-        clk_warr = self.connect_to_tracks(clkb_list, TrackID(clk_layer, clk_tidx, width=clk_width), )
+        clk_warr = self.connect_to_tracks(clkb_list, TrackID(clk_layer, clk_tidx, width=clk_width), unit_mode=True)
         self.add_pin('clkb', clk_warr, show=False)
 
         # export supplies
@@ -393,13 +393,13 @@ class RetimeBufferRow(StdCellBase):
             # export input/output
             out_tidx = TrackID(io_layer, io_idx_list[0], width=io_width)
             in_tidx = TrackID(io_layer, io_idx_list[1], width=io_width)
-            self.connect_to_tracks(in_list, in_tidx, )
-            out_warr = self.connect_to_tracks(out_list, out_tidx, )
+            self.connect_to_tracks(in_list, in_tidx, unit_mode=True)
+            out_warr = self.connect_to_tracks(out_list, out_tidx, unit_mode=True)
 
             self.add_pin('in', in_list[num_buf // 2], show=False)
             self.add_pin('out', out_warr, show=False)
             if dig_out_list:
-                dig_out_warr = self.connect_to_tracks(dig_out_list, in_tidx, )
+                dig_out_warr = self.connect_to_tracks(dig_out_list, in_tidx, unit_mode=True)
                 self.add_pin('out_dig', dig_out_warr, show=False)
 
         # export supplies
@@ -528,7 +528,7 @@ class Retimer(TemplateBase):
         # last stage latches
         inst2 = self.add_instance(lat_master0, 'X2', nx=num_adc, spx=spx, unit_mode=True)
         ck_list = inst2.get_all_port_pins('clkb')
-        ck_dict[ck_phase_2] = self.connect_wires(ck_list)
+        ck_dict[ck_phase_2] = self.connect_wires(ck_list, unit_mode=True)
 
         self._export_output(inst2, adc_order, num_bits)
         io_wires = []
@@ -540,10 +540,10 @@ class Retimer(TemplateBase):
         # second-to-last stage latches
         inst1 = self.add_instance(lat_master1, 'X1', loc=(0, spy), nx=num_adc, spx=spx, unit_mode=True)
         ck_list = inst1.get_all_port_pins('clkb')
-        ck_dict[ck_phase_1] = self.connect_wires(ck_list)
+        ck_dict[ck_phase_1] = self.connect_wires(ck_list, unit_mode=True)
 
         self._collect_io_wires(inst1, 'out', num_bits, io_wires)
-        self.connect_wires(io_wires)
+        self.connect_wires(io_wires, unit_mode=True)
         io_wires = []
         self._collect_io_wires(inst1, 'in', num_bits, io_wires)
 
@@ -591,7 +591,7 @@ class Retimer(TemplateBase):
             # export input
             for bit_idx in range(num_bits):
                 in_pin = inst.get_port('in<%d>' % bit_idx).get_pins()[0]
-                in_pin = self.connect_wires(in_pin, upper=blk_h, unit_mode=True)
+                in_pin = self.connect_wires(in_pin, upper=size_y, unit_mode=True)
                 name = 'in_%d<%d>' % (adc_idx, bit_idx)
                 self.add_pin(name, in_pin, show=True)
             # clock buffers/fills
@@ -604,7 +604,7 @@ class Retimer(TemplateBase):
                 vdd_list.extend(cfinst.get_all_port_pins('VDD'))
                 vss_list.extend(cfinst.get_all_port_pins('VSS'))
                 in_pin = cfinst.get_port('in').get_pins()[0]
-                in_pin = self.connect_wires(in_pin, upper=blk_h, unit_mode=True)
+                in_pin = self.connect_wires(in_pin, upper=size_y, unit_mode=True)
                 self.add_pin('clk%d' % adc_idx, in_pin)
                 buf_dict[adc_idx] = cfinst.get_port('out').get_pins()[0]
                 if cfinst.has_port('out_dig'):
@@ -614,7 +614,7 @@ class Retimer(TemplateBase):
                 vdd_list.extend(cfinst.get_all_port_pins('VDD'))
                 vss_list.extend(cfinst.get_all_port_pins('VSS'))
 
-        self.connect_wires(io_wires)
+        self.connect_wires(io_wires, unit_mode=True)
         ck_dict[ck_phase_0_1] = self.connect_wires(ck1_list)
         ck_dict[ck_phase_0_0] = self.connect_wires(ck5_list)
 
@@ -622,32 +622,34 @@ class Retimer(TemplateBase):
             buf_out = buf_dict[ck_idx]
             buf_layer = buf_out.layer_id
             ck_wires = ck_dict[ck_idx]
-            tr_id = self.grid.coord_to_nearest_track(buf_layer + 1, buf_out.middle, mode=0)
+            tr_id = self.grid.coord_to_nearest_track(buf_layer + 1, buf_out.middle_unit, mode=0, unit_mode=True)
             tr_id = TrackID(buf_layer + 1, tr_id, width=buf_ck_width)
-            self.connect_to_tracks([buf_out, ] + ck_wires, tr_id, )
+            self.connect_to_tracks([buf_out, ] + ck_wires, tr_id, unit_mode=True)
 
         # export digital output
-        tr_id = self.grid.coord_to_nearest_track(out_dig_warr.layer_id + 1, out_dig_warr.middle, mode=0)
+        tr_id = self.grid.coord_to_nearest_track(out_dig_warr.layer_id + 1, out_dig_warr.middle_unit, mode=0, unit_mode=True)
         tr_id = TrackID(out_dig_warr.layer_id + 1, tr_id, width=buf_ck_width)
-        warr = self.connect_to_tracks(out_dig_warr, tr_id, track_lower=0)
+        warr = self.connect_to_tracks(out_dig_warr, tr_id, track_lower=0, unit_mode=True)
         self.add_pin('ck_out', warr, show=True)
 
         sup_layer = vdd_list[0].layer_id + 1
-        vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
-                                                space=0, space_le=0)
-        sup_layer += 1
-
-        # reserve routing tracks for ADC
-        adc_pitch = lat_master0.get_num_tracks(sup_layer)
-        for tid in reserve_tracks:
-            self.reserve_tracks(sup_layer, tid, num=num_adc, pitch=adc_pitch)
-
-        vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
-                                                fill_width=2, fill_space=1, space=0, space_le=0)
-        sup_layer += 1
-
-        vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
-                                                space=0, space_le=0)
+        # vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
+        #                                         space=0, space_le=0)
+        # sup_layer += 1
+        #
+        # # reserve routing tracks for ADC
+        # adc_pitch = lat_master0.get_num_tracks(sup_layer)
+        # reserve_tracks = [r / self.grid.get_track_pitch(sup_layer) for r in reserve_tracks]
+        # print(reserve_tracks)
+        # for tid in reserve_tracks:
+        #     self.reserve_tracks(sup_layer, tid, num=num_adc, pitch=adc_pitch)
+        #
+        # vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
+        #                                         fill_width=2, fill_space=1, space=0, space_le=0)
+        # sup_layer += 1
+        #
+        # vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
+        #                                         space=0, space_le=0)
 
         self.add_pin('VDD', vdd_list, show=True)
         self.add_pin('VSS', vss_list, show=True)
@@ -656,7 +658,7 @@ class Retimer(TemplateBase):
         for col_idx, adc_idx in enumerate(adc_order):
             for bit_idx in range(num_bits):
                 out_pin = inst.get_port('out<%d>' % bit_idx, col=col_idx).get_pins()[0]
-                out_pin = self.connect_wires(out_pin, lower=0)
+                out_pin = self.connect_wires(out_pin, lower=0, unit_mode=True)
                 name = 'out_%d<%d>' % (adc_idx, bit_idx)
                 self.add_pin(name, out_pin, show=True)
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""This module contains classes for ADC retimer layout.
+"""This module contains classes for ADC retimer layout, and adds boundary around each column.
 """
 
 from typing import Dict, Set, Any, Optional, List
@@ -771,7 +771,7 @@ class Retimer(TemplateBase):
 
         sup_layer = vdd_list[0].layer_id + 1
         vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
-                                                space=0, space_le=0)
+                                                space=0, space_le=0, y_margin=220)
         sup_layer += 1
 
         # reserve routing tracks for ADC
@@ -781,11 +781,11 @@ class Retimer(TemplateBase):
             self.reserve_tracks(sup_layer, tid, num=num_adc, pitch=adc_pitch)
 
         vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
-                                                fill_width=2, fill_space=1, space=0, space_le=0)
+                                                fill_width=2, fill_space=1, space=0, space_le=0, y_margin=200)
         sup_layer += 1
 
         vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
-                                                space=0, space_le=0)
+                                                space=0, space_le=0, y_margin=220)
 
         self.add_pin('VDD', vdd_list, show=True)
         self.add_pin('VSS', vss_list, show=True)
