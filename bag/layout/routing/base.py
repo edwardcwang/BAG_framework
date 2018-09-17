@@ -3,13 +3,313 @@
 """This module provides basic routing classes.
 """
 
-from typing import Tuple, Union, Generator, Dict, List, Sequence
+from typing import TYPE_CHECKING, Tuple, Union, Iterable, Dict, List, Sequence, Any
+from bag.typing import TrackType
 
-import numbers
+from math import trunc, ceil, floor
+from numbers import Integral, Real
+
+from pybag.layout.pyutil import Orientation
+from pybag.layout import BBox, BBoxArray
 
 from ...util.search import BinaryIterator
-from ..util import BBox, BBoxArray
-from .grid import RoutingGrid
+
+if TYPE_CHECKING:
+    from .grid import RoutingGrid
+
+
+class HalfInt(Integral):
+    """A class that represents a half integer."""
+
+    def __init__(self, dbl_val):
+        self._val = dbl_val
+
+    @classmethod
+    def convert(cls, val):
+        if isinstance(val, HalfInt):
+            return val
+        elif isinstance(val, Integral):
+            return HalfInt(2 * int(val))
+        elif isinstance(val, Real):
+            tmp = 2 * float(val)
+            if tmp.is_integer():
+                return HalfInt(int(tmp))
+        raise ValueError('Cannot convert {} type {} to HalfInt.'.format(val, type(val)))
+
+    def is_integer(self):
+        return self._val % 2 == 0
+
+    def div2(self, round_up=False):
+        if self._val % 2 == 0 or not round_up:
+            self._val //= 2
+        else:
+            self._val = (self._val + 1) // 2
+        return self
+
+    def val_str(self):
+        if self._val % 2 == 0:
+            return '{:d}'.format(self._val // 2)
+        return '{:d}.5'.format(self._val // 2)
+
+    def __str__(self):
+        return repr(self)
+
+    def __repr__(self):
+        return 'HalfInt({})'.format(self._val / 2)
+
+    def __hash__(self):
+        return hash(self._val)
+
+    def __eq__(self, other):
+        if isinstance(other, HalfInt):
+            return self._val == other._val
+        elif isinstance(other, Real):
+            return self._val == 2 * other
+        else:
+            return NotImplemented
+
+    def __le__(self, other):
+        if isinstance(other, HalfInt):
+            return self._val <= other._val
+        elif isinstance(other, Real):
+            return self._val <= 2 * other
+        else:
+            return NotImplemented
+
+    def __lt__(self, other):
+        if isinstance(other, HalfInt):
+            return self._val < other._val
+        elif isinstance(other, Real):
+            return self._val < 2 * other
+        else:
+            return NotImplemented
+
+    def __add__(self, other):
+        if isinstance(other, HalfInt):
+            return HalfInt(self._val + other._val)
+        elif isinstance(other, Integral):
+            return HalfInt(self._val + 2 * int(other))
+        elif isinstance(other, Real):
+            tmp = 2 * float(other)
+            if tmp.is_integer():
+                return HalfInt(self._val + int(tmp))
+
+        raise ValueError('Cannot add HalfInt to {} type {}'.format(other, type(other)))
+
+    def __sub__(self, other):
+        return self + (-other)
+
+    def __mul__(self, other):
+        if isinstance(other, HalfInt):
+            if self.is_integer() or other.is_integer():
+                return HalfInt((self._val * other._val) // 2)
+            else:
+                raise TypeError('Cannot multiply {} with {}'.format(self, other))
+        elif isinstance(other, Integral):
+            return HalfInt(self._val * int(other))
+        elif isinstance(other, Real):
+            tmp = float(other)
+            if tmp.is_integer():
+                return HalfInt(self._val * int(tmp))
+
+        raise TypeError('Cannot multiply HalfInt with {} type {}'.format(other, type(other)))
+
+    def __truediv__(self, other):
+        raise TypeError('Cannot true-divide HalfInt')
+
+    def __floordiv__(self, other):
+        raise TypeError('Cannot floor-divide HalfInt')
+
+    def __mod__(self, other):
+        raise TypeError('Cannot mod HalfInt')
+
+    def __divmod__(self, other):
+        raise TypeError('Cannot divmod HalfInt')
+
+    def __pow__(self, other, modulus=None):
+        raise TypeError('Cannot pow HalfInt')
+
+    def __lshift__(self, other):
+        raise TypeError('Cannot lshift HalfInt')
+
+    def __rshift__(self, other):
+        raise TypeError('Cannot rshift HalfInt')
+
+    def __and__(self, other):
+        raise TypeError('Cannot and HalfInt')
+
+    def __xor__(self, other):
+        raise TypeError('Cannot xor HalfInt')
+
+    def __or__(self, other):
+        raise TypeError('Cannot or HalfInt')
+
+    def __radd__(self, other):
+        if isinstance(other, Integral):
+            return HalfInt(self._val + 2 * int(other))
+        elif isinstance(other, Real):
+            tmp = 2 * float(other)
+            if tmp.is_integer():
+                return HalfInt(self._val + int(tmp))
+
+        raise TypeError('Cannot add HalfInt to {} with type {}'.format(other, type(other)))
+
+    def __rsub__(self, other):
+        return (-self) + other
+
+    def __rmul__(self, other):
+        if isinstance(other, Integral):
+            return HalfInt(self._val * int(other))
+        elif isinstance(other, Real):
+            tmp = float(other)
+            if tmp.is_integer():
+                return HalfInt(self._val * int(tmp))
+
+        raise TypeError('Cannot multiply HalfInt with {} type {}'.format(other, type(other)))
+
+    def __rtruediv__(self, other):
+        raise TypeError('Cannot true-divide HalfInt')
+
+    def __rfloordiv__(self, other):
+        raise TypeError('Cannot floor-divide HalfInt')
+
+    def __rmod__(self, other):
+        raise TypeError('Cannot mod HalfInt')
+
+    def __rdivmod__(self, other):
+        raise TypeError('Cannot divmod HalfInt')
+
+    def __rpow__(self, other):
+        raise TypeError('Cannot pow HalfInt')
+
+    def __rlshift__(self, other):
+        raise TypeError('Cannot lshift HalfInt')
+
+    def __rrshift__(self, other):
+        raise TypeError('Cannot rshift HalfInt')
+
+    def __rand__(self, other):
+        raise TypeError('Cannot and HalfInt')
+
+    def __rxor__(self, other):
+        raise TypeError('Cannot xor HalfInt')
+
+    def __ror__(self, other):
+        raise TypeError('Cannot or HalfInt')
+
+    def __iadd__(self, other):
+        if isinstance(other, HalfInt):
+            self._val += other._val
+            return self
+        elif isinstance(other, Integral):
+            self._val += 2 * int(other)
+            return self
+        elif isinstance(other, Real):
+            tmp = 2 * float(other)
+            if tmp.is_integer():
+                self._val += int(tmp)
+                return self
+
+        raise TypeError('Cannot add HalfInt to {} with type {}'.format(other, type(other)))
+
+    def __isub__(self, other):
+        self.__iadd__(-other)
+        return self
+
+    def __imul__(self, other):
+        if isinstance(other, HalfInt):
+            if self.is_integer() or other.is_integer():
+                self._val = (self._val * other._val) // 2
+                return self
+            else:
+                raise TypeError('Cannot multiply {} with {}'.format(self, other))
+        elif isinstance(other, Integral):
+            self._val *= int(other)
+            return self
+        elif isinstance(other, Real):
+            tmp = float(other)
+            if tmp.is_integer():
+                self._val *= int(tmp)
+                return self
+
+        raise TypeError('Cannot multiply HalfInt with {} type {}'.format(other, type(other)))
+
+    def __itruediv__(self, other):
+        raise TypeError('Cannot true-divide HalfInt')
+
+    def __ifloordiv__(self, other):
+        raise TypeError('Cannot floor-divide HalfInt')
+
+    def __imod__(self, other):
+        raise TypeError('Cannot mod HalfInt')
+
+    def __ipow__(self, other):
+        raise TypeError('Cannot pow HalfInt')
+
+    def __ilshift__(self, other):
+        raise TypeError('Cannot lshift HalfInt')
+
+    def __irshift__(self, other):
+        raise TypeError('Cannot rshift HalfInt')
+
+    def __iand__(self, other):
+        raise TypeError('Cannot and HalfInt')
+
+    def __ixor__(self, other):
+        raise TypeError('Cannot xor HalfInt')
+
+    def __ior__(self, other):
+        raise TypeError('Cannot or HalfInt')
+
+    def __neg__(self):
+        return HalfInt(-self._val)
+
+    def __pos__(self):
+        return HalfInt(self._val)
+
+    def __abs__(self):
+        return HalfInt(abs(self._val))
+
+    def __invert__(self):
+        return -self
+
+    def __complex__(self):
+        raise TypeError('Cannot cast to complex')
+
+    def __int__(self):
+        if self._val % 2 == 1:
+            raise ValueError('Not an integer.')
+        return self._val // 2
+
+    def __float__(self):
+        return self._val / 2
+
+    def __index__(self):
+        return int(self)
+
+    def __round__(self, ndigits=0):
+        if self._val % 2 == 0:
+            return HalfInt(self._val)
+        else:
+            return HalfInt(round(self._val / 2) * 2)
+
+    def __trunc__(self):
+        if self._val % 2 == 0:
+            return HalfInt(self._val)
+        else:
+            return HalfInt(trunc(self._val / 2) * 2)
+
+    def __floor__(self):
+        if self._val % 2 == 0:
+            return HalfInt(self._val)
+        else:
+            return HalfInt(floor(self._val / 2) * 2)
+
+    def __ceil__(self):
+        if self._val % 2 == 0:
+            return HalfInt(self._val)
+        else:
+            return HalfInt(ceil(self._val / 2) * 2)
 
 
 class TrackID(object):
@@ -19,43 +319,36 @@ class TrackID(object):
     ----------
     layer_id : int
         the layer ID.
-    track_idx : Union[float, int]
+    track_idx : TrackType
         the smallest middle track index in the array.  Multiples of 0.5
     width : int
         width of one track in number of tracks.
     num : int
         number of tracks in this array.
-    pitch : Union[float, int]
+    pitch : TrackType
         pitch between adjacent tracks, in number of track pitches.
     """
 
-    def __init__(self, layer_id, track_idx, width=1, num=1, pitch=0.0):
-        # type: (int, Union[float, int], int, int, Union[float, int]) -> None
+    def __init__(self, layer_id, track_idx, width=1, num=1, pitch=0):
+        # type: (int, TrackType, int, int, TrackType) -> None
         if num < 1:
             raise ValueError('TrackID must have 1 or more tracks.')
 
         self._layer_id = layer_id
-        self._hidx = int(round(2 * track_idx)) + 1
+        self._idx = HalfInt.convert(track_idx)
         self._w = width
         self._n = num
-        self._hpitch = 0 if num == 1 else int(pitch * 2)
+        self._pitch = HalfInt(0) if num == 1 else HalfInt.convert(pitch)
 
     def __repr__(self):
-        arg_list = ['layer=%d' % self._layer_id]
-        if self._hidx % 2 == 1:
-            arg_list.append('track=%d' % ((self._hidx - 1) // 2))
-        else:
-            arg_list.append('track=%.1f' % ((self._hidx - 1) / 2))
+        arg_list = ['layer={}'.format(self._layer_id), 'track={}'.format(self._idx.val_str())]
         if self._w != 1:
-            arg_list.append('width=%d' % self._w)
+            arg_list.append('width={}'.format(self._w))
         if self._n != 1:
-            arg_list.append('num=%d' % self._n)
-            if self._hpitch % 2 == 0:
-                arg_list.append('pitch=%d' % (self._hpitch // 2))
-            else:
-                arg_list.append('pitch=%.1f' % (self._hpitch / 2))
+            arg_list.append('num={}'.format(self._n))
+        arg_list.append('pitch={}'.format(self._pitch.val_str()))
 
-        return '%s(%s)' % (self.__class__.__name__, ', '.join(arg_list))
+        return '{}({})'.format(self.__class__.__name__, ', '.join(arg_list))
 
     def __str__(self):
         return repr(self)
@@ -72,15 +365,8 @@ class TrackID(object):
 
     @property
     def base_index(self):
-        # type: () -> Union[float, int]
-        if self._hidx % 2 == 1:
-            return (self._hidx - 1) // 2
-        return (self._hidx - 1) / 2
-
-    @property
-    def index_htr(self):
-        # type: () -> int
-        return self._hidx
+        # type: () -> HalfInt
+        return self._idx
 
     @property
     def num(self):
@@ -89,21 +375,14 @@ class TrackID(object):
 
     @property
     def pitch(self):
-        # type: () -> Union[float, int]
-        if self._hpitch % 2 == 0:
-            return self._hpitch // 2
-        return self._hpitch / 2
-
-    @property
-    def pitch_htr(self):
-        # type: () -> int
-        return self._hpitch
+        # type: () -> HalfInt
+        return self._pitch
 
     def get_immutable_key(self):
-        return self.__class__.__name__, self._layer_id, self._hidx, self._w, self._n, self._hpitch
+        return self.__class__.__name__, self._layer_id, self._idx, self._w, self._n, self._pitch
 
-    def get_bounds(self, grid, unit_mode=False):
-        # type: (RoutingGrid, bool) -> Tuple[Union[float, int], Union[float, int]]
+    def get_bounds(self, grid, unit_mode=True):
+        # type: (RoutingGrid, bool) -> Tuple[int, int]
         """Calculate the track bounds coordinate.
 
         Parameters
@@ -111,37 +390,30 @@ class TrackID(object):
         grid : RoutingGrid
             the RoutingGrid object.
         unit_mode : bool
-            True to return coordinates in resolution units.
+            deprecated parameter.
 
         Returns
         -------
-        lower : Union[float, int]
+        lower : int
             the lower bound coordinate perpendicular to track direction.
-        upper : Union[float, int]
+        upper : int
             the upper bound coordinate perpendicular to track direction.
         """
-        lower, upper = grid.get_wire_bounds(self.layer_id, self.base_index,
-                                            width=self.width, unit_mode=True)
-        pitch_dim = (self._hpitch * grid.get_track_pitch(self._layer_id, unit_mode=True)) // 2
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
+        lower, upper = grid.get_wire_bounds(self.layer_id, self._idx, width=self.width)
+        pitch_dim = int(self._pitch * grid.get_track_pitch(self._layer_id))
         upper += (self.num - 1) * pitch_dim
-        if unit_mode:
-            return lower, upper
-        else:
-            res = grid.resolution
-            return lower * res, upper * res
+        return lower, upper
 
     def __iter__(self):
-        # type: () -> Generator[Union[float, int]]
+        # type: () -> Iterable[HalfInt]
         """Iterate over all middle track indices in this TrackID."""
-        for idx in range(self._n):
-            num = self._hidx + idx * self._hpitch
-            if num % 2 == 1:
-                yield (num - 1) // 2
-            else:
-                yield (num - 1) / 2
+        return (self._idx + idx * self._pitch for idx in range(self._n))
 
     def sub_tracks_iter(self, grid):
-        # type: (RoutingGrid) -> Generator[TrackID]
+        # type: (RoutingGrid) -> Iterable[TrackID]
         """Iterate through sub-TrackIDs where every track in sub-TrackID has the same layer name.
 
         This method is used to deal with double patterning layer.  If this TrackID is not
@@ -160,8 +432,7 @@ class TrackID(object):
         layer_id = self._layer_id
         layer_names = grid.tech_info.get_layer_name(layer_id)
         if isinstance(layer_names, tuple):
-            den = 2 * len(layer_names)
-            if self._hpitch % den == 0:
+            if self._pitch.is_integer() and int(self._pitch) % len(layer_names) == 0:
                 # layer name will never change
                 yield self
             else:
@@ -171,32 +442,36 @@ class TrackID(object):
         else:
             yield self
 
-    def transform(self, grid, loc=(0, 0), orient="R0", unit_mode=False):
-        # type: (RoutingGrid, Tuple[Union[float, int], Union[float, int]], str, bool) -> TrackID
+    def transform(self, grid, loc=(0, 0), orient="R0", unit_mode=True):
+        # type: (RoutingGrid, Tuple[int, int], str, bool) -> TrackID
         """returns a transformation of this TrackID."""
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
         layer_id = self._layer_id
         is_x = grid.get_direction(layer_id) == 'x'
-        if orient == 'R0':
-            base_hidx = self._hidx
-        elif orient == 'MX':
+        oenum = Orientation[orient]
+        if oenum is Orientation.R0:
+            base_idx = self._idx
+        elif oenum is Orientation.MX:
             if is_x:
-                base_hidx = -self._hidx - (self._n - 1) * self._hpitch
+                base_idx = -self._idx - (self._n - 1) * self._pitch - 1
             else:
-                base_hidx = self._hidx
-        elif orient == 'MY':
+                base_idx = self._idx
+        elif oenum is Orientation.MY:
             if is_x:
-                base_hidx = self._hidx
+                base_idx = self._idx
             else:
-                base_hidx = -self._hidx - (self._n - 1) * self._hpitch
+                base_idx = -self._idx - (self._n - 1) * self._pitch - 1
         elif orient == 'R180':
-            base_hidx = -self._hidx - (self._n - 1) * self._hpitch
+            base_idx = -self._idx - (self._n - 1) * self._pitch - 1
         else:
             raise ValueError('Unsupported orientation: %s' % orient)
 
         delta = loc[1] if is_x else loc[0]
-        delta = grid.coord_to_track(layer_id, delta, unit_mode=unit_mode) + 0.5
-        return TrackID(layer_id, (base_hidx - 1) / 2 + delta, width=self._w,
-                       num=self._n, pitch=self.pitch)
+        delta = grid.coord_to_track(layer_id, delta) + 0.5
+        return TrackID(layer_id, base_idx + delta, width=self._w,
+                       num=self._n, pitch=self._pitch)
 
 
 class WireArray(object):
@@ -206,63 +481,45 @@ class WireArray(object):
     ----------
     track_id : :class:`bag.layout.routing.TrackID`
         TrackArray representing the track locations of this wire array.
-    lower : float
+    lower : int
         the lower coordinate along the track direction.
-    upper : float
+    upper : int
         the upper coordinate along the track direction.
     res : float
-        the resolution unit.
+        deprecated parameter.
     unit_mode : bool
-        True if lower/upper are specified in resolution units.
+        deprecated parameter.
     """
 
-    def __init__(self, track_id, lower, upper, res=None, unit_mode=False):
-        # type: (TrackID, float, float, float) -> None
-        if res is None:
-            raise ValueError('Please specify the layout distance resolution.')
+    def __init__(self, track_id, lower, upper, res=None, unit_mode=True):
+        # type: (TrackID, int, int, float, bool) -> None
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
 
         self._track_id = track_id
-        self._res = res
-        if unit_mode:
-            self._lower_unit = lower
-            self._upper_unit = upper
-        else:
-            self._lower_unit = int(round(lower / res))
-            self._upper_unit = int(round(upper / res))
+        self._lower_unit = lower
+        self._upper_unit = upper
 
     def __repr__(self):
-        return '%s(%s, %.d, %.d, %.4g)' % (self.__class__.__name__, self._track_id,
-                                           self._lower_unit, self._upper_unit, self._res)
+        return '{}({}, {:d}, {:d})'.format(self.__class__.__name__, self._track_id,
+                                           self._lower_unit, self._upper_unit)
 
     def __str__(self):
         return repr(self)
 
     @property
-    def resolution(self):
-        return self._res
-
-    @property
-    def lower(self):
-        return self._lower_unit * self._res
-
-    @property
-    def upper(self):
-        return self._upper_unit * self._res
-
-    @property
-    def middle(self):
-        return (self._lower_unit + self._upper_unit) // 2 * self._res
-
-    @property
     def lower_unit(self):
+        # type: () -> int
         return self._lower_unit
 
     @property
     def upper_unit(self):
+        # type: () -> int
         return self._upper_unit
 
     @property
     def middle_unit(self):
+        # type: () -> int
         return (self._lower_unit + self._upper_unit) // 2
 
     @property
@@ -279,11 +536,12 @@ class WireArray(object):
 
     @property
     def width(self):
+        # type: () -> int
         return self.track_id.width
 
     @classmethod
     def list_to_warr(cls, warr_list):
-        # type: (List[WireArray]) -> WireArray
+        # type: (Sequence[WireArray]) -> WireArray
         """Convert a list of WireArrays to a single WireArray.
 
         this method assumes all WireArrays have the same layer, width, and lower/upper coordinates.
@@ -297,23 +555,21 @@ class WireArray(object):
         width = tid0.width
         res = warr_list[0].resolution
         lower, upper = warr_list[0].lower_unit, warr_list[0].upper_unit
-        tid_list = sorted(set((int(idx * 2) for warr in warr_list for idx in warr.track_id)))
-        base_idx2 = tid_list[0]
-        base_idx = base_idx2 // 2 if base_idx2 % 2 == 0 else base_idx2 / 2
+        tid_list = sorted(set((idx for warr in warr_list for idx in warr.track_id)))
+        base_idx = tid_list[0]
         if len(tid_list) < 2:
-            return WireArray(TrackID(layer, base_idx, width=width), lower, upper,
-                             res=res, unit_mode=True)
+            return WireArray(TrackID(layer, base_idx, width=width), lower, upper)
         diff = tid_list[1] - tid_list[0]
         for idx in range(1, len(tid_list) - 1):
             if tid_list[idx + 1] - tid_list[idx] != diff:
                 raise ValueError('pitch mismatch.')
-        pitch = diff // 2 if diff % 2 == 0 else diff / 2
 
-        return WireArray(TrackID(layer, base_idx, width=width, num=len(tid_list), pitch=pitch),
-                         lower, upper, res=res, unit_mode=True)
+        return WireArray(TrackID(layer, base_idx, width=width, num=len(tid_list), pitch=diff),
+                         lower, upper, res=res)
 
     @classmethod
     def single_warr_iter(cls, warr):
+        # type: (Union[WireArray, Sequence[WireArray]]) -> Iterable[WireArray]
         if isinstance(warr, WireArray):
             yield from warr.warr_iter()
         else:
@@ -321,22 +577,25 @@ class WireArray(object):
                 yield from w.warr_iter()
 
     def get_immutable_key(self):
+        # type: () -> Any
         return (self.__class__.__name__, self._track_id.get_immutable_key(), self._lower_unit,
-                self._upper_unit, self._res)
+                self._upper_unit)
 
     def to_warr_list(self):
+        # type: () -> List[WireArray]
         return list(self.warr_iter())
 
     def warr_iter(self):
+        # type: () -> Iterable[WireArray]
         tid = self._track_id
         layer = tid.layer_id
         width = tid.width
         for tr in tid:
             yield WireArray(TrackID(layer, tr, width=width), self._lower_unit,
-                            self._upper_unit, res=self._res, unit_mode=True)
+                            self._upper_unit)
 
     def get_bbox_array(self, grid):
-        # type: ('RoutingGrid') -> BBoxArray
+        # type: (RoutingGrid) -> BBoxArray
         """Returns the BBoxArray representing this WireArray.
 
         Parameters
@@ -356,26 +615,27 @@ class WireArray(object):
         num = track_id.num
 
         base_box = grid.get_bbox(layer_id, base_idx, self._lower_unit, self._upper_unit,
-                                 width=tr_w, unit_mode=True)
-        tot_pitch = (track_id.pitch_htr * grid.get_track_pitch(layer_id, unit_mode=True)) // 2
+                                 width=tr_w)
+        tot_pitch = int(track_id.pitch * grid.get_track_pitch(layer_id))
         if grid.get_direction(layer_id) == 'x':
-            return BBoxArray(base_box, ny=num, spy=tot_pitch, unit_mode=True)
+            return BBoxArray(base_box, ny=num, spy=tot_pitch)
         else:
-            return BBoxArray(base_box, nx=num, spx=tot_pitch, unit_mode=True)
+            return BBoxArray(base_box, nx=num, spx=tot_pitch)
 
     def wire_iter(self, grid):
+        # type: (RoutingGrid) -> Iterable[Tuple[str, BBox]]
         """Iterate over all wires in this WireArray as layer/BBox pair.
 
         Parameters
         ----------
-        grid : :class:`bag.layout.routing.RoutingGrid`
+        grid : RoutingGrid
             the RoutingGrid of this WireArray.
 
         Yields
         ------
-        layer : string
+        layer : str
             the wire layer name.
-        bbox : :class:`bag.layout.util.BBox`
+        bbox : BBox
             the wire bounding box.
         """
         tr_w = self.track_id.width
@@ -383,27 +643,27 @@ class WireArray(object):
         for tr_idx in self.track_id:
             layer_name = grid.get_layer_name(layer_id, tr_idx)
             bbox = grid.get_bbox(layer_id, tr_idx, self._lower_unit, self._upper_unit,
-                                 width=tr_w, unit_mode=True)
+                                 width=tr_w)
             yield layer_name, bbox
 
     def wire_arr_iter(self, grid):
+        # type: (RoutingGrid) -> Iterable[Tuple[str, BBoxArray]]
         """Iterate over all wires in this WireArray as layer/BBoxArray pair.
 
         This method group all rectangles in the same layer together.
 
         Parameters
         ----------
-        grid : :class:`bag.layout.routing.RoutingGrid`
+        grid : RoutingGrid
             the RoutingGrid of this WireArray.
 
         Yields
         ------
-        layer : string
+        layer : str
             the wire layer name.
-        bbox : :class:`bag.layout.util.BBoxArray`
+        bbox : BBoxArray
             the wire bounding boxes.
         """
-        res = self._res
         tid = self.track_id
         layer_id = tid.layer_id
         tr_width = tid.width
@@ -413,57 +673,63 @@ class WireArray(object):
             base_idx = track_idx.base_index
             cur_layer = grid.get_layer_name(layer_id, base_idx)
             cur_num = track_idx.num
-            wire_pitch = (track_idx.pitch_htr * track_pitch) // 2
-            tl, tu = grid.get_wire_bounds(layer_id, base_idx, width=tr_width, unit_mode=True)
+            wire_pitch = int(track_idx.pitch * track_pitch)
+            tl, tu = grid.get_wire_bounds(layer_id, base_idx, width=tr_width)
             if is_x:
-                base_box = BBox(self._lower_unit, tl, self._upper_unit, tu, res, unit_mode=True)
-                box_arr = BBoxArray(base_box, ny=cur_num, spy=wire_pitch, unit_mode=True)
+                base_box = BBox(self._lower_unit, tl, self._upper_unit, tu)
+                box_arr = BBoxArray(base_box, ny=cur_num, spy=wire_pitch)
             else:
-                base_box = BBox(tl, self._lower_unit, tu, self._upper_unit, res, unit_mode=True)
-                box_arr = BBoxArray(base_box, nx=cur_num, spx=wire_pitch, unit_mode=True)
+                base_box = BBox(tl, self._lower_unit, tu, self._upper_unit)
+                box_arr = BBoxArray(base_box, nx=cur_num, spx=wire_pitch)
 
             yield cur_layer, box_arr
 
-    def transform(self, grid, loc=(0, 0), orient='R0', unit_mode=False):
+    def transform(self, grid, loc=(0, 0), orient='R0', unit_mode=True):
+        # type: (RoutingGrid, Tuple[int, int], str, bool) -> WireArray
         """Return a new transformed WireArray.
 
         Parameters
         ----------
-        grid : :class:`bag.layout.routing.RoutingGrid`
+        grid : RoutingGrid
             the RoutingGrid of this WireArray.
-        loc : Tuple[Union[float, int], Union[float, int]]
+        loc : Tuple[int, int]
             the X/Y coordinate shift.
         orient : str
             the new orientation.
         unit_mode : bool
-            True if location is given in unit mode.
+            deprecated parameter.
+
+        Returns
+        -------
+        warr : WireArray
+            the new WireArray object.
         """
-        res = self._res
         if not unit_mode:
-            loc = int(round(loc[0] / res)), int(round(loc[1] / res))
+            raise ValueError('unit_mode = False not supported.')
 
         layer_id = self.layer_id
         is_x = grid.get_direction(layer_id) == 'x'
-        if orient == 'R0':
+        oenum = Orientation[orient]
+        if oenum is Orientation.R0:
             lower, upper = self._lower_unit, self._upper_unit
-        elif orient == 'MX':
+        elif oenum is Orientation.MX:
             if is_x:
                 lower, upper = self._lower_unit, self._upper_unit
             else:
                 lower, upper = -self._upper_unit, -self._lower_unit
-        elif orient == 'MY':
+        elif oenum is Orientation.MY:
             if is_x:
                 lower, upper = -self._upper_unit, -self._lower_unit
             else:
                 lower, upper = self._lower_unit, self._upper_unit
-        elif orient == 'R180':
+        elif oenum is Orientation.R180:
             lower, upper = -self._upper_unit, -self._lower_unit
         else:
             raise ValueError('Unsupported orientation: %s' % orient)
 
         delta = loc[0] if is_x else loc[1]
-        return WireArray(self.track_id.transform(grid, loc=loc, orient=orient, unit_mode=True),
-                         lower + delta, upper + delta, res=res, unit_mode=True)
+        return WireArray(self.track_id.transform(grid, loc=loc, orient=orient),
+                         lower + delta, upper + delta)
 
 
 class Port(object):
@@ -476,16 +742,20 @@ class Port(object):
     ----------
     term_name : str
         the terminal name of the port.
-    pin_dict : dict[int, list[bag.layout.routing.WireArray]]
+    pin_dict : Dict[int, List[WireArray]]
         a dictionary from layer ID to pin geometries on that layer.
+    label : str
+        the label of this port.
     """
 
     def __init__(self, term_name, pin_dict, label):
+        # type: (str, Dict[int, Union[List[WireArray], List[BBox]]], str) -> None
         self._term_name = term_name
         self._pin_dict = pin_dict
         self._label = label
 
     def __iter__(self):
+        # type: () -> WireArray
         """Iterate through all pin geometries in this port.
 
         the iteration order is not guaranteed.
@@ -501,47 +771,52 @@ class Port(object):
         return next(iter(self._pin_dict))
 
     def _get_layer(self, layer):
-        """Get the layer number."""
-        if isinstance(layer, numbers.Integral):
+        # type: (Union[int, str]) -> Union[int, str]
+        """Get the layer ID or name."""
+        if isinstance(layer, Integral):
             return self.get_single_layer() if layer < 0 else layer
         else:
             return self.get_single_layer() if not layer else layer
 
     @property
     def net_name(self):
+        # type: () -> str
         """Returns the net name of this port."""
         return self._term_name
 
     @property
     def label(self):
+        # type: () -> str
         """Returns the label of this port."""
         return self._label
 
     def get_pins(self, layer=-1):
+        # type: (Union[int, str]) -> Union[List[WireArray], List[BBox]]
         """Returns the pin geometries on the given layer.
 
         Parameters
         ----------
-        layer : int
+        layer : Union[int, str]
             the layer ID.  If Negative, check if this port is on a single layer,
             then return the result.
 
         Returns
         -------
-        track_bus_list : Union[WireArray, BBox]
+        track_bus_list : Union[List[WireArray], List[BBox]]
             pins on the given layer representing as WireArrays.
         """
         layer = self._get_layer(layer)
         return self._pin_dict.get(layer, [])
 
     def get_bounding_box(self, grid, layer=-1):
+        # type: (RoutingGrid, Union[int, str]) -> BBox
         """Calculate the overall bounding box of this port on the given layer.
 
         Parameters
         ----------
-        grid : :class:`~bag.layout.routing.RoutingGrid`
+        grid : RoutingGrid
             the RoutingGrid of this Port.
-        layer : int
+        layer : Union[int, str
             the layer ID.  If Negative, check if this port is on a single layer,
             then return the result.
 
@@ -559,8 +834,8 @@ class Port(object):
                 box = box.merge(geo.get_bbox_array(grid).get_overall_bbox())
         return box
 
-    def transform(self, grid, loc=(0, 0), orient='R0', unit_mode=False):
-        # type: (RoutingGrid, Tuple[Union[float, int], Union[float, int]], str, bool) -> Port
+    def transform(self, grid, loc=(0, 0), orient='R0', unit_mode=True):
+        # type: (RoutingGrid, Tuple[int, int], str, bool) -> Port
         """Return a new transformed Port.
 
         Parameters
@@ -572,20 +847,19 @@ class Port(object):
         orient : str
             the new orientation.
         unit_mode: bool
-            True if location is in resolution units.
+            deprecated parameter.
         """
         if not unit_mode:
-            res = grid.resolution
-            loc = (int(round(loc[0] / res)), int(round(loc[1] / res)))
+            raise ValueError('unit_mode = False not supported.')
 
         new_pin_dict = {}
         for lay, geo_list in self._pin_dict.items():
             new_geo_list = []
             for geo in geo_list:
                 if isinstance(geo, BBox):
-                    new_geo_list.append(geo.transform(loc=loc, orient=orient, unit_mode=True))
+                    new_geo_list.append(geo.transform(loc=loc, orient=orient))
                 else:
-                    new_geo_list.append(geo.transform(grid, loc=loc, orient=orient, unit_mode=True))
+                    new_geo_list.append(geo.transform(grid, loc=loc, orient=orient))
             new_pin_dict[lay] = new_geo_list
 
         return Port(self._term_name, new_pin_dict, self._label)
@@ -605,7 +879,7 @@ class TrackManager(object):
         the RoutingGrid object.
     tr_widths : Dict[str, Dict[int, int]]
         dictionary from wire types to its width on each layer.
-    tr_spaces : Dict[Union[str, Tuple[str, str]], Dict[int, Union[float, int]]]
+    tr_spaces : Dict[Union[str, Tuple[str, str]], Dict[int, TrackType]]
         dictionary from wire types to its spaces on each layer.
     **kwargs :
         additional options.
@@ -614,11 +888,11 @@ class TrackManager(object):
     def __init__(self,
                  grid,  # type: RoutingGrid
                  tr_widths,  # type: Dict[str, Dict[int, int]]
-                 tr_spaces,  # type: Dict[Union[str, Tuple[str, str]], Dict[int, Union[float, int]]]
-                 **kwargs,
+                 tr_spaces,  # type: Dict[Union[str, Tuple[str, str]], Dict[int, TrackType]]
+                 **kwargs,  # type: Any
                  ):
         # type: (...) -> None
-        half_space = kwargs.get('half_space', False)
+        half_space = kwargs.get('half_space', True)
 
         self._grid = grid
         self._tr_widths = tr_widths
@@ -655,8 +929,9 @@ class TrackManager(object):
     def get_space(self,  # type: TrackManager
                   layer_id,  # type: int
                   type_tuple,  # type: Union[str, int, Tuple[Union[str, int], Union[str, int]]]
-                  **kwargs):
-        # type: (...) -> Union[int, float]
+                  **kwargs,  # type: Any
+                  ):
+        # type: (...) -> TrackType
         """Returns the track spacing.
 
         Parameters
@@ -737,19 +1012,20 @@ class TrackManager(object):
 
     def get_next_track(self,  # type: TrackManager
                        layer_id,  # type: int
-                       cur_idx,  # type: Union[float, int]
+                       cur_idx,  # type: TrackType
                        cur_type,  # type: Union[str, int]
                        next_type,  # type: Union[str, int]
                        up=True,  # type: bool
-                       **kwargs):
-        # type: (...) -> Union[float, int]
+                       **kwargs,  # type: Any
+                       ):
+        # type: (...) -> HalfInt
         """Compute the track location of a wire next to a given one.
 
         Parameters
         ----------
         layer_id : int
             the layer ID.
-        cur_idx : Union[float, int]
+        cur_idx : TrackType
             the current wire track index.
         cur_type : Union[str, int]
             the current wire type.
@@ -762,25 +1038,26 @@ class TrackManager(object):
 
         Returns
         -------
-        next_int : Union[float, int]
+        next_int : HalfInt
             the next track index.
         """
         cur_width = self.get_width(layer_id, cur_type)
         next_width = self.get_width(layer_id, next_type)
         space = self.get_space(layer_id, (cur_type, next_type), **kwargs)
+        cur_idx = HalfInt.convert(cur_idx)
+        wsum = HalfInt(cur_width + next_width)
         if up:
-            par_test = int(round(2 * cur_idx + 2 * space + cur_width + next_width))
+            return wsum + space + cur_idx
         else:
-            par_test = int(round(2 * cur_idx - 2 * space - cur_width - next_width))
-
-        return par_test // 2 if par_test % 2 == 0 else par_test / 2
+            return -wsum - space + cur_idx
 
     def place_wires(self,  # type: TrackManager
                     layer_id,  # type: int
                     type_list,  # type: Sequence[Union[str, int]]
-                    start_idx=0,  # type: Union[float, int]
-                    **kwargs):
-        # type: (...) -> Tuple[Union[float, int], List[Union[float, int]]]
+                    start_idx=0,  # type: TrackType
+                    **kwargs,  # type: Any
+                    ):
+        # type: (...) -> Tuple[HalfInt, List[HalfInt]]
         """Place the given wires next to each other.
 
         Parameters
@@ -789,59 +1066,58 @@ class TrackManager(object):
             the layer of the tracks.
         type_list : Sequence[Union[str, int]]
             list of wire types.
-        start_idx : Union[float, int]
+        start_idx : TrackType
             the starting track index.
-        **kwargs:
+        **kwargs : Any
             optional parameters for get_num_space_tracks() method of RoutingGrid.
 
         Returns
         -------
-        num_tracks : Union[float, int]
+        num_tracks : HalfInt
             number of tracks used.
-        locations : List[Union[float, int]]
+        locations : List[HalfInt]
             the center track index of each wire.
         """
         if not type_list:
-            return 0, []
+            return HalfInt(0), []
 
         prev_type = type_list[0]
         w0 = self.get_width(layer_id, prev_type)
-        par_test = int(round(2 * start_idx + w0 - 1))
-        mid_idx = par_test // 2 if par_test % 2 == 0 else par_test / 2
+
+        mid_idx = HalfInt.convert(start_idx) + (w0 - 1) / 2
         ans = [mid_idx]
         for idx in range(1, len(type_list)):
             ans.append(self.get_next_track(layer_id, ans[-1], type_list[idx - 1],
                                            type_list[idx], up=True, **kwargs))
 
         w1 = self.get_width(layer_id, type_list[-1])
-        par_test = int(round(w0 + w1 + 2 * (ans[-1] - ans[0])))
-        ntr = par_test // 2 if par_test % 2 == 0 else par_test / 2
-
+        ntr = (ans[-1] - ans[0]) + (w0 + w1) / 2
         return ntr, ans
 
     @classmethod
     def _get_align_delta(cls, tot_ntr, num_used, alignment):
+        # type: (TrackType, TrackType, int) -> HalfInt
         if alignment == -1 or num_used == tot_ntr:
             # we already aligned to left
-            return 0
+            return HalfInt(0)
         elif alignment == 0:
             # center tracks
-            delta_htr = int((tot_ntr - num_used) * 2) // 2
-            return delta_htr / 2 if delta_htr % 2 == 1 else delta_htr // 2
+            return HalfInt.convert(tot_ntr - num_used).div2()
         elif alignment == 1:
             # align to right
-            return tot_ntr - num_used
+            return HalfInt.convert(tot_ntr - num_used)
         else:
             raise ValueError('Unknown alignment code: %d' % alignment)
 
     def align_wires(self,  # type: TrackManager
                     layer_id,  # type: int
                     type_list,  # type: Sequence[Union[str, int]]
-                    tot_ntr,  # type: Union[float, int]
+                    tot_ntr,  # type: TrackType
                     alignment=0,  # type: int
-                    start_idx=0,  # type: Union[float, int]
-                    **kwargs):
-        # type: (...) -> List[Union[float, int]]
+                    start_idx=0,  # type: TrackType
+                    **kwargs,  # type: Any
+                    ):
+        # type: (...) -> List[HalfInt]
         """Place the given wires in the given space with the specified alignment.
 
         Parameters
@@ -850,20 +1126,20 @@ class TrackManager(object):
             the layer of the tracks.
         type_list : Sequence[Union[str, int]]
             list of wire types.
-        tot_ntr : Union[float, int]
+        tot_ntr : TrackType
             total available space in number of tracks.
         alignment : int
             If alignment == -1, will "left adjust" the wires (left is the lower index direction).
             If alignment == 0, will center the wires in the middle.
             If alignment == 1, will "right adjust" the wires.
-        start_idx : Union[float, int]
+        start_idx : TrackType
             the starting track index.
         **kwargs:
             optional parameters for place_wires().
 
         Returns
         -------
-        locations : List[Union[float, int]]
+        locations : List[HalfInt]
             the center track index of each wire.
         """
         num_used, idx_list = self.place_wires(layer_id, type_list, start_idx=start_idx, **kwargs)
@@ -876,14 +1152,14 @@ class TrackManager(object):
     def spread_wires(self,  # type: TrackManager
                      layer_id,  # type: int
                      type_list,  # type: Sequence[Union[str, int]]
-                     tot_ntr,  # type: Union[float, int]
+                     tot_ntr,  # type: TrackType
                      sp_type,  # type: Union[str, int, Tuple[Union[str, int], Union[str, int]]]
                      alignment=0,  # type: int
-                     start_idx=0,  # type: Union[float, int]
+                     start_idx=0,  # type: TrackType
                      max_sp=10000,  # type: int
                      sp_override=None,
                      ):
-        # type: (...) -> List[Union[float, int]]
+        # type: (...) -> List[HalfInt]
         """Spread out the given wires in the given space.
 
         This method tries to spread out wires by increasing the space around the given
@@ -895,15 +1171,15 @@ class TrackManager(object):
             the layer of the tracks.
         type_list : Sequence[Union[str, int]]
             list of wire types.
-        tot_ntr : Union[float, int]
+        tot_ntr : TrackType
             total available space in number of tracks.
-        sp_type : Union[str, Tuple[str, str]]
+        sp_type : Union[str, int, Tuple[Union[str, int], Union[str, int]]]
             The space to increase.
         alignment : int
             If alignment == -1, will "left adjust" the wires (left is the lower index direction).
             If alignment == 0, will center the wires in the middle.
             If alignment == 1, will "right adjust" the wires.
-        start_idx : Union[float, int]
+        start_idx : TrackType
             the starting track index.
         max_sp : int
             maximum space.
@@ -912,21 +1188,21 @@ class TrackManager(object):
 
         Returns
         -------
-        locations : List[Union[float, int]]
+        locations : List[HalfInt]
             the center track index of each wire.
         """
         if not sp_override:
-            sp_override = {sp_type: {layer_id: 0}}
+            sp_override = {sp_type: {layer_id: HalfInt(0)}}
         else:
             sp_override = sp_override.copy()
-            sp_override[sp_type] = {layer_id: 0}
-        cur_sp = int(round(2 * self.get_space(layer_id, sp_type)))
+            sp_override[sp_type] = {layer_id: HalfInt(0)}
+        cur_sp = round(2 * self.get_space(layer_id, sp_type))
         bin_iter = BinaryIterator(cur_sp, None)
         while bin_iter.has_next():
             new_sp = bin_iter.get_next()
             if new_sp > 2 * max_sp:
                 break
-            sp_override[sp_type][layer_id] = new_sp / 2 if new_sp % 2 == 1 else new_sp // 2
+            sp_override[sp_type][layer_id] = HalfInt(new_sp)
             tmp = self.place_wires(layer_id, type_list, start_idx=start_idx,
                                    sp_override=sp_override)
             if tmp[0] > tot_ntr:
