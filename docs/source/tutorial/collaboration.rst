@@ -34,7 +34,7 @@ good idea of how to use other people's generators.
    :file:`bag_serdes_burst_mode` contains schematic and testbench generators for burst mode serdes links, and
    :file:`BAG2_TEMPLATES_EC` contains layout generators for various analog circuits.
 
-#. Now that we have the generators, we need to modify serveral configuration files to let BAG know where to find them.
+#. Now that we have the generators, we need to modify several configuration files to let BAG know where to find them.
    open the file :file:`cds.lib`, you will see the following two lines:
 
     .. code-block:: text
