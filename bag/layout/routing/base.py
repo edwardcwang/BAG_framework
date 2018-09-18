@@ -449,7 +449,7 @@ class TrackID(object):
             raise ValueError('unit_mode = False not supported.')
 
         layer_id = self._layer_id
-        is_x = grid.get_direction(layer_id) == 'x'
+        is_x = grid.is_horizontal(layer_id)
         oenum = Orientation[orient]
         if oenum is Orientation.R0:
             base_idx = self._idx
@@ -668,7 +668,7 @@ class WireArray(object):
         layer_id = tid.layer_id
         tr_width = tid.width
         track_pitch = grid.get_track_pitch(layer_id, unit_mode=True)
-        is_x = grid.get_direction(layer_id) == 'x'
+        is_x = grid.is_horizontal(layer_id)
         for track_idx in tid.sub_tracks_iter(grid):
             base_idx = track_idx.base_index
             cur_layer = grid.get_layer_name(layer_id, base_idx)
@@ -708,7 +708,7 @@ class WireArray(object):
             raise ValueError('unit_mode = False not supported.')
 
         layer_id = self.layer_id
-        is_x = grid.get_direction(layer_id) == 'x'
+        is_x = grid.is_horizontal(layer_id)
         oenum = Orientation[orient]
         if oenum is Orientation.R0:
             lower, upper = self._lower_unit, self._upper_unit

@@ -4,12 +4,17 @@
 """
 
 from typing import TYPE_CHECKING, Sequence, Union, Tuple, List, Optional, Dict, Any
+from bag.typing import TrackType
 
 import numpy as np
 
-from ..util import BBox
+from pybag.layout import BBox
+from pybag.layout.pyutil import Orientation, Orient2D
+
 from bag.util.search import BinaryIterator
 from bag.math import lcm
+
+from .base import HalfInt
 
 if TYPE_CHECKING:
     from bag.layout.core import TechInfo
@@ -32,30 +37,32 @@ class RoutingGrid(object):
 
     Parameters
     ----------
-    tech_info : bag.layout.core.TechInfo
+    tech_info : TechInfo
         the TechInfo instance used to create metals and vias.
-    layers : list[int]
+    layers : Sequence[int]
         list of available routing layers.  Must be in increasing order.
-    spaces : list[float]
+    spaces : Sequence[int]
         list of track spacings for each layer.
-    widths : list[float]
+    widths : Sequence[int]
         list of minimum track widths for each layer.
     bot_dir : str
         the direction of the bottom-most layer.  Either 'x' for horizontal tracks or 'y' for
         vertical tracks.
-    max_num_tr : int or list[int]
+    max_num_tr : Union[int, Sequence[int]]
         maximum track width in number of tracks.  Can be given as an integer (which applies to
         all layers), our a list to specify maximum width per layer.
+    width_override : Dict[int, Dict[int, int]]
+        the width override dictionary.
     """
 
     def __init__(self,  # type: RoutingGrid
                  tech_info,  # type: TechInfo
                  layers,  # type: Sequence[int]
-                 spaces,  # type: Sequence[float]
-                 widths,  # type: Sequence[float]
+                 spaces,  # type: Sequence[int]
+                 widths,  # type: Sequence[int]
                  bot_dir,  # type: str
                  max_num_tr=1000,  # type: Union[int, Sequence[int]]
-                 width_override=None,  # type: Dict[int, Dict[int, float]]
+                 width_override=None,  # type: Dict[int, Dict[int, int]]
                  ):
         # type: (...) -> None
         # error checking
@@ -74,7 +81,7 @@ class RoutingGrid(object):
         self._layout_unit = tech_info.layout_unit
         self._flip_parity = {}
         self._ignore_layers = set()
-        self.layers = []
+        self.layers = []  # type: List[int]
         self.sp_tracks = {}
         self.w_tracks = {}
         self.offset_tracks = {}
@@ -105,20 +112,15 @@ class RoutingGrid(object):
 
     @classmethod
     def get_middle_track(cls, tr1, tr2, round_up=False):
-        # type: (Union[float, int], Union[float, int], bool) -> Union[float, int]
-        test = int(round((tr1 + tr2) * 2))
-        if test % 4 == 0:
-            return test // 4
-        if test % 4 == 1:
-            return (test + 1) / 4 if round_up else (test - 1) // 4
-        if test % 4 == 2:
-            return test / 4
-        return (test + 1) // 4 if round_up else (test - 1) / 4
+        # type: (TrackType, TrackType, bool) -> HalfInt
+        tmp = HalfInt.convert(tr1)
+        tmp += tr2
+        return tmp.div2(round_up=round_up)
 
     def _get_track_offset(self, layer_id):
         # type: (int) -> int
         """Returns the track offset in resolution units on the given layer."""
-        track_pitch = self.get_track_pitch(layer_id, unit_mode=True)
+        track_pitch = self.get_track_pitch(layer_id)
         return self.offset_tracks.get(layer_id, track_pitch // 2)
 
     def get_flip_parity(self):
@@ -147,10 +149,10 @@ class RoutingGrid(object):
             has_bot = (bot_layer in self.layers)
             inst_has_bot = (bot_layer in inst_grid.layers)
             if has_bot and inst_has_bot:
-                w_par, sp_par = self.get_track_info(bot_layer, unit_mode=True)
-                w_inst, sp_inst = inst_grid.get_track_info(bot_layer, unit_mode=True)
+                w_par, sp_par = self.get_track_info(bot_layer)
+                w_inst, sp_inst = inst_grid.get_track_info(bot_layer)
                 if w_par != w_inst or sp_par != sp_inst or \
-                        self.get_direction(bot_layer) != inst_grid.get_direction(bot_layer):
+                        self.dir_tracks[bot_layer] is not inst_grid.dir_tracks[bot_layer]:
                     return bot_layer + 1
             elif has_bot != inst_has_bot:
                 return bot_layer + 1
@@ -162,7 +164,7 @@ class RoutingGrid(object):
                            top_layer,  # type: int
                            loc,  # type: Tuple[Union[int, float], Union[int, float]]
                            orient,  # type: str
-                           unit_mode=False,  # type: bool
+                           unit_mode=True,  # type: bool
                            ):
         # type: (...) -> Dict[int, Tuple[int, int]]
         """Compute the flip parity dictionary for an instance placed at the given location.
@@ -178,26 +180,26 @@ class RoutingGrid(object):
         orient : str
             the instance orientation.
         unit_mode : bool
-            True if loc is given in resolution units.
+            Deprecated parameter.
 
         Returns
         -------
         flip_parity : Dict[int, Tuple[int, int]]
             the flip_parity dictionary.
         """
-        if unit_mode:
-            xo, yo = loc
-        else:
-            res = self._resolution
-            xo, yo = int(round(loc[0] / res)), int(round(loc[1] / res))
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported')
 
-        if orient == 'R0':
+        xo, yo = loc
+
+        oenum = Orientation[orient]
+        if oenum is Orientation.R0:
             xscale, yscale = 1, 1
-        elif orient == 'MX':
+        elif oenum is Orientation.MX:
             xscale, yscale = -1, 1
-        elif orient == 'MY':
+        elif oenum is Orientation.MY:
             xscale, yscale = 1, -1
-        elif orient == 'R180':
+        elif oenum is Orientation.R180:
             xscale, yscale = -1, -1
         else:
             raise ValueError('Unknown orientation: %s' % orient)
@@ -205,16 +207,14 @@ class RoutingGrid(object):
         flip_par = {}
         for lay in range(bot_layer, top_layer + 1):
             if lay in self.layers:
-                tdir = self.dir_tracks[lay]
-
                 # find the track in top level that corresponds to the track at instance origin
-                if tdir == 'y':
-                    coord, scale = xo, yscale
-                else:
+                if self.is_horizontal(lay):
                     coord, scale = yo, xscale
+                else:
+                    coord, scale = xo, yscale
 
-                tr_idx = self.coord_to_track(lay, coord, unit_mode=True)
-                offset_htr = int(round(tr_idx * 2 + 1))
+                tr_idx = self.coord_to_track(lay, coord)
+                offset_htr = int(tr_idx * 2) + 1
 
                 cur_scale, cur_offset = self._flip_parity.get(lay, (1, 0))
                 new_scale = cur_scale * scale
@@ -274,7 +274,7 @@ class RoutingGrid(object):
         """helper method for updating block pitch."""
         pitch_list = []
         for lay in lay_list:
-            cur_bp = self.get_track_pitch(lay, unit_mode=True)
+            cur_bp = self.get_track_pitch(lay)
             cur_bp2 = cur_bp // 2
             cur_dir = self.dir_tracks[lay]
             if pitch_list:
@@ -286,6 +286,11 @@ class RoutingGrid(object):
             result = (cur_bp, cur_bp2)
             pitch_list.append(result)
             self.block_pitch[lay] = result
+
+    def is_horizontal(self, layer_id):
+        # type: (int) -> bool
+        """Returns true if the given layer is horizontal."""
+        return self.dir_tracks[layer_id] is Orient2D.x
 
     def get_direction(self, layer_id):
         # type: (int) -> str
@@ -303,8 +308,8 @@ class RoutingGrid(object):
         """
         return self.dir_tracks[layer_id]
 
-    def get_track_pitch(self, layer_id, unit_mode=False):
-        # type: (int, bool) -> Union[float, int]
+    def get_track_pitch(self, layer_id, unit_mode=True):
+        # type: (int, bool) -> int
         """Returns the routing track pitch on the given layer.
 
         Parameters
@@ -312,18 +317,19 @@ class RoutingGrid(object):
         layer_id : int
             the routing layer ID.
         unit_mode : bool
-            True to return block pitch in resolution units.
+            deprecated parameter.
 
         Returns
         -------
-        track_pitch : Union[float, int]
-            the track pitch in layout units.
+        track_pitch : int
+            the track pitch.
         """
-        pitch = self.w_tracks[layer_id] + self.sp_tracks[layer_id]
-        return pitch if unit_mode else pitch * self._resolution
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+        return self.w_tracks[layer_id] + self.sp_tracks[layer_id]
 
-    def get_track_width(self, layer_id, width_ntr, unit_mode=False):
-        # type: (int, int, bool) -> Union[float, int]
+    def get_track_width(self, layer_id, width_ntr, unit_mode=True):
+        # type: (int, int, bool) -> int
         """Calculate track width in layout units from number of tracks.
 
         Parameters
@@ -333,24 +339,24 @@ class RoutingGrid(object):
         width_ntr : int
             the track width in number of tracks.
         unit_mode : bool
-            True to return track width in resolution units.
+            deprecated parameter.
 
         Returns
         -------
-        width : Union[float, int]
-            the track width in layout units.
+        width : int
+            the track width.
         """
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
         w = self.w_tracks[layer_id]
         sp = self.sp_tracks[layer_id]
         w_unit = width_ntr * (w + sp) - sp
-        w_unit = self.w_override[layer_id].get(width_ntr, w_unit)
-        if unit_mode:
-            return w_unit
-        return w_unit * self._resolution
+        return self.w_override[layer_id].get(width_ntr, w_unit)
 
-    def get_track_width_inverse(self, layer_id, width, mode=-1, unit_mode=False):
-        # type: (int, Union[float, int], int, bool) -> int
-        """Given track width in layout/resolution units, compute equivalent number of tracks.
+    def get_track_width_inverse(self, layer_id, width, mode=-1, unit_mode=True):
+        # type: (int, int, int, bool) -> int
+        """Given track width in resolution units, compute equivalent number of tracks.
 
         This is the inverse function of get_track_width().
 
@@ -358,13 +364,13 @@ class RoutingGrid(object):
         ----------
         layer_id : int
             the track layer ID
-        width : Union[float, int]
-            the track width in layout or resolution units.
+        width : int
+            the track width in resolution units.
         mode : int
             If negative, the result wire will have width less than or equal to the given width.
             If positive, the result wire will have width greater than or equal to the given width.
         unit_mode : bool
-            True if width is specified in resolution units.
+            deprecated parameter.
 
         Returns
         -------
@@ -372,7 +378,7 @@ class RoutingGrid(object):
             number of tracks needed to achieve the given width.
         """
         if not unit_mode:
-            width = int(round(width / self.resolution))
+            raise ValueError('unit_mode = False not supported.')
 
         # use binary search to find the minimum track width
         bin_iter = BinaryIterator(1, None)
@@ -396,35 +402,28 @@ class RoutingGrid(object):
         return ans
 
     def get_num_tracks(self, size, layer_id):
-        # type: (Tuple[int, Union[int, float], Union[int, float]], int) -> Union[int, float]
+        # type: (Tuple[int, TrackType, TrackType], int) -> HalfInt
         """Returns the number of tracks on the given layer for a block with the given size.
 
         Parameters
         ----------
-        size : Tuple[int, Union[int, float], Union[int, float]]
+        size : Tuple[int, HalfInt, HalfInt]
             the block size tuple.
         layer_id : int
             the layer ID.
 
         Returns
         -------
-        num_tracks : Union[int, float]
+        num_tracks : HalfInt
             number of tracks on that given layer.
         """
-        tr_dir = self.get_direction(layer_id)
-        blk_w, blk_h = self.get_size_dimension(size, unit_mode=True)
-        tr_half_pitch = self.get_track_pitch(layer_id, unit_mode=True) // 2
-        if tr_dir == 'x':
-            val = blk_h // tr_half_pitch
-        else:
-            val = blk_w // tr_half_pitch
+        is_x = self.is_horizontal(layer_id)
+        blk_w, blk_h = self.get_size_dimension(size)
+        tr_half_pitch = self.get_track_pitch(layer_id) // 2
+        return HalfInt((blk_h if is_x else blk_w) // tr_half_pitch)
 
-        if val % 2 == 0:
-            return val // 2
-        return val / 2
-
-    def get_min_length(self, layer_id, width_ntr, unit_mode=False):
-        # type: (int, int, bool) -> Union[float, int]
+    def get_min_length(self, layer_id, width_ntr, unit_mode=True):
+        # type: (int, int, bool) -> int
         """Returns the minimum length for the given track.
 
         Parameters
@@ -434,29 +433,27 @@ class RoutingGrid(object):
         width_ntr : int
             the track width in number of tracks.
         unit_mode : bool
-            True to return the minimum length in resolution units.
+            deprecated parameter.
 
         Returns
         -------
-        min_length : Union[float, int]
+        min_length : int
             the minimum length.
         """
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
         layer_name = self.tech_info.get_layer_name(layer_id)
         if isinstance(layer_name, tuple):
             layer_name = layer_name[0]
         layer_type = self.tech_info.get_layer_type(layer_name)
 
         width = self.get_track_width(layer_id, width_ntr)
-        min_length = self.tech_info.get_min_length(layer_type, width)
+        return self.tech_info.get_min_length(layer_type, width)
 
-        if unit_mode:
-            return int(round(min_length / self._resolution))
-        else:
-            return min_length
-
-    def get_space(self, layer_id, width_ntr, same_color=False, unit_mode=False):
-        # type: (int, int, bool, bool) -> Union[int, float]
-        """Returns the space needed around a track, in layout/resolution units.
+    def get_space(self, layer_id, width_ntr, same_color=False, unit_mode=True):
+        # type: (int, int, bool, bool) -> int
+        """Returns the space needed around a track, in resolution units.
 
         Parameters
         ----------
@@ -467,24 +464,23 @@ class RoutingGrid(object):
         same_color : bool
             True to use same-color spacing.
         unit_mode : bool
-            True to return resolution units.
+            deprecated parameter.
 
         Returns
         -------
-        sp : Union[int, float]
-            minimum space needed around the given track in layout/resolution units.
+        sp : int
+            minimum space needed around the given track in resolution units.
         """
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
         layer_name = self.tech_info.get_layer_name(layer_id)
         if isinstance(layer_name, tuple):
             layer_name = layer_name[0]
         layer_type = self.tech_info.get_layer_type(layer_name)
 
-        width = self.get_track_width(layer_id, width_ntr, unit_mode=True)
-        sp_min_unit = self.tech_info.get_min_space(layer_type, width, unit_mode=True,
-                                                   same_color=same_color)
-        if unit_mode:
-            return sp_min_unit
-        return sp_min_unit * self._resolution
+        width = self.get_track_width(layer_id, width_ntr)
+        return self.tech_info.get_min_space(layer_type, width, same_color=same_color)
 
     def get_num_space_tracks(self, layer_id, width_ntr, half_space=False, same_color=False):
         # type: (int, int, bool, bool) -> Union[int, float]
@@ -510,6 +506,7 @@ class RoutingGrid(object):
         num_sp_tracks : Union[int, float]
             minimum space needed around the given track in number of tracks.
         """
+        # TODO: start from here.
         width = self.get_track_width(layer_id, width_ntr, unit_mode=True)
         sp_min_unit = self.get_space(layer_id, width_ntr, same_color=same_color, unit_mode=True)
         w_unit = self.w_tracks[layer_id]
@@ -1723,8 +1720,8 @@ class RoutingGrid(object):
             self._ignore_layers.add(lay)
 
     def add_new_layer(self, layer_id, tr_space, tr_width, direction,
-                      max_num_tr=100, override=False, unit_mode=False, is_private=True):
-        # type: (int, float, float, str, int, bool, bool, bool) -> None
+                      max_num_tr=100, override=False, unit_mode=True, is_private=True):
+        # type: (int, int, int, str, int, bool, bool, bool) -> None
         """Add a new private layer to this RoutingGrid.
 
         This method is used to add customized routing grid per template on lower level layers.
@@ -1749,25 +1746,26 @@ class RoutingGrid(object):
         override : bool
             True to override existing layers if they already exist.
         unit_mode : bool
-            True if given lengths are in resolution units
+            deprecated parameter.
         is_private : bool
             True if this is a private layer.
         """
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported')
+
         self._ignore_layers.discard(layer_id)
 
-        if not unit_mode:
-            sp_unit = 2 * int(round(tr_space / (2 * self.resolution)))
-            w_unit = 2 * int(round(tr_width / (2 * self.resolution)))
-        else:
-            sp_unit = -(-tr_space // 2) * 2
-            w_unit = -(-tr_width // 2) * 2
+        sp_unit = -(-tr_space // 2) * 2
+        w_unit = -(-tr_width // 2) * 2
+        dir_enum = Orient2D[direction]
+
         if layer_id in self.sp_tracks:
             # double check to see if we actually need to modify layer
             w_cur = self.w_tracks[layer_id]
             sp_cur = self.sp_tracks[layer_id]
             dir_cur = self.dir_tracks[layer_id]
 
-            if w_cur == w_unit and sp_cur == sp_unit and dir_cur == direction:
+            if w_cur == w_unit and sp_cur == sp_unit and dir_cur == dir_enum:
                 # everything is the same, just return
                 return
 
@@ -1783,7 +1781,7 @@ class RoutingGrid(object):
 
         self.sp_tracks[layer_id] = sp_unit
         self.w_tracks[layer_id] = w_unit
-        self.dir_tracks[layer_id] = direction
+        self.dir_tracks[layer_id] = dir_enum
         self.w_override[layer_id] = {}
         self.max_num_tr_tracks[layer_id] = max_num_tr
         if layer_id not in self._flip_parity:
@@ -1807,8 +1805,8 @@ class RoutingGrid(object):
 
         self.offset_tracks[layer_id] = offset
 
-    def add_width_override(self, layer_id, width_ntr, tr_width, unit_mode=False):
-        # type: (int, int, Union[int, float], bool) -> None
+    def add_width_override(self, layer_id, width_ntr, tr_width, unit_mode=True):
+        # type: (int, int, int, bool) -> None
         """Add width override.
 
         NOTE: call this method only directly after you construct the RoutingGrid.  Do not
@@ -1820,16 +1818,15 @@ class RoutingGrid(object):
             the new layer ID.
         width_ntr : int
             the width in number of tracks.
-        tr_width : Union[int, float]
-            the actual width in layout units.
+        tr_width : int
+            the actual width.
         unit_mode : bool
-            True if tr_width is in resolution units.
+            deprecated parameter.
         """
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
         if width_ntr == 1:
             raise ValueError('Cannot override width_ntr=1.')
-
-        if not unit_mode:
-            tr_width = int(round(tr_width / self.resolution))
 
         if layer_id not in self.w_override:
             self.w_override[layer_id] = {width_ntr: tr_width}
