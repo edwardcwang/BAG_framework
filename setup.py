@@ -26,6 +26,10 @@ setup(
         'matplotlib>=1.5',
         'rtree',
         'h5py',
+        'Shapely',
+        'openmdao',
+    ],
+    tests_require=[
         'pytest',
     ],
     package_data={
