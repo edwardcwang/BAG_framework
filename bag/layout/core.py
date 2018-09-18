@@ -3,7 +3,8 @@
 """This module defines the base template class.
 """
 
-from typing import TYPE_CHECKING, List, Tuple, Optional, Any
+from typing import TYPE_CHECKING, Dict, List, Tuple, Optional, Any, Union
+from bag.typing import LayerType
 
 import abc
 import math
@@ -19,6 +20,7 @@ from pybag.layout import PyTech
 
 if TYPE_CHECKING:
     from pybag.layout import PyLayInstance
+    from .template import TemplateBase
 
 
 class TechInfo(object, metaclass=abc.ABCMeta):
@@ -33,18 +35,19 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         the grid resolution of this technology.
     layout_unit : float
         the layout unit, in meters.
-    via_tech : string
+    via_tech : str
         the via technology library name.  This is usually the PDK library name.
-    process_params : dict[str, any]
+    process_params : Dict[str, Any]
         process specific parameters.
 
     Attributes
     ----------
-    tech_params : dict[str, any]
+    tech_params : Dict[str, Any]
         technology specific parameters.
     """
 
     def __init__(self, res, layout_unit, via_tech, process_params):
+        # type: (float, float, str, Dict[str, Any]) -> None
         self._resolution = res
         self._layout_unit = layout_unit
         self._via_tech = via_tech
@@ -136,6 +139,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def add_cell_boundary(self, template, box):
+        # type: (TemplateBase, BBox) -> None
         """Adds a cell boundary object to the given template.
         
         This is usually the PR boundary.
@@ -151,6 +155,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def draw_device_blockage(self, template):
+        # type: (TemplateBase) -> None
         """Draw device blockage layers on the given template.
 
         Parameters
@@ -166,11 +171,11 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        vname : string
+        vname : str
             the via type name.
-        vtype : string
+        vtype : str
             the via type, square/hrect/vrect/etc.
-        mtype : string
+        mtype : str
             name of the metal layer via is connecting.  Can be either top or bottom.
         mw_unit : int
             width of the metal, in resolution units.
@@ -181,7 +186,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         -------
         sp : Tuple[int, int]
             horizontal/vertical space between adjacent vias, in resolution units.
-        sp3 : Tuple[int, int] or None
+        sp3 : Optional[Tuple[int, int]]
             horizontal/vertical space between adjacent vias if the via has 3 or more neighbors.
             None if no constraint.
         dim : Tuple[int, int]
@@ -189,11 +194,11 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         enc : List[Tuple[int, int]]
             a list of valid horizontal/vertical enclosure of the via on the given metal
             layer, in resolution units.
-        arr_enc : List[Tuple[int, int]] or None
+        arr_enc : Optional[List[Tuple[int, int]]]
             a list of valid horizontal/vertical enclosure of the via on the given metal
             layer if this is a "via array", in layout units.
             None if no constraint.
-        arr_test : callable or None
+        arr_test : Optional[Callable[[int, int], bool]]
             a function that accepts two inputs, the number of via rows and number of via
             columns, and returns True if those numbers describe a "via array".
             None if no constraint.
@@ -201,73 +206,76 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
 
     @abc.abstractmethod
-    def get_min_space(self, layer_type, width, unit_mode=False, same_color=False):
+    def get_min_space(self, layer_type, width, unit_mode=True, same_color=False):
+        # type: (str, int, bool, bool) -> int
         """Returns the minimum spacing needed around a wire on the given layer with the given width.
 
         Parameters
         ----------
         layer_type : str
             the wiring layer type.
-        width : Union[float, int]
-            the width of the wire, in layout units.
+        width : int
+            the width of the wire, in resolution units.
         unit_mode : bool
-            True if dimension are given/returned in resolution units.
+            deprecated parameter.
         same_color : bool
             True to use same-color spacing.
 
         Returns
         -------
-        sp : Union[float, int]
+        sp : int
             the minimum spacing needed.
         """
-        return 0.0
+        return 0
 
     @abc.abstractmethod
-    def get_min_line_end_space(self, layer_type, width, unit_mode=False):
+    def get_min_line_end_space(self, layer_type, width, unit_mode=True):
+        # type: (str, int, bool) -> int
         """Returns the minimum line-end spacing of a wire with given width.
 
         Parameters
         ----------
         layer_type : str
             the wiring layer type.
-        width : Union[float, int]
+        width : int
             the width of the wire, in layout units.
         unit_mode : bool
-            True if dimension are given/returned in resolution units.
+            deprecated parameter.
 
         Returns
         -------
-        sp : Union[float, int]
+        sp : int
             the minimum line-end space.
         """
-        return 0.0
+        return 0
 
     @abc.abstractmethod
-    def get_min_length(self, layer_type, width):
-        # type: (str, float) -> float
+    def get_min_length(self, layer_type, w_unit):
+        # type: (str, int) -> int
         """Returns the minimum length of a wire on the given layer with the given width.
 
         Parameters
         ----------
         layer_type : str
             the wiring layer type.
-        width : float
+        w_unit : int
             the width of the wire, in layout units.
 
         Returns
         -------
-        min_length : float
+        min_length : int
             the minimum length.
         """
-        return 0.0
+        return 0
 
     @abc.abstractmethod
     def get_layer_id(self, layer_name):
+        # type: (str) -> int
         """Return the layer id for the given layer name.
 
         Parameters
         ----------
-        layer_name : string
+        layer_name : str
             the layer name.
 
         Returns
@@ -279,6 +287,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_layer_name(self, layer_id):
+        # type: (int) -> Union[str, Tuple[str, ...]]
         """Return the layer name(s) for the given routing grid layer ID.
 
         Parameters
@@ -288,7 +297,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        name : string or Tuple[string]
+        name : Union[str, Tuple[str, ...]]
             name of the layer.  Returns a tuple of names if this is a double
             patterning layer.
         """
@@ -296,6 +305,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_layer_type(self, layer_name):
+        # type: (str) -> str
         """Returns the metal type of the given wiring layer.
 
         Parameters
@@ -305,13 +315,14 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        metal_type : string
+        metal_type : str
             the metal layer type.
         """
         return ''
 
     @abc.abstractmethod
     def get_via_name(self, bot_layer_id):
+        # type: (int) -> str
         """Returns the via type name of the given via.
 
         Parameters
@@ -321,23 +332,24 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        name : string
+        name : str
             the via type name.
         """
         return ''
 
     @abc.abstractmethod
     def get_metal_em_specs(self, layer_name, w, l=-1, vertical=False, **kwargs):
+        # type: (str, int, int, bool, Any) -> Tuple[float, float, float]
         """Returns a tuple of EM current/resistance specs of the given wire.
 
         Parameters
         ----------
         layer_name : str
             the metal layer name.
-        w : float
-            the width of the metal in layout units (dimension perpendicular to current flow).
-        l : float
-            the length of the metal in layout units (dimension parallel to current flow).
+        w : int
+            the width of the metal in resolution units (dimension perpendicular to current flow).
+        l : int
+            the length of the metal in resolution units (dimension parallel to current flow).
             If negative, disable length enhancement.
         vertical : bool
             True to compute vertical current.
@@ -360,10 +372,11 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                          bm_layer,  # type: str
                          tm_layer,  # type: str
                          via_type='square',  # type: str
-                         bm_dim=(-1, -1),  # type: Tuple[float, float]
-                         tm_dim=(-1, -1),  # type: Tuple[float, float]
+                         bm_dim=(-1, -1),  # type: Tuple[int, int]
+                         tm_dim=(-1, -1),  # type: Tuple[int, int]
                          array=False,  # type: bool
-                         **kwargs):
+                         **kwargs,  # type: Any
+                         ):
         # type: (...) -> Tuple[float ,float, float]
         """Returns a tuple of EM current/resistance specs of the given via.
 
@@ -377,15 +390,15 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             the top layer name.
         via_type : str
             the via type, square/vrect/hrect/etc.
-        bm_dim : Tuple[float, float]
-            bottom layer metal width/length in layout units.  If negative,
+        bm_dim : Tuple[int, int]
+            bottom layer metal width/length in resolution units.  If negative,
             disable length/width enhancement.
-        tm_dim : Tuple[float, float]
-            top layer metal width/length in layout units.  If negative,
+        tm_dim : Tuple[int, int]
+            top layer metal width/length in resolution units.  If negative,
             disable length/width enhancement.
         array : bool
             True if this via is in a via array.
-        **kwargs :
+        **kwargs : Any
             optional EM specs parameters.
 
         Returns
@@ -401,13 +414,14 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_res_rsquare(self, res_type):
+        # type: (str) -> float
         """Returns R-square for the given resistor type.
 
         This is used to do some approximate resistor dimension calculation.
 
         Parameters
         ----------
-        res_type : string
+        res_type : str
             the resistor type.
 
         Returns
@@ -419,6 +433,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_res_width_bounds(self, res_type):
+        # type: (str) -> Tuple[int, int]
         """Returns the maximum and minimum resistor width for the given resistor type.
 
         Parameters
@@ -428,62 +443,64 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        wmin : float
+        wmin : int
             minimum resistor width, in layout units.
-        wmax : float
+        wmax : int
             maximum resistor width, in layout units.
         """
-        return 0.0, 0.0
+        return 0, 0
 
     @abc.abstractmethod
     def get_res_length_bounds(self, res_type):
+        # type: (str) -> Tuple[int, int]
         """Returns the maximum and minimum resistor length for the given resistor type.
 
         Parameters
         ----------
-        res_type : string
+        res_type : str
             the resistor type.
 
         Returns
         -------
-        lmin : float
+        lmin : int
             minimum resistor length, in layout units.
-        lmax : float
+        lmax : int
             maximum resistor length, in layout units.
         """
-        return 0.0, 0.0
+        return 0, 0
 
     @abc.abstractmethod
     def get_res_min_nsquare(self, res_type):
+        # type: (str) -> float
         """Returns the minimum allowable number of squares for the given resistor type.
 
         Parameters
         ----------
-        res_type : string
+        res_type : str
             the resistor type.
 
         Returns
         -------
-        nsq_min : flaot
+        nsq_min : float
             minimum number of squares needed.
         """
         return 1.0
 
     @abc.abstractmethod
     def get_res_em_specs(self, res_type, w, l=-1, **kwargs):
-        # type: (str, float, float, Any) -> Tuple[float, float, float]
+        # type: (str, int, int, Any) -> Tuple[float, float, float]
         """Returns a tuple of EM current/resistance specs of the given resistor.
 
         Parameters
         ----------
-        res_type : string
+        res_type : str
             the resistor type string.
-        w : float
-            the width of the metal in layout units (dimension perpendicular to current flow).
-        l : float
-            the length of the metal in layout units (dimension parallel to current flow).
+        w : int
+            the width of the metal in resolution units (dimension perpendicular to current flow).
+        l : int
+            the length of the metal in resolution units (dimension parallel to current flow).
             If negative, disable length enhancement.
-        **kwargs :
+        **kwargs : Any
             optional EM specs parameters.
 
         Returns
@@ -499,26 +516,30 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
     @property
     def via_tech_name(self):
+        # type: () -> str
         """Returns the via technology library name."""
         return self._via_tech
 
     @property
     def pin_purpose(self):
+        # type: () -> str
         """Returns the layout pin purpose name."""
-        return 'pin'
+        return self.pybag_tech.pin_purpose
 
     @property
     def resolution(self):
+        # type: () -> float
         """Returns the grid resolution."""
         return self._resolution
 
     @property
     def layout_unit(self):
+        # type: () -> float
         """Returns the layout unit length, in meters."""
         return self._layout_unit
 
     def merge_well(self,
-                   template,  # type: 'TemplateBase'
+                   template,  # type: TemplateBase
                    inst_list,  # type: List[PyLayInstance]
                    sub_type,  # type: str
                    threshold=None,  # type: Optional[str]
@@ -550,6 +571,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return True
 
     def finalize_template(self, template):
+        # type: (TemplateBase) -> None
         """Perform any operations necessary on the given layout template before finalizing it.
 
         By default, nothing is done.
@@ -562,23 +584,24 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         pass
 
     def get_res_info(self, res_type, w, l, **kwargs):
+        # type: (str, int, int, Any) -> Dict[str, Any]
         """Returns a dictionary containing EM information of the given resistor.
 
         Parameters
         ----------
-        res_type : string or (string, string)
+        res_type : str
             the resistor type.
-        w : float
-            the resistor width in layout units (dimension perpendicular to current flow).
-        l : float
-            the resistor length in layout units (dimension parallel to current flow).
-        **kwargs :
+        w : int
+            the resistor width in resolution units (dimension perpendicular to current flow).
+        l : int
+            the resistor length in resolution units (dimension parallel to current flow).
+        **kwargs : Any
             optional parameters for EM rule calculations, such as nominal temperature,
             AC rms delta-T, etc.
 
         Returns
         -------
-        info : dict[string, any]
+        info : Dict[str, Any]
             A dictionary of wire information.  Should have the following:
 
             resistance : float
@@ -602,6 +625,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         )
 
     def get_via_types(self, bmtype, tmtype):
+        # type: (str, str) -> List[Tuple[str, int]]
         return [('square', 1), ('vrect', 2), ('hrect', 2)]
 
     def get_best_via_array(self, vname, bmtype, tmtype, bot_dir, top_dir, w, h, extend):
@@ -775,13 +799,13 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             return None
         return best_nxy, best_mdim_list, best_type, best_vdim, best_sp, best_adim
 
-    def _via_better(self, mdim_list1, mdim_list2):
+    @staticmethod
+    def _via_better(mdim_list1, mdim_list2):
         """Returns true if the via in mdim_list1 has smaller area compared with via in mdim_list2"""
-        res = self._resolution
         better = False
         for mdim1, mdim2 in zip(mdim_list1, mdim_list2):
-            area1 = int(round(mdim1[0] / res)) * int(round(mdim1[1] / res))
-            area2 = int(round(mdim2[0] / res)) * int(round(mdim2[1] / res))
+            area1 = mdim1[0] * mdim1[1]
+            area2 = mdim2[0] * mdim2[1]
             if area1 < area2:
                 better = True
             elif area1 > area2:
@@ -790,45 +814,56 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
     # noinspection PyMethodMayBeStatic
     def get_via_id(self, bot_layer, top_layer):
+        # type: (str, str) -> str
         """Returns the via ID string given bottom and top layer name.
 
         Defaults to "<bot_layer>_<top_layer>"
 
         Parameters
         ----------
-        bot_layer : string
+        bot_layer : str
             the bottom layer name.
-        top_layer : string
+        top_layer : str
             the top layer name.
 
         Returns
         -------
-        via_id : string
+        via_id : str
             the via ID string.
         """
         return '%s_%s' % (top_layer, bot_layer)
 
-    def get_via_info(self, bbox, bot_layer, top_layer, bot_dir, bot_len=-1, top_len=-1,
-                     extend=True, top_dir=None, **kwargs):
+    def get_via_info(self,
+                     bbox,  # type: BBox
+                     bot_layer,  # type: LayerType
+                     top_layer,  # type: LayerType
+                     bot_dir,  # type: str
+                     bot_len=-1,  # type: int
+                     top_len=-1,  # type: int
+                     extend=True,  # type: bool
+                     top_dir=None,  # type: Optional[str]
+                     **kwargs,  # type: Any
+                     ):
+        # type: (...) -> Optional[Dict[str, Any]]
         """Create a via on the routing grid given the bounding box.
 
         Parameters
         ----------
-        bbox : bag.layout.util.BBox
+        bbox : BBox
             the bounding box of the via.
-        bot_layer : Union[str, Tuple[str, str]]
+        bot_layer : LayerType
             the bottom layer name, or a tuple of layer name and purpose name.
             If purpose name not given, defaults to 'drawing'.
-        top_layer : Union[str, Tuple[str, str]]
+        top_layer : LayerType
             the top layer name, or a tuple of layer name and purpose name.
             If purpose name not given, defaults to 'drawing'.
         bot_dir : str
             the bottom layer extension direction.  Either 'x' or 'y'
-        bot_len : float
-            length of bottom wire connected to this Via, in layout units.
+        bot_len : int
+            length of bottom wire connected to this Via, in resolution units.
             Used for length enhancement EM calculation.
-        top_len : float
-            length of top wire connected to this Via, in layout units.
+        top_len : int
+            length of top wire connected to this Via, in resolution units.
             Used for length enhancement EM calculation.
         extend : bool
             True if via extension can be drawn outside of bounding box.
@@ -840,7 +875,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        info : dict[string, any]
+        info : Optional[Dict[str, Any]]
             A dictionary of via information, or None if no solution.  Should have the following:
 
             resistance : float
@@ -851,21 +886,14 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                 The total via array maximum allowable AC RMS current, in Amperes.
             iac_peak : float
                 The total via array maximum allowable AC peak current, in Amperes.
-            params : dict[str, any]
+            params : Dict[str, Any]
                 A dictionary of via parameters.
-            top_box : bag.layout.util.BBox
-                the top via layer bounding box, including extensions.
-            bot_box : bag.layout.util.BBox
-                the bottom via layer bounding box, including extensions.
-
         """
         # remove purpose
         if isinstance(bot_layer, tuple):
             bot_layer = bot_layer[0]
         if isinstance(top_layer, tuple):
             top_layer = top_layer[0]
-        bot_layer = bag.io.fix_string(bot_layer)
-        top_layer = bag.io.fix_string(top_layer)
 
         bot_id = self.get_layer_id(bot_layer)
         bmtype = self.get_layer_type(bot_layer)
@@ -883,9 +911,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
         (nx, ny), mdim_list, vtype, vdim, (spx, spy), (warr_norm, harr_norm) = via_result
 
-        res = self.resolution
-        xc_norm = bbox.xc_unit
-        yc_norm = bbox.yc_unit
+        xc_norm = bbox.xm
+        yc_norm = bbox.ym
 
         wbot_norm = mdim_list[0][0]
         hbot_norm = mdim_list[0][1]
@@ -900,19 +927,9 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
         # compute EM rule dimensions
         if bot_dir == 'x':
-            bw, tw = hbot_norm * res, wtop_norm * res
+            bw, tw = hbot_norm, wtop_norm
         else:
-            bw, tw = wbot_norm * res, htop_norm * res
-
-        bot_xl_norm = xc_norm - wbot_norm // 2
-        bot_yb_norm = yc_norm - hbot_norm // 2
-        top_xl_norm = xc_norm - wtop_norm // 2
-        top_yb_norm = yc_norm - htop_norm // 2
-
-        bot_box = BBox(bot_xl_norm, bot_yb_norm, bot_xl_norm + wbot_norm,
-                       bot_yb_norm + hbot_norm, res, unit_mode=True)
-        top_box = BBox(top_xl_norm, top_yb_norm, top_xl_norm + wtop_norm,
-                       top_yb_norm + htop_norm, res, unit_mode=True)
+            bw, tw = wbot_norm, htop_norm
 
         idc, irms, ipeak = self.get_via_em_specs(vname, bot_layer, top_layer, via_type=vtype,
                                                  bm_dim=(bw, bot_len), tm_dim=(tw, top_len),
@@ -939,19 +956,18 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             iac_rms=irms * ntot,
             iac_peak=ipeak * ntot,
             params=params,
-            top_box=top_box,
-            bot_box=bot_box,
         )
 
     def design_resistor(self, res_type, res_targ, idc=0.0, iac_rms=0.0,
                         iac_peak=0.0, num_even=True, **kwargs):
+        # type: (str, float, float, float, float, int, Any) -> Tuple[int, int, int, int]
         """Finds the optimal resistor dimension that meets the given specs.
 
         Assumes resistor length does not effect EM specs.
 
         Parameters
         ----------
-        res_type : string
+        res_type : str
             the resistor type.
         res_targ : float
             target resistor, in Ohms.
@@ -972,21 +988,16 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             number of resistors needed in parallel.
         num_ser : int
             number of resistors needed in series.
-        w : float
-            width of a unit resistor, in meters.
-        l : float
-            length of a unit resistor, in meters.
+        w : int
+            width of a unit resistor, in resolution units.
+        l : int
+            length of a unit resistor, in resolution units.
         """
-        resolution = self.resolution
         rsq = self.get_res_rsquare(res_type)
-        wmin, wmax = self.get_res_width_bounds(res_type)
-        lmin, lmax = self.get_res_length_bounds(res_type)
+        wmin_unit, wmax_unit = self.get_res_width_bounds(res_type)
+        lmin_unit, lmax_unit = self.get_res_length_bounds(res_type)
         min_nsq = self.get_res_min_nsquare(res_type)
 
-        wmin_unit = int(round(wmin / resolution))
-        wmax_unit = int(round(wmax / resolution))
-        lmin_unit = int(round(lmin / resolution))
-        lmax_unit = int(round(lmax / resolution))
         # make sure width is always even
         wmin_unit = -2 * (-wmin_unit // 2)
         wmax_unit = 2 * (wmax_unit // 2)
@@ -1002,7 +1013,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             idc_par = idc / npar
             iac_rms_par = iac_rms / npar
             iac_peak_par = iac_peak / npar
-            res_idc, res_irms, res_ipeak = self.get_res_em_specs(res_type, wmax, **kwargs)
+            res_idc, res_irms, res_ipeak = self.get_res_em_specs(res_type, wmax_unit, **kwargs)
             if (0.0 < res_idc < idc_par or 0.0 < res_irms < iac_rms_par or
                     0.0 < res_ipeak < iac_peak_par):
                 npar_iter.up()
@@ -1015,8 +1026,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                     if lcur_unit < max(lmin_unit, int(math.ceil(min_nsq * wcur_unit))):
                         w_iter.down()
                     else:
-                        tmp = self.get_res_em_specs(res_type, wcur_unit * resolution,
-                                                    l=lcur_unit * resolution, **kwargs)
+                        tmp = self.get_res_em_specs(res_type, wcur_unit, l=lcur_unit, **kwargs)
                         res_idc, res_irms, res_ipeak = tmp
                         if (0.0 < res_idc < idc_par or 0.0 < res_irms < iac_rms_par or
                                 0.0 < res_ipeak < iac_peak_par):
@@ -1036,16 +1046,14 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
         # step 3: fix maximum length violation by having resistor in series.
         num_par, wopt_unit, lopt_unit = npar_iter.get_last_save_info()
-        wopt = wopt_unit * resolution
         if lopt_unit > lmax_unit:
             num_ser = -(-lopt_unit // lmax_unit)
-            lopt = round(lopt_unit / num_ser / resolution) * resolution
+            lopt_unit = -(-lopt_unit // num_ser)
         else:
             num_ser = 1
-            lopt = lopt_unit * resolution
 
         # step 4: return answer
-        return num_par, num_ser, wopt * self.layout_unit, lopt * self.layout_unit
+        return num_par, num_ser, wopt_unit, lopt_unit
 
 
 class DummyTechInfo(TechInfo):
@@ -1069,18 +1077,16 @@ class DummyTechInfo(TechInfo):
     def get_threshold_layers(self, mos_type, threshold, res_type=None):
         return []
 
-    def get_dnw_layers(self):
-        # type: () -> List[Tuple[str, str]]
-        return []
-
     def get_exclude_layer(self, layer_id):
         # type: (int) -> Tuple[str, str]
-        """Returns the metal exclude layer"""
         return '', ''
 
     def get_dnw_margin_unit(self, dnw_mode):
         # type: (str) -> int
         return 0
+
+    def get_dnw_layers(self):
+        return []
 
     def get_res_metal_layers(self, layer_id):
         # type: (int) -> List[Tuple[str, str]]
@@ -1095,14 +1101,14 @@ class DummyTechInfo(TechInfo):
     def get_via_drc_info(self, vname, vtype, mtype, mw_unit, is_bot):
         return (0, 0), [(0, 0)], [(0, 0)], (0, 0), [(0, 0)], None, None
 
-    def get_min_space(self, layer_type, width, unit_mode=False, same_color=False):
+    def get_min_space(self, layer_type, width, unit_mode=True, same_color=False):
         return 0
 
-    def get_min_line_end_space(self, layer_type, width, unit_mode=False):
+    def get_min_line_end_space(self, layer_type, width, unit_mode=True):
         return 0
 
-    def get_min_length(self, layer_type, width):
-        return 0.0
+    def get_min_length(self, layer_type, w_unit):
+        return 0
 
     def get_layer_id(self, layer_name):
         return -1

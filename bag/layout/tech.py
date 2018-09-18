@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import List, Tuple, Union, Optional, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Tuple, Optional, Callable, Dict, Any
 
 import abc
 
@@ -10,10 +10,13 @@ if TYPE_CHECKING:
     from bag.layout.util import BBox
     from bag.layout.template import TemplateBase
 
+    ViaArrEncType = Optional[List[Tuple[int, int]]]
+
 
 class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
     """An implementation of TechInfo that implements most methods with a technology file."""
     def __init__(self, config, tech_params, mos_entry_name='mos'):
+        # type: (Dict[str, Any], Dict[str, Any], str) -> None
         TechInfo.__init__(self, config['resolution'], config['layout_unit'],
                           config['tech_lib'], tech_params)
 
@@ -24,15 +27,25 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_metal_em_specs(self, layer_name, w, l=-1, vertical=False, **kwargs):
+        # type: (str, int, int, bool, Any) -> Tuple[float, float, float]
         return float('inf'), float('inf'), float('inf')
 
     @abc.abstractmethod
-    def get_via_em_specs(self, via_name, bm_layer, tm_layer, via_type='square',
-                         bm_dim=(-1, -1), tm_dim=(-1, -1), array=False, **kwargs):
+    def get_via_em_specs(self, via_name,  # type: str
+                         bm_layer,  # type: str
+                         tm_layer,  # type: str
+                         via_type='square',  # type: str
+                         bm_dim=(-1, -1),  # type: Tuple[int, int]
+                         tm_dim=(-1, -1),  # type: Tuple[int, int]
+                         array=False,  # type: bool
+                         **kwargs,  # type: Any
+                         ):
+        # type: (...) -> Tuple[float ,float, float]
         return float('inf'), float('inf'), float('inf')
 
     @abc.abstractmethod
     def get_res_em_specs(self, res_type, w, l=-1, **kwargs):
+        # type: (str, int, int, Any) -> Tuple[float, float, float]
         return float('inf'), float('inf'), float('inf')
 
     @abc.abstractmethod
@@ -46,15 +59,18 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def get_via_arr_enc(self, vname, vtype, mtype, mw_unit, is_bot):
-        # type: (...) -> Tuple[Optional[List[Tuple[int, int]]], Optional[Callable[[int, int], bool]]]
+    def get_via_arr_enc(self,
+                        vname,  # type: str
+                        vtype,  # type: str
+                        mtype,  # type: str
+                        mw_unit,  # type: int
+                        is_bot,  # type: bool
+                        ):
+        # type: (...) -> Tuple[ViaArrEncType, Optional[Callable[[int, int], bool]]]
         return None, None
 
-    @property
-    def pin_purpose(self):
-        return self.config.get('pin_purpose', 'pin')
-
     def get_via_types(self, bmtype, tmtype):
+        # type: (str, str) -> List[Tuple[str, int]]
         default = [('square', 1), ('vrect', 2), ('hrect', 2)]
         if 'via_type_order' in self.config:
             table = self.config['via_type_order']
@@ -211,8 +227,11 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
                 return sp
         return None
 
-    def get_min_space_unit(self, layer_type, w_unit, same_color=False):
-        # type: (str, int, bool) -> int
+    def get_min_space(self, layer_type, w_unit, unit_mode=True, same_color=False):
+        # type: (str, int, bool, bool) -> int
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
         if not same_color or 'sp_sc_min' not in self.config:
             config_name = 'sp_min'
         else:
@@ -220,39 +239,21 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
 
         return self._space_helper(config_name, layer_type, w_unit)
 
-    def get_min_line_end_space_unit(self, layer_type, w_unit):
-        return self._space_helper('sp_le_min', layer_type, w_unit)
-
-    def get_min_space(self, layer_type, width, unit_mode=False, same_color=False):
-        # type: (str, float, bool, bool) -> Union[float, int]
-        res = self.config['resolution']
+    def get_min_line_end_space(self, layer_type, width, unit_mode=True):
+        # type: (str, int, bool) -> int
         if not unit_mode:
-            width = int(round(width / res))
+            raise ValueError('unit_mode = False not supported.')
 
-        ans = self.get_min_space_unit(layer_type, width, same_color=same_color)
-
-        if unit_mode:
-            return ans
-        return ans * res
-
-    def get_min_line_end_space(self, layer_type, width, unit_mode=False):
-        # type: (str, float, bool) -> Union[float, int]
-        res = self.config['resolution']
-        if not unit_mode:
-            width = int(round(width / res))
-
-        ans = self.get_min_line_end_space_unit(layer_type, width)
-
-        if unit_mode:
-            return ans
-        return ans * res
+        return self._space_helper('sp_le_min', layer_type, width)
 
     def layer_id_to_type(self, layer_id):
+        # type: (int) -> str
         name_dict = self.config['layer_name']
         type_dict = self.config['layer_type']
         return type_dict[name_dict[layer_id]]
 
-    def get_min_length_unit(self, layer_type, w_unit):
+    def get_min_length(self, layer_type, w_unit):
+        # type: (int, int) -> int
         len_min_config = self.config['len_min']
         if layer_type not in len_min_config:
             raise ValueError('Unsupported layer type: %s' % layer_type)
@@ -277,19 +278,18 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
 
         return -(-l_unit // 2) * 2
 
-    def get_min_length(self, layer_type, width):
-        res = self.resolution
-        w_unit = int(round(width / res))
-        return res * self.get_min_length_unit(layer_type, w_unit)
-
     def get_res_rsquare(self, res_type):
+        # type: (str) -> float
         return self.config['resistor']['info'][res_type]['rsq']
 
     def get_res_width_bounds(self, res_type):
+        # type: (str) -> Tuple[int, int]
         return self.config['resistor']['info'][res_type]['w_bounds']
 
     def get_res_length_bounds(self, res_type):
+        # type: (str) -> Tuple[int, int]
         return self.config['resistor']['info'][res_type]['l_bounds']
 
     def get_res_min_nsquare(self, res_type):
+        # type: (str) -> float
         return self.config['resistor']['info'][res_type]['min_nsq']
