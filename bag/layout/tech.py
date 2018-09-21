@@ -253,7 +253,7 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
         return type_dict[name_dict[layer_id]]
 
     def get_min_length(self, layer_type, w_unit):
-        # type: (int, int) -> int
+        # type: (str, int) -> int
         len_min_config = self.config['len_min']
         if layer_type not in len_min_config:
             raise ValueError('Unsupported layer type: %s' % layer_type)

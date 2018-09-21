@@ -942,7 +942,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                   'num_cols': nx,
                   'sp_rows': spy,
                   'sp_cols': spx,
-                  # increase left/bottom enclusion if off-center.
+                  # increase left/bottom enclosure if off-center.
                   'enc1': [enc1_x, enc1_x, enc1_y, enc1_y],
                   'enc2': [enc2_x, enc2_x, enc2_y, enc2_y],
                   'cut_width': vdim[0],
@@ -950,12 +950,16 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                   }
 
         ntot = nx * ny
+        arr_w = nx * (spx + vdim[0]) - spx
+        arr_h = ny * (spy + vdim[1]) - spy
         return dict(
             resistance=0.0,
             idc=idc * ntot,
             iac_rms=irms * ntot,
             iac_peak=ipeak * ntot,
             params=params,
+            bot_box=BBox(0, 0, arr_w + 2 * enc1_x, arr_h + 2 * enc1_y),
+            top_box=BBox(0, 0, arr_w + 2 * enc2_x, arr_h + 2 * enc2_y),
         )
 
     def design_resistor(self, res_type, res_targ, idc=0.0, iac_rms=0.0,
