@@ -22,7 +22,10 @@ class HalfInt(Integral):
     """A class that represents a half integer."""
 
     def __init__(self, dbl_val):
-        self._val = dbl_val
+        if isinstance(dbl_val, Integral):
+            self._val = int(dbl_val)
+        else:
+            raise ValueError('HafInt internal value must be an integer.')
 
     @classmethod
     def convert(cls, val):
@@ -50,6 +53,14 @@ class HalfInt(Integral):
         if self._val % 2 == 0:
             return '{:d}'.format(self._val // 2)
         return '{:d}.5'.format(self._val // 2)
+
+    def up(self):
+        # type: () -> None
+        self._val += 1
+
+    def down(self):
+        # type: () -> None
+        self._val -= 1
 
     def __str__(self):
         return repr(self)
@@ -491,6 +502,7 @@ class WireArray(object):
         deprecated parameter.
     """
 
+    # noinspection PyUnusedLocal
     def __init__(self, track_id, lower, upper, res=None, unit_mode=True):
         # type: (TrackID, int, int, float, bool) -> None
         if not unit_mode:
