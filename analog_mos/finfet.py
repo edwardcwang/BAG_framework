@@ -2409,7 +2409,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         s_x_list = list(range(0, num_seg * wire_pitch + 1, 2 * wire_pitch))
         d_x_list = list(range(wire_pitch, num_seg * wire_pitch + 1, 2 * wire_pitch))
 
-        drain_parity = (source_parity + 1) % mos_conn_modullus
         # determine drain/source via location
         if sdir == 0:
             ds_code = 2
@@ -2428,7 +2427,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                                  source_parity=source_parity)
             _, d_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y,
                                                  md_y, d_x_list, d_x_list, ds_code == 2, 0, 2,
-                                                 source_parity=drain_parity)
+                                                 source_parity=source_parity)
             g_warrs = self.draw_g_connection(template, lch_unit, fg, sd_pitch, 0, od_y, md_y,
                                              d_x_list, is_sub=False, is_diode=True)
 
@@ -2482,7 +2481,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                                  source_parity=source_parity)
             _, d_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y,
                                                  md_y, d_x_list, d_x_list, d_align, ddir, 2,
-                                                 source_parity=drain_parity)
+                                                 source_parity=source_parity)
             g_warrs = self.draw_g_connection(template, lch_unit, fg, sd_pitch, 0, od_y, md_y,
                                              g_x_list, is_sub=False)
 
