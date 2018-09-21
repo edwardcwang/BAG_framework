@@ -46,7 +46,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
-        # type: (int, int, bool, **kwargs) -> Dict[str, Any]
+        # type: (int, int, bool, Any) -> Dict[str, Any]
         """Returns a dictionary containing transistor edge layout information.
 
         The returned dictionary must have two entries
@@ -81,7 +81,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
-        # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
+        # type: (int, int, str, str, int, Any) -> Dict[str, Any]
         """Returns the transistor information dictionary.
 
         The returned dictionary must have the following entries:
@@ -125,7 +125,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info, **kwargs):
-        # type: (int, Any, Any, **kwargs) -> List[int]
+        # type: (int, Any, Any, Any) -> List[int]
         """Returns a list of valid extension widths in mos_pitch units.
 
         the list should be sorted in increasing order, and any extension widths greater than
@@ -148,7 +148,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info, **kwargs):
-        # type: (int, int, int, Any, Any, **kwargs) -> Dict[str, Any]
+        # type: (int, int, int, Any, Any, Any) -> Dict[str, Any]
         """Returns the extension layout information dictionary.
 
         Parameters
@@ -175,7 +175,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_sub_ring_ext_info(self, sub_type, height, fg, end_ext_info, **kwargs):
-        # type: (str, int, int, Any, **kwargs) -> Dict[str, Any]
+        # type: (str, int, int, Any, Any) -> Dict[str, Any]
         """Returns the SubstrateRing extension layout information dictionary.
 
         Parameters
@@ -200,7 +200,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_substrate_info(self, lch_unit, w, sub_type, threshold, fg, blk_pitch=1, **kwargs):
-        # type: (int, int, str, str, int, int, int, **kwargs) -> Dict[str, Any]
+        # type: (int, int, str, str, int, int, Any) -> Dict[str, Any]
         """Returns the substrate layout information dictionary.
 
         Parameters
@@ -229,7 +229,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_analog_end_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
-        # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
+        # type: (int, str, str, int, bool, int, Any) -> Dict[str, Any]
         """Returns the AnalogBase end row layout information dictionary.
 
         Parameters
@@ -258,7 +258,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_sub_ring_end_info(self, sub_type, threshold, fg, end_ext_info, **kwargs):
-        # type: (str, str, int, Any, **kwargs) -> Dict[str, Any]
+        # type: (str, str, int, Any, Any) -> Dict[str, Any]
         """Returns the SubstrateRing inner end row layout information dictionary.
 
         Parameters
@@ -570,9 +570,9 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             if isinstance(lay_name, tuple):
                 lay_name = lay_name[0]
             lay_type = self.tech_info.get_layer_type(lay_name)
-            min_len = self.tech_info.get_min_length_unit(lay_type, w)
+            min_len = self.tech_info.get_min_length(lay_type, w)
             min_len = max(2 * top_ext, -(-min_len // 2) * 2)
-            sp_le = self.tech_info.get_min_line_end_space_unit(lay_type, w)
+            sp_le = self.tech_info.get_min_line_end_space(lay_type, w)
             conn_info[lay] = dict(
                 w=w,
                 direction=direction,
@@ -955,7 +955,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     def get_placement_info(self, grid, top_layer, fg_tot, lch_unit, guard_ring_nf,
                            left_end, right_end, is_laygo, **kwargs):
-        # type: (RoutingGrid, int, int, int, int, bool, bool, bool, **kwargs) -> PlaceInfo
+        # type: (RoutingGrid, int, int, int, int, bool, bool, bool, Any) -> PlaceInfo
         """Compute edge block placement information.
 
         Parameters
