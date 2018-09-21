@@ -4,7 +4,6 @@
 """
 
 from typing import TYPE_CHECKING, Tuple, Union, Iterable, Dict, List, Sequence, Any
-from bag.typing import TrackType
 
 from math import trunc, ceil, floor
 from numbers import Integral, Real
@@ -16,6 +15,7 @@ from ...util.search import BinaryIterator
 
 if TYPE_CHECKING:
     from .grid import RoutingGrid
+    from bag.typing import TrackType
 
 
 class HalfInt(Integral):
@@ -854,7 +854,7 @@ class Port(object):
         ----------
         grid : RoutingGrid
             the RoutingGrid of this Port.
-        loc : Tuple[Union[float, int], Union[float, int]]
+        loc : Tuple[int, int]
             the X/Y coordinate shift.
         orient : str
             the new orientation.

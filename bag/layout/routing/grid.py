@@ -4,7 +4,6 @@
 """
 
 from typing import TYPE_CHECKING, Sequence, Union, Tuple, List, Optional, Dict, Any
-from bag.typing import TrackType
 
 from pybag.layout import BBox
 from pybag.layout.pyutil import Orientation, Orient2D
@@ -16,6 +15,7 @@ from .base import HalfInt
 
 if TYPE_CHECKING:
     from bag.layout.core import TechInfo
+    from bag.typing import TrackType
 
 
 class RoutingGrid(object):
@@ -160,7 +160,7 @@ class RoutingGrid(object):
     def get_flip_parity_at(self,  # type: RoutingGrid
                            bot_layer,  # type: int
                            top_layer,  # type: int
-                           loc,  # type: Tuple[Union[int, float], Union[int, float]]
+                           loc,  # type: Tuple[int, int]
                            orient,  # type: str
                            unit_mode=True,  # type: bool
                            ):
@@ -173,7 +173,7 @@ class RoutingGrid(object):
             the bottom layer ID, inclusive.
         top_layer : int
             the top layer ID, inclusive.
-        loc : Tuple[Union[int, float], Union[int, float]]
+        loc : Tuple[int, int]
             the instance origin location.
         orient : str
             the instance orientation.
@@ -533,7 +533,7 @@ class RoutingGrid(object):
 
         Returns
         -------
-        space : Union[float, int]
+        space : int
             the line-end spacing.
         """
         if not unit_mode:
@@ -941,14 +941,14 @@ class RoutingGrid(object):
         return self.w_tracks[layer_id], self.sp_tracks[layer_id]
 
     def get_track_parity(self, layer_id, tr_idx):
-        # type: (int, Union[float, int, HalfInt]) -> int
+        # type: (int, TrackType) -> int
         """Returns the parity of the given track.
 
         Parameters
         ----------
         layer_id : int
             the layer ID.
-        tr_idx : Union[float, int, HalfInt]
+        tr_idx : TrackType
             the track index.
 
         Returns
@@ -965,14 +965,14 @@ class RoutingGrid(object):
         return 1
 
     def get_layer_name(self, layer_id, tr_idx):
-        # type: (int, Union[float, int, HalfInt]) -> str
+        # type: (int, TrackType) -> str
         """Returns the layer name of the given track.
 
         Parameters
         ----------
         layer_id : int
             the layer ID.
-        tr_idx : Union[float, int, HalfInt]
+        tr_idx : TrackType
             the track index.
 
         Returns
@@ -989,14 +989,14 @@ class RoutingGrid(object):
             return layer_name
 
     def get_wire_bounds(self, layer_id, tr_idx, width=1, unit_mode=True):
-        # type: (int, Union[int, float, HalfInt], int, bool) -> Tuple[int, int]
+        # type: (int, TrackType, int, bool) -> Tuple[int, int]
         """Calculate the wire bounds coordinate.
 
         Parameters
         ----------
         layer_id : int
             the layer ID.
-        tr_idx : Union[int, float, HalfInt]
+        tr_idx : TrackType
             the center track index.
         width : int
             width of wire in number of tracks.
@@ -1018,14 +1018,14 @@ class RoutingGrid(object):
         return center - width_unit // 2, center + width_unit // 2
 
     def get_bbox(self, layer_id, tr_idx, lower, upper, width=1, unit_mode=True):
-        # type: (int, Union[int, float, HalfInt], int, int, int, bool) -> BBox
+        # type: (int, TrackType, int, int, int, bool) -> BBox
         """Compute bounding box for the given wire.
 
         Parameters
         ----------
         layer_id : int
             the layer ID.
-        tr_idx : Union[int, float, HalfInt]
+        tr_idx : TrackType
             the center track index.
         lower : int
             the lower coordinate along track direction.
@@ -1152,7 +1152,7 @@ class RoutingGrid(object):
                               layer_id,  # type: int
                               lower,  # type: int
                               upper,  # type: int
-                              num_space=0,  # type: Union[float, int, HalfInt]
+                              num_space=0,  # type: TrackType
                               edge_margin=0,  # type: int
                               half_track=True,  # type: bool
                               unit_mode=True  # type: bool
@@ -1168,7 +1168,7 @@ class RoutingGrid(object):
             the lower coordinate.
         upper : int
             the upper coordinate.
-        num_space : Union[float, int, HalfInt]
+        num_space : TrackType
             number of space tracks to the tracks right outside of the given range.
         edge_margin : int
             minimum space from outer tracks to given range.
@@ -1320,9 +1320,9 @@ class RoutingGrid(object):
 
         Returns
         -------
-        bot_ext : Union[float, int]
+        bot_ext : int
             via extension on the bottom layer.
-        top_ext : Union[float, int]
+        top_ext : int
             via extension on the top layer.
         """
         if not unit_mode:
@@ -1529,7 +1529,7 @@ class RoutingGrid(object):
 
     def transform_track(self,  # type: RoutingGrid
                         layer_id,  # type: int
-                        track_idx,  # type: Union[float, int, HalfInt]
+                        track_idx,  # type: TrackType
                         dx=0,  # type: int
                         dy=0,  # type: int
                         orient='R0',  # type: str
@@ -1542,7 +1542,7 @@ class RoutingGrid(object):
         ----------
         layer_id : int
             the layer ID.
-        track_idx : Union[float, int, Halfint]
+        track_idx : TrackType
             the track index.
         dx : int
             X shift.
@@ -1582,14 +1582,14 @@ class RoutingGrid(object):
         return HalfInt(old_hidx * hidx_scale + hidx_shift - 1)
 
     def track_to_coord(self, layer_id, track_idx, unit_mode=True):
-        # type: (int, Union[float, int, HalfInt], bool) -> int
+        # type: (int, TrackType, bool) -> int
         """Convert given track number to coordinate.
 
         Parameters
         ----------
         layer_id : int
             the layer number.
-        track_idx : Union[float, int, HalfInt]
+        track_idx : TrackType
             the track number.
         unit_mode : bool
             deprecated parameter.
@@ -1766,7 +1766,7 @@ class RoutingGrid(object):
         ----------
         layer_id : int
             the routing layer ID.
-        offset : Union[float, int]
+        offset : int
             the track offset.
         unit_mode : bool
             deprecated parameter.
