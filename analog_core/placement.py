@@ -8,6 +8,7 @@ import bisect
 
 if TYPE_CHECKING:
     from bag.layout.routing import TrackManager
+    from bag.typing import TrackType
 
 
 class WireGroup(object):
@@ -15,8 +16,8 @@ class WireGroup(object):
     def __init__(self,
                  layer_id,  # type: int
                  wire_type,  # type: str
-                 num_tr=0,  # type: Union[float, int]
-                 space=0,  # type: Union[float, int]
+                 num_tr=0,  # type: TrackType
+                 space=0,  # type: TrackType
                  tr_manager=None,  # type: Optional[TrackManager]
                  name_list=None,  # type: Optional[List[str]]
                  track_offset=0,  # type: int
@@ -76,7 +77,7 @@ class WireGroup(object):
 
     @property
     def num_track(self):
-        # type: () -> Union[float, int]
+        # type: () -> TrackType
         return self._num_tr
 
     @property
@@ -212,7 +213,7 @@ class WireTree(object):
                     w1.move_by(self._get_half_space(sp))
 
     def get_wire_groups(self, wire_id, get_next=False):
-        # type: (Tuple[int, int]) -> Optional[List[WireGroup]]
+        # type: (Tuple[int, int], bool) -> Optional[List[WireGroup]]
         idx = bisect.bisect_left(self._wire_ids, wire_id)
         if idx == len(self._wire_ids):
             return None

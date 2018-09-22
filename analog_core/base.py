@@ -83,7 +83,7 @@ class AnalogBaseInfo(object):
 
     def __init__(self, grid, lch, guard_ring_nf, top_layer=None, end_mode=15, min_fg_sep=0,
                  fg_tot=None, **kwargs):
-        # type: (RoutingGrid, float, int, Optional[int], int, int, Optional[int], **kwargs) -> None
+        # type: (RoutingGrid, float, int, Optional[int], int, int, Optional[int], Any) -> None
         tech_cls_name = kwargs.get('tech_cls_name', None)
         half_blk_y = kwargs.get('half_blk_y', True)
 
@@ -102,13 +102,10 @@ class AnalogBaseInfo(object):
         dum_space, dum_width = self._tech_cls.get_dum_conn_track_info(lch_unit)
 
         self._correct_v_pitch = self.grid.get_block_size(self.mconn_port_layer + 1,
-                                                         unit_mode=True,
                                                          half_blk_y=half_blk_y)[1]
         self.grid.ignore_layers_under(self.mconn_port_layer)
-        self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y', override=True,
-                                unit_mode=True)
-        self.grid.add_new_layer(self.dum_port_layer, dum_space, dum_width, 'y', override=True,
-                                unit_mode=True)
+        self.grid.add_new_layer(self.mconn_port_layer, vm_space, vm_width, 'y', override=True)
+        self.grid.add_new_layer(self.dum_port_layer, dum_space, dum_width, 'y', override=True)
         self.grid.update_block_pitch()
 
         # initialize parameters
@@ -136,8 +133,7 @@ class AnalogBaseInfo(object):
         if do_correct_v_pitch:
             return self._correct_v_pitch
         half_blk_y = self._place_kwargs.get('half_blk_y', True)
-        blk_pitch = self.grid.get_block_size(self.top_layer, unit_mode=True,
-                                             half_blk_y=half_blk_y)[1]
+        blk_pitch = self.grid.get_block_size(self.top_layer, half_blk_y=half_blk_y)[1]
         mos_pitch = self._tech_cls.get_mos_pitch(unit_mode=True)
         if not half_blk_y and mos_pitch > 10:
             mos_pitch *= 2
@@ -200,8 +196,8 @@ class AnalogBaseInfo(object):
             self._place_info = self.get_placement_info(new_fg_tot)
             left_margin = self._place_info.edge_margins[0]
             self._sd_xc_unit = left_margin + self._place_info.edge_widths[0]
-            self.grid.set_track_offset(self.mconn_port_layer, left_margin, unit_mode=True)
-            self.grid.set_track_offset(self.dum_port_layer, left_margin, unit_mode=True)
+            self.grid.set_track_offset(self.mconn_port_layer, left_margin)
+            self.grid.set_track_offset(self.dum_port_layer, left_margin)
         else:
             self._fg_tot = None
             self._place_info = None
@@ -212,11 +208,12 @@ class AnalogBaseInfo(object):
         return self._sd_xc_unit
 
     def get_fg_sep_from_hm_space(self, hm_width, round_even=True):
-        # type: (int) -> int
+        # type: (int, bool) -> int
+        grid = self.grid
         hm_layer = self.mconn_port_layer + 1
-        sp = self.grid.get_line_end_space(hm_layer, hm_width, unit_mode=True)  # type: int
-        _, via_ext = self.grid.get_via_extensions(hm_layer - 1, 1, hm_width, unit_mode=True)
-        vm_width = self.grid.get_track_width(hm_layer - 1, 1, unit_mode=True)  # type: int
+        sp = grid.get_line_end_space(hm_layer, hm_width)  # type: int
+        _, via_ext = grid.get_via_extensions(hm_layer - 1, 1, hm_width)
+        vm_width = grid.get_track_width(hm_layer - 1, 1)  # type: int
         sp0 = self.sd_pitch_unit - vm_width - 2 * via_ext  # type: int
         ans = max(0, -(-(sp - sp0) // self.sd_pitch_unit)) + 1
         if round_even and ans % 2 == 1:
@@ -264,17 +261,18 @@ class AnalogBaseInfo(object):
 
         return self.get_placement_info(fg_tot).core_width
 
-    def coord_to_col(self, coord, unit_mode=False, mode=0):
+    def coord_to_col(self, coord, unit_mode=True, mode=0):
+        # type: (int, bool, int) -> int
         """Convert the given X coordinate to transistor column index.
 
         Find the left source/drain index closest to the given coordinate.
 
         Parameters
         ----------
-        coord : Union[float, int]
+        coord : int
             the X coordinate.
         unit_mode : bool
-            True to if coordinate is given in resolution units.
+            deprecated parameter.
         mode : int
             rounding mode.
         Returns
@@ -282,12 +280,10 @@ class AnalogBaseInfo(object):
         col_idx : int
             the left source/drain index closest to the given coordinate.
         """
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
         if self.fg_tot is None:
             raise ValueError('fg_tot is undefined')
-
-        res = self.grid.resolution
-        if not unit_mode:
-            coord = int(round(coord / res))
 
         diff = coord - self._sd_xc_unit
         pitch = self._sd_pitch_unit
@@ -300,7 +296,8 @@ class AnalogBaseInfo(object):
 
         return q
 
-    def col_to_coord(self, col_idx, unit_mode=False):
+    def col_to_coord(self, col_idx, unit_mode=True):
+        # type: (int, bool) -> int
         """Convert the given transistor column index to X coordinate.
 
         Parameters
@@ -308,20 +305,20 @@ class AnalogBaseInfo(object):
         col_idx : int
             the transistor index.  0 is left-most transistor.
         unit_mode : bool
-            True to return coordinate in resolution units.
+            deprecated parameter.
 
         Returns
         -------
-        xcoord : float
+        xcoord : int
             X coordinate of the left source/drain center of the given transistor.
         """
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
         if self.fg_tot is None:
             raise ValueError('fg_tot is undefined')
 
-        coord = self._sd_xc_unit + col_idx * self._sd_pitch_unit
-        if unit_mode:
-            return coord
-        return coord * self.grid.resolution
+        return self._sd_xc_unit + col_idx * self._sd_pitch_unit
 
     def track_to_col_intv(self, layer_id, tr_idx, width=1):
         # type: (int, Union[float, int], int) -> Tuple[int, int]
@@ -329,7 +326,7 @@ class AnalogBaseInfo(object):
         if self.fg_tot is None:
             raise ValueError('fg_tot is undefined')
 
-        lower, upper = self.grid.get_wire_bounds(layer_id, tr_idx, width=width, unit_mode=True)
+        lower, upper = self.grid.get_wire_bounds(layer_id, tr_idx, width=width)
 
         lower_col_idx = (lower - self._sd_xc_unit) // self._sd_pitch_unit  # type: int
         upper_col_idx = -(-(upper - self._sd_xc_unit) // self._sd_pitch_unit)  # type: int
@@ -357,13 +354,11 @@ class AnalogBaseInfo(object):
         track_id : float
             leftmost track ID of the center tracks.
         """
-        x0_unit = self.col_to_coord(col_intv[0], unit_mode=True)
-        x1_unit = self.col_to_coord(col_intv[1], unit_mode=True)
+        x0_unit = self.col_to_coord(col_intv[0])
+        x1_unit = self.col_to_coord(col_intv[1])
         # find track number with coordinate strictly larger than x0
-        t_start = self.grid.find_next_track(layer_id, x0_unit, half_track=True, mode=1,
-                                            unit_mode=True)
-        t_stop = self.grid.find_next_track(layer_id, x1_unit, half_track=True, mode=-1,
-                                           unit_mode=True)
+        t_start = self.grid.find_next_track(layer_id, x0_unit, half_track=True, mode=1)
+        t_stop = self.grid.find_next_track(layer_id, x1_unit, half_track=True, mode=-1)
         ntracks = int(t_stop - t_start + 1)
         tot_tracks = num_tracks * width + (num_tracks - 1) * space
         if ntracks < tot_tracks:
@@ -397,13 +392,13 @@ class AnalogBaseInfo(object):
         min_fg : int
             minimum number of fingers needed to span the given number of tracks.
         """
-        x0 = self.col_to_coord(col_idx, unit_mode=True)
-        x1 = self.col_to_coord(col_idx + fg_margin, unit_mode=True)
+        x0 = self.col_to_coord(col_idx)
+        x1 = self.col_to_coord(col_idx + fg_margin)
         # find track number with coordinate strictly larger than x0
-        t_start = self.grid.find_next_track(layer_id, x1, half_track=True, mode=1, unit_mode=True)
+        t_start = self.grid.find_next_track(layer_id, x1, half_track=True, mode=1)
         # find coordinate of last track
-        xlast = self.grid.track_to_coord(layer_id, t_start + num_tracks - 1, unit_mode=True)
-        xlast += self.grid.get_track_width(layer_id, 1, unit_mode=True) // 2
+        xlast = self.grid.track_to_coord(layer_id, t_start + num_tracks - 1)
+        xlast += self.grid.get_track_width(layer_id, 1) // 2
 
         # divide by source/drain pitch
         q, r = divmod(xlast - x0, self._sd_pitch_unit)
@@ -444,7 +439,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
         tech_params = self.grid.tech_info.tech_params
@@ -734,22 +729,22 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     raise ValueError('Inner substrate does not exist.')
                 port = self._ptap_list[1].get_port(port_name)
                 self._ptap_exports[1].update(sub_port_id_list)
-                wire_yt = port.get_bounding_box(self.grid, self.mos_conn_layer).top
+                wire_yt = port.get_bounding_box(self.grid, self.mos_conn_layer).top_unit
             if not inner or both:
                 port = self._ptap_list[0].get_port(port_name)
                 self._ptap_exports[0].update(sub_port_id_list)
-                wire_yb = port.get_bounding_box(self.grid, self.mos_conn_layer).bottom
+                wire_yb = port.get_bounding_box(self.grid, self.mos_conn_layer).bottom_unit
         elif sub_type == 'ntap':
             if inner:
                 if len(self._ntap_list) != 2:
                     raise ValueError('Inner substrate does not exist.')
                 port = self._ntap_list[0].get_port(port_name)
                 self._ntap_exports[0].update(sub_port_id_list)
-                wire_yb = port.get_bounding_box(self.grid, self.mos_conn_layer).bottom
+                wire_yb = port.get_bounding_box(self.grid, self.mos_conn_layer).bottom_unit
             if not inner or both:
                 port = self._ntap_list[-1].get_port(port_name)
                 self._ntap_exports[-1].update(sub_port_id_list)
-                wire_yt = port.get_bounding_box(self.grid, self.mos_conn_layer).top
+                wire_yt = port.get_bounding_box(self.grid, self.mos_conn_layer).top_unit
         else:
             raise ValueError('Invalid substrate type: %s' % sub_type)
 
@@ -876,10 +871,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         layout_info = self._layout_info
         dum_layer = self.dum_conn_layer
-        xl = layout_info.col_to_coord(start, unit_mode=True)
-        xr = layout_info.col_to_coord(stop, unit_mode=True)
-        htr0 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xl, unit_mode=True))
-        htr1 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xr, unit_mode=True))
+        xl = layout_info.col_to_coord(start)
+        xr = layout_info.col_to_coord(stop)
+        htr0 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xl))
+        htr1 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xr))
 
         edge_mode = 0
         if start > 0:
@@ -893,7 +888,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         # get track indices to export
         used_htr = []
         dum_tr_list = []
-        tr_offset = self.grid.coord_to_track(dum_layer, xc, unit_mode=True) + 0.5
+        tr_offset = self.grid.coord_to_track(dum_layer, xc)
+        tr_offset.up()
         for v in dum_htr_list:
             if v >= htr1:
                 break
@@ -915,13 +911,12 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             tech_cls_name=self._tech_cls_name,
         )
         conn_master = self.new_template(params=params, temp_cls=AnalogMOSDummy)
-        conn_inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
+        conn_inst = self.add_instance(conn_master, loc=loc, orient=orient)
 
         if dum_tr_list:
             warr = conn_inst.get_pin(layer=dum_layer)
-            res = self.grid.resolution
-            yb = int(round(warr.lower / res))
-            yt = int(round(warr.upper / res))
+            yb = warr.lower_unit
+            yt = warr.upper_unit
         else:
             yb = yt = yc
         return used_htr, yb, yt
@@ -936,7 +931,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def draw_mos_decap(self, mos_type, row_idx, col_idx, fg, gate_ext_mode, export_gate=False,
                        inner=False, **kwargs):
-        # type: (str, int, int, int, int, bool, bool, **kwargs) -> Dict[str, WireArray]
+        # type: (str, int, int, int, int, bool, bool, Any) -> Dict[str, WireArray]
         """Draw decap connection."""
         # mark transistors as connected
         val = -1 if inner else 1
@@ -991,7 +986,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         conn_params.update(kwargs)
 
         conn_master = self.new_template(params=conn_params, temp_cls=AnalogMOSDecap)
-        inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
+        inst = self.add_instance(conn_master, loc=loc, orient=orient)
         wires_dict[val].extend(inst.get_all_port_pins('supply'))
         if export_gate:
             return {'g': inst.get_all_port_pins('g')[0]}
@@ -1000,7 +995,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def draw_mos_conn(self, mos_type, row_idx, col_idx, fg, sdir, ddir,
                       s_net='', d_net='', **kwargs):
-        # type: (str, int, int, int, int, int, str, str, **kwargs) -> Dict[str, WireArray]
+        # type: (str, int, int, int, int, int, str, str, Any) -> Dict[str, WireArray]
         """Draw transistor connection.
 
         Parameters
@@ -1109,7 +1104,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             orient = 'MY' if orient == 'R0' else 'R180'
             xc += fg * sd_pitch
         loc = xc, yc
-        conn_inst = self.add_instance(conn_master, loc=loc, orient=orient, unit_mode=True)
+        conn_inst = self.add_instance(conn_master, loc=loc, orient=orient)
 
         return {key: conn_inst.get_pin(name=key, layer=self.mos_conn_layer)
                 for key in conn_inst.port_names_iter()}
@@ -1126,15 +1121,14 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         if xl is None or xr is None:
             return None, None
 
-        res = self.grid.resolution
         if imp_yb is None or imp_yt is None:
             imp_box = None
         else:
-            imp_box = BBox(xl, imp_yb, xr, imp_yt, res, unit_mode=True)
+            imp_box = BBox(xl, imp_yb, xr, imp_yt)
         if thres_yb is None or thres_yt is None:
             thres_box = None
         else:
-            thres_box = BBox(xl, thres_yb, xr, thres_yt, res, unit_mode=True)
+            thres_box = BBox(xl, thres_yb, xr, thres_yt)
 
         return imp_box, thres_box
 
@@ -1352,7 +1346,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         vm_layer = hm_layer - 1
         num_master = len(pinfo_list)
         ext_options = dict(guard_ring_nf=guard_ring_nf)
-        vm_le_sp = grid.get_line_end_space(vm_layer, 1, unit_mode=True)
+        vm_le_sp = grid.get_line_end_space(vm_layer, 1)
         ytop_vm_prev = None
         ytop = ytop_prev = ycur = ybot
         row_y = []
@@ -1381,9 +1375,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                         yt = bconn_y[1]
                         for wg in wire_groups:
                             _, tr_idx, tr_w = wg.last_track
-                            via_ext = grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
-                            y_ttr = grid.get_wire_bounds(hm_layer, tr_idx, width=tr_w,
-                                                         unit_mode=True)[1]
+                            via_ext = grid.get_via_extensions(vm_layer, 1, tr_w)[0]
+                            y_ttr = grid.get_wire_bounds(hm_layer, tr_idx, width=tr_w)[1]
                             ycur = max(ycur, y_ttr + via_ext - yt)
                         ycur = -(-ycur // mos_pitch) * mos_pitch
 
@@ -1412,17 +1405,15 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     # move the top tracks so we can connect to them
                     for wg in wire_groups:
                         _, tr_idx, tr_w = wg.first_track
-                        via_ext = grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
+                        via_ext = grid.get_via_extensions(vm_layer, 1, tr_w)[0]
                         idx_targ = grid.find_next_track(hm_layer, ycur + yb + via_ext,
-                                                        tr_width=tr_w, half_track=True,
-                                                        mode=1, unit_mode=True)
+                                                        tr_width=tr_w, half_track=True, mode=1)
                         if tr_idx < idx_targ:
                             wg.move_by(idx_targ - tr_idx, propagate=True)
                         # update ytop
                         _, last_idx, last_w = wg.last_track
-                        ytop_wire_cur = grid.get_wire_bounds(hm_layer, last_idx, width=last_w,
-                                                             unit_mode=True)[1]
-                        via_ext = grid.get_via_extensions(vm_layer, 1, last_w, unit_mode=True)[0]
+                        ytop_wire_cur = grid.get_wire_bounds(hm_layer, last_idx, width=last_w)[1]
+                        via_ext = grid.get_via_extensions(vm_layer, 1, last_w)[0]
                         if ytop_vm is None:
                             ytop_vm = ytop_wire_cur + via_ext
                         else:
@@ -1445,10 +1436,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 if wire_groups is not None:
                     for wg in wire_groups:
                         _, tr_idx, tr_w = wg.first_track
-                        idx_targ = self.grid.find_next_track(hm_layer, ytop,
-                                                             tr_width=tr_w,
-                                                             half_track=True,
-                                                             mode=1, unit_mode=True)
+                        idx_targ = self.grid.find_next_track(hm_layer, ytop, tr_width=tr_w,
+                                                             half_track=True, mode=1)
                         if tr_idx < idx_targ:
                             wg.move_by(idx_targ - tr_idx, propagate=True)
 
@@ -1482,10 +1471,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     yt = bcy[1]
                     for wg in bwg:
                         _, tr_idx, tr_w = wg.last_track
-                        via_ext = self.grid.get_via_extensions(vm_layer, 1, tr_w, unit_mode=True)[0]
+                        via_ext = self.grid.get_via_extensions(vm_layer, 1, tr_w)[0]
                         idx_max = self.grid.find_next_track(hm_layer, ycur + yt - via_ext,
                                                             tr_width=tr_w, half_track=True,
-                                                            mode=-1, unit_mode=True)
+                                                            mode=-1)
                         if idx_max > tr_idx:
                             wg.move_up(idx_max - tr_idx)
 
@@ -1631,10 +1620,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 self._row_prop_list[pridx]['row_y'] = (yb_row, ybot, ybot + height, yt_row)
                 # get gate/drain/source interval
                 if is_sub:
-                    bot_tr = self.grid.find_next_track(hm_layer, ybot, half_track=True, mode=1,
-                                                       unit_mode=True)
+                    bot_tr = self.grid.find_next_track(hm_layer, ybot, half_track=True, mode=1)
                     top_tr = self.grid.find_next_track(hm_layer, ybot + height, half_track=True,
-                                                       mode=-1, unit_mode=True)
+                                                       mode=-1)
                     cur_tr_intvs['g'] = cur_tr_intvs['g2'] = cur_tr_intvs['ds2'] = None
                     cur_tr_intvs['ds'] = (bot_tr, top_tr + 1)
                     cur_wire_info['g'] = cur_wire_info['g2'] = \
@@ -1647,8 +1635,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                         conn_y = cur_pinfo[widx]
                         if wire_groups is None:
                             wyb = yo + conn_y[0] if no_flip else yo - conn_y[1]
-                            wtr = self.grid.find_next_track(hm_layer, wyb, half_track=True, mode=1,
-                                                            unit_mode=True)
+                            wtr = self.grid.find_next_track(hm_layer, wyb, half_track=True, mode=1)
                             wintv_list.append((wtr, wtr))
                             winfo_list.append((None, None))
                         else:
@@ -1680,7 +1667,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 edge_width = edge_master.bound_box.width_unit
                 if not edge_master.is_empty:
                     edge_inst = self.add_instance(edge_master, loc=(edgel_x0, yo),
-                                                  orient=orient, unit_mode=True)
+                                                  orient=orient)
                     array_box = array_box.merge(edge_inst.array_box)
                     top_bound_box = top_bound_box.merge(edge_inst.bound_box)
                     edge_inst_list.append(edge_inst)
@@ -1688,7 +1675,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 edge_width = 0
 
             inst_loc = (edgel_x0 + edge_width, yo)
-            inst = self.add_instance(master, loc=inst_loc, orient=orient, unit_mode=True)
+            inst = self.add_instance(master, loc=inst_loc, orient=orient)
             array_box = array_box.merge(inst.array_box)
             top_bound_box = top_bound_box.merge(inst.bound_box)
             # record substrate Y coordinates
@@ -1718,8 +1705,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     tech_cls_name=self._tech_cls_name,
                 )
                 conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
-                conn_inst = self.add_instance(conn_master, loc=inst_loc,
-                                              orient=orient, unit_mode=True)
+                conn_inst = self.add_instance(conn_master, loc=inst_loc, orient=orient)
                 sub_type = master.params['sub_type']
                 # save substrate instance
                 if sub_type == 'ptap':
@@ -1730,7 +1716,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     self._ntap_exports.append(set())
 
             if not isinstance(master, AnalogEndRow):
-                sd_yc = inst.translate_master_location((0, master.get_sd_yc()), unit_mode=True)[1]
+                sd_yc = inst.translate_master_location((0, master.get_sd_yc()))[1]
                 self._sd_yc_list.append(sd_yc)
 
             if no_flip:
@@ -1751,8 +1737,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                 edge_width = edge_master.bound_box.width_unit
                 edger_xo = inst.array_box.right_unit + edge_width
                 if not edge_master.is_empty:
-                    edge_inst = self.add_instance(edge_master, loc=(edger_xo, yo),
-                                                  orient=orient_r, unit_mode=True)
+                    edge_inst = self.add_instance(edge_master, loc=(edger_xo, yo), orient=orient_r)
                     array_box = array_box.merge(edge_inst.array_box)
                     top_bound_box = top_bound_box.merge(edge_inst.bound_box)
                     edge_inst_list.append(edge_inst)
@@ -1770,7 +1755,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     y_thres += yo
                 sub_y_list.append((y_imp, y_thres))
                 if not ext_master.is_empty:
-                    self.add_instance(ext_master, loc=(inst_loc[0], yo), unit_mode=True)
+                    self.add_instance(ext_master, loc=(inst_loc[0], yo))
 
                 ext_edge_layout_info = ext_master.get_edge_layout_info()
                 if left_end:
@@ -1784,8 +1769,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     )
                     edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
                     if not edge_master.is_empty:
-                        edge_inst = self.add_instance(edge_master, loc=(edgel_x0, yo),
-                                                      unit_mode=True)
+                        edge_inst = self.add_instance(edge_master, loc=(edgel_x0, yo))
                         edge_inst_list.append(edge_inst)
                 if right_end:
                     edge_params = dict(
@@ -1798,8 +1782,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     )
                     edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
                     if not edge_master.is_empty:
-                        edge_inst = self.add_instance(edge_master, loc=(edger_xo, yo),
-                                                      orient='MY', unit_mode=True)
+                        edge_inst = self.add_instance(edge_master, loc=(edger_xo, yo), orient='MY')
                         edge_inst_list.append(edge_inst)
 
         # gather guard ring ports
@@ -1836,10 +1819,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         self.connect_wires(gr_vss_dum_warrs)
 
         # set array box/size/draw PR boundary
-        self.array_box = BBox(arr_box_x[0], array_box.bottom_unit, arr_box_x[1], array_box.top_unit,
-                              array_box.resolution, unit_mode=True)
-        bound_box = BBox(0, top_bound_box.bottom_unit, tot_width, top_bound_box.top_unit,
-                         top_bound_box.resolution, unit_mode=True)
+        self.array_box = BBox(arr_box_x[0], array_box.bottom_unit, arr_box_x[1], array_box.top_unit)
+        bound_box = BBox(0, top_bound_box.bottom_unit, tot_width, top_bound_box.top_unit)
         if top_layer <= self.mos_conn_layer + 1:
             self.prim_bound_box = bound_box
             self.prim_top_layer = top_layer
@@ -2066,11 +2047,11 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                            sub_type,  # type: str
                            sub_list,  # type: List[Instance]
                            row_idx_list,  # type: List[int]
-                           lower=None,  # type: Optional[Union[float, int]]
-                           upper=None,  # type: Optional[Union[float, int]]
+                           lower=None,  # type: Optional[int]
+                           upper=None,  # type: Optional[int]
                            sup_wires=None,  # type: Optional[Union[WireArray, List[WireArray]]]
                            sup_margin=0,  # type: int
-                           unit_mode=False,  # type: bool
+                           unit_mode=True,  # type: bool
                            sup_width=None,  # type: Optional[int]
                            sup_tids=None,  # type: Optional[List[Union[float, int, None]]]
                            ):
@@ -2084,16 +2065,16 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             list of substrates to connect.
         row_idx_list : List[int]
             list of substrate row indices.
-        lower : Optional[Union[float, int]]
+        lower : Optional[int]
             lower supply track coordinates.
-        upper : Optional[Union[float, int]]
+        upper : Optional[int]
             upper supply track coordinates.
         sup_wires : Optional[Union[WireArray, List[WireArray]]]
             If given, will connect these horizontal wires to supply on mconn layer.
         sup_margin : int
             supply wires mconn layer connection horizontal margin in number of tracks.
         unit_mode : bool
-            True if lower/upper is specified in resolution units.
+            deprecated parameter.
         sup_width : Optional[int]
             If given, will use this as the wire width.
         sup_tids : Optional[List[Union[float, int, None]]]
@@ -2104,6 +2085,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         track_buses : list[bag.layout.routing.WireArray]
             list of substrate tracks buses.
         """
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
         port_name = 'VDD' if sub_type == 'ntap' else 'VSS'
 
         if sup_wires is not None and isinstance(sup_wires, WireArray):
@@ -2156,7 +2140,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
             if warr_list:
                 track_warr = self.connect_to_tracks(warr_list, track_id, track_lower=lower,
-                                                    track_upper=upper, unit_mode=unit_mode)
+                                                    track_upper=upper)
                 sub_warr_list.append(track_warr)
             if sup_wires is not None:
                 wlower, wupper = warr_list[0].lower_unit, warr_list[0].upper_unit
@@ -2165,7 +2149,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                         raise ValueError('vdd/vss wires must be on layer %d' % hm_layer)
                     tmin, tmax = self.grid.get_overlap_tracks(hm_layer - 1, conn_warr.lower_unit,
                                                               conn_warr.upper_unit,
-                                                              half_track=True, unit_mode=True)
+                                                              half_track=True)
                     new_warr_list = []
                     for warr in warr_list:
                         for tid in warr.track_id:
@@ -2174,20 +2158,19 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                             elif tmin <= tid:
                                 if not self.mos_conn_track_used(tid, margin=sup_margin):
                                     warr_tmp = WireArray(TrackID(hm_layer - 1, tid), lower=wlower,
-                                                         upper=wupper, res=self.grid.resolution,
-                                                         unit_mode=True)
+                                                         upper=wupper)
                                     new_warr_list.append(warr_tmp)
                     self.connect_to_tracks(new_warr_list, conn_warr.track_id)
 
         return sub_warr_list
 
     def fill_dummy(self,  # type: AnalogBase
-                   lower=None,  # type: Optional[Union[float, int]]
-                   upper=None,  # type: Optional[Union[float, int]]
+                   lower=None,  # type: Optional[int]
+                   upper=None,  # type: Optional[int]
                    vdd_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
                    vss_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
                    sup_margin=0,  # type: int
-                   unit_mode=False,  # type: bool
+                   unit_mode=True,  # type: bool
                    vdd_width=None,  # type: Optional[int]
                    vss_width=None,  # type: Optional[int]
                    sup_tids=None,  # type: Optional[List[Union[float, int, None]]]
@@ -2199,9 +2182,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        lower : Optional[Union[float, int]]
+        lower : Optional[int]
             lower coordinate for the supply tracks.
-        upper : Optional[Union[float, int]]
+        upper : Optional[int]
             upper coordinate for the supply tracks.
         vdd_warrs : Optional[Union[WireArray, List[WireArray]]]
             vdd wires to be connected.
@@ -2210,7 +2193,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         sup_margin : int
             vdd/vss wires mos conn layer margin in number of tracks.
         unit_mode : bool
-            True if lower/upper are specified in resolution units.
+            deprecated parameter
         vdd_width : Optional[int]
             If given, will use this width for drawing VDD wire.
         vss_width : Optional[int]
@@ -2225,6 +2208,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         ntap_wire_arrs : List[WireArray]
             list of N-tap substrate WireArrays.
         """
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
         if sup_tids is None:
             sup_tids = [None, None]
 
@@ -2265,14 +2251,14 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list,
                                                      list(range(len(self._ptap_list))),
                                                      lower=lower, upper=upper, sup_wires=vss_warrs,
-                                                     sup_margin=sup_margin, unit_mode=unit_mode,
-                                                     sup_width=vss_width, sup_tids=sup_tids)
+                                                     sup_margin=sup_margin, sup_width=vss_width,
+                                                     sup_tids=sup_tids)
         elif self._ptap_list:
             # NMOS exists, only connect bottom substrate to upper level metal
             ptap_wire_arrs = self._connect_substrate('ptap', self._ptap_list[:1], [0],
                                                      lower=lower, upper=upper, sup_wires=vss_warrs,
-                                                     sup_margin=sup_margin, unit_mode=unit_mode,
-                                                     sup_width=vss_width, sup_tids=sup_tids[:1])
+                                                     sup_margin=sup_margin, sup_width=vss_width,
+                                                     sup_tids=sup_tids[:1])
         else:
             ptap_wire_arrs = []
 
@@ -2282,15 +2268,15 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list,
                                                      list(range(len(self._ntap_list))),
                                                      lower=lower, upper=upper, sup_wires=vdd_warrs,
-                                                     sup_margin=sup_margin, unit_mode=unit_mode,
-                                                     sup_width=vdd_width, sup_tids=sup_tids)
+                                                     sup_margin=sup_margin, sup_width=vdd_width,
+                                                     sup_tids=sup_tids)
         elif self._ntap_list:
             # PMOS exists, only connect top substrate to upper level metal
             ntap_wire_arrs = self._connect_substrate('ntap', self._ntap_list[-1:],
                                                      [len(self._ntap_list) - 1],
                                                      lower=lower, upper=upper, sup_wires=vdd_warrs,
-                                                     sup_margin=sup_margin, unit_mode=unit_mode,
-                                                     sup_width=vdd_width, sup_tids=sup_tids[-1:])
+                                                     sup_margin=sup_margin, sup_width=vdd_width,
+                                                     sup_tids=sup_tids[-1:])
         else:
             ntap_wire_arrs = []
 
@@ -2388,7 +2374,6 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             bot_dum_only = not export_both
 
         # step 5: create dictionary from dummy half-track index to Y coordinates
-        res = self.grid.resolution
         bot_dum_y_table = {}
         bot_dum_tracks = []
         if bot_sub_inst is not None:
@@ -2397,7 +2382,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             for htr in bot_dhtr[0]:
                 bot_dum_y_table[htr] = [sub_yb, sub_yb]
             for warr in cap_wires_dict[1]:
-                lower, upper = int(round(warr.lower / res)), int(round(warr.upper / res))
+                lower, upper = warr.lower_unit, warr.upper_unit
                 for tid in warr.track_id:
                     htr = int(2 * tid + 1)
                     if htr in bot_dum_y_table:
@@ -2417,7 +2402,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             for htr in top_dhtr[0]:
                 top_dum_y_table[htr] = [sub_yt, sub_yt]
             for warr in cap_wires_dict[-1]:
-                lower, upper = int(round(warr.lower / res)), int(round(warr.upper / res))
+                lower, upper = warr.lower_unit, warr.upper_unit
                 for tid in warr.track_id:
                     htr = int(2 * tid + 1)
                     if htr in top_dum_y_table:
@@ -2459,7 +2444,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         for htr, dum_y in chain(bot_dum_y_table.items(), top_dum_y_table.items()):
             dum_yb, dum_yt = dum_y
             if dum_yt > dum_yb:
-                self.add_wires(dum_layer, (htr - 1) / 2, dum_y[0], dum_y[1], unit_mode=True)
+                self.add_wires(dum_layer, (htr - 1) / 2, dum_y[0], dum_y[1])
 
         # update substrate master to only export necessary wires
         if bot_sub_inst is not None:
@@ -2555,10 +2540,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         dum_layer = self.dum_conn_layer
 
         col0, col1 = intv
-        xl = layout_info.col_to_coord(col0, unit_mode=True)
-        xr = layout_info.col_to_coord(col1, unit_mode=True)
-        htr0 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xl, unit_mode=True))
-        htr1 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xr, unit_mode=True))
+        xl = layout_info.col_to_coord(col0)
+        xr = layout_info.col_to_coord(col1)
+        htr0 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xl))
+        htr1 = int(1 + 2 * self.grid.coord_to_track(dum_layer, xr))
 
         htr_pitch = self._tech_cls.get_dum_conn_pitch() * 2
         start, stop = htr0 + 2, htr1
@@ -2623,8 +2608,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         x0 = self._layout_info.sd_xc_unit
         sd_pitch = self._layout_info.sd_pitch_unit
-        dum_tr_offset = grid.coord_to_track(self.dum_conn_layer, x0, unit_mode=True) + 0.5
-        mconn_tr_offset = grid.coord_to_track(mconn_layer, x0, unit_mode=True) + 0.5
+        dum_tr_offset = grid.coord_to_track(self.dum_conn_layer, x0) + 0.5
+        mconn_tr_offset = grid.coord_to_track(mconn_layer, x0) + 0.5
         dum_tracks = [tr - dum_tr_offset for tr in dum_tracks]
         new_port_tracks, port_htr = [], []
         for tr in port_tracks:
@@ -2636,10 +2621,10 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         exc_tracks = []
         mconn_off2 = int(round(2 * mconn_tr_offset))
         for x_port in range(x0, x0 + self._fg_tot * sd_pitch + 1, sd_pitch):
-            cur_tr = grid.coord_to_track(mconn_layer, x_port, unit_mode=True)
+            cur_tr = grid.coord_to_track(mconn_layer, x_port)
             cur_htr = int(round(2 * cur_tr)) + 1
             if (cur_htr - mconn_off2 not in port_htr and
-                    not self.is_track_available(mconn_layer, cur_tr, yb, yt, unit_mode=True)):
+                    not self.is_track_available(mconn_layer, cur_tr, yb, yt)):
                 exc_tracks.append((cur_htr - mconn_off2 - 1) / 2)
 
         sub_inst.new_master_with(dum_tracks=dum_tracks, port_tracks=new_port_tracks,
@@ -2650,7 +2635,7 @@ class AnalogBaseEnd(TemplateBase):
     """The end row of AnalogBase."""
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
@@ -2690,8 +2675,6 @@ class AnalogBaseEnd(TemplateBase):
         if options is None:
             options = {}
 
-        res = self.grid.resolution
-
         end_params['is_end'] = True
         end_master = self.new_template(params=end_params, temp_cls=AnalogEndRow)
 
@@ -2719,11 +2702,11 @@ class AnalogBaseEnd(TemplateBase):
             )
             edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
             if not edge_master.is_empty:
-                edge_inst = self.add_instance(edge_master, loc=(xcur, 0), unit_mode=True)
+                edge_inst = self.add_instance(edge_master, loc=(xcur, 0))
                 array_box = array_box.merge(edge_inst.array_box)
                 xcur = edge_inst.array_box.right_unit
 
-        inst = self.add_instance(end_master, loc=(xcur, 0), unit_mode=True)
+        inst = self.add_instance(end_master, loc=(xcur, 0))
         array_box = array_box.merge(inst.array_box)
         xcur = inst.array_box.right_unit
 
@@ -2741,11 +2724,10 @@ class AnalogBaseEnd(TemplateBase):
             edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
             if not edge_master.is_empty:
                 xcur += edge_master.array_box.right_unit
-                edge_inst = self.add_instance(edge_master, loc=(xcur, 0), orient='MY',
-                                              unit_mode=True)
+                edge_inst = self.add_instance(edge_master, loc=(xcur, 0), orient='MY')
                 array_box = array_box.merge(edge_inst.array_box)
 
-        top_bound_box = BBox(0, 0, tot_width, inst.bound_box.top_unit, res, unit_mode=True)
+        top_bound_box = BBox(0, 0, tot_width, inst.bound_box.top_unit)
         self.set_size_from_bound_box(top_layer, top_bound_box)
         self.array_box = array_box
 
