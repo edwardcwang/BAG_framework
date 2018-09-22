@@ -29,30 +29,42 @@ class HalfInt(Integral):
 
     @classmethod
     def convert(cls, val):
+        # type: (Any) -> HalfInt
         if isinstance(val, HalfInt):
             return val
         elif isinstance(val, Integral):
             return HalfInt(2 * int(val))
         elif isinstance(val, Real):
-            tmp = 2 * float(val)
+            tmp = float(2 * val)
             if tmp.is_integer():
                 return HalfInt(int(tmp))
         raise ValueError('Cannot convert {} type {} to HalfInt.'.format(val, type(val)))
 
+    @property
+    def value(self):
+        # type: () -> Union[int, float]
+        q, r = divmod(self._val, 2)
+        return q if r == 0 else q + 0.5
+
     def is_integer(self):
+        # type: () -> bool
         return self._val % 2 == 0
 
     def div2(self, round_up=False):
-        if self._val % 2 == 0 or not round_up:
-            self._val //= 2
+        # type: (bool) -> HalfInt
+        q, r = divmod(self._val, 2)
+        if r or not round_up:
+            self._val = q
         else:
-            self._val = (self._val + 1) // 2
+            self._val = q + 1
         return self
 
     def val_str(self):
-        if self._val % 2 == 0:
-            return '{:d}'.format(self._val // 2)
-        return '{:d}.5'.format(self._val // 2)
+        # type: () -> str
+        q, r = divmod(self._val, 2)
+        if r == 0:
+            return '{:d}'.format(q)
+        return '{:d}.5'.format(q)
 
     def up(self):
         # type: () -> None
@@ -74,71 +86,68 @@ class HalfInt(Integral):
     def __eq__(self, other):
         if isinstance(other, HalfInt):
             return self._val == other._val
-        elif isinstance(other, Real):
-            return self._val == 2 * other
-        else:
-            return NotImplemented
+        return self._val == 2 * other
+
+    def __ne__(self, other):
+        return not (self == other)
 
     def __le__(self, other):
         if isinstance(other, HalfInt):
             return self._val <= other._val
-        elif isinstance(other, Real):
-            return self._val <= 2 * other
-        else:
-            return NotImplemented
+        return self._val <= 2 * other
 
     def __lt__(self, other):
         if isinstance(other, HalfInt):
             return self._val < other._val
-        elif isinstance(other, Real):
-            return self._val < 2 * other
-        else:
-            return NotImplemented
+        return self._val < 2 * other
+
+    def __ge__(self, other):
+        return not (self < other)
+
+    def __gt__(self, other):
+        return not (self <= other)
 
     def __add__(self, other):
-        if isinstance(other, HalfInt):
-            return HalfInt(self._val + other._val)
-        elif isinstance(other, Integral):
-            return HalfInt(self._val + 2 * int(other))
-        elif isinstance(other, Real):
-            tmp = 2 * float(other)
-            if tmp.is_integer():
-                return HalfInt(self._val + int(tmp))
-
-        raise ValueError('Cannot add HalfInt to {} type {}'.format(other, type(other)))
+        other = HalfInt.convert(other)
+        return HalfInt(self._val + other._val)
 
     def __sub__(self, other):
         return self + (-other)
 
     def __mul__(self, other):
-        if isinstance(other, HalfInt):
-            if self.is_integer() or other.is_integer():
-                return HalfInt((self._val * other._val) // 2)
-            else:
-                raise TypeError('Cannot multiply {} with {}'.format(self, other))
-        elif isinstance(other, Integral):
-            return HalfInt(self._val * int(other))
-        elif isinstance(other, Real):
-            tmp = float(other)
-            if tmp.is_integer():
-                return HalfInt(self._val * int(tmp))
+        other = HalfInt.convert(other)
+        q, r = divmod(self._val * other._val, 2)
+        if r == 0:
+            return HalfInt(q)
 
-        raise TypeError('Cannot multiply HalfInt with {} type {}'.format(other, type(other)))
+        raise ValueError('result is not a HalfInt.')
 
     def __truediv__(self, other):
-        raise TypeError('Cannot true-divide HalfInt')
+        other = HalfInt.convert(other)
+        q, r = divmod(2 * self._val, other._val)
+        if r == 0:
+            return HalfInt(q)
+
+        raise ValueError('result is not a HalfInt.')
 
     def __floordiv__(self, other):
-        raise TypeError('Cannot floor-divide HalfInt')
+        other = HalfInt.convert(other)
+        return HalfInt(2 * (self._val // other._val))
 
     def __mod__(self, other):
-        raise TypeError('Cannot mod HalfInt')
+        other = HalfInt.convert(other)
+        return HalfInt(self._val % other._val)
 
     def __divmod__(self, other):
-        raise TypeError('Cannot divmod HalfInt')
+        other = HalfInt.convert(other)
+        q, r = divmod(self._val, other._val)
+        return HalfInt(2 * q), HalfInt(r)
 
     def __pow__(self, other, modulus=None):
-        raise TypeError('Cannot pow HalfInt')
+        other = HalfInt.convert(other)
+        if self.is_integer() and other.is_integer():
+            return HalfInt(2 * (self._val // 2)**(other._val // 2))
+        raise ValueError('result is not a HalfInt.')
 
     def __lshift__(self, other):
         raise TypeError('Cannot lshift HalfInt')
@@ -156,42 +165,28 @@ class HalfInt(Integral):
         raise TypeError('Cannot or HalfInt')
 
     def __radd__(self, other):
-        if isinstance(other, Integral):
-            return HalfInt(self._val + 2 * int(other))
-        elif isinstance(other, Real):
-            tmp = 2 * float(other)
-            if tmp.is_integer():
-                return HalfInt(self._val + int(tmp))
-
-        raise TypeError('Cannot add HalfInt to {} with type {}'.format(other, type(other)))
+        return self + other
 
     def __rsub__(self, other):
         return (-self) + other
 
     def __rmul__(self, other):
-        if isinstance(other, Integral):
-            return HalfInt(self._val * int(other))
-        elif isinstance(other, Real):
-            tmp = float(other)
-            if tmp.is_integer():
-                return HalfInt(self._val * int(tmp))
-
-        raise TypeError('Cannot multiply HalfInt with {} type {}'.format(other, type(other)))
+        return self * other
 
     def __rtruediv__(self, other):
-        raise TypeError('Cannot true-divide HalfInt')
+        return HalfInt.convert(other) / self
 
     def __rfloordiv__(self, other):
-        raise TypeError('Cannot floor-divide HalfInt')
+        return HalfInt.convert(other) // self
 
     def __rmod__(self, other):
-        raise TypeError('Cannot mod HalfInt')
+        return HalfInt.convert(other) % self
 
     def __rdivmod__(self, other):
-        raise TypeError('Cannot divmod HalfInt')
+        return HalfInt.convert(other).__divmod__(self)
 
     def __rpow__(self, other):
-        raise TypeError('Cannot pow HalfInt')
+        return HalfInt.convert(other)**self
 
     def __rlshift__(self, other):
         raise TypeError('Cannot lshift HalfInt')
@@ -209,53 +204,46 @@ class HalfInt(Integral):
         raise TypeError('Cannot or HalfInt')
 
     def __iadd__(self, other):
-        if isinstance(other, HalfInt):
-            self._val += other._val
-            return self
-        elif isinstance(other, Integral):
-            self._val += 2 * int(other)
-            return self
-        elif isinstance(other, Real):
-            tmp = 2 * float(other)
-            if tmp.is_integer():
-                self._val += int(tmp)
-                return self
-
-        raise TypeError('Cannot add HalfInt to {} with type {}'.format(other, type(other)))
+        other = HalfInt.convert(other)
+        self._val += other._val
+        return self
 
     def __isub__(self, other):
         self.__iadd__(-other)
         return self
 
     def __imul__(self, other):
-        if isinstance(other, HalfInt):
-            if self.is_integer() or other.is_integer():
-                self._val = (self._val * other._val) // 2
-                return self
-            else:
-                raise TypeError('Cannot multiply {} with {}'.format(self, other))
-        elif isinstance(other, Integral):
-            self._val *= int(other)
+        other = HalfInt.convert(other)
+        q, r = divmod(self._val * other._val, 2)
+        if r == 0:
+            self._val = q
             return self
-        elif isinstance(other, Real):
-            tmp = float(other)
-            if tmp.is_integer():
-                self._val *= int(tmp)
-                return self
-
-        raise TypeError('Cannot multiply HalfInt with {} type {}'.format(other, type(other)))
+        raise ValueError('result is not a HalfInt.')
 
     def __itruediv__(self, other):
-        raise TypeError('Cannot true-divide HalfInt')
+        other = HalfInt.convert(other)
+        q, r = divmod(2 * self._val, other._val)
+        if r == 0:
+            self._val = q
+            return self
+        raise ValueError('result is not a HalfInt.')
 
     def __ifloordiv__(self, other):
-        raise TypeError('Cannot floor-divide HalfInt')
+        other = HalfInt.convert(other)
+        self._val = 2 * (self._val // other._val)
+        return self
 
     def __imod__(self, other):
-        raise TypeError('Cannot mod HalfInt')
+        other = HalfInt.convert(other)
+        self._val %= other._val
+        return self
 
     def __ipow__(self, other):
-        raise TypeError('Cannot pow HalfInt')
+        other = HalfInt.convert(other)
+        if self.is_integer() and other.is_integer():
+            self._val = 2 * (self._val // 2) ** (other._val // 2)
+            return self
+        raise ValueError('result is not a HalfInt.')
 
     def __ilshift__(self, other):
         raise TypeError('Cannot lshift HalfInt')
@@ -299,25 +287,25 @@ class HalfInt(Integral):
         return int(self)
 
     def __round__(self, ndigits=0):
-        if self._val % 2 == 0:
+        if self.is_integer():
             return HalfInt(self._val)
         else:
             return HalfInt(round(self._val / 2) * 2)
 
     def __trunc__(self):
-        if self._val % 2 == 0:
+        if self.is_integer():
             return HalfInt(self._val)
         else:
             return HalfInt(trunc(self._val / 2) * 2)
 
     def __floor__(self):
-        if self._val % 2 == 0:
+        if self.is_integer():
             return HalfInt(self._val)
         else:
             return HalfInt(floor(self._val / 2) * 2)
 
     def __ceil__(self):
-        if self._val % 2 == 0:
+        if self.is_integer():
             return HalfInt(self._val)
         else:
             return HalfInt(ceil(self._val / 2) * 2)
@@ -565,7 +553,6 @@ class WireArray(object):
         tid0 = warr_list[0].track_id
         layer = tid0.layer_id
         width = tid0.width
-        res = warr_list[0].resolution
         lower, upper = warr_list[0].lower_unit, warr_list[0].upper_unit
         tid_list = sorted(set((idx for warr in warr_list for idx in warr.track_id)))
         base_idx = tid_list[0]
@@ -577,7 +564,7 @@ class WireArray(object):
                 raise ValueError('pitch mismatch.')
 
         return WireArray(TrackID(layer, base_idx, width=width, num=len(tid_list), pitch=diff),
-                         lower, upper, res=res)
+                         lower, upper)
 
     @classmethod
     def single_warr_iter(cls, warr):

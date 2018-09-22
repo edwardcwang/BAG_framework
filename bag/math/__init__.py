@@ -30,6 +30,7 @@ def float_to_si_string(num, precision=6):
     ans : str
         the string representation of the given number using SI suffix.
     """
+    num = float(num)
     if abs(num) < 1e-21:
         return '0'
     exp = np.log10(abs(num))
