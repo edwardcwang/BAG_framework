@@ -249,6 +249,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._port_params = {}
         self._prim_ports = {}
         self._prim_port_params = {}
+        self._inst_list = []
         self._array_box = None  # type: BBox
         self._fill_box = None  # type: BBox
         self.prim_top_layer = None
@@ -482,14 +483,70 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # type: () -> None
         """Update all instances in this template to have the correct track parity.
         """
-        # TODO: fix this
-        for inst in self._layout.inst_iter():
+        for inst in self._inst_list:
             top_layer = inst.master.top_layer
             bot_layer = self.grid.get_bot_common_layer(inst.master.grid, top_layer)
             loc = inst.location_unit
             fp_dict = self.grid.get_flip_parity_at(bot_layer, top_layer, loc,
                                                    inst.orientation)
             inst.new_master_with(flip_parity=fp_dict)
+
+    def is_track_available(self,  # type: TemplateBase
+                           layer_id,  # type: int
+                           tr_idx,  # type: TrackType
+                           lower,  # type: int
+                           upper,  # type: int
+                           width=1,  # type: int
+                           sp=0,  # type: int
+                           sp_le=0,  # type: int
+                           unit_mode=True,  # type: bool
+                           ):
+        # type: (...) -> bool
+        """Returns True if the given track is available.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer ID.
+        tr_idx : TrackType
+            the track ID.
+        lower : int
+            the lower track coordinate.
+        upper : int
+            the upper track coordinate.
+        width : int
+            the track width.
+        sp : int
+            required space around the track.
+        sp_le : int
+            required line-end space around the track.
+        unit_mode : bool
+            deprecated parameter.
+
+        Returns
+        -------
+        available : bool
+            True if the track is available.
+        """
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
+        is_x = self.grid.is_horizontal(layer_id)
+        track_id = TrackID(layer_id, tr_idx, width=width)
+        warr = WireArray(track_id, lower, upper)
+        sp = max(sp, self.grid.get_space(layer_id, width))
+        sp_le = max(sp_le, self.grid.get_line_end_space(layer_id, width))
+        test_box = warr.get_bbox_array(self.grid).base
+        if is_x:
+            test_box = test_box.expand(dx=sp_le, dy=sp)
+        else:
+            test_box = test_box.expand(dx=sp, dy=sp_le)
+
+        try:
+            next(self.blockage_iter(layer_id, test_box))
+        except StopIteration:
+            return True
+        return False
 
     def get_rect_bbox(self, layer):
         # type: (LayerType) -> BBox
@@ -788,16 +845,18 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        inst : Instance
+        inst : PyLayInstance
             the added instance.
         """
         if not unit_mode:
             raise ValueError('unit_mode = False not supported.')
 
         self.children.add(master.key)
-        return self._layout.add_instance(self.grid, master, self._lib_name, inst_name,
+        inst = self._layout.add_instance(self.grid, master, self._lib_name, inst_name,
                                          loc[0], loc[1], Orientation[orient].value,
                                          nx, ny, spx, spy)
+        self._inst_list.append(inst)
+        return inst
 
     def add_instance_primitive(self,  # type: TemplateBase
                                lib_name,  # type: str
