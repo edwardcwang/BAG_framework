@@ -48,6 +48,33 @@ def lvs_passed(retcode, log_file):
     return test_str in cmd_output, log_file
 
 
+# noinspection PyUnusedLocal
+def query_passed(retcode, log_file):
+    # type: (int, str) -> Tuple[bool, str]
+    """Check if query passed
+
+    Parameters
+    ----------
+    retcode : int
+        return code of the query process.
+    log_file : str
+        log file name.
+
+    Returns
+    -------
+    success : bool
+        True if query passed.
+    log_file : str
+        the log file name.
+    """
+    if not os.path.isfile(log_file):
+        return False, ''
+
+    cmd_output = read_file(log_file)
+    test_str = 'OK: Terminating.'
+    return test_str in cmd_output, log_file
+
+
 class Calibre(VirtuosoChecker):
     """A subclass of VirtuosoChecker that uses Calibre for verification.
 
@@ -67,7 +94,7 @@ class Calibre(VirtuosoChecker):
         the Calibre source.added file location.  Environment variable is supported.
         Default value is '$DK/Calibre/lvs/source.added'.
     rcx_mode : str
-        the RC extraction mode.  Either 'pex' or 'xact'.  Defaults to 'pex'.
+        the RC extraction mode.  Either 'pex' or 'xact' or 'starrc'.  Defaults to 'pex'.
     xact_rules : str
         the XACT rules file name.
     """
@@ -85,12 +112,14 @@ class Calibre(VirtuosoChecker):
 
         self.default_rcx_params = kwargs.get('rcx_params', {})
         self.default_lvs_params = kwargs.get('lvs_params', {})
-        self.lvs_run_dir = lvs_run_dir
+        self.lvs_run_dir = rcx_run_dir if rcx_mode == 'starrc' else lvs_run_dir
         self.lvs_runset = lvs_runset
         self.rcx_run_dir = rcx_run_dir
         self.rcx_runset = rcx_runset
         self.xact_rules = xact_rules
         self.rcx_mode = rcx_mode
+        self.query_input = kwargs.get('query_input', {})
+        self.lvs_source_file = kwargs.get('lvs_source_file', {})
 
     def get_rcx_netlists(self, lib_name, cell_name):
         # type: (str, str) -> List[str]
@@ -109,10 +138,13 @@ class Calibre(VirtuosoChecker):
             a list of generated extraction netlist file names.  The first index is the main netlist.
         """
         # PVS generate schematic cellviews directly.
-        return ['%s.pex.netlist' % cell_name,
-                '%s.pex.netlist.pex' % cell_name,
-                '%s.pex.netlist.%s.pxi' % (cell_name, cell_name),
-                ]
+        if self.rcx_mode == 'starrc':
+            return ['%s.spf' % cell_name]
+        else:
+            return ['%s.pex.netlist' % cell_name,
+                    '%s.pex.netlist.pex' % cell_name,
+                    '%s.pex.netlist.%s.pxi' % (cell_name, cell_name),
+                    ]
 
     def setup_lvs_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
@@ -161,17 +193,43 @@ class Calibre(VirtuosoChecker):
         run_dir = os.path.join(self.rcx_run_dir, lib_name, cell_name)
         os.makedirs(run_dir, exist_ok=True)
         lay_file, sch_file = self._get_lay_sch_files(run_dir)
-
         with open_temp(prefix='rcxLog', dir=run_dir, delete=False) as logf:
             log_file = logf.name
-
         flow_list = []
         cmd, log, env, cwd = self.setup_export_layout(lib_name, cell_name, lay_file, lay_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
         cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
 
-        if self.rcx_mode == 'pex':
+        if self.rcx_mode == 'starrc':
+            # check if LVS was run prior to run_rcx
+            sp_file = os.path.join(self.rcx_run_dir, cell_name + '.sp')
+            if not os.path.isfile(sp_file):
+                raise Exception('Did you forget to do run_lvs first?')
+
+            # now query the LVS file using query.input
+            with open_temp(prefix='queryLog', dir=run_dir, delete=False) as queryf:
+                query_file = queryf.name
+
+            # copy query.input from PDK_INSTALL_DIR to rcx_run_dir if it isn't already there
+            query_input_pdk = self.query_input
+            query_input = os.path.join(self.rcx_run_dir, 'query.input')
+            if not os.path.isfile(query_input):
+                os.symlink(query_input_pdk, query_input)
+
+            cmd = ['calibre', '-query_input', query_input, '-query', self.rcx_run_dir+'/svdb', cell_name]
+            flow_list.append((cmd, query_file, None, self.rcx_run_dir, lambda rc, lf: query_passed(rc, lf)[0]))
+
+            # generate new cmd for StarXtract
+            cmd_content, result = self.modify_starrc_cmd(cell_name, rcx_params_actual, query_input, sch_file)
+
+            # save cmd for StarXtract
+            with open_temp(dir=run_dir, delete=False) as cmd_file:
+                cmd_fname = cmd_file.name
+                cmd_file.write(cmd_content)
+
+            cmd = ['StarXtract', cmd_fname]
+        elif self.rcx_mode == 'pex':
             # generate new runset
             runset_content, result = self.modify_pex_runset(lib_name, cell_name, lay_view,
                                                             lay_file, sch_file, rcx_params_actual)
@@ -232,7 +290,7 @@ class Calibre(VirtuosoChecker):
             the layout gds file name.
         netlist : str
             the schematic netlist file.
-        lvs_params : dict[str, any]
+        lvs_params : Dict[str, Any]
             override LVS parameters.
 
         Returns
@@ -287,7 +345,7 @@ class Calibre(VirtuosoChecker):
             the layout gds file name.
         netlist : str
             the schematic netlist file.
-        rcx_params : dict[str, any]
+        rcx_params : Dict[str, Any]
             override RCX parameters.
 
         Returns
@@ -341,7 +399,7 @@ class Calibre(VirtuosoChecker):
             the layout gds file name.
         netlist : str
             the schematic netlist file.
-        xact_params : dict[string, any]
+        xact_params : Dict[string, Any]
             additional XACT parameters.
 
         Returns
@@ -369,3 +427,36 @@ class Calibre(VirtuosoChecker):
                                             )
 
         return content, os.path.join(run_dir, output_name)
+
+    def modify_starrc_cmd(self, cell_name, starrc_params, query_input, sch_file):
+        """Modify the cmd file.
+
+        Parameters
+        ----------
+        cell_name : str
+            the cell name.
+        starrc_params : Dict[str, Any]
+            override StarRC parameters.
+        query_input : str
+            the path to query.input file
+        sch_file : str
+            the schematic netlist
+
+        Returns
+        -------
+        starrc_cmd : str
+            the new StarXtract cmd file.
+        output_name : str
+            the extracted netlist file.
+        """
+        run_dir = os.path.abspath(self.rcx_run_dir)
+        output_name = '%s.spf' % cell_name
+
+        template = read_file(self.rcx_runset)
+        starrc_cmd = Template(template).render(cell_name=cell_name,
+                                               query_input=query_input,
+                                               extract_type=starrc_params['extract'].get('type'),
+                                               sch_file=sch_file,
+                                               )
+
+        return starrc_cmd, os.path.join(run_dir, output_name)
