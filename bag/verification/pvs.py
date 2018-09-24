@@ -120,7 +120,8 @@ class PVS(VirtuosoChecker):
         # PVS generate schematic cellviews directly.
         return []
 
-    def setup_lvs_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
+    def setup_lvs_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout',
+                       params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
 
         run_dir = os.path.join(self.lvs_run_dir, lib_name, cell_name)
@@ -133,7 +134,8 @@ class PVS(VirtuosoChecker):
         flow_list = []
         cmd, log, env, cwd = self.setup_export_layout(lib_name, cell_name, lay_file, lay_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
-        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view, None)
+        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view,
+                                                         None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
 
         lvs_params_actual = self.default_lvs_params.copy()
@@ -144,7 +146,7 @@ class PVS(VirtuosoChecker):
             log_file = logf.name
 
         # generate new runset
-        runset_content = self.modify_lvs_runset(cell_name, lvs_params_actual)
+        runset_content = self.modify_lvs_runset(run_dir, cell_name, lvs_params_actual)
 
         # save runset
         with open_temp(dir=run_dir, delete=False) as runset_file:
@@ -161,7 +163,8 @@ class PVS(VirtuosoChecker):
 
         return flow_list
 
-    def setup_rcx_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
+    def setup_rcx_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout',
+                       params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
 
         # update default RCX parameters.
@@ -176,7 +179,8 @@ class PVS(VirtuosoChecker):
             log_file = logf.name
 
         # generate new runset
-        runset_content = self.modify_rcx_runset(lib_name, cell_name, lay_view, rcx_params_actual)
+        runset_content = self.modify_rcx_runset(run_dir, lib_name, cell_name, lay_view,
+                                                rcx_params_actual)
 
         # save runset
         with open_temp(dir=run_dir, delete=False) as runset_file:
@@ -185,18 +189,21 @@ class PVS(VirtuosoChecker):
 
         cmd = ['qrc', '-cmd', runset_fname]
 
-        # NOTE: qrc needs to be run in the current working directory (virtuoso directory), because it needs to
-        # access cds.lib
+        # NOTE: qrc needs to be run in the current working directory (virtuoso directory),
+        # because it needs to access cds.lib
         return [(cmd, log_file, None, os.environ['BAG_WORK_DIR'], rcx_passed)]
 
-    def modify_lvs_runset(self, cell_name, lvs_params):
+    def modify_lvs_runset(self, run_dir, cell_name, lvs_params):
+        # type: (str, str, Dict[str, Any]) -> str
         """Modify the given LVS runset file.
 
         Parameters
         ----------
+        run_dir : str
+            the run directory.
         cell_name : str
             the cell name.
-        lvs_params : dict[str, any]
+        lvs_params : Dict[str, Any]
             override LVS parameters.
 
         Returns
@@ -204,8 +211,6 @@ class PVS(VirtuosoChecker):
         content : str
             the new runset content.
         """
-        run_dir = os.path.join(os.path.abspath(self.lvs_run_dir), cell_name)
-        os.makedirs(run_dir, exist_ok=True)
         # convert runset content to dictionary
         lvs_options = {}
         for line in readlines_iter(self.lvs_runset):
@@ -233,18 +238,21 @@ class PVS(VirtuosoChecker):
 
         return ''.join(content_list)
 
-    def modify_rcx_runset(self, lib_name, cell_name, lay_view, rcx_params):
+    def modify_rcx_runset(self, run_dir, lib_name, cell_name, lay_view, rcx_params):
+        # type: (str, str, str, str, Dict[str, Any]) -> str
         """Modify the given QRC options.
 
         Parameters
         ----------
+        run_dir : str
+            the run directory.
         lib_name : str
             the library name.
         cell_name : str
             the cell name.
         lay_view : str
             the layout view.
-        rcx_params : dict[str, any]
+        rcx_params : Dict[str, Any]
             override RCX parameters.
 
         Returns
@@ -252,7 +260,6 @@ class PVS(VirtuosoChecker):
         content : str
             the new runset content.
         """
-        run_dir = os.path.join(os.path.abspath(self.lvs_run_dir), cell_name)
         data_dir = os.path.join(run_dir, 'svdb')
         # wait 10 seconds to see if not finding directory is just a network drive problem
         query_timeout = 10.0
@@ -269,7 +276,8 @@ class PVS(VirtuosoChecker):
         rcx_options = yaml.load(content)
 
         # setup inputs/outputs
-        rcx_options['input_db']['design_cell_name'] = '{} {} {}'.format(cell_name, lay_view, lib_name)
+        rcx_options['input_db']['design_cell_name'] = '{} {} {}'.format(cell_name, lay_view,
+                                                                        lib_name)
         rcx_options['input_db']['run_name'] = cell_name
         rcx_options['input_db']['directory_name'] = data_dir
         rcx_options['output_db']['cdl_out_map_directory'] = run_dir

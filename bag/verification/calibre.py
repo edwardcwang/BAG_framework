@@ -112,9 +112,9 @@ class Calibre(VirtuosoChecker):
 
         self.default_rcx_params = kwargs.get('rcx_params', {})
         self.default_lvs_params = kwargs.get('lvs_params', {})
-        self.lvs_run_dir = rcx_run_dir if rcx_mode == 'starrc' else lvs_run_dir
+        self.lvs_run_dir = os.path.abspath(rcx_run_dir if rcx_mode == 'starrc' else lvs_run_dir)
         self.lvs_runset = lvs_runset
-        self.rcx_run_dir = rcx_run_dir
+        self.rcx_run_dir = os.path.abspath(rcx_run_dir)
         self.rcx_runset = rcx_runset
         self.xact_rules = xact_rules
         self.rcx_mode = rcx_mode
@@ -146,7 +146,8 @@ class Calibre(VirtuosoChecker):
                     '%s.pex.netlist.%s.pxi' % (cell_name, cell_name),
                     ]
 
-    def setup_lvs_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
+    def setup_lvs_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout',
+                       params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
 
         run_dir = os.path.join(self.lvs_run_dir, lib_name, cell_name)
@@ -158,7 +159,8 @@ class Calibre(VirtuosoChecker):
         flow_list = []
         cmd, log, env, cwd = self.setup_export_layout(lib_name, cell_name, lay_file, lay_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
-        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view, None)
+        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view,
+                                                         None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
 
         lvs_params_actual = self.default_lvs_params.copy()
@@ -169,7 +171,8 @@ class Calibre(VirtuosoChecker):
             log_file = logf.name
 
         # generate new runset
-        runset_content = self.modify_lvs_runset(lib_name, cell_name, lay_view, lay_file, sch_file, lvs_params_actual)
+        runset_content = self.modify_lvs_runset(run_dir, lib_name, cell_name, lay_view, lay_file,
+                                                sch_file, lvs_params_actual)
 
         # save runset
         with open_temp(dir=run_dir, delete=False) as runset_file:
@@ -178,11 +181,12 @@ class Calibre(VirtuosoChecker):
 
         cmd = ['calibre', '-gui', '-lvs', '-runset', runset_fname, '-batch']
 
-        flow_list.append((cmd, log_file, None, self.lvs_run_dir, lvs_passed))
+        flow_list.append((cmd, log_file, None, run_dir, lvs_passed))
 
         return flow_list
 
-    def setup_rcx_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
+    def setup_rcx_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout',
+                       params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
 
         # update default RCX parameters.
@@ -198,12 +202,13 @@ class Calibre(VirtuosoChecker):
         flow_list = []
         cmd, log, env, cwd = self.setup_export_layout(lib_name, cell_name, lay_file, lay_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
-        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view, None)
+        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view,
+                                                         None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
 
         if self.rcx_mode == 'starrc':
             # check if LVS was run prior to run_rcx
-            sp_file = os.path.join(self.rcx_run_dir, cell_name + '.sp')
+            sp_file = os.path.join(run_dir, cell_name + '.sp')
             if not os.path.isfile(sp_file):
                 raise Exception('Did you forget to do run_lvs first?')
 
@@ -217,11 +222,14 @@ class Calibre(VirtuosoChecker):
             if not os.path.isfile(query_input):
                 os.symlink(query_input_pdk, query_input)
 
-            cmd = ['calibre', '-query_input', query_input, '-query', self.rcx_run_dir+'/svdb', cell_name]
-            flow_list.append((cmd, query_file, None, self.rcx_run_dir, lambda rc, lf: query_passed(rc, lf)[0]))
+            cmd = ['calibre', '-query_input', query_input,
+                   '-query', os.path.join(run_dir, 'svdb'), cell_name]
+            flow_list.append((cmd, query_file, None, run_dir,
+                              lambda rc, lf: query_passed(rc, lf)[0]))
 
             # generate new cmd for StarXtract
-            cmd_content, result = self.modify_starrc_cmd(cell_name, rcx_params_actual, query_input, sch_file)
+            cmd_content, result = self.modify_starrc_cmd(run_dir, cell_name, rcx_params_actual,
+                                                         query_input, sch_file)
 
             # save cmd for StarXtract
             with open_temp(dir=run_dir, delete=False) as cmd_file:
@@ -231,7 +239,7 @@ class Calibre(VirtuosoChecker):
             cmd = ['StarXtract', cmd_fname]
         elif self.rcx_mode == 'pex':
             # generate new runset
-            runset_content, result = self.modify_pex_runset(lib_name, cell_name, lay_view,
+            runset_content, result = self.modify_pex_runset(run_dir, lib_name, cell_name, lay_view,
                                                             lay_file, sch_file, rcx_params_actual)
 
             # save runset
@@ -242,7 +250,8 @@ class Calibre(VirtuosoChecker):
             cmd = ['calibre', '-gui', '-pex', '-runset', runset_fname, '-batch']
         else:
             # generate new runset
-            runset_content, result = self.modify_xact_rules(cell_name, lay_file, sch_file, rcx_params_actual)
+            runset_content, result = self.modify_xact_rules(run_dir, cell_name, lay_file, sch_file,
+                                                            rcx_params_actual)
 
             # save runset
             with open_temp(dir=run_dir, delete=False) as runset_file:
@@ -254,10 +263,12 @@ class Calibre(VirtuosoChecker):
 
             num_cores = rcx_params_actual.get('num_cores', 2)
             cmd = ['calibre', '-lvs', '-hier', '-turbo', '%d' % num_cores, '-nowait', runset_fname]
-            flow_list.append((cmd, lvs_file, None, self.rcx_run_dir, lambda rc, lf: lvs_passed(rc, lf)[0]))
+            flow_list.append(
+                (cmd, lvs_file, None, run_dir, lambda rc, lf: lvs_passed(rc, lf)[0]))
 
             extract_mode = rcx_params_actual.get('extract_mode', 'rcc')
-            cmd = ['calibre', '-xact', '-3d', '-%s' % extract_mode, '-turbo', '%d' % num_cores, runset_fname]
+            cmd = ['calibre', '-xact', '-3d', '-%s' % extract_mode, '-turbo', '%d' % num_cores,
+                   runset_fname]
 
         # noinspection PyUnusedLocal
         def rcx_passed(retcode, log_fname):
@@ -265,7 +276,7 @@ class Calibre(VirtuosoChecker):
                 return None, log_fname
             return result, log_fname
 
-        flow_list.append((cmd, log_file, None, self.rcx_run_dir, rcx_passed))
+        flow_list.append((cmd, log_file, None, run_dir, rcx_passed))
         return flow_list
 
     @classmethod
@@ -274,12 +285,15 @@ class Calibre(VirtuosoChecker):
         sch_file = os.path.join(run_dir, 'schematic.net')
         return lay_file, sch_file
 
-    def modify_lvs_runset(self, lib_name, cell_name, lay_view, gds_file, netlist,
+    def modify_lvs_runset(self, run_dir, lib_name, cell_name, lay_view, gds_file, netlist,
                           lvs_params):
+        # type: (str, str, str, str, str, str, Dict[str, Any]) -> str
         """Modify the given LVS runset file.
 
         Parameters
         ----------
+        run_dir : str
+            the run directory.
         lib_name : str
             the library name.
         cell_name : str
@@ -298,8 +312,6 @@ class Calibre(VirtuosoChecker):
         content : str
             the new runset content.
         """
-        run_dir = os.path.abspath(self.lvs_run_dir)
-
         # convert runset content to dictionary
         lvs_options = {}
         for line in readlines_iter(self.lvs_runset):
@@ -329,12 +341,15 @@ class Calibre(VirtuosoChecker):
 
         return ''.join(('*%s: %s\n' % (key, val) for key, val in lvs_options.items()))
 
-    def modify_pex_runset(self, lib_name, cell_name, lay_view, gds_file, netlist,
+    def modify_pex_runset(self, run_dir, lib_name, cell_name, lay_view, gds_file, netlist,
                           rcx_params):
+        # type: (str, str ,str, str, str, str, Dict[str, Any]) -> Tuple[str, str]
         """Modify the given RCX runset file.
 
         Parameters
         ----------
+        run_dir : str
+            the run directory.
         lib_name : str
             the library name.
         cell_name : str
@@ -355,8 +370,6 @@ class Calibre(VirtuosoChecker):
         output_name : str
             the extracted netlist file.
         """
-        run_dir = os.path.abspath(self.rcx_run_dir)
-
         # convert runset content to dictionary
         rcx_options = {}
         for line in readlines_iter(self.rcx_runset):
@@ -388,18 +401,21 @@ class Calibre(VirtuosoChecker):
         content = ''.join(('*%s: %s\n' % (key, val) for key, val in rcx_options.items()))
         return content, os.path.join(run_dir, output_name)
 
-    def modify_xact_rules(self, cell_name, gds_file, netlist, xact_params):
+    def modify_xact_rules(self, run_dir, cell_name, gds_file, netlist, xact_params):
+        # type: (str, str, str, str, Dict[str, Any]) -> Tuple[str, str]
         """Modify the given XACT runset file.
 
         Parameters
         ----------
+        run_dir : str
+            the run directory.
         cell_name : str
             the cell name.
         gds_file : str
             the layout gds file name.
         netlist : str
             the schematic netlist file.
-        xact_params : Dict[string, Any]
+        xact_params : Dict[str, Any]
             additional XACT parameters.
 
         Returns
@@ -412,8 +428,6 @@ class Calibre(VirtuosoChecker):
         substrate_name = xact_params.get('substrate_name', 'VSS')
         power_names = xact_params.get('power_names', 'VDD')
         ground_names = xact_params.get('ground_names', 'VSS')
-
-        run_dir = os.path.abspath(self.rcx_run_dir)
 
         template = read_file(self.xact_rules)
         output_name = '%s.pex.netlist' % cell_name
@@ -428,11 +442,14 @@ class Calibre(VirtuosoChecker):
 
         return content, os.path.join(run_dir, output_name)
 
-    def modify_starrc_cmd(self, cell_name, starrc_params, query_input, sch_file):
+    def modify_starrc_cmd(self, run_dir, cell_name, starrc_params, query_input, sch_file):
+        # type: (str, str, Dict[str, Any], str, str) -> Tuple[str, str]
         """Modify the cmd file.
 
         Parameters
         ----------
+        run_dir : str
+            the run directory.
         cell_name : str
             the cell name.
         starrc_params : Dict[str, Any]
@@ -449,7 +466,6 @@ class Calibre(VirtuosoChecker):
         output_name : str
             the extracted netlist file.
         """
-        run_dir = os.path.abspath(self.rcx_run_dir)
         output_name = '%s.spf' % cell_name
 
         template = read_file(self.rcx_runset)
