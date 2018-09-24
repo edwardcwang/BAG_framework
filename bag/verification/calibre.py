@@ -105,21 +105,24 @@ class Calibre(VirtuosoChecker):
 
         max_workers = kwargs.get('max_workers', None)
         cancel_timeout = kwargs.get('cancel_timeout_ms', None)
+        rcx_params = kwargs.get('rcx_params', {})
+        lvs_params = kwargs.get('lvs_params', {})
+        rcx_link_files = kwargs.get('rcx_link_files', None)
+
         if cancel_timeout is not None:
             cancel_timeout /= 1e3
 
         VirtuosoChecker.__init__(self, tmp_dir, max_workers, cancel_timeout, source_added_file)
 
-        self.default_rcx_params = kwargs.get('rcx_params', {})
-        self.default_lvs_params = kwargs.get('lvs_params', {})
+        self.default_rcx_params = rcx_params
+        self.default_lvs_params = lvs_params
         self.lvs_run_dir = os.path.abspath(rcx_run_dir if rcx_mode == 'starrc' else lvs_run_dir)
         self.lvs_runset = lvs_runset
         self.rcx_run_dir = os.path.abspath(rcx_run_dir)
         self.rcx_runset = rcx_runset
+        self.rcx_link_files = rcx_link_files
         self.xact_rules = xact_rules
         self.rcx_mode = rcx_mode
-        self.query_input = kwargs.get('query_input', {})
-        self.lvs_source_file = kwargs.get('lvs_source_file', {})
 
     def get_rcx_netlists(self, lib_name, cell_name):
         # type: (str, str) -> List[str]
@@ -196,6 +199,14 @@ class Calibre(VirtuosoChecker):
 
         run_dir = os.path.join(self.rcx_run_dir, lib_name, cell_name)
         os.makedirs(run_dir, exist_ok=True)
+
+        # make symlinks
+        if self.rcx_link_files:
+            for source_file in self.rcx_link_files:
+                targ_file = os.path.join(run_dir, os.path.basename(source_file))
+                if not os.path.isfile(targ_file):
+                    os.symlink(source_file, targ_file)
+
         lay_file, sch_file = self._get_lay_sch_files(run_dir)
         with open_temp(prefix='rcxLog', dir=run_dir, delete=False) as logf:
             log_file = logf.name
@@ -216,12 +227,7 @@ class Calibre(VirtuosoChecker):
             with open_temp(prefix='queryLog', dir=run_dir, delete=False) as queryf:
                 query_file = queryf.name
 
-            # copy query.input from PDK_INSTALL_DIR to rcx_run_dir if it isn't already there
-            query_input_pdk = self.query_input
-            query_input = os.path.join(self.rcx_run_dir, 'query.input')
-            if not os.path.isfile(query_input):
-                os.symlink(query_input_pdk, query_input)
-
+            query_input = os.path.join(run_dir, 'query_input')
             cmd = ['calibre', '-query_input', query_input,
                    '-query', os.path.join(run_dir, 'svdb'), cell_name]
             flow_list.append((cmd, query_file, None, run_dir,
