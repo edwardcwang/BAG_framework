@@ -1227,6 +1227,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
             mkwargs = mkwargs.copy()
             mkwargs['analog'] = True
+            mkwargs['guard_ring_nf'] = guard_ring_nf
             params = dict(
                 lch=lch,
                 fg=fg_tot,
@@ -1524,6 +1525,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             is_end=bot_end,
             top_layer=top_layer,
             tech_cls_name=self._tech_cls_name,
+            options=dict(guard_ring_nf=guard_ring_nf),
         )
         bot_end_master = self.new_template(params=bot_end_params, temp_cls=AnalogEndRow)
         top_end_params = dict(
@@ -1534,6 +1536,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             is_end=top_end,
             top_layer=top_layer,
             tech_cls_name=self._tech_cls_name,
+            options=dict(guard_ring_nf=guard_ring_nf),
         )
         top_end_master = self.new_template(params=top_end_params, temp_cls=AnalogEndRow)
         # compute Y coordinate shift from adding end row
