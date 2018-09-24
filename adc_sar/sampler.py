@@ -132,24 +132,24 @@ class NPassGateWClkCore(AnalogBase):
 
         # connect outputs to horizontal layer
         tr_id = self.make_track_id('nch', 0, 'ds', out_tr_idx, width=lower_track_width)
-        outp_track = self.connect_to_tracks([p_ports['d'], p_dum['d']], tr_id, )
-        outn_track = self.connect_to_tracks([n_ports['d'], n_dum['d']], tr_id, )
+        outp_track = self.connect_to_tracks([p_ports['d'], p_dum['d']], tr_id)
+        outn_track = self.connect_to_tracks([n_ports['d'], n_dum['d']], tr_id)
 
         # connect inputs/outputs to vertical layer
         io_layer = tr_id.layer_id + 1
         p_tid = self.grid.coord_to_nearest_track(io_layer, outp_track.middle, half_track=True)
         n_tid = self.grid.coord_to_nearest_track(io_layer, outn_track.middle, half_track=True)
         outp = self.connect_to_tracks(outp_track, TrackID(io_layer, p_tid, width=io_width),
-                                      track_lower=0.0, )
+                                      track_lower=0.0)
         outn = self.connect_to_tracks(outn_track, TrackID(io_layer, n_tid, width=io_width),
-                                      track_lower=0.0, )
+                                      track_lower=0.0)
         ymid_out = outp.middle
         ckout_tid = (p_tid + n_tid) / 2
         self.add_pin(self.get_pin_name('outp'), outp, show=show_pins)
         self.add_pin(self.get_pin_name('outn'), outn, show=show_pins)
         _, in_upper = self.grid.get_size_dimension(self.size)
         inp, inn = self.connect_differential_tracks(inp_list, inn_list, io_layer, p_tid, n_tid,
-                                                    width=io_width, track_upper=in_upper, )
+                                                    width=io_width, track_upper=in_upper)
         self.add_pin(self.get_pin_name('inp'), inp, show=show_pins)
         self.add_pin(self.get_pin_name('inn'), inn, show=show_pins)
         return vss_warr_list, ymid_out, ckout_tid
