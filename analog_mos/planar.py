@@ -17,19 +17,34 @@ from .core import MOSTech
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfoConfig
 
-RowInfo = namedtuple('RowInfo', ['od_x', 'od_y', 'od_type', 'po_y', ])
-AdjRowInfo = namedtuple('AdjRowInfo', ['od_y', 'od_type', 'po_y', ])
-EdgeInfo = namedtuple('EdgeInfo', ['od_type', ])
+RowInfo = namedtuple('RowInfo', [
+    'od_x',
+    'od_y',
+    'od_type',
+    'po_y',
+])
+AdjRowInfo = namedtuple('AdjRowInfo', [
+    'od_y',
+    'od_type',
+    'po_y',
+])
+EdgeInfo = namedtuple('EdgeInfo', [
+    'od_type',
+])
 
 
-class ExtInfo(namedtuple('ExtInfoBase', ['margins', 'od_h', 'imp_min_h', 'm1_sub_h', 'mtype',
-                                         'thres', 'po_types', 'edgel_info', 'edger_info'])):
+class ExtInfo(
+        namedtuple('ExtInfoBase', [
+            'margins', 'od_h', 'imp_min_h', 'm1_sub_h', 'mtype', 'thres', 'po_types', 'edgel_info',
+            'edger_info'
+        ])):
     __slots__ = ()
 
     def reverse(self):
-        return self._replace(po_types=tuple(reversed(self.po_types)),
-                             edgel_info=self.edger_info,
-                             edger_info=self.edgel_info)
+        return self._replace(
+            po_types=tuple(reversed(self.po_types)),
+            edgel_info=self.edger_info,
+            edger_info=self.edgel_info)
 
 
 class MOSTechPlanarGeneric(MOSTech):
@@ -194,12 +209,14 @@ class MOSTechPlanarGeneric(MOSTech):
             top_margins=dict(
                 od=(blk_yt - od_yt, od_spy),
                 po=(blk_yt, po_spy),
-                mx=(blk_yt - d_mx_yt, mx_spy)
+                mx=(blk_yt - d_mx_yt, mx_spy),
+                m1=(blk_yt - d_mx_yt, mx_spy),
             ),
             bot_margins=dict(
                 od=(od_yb, od_spy),
                 po=(blk_yt, po_spy),
                 mx=(d_mx_yb, mx_spy),
+                m1=(d_mx_yb, mx_spy),
             ),
             fill_info={},
             g_conn_y=mx_y,
@@ -303,7 +320,7 @@ class MOSTechPlanarGeneric(MOSTech):
         od_type = 'mos_fake' if ds_dummy else 'mos'
         lr_edge_info = EdgeInfo(od_type=od_type)
         od_h = od_yt - od_yb
-        po_types = ('PO',) * fg
+        po_types = ('PO', ) * fg
         ext_top_info = ExtInfo(
             margins=yloc_info['top_margins'],
             od_h=od_h,
@@ -335,10 +352,14 @@ class MOSTechPlanarGeneric(MOSTech):
             fg=fg,
             arr_y=blk_y,
             draw_od=not ds_dummy,
-            row_info_list=[RowInfo(od_x=(0, fg),
-                                   od_y=od_y,
-                                   od_type=('mos', sub_type),
-                                   po_y=po_y, )],
+            row_info_list=[
+                RowInfo(
+                    od_x=(0, fg),
+                    od_y=od_y,
+                    od_type=('mos', sub_type),
+                    po_y=po_y,
+                )
+            ],
             lay_info_list=lay_info_list,
             # edge parameters
             sub_type=sub_type,
@@ -406,7 +427,7 @@ class MOSTechPlanarGeneric(MOSTech):
             min_ext_h = max(min_ext_h, -(-tot_margin // mos_pitch))
 
         # step 2: get maximum extension width without dummy OD
-        od_sp_margin = top_ext_info.margins['od'] + bot_ext_info.margins['od']
+        od_sp_margin = top_ext_info.margins['od'][0] + bot_ext_info.margins['od'][0]
         max_ext_w_no_od = (od_spy_max - od_sp_margin) // mos_pitch
 
         # step 3: find minimum extension width with dummy OD
@@ -419,13 +440,13 @@ class MOSTechPlanarGeneric(MOSTech):
         # get od_bot_margin from PO spacing and minimum implant width spec.
         po_h = max(po_h_min, od_w_min + 2 * po_od_exty)
         po_od_exty = (po_h - od_w_min) // 2
-        dum_po_yb = -bot_ext_info.margins['po'] + po_spy
+        dum_po_yb = -bot_ext_info.margins['po'][0] + po_spy
         od_bot_margin = max(dum_po_yb + po_od_exty, bot_imp_min_h + imp_od_ency)
         if imp_po_ency is not None:
             od_bot_margin = max(od_bot_margin, bot_imp_min_h + imp_po_ency + po_od_exty)
 
         # get od_top_margin assuming yt = 0
-        dum_po_yt = top_ext_info.margins['po'] - po_spy
+        dum_po_yt = top_ext_info.margins['po'][0] - po_spy
         od_top_margin = min(dum_po_yt - po_od_exty, -top_imp_min_h - imp_od_ency)
         if imp_po_ency is not None:
             od_top_margin = min(od_top_margin, -top_imp_min_h - imp_po_ency - po_od_exty)
@@ -464,10 +485,10 @@ class MOSTechPlanarGeneric(MOSTech):
         po_spy = mos_constants['po_spy']
 
         # step 1A: compute PO/OD bounds.
-        bot_od_yt = -bot_ext_info.margins['od']
-        bot_po_yt = -bot_ext_info.margins['po']
-        top_od_yb = yblk + top_ext_info.margins['od']
-        top_po_yb = yblk + top_ext_info.margins['po']
+        bot_od_yt = -bot_ext_info.margins['od'][0]
+        bot_po_yt = -bot_ext_info.margins['po'][0]
+        top_od_yb = yblk + top_ext_info.margins['od'][0]
+        top_po_yb = yblk + top_ext_info.margins['po'][0]
         # step 1B: calculate PO area bounds.  Include OD bounds because substrate rows don't have PO
         po_area_offset = max(bot_od_yt, bot_po_yt)
         po_area_tot = min(top_po_yb, top_od_yb) - po_area_offset
@@ -483,9 +504,15 @@ class MOSTechPlanarGeneric(MOSTech):
         po_spy_max = od_spy_max - 2 * po_od_exty
         while po_area_iter.has_next():
             po_area_targ = po_area_iter.get_next()
-            fill_info = fill_symmetric_min_density_info(po_area_tot, po_area_targ, n_min_po,
-                                                        n_max_po, po_spy, sp_max=po_spy_max,
-                                                        fill_on_edge=False, cyclic=False)
+            fill_info = fill_symmetric_min_density_info(
+                po_area_tot,
+                po_area_targ,
+                n_min_po,
+                n_max_po,
+                po_spy,
+                sp_max=po_spy_max,
+                fill_on_edge=False,
+                cyclic=False)
             po_area_cur, nfill = fill_info[0][:2]
             od_area_cur = po_area_cur - nfill * 2 * po_od_exty
             if od_area_cur >= od_area_targ:
@@ -499,8 +526,8 @@ class MOSTechPlanarGeneric(MOSTech):
                 else:
                     po_area_iter.up()
         fill_info = po_area_iter.get_last_save_info()
-        return fill_symmetric_interval(*fill_info[0][2], offset=po_area_offset,
-                                       invert=fill_info[1])[0]
+        return fill_symmetric_interval(
+            *fill_info[0][2], offset=po_area_offset, invert=fill_info[1])[0]
 
     def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info, **kwargs):
         # type: (int, int, int, ExtInfo, ExtInfo, **kwargs) -> Dict[str, Any]
@@ -654,8 +681,8 @@ class MOSTechPlanarGeneric(MOSTech):
         for od_y, po_y in zip(od_y_list, po_y_list):
             cur_mtype = bot_mtype if max(od_y[0], od_y[1]) < imp_ysep else top_mtype
             cur_sub_type = 'ptap' if cur_mtype == 'nch' or cur_mtype == 'ptap' else 'ntap'
-            row_info_list.append(RowInfo(od_x=(0, fg), od_y=od_y,
-                                         od_type=('dum', cur_sub_type), po_y=po_y))
+            row_info_list.append(
+                RowInfo(od_x=(0, fg), od_y=od_y, od_type=('dum', cur_sub_type), po_y=po_y))
 
         # create layout information dictionary
         between_gr = (top_row_type == 'ntap' and bot_row_type == 'ptap') or \
@@ -712,8 +739,8 @@ class MOSTechPlanarGeneric(MOSTech):
         # construct row_info_list
         row_info_list = []
         for od_y, po_y in zip(od_y_list, po_y_list):
-            row_info_list.append(RowInfo(od_x=(0, 0), od_y=od_y,
-                                         od_type=('dum', sub_type), po_y=po_y))
+            row_info_list.append(
+                RowInfo(od_x=(0, 0), od_y=od_y, od_type=('dum', sub_type), po_y=po_y))
 
         layout_info = dict(
             blk_type='ext_subring',
@@ -726,7 +753,9 @@ class MOSTechPlanarGeneric(MOSTech):
             lay_info_list=[],
             # edge parameters
             sub_type=sub_type,
-            imp_params=[(sub_type, end_ext_info.thres, 0, height, 0, height), ],
+            imp_params=[
+                (sub_type, end_ext_info.thres, 0, height, 0, height),
+            ],
             is_sub_ring=True,
             dnw_mode=dnw_mode,
         )
@@ -763,8 +792,7 @@ class MOSTechPlanarGeneric(MOSTech):
         yloc_info = self.get_sub_yloc_info(lch_unit, w, blk_pitch=blk_pitch, **kwargs)
         blk_yb, blk_yt = blk_y = yloc_info['blk']
         od_yb, od_yt = od_y = yloc_info['od']
-        d_y_list = yloc_info['d_y_list']
-        d_mx_yb, d_mx_yt = d_mx_y = d_y_list[-1]
+        d_mx_yb, d_mx_yt = d_mx_y = yloc_info['d_conn_y']
         od_h = od_yt - od_yb
         od_yc = (od_yb + od_yt) // 2
 
@@ -781,7 +809,7 @@ class MOSTechPlanarGeneric(MOSTech):
         if guard_ring_nf > 0:
             m1_sub_h = max(m1_sub_h, guard_ring_nf * sd_pitch + 2 * sub_m1_extx)
 
-        po_types = ('',) * fg
+        po_types = ('', ) * fg
         lr_edge_info = EdgeInfo(od_type='sub')
         ext_top_info = ExtInfo(
             margins=yloc_info['top_margins'],
@@ -813,10 +841,14 @@ class MOSTechPlanarGeneric(MOSTech):
             fg=fg,
             arr_y=blk_y,
             draw_od=draw_sub_od,
-            row_info_list=[RowInfo(od_x=(0, fg),
-                                   od_y=od_y,
-                                   od_type=('sub', sub_type),
-                                   po_y=(0, 0), )],
+            row_info_list=[
+                RowInfo(
+                    od_x=(0, fg),
+                    od_y=od_y,
+                    od_type=('sub', sub_type),
+                    po_y=(0, 0),
+                )
+            ],
             lay_info_list=lay_info_list,
             # substrate connection parameters
             sub_fg=(0, fg),
@@ -869,16 +901,18 @@ class MOSTechPlanarGeneric(MOSTech):
             # allow substrate row abutment
             arr_yt = 0
 
-        ext_margins = end_ext_info.margins
-        od_margin, od_spy = ext_margins['od']
-        po_margin, po_spy = ext_margins['po']
-        m1_margin, m1_spy = ext_margins['m1']
-        mx_margin, mx_spy = ext_margins['mx']
-
         lr_edge_info = EdgeInfo(od_type=None)
         if is_sub_ring_end:
+            ext_margins = end_ext_info.margins
+            od_margin, od_spy = ext_margins['od']
+            po_margin, po_spy = ext_margins['po']
+            m1_margin, m1_spy = ext_margins['m1']
+            mx_margin, mx_spy = ext_margins['mx']
+
             blk_type = 'end_subring'
-            imp_params = [(sub_type, threshold, 0, arr_yt, 0, arr_yt), ]
+            imp_params = [
+                (sub_type, threshold, 0, arr_yt, 0, arr_yt),
+            ]
             ext_info = ExtInfo(
                 margins=dict(
                     od=(arr_yt + od_margin, od_spy),
@@ -970,8 +1004,8 @@ class MOSTechPlanarGeneric(MOSTech):
         if blk_type != 'sub' and guard_ring_nf == 0:
             # add dummy PO
             for row_info in row_info_list:
-                new_row_list.append(RowInfo(od_x=(0, 0), od_y=(0, 0),
-                                            od_type=row_info.od_type, po_y=row_info.po_y))
+                new_row_list.append(
+                    RowInfo(od_x=(0, 0), od_y=(0, 0), od_type=row_info.od_type, po_y=row_info.po_y))
 
         return dict(
             blk_type='edge' if guard_ring_nf == 0 else 'gr_edge',
@@ -1023,14 +1057,14 @@ class MOSTechPlanarGeneric(MOSTech):
             od_x_main = (fg_od_margin, fg_od_margin + guard_ring_nf)
 
         sub_y_list = [od_y, mx_y, (mx_y[0], arr_y[1])]
-        row_info_list = [RowInfo(od_x=od_x_main,
-                                 od_y=od_y,
-                                 od_type=('sub', sub_type),
-                                 po_y=(0, 0))]
+        row_info_list = [RowInfo(od_x=od_x_main, od_y=od_y, od_type=('sub', sub_type), po_y=(0, 0))]
         if blk_type == 'sub':
             row_info_list.append(
-                RowInfo(od_x=(fg_od_margin, fg_od_margin + guard_ring_nf), od_y=(od_y[1], arr_y[1]),
-                        od_type=('sub', sub_type), po_y=(0, 0)))
+                RowInfo(
+                    od_x=(fg_od_margin, fg_od_margin + guard_ring_nf),
+                    od_y=(od_y[1], arr_y[1]),
+                    od_type=('sub', sub_type),
+                    po_y=(0, 0)))
 
         # compute new lay_info_list
         wblk = fg_gr_sub * sd_pitch
@@ -1092,8 +1126,8 @@ class MOSTechPlanarGeneric(MOSTech):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fg_gr_min = mos_constants['fg_gr_min']
-        edge_constants = self.get_edge_info(lch_unit, fg_gr_min, True, is_sub_ring=is_sub_ring,
-                                            dnw_mode=dnw_mode)
+        edge_constants = self.get_edge_info(
+            lch_unit, fg_gr_min, True, is_sub_ring=is_sub_ring, dnw_mode=dnw_mode)
         fg_gr_sep = edge_constants['fg_gr_sep']
 
         new_row_list = []
@@ -1102,8 +1136,8 @@ class MOSTechPlanarGeneric(MOSTech):
             cur_blk_type = 'gr_sep_sub'
             sub_y_list = layout_info['sub_y_list']
             # add OD that connects substrate to guard ring
-            new_row_list.append(RowInfo(od_x=(0, fg_gr_sep), od_y=sub_y_list[0],
-                                        od_type=od_type, po_y=(0, 0)))
+            new_row_list.append(
+                RowInfo(od_x=(0, fg_gr_sep), od_y=sub_y_list[0], od_type=od_type, po_y=(0, 0)))
         else:
             cur_blk_type = 'gr_sep'
             sub_y_list = None
@@ -1113,8 +1147,8 @@ class MOSTechPlanarGeneric(MOSTech):
             else:
                 # add dummy PO
                 for row_info in row_info_list:
-                    new_row_list.append(RowInfo(od_x=(0, 0), od_y=(0, 0),
-                                                od_type=od_type, po_y=row_info.po_y))
+                    new_row_list.append(
+                        RowInfo(od_x=(0, 0), od_y=(0, 0), od_type=od_type, po_y=row_info.po_y))
 
         return dict(
             blk_type=cur_blk_type,
@@ -1230,8 +1264,11 @@ class MOSTechPlanarGeneric(MOSTech):
             if od_yt > od_yb and draw_od:
                 od_xl = po_xc - lch_unit // 2 + od_start * sd_pitch - po_od_extx
                 od_xr = po_xc + lch_unit // 2 + (od_stop - 1) * sd_pitch + po_od_extx
-                self.draw_od(template, od_lay_cur,
-                             BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True), od_type='main')
+                self.draw_od(
+                    template,
+                    od_lay_cur,
+                    BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True),
+                    od_type='main')
 
             # draw PO
             if po_yt > po_yb:
@@ -1239,8 +1276,8 @@ class MOSTechPlanarGeneric(MOSTech):
                     po_xl = po_xc + idx * sd_pitch - lch_unit // 2
                     po_xr = po_xl + lch_unit
                     cur_od_type = od_type if od_start <= idx < od_stop else None
-                    lay = po_lay if (cur_od_type == 'mos' or cur_od_type == 'mos_fake' or
-                                     cur_od_type == 'sub') else po_dum_lay
+                    lay = po_lay if (cur_od_type == 'mos' or cur_od_type == 'mos_fake'
+                                     or cur_od_type == 'sub') else po_dum_lay
                     template.add_rect(lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True))
 
         # draw other layers
@@ -1250,8 +1287,8 @@ class MOSTechPlanarGeneric(MOSTech):
                 template.add_rect(imp_lay, box)
 
         # draw M1 in substrate/guard ring blocks
-        if (blk_type == 'sub' or blk_type == 'gr_sub' or
-                blk_type == 'gr_sub_sub' or blk_type == 'gr_sep_sub'):
+        if (blk_type == 'sub' or blk_type == 'gr_sub' or blk_type == 'gr_sub_sub'
+                or blk_type == 'gr_sep_sub'):
             sub_m1_extx = mos_constants['sub_m1_extx']
 
             if blk_type == 'sub' or blk_type == 'gr_sep_sub':
@@ -1283,17 +1320,18 @@ class MOSTechPlanarGeneric(MOSTech):
         if bound_box.is_physical():
             template.add_cell_boundary(bound_box)
 
-    def draw_substrate_connection(self,  # type: MOSTechPlanarGeneric
-                                  template,  # type: TemplateBase
-                                  layout_info,  # type: Dict[str, Any]
-                                  port_tracks,  # type: List[Union[float, int]]
-                                  dum_tracks,  # type: List[Union[float, int]]
-                                  exc_tracks,  # type: List[Union[float, int]]
-                                  dummy_only,  # type: bool
-                                  is_laygo,  # type: bool
-                                  is_guardring,  # type: bool
-                                  options,  # type: Dict[str, Any]
-                                  ):
+    def draw_substrate_connection(
+            self,  # type: MOSTechPlanarGeneric
+            template,  # type: TemplateBase
+            layout_info,  # type: Dict[str, Any]
+            port_tracks,  # type: List[Union[float, int]]
+            dum_tracks,  # type: List[Union[float, int]]
+            exc_tracks,  # type: List[Union[float, int]]
+            dummy_only,  # type: bool
+            is_laygo,  # type: bool
+            is_guardring,  # type: bool
+            options,  # type: Dict[str, Any]
+    ):
         # type: (...) -> bool
 
         #  note: we just export all tracks, as we can draw wires on all of them
@@ -1314,7 +1352,7 @@ class MOSTechPlanarGeneric(MOSTech):
 
         if exc_tracks:
             # TODO: fix this
-            raise ValueError('exc_tracks options not current supported in this technology')
+            print('WARNING: exc_tracks options not current supported in this technology')
 
         if mx_yt > mx_yb:
             if sub_type is None:
@@ -1341,10 +1379,22 @@ class MOSTechPlanarGeneric(MOSTech):
             else:
                 start_layer = 1
                 mbot_yb, mbot_yt = m1_yb, m1_yt
-            via_drawn = self._draw_vertical_vias(template, lch_unit, x0, num_via, sd_pitch, via_yb,
-                                                 via_yt, start_layer, drc_info, via_info,
-                                                 top_layer=top_layer, via_abut=via_abut,
-                                                 is_sub=True, mbot_yb=mbot_yb, mbot_yt=mbot_yt)
+            via_drawn = self._draw_vertical_vias(
+                template,
+                lch_unit,
+                x0,
+                num_via,
+                sd_pitch,
+                via_yb,
+                via_yt,
+                start_layer,
+                drc_info,
+                via_info,
+                top_layer=top_layer,
+                via_abut=via_abut,
+                is_sub=True,
+                mbot_yb=mbot_yb,
+                mbot_yt=mbot_yt)
 
             # add pins if vias are drawn
             if via_drawn:
@@ -1360,18 +1410,19 @@ class MOSTechPlanarGeneric(MOSTech):
 
         return False
 
-    def draw_mos_connection(self,  # type: MOSTechPlanarGeneric
-                            template,  # type: TemplateBase
-                            mos_info,  # type: Dict[str, Any]
-                            sdir,  # type: int
-                            ddir,  # type: int
-                            gate_pref_loc,  # type: str
-                            gate_ext_mode,  # type: int
-                            min_ds_cap,  # type: bool
-                            is_diff,  # type: bool
-                            diode_conn,  # type: bool
-                            options,  # type: Dict[str, Any]
-                            ):
+    def draw_mos_connection(
+            self,  # type: MOSTechPlanarGeneric
+            template,  # type: TemplateBase
+            mos_info,  # type: Dict[str, Any]
+            sdir,  # type: int
+            ddir,  # type: int
+            gate_pref_loc,  # type: str
+            gate_ext_mode,  # type: int
+            min_ds_cap,  # type: bool
+            is_diff,  # type: bool
+            diode_conn,  # type: bool
+            options,  # type: Dict[str, Any]
+    ):
         # type: (...) -> None
 
         has_od = not options.get('ds_dummy', False)
@@ -1430,8 +1481,17 @@ class MOSTechPlanarGeneric(MOSTech):
             m1_xr = width
 
         # draw gate vias
-        _, g_warrs = self._draw_g_vias(template, layout_info, fg, g_y_list, tid_list, sd_pitch // 2,
-                                       m1_xl=m1_xl, m1_xr=m1_xr, has_od=has_od, dy=-sd_yc)
+        _, g_warrs = self._draw_g_vias(
+            template,
+            layout_info,
+            fg,
+            g_y_list,
+            tid_list,
+            sd_pitch // 2,
+            m1_xl=m1_xl,
+            m1_xr=m1_xr,
+            has_od=has_od,
+            dy=-sd_yc)
 
         # draw drain/source vias
         num_s = (seg + 2) // 2
@@ -1439,20 +1499,44 @@ class MOSTechPlanarGeneric(MOSTech):
         mx_yb, mx_yt = d_y_list[-1][0] - sd_yc, d_y_list[-1][1] - sd_yc
         od_yb, od_yt = d_y_list[0][0] - sd_yc, d_y_list[0][1] - sd_yc
         drc_info = self.get_conn_drc_info(lch_unit, 'd')
-        self._draw_vertical_vias(template, lch_unit, 0, num_s, wire_pitch * 2, mx_yb, mx_yt, 0,
-                                 drc_info, d_via_info, mbot_yb=od_yb, mbot_yt=od_yt)
-        self._draw_vertical_vias(template, lch_unit, wire_pitch, num_d, wire_pitch * 2, mx_yb,
-                                 mx_yt, 0, drc_info, d_via_info, mbot_yb=od_yb, mbot_yt=od_yt)
+        self._draw_vertical_vias(
+            template,
+            lch_unit,
+            0,
+            num_s,
+            wire_pitch * 2,
+            mx_yb,
+            mx_yt,
+            0,
+            drc_info,
+            d_via_info,
+            mbot_yb=od_yb,
+            mbot_yt=od_yt)
+        self._draw_vertical_vias(
+            template,
+            lch_unit,
+            wire_pitch,
+            num_d,
+            wire_pitch * 2,
+            mx_yb,
+            mx_yt,
+            0,
+            drc_info,
+            d_via_info,
+            mbot_yb=od_yb,
+            mbot_yt=od_yt)
 
         # get drain/source wire arrays
         mos_conn_layer = self.get_mos_conn_layer()
-        s_warr = template.add_wires(mos_conn_layer, -0.5, mx_yb, mx_yt, num=num_s, pitch=stack * 2,
-                                    unit_mode=True)
-        d_warr = template.add_wires(mos_conn_layer, stack - 0.5, mx_yb, mx_yt,
-                                    num=num_d, pitch=stack * 2, unit_mode=True)
+        s_warr = template.add_wires(
+            mos_conn_layer, -0.5, mx_yb, mx_yt, num=num_s, pitch=stack * 2, unit_mode=True)
+        d_warr = template.add_wires(
+            mos_conn_layer, stack - 0.5, mx_yb, mx_yt, num=num_d, pitch=stack * 2, unit_mode=True)
 
         if diode_conn:
-            d_warr = WireArray.list_to_warr(template.connect_wires([d_warr, ] + g_warrs))
+            d_warr = WireArray.list_to_warr(template.connect_wires([
+                d_warr,
+            ] + g_warrs))
             template.add_pin('g', d_warr, show=False)
         else:
             template.add_pin('g', WireArray.list_to_warr(g_warrs), show=False)
@@ -1492,17 +1576,38 @@ class MOSTechPlanarGeneric(MOSTech):
             m1_xr = width + dum_m1_encx
 
         # get dummy ports
-        dum_warrs, _ = self._draw_g_vias(template, layout_info, fg, g_y_list, gate_tracks,
-                                         sd_pitch // 2, m1_xl=m1_xl, m1_xr=m1_xr, has_od=has_od,
-                                         dy=-sd_yc, top_layer=self.get_dum_conn_layer())
+        dum_warrs, _ = self._draw_g_vias(
+            template,
+            layout_info,
+            fg,
+            g_y_list,
+            gate_tracks,
+            sd_pitch // 2,
+            m1_xl=m1_xl,
+            m1_xr=m1_xr,
+            has_od=has_od,
+            dy=-sd_yc,
+            top_layer=self.get_dum_conn_layer())
 
         # draw drain/source vias and short to M1
         mx_yb, mx_yt = d_y_list[-1][0] - sd_yc, d_y_list[-1][1] - sd_yc
         m1_yb = g_y_list[0][0] - sd_yc
         od_yb, od_yt = d_y_list[0][0] - sd_yc, d_y_list[0][1] - sd_yc
-        self._draw_vertical_vias(template, lch_unit, xc, num_ds_tot, sd_pitch, mx_yb, mx_yt, 0,
-                                 drc_info, d_via_info, top_layer=1, m1_yb=m1_yb, mbot_yb=od_yb,
-                                 mbot_yt=od_yt)
+        self._draw_vertical_vias(
+            template,
+            lch_unit,
+            xc,
+            num_ds_tot,
+            sd_pitch,
+            mx_yb,
+            mx_yt,
+            0,
+            drc_info,
+            d_via_info,
+            top_layer=1,
+            m1_yb=m1_yb,
+            mbot_yb=od_yb,
+            mbot_yt=od_yt)
 
         # add pins
         template.add_pin('dummy', dum_warrs, show=False)
@@ -1520,8 +1625,18 @@ class MOSTechPlanarGeneric(MOSTech):
         # type: (TemplateBase, str, str, int, int) -> None
         raise ValueError('Active fill not yet supported.')
 
-    def _draw_g_vias(self, template, layout_info, fg, g_y_list, tid_list, po_xc,
-                     m1_xl=None, m1_xr=None, has_od=True, dy=0, top_layer=None):
+    def _draw_g_vias(self,
+                     template,
+                     layout_info,
+                     fg,
+                     g_y_list,
+                     tid_list,
+                     po_xc,
+                     m1_xl=None,
+                     m1_xr=None,
+                     has_od=True,
+                     dy=0,
+                     top_layer=None):
 
         res = self.res
         mos_layer_table = self.config['mos_layer_table']
@@ -1562,9 +1677,16 @@ class MOSTechPlanarGeneric(MOSTech):
         enc2 = [m1_encx, m1_encx, via_enc2, via_enc2]
         if has_od:
             # draw via to PO only if this is not drain/source dummy.
-            template.add_via_primitive(via_type, loc=[po_xc, m1_yc + dy], enc1=enc1, enc2=enc2,
-                                       cut_width=v0_w, cut_height=v0_h, nx=fg, spx=sd_pitch,
-                                       unit_mode=True)
+            template.add_via_primitive(
+                via_type,
+                loc=[po_xc, m1_yc + dy],
+                enc1=enc1,
+                enc2=enc2,
+                cut_width=v0_w,
+                cut_height=v0_h,
+                nx=fg,
+                spx=sd_pitch,
+                unit_mode=True)
 
         # draw M1 rectangle
         if m1_xl is None:
@@ -1586,9 +1708,16 @@ class MOSTechPlanarGeneric(MOSTech):
             m2_ency = (m2_w - v1_h) // 2
             enc1 = [m1_encx, m1_encx, m1_ency, m1_ency]
             enc2 = [m2_encx, m2_encx, m2_ency, m2_ency]
-            template.add_via_primitive(via_type, loc=[fg * sd_pitch // 2, m1_yc + dy], enc1=enc1,
-                                       enc2=enc2, num_cols=fg - 1, sp_cols=sd_pitch - v1_w,
-                                       cut_width=v1_w, cut_height=v1_h, unit_mode=True)
+            template.add_via_primitive(
+                via_type,
+                loc=[fg * sd_pitch // 2, m1_yc + dy],
+                enc1=enc1,
+                enc2=enc2,
+                num_cols=fg - 1,
+                sp_cols=sd_pitch - v1_w,
+                cut_width=v1_w,
+                cut_height=v1_h,
+                unit_mode=True)
             m2_yb = m1_yc + dy - m2_w // 2
             m2_yt = m1_yc + dy + m2_w // 2
 
@@ -1625,12 +1754,28 @@ class MOSTechPlanarGeneric(MOSTech):
 
         for tid in tid_list:
             xc = grid.track_to_coord(mos_conn_layer, tid, unit_mode=True)
-            template.add_via_primitive(via_type, loc=[xc, m1_yc + dy], enc1=enc1, enc2=enc2,
-                                       cut_width=vh_w, cut_height=vh_h, unit_mode=True)
+            template.add_via_primitive(
+                via_type,
+                loc=[xc, m1_yc + dy],
+                enc1=enc1,
+                enc2=enc2,
+                cut_width=vh_w,
+                cut_height=vh_h,
+                unit_mode=True)
 
             # draw rest of vertical wires to the top
-            self._draw_vertical_vias(template, lch_unit, xc, 1, 0, mx_yb, mx_yt, horiz_layer + 1,
-                                     g_drc_info, g_via_info, top_layer=top_layer)
+            self._draw_vertical_vias(
+                template,
+                lch_unit,
+                xc,
+                1,
+                0,
+                mx_yb,
+                mx_yt,
+                horiz_layer + 1,
+                g_drc_info,
+                g_via_info,
+                top_layer=top_layer)
 
             # collect gate ports
             if horiz_layer != dum_conn_layer:
@@ -1642,24 +1787,25 @@ class MOSTechPlanarGeneric(MOSTech):
 
         return dum_warrs, conn_warrs
 
-    def _draw_vertical_vias(self,
-                            template,  # type: TemplateBase
-                            lch_unit,  # type: int
-                            x0,  # type: int
-                            num,  # type: int
-                            pitch,  # type: int
-                            mx_yb,  # type: int
-                            mx_yt,  # type: int
-                            start_layer,  # type: int
-                            drc_info,  # type: Dict[int, Dict[str, Any]],
-                            via_info,  # type: Dict[str, Any],
-                            via_abut=False,  # type: bool
-                            is_sub=False,  # type: bool
-                            top_layer=None,  # type: Optional[int]
-                            m1_yb=None,  # type: Optional[int]
-                            mbot_yb=None,  # type: Optional[int]
-                            mbot_yt=None,  # type: Optional[int]
-                            ):
+    def _draw_vertical_vias(
+            self,
+            template,  # type: TemplateBase
+            lch_unit,  # type: int
+            x0,  # type: int
+            num,  # type: int
+            pitch,  # type: int
+            mx_yb,  # type: int
+            mx_yt,  # type: int
+            start_layer,  # type: int
+            drc_info,  # type: Dict[int, Dict[str, Any]],
+            via_info,  # type: Dict[str, Any],
+            via_abut=False,  # type: bool
+            is_sub=False,  # type: bool
+            top_layer=None,  # type: Optional[int]
+            m1_yb=None,  # type: Optional[int]
+            mbot_yb=None,  # type: Optional[int]
+            mbot_yt=None,  # type: Optional[int]
+    ):
         # type: (...) -> bool
 
         res = self.res
@@ -1720,25 +1866,33 @@ class MOSTechPlanarGeneric(MOSTech):
             via_enc1 = (w_bot - via_w) // 2
             via_enc2 = (w_top - via_w) // 2
             if bot_lay_id > 0:
-                template.add_rect(lay_name_table[bot_lay_id], BBox(xlb, mbot_yb, xrb, mbot_yt,
-                                                                   res, unit_mode=True),
-                                  nx=num, spx=pitch, unit_mode=True)
+                template.add_rect(
+                    lay_name_table[bot_lay_id],
+                    BBox(xlb, mbot_yb, xrb, mbot_yt, res, unit_mode=True),
+                    nx=num,
+                    spx=pitch,
+                    unit_mode=True)
             if bot_lay_id == top_layer - 1:
-                template.add_rect(lay_name_table[bot_lay_id + 1], BBox(xlt, mx_yb, xrt, mx_yt,
-                                                                       res, unit_mode=True),
-                                  nx=num, spx=pitch, unit_mode=True)
-            via_drawn = self._add_via_with_arr_constraint(template, mbot_yb, mbot_yt, mx_yb, mx_yt,
-                                                          via_type, x0, via_w, via_h, num, pitch,
-                                                          via_sp, via_benc_le, via_tenc_le,
-                                                          arr_nmax, arr_sp, via_enc1, via_enc2)
+                template.add_rect(
+                    lay_name_table[bot_lay_id + 1],
+                    BBox(xlt, mx_yb, xrt, mx_yt, res, unit_mode=True),
+                    nx=num,
+                    spx=pitch,
+                    unit_mode=True)
+            via_drawn = self._add_via_with_arr_constraint(
+                template, mbot_yb, mbot_yt, mx_yb, mx_yt, via_type, x0, via_w, via_h, num, pitch,
+                via_sp, via_benc_le, via_tenc_le, arr_nmax, arr_sp, via_enc1, via_enc2)
             if via_drawn:
                 if m1_yb is not None and start_layer == 0:
                     m1_name = lay_name_table[1]
                     m1_xl = x0 - w_top // 2
                     m1_xr = x0 + w_top // 2
-                    template.add_rect(m1_name, BBox(m1_xl, m1_yb, m1_xr, mx_yt,
-                                                    res, unit_mode=True),
-                                      nx=num, spx=pitch, unit_mode=True)
+                    template.add_rect(
+                        m1_name,
+                        BBox(m1_xl, m1_yb, m1_xr, mx_yt, res, unit_mode=True),
+                        nx=num,
+                        spx=pitch,
+                        unit_mode=True)
             mbot_yb, mbot_yt = mx_yb, mx_yt
 
         return via_drawn
@@ -1766,9 +1920,18 @@ class MOSTechPlanarGeneric(MOSTech):
 
         enc1 = [via_enc1, via_enc1, mbot_yt - via_yt, via_yb - mbot_yb]
         enc2 = [via_enc2, via_enc2, mtop_yt - via_yt, via_yb - mtop_yb]
-        template.add_via_primitive(via_type, loc=[x0, via_yc], num_rows=num_via,
-                                   sp_rows=via_sp, enc1=enc1, enc2=enc2, cut_width=via_w,
-                                   cut_height=via_h, nx=num_sd, spx=sd_pitch, unit_mode=True)
+        template.add_via_primitive(
+            via_type,
+            loc=[x0, via_yc],
+            num_rows=num_via,
+            sp_rows=via_sp,
+            enc1=enc1,
+            enc2=enc2,
+            cut_width=via_w,
+            cut_height=via_h,
+            nx=num_sd,
+            spx=sd_pitch,
+            unit_mode=True)
         return True
 
     def _get_wire_array(self, layer_id, tr0, num, lower, upper, pitch=1):
