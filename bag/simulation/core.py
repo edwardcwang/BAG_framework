@@ -701,10 +701,7 @@ class DesignManager(object):
         spaces = grid_specs['spaces']
         widths = grid_specs['widths']
         bot_dir = grid_specs['bot_dir']
-        if 'width_override' in grid_specs:
-            width_override = grid_specs['width_override']
-        else:
-            width_override = None
+        width_override = grid_specs.get('width_override', None)
 
         routing_grid = RoutingGrid(self.prj.tech_info, layers, spaces, widths, bot_dir, width_override=width_override)
         tdb = TemplateDB('', routing_grid, target_lib, use_cybagoa=True)
