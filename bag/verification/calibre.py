@@ -12,8 +12,6 @@ from jinja2 import Template
 from .virtuoso import VirtuosoChecker
 from ..io import read_file, open_temp, readlines_iter
 
-from shutil import copyfile
-
 if TYPE_CHECKING:
     from .base import FlowInfo
 
@@ -209,7 +207,7 @@ class Calibre(VirtuosoChecker):
         if self.rcx_mode == 'starrc':
             # check if LVS was run prior to run_rcx
             sp_file = os.path.join(self.rcx_run_dir, cell_name + '.sp')
-            if not os.path.exists(sp_file):
+            if not os.path.isfile(sp_file):
                 raise Exception('Did you forget to do run_lvs first?')
 
             # now query the LVS file using query.input
@@ -219,8 +217,8 @@ class Calibre(VirtuosoChecker):
             # copy query.input from PDK_INSTALL_DIR to rcx_run_dir if it isn't already there
             query_input_pdk = self.query_input
             query_input = os.path.join(self.rcx_run_dir, 'query.input')
-            if not os.path.exists(query_input):
-                copyfile(query_input_pdk, query_input)
+            if not os.path.isfile(query_input):
+                os.symlink(query_input_pdk, query_input)
 
             cmd = ['calibre', '-query_input', query_input, '-query', self.rcx_run_dir+'/svdb', cell_name]
             flow_list.append((cmd, query_file, None, self.rcx_run_dir, lambda rc, lf: query_passed(rc, lf)[0]))
@@ -295,7 +293,7 @@ class Calibre(VirtuosoChecker):
             the layout gds file name.
         netlist : str
             the schematic netlist file.
-        lvs_params : dict[str, any]
+        lvs_params : Dict[str, Any]
             override LVS parameters.
 
         Returns
@@ -350,7 +348,7 @@ class Calibre(VirtuosoChecker):
             the layout gds file name.
         netlist : str
             the schematic netlist file.
-        rcx_params : dict[str, any]
+        rcx_params : Dict[str, Any]
             override RCX parameters.
 
         Returns
@@ -404,7 +402,7 @@ class Calibre(VirtuosoChecker):
             the layout gds file name.
         netlist : str
             the schematic netlist file.
-        xact_params : dict[string, any]
+        xact_params : Dict[string, Any]
             additional XACT parameters.
 
         Returns
@@ -436,24 +434,24 @@ class Calibre(VirtuosoChecker):
     def modify_starrc_cmd(self, cell_name, starrc_params, query_input, sch_file):
         """Modify the cmd file.
 
-                Parameters
-                ----------
-                cell_name : str
-                    the cell name.
-                starrc_params : dict[str, any]
-                    override StarRC parameters.
-                query_input : str
-                    the path to query.input file
-                sch_file : str
-                    the schematic netlist
+        Parameters
+        ----------
+        cell_name : str
+            the cell name.
+        starrc_params : Dict[str, Any]
+            override StarRC parameters.
+        query_input : str
+            the path to query.input file
+        sch_file : str
+            the schematic netlist
 
-                Returns
-                -------
-                starrc_cmd : str
-                    the new StarXtract cmd file.
-                output_name : str
-                    the extracted netlist file.
-                """
+        Returns
+        -------
+        starrc_cmd : str
+            the new StarXtract cmd file.
+        output_name : str
+            the extracted netlist file.
+        """
         run_dir = os.path.abspath(self.rcx_run_dir)
         output_name = '%s.spf' % cell_name
 
