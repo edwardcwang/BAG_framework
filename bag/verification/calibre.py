@@ -112,7 +112,7 @@ class Calibre(VirtuosoChecker):
 
         self.default_rcx_params = kwargs.get('rcx_params', {})
         self.default_lvs_params = kwargs.get('lvs_params', {})
-        self.lvs_run_dir = lvs_run_dir
+        self.lvs_run_dir = rcx_run_dir if rcx_mode == 'starrc' else lvs_run_dir
         self.lvs_runset = lvs_runset
         self.rcx_run_dir = rcx_run_dir
         self.rcx_runset = rcx_runset
@@ -189,9 +189,6 @@ class Calibre(VirtuosoChecker):
         rcx_params_actual = self.default_rcx_params.copy()
         if params is not None:
             rcx_params_actual.update(params)
-
-        if self.rcx_mode == 'starrc':
-            self.rcx_run_dir = self.lvs_run_dir
 
         run_dir = os.path.join(self.rcx_run_dir, lib_name, cell_name)
         os.makedirs(run_dir, exist_ok=True)
