@@ -551,8 +551,8 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                 didx_list = [0.5]
                 sidx_list = [-0.5]
             g_warrs = self.draw_laygo_g_connection(template, mos_info, g_loc, num_fg, **options)
-            d_warrs = self.draw_laygo_ds_connection(template, mos_info, didx_list, ds_code = 2, **options)
-            s_warrs = self.draw_laygo_ds_connection(template, mos_info, sidx_list, ds_code = 1, **options)
+            d_warrs = self.draw_laygo_ds_connection(template, mos_info, didx_list, ds_code=2, **options)
+            s_warrs = self.draw_laygo_ds_connection(template, mos_info, sidx_list, ds_code=1, **options)
 
             for name, warr_list in (('g', g_warrs), ('d', d_warrs), ('s', s_warrs)):
                 template.add_pin(name, warr_list, show=False)
