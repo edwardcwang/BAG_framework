@@ -496,8 +496,8 @@ class RetimeColumn(StdCellBase):
         spy = lat_master0.std_size[1]
 
         ck_phase_2 = num_adc - 1
-        ck_phase_1 = int(num_adc // 2) - 1
-        ck_phase_0_0 = int((int(num_adc // 2) + 1) % num_adc)
+        ck_phase_1 = (num_adc // 2) - 1
+        ck_phase_0_0 = ((num_adc // 2) + 1) % num_adc
         ck_phase_0_1 = 1
         ck_phase_out = ck_phase_1
         ck_phase_buf = sorted(set([ck_phase_2, ck_phase_1, ck_phase_0_0, ck_phase_0_1]))
@@ -537,7 +537,7 @@ class RetimeColumn(StdCellBase):
         blk_w, blk_h = self.bound_box.width_unit, self.bound_box.height_unit
 
         # first stage latches, clock buffers, fills
-        if adc_idx < int(num_adc // 2):
+        if adc_idx < num_adc // 2:
             finst = self.add_std_instance(space_master, loc=(0, 2 * spy))
             inst = self.add_std_instance(lat_master0, loc=(0, 3 * spy))
         else:
@@ -675,13 +675,13 @@ class Retimer(TemplateBase):
         # finding clock_bar phases <- added by Jaeduk
         # rules:
         # 1) last stage latches: num_adc-1
-        # 2) second last stage latches: int(num_adc/2)-1
-        # 3) the first half of first stage latches: int((int(num_adc/2)+1)%num_adc)
+        # 2) second last stage latches: (num_adc/2)-1
+        # 3) the first half of first stage latches: ((num_adc/2)+1)%num_adc
         # 4) the second half of first stage latches: 1
         # 5) the output phase = the second last latch phase
         ck_phase_2 = num_adc - 1
-        ck_phase_1 = int(num_adc // 2) - 1
-        ck_phase_0_0 = int((int(num_adc // 2) + 1) % num_adc)
+        ck_phase_1 = (num_adc // 2) - 1
+        ck_phase_0_0 = ((num_adc // 2) + 1) % num_adc
         ck_phase_0_1 = 1
         ck_phase_out = ck_phase_1
         ck_phase_buf = sorted(set([ck_phase_2, ck_phase_1, ck_phase_0_0, ck_phase_0_1]))
@@ -719,7 +719,7 @@ class Retimer(TemplateBase):
 
             io21_list.extend(col_inst.get_all_port_pins('io21'))
 
-            if adc_idx < int(num_adc/2):
+            if adc_idx < num_adc // 2:
                 ck_list = ck5_list
             else:
                 ck_list = ck1_list
