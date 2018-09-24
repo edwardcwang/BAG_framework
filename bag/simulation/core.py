@@ -470,9 +470,9 @@ class DesignManager(object):
         print('Running RCX on %s' % dsn_name)
         rcx_passed, rcx_log = await self.prj.async_run_rcx(lib_name, dsn_name,
                                                            rcx_params=rcx_params)
-        print('RCX passed on %s' % dsn_name)
         if not rcx_passed:
             raise ValueError('RCX failed for %s.  Log file: %s' % (dsn_name, rcx_log))
+        print('RCX passed on %s' % dsn_name)
 
     async def verify_design(self, lib_name, dsn_name, load_from_file=False):
         # type: (str, str, bool) -> None
