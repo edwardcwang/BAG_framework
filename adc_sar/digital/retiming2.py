@@ -465,10 +465,6 @@ class Retimer(TemplateBase):
         reserve_tracks = self.params['reserve_tracks']
         buf_ck_width = 5
 
-        # self.set_draw_boundaries(True)
-
-        # self.update_routing_grid()
-
         lat_params = dict(
             parity=0,
             num_bits=num_bits,
@@ -562,11 +558,6 @@ class Retimer(TemplateBase):
 
         self.size = [buf_top_layer, adc_width * num_adc, size_y]
 
-        # draw boundaries
-        # self.draw_boundaries()
-        # blk_w, blk_h = self.bound_box.width_unit, self.bound_box.height_unit
-
-
         # first stage latches, clock buffers, and fills
         ck1_list = []
         ck5_list = []
@@ -633,23 +624,23 @@ class Retimer(TemplateBase):
         self.add_pin('ck_out', warr, show=True)
 
         sup_layer = vdd_list[0].layer_id + 1
-        # vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
-        #                                         space=0, space_le=0)
-        # sup_layer += 1
-        #
-        # # reserve routing tracks for ADC
-        # adc_pitch = lat_master0.get_num_tracks(sup_layer)
-        # reserve_tracks = [r / self.grid.get_track_pitch(sup_layer) for r in reserve_tracks]
-        # print(reserve_tracks)
-        # for tid in reserve_tracks:
-        #     self.reserve_tracks(sup_layer, tid, num=num_adc, pitch=adc_pitch)
-        #
-        # vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
-        #                                         fill_width=2, fill_space=1, space=0, space_le=0)
-        # sup_layer += 1
-        #
-        # vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
-        #                                         space=0, space_le=0)
+        vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
+                                                space=0, space_le=0)
+        sup_layer += 1
+
+        # reserve routing tracks for ADC
+        adc_pitch = lat_master0.get_num_tracks(sup_layer)
+        reserve_tracks = [r / self.grid.get_track_pitch(sup_layer) for r in reserve_tracks]
+        print(reserve_tracks)
+        for tid in reserve_tracks:
+            self.reserve_tracks(sup_layer, tid, num=num_adc, pitch=adc_pitch)
+
+        vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
+                                                fill_width=2, fill_space=1, space=0, space_le=0)
+        sup_layer += 1
+
+        vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
+                                                space=0, space_le=0)
 
         self.add_pin('VDD', vdd_list, show=True)
         self.add_pin('VSS', vss_list, show=True)
