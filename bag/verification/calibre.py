@@ -12,8 +12,6 @@ from jinja2 import Template
 from .virtuoso import VirtuosoChecker
 from ..io import read_file, open_temp, readlines_iter
 
-from shutil import copyfile
-
 if TYPE_CHECKING:
     from .base import FlowInfo
 
@@ -104,8 +102,7 @@ class Calibre(VirtuosoChecker):
     def __init__(self, tmp_dir, lvs_run_dir, lvs_runset, rcx_run_dir, rcx_runset,
                  source_added_file='$DK/Calibre/lvs/source.added', rcx_mode='pex',
                  xact_rules='', **kwargs):
-        # import pdb
-        # pdb.set_trace()
+
         max_workers = kwargs.get('max_workers', None)
         cancel_timeout = kwargs.get('cancel_timeout_ms', None)
         if cancel_timeout is not None:
@@ -115,12 +112,14 @@ class Calibre(VirtuosoChecker):
 
         self.default_rcx_params = kwargs.get('rcx_params', {})
         self.default_lvs_params = kwargs.get('lvs_params', {})
-        self.lvs_run_dir = lvs_run_dir
+        self.lvs_run_dir = rcx_run_dir if rcx_mode == 'starrc' else lvs_run_dir
         self.lvs_runset = lvs_runset
         self.rcx_run_dir = rcx_run_dir
         self.rcx_runset = rcx_runset
         self.xact_rules = xact_rules
-        self.rcx_mode = self.default_rcx_params.get('rcx_mode', rcx_mode)
+        self.rcx_mode = rcx_mode
+        self.query_input = kwargs.get('query_input', {})
+        self.lvs_source_file = kwargs.get('lvs_source_file', {})
 
     def get_rcx_netlists(self, lib_name, cell_name):
         # type: (str, str) -> List[str]
@@ -203,37 +202,26 @@ class Calibre(VirtuosoChecker):
         flow_list.append((cmd, log, env, cwd, _all_pass))
 
         if self.rcx_mode == 'starrc':
-            # generate new runset for LVS
-            runset_content, result = self.modify_starrc_calibre_run(cell_name, lay_file, sch_file, rcx_params_actual)
-
-            # save runset for LVS
-            with open_temp(dir=run_dir, delete=False) as runset_file:
-                runset_fname = runset_file.name
-                runset_file.write(runset_content)
-                runset_path = os.path.join(run_dir, runset_fname)
-
-            with open_temp(prefix='lvsLog', dir=run_dir, delete=False) as lvsf:
-                lvs_file = lvsf.name
-
+            # check if LVS was run prior to run_rcx
             sp_file = os.path.join(self.rcx_run_dir, cell_name + '.sp')
-            cmd = ['calibre', '-lvs', '-hier', '-spice', sp_file, runset_fname]
-            flow_list.append((cmd, lvs_file, None, self.rcx_run_dir, lambda rc, lf: lvs_passed(rc, lf)[0]))
+            if not os.path.isfile(sp_file):
+                raise Exception('Did you forget to do run_lvs first?')
 
             # now query the LVS file using query.input
             with open_temp(prefix='queryLog', dir=run_dir, delete=False) as queryf:
                 query_file = queryf.name
 
             # copy query.input from PDK_INSTALL_DIR to rcx_run_dir if it isn't already there
-            query_input_pdk = rcx_params_actual['query_input']
+            query_input_pdk = self.query_input
             query_input = os.path.join(self.rcx_run_dir, 'query.input')
-            if not os.path.exists(query_input):
-                copyfile(query_input_pdk, query_input)
+            if not os.path.isfile(query_input):
+                os.symlink(query_input_pdk, query_input)
 
             cmd = ['calibre', '-query_input', query_input, '-query', self.rcx_run_dir+'/svdb', cell_name]
             flow_list.append((cmd, query_file, None, self.rcx_run_dir, lambda rc, lf: query_passed(rc, lf)[0]))
 
             # generate new cmd for StarXtract
-            cmd_content, result = self.modify_starrc_cmd(cell_name, rcx_params_actual, runset_path, query_input, sch_file)
+            cmd_content, result = self.modify_starrc_cmd(cell_name, rcx_params_actual, query_input, sch_file)
 
             # save cmd for StarXtract
             with open_temp(dir=run_dir, delete=False) as cmd_file:
@@ -302,7 +290,7 @@ class Calibre(VirtuosoChecker):
             the layout gds file name.
         netlist : str
             the schematic netlist file.
-        lvs_params : dict[str, any]
+        lvs_params : Dict[str, Any]
             override LVS parameters.
 
         Returns
@@ -357,7 +345,7 @@ class Calibre(VirtuosoChecker):
             the layout gds file name.
         netlist : str
             the schematic netlist file.
-        rcx_params : dict[str, any]
+        rcx_params : Dict[str, Any]
             override RCX parameters.
 
         Returns
@@ -411,7 +399,7 @@ class Calibre(VirtuosoChecker):
             the layout gds file name.
         netlist : str
             the schematic netlist file.
-        xact_params : dict[string, any]
+        xact_params : Dict[string, Any]
             additional XACT parameters.
 
         Returns
@@ -440,74 +428,33 @@ class Calibre(VirtuosoChecker):
 
         return content, os.path.join(run_dir, output_name)
 
-    def modify_starrc_calibre_run(self, cell_name, gds_file, netlist, starrc_params):
-        """Modify the calibre_run file.
-
-                Parameters
-                ----------
-                cell_name : str
-                    the cell name.
-                gds_file : str
-                    the layout gds file name.
-                netlist : str
-                    the schematic netlist file.
-                starrc_params : dict[str, any]
-                    override StarRC parameters.
-
-                Returns
-                -------
-                calibre_run : str
-                    the new calibre.run.
-                output_name : str
-                    the extracted netlist file.
-                """
-        run_dir = os.path.abspath(self.rcx_run_dir)
-        output_name = '%s.spf' % cell_name
-        template = read_file('BAG_framework/bag/verification/templates/starrc_calibre_run.pytemp')
-        calibre_run = Template(template).render(cell_name=cell_name,
-                                                lay_file=gds_file,
-                                                sch_file=netlist,
-                                                lvs_report=cell_name + ".lvs.report",
-                                                erc_results=cell_name + ".erc.results",
-                                                erc_summary=cell_name + ".erc.summary",
-                                                lvs_source_file=starrc_params.get('lvs_source_file')
-                                                )
-
-        return calibre_run, os.path.join(run_dir, output_name)
-
-    def modify_starrc_cmd(self, cell_name, starrc_params, runset_path, query_input, sch_file):
+    def modify_starrc_cmd(self, cell_name, starrc_params, query_input, sch_file):
         """Modify the cmd file.
 
-                Parameters
-                ----------
-                cell_name : str
-                    the cell name.
-                starrc_params : dict[str, any]
-                    override StarRC parameters.
-                runset_path : str
-                    the calibre.run runset file
-                query_input : str
-                    the path to query.input file
-                sch_file : str
-                    the schematic netlist
+        Parameters
+        ----------
+        cell_name : str
+            the cell name.
+        starrc_params : Dict[str, Any]
+            override StarRC parameters.
+        query_input : str
+            the path to query.input file
+        sch_file : str
+            the schematic netlist
 
-                Returns
-                -------
-                starrc_cmd : str
-                    the new StarXtract cmd file.
-                output_name : str
-                    the extracted netlist file.
-                """
+        Returns
+        -------
+        starrc_cmd : str
+            the new StarXtract cmd file.
+        output_name : str
+            the extracted netlist file.
+        """
         run_dir = os.path.abspath(self.rcx_run_dir)
         output_name = '%s.spf' % cell_name
 
-        template = read_file("BAG_framework/bag/verification/templates/starrc_command.pytemp")
-        starrc_cmd = Template(template).render(runset_path=runset_path,
-                                               cell_name=cell_name,
+        template = read_file(self.rcx_runset)
+        starrc_cmd = Template(template).render(cell_name=cell_name,
                                                query_input=query_input,
-                                               pdsp=os.path.join(run_dir, 'pdsp'),
-                                               tcad_grd_file=starrc_params.get('tcad_grd_file'),
-                                               mapping_file=starrc_params.get('mapping_file'),
                                                extract_type=starrc_params['extract'].get('type'),
                                                sch_file=sch_file,
                                                )
