@@ -95,7 +95,8 @@ class AnalogMOSConn(TemplateBase):
 
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
-        mos_info = tech_cls.get_mos_info(lch_unit, w, 'nch', 'standard', fg)
+        guard_ring_nf = options.get('guard_ring_nf', 0)
+        mos_info = tech_cls.get_mos_info(lch_unit, w, 'nch', 'standard', fg, guard_ring_nf=guard_ring_nf)
         tech_cls.draw_mos_connection(self, mos_info, sdir, ddir, gate_pref_loc, gate_ext_mode,
                                      min_ds_cap, is_diff, diode_conn, options)
         self.prim_top_layer = tech_cls.get_mos_conn_layer()
@@ -159,7 +160,8 @@ class AnalogMOSDummy(TemplateBase):
 
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
-        mos_info = tech_cls.get_mos_info(lch_unit, w, 'nch', 'standard', fg)
+        guard_ring_nf = options.get('guard_ring_nf', 0)
+        mos_info = tech_cls.get_mos_info(lch_unit, w, 'nch', 'standard', fg, guard_ring_nf=guard_ring_nf)
         tech_cls.draw_dum_connection(self, mos_info, edge_mode, gate_tracks, options)
         self.prim_top_layer = tech_cls.get_mos_conn_layer()
 
@@ -230,7 +232,8 @@ class AnalogMOSDecap(TemplateBase):
 
         res = self.grid.resolution
         lch_unit = int(round(lch / self.grid.layout_unit / res))
-        mos_info = tech_cls.get_mos_info(lch_unit, w, 'nch', 'standard', fg)
+        guard_ring_nf = options.get('guard_ring_nf', 0)
+        mos_info = tech_cls.get_mos_info(lch_unit, w, 'nch', 'standard', fg, guard_ring_nf=guard_ring_nf)
         tech_cls.draw_decap_connection(self, mos_info, sdir, ddir, gate_ext_mode,
                                        export_gate, options)
         self.prim_top_layer = tech_cls.get_mos_conn_layer()

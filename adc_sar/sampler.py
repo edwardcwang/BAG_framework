@@ -116,7 +116,7 @@ class NPassGateWClkCore(AnalogBase):
                                                           self.mos_conn_layer + 1,
                                                           pdiff_idx, ndiff_idx,
                                                           width=lower_track_width,
-                                                          fill_type='VSS')
+                                                          )
         inp_list.append(pdwarr)
         inn_list.append(pnwarr)
         # swap positive and negative input track indices
@@ -126,30 +126,30 @@ class NPassGateWClkCore(AnalogBase):
                                                           self.mos_conn_layer + 1,
                                                           pdiff_idx, ndiff_idx,
                                                           width=lower_track_width,
-                                                          fill_type='VSS')
+                                                          )
         inn_list.append(pdwarr)
         inp_list.append(pnwarr)
 
         # connect outputs to horizontal layer
         tr_id = self.make_track_id('nch', 0, 'ds', out_tr_idx, width=lower_track_width)
-        outp_track = self.connect_to_tracks([p_ports['d'], p_dum['d']], tr_id, fill_type='VSS')
-        outn_track = self.connect_to_tracks([n_ports['d'], n_dum['d']], tr_id, fill_type='VSS')
+        outp_track = self.connect_to_tracks([p_ports['d'], p_dum['d']], tr_id)
+        outn_track = self.connect_to_tracks([n_ports['d'], n_dum['d']], tr_id)
 
         # connect inputs/outputs to vertical layer
         io_layer = tr_id.layer_id + 1
         p_tid = self.grid.coord_to_nearest_track(io_layer, outp_track.middle, half_track=True)
         n_tid = self.grid.coord_to_nearest_track(io_layer, outn_track.middle, half_track=True)
         outp = self.connect_to_tracks(outp_track, TrackID(io_layer, p_tid, width=io_width),
-                                      track_lower=0.0, fill_type='VSS')
+                                      track_lower=0.0)
         outn = self.connect_to_tracks(outn_track, TrackID(io_layer, n_tid, width=io_width),
-                                      track_lower=0.0, fill_type='VSS')
+                                      track_lower=0.0)
         ymid_out = outp.middle
         ckout_tid = (p_tid + n_tid) / 2
         self.add_pin(self.get_pin_name('outp'), outp, show=show_pins)
         self.add_pin(self.get_pin_name('outn'), outn, show=show_pins)
         _, in_upper = self.grid.get_size_dimension(self.size)
         inp, inn = self.connect_differential_tracks(inp_list, inn_list, io_layer, p_tid, n_tid,
-                                                    width=io_width, track_upper=in_upper, fill_type='VSS')
+                                                    width=io_width, track_upper=in_upper)
         self.add_pin(self.get_pin_name('inp'), inp, show=show_pins)
         self.add_pin(self.get_pin_name('inn'), inn, show=show_pins)
         return vss_warr_list, ymid_out, ckout_tid
@@ -215,7 +215,7 @@ class NPassGateWClkCore(AnalogBase):
         n_kwargs = [dict(ds_dummy=True), dict(ds_dummy=False)]
         # draw transistor rows
         self.draw_base(lch, fg_tot, ptap_w, ntap_w, nw_list,
-                       nth_list, pw_list, pth_list, num_track_sep,
+                       nth_list, pw_list, pth_list,
                        ng_tracks=ng_tracks, nds_tracks=nds_tracks,
                        pg_tracks=pg_tracks, pds_tracks=pds_tracks,
                        n_orientations=['MX', 'MX'], p_orientations=['R0'],
@@ -412,18 +412,12 @@ class NPassGateWClk(TemplateBase):
         self.set_size_from_bound_box(top_layer, BBox(0, 0, tot_width, height, res, unit_mode=True))
 
         # fill and export supplies
-        sup_width = 2
-        fill_margin = 0.5
-        edge_margin = 0.2
         lay_id = vdd_lay_id + 1
-        vdd_warrs, vss_warrs = self.do_power_fill(lay_id, vdd_warrs, vss_warrs,
-                                                  sup_width=sup_width, fill_margin=fill_margin,
-                                                  edge_margin=edge_margin)
+        vdd_warrs, vss_warrs = self.do_power_fill(lay_id, vdd_warrs=vdd_warrs, vss_warrs=vss_warrs, unit_mode=True,
+                                                  fill_width=2, fill_space=1, space=0, space_le=0)
         lay_id += 1
-        edge_margin = 0
-        vdd_warrs, vss_warrs = self.do_power_fill(lay_id, vdd_warrs, vss_warrs,
-                                                  sup_width=sup_width, fill_margin=fill_margin,
-                                                  edge_margin=edge_margin)
+        vdd_warrs, vss_warrs = self.do_power_fill(lay_id, vdd_warrs=vdd_warrs, vss_warrs=vss_warrs, unit_mode=True,
+                                                  space=0, space_le=0)
 
         self.add_pin('VSS', vss_warrs, show=show_pins)
         self.add_pin('VDD', vdd_warrs, show=show_pins)

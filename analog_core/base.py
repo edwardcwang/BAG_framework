@@ -1030,6 +1030,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         """
         stack = kwargs.get('stack', 1)
         flip_lr = kwargs.pop('flip_lr', False)
+        flip_gate = kwargs.get('flip_gate', False)
 
         # sanity checking
         if not isinstance(fg, numbers.Integral):
@@ -1083,6 +1084,15 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         xc, yc = self._layout_info.sd_xc_unit, self._sd_yc_list[ridx]
         xc += col_idx * sd_pitch
 
+        # adding flip_gate feature
+        lch_unit = int(round(self._lch / self.grid.layout_unit / self.grid.resolution))
+        conn_mod = self._tech_cls.get_mos_conn_modulus(lch_unit)
+        source_parity = col_idx % conn_mod
+        if flip_gate:
+            orient = 'MX' if orient == 'R0' else 'R0'
+            if conn_mod != 1:
+                source_parity = 1 - source_parity
+
         if orient == 'MX':
             # flip source/drain directions
             sdir = 2 - sdir
@@ -1091,8 +1101,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         for key, val in row_info['kwargs'].items():
             if key not in kwargs:
                 kwargs[key] = val
-        lch_unit = int(round(self._lch / self.grid.layout_unit / self.grid.resolution))
-        kwargs['source_parity'] = col_idx % self._tech_cls.get_mos_conn_modulus(lch_unit)
+        kwargs['source_parity'] = source_parity
         conn_params = dict(
             lch=self._lch,
             w=w,
@@ -1218,6 +1227,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
             mkwargs = mkwargs.copy()
             mkwargs['analog'] = True
+            mkwargs['guard_ring_nf'] = guard_ring_nf
             params = dict(
                 lch=lch,
                 fg=fg_tot,
@@ -1515,6 +1525,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             is_end=bot_end,
             top_layer=top_layer,
             tech_cls_name=self._tech_cls_name,
+            options=dict(guard_ring_nf=guard_ring_nf),
         )
         bot_end_master = self.new_template(params=bot_end_params, temp_cls=AnalogEndRow)
         top_end_params = dict(
@@ -1525,6 +1536,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
             is_end=top_end,
             top_layer=top_layer,
             tech_cls_name=self._tech_cls_name,
+            options=dict(guard_ring_nf=guard_ring_nf),
         )
         top_end_master = self.new_template(params=top_end_params, temp_cls=AnalogEndRow)
         # compute Y coordinate shift from adding end row
