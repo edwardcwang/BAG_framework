@@ -204,7 +204,7 @@ class Calibre(VirtuosoChecker):
         if self.rcx_link_files:
             for source_file in self.rcx_link_files:
                 targ_file = os.path.join(run_dir, os.path.basename(source_file))
-                if not os.path.isfile(targ_file):
+                if not os.path.exists(targ_file):
                     os.symlink(source_file, targ_file)
 
         lay_file, sch_file = self._get_lay_sch_files(run_dir)
@@ -227,7 +227,7 @@ class Calibre(VirtuosoChecker):
             with open_temp(prefix='queryLog', dir=run_dir, delete=False) as queryf:
                 query_file = queryf.name
 
-            query_input = os.path.join(run_dir, 'query_input')
+            query_input = os.path.join(run_dir, 'query.input')
             cmd = ['calibre', '-query_input', query_input,
                    '-query', os.path.join(run_dir, 'svdb'), cell_name]
             flow_list.append((cmd, query_file, None, run_dir,
