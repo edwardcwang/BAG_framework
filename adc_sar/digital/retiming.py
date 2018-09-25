@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
-"""This module contains classes for ADC retimer layout.
+"""This module contains classes for ADC retimer layout, and adds boundary around each column.
 """
 
 from typing import Dict, Set, Any, Optional, List
 
-from bag.layout.template import TemplateDB
+from bag.layout.template import TemplateDB, TemplateBase
 from bag.layout.digital import StdCellTemplate, StdCellBase
 from bag.layout.routing import TrackID
 
@@ -144,6 +144,7 @@ class RetimeLatchRow(StdCellBase):
             xcur = add_tap(self, xcur, tap_master, num_row, port_table)
 
         # set template size
+        adc_width = adc_width - 2 * self._bound_params['lr_width']
         self.set_std_size((adc_width, num_row))
         # fill spaces
         self.fill_space()
@@ -153,7 +154,7 @@ class RetimeLatchRow(StdCellBase):
         clk_pitch = self.grid.get_track_pitch(clk_layer, unit_mode=True)
         num_tracks = self.bound_box.height_unit // clk_pitch
         clk_tidx = (num_tracks - 1) / 2
-        clk_warr = self.connect_to_tracks(clkb_list, TrackID(clk_layer, clk_tidx, width=clk_width), fill_type='')
+        clk_warr = self.connect_to_tracks(clkb_list, TrackID(clk_layer, clk_tidx, width=clk_width), unit_mode=True)
         self.add_pin('clkb', clk_warr, show=False)
 
         # export supplies
@@ -239,6 +240,7 @@ class RetimeSpaceRow(StdCellBase):
             xcur = add_tap(self, xcur, tap_master, num_row, port_table)
 
         # set template size
+        adc_width = adc_width - 2 * self._bound_params['lr_width']
         self.set_std_size((adc_width, num_row))
         # fill spaces
         self.fill_space()
@@ -313,6 +315,7 @@ class RetimeBufferRow(StdCellBase):
         num_buf_dig_max = (num_bits - num_buf) // 2
         if num_buf_dig_max < num_buf_dig:
             raise ValueError('Must have num_buf_out = %d <= %d' % (num_buf_dig, num_buf_dig_max))
+
         # use standard cell routing grid
         self.update_routing_grid()
 
@@ -360,6 +363,7 @@ class RetimeBufferRow(StdCellBase):
                 cur_buf_idx += 1
 
         # set template size
+        adc_width = adc_width - 2 * self._bound_params['lr_width']
         self.set_std_size((adc_width, 1))
         # fill spaces
         self.fill_space()
@@ -378,13 +382,13 @@ class RetimeBufferRow(StdCellBase):
             # export input/output
             out_tidx = TrackID(io_layer, io_idx_list[0], width=io_width)
             in_tidx = TrackID(io_layer, io_idx_list[1], width=io_width)
-            self.connect_to_tracks(in_list, in_tidx, fill_type='')
-            out_warr = self.connect_to_tracks(out_list, out_tidx, fill_type='')
+            self.connect_to_tracks(in_list, in_tidx, unit_mode=True)
+            out_warr = self.connect_to_tracks(out_list, out_tidx, unit_mode=True)
 
             self.add_pin('in', in_list[num_buf // 2], show=False)
             self.add_pin('out', out_warr, show=False)
             if dig_out_list:
-                dig_out_warr = self.connect_to_tracks(dig_out_list, in_tidx, fill_type='')
+                dig_out_warr = self.connect_to_tracks(dig_out_list, in_tidx, unit_mode=True)
                 self.add_pin('out_dig', dig_out_warr, show=False)
 
         # export supplies
@@ -392,7 +396,211 @@ class RetimeBufferRow(StdCellBase):
         self.add_pin('VSS', port_table['VSS'], show=False)
 
 
-class Retimer(StdCellBase):
+class RetimeColumn(StdCellBase):
+    """A column.
+
+    Parameters
+    ----------
+    temp_db : TemplateDB
+        the template database.
+    lib_name : str
+        the layout library name.
+    params : Dict[str, Any]
+        the parameter values.
+    used_names : Set[str]
+        a set of already used cell names.
+    **kwargs :
+        dictionary of optional parameters.  See documentation of
+        :class:`bag.layout.template.TemplateBase` for details.
+    """
+
+    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
+        super(RetimeColumn, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+
+    @classmethod
+    def get_params_info(cls):
+        # type: () -> Dict[str, str]
+        """Returns a dictionary containing parameter descriptions.
+
+        Override this method to return a dictionary from parameter names to descriptions.
+
+        Returns
+        -------
+        param_info : Dict[str, str]
+            dictionary from parameter name to description.
+        """
+        return dict(
+            num_buf='number of clock buffers.',
+            num_buf_dig='number of digital clock buffers.',
+            num_bits='number of output bits per ADC.',
+            num_adc='number of ADCs',
+            adc_width='ADC width in number of columns.',
+            cells_per_tap='Number of latch cells per tap connection.',
+            config_file='Standard cell configuration file.',
+            clk_width='clock wire width.',
+            adc_idx='ADC index.',
+        )
+
+    def draw_layout(self):
+        # type: () -> None
+
+        num_buf = self.params['num_buf']
+        num_buf_dig = self.params['num_buf_dig']
+        num_bits = self.params['num_bits']
+        num_adc = self.params['num_adc']
+        adc_width = self.params['adc_width']
+        cells_per_tap = self.params['cells_per_tap']
+        config_file = self.params['config_file']
+        clk_width = self.params['clk_width']
+        adc_idx = self.params['adc_idx']
+
+        self.set_draw_boundaries(True)
+
+        self.update_routing_grid()
+
+        lat_params = dict(
+            parity=0,
+            num_bits=num_bits,
+            adc_width=adc_width,
+            cells_per_tap=cells_per_tap,
+            config_file=config_file,
+            clk_width=clk_width,
+        )
+        lat_master0 = self.new_template(params=lat_params, temp_cls=RetimeLatchRow)
+        lat_params['parity'] = 1
+        lat_master1 = self.new_template(params=lat_params, temp_cls=RetimeLatchRow)
+
+        space_params = dict(
+            num_bits=num_bits,
+            adc_width=adc_width,
+            cells_per_tap=cells_per_tap,
+            config_file=config_file,
+        )
+        space_master = self.new_template(params=space_params, temp_cls=RetimeSpaceRow)
+        buf_params = dict(
+            num_buf=num_buf,
+            num_buf_dig=num_buf_dig,
+            num_bits=num_bits,
+            adc_width=adc_width,
+            cells_per_tap=cells_per_tap,
+            config_file=config_file,
+        )
+        buf_dig_master = self.new_template(params=buf_params, temp_cls=RetimeBufferRow)
+        buf_params['num_buf_dig'] = 0
+        buf_master = self.new_template(params=buf_params, temp_cls=RetimeBufferRow)
+        buf_params['num_buf'] = 0
+        buf_fill_master = self.new_template(params=buf_params, temp_cls=RetimeBufferRow)
+
+        spx = lat_master0.std_size[0]
+        spy = lat_master0.std_size[1]
+
+        ck_phase_2 = num_adc - 1
+        ck_phase_1 = (num_adc // 2) - 1
+        ck_phase_0_0 = ((num_adc // 2) + 1) % num_adc
+        ck_phase_0_1 = 1
+        ck_phase_out = ck_phase_1
+        ck_phase_buf = sorted(set([ck_phase_2, ck_phase_1, ck_phase_0_0, ck_phase_0_1]))
+
+        # last stage latch
+        inst2 = self.add_std_instance(lat_master0, 'X2', nx=1, spx=spx)
+        ck_list_inst2 = inst2.get_all_port_pins('clkb')
+        self.add_pin('clkb2', ck_list_inst2, show=False)
+
+        self._export_output(inst2, adc_idx, num_bits)
+        io_wires = []
+        self._collect_io_wires(inst2, 'in', num_bits, io_wires)
+
+        vdd_list = inst2.get_all_port_pins('VDD')
+        vss_list = inst2.get_all_port_pins('VSS')
+
+        # second-to-last stage latches
+        inst1 = self.add_std_instance(lat_master1, 'X1', loc=(0, spy), nx=1, spx=spx)
+        ck_list_inst1 = inst1.get_all_port_pins('clkb')
+        self.add_pin('clkb1', ck_list_inst1, show=False)
+
+        self._collect_io_wires(inst1, 'out', num_bits, io_wires)
+        io_wires = self.connect_wires(io_wires, unit_mode=True)
+        self.add_pin('io21', io_wires, show=False)
+        io_wires = []
+        self._collect_io_wires(inst1, 'in', num_bits, io_wires)
+
+        vdd_list.extend(inst1.get_all_port_pins('VDD'))
+        vss_list.extend(inst1.get_all_port_pins('VSS'))
+
+        # set template size
+        cb_nrow = buf_master.std_size[1]
+        row_width = adc_width - 2 * self._bound_params['lr_width']
+        self.set_std_size((row_width, 4 * spy + cb_nrow))
+        # draw boundaries
+        self.draw_boundaries()
+        blk_w, blk_h = self.bound_box.width_unit, self.bound_box.height_unit
+
+        # first stage latches, clock buffers, fills
+        if adc_idx < num_adc // 2:
+            finst = self.add_std_instance(space_master, loc=(0, 2 * spy))
+            inst = self.add_std_instance(lat_master0, loc=(0, 3 * spy))
+        else:
+            finst = self.add_std_instance(space_master, loc=(0, 3 * spy))
+            inst = self.add_std_instance(lat_master0, loc=(0, 2 * spy))
+        # connect clk/vdd/vss/output
+        ck_list_inst = inst.get_all_port_pins('clkb')
+        self.add_pin('clkb<%d>' % adc_idx, ck_list_inst, show=False)
+        vdd_list.extend(inst.get_all_port_pins('VDD'))
+        vss_list.extend(inst.get_all_port_pins('VSS'))
+        vdd_list.extend(finst.get_all_port_pins('VDD'))
+        vss_list.extend(finst.get_all_port_pins('VSS'))
+        self._collect_io_wires(inst, 'out', num_bits, io_wires)
+        # export input
+        for bit_idx in range(num_bits):
+            in_pin = inst.get_port('in<%d>' % bit_idx).get_pins()[0]
+            in_pin = self.connect_wires(in_pin, upper=blk_h, unit_mode=True)
+            name = 'in_%d<%d>' % (adc_idx, bit_idx)
+            self.add_pin(name, in_pin, show=False)
+        # clock buffers/fills
+        if adc_idx in ck_phase_buf:
+            if adc_idx == ck_phase_out:
+                cur_master = buf_dig_master
+            else:
+                cur_master = buf_master
+            cfinst = self.add_std_instance(cur_master, loc=(0, 4 * spy))
+            vdd_list.extend(cfinst.get_all_port_pins('VDD'))
+            vss_list.extend(cfinst.get_all_port_pins('VSS'))
+            in_pin = cfinst.get_port('in').get_pins()[0]
+            in_pin = self.connect_wires(in_pin, upper=blk_h, unit_mode=True)
+            self.add_pin('clk%d' % adc_idx, in_pin)
+            buf_port = cfinst.get_port('out').get_pins()[0]
+            self.add_pin('buf%d' %(adc_idx), buf_port, show=False)
+            if cfinst.has_port('out_dig'):
+                out_dig_warr = cfinst.get_port('out_dig').get_pins()[0]
+                self.add_pin('out_dig', out_dig_warr, show=False)
+        else:
+            cfinst = self.add_std_instance(buf_fill_master, loc=(0, 4 * spy))
+            vdd_list.extend(cfinst.get_all_port_pins('VDD'))
+            vss_list.extend(cfinst.get_all_port_pins('VSS'))
+
+        io_wires = self.connect_wires(io_wires, unit_mode=True)
+        self.add_pin('io10', io_wires, show=False)
+
+        # export supplies
+        self.add_pin('VDD', vdd_list, show=False)
+        self.add_pin('VSS', vss_list, show=False)
+
+    def _export_output(self, inst, adc_idx, num_bits):
+        for bit_idx in range(num_bits):
+            out_pin = inst.get_port('out<%d>' % bit_idx, col=0).get_pins()[0]
+            out_pin = self.connect_wires(out_pin, lower=0, unit_mode=True)
+            name = 'out_%d<%d>' % (adc_idx, bit_idx)
+            self.add_pin(name, out_pin, show=True)
+
+    @staticmethod
+    def _collect_io_wires(inst, name, num_bits, wire_list):
+        for bit_idx in range(num_bits):
+            pname = '%s<%d>' % (name, bit_idx)
+            wire_list.extend(inst.get_all_port_pins(pname))
+
+
+class Retimer(TemplateBase):
     """First stage retime latch for a ADC block.
 
     Parameters
@@ -450,170 +658,143 @@ class Retimer(StdCellBase):
         reserve_tracks = self.params['reserve_tracks']
         buf_ck_width = 5
 
-        self.set_draw_boundaries(True)
-
-        self.update_routing_grid()
-
-        lat_params = dict(
-            parity=0,
+        col_params = dict(
+            num_buf=num_buf,
+            num_buf_dig=num_buf_dig,
             num_bits=num_bits,
+            num_adc=num_adc,
             adc_width=adc_width,
             cells_per_tap=cells_per_tap,
             config_file=config_file,
             clk_width=clk_width,
+            adc_idx=0,
         )
-        lat_master0 = self.new_template(params=lat_params, temp_cls=RetimeLatchRow)
-        lat_params['parity'] = 1
-        lat_master1 = self.new_template(params=lat_params, temp_cls=RetimeLatchRow)
 
-        space_params = dict(
-            num_bits=num_bits,
-            adc_width=adc_width,
-            cells_per_tap=cells_per_tap,
-            config_file=config_file,
-        )
-        space_master = self.new_template(params=space_params, temp_cls=RetimeSpaceRow)
-        buf_params = dict(
-            num_buf=num_buf,
-            num_buf_dig=num_buf_dig,
-            num_bits=num_bits,
-            adc_width=adc_width,
-            cells_per_tap=cells_per_tap,
-            config_file=config_file,
-        )
-        buf_dig_master = self.new_template(params=buf_params, temp_cls=RetimeBufferRow)
-        buf_params['num_buf_dig'] = 0
-        buf_master = self.new_template(params=buf_params, temp_cls=RetimeBufferRow)
-        buf_params['num_buf'] = 0
-        buf_fill_master = self.new_template(params=buf_params, temp_cls=RetimeBufferRow)
-
-        spx = lat_master0.std_size[0]
-        spy = lat_master0.std_size[1]
         ck_dict = {}
 
-        # last stage latches
-        inst2 = self.add_std_instance(lat_master0, 'X2', nx=num_adc, spx=spx)
-        ck_list = inst2.get_all_port_pins('clkb')
-        ck_dict[7] = self.connect_wires(ck_list)
+        # finding clock_bar phases <- added by Jaeduk
+        # rules:
+        # 1) last stage latches: num_adc-1
+        # 2) second last stage latches: (num_adc/2)-1
+        # 3) the first half of first stage latches: ((num_adc/2)+1)%num_adc
+        # 4) the second half of first stage latches: 1
+        # 5) the output phase = the second last latch phase
+        ck_phase_2 = num_adc - 1
+        ck_phase_1 = (num_adc // 2) - 1
+        ck_phase_0_0 = ((num_adc // 2) + 1) % num_adc
+        ck_phase_0_1 = 1
+        ck_phase_out = ck_phase_1
+        ck_phase_buf = sorted(set([ck_phase_2, ck_phase_1, ck_phase_0_0, ck_phase_0_1]))
+        print('clocking phases:', ck_phase_2, ck_phase_1, ck_phase_0_0, ck_phase_0_1, ck_phase_out, ck_phase_buf)
+        ck_dict[ck_phase_2] = []
+        ck_dict[ck_phase_1] = []
+        ck_dict[ck_phase_0_0] = []
+        ck_dict[ck_phase_0_1] = []
 
-        self._export_output(inst2, adc_order, num_bits)
-        io_wires = []
-        self._collect_io_wires(inst2, 'in', num_bits, io_wires)
-
-        vdd_list = inst2.get_all_port_pins('VDD')
-        vss_list = inst2.get_all_port_pins('VSS')
-
-        # second-to-last stage latches
-        inst1 = self.add_std_instance(lat_master1, 'X1', loc=(0, spy), nx=num_adc, spx=spx)
-        ck_list = inst1.get_all_port_pins('clkb')
-        ck_dict[3] = self.connect_wires(ck_list)
-
-        self._collect_io_wires(inst1, 'out', num_bits, io_wires)
-        self.connect_wires(io_wires)
-        io_wires = []
-        self._collect_io_wires(inst1, 'in', num_bits, io_wires)
-
-        vdd_list.extend(inst1.get_all_port_pins('VDD'))
-        vss_list.extend(inst1.get_all_port_pins('VSS'))
-
-        # set template size
-        cb_nrow = buf_master.std_size[1]
-        self.set_std_size((adc_width * num_adc, 4 * spy + cb_nrow))
-        # draw boundaries
-        self.draw_boundaries()
-        blk_h = self.bound_box.height
-
-        # first stage latches, clock buffers, and fills
+        io21_list = []
+        io10_list = []
+        vdd_list = []
+        vss_list = []
         ck1_list = []
         ck5_list = []
         buf_dict = {}
         out_dig_warr = None
+
         for col_idx, adc_idx in enumerate(adc_order):
-            if adc_idx < 4:
-                finst = self.add_std_instance(space_master, loc=(spx * col_idx, 2 * spy))
-                inst = self.add_std_instance(lat_master0, loc=(spx * col_idx, 3 * spy))
+            col_params['adc_idx'] = adc_idx
+            col_master = self.new_template(params=col_params, temp_cls=RetimeColumn)
+
+            spx = col_master.std_size[0] * col_master.std_col_width_unit
+            spy = col_master.std_size[1] * col_master.std_row_height_unit
+
+            col_inst = self.add_instance(col_master, 'C%d' %(adc_idx), loc=(spx * col_idx, 0), unit_mode=True)
+            ck_dict[ck_phase_2].extend(col_inst.get_all_port_pins('clkb2'))
+
+            self._export_output(col_inst, adc_idx, num_bits)
+
+            vdd_list.extend(col_inst.get_all_port_pins('VDD'))
+            vss_list.extend(col_inst.get_all_port_pins('VSS'))
+
+            ck_dict[ck_phase_1].extend(col_inst.get_all_port_pins('clkb1'))
+
+            io21_list.extend(col_inst.get_all_port_pins('io21'))
+
+            if adc_idx < num_adc // 2:
                 ck_list = ck5_list
             else:
-                finst = self.add_std_instance(space_master, loc=(spx * col_idx, 3 * spy))
-                inst = self.add_std_instance(lat_master0, loc=(spx * col_idx, 2 * spy))
                 ck_list = ck1_list
-            # connect clk/vdd/vss/output
-            ck_list.extend(inst.get_all_port_pins('clkb'))
-            vdd_list.extend(inst.get_all_port_pins('VDD'))
-            vss_list.extend(inst.get_all_port_pins('VSS'))
-            vdd_list.extend(finst.get_all_port_pins('VDD'))
-            vss_list.extend(finst.get_all_port_pins('VSS'))
-            self._collect_io_wires(inst, 'out', num_bits, io_wires)
-            # export input
+            ck_list.extend(col_inst.get_all_port_pins('clkb<%d>' % adc_idx))
+
             for bit_idx in range(num_bits):
-                in_pin = inst.get_port('in<%d>' % bit_idx).get_pins()[0]
-                in_pin = self.connect_wires(in_pin, upper=blk_h)
+                in_pin = col_inst.get_port('in_%d<%d>' % (adc_idx, bit_idx)).get_pins()[0]
                 name = 'in_%d<%d>' % (adc_idx, bit_idx)
                 self.add_pin(name, in_pin, show=True)
-            # clock buffers/fills
-            if adc_idx in [1, 3, 5, 7]:
-                if adc_idx == 3:
-                    cur_master = buf_dig_master
-                else:
-                    cur_master = buf_master
-                cfinst = self.add_std_instance(cur_master, loc=(spx * col_idx, 4 * spy))
-                vdd_list.extend(cfinst.get_all_port_pins('VDD'))
-                vss_list.extend(cfinst.get_all_port_pins('VSS'))
-                in_pin = cfinst.get_port('in').get_pins()[0]
-                in_pin = self.connect_wires(in_pin, upper=blk_h)
-                self.add_pin('clk%d' % adc_idx, in_pin)
-                buf_dict[adc_idx] = cfinst.get_port('out').get_pins()[0]
-                if cfinst.has_port('out_dig'):
-                    out_dig_warr = cfinst.get_port('out_dig').get_pins()[0]
-            else:
-                cfinst = self.add_std_instance(buf_fill_master, loc=(spx * col_idx, 4 * spy))
-                vdd_list.extend(cfinst.get_all_port_pins('VDD'))
-                vss_list.extend(cfinst.get_all_port_pins('VSS'))
 
-        self.connect_wires(io_wires)
-        ck_dict[1] = self.connect_wires(ck1_list)
-        ck_dict[5] = self.connect_wires(ck5_list)
+            if adc_idx in ck_phase_buf:
+                clk_pin = col_inst.get_port('clk%d' % adc_idx).get_pins()[0]
+                self.add_pin('clk%d' % adc_idx, clk_pin)
+                buf_dict[adc_idx] = col_inst.get_port('buf%d' % (adc_idx)).get_pins()[0]
+                if col_inst.has_port('out_dig'):
+                    out_dig_warr = col_inst.get_port('out_dig').get_pins()[0]
 
-        for ck_idx in [1, 3, 5, 7]:
+            io10_list.extend(col_inst.get_all_port_pins('io10'))
+
+        # set template size
+        col_top_layer = col_master.top_layer
+        if self.grid.dir_tracks[col_top_layer] == 'x':
+            size_y = spy / self.grid.get_track_pitch(col_top_layer, unit_mode=True)
+        else:
+            size_y = spy / self.grid.get_track_pitch(col_top_layer + 1, unit_mode=True)
+
+        self.size = [col_top_layer, adc_width * num_adc, size_y]
+
+        ck_dict[ck_phase_2] = self.connect_wires(ck_dict[ck_phase_2], unit_mode=True)
+        ck_dict[ck_phase_1] = self.connect_wires(ck_dict[ck_phase_1], unit_mode=True)
+        self.connect_wires(io21_list, unit_mode=True)
+        self.connect_wires(io10_list, unit_mode=True)
+        ck_dict[ck_phase_0_1] = self.connect_wires(ck1_list)
+        ck_dict[ck_phase_0_0] = self.connect_wires(ck5_list)
+
+        for ck_idx in ck_phase_buf:
             buf_out = buf_dict[ck_idx]
             buf_layer = buf_out.layer_id
             ck_wires = ck_dict[ck_idx]
-            tr_id = self.grid.coord_to_nearest_track(buf_layer + 1, buf_out.middle, mode=0)
+            tr_id = self.grid.coord_to_nearest_track(buf_layer + 1, buf_out.middle_unit, mode=0, unit_mode=True)
             tr_id = TrackID(buf_layer + 1, tr_id, width=buf_ck_width)
-            self.connect_to_tracks([buf_out, ] + ck_wires, tr_id, fill_type='')
+            self.connect_to_tracks([buf_out, ] + ck_wires, tr_id, unit_mode=True)
 
         # export digital output
-        tr_id = self.grid.coord_to_nearest_track(out_dig_warr.layer_id + 1, out_dig_warr.middle, mode=0)
+        tr_id = self.grid.coord_to_nearest_track(out_dig_warr.layer_id + 1, out_dig_warr.middle_unit, mode=0, unit_mode=True)
         tr_id = TrackID(out_dig_warr.layer_id + 1, tr_id, width=buf_ck_width)
-        warr = self.connect_to_tracks(out_dig_warr, tr_id, fill_type='', track_lower=0)
+        warr = self.connect_to_tracks(out_dig_warr, tr_id, track_lower=0, unit_mode=True)
         self.add_pin('ck_out', warr, show=True)
 
         sup_layer = vdd_list[0].layer_id + 1
-        vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_list, vss_list, sup_width=2,
-                                                fill_margin=0.5, edge_margin=0.2)
+        vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
+                                                space=0, space_le=0, y_margin=220)
         sup_layer += 1
 
         # reserve routing tracks for ADC
-        adc_pitch = lat_master0.get_num_tracks(sup_layer)
+        adc_pitch = col_master.get_num_tracks(sup_layer)
+        reserve_tracks = [r / self.grid.get_track_pitch(sup_layer) for r in reserve_tracks]
         for tid in reserve_tracks:
             self.reserve_tracks(sup_layer, tid, num=num_adc, pitch=adc_pitch)
 
-        vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_list, vss_list, sup_width=2,
-                                                fill_margin=0.5, edge_margin=0.2)
+        vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
+                                                fill_width=2, fill_space=1, space=0, space_le=0, y_margin=200)
         sup_layer += 1
-        vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_list, vss_list, sup_width=2,
-                                                fill_margin=0.5, edge_margin=0.2)
+
+        vdd_list, vss_list = self.do_power_fill(sup_layer, vdd_warrs=vdd_list, vss_warrs=vss_list, unit_mode=True,
+                                                space=0, space_le=0, y_margin=220)
 
         self.add_pin('VDD', vdd_list, show=True)
         self.add_pin('VSS', vss_list, show=True)
 
-    def _export_output(self, inst, adc_order, num_bits):
-        for col_idx, adc_idx in enumerate(adc_order):
-            for bit_idx in range(num_bits):
-                out_pin = inst.get_port('out<%d>' % bit_idx, col=col_idx).get_pins()[0]
-                out_pin = self.connect_wires(out_pin, lower=0)
-                name = 'out_%d<%d>' % (adc_idx, bit_idx)
-                self.add_pin(name, out_pin, show=True)
+    def _export_output(self, inst, adc_idx, num_bits):
+        for bit_idx in range(num_bits):
+            out_pin = inst.get_port('out_%d<%d>' % (adc_idx, bit_idx), col=0).get_pins()[0]
+            name = 'out_%d<%d>' % (adc_idx, bit_idx)
+            self.add_pin(name, out_pin, show=True)
 
     @staticmethod
     def _collect_io_wires(inst, name, num_bits, wire_list):

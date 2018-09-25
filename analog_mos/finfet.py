@@ -482,7 +482,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         cpo_po_extx = mos_constants['cpo_po_extx']
         po_od_extx = mos_constants['po_od_extx']
         fg_outer_gr = mos_constants.get('fg_outer_gr', 0)
-        substrate_planar = mos_constants.get('substrate_planar', False)
+        is_planar_sub = self.is_planar_substrate(lch_unit, guard_ring_nf=guard_ring_nf)
 
         if 0 < guard_ring_nf < fg_gr_min:
             raise ValueError('guard_ring_nf = %d < %d' % (guard_ring_nf, fg_gr_min))
@@ -510,7 +510,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             fg_gr_sep = 0
         else:
             fg_gr_sub = guard_ring_nf + 2 * fg_od_margin
-            if substrate_planar:
+            if is_planar_sub:
                 fg_gr_sep = fg_outer
                 fg_outer = 0
             else:
@@ -537,6 +537,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             fg_od_margin=fg_od_margin,
         )
 
+    @abc.abstractmethod
+    def is_planar_substrate(self, lch_unit, **kwargs):
+        # return True to draw planar style substrate
+        return False
+
     def _get_mos_blk_info(self, lch_unit, fg, w, mos_type, sub_type, threshold, **kwargs):
         # type: (int, int, int, str, str, str, **kwargs) -> Dict[str, Any]
 
@@ -547,11 +552,16 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         nw_dnw_ovl = mos_constants['nw_dnw_ovl']
         dnw_layers = mos_constants['dnw_layers']
-        substrate_planar = mos_constants.get('substrate_planar', False)
         has_cpo = mos_constants['has_cpo']
         cpo_h = mos_constants['cpo_h']
+        is_planar_sub = self.is_planar_substrate(lch_unit, **kwargs)
 
         is_sub = (mos_type == sub_type)
+        if is_sub:
+            implant_type = sub_type + '_planar' if is_planar_sub else sub_type
+        else:
+            implant_type = mos_type
+
         blk_type = 'sub' if is_sub else 'mos'
         od_type = 'mos_fake' if ds_dummy else blk_type
 
@@ -603,7 +613,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # Compute layout information
         lay_info_list = [(lay, 0, blk_yb, blk_yt) for lay in
-                         self.get_mos_layers(mos_type, threshold)]
+                         self.get_mos_layers(implant_type, threshold)]
         if dnw_mode:
             lay_info_list.extend(((lay, 0, blk_yt - nw_dnw_ovl, blk_yt) for lay in dnw_layers))
 
@@ -626,8 +636,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             fill_info_list=fill_info_list,
             # edge parameters
             sub_type=sub_type,
-            imp_params=None if is_sub else [(mos_type, threshold, blk_yb, blk_yt, blk_yb, blk_yt)],
+            imp_params=None if is_sub else [(implant_type, threshold, blk_yb, blk_yt, blk_yb, blk_yt)],
             is_sub_ring=is_sub_ring,
+            is_planar_sub=is_planar_sub,
             dnw_mode='',
             # adjacent block information list
             adj_row_list=[],
@@ -635,7 +646,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             right_blk_info=None,
         )
 
-        if substrate_planar and is_sub:
+        if is_planar_sub and is_sub:
             layout_info['no_po_region'] = set(range(fg))
 
         # step 8: return results
@@ -1122,8 +1133,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         sd_pitch = mos_constants['sd_pitch']
         od_spx = mos_constants['od_spx']
         od_fill_w_max = mos_constants['od_fill_w_max']
-        substrate_planar = mos_constants.get('substrate_planar', False)
         cpo_po_ency = mos_constants['cpo_po_ency']
+        is_planar_sub = self.is_planar_substrate(lch_unit, **kwargs)
 
         yt = w * fin_p
         yc = yt // 2
@@ -1185,7 +1196,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             if bot_tran != top_tran:
                 # case 1
                 if bot_tran:
-                    if substrate_planar:
+                    if is_planar_sub:
                         cpo_yb = cpo_yc_list[-1] - (cpo_h // 2)
                         cpo_yt = cpo_yb + cpo_h_end
                         if one_cpo:
@@ -1203,7 +1214,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                         imp_ysep = imp_split_y[1]
                         thres_ysep = thres_split_y[1]
                 else:
-                    if substrate_planar:
+                    if is_planar_sub:
                         cpo_yt = cpo_yc_list[0] + cpo_h // 2
                         cpo_yb = cpo_yt - cpo_h_end
                         if one_cpo:
@@ -1229,7 +1240,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 thres_ysep = thres_split_y[sep_idx]
             else:
                 # case 2
-                if substrate_planar:
+                if is_planar_sub:
                     cpo_yc_list = []
                 sep_idx = 0 if bot_thres <= top_thres else 1
                 imp_ysep = imp_split_y[sep_idx]
@@ -1239,7 +1250,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             if bot_tran != top_tran:
                 # case 5
                 if bot_tran:
-                    if substrate_planar:
+                    if is_planar_sub:
                         cpo_yb = cpo_yc_list[-1] - (cpo_h // 2)
                         cpo_yt = cpo_yb + cpo_h_end
                         if one_cpo:
@@ -1259,7 +1270,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                         imp_ysep = imp_split_y[1]
                         thres_ysep = thres_split_y[1]
                 else:
-                    if substrate_planar:
+                    if is_planar_sub:
                         cpo_yt = cpo_yc_list[0] + cpo_h // 2
                         cpo_yb = cpo_yt - cpo_h_end
                         if one_cpo:
@@ -1287,7 +1298,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 thres_ysep = thres_split_y[sep_idx]
             else:
                 # case 4
-                if substrate_planar:
+                if is_planar_sub:
                     cpo_yc_list = []
                 sep_idx = 1 if bot_imp == 'nch' else 0
                 imp_ysep = imp_split_y[sep_idx]
@@ -1310,7 +1321,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         if has_cpo:
             for idx, cpo_yc in enumerate(cpo_yc_list):
                 # find next CPO coordinates
-                if substrate_planar:
+                if is_planar_sub:
                     if idx == 0 and not bot_tran:
                         cur_cpo_yt = cpo_yc + cpo_h // 2
                         cur_cpo_yb = cur_cpo_yt - cpo_h_end
@@ -1327,7 +1338,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # modify adjacent row geometries if substrate planar is true,
         # and we are next to a substrate row.
-        if substrate_planar and (not bot_tran or not top_tran):
+        if is_planar_sub and (not bot_tran or not top_tran):
             if add_row_yt > add_row_yb:
                 po_type = 'PO' if one_cpo else 'PO_dummy'
                 adj_row_list = [AdjRowInfo(row_y=(add_row_yb, add_row_yt),
@@ -1362,6 +1373,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             sub_type=sub_type,
             imp_params=imp_params,
             is_sub_ring=False,
+            is_planar_sub=is_planar_sub,
             between_gr=between_gr,
             dnw_mode='',
             # adjacent block information list
@@ -1460,7 +1472,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         cpo_po_ency = mos_constants['cpo_po_ency']
         nw_dnw_ext = mos_constants['nw_dnw_ext']
         edge_margin = mos_constants['edge_margin']
-        substrate_planar = mos_constants.get('substrate_planar', False)
+        is_planar_sub = self.is_planar_substrate(lch_unit, **kwargs)
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
@@ -1473,7 +1485,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         if is_end:
             blk_pitch = lcm([blk_pitch, fin_p])
             # first assume top Y coordinate is 0
-            if substrate_planar or not has_cpo:
+            if is_planar_sub or not has_cpo:
                 arr_yt = -(-edge_margin // blk_pitch) * blk_pitch
                 imp_yb = arr_yt
                 finbound_yb = arr_yt - fin_p2 - fin_h2
@@ -1521,7 +1533,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         else:
             # we just draw CPO
             imp_yb = arr_yt = 0
-            if substrate_planar or not has_cpo:
+            if is_planar_sub or not has_cpo:
                 lay_info_list = []
             else:
                 lay_info_list = [(cpo_lay, 0, -cpo_h // 2, cpo_h // 2)]
@@ -1542,6 +1554,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             sub_type=sub_type,
             imp_params=None,
             is_sub_ring=is_sub_ring,
+            is_planar_sub=is_planar_sub,
             dnw_mode=dnw_mode,
             # adjacent block information list
             adj_row_list=adj_row_list,
@@ -1613,7 +1626,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         imp_edge_dx = mos_constants.get('imp_edge_dx', {})
         sd_pitch = mos_constants['sd_pitch']
-        substrate_planar = mos_constants.get('substrate_planar', False)
+        is_planar_sub = self.is_planar_substrate(lch_unit, guard_ring_nf=guard_ring_nf)
 
         edge_info = self.get_edge_info(lch_unit, guard_ring_nf, is_end, dnw_mode=dnw_mode)
         fg_outer = edge_info['fg_outer']
@@ -1696,13 +1709,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             lay_info_list=new_lay_list,
             # TODO: figure out how to draw fill in outer edge block
             fill_info_list=[],
+            is_planar_sub=is_planar_sub,
             # adjacent block information
             adj_row_list=new_adj_row_list,
             left_blk_info=EdgeInfo(od_type=None, draw_layers={}, y_intv={}),
             right_blk_info=adj_blk_info[0],
         )
 
-        if blk_type == 'sub' and substrate_planar:
+        if blk_type == 'sub' and is_planar_sub:
             layout_info['no_po_region'] = set(range(fg_outer))
             layout_info['no_md_region'] = set(range(fg_outer + 1))
 
@@ -1730,7 +1744,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
-        substrate_planar = mos_constants.get('substrate_planar', False)
+        is_planar_sub = layout_info.get('is_planar_sub', False)
 
         edge_info = self.get_edge_info(lch_unit, guard_ring_nf, True, dnw_mode=dnw_mode)
         fg_gr_sub = edge_info['fg_gr_sub']
@@ -1742,7 +1756,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # noinspection PyProtectedMember
         row_info_list = [rinfo._replace(od_x_list=od_x_list, od_type=('sub', rinfo.od_type[1]))
                          for rinfo in row_info_list]
-        if substrate_planar:
+        if is_planar_sub:
             if blk_type == 'sub':
                 edge_blk_type = 'gr_sub_sub'
             elif blk_type == 'end' or between_gr:
@@ -1763,20 +1777,21 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 if lay_name in dnw_layers:
                     new_lay_list.append((lay_name, wblk - nw_dnw_ovl, yb, yt))
                 else:
-                    if not (substrate_planar and lay_name == cpo_lay):
+                    if not (is_planar_sub and lay_name == cpo_lay):
                         new_lay_list.append((lay_name, xl, yb, yt))
         else:
             # we need to convert implant layers to substrate implants
             # first, get all CPO layers
-            if substrate_planar:
+            if is_planar_sub:
                 new_lay_list = []
             else:
                 new_lay_list = [lay_info for lay_info in lay_info_list if lay_info[0] == cpo_lay]
             # compute substrate implant layers
             for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
                 sub_type = 'ptap' if mtype == 'nch' or mtype == 'ptap' else 'ntap'
-                imp_layers_info = imp_layers_info_struct[sub_type]
-                thres_layers_info = thres_layers_info_struct[sub_type][thres]
+                implant_type = sub_type + '_planar' if is_planar_sub else sub_type
+                imp_layers_info = imp_layers_info_struct[implant_type]
+                thres_layers_info = thres_layers_info_struct[implant_type][thres]
                 for cur_yb, cur_yt, lay_info in [(imp_yb, imp_yt, imp_layers_info),
                                                  (thres_yb, thres_yt, thres_layers_info)]:
                     for lay_name in lay_info:
@@ -1808,13 +1823,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             row_info_list=row_info_list,
             lay_info_list=new_lay_list,
             fill_info_list=fill_info_list,
+            is_planar_sub=is_planar_sub,
             # adjacent block information list
             adj_row_list=new_adj_row_list,
             left_blk_info=None,
             right_blk_info=None,
         )
 
-        if substrate_planar:
+        if is_planar_sub:
             layout_info['no_po_region'] = set(range(fg_gr_sub))
             layout_info['no_md_region'] = set((idx for idx in range(fg_gr_sub + 1)
                                                if (idx < fg_od_margin or
@@ -1836,7 +1852,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fg_gr_min = mos_constants['fg_gr_min']
-        substrate_planar = mos_constants.get('substrate_planar', False)
+        is_planar_sub = layout_info.get('is_planar_sub', False)
 
         edge_constants = self.get_edge_info(lch_unit, fg_gr_min, True, is_sub_ring=is_sub_ring,
                                             dnw_mode=dnw_mode)
@@ -1844,7 +1860,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         cpo_xl = edge_constants['cpo_xl']
 
         # compute new row_info_list
-        if substrate_planar:
+        if is_planar_sub:
             cpo_lay = mos_layer_table['CPO']
             new_lay_list = [(lay, cpo_xl, yb, yt) if lay == cpo_lay else (lay, 0, yb, yt)
                             for lay, _, yb, yt in lay_info_list]
@@ -1884,13 +1900,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             lay_info_list=new_lay_list,
             # TODO: figure out how to compute fill information
             fill_info_list=[],
+            is_planar_sub=is_planar_sub,
             # adjacent block information list
             adj_row_list=new_adj_list,
             left_blk_info=None,
             right_blk_info=adj_blk_info[0],
         )
 
-        if substrate_planar and blk_type == 'sub':
+        if is_planar_sub and blk_type == 'sub':
             layout_info['no_po_region'] = set(range(fg_gr_sep))
             layout_info['no_md_region'] = set(range(fg_gr_sep + 1))
         return layout_info
@@ -2087,7 +2104,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         sd_pitch = mos_constants['sd_pitch']
         md_w = mos_constants['md_w']
         po_od_extx = mos_constants['po_od_extx']
-        substrate_planar = mos_constants.get('substrate_planar', False)
+        is_planar_sub = layout_info.get('is_planar_sub', False)
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
@@ -2121,7 +2138,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 od_name = 'OD_dummy'
                 md_lay_cur = md_dum_lay
             elif od_type == 'sub':
-                od_name = 'OD_sub'
+                od_name = 'OD_sub_planar' if is_planar_sub else 'OD_sub'
                 md_lay_cur = md_lay
             else:
                 od_name = 'OD'
@@ -2151,7 +2168,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     if draw_od:
                         od_xl = po_xc - lch_unit // 2 + od_start * sd_pitch - po_od_extx
                         od_xr = po_xc + lch_unit // 2 + (od_stop - 1) * sd_pitch + po_od_extx
-                        if substrate_planar:
+                        if is_planar_sub:
                             # modify OD geometry inside planar guard ring
                             if blk_type == 'gr_sub_sub':
                                 self.draw_od(template, od_name,
@@ -2162,7 +2179,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                 od_yt = arr_yt
                         od_box = BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True)
                         self.draw_od(template, od_name, od_box)
-            elif substrate_planar and blk_type == 'gr_sub' and arr_yt > arr_yb:
+            elif is_planar_sub and blk_type == 'gr_sub' and arr_yt > arr_yb:
                 od_start, od_stop = od_x_list[0]
                 od_xl = po_xc - lch_unit // 2 + od_start * sd_pitch - po_od_extx
                 od_xr = po_xc + lch_unit // 2 + (od_stop - 1) * sd_pitch + po_od_extx
@@ -2392,7 +2409,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         sd_pitch = mos_constants['sd_pitch']
-        mos_conn_modullus = mos_constants['mos_conn_modulus']
 
         if fg % stack != 0:
             raise ValueError('AnalogMosConn: stack = %d must evenly divides fg = %d' % (stack, fg))
@@ -2409,7 +2425,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         s_x_list = list(range(0, num_seg * wire_pitch + 1, 2 * wire_pitch))
         d_x_list = list(range(wire_pitch, num_seg * wire_pitch + 1, 2 * wire_pitch))
 
-        drain_parity = (source_parity + 1) % mos_conn_modullus
         # determine drain/source via location
         if sdir == 0:
             ds_code = 2
@@ -2428,7 +2443,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                                  source_parity=source_parity)
             _, d_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y,
                                                  md_y, d_x_list, d_x_list, ds_code == 2, 0, 2,
-                                                 source_parity=drain_parity)
+                                                 source_parity=source_parity)
             g_warrs = self.draw_g_connection(template, lch_unit, fg, sd_pitch, 0, od_y, md_y,
                                              d_x_list, is_sub=False, is_diode=True)
 
@@ -2482,7 +2497,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                                  source_parity=source_parity)
             _, d_warrs = self.draw_ds_connection(template, lch_unit, num_seg, wire_pitch, 0, od_y,
                                                  md_y, d_x_list, d_x_list, d_align, ddir, 2,
-                                                 source_parity=drain_parity)
+                                                 source_parity=source_parity)
             g_warrs = self.draw_g_connection(template, lch_unit, fg, sd_pitch, 0, od_y, md_y,
                                              g_x_list, is_sub=False)
 
