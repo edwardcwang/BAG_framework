@@ -1309,6 +1309,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                       (top_mtype, top_thres, imp_ysep, yt, thres_ysep, yt)]
 
         for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
+            if is_planar_sub and (mtype == 'ntap' or mtype == 'ptap'):
+                mtype = mtype + '_planar'
             imp_layers_info = imp_layers_info_struct[mtype]
             thres_layers_info = thres_layers_info_struct[mtype][thres]
             for cur_yb, cur_yt, lay_info in [(imp_yb, imp_yt, imp_layers_info),
@@ -1657,8 +1659,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # get new implant layers
             for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
                 sub_type = 'ptap' if mtype == 'nch' or mtype == 'ptap' else 'ntap'
-                imp_layers_info = imp_layers_info_struct[sub_type]
-                thres_layers_info = thres_layers_info_struct[sub_type][thres]
+                implant_type = sub_type + '_planar' if is_planar_sub else sub_type
+                imp_layers_info = imp_layers_info_struct[implant_type]
+                thres_layers_info = thres_layers_info_struct[implant_type][thres]
                 for cur_yb, cur_yt, lay_info in [(imp_yb, imp_yt, imp_layers_info),
                                                  (thres_yb, thres_yt, thres_layers_info)]:
                     if cur_yt > cur_yb:
@@ -2097,6 +2100,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         right_blk_info = layout_info['right_blk_info']
         no_po_region = layout_info.get('no_po_region', set())
         no_md_region = layout_info.get('no_md_region', set())
+        extra_rect_list = layout_info.get('extra_rect_list', None)
+
+        if extra_rect_list:
+            for (lay, xl, yb, xr, yt) in extra_rect_list:
+                template.add_rect(lay, BBox(xl, yb, xr, yt, res, unit_mode=True), unit_mode=True)
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
