@@ -20,7 +20,7 @@ from ..io import get_encoding, open_file
 from .routing import Port, TrackID, WireArray
 
 # try to import cython modules
-from pybag.layout.pyutil import Orientation, PathStyle, BlockageType, BoundaryType
+from pybag.layout.pyutil import Orientation, PathStyle, BlockageType, BoundaryType, GeometryMode
 from pybag.layout import BBox, BBoxArray
 from pybag.layout import PyPath, PyBlockage, PyBoundary
 from pybag.layout import PyLayCellView, PyLayInstance, PyRect, PyPolygon, PyVia
@@ -249,7 +249,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._port_params = {}
         self._prim_ports = {}
         self._prim_port_params = {}
-        self._inst_list = []
         self._array_box = None  # type: BBox
         self._fill_box = None  # type: BBox
         self.prim_top_layer = None
@@ -352,10 +351,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         # finalize this template
         self.grid.tech_info.finalize_template(self)
-
-        # update track parities of all instances
-        if self.grid.tech_info.use_flip_parity():
-            self._update_flip_parity()
 
         # construct port objects
         for net_name, port_params in self._port_params.items():
@@ -479,18 +474,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         else:
             raise RuntimeError('Template already finalized.')
 
-    def _update_flip_parity(self):
-        # type: () -> None
-        """Update all instances in this template to have the correct track parity.
-        """
-        for inst in self._inst_list:
-            top_layer = inst.master.top_layer
-            bot_layer = self.grid.get_bot_common_layer(inst.master.grid, top_layer)
-            loc = inst.location_unit
-            fp_dict = self.grid.get_flip_parity_at(bot_layer, top_layer, loc,
-                                                   inst.orientation)
-            inst.new_master_with(flip_parity=fp_dict)
-
     def is_track_available(self,  # type: TemplateBase
                            layer_id,  # type: int
                            tr_idx,  # type: TrackType
@@ -547,6 +530,17 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         except StopIteration:
             return True
         return False
+
+    def set_geometry_mode(self, mode):
+        # type: (GeometryMode) -> None
+        """Sets the geometry mode of this layout.
+
+        Parameters
+        ----------
+        mode : GeometryMode
+            the geometry mode.
+        """
+        self._layout.set_geometry_mode(mode.value)
 
     def get_rect_bbox(self, layer):
         # type: (LayerType) -> BBox
@@ -651,7 +645,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                         pin_name = '%s_%d' % (port_name, pin_cnt)
                     pin_cnt += 1
                     pin_dict[pin_name] = dict(
-                        layer=[layer_name, self._layout.pin_purpose],
+                        layer=[layer_name, self._grid.tech_info.pybag_tech.pin_purpose],
                         netname=port_name,
                         xy0=[bbox.left, bbox.bottom],
                         xy1=[bbox.right, bbox.top],
@@ -817,6 +811,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                      spx=0,  # type: CoordType
                      spy=0,  # type: CoordType
                      unit_mode=True,  # type: bool
+                     commit=True,  # type: bool
                      ):
         # type: (...) -> PyLayInstance
         """Adds a new (arrayed) instance to layout.
@@ -842,6 +837,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             row pitch.  Used for arraying given instance.
         unit_mode : bool
             deprecated parameter.
+        commit : bool
+            True to commit the object immediately.
 
         Returns
         -------
@@ -852,11 +849,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             raise ValueError('unit_mode = False not supported.')
 
         self.children.add(master.key)
-        inst = self._layout.add_instance(self.grid, master, self._lib_name, inst_name,
+        return self._layout.add_instance(self.grid, master, self._lib_name, inst_name,
                                          loc[0], loc[1], Orientation[orient].value,
-                                         nx, ny, spx, spy)
-        self._inst_list.append(inst)
-        return inst
+                                         nx, ny, spx, spy, commit=commit)
 
     def add_instance_primitive(self,  # type: TemplateBase
                                lib_name,  # type: str
@@ -911,8 +906,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._layout.add_prim_instance(lib_name, cell_name, view_name, inst_name, params, loc[0],
                                        loc[1], Orientation[orient].value, nx, ny, spx, spy)
 
-    def add_rect(self, layer, bbox):
-        # type: (LayerType, BBox) -> PyRect
+    def add_rect(self, layer, bbox, commit=True):
+        # type: (LayerType, BBox, bool) -> PyRect
         """Add a new rectangle.
 
         Parameters
@@ -921,13 +916,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the layer name, or the (layer, purpose) pair.
         bbox : BBox
             the rectangle bounding box.
+        commit : bool
+            True to commit the object immediately.
 
         Returns
         -------
         rect : PyRect
             the added rectangle.
         """
-        return self._layout.add_rect(layer, bbox)
+        return self._layout.add_rect(layer, bbox, commit=commit)
 
     def add_rect_arr(self, layer, bbox, nx=1, ny=1, spx=0, spy=0):
         # type: (LayerType, BBox, int, int, CoordType, CoordType) -> None
@@ -950,8 +947,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         self._layout.add_rect_arr(layer, bbox, nx, ny, spx, spy)
 
-    def add_res_metal(self, layer_id, bbox):
-        # type: (int, BBox) -> List[PyRect]
+    def add_res_metal(self, layer_id, bbox, commit=True):
+        # type: (int, BBox, bool) -> List[PyRect]
         """Add a new metal resistor.
 
         Parameters
@@ -960,19 +957,19 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the metal layer ID.
         bbox : BBox
             the resistor bounding box.
+        commit : bool
+            True to commit the object immediately.
+
         Returns
         -------
         rect_list : List[PyRect]
             list of rectangles defining the metal resistor.
         """
-        rect_list = []
-        rect_layers = self.grid.tech_info.get_res_metal_layers(layer_id)
-        for lay in rect_layers:
-            rect_list.append(self.add_rect(lay, bbox))
-        return rect_list
+        return [self.add_rect(lay, bbox, commit=commit) for lay in
+                self.grid.tech_info.get_res_metal_layers(layer_id)]
 
-    def add_path(self, layer, width, points, start_style, join_style, stop_style=''):
-        # type: (LayerType, int, Sequence[PointType], str, str, str) -> PyPath
+    def add_path(self, layer, width, points, start_style, join_style, stop_style='', commit=True):
+        # type: (LayerType, int, Sequence[PointType], str, str, str, bool) -> PyPath
         """Add a new path.
 
         Parameters
@@ -989,6 +986,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             path style for the joints.
         stop_style : str
             the path ending style.  Defaults to start style.
+        commit : bool
+            True to commit the object immediately.
 
         Returns
         -------
@@ -997,7 +996,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         stop_style = stop_style or start_style
         return self._layout.add_path(layer, points, width, PathStyle[start_style].value,
-                                     PathStyle[stop_style].value, PathStyle[join_style].value)
+                                     PathStyle[stop_style].value, PathStyle[join_style].value,
+                                     commit=commit)
 
     def add_path45_bus(self,
                        layer,  # type: LayerType
@@ -1007,6 +1007,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                        start_style,  # type: str
                        join_style='round',  # type: str
                        stop_style='',  # type: str
+                       commit=True,  # type: bool
                        ):
         # type: (...) -> PyPath
         """Add a path bus that only contains 45 degree turns.
@@ -1027,6 +1028,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             path style for the joints.
         stop_style : str
             the path ending style.  Defaults to start style.
+        commit : bool
+            True to commit the object immediately.
 
         Returns
         -------
@@ -1036,10 +1039,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         stop_style = stop_style or start_style
         return self._layout.add_path45_bus(layer, points, widths, spaces,
                                            PathStyle[start_style].value,
-                                           PathStyle[stop_style].value, PathStyle[join_style].value)
+                                           PathStyle[stop_style].value, PathStyle[join_style].value,
+                                           commit=commit)
 
-    def add_polygon(self, layer, points):
-        # type: (LayerType, Sequence[PointType]) -> PyPolygon
+    def add_polygon(self, layer, points, commit=True):
+        # type: (LayerType, Sequence[PointType], bool) -> PyPolygon
         """Add a new polygon.
 
         Parameters
@@ -1048,16 +1052,18 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the polygon layer.
         points : Sequence[PointType]
             vertices of the polygon.
+        commit : bool
+            True to commit the object immediately.
 
         Returns
         -------
         polygon : PyPolygon
             the added polygon object.
         """
-        return self._layout.add_polygon(layer, points)
+        return self._layout.add_polygon(layer, points, commit=commit)
 
-    def add_blockage(self, layer, blk_type, points):
-        # type: (LayerType, str, Sequence[PointType]) -> PyBlockage
+    def add_blockage(self, layer, blk_type, points, commit=True):
+        # type: (LayerType, str, Sequence[PointType], bool) -> PyBlockage
         """Add a new polygon.
 
         Parameters
@@ -1068,13 +1074,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the blockage type.
         points : Sequence[PointType]
             vertices of the blockage object.
+        commit : bool
+            True to commit the object immediately.
 
         Returns
         -------
         blockage : PyBlockage
             the added blockage object.
         """
-        return self._layout.add_blockage(layer, points, BlockageType[blk_type].value)
+        return self._layout.add_blockage(layer, points, BlockageType[blk_type].value,
+                                         commit=commit)
 
     def add_cell_boundary(self, box):
         # type: (BBox) -> None
@@ -1089,8 +1098,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         self._grid.tech_info.add_cell_boundary(self, box)
 
-    def add_boundary(self, bnd_type, points):
-        # type: (str, Sequence[PointType]) -> PyBoundary
+    def add_boundary(self, bnd_type, points, commit=True):
+        # type: (str, Sequence[PointType], bool) -> PyBoundary
         """Add a new boundary.
 
         Parameters
@@ -1099,13 +1108,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the boundary type.
         points : Sequence[PointType]
             vertices of the boundary object.
+        commit : bool
+            True to commit the object immediately.
 
         Returns
         -------
         boundary : PyBoundary
             the added boundary object.
         """
-        return self._layout.add_boundary(points, BoundaryType[bnd_type].value)
+        return self._layout.add_boundary(points, BoundaryType[bnd_type].value, commit=commit)
 
     def reexport(self, port, net_name='', label='', show=True):
         # type: (Port, str, str, bool) -> None
@@ -1285,6 +1296,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 top_dir=None,  # type: Optional[str]
                 add_layers=False,  # type: bool
                 unit_mode=True,  # type: bool
+                commit=True,  # type: bool
                 ):
         # type: (...) -> PyVia
         """Adds a (arrayed) via object to the layout.
@@ -1317,6 +1329,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             True to add metal rectangles on top and bottom layers.
         unit_mode : bool
             deprecated parameter.
+        commit : bool
+            True to commit the object immediately.
 
         Returns
         -------
@@ -1341,7 +1355,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         return self._layout.add_via_arr(params['id'], enc1, enc2, loc[0], loc[1],
                                         Orientation[orient].value, cut_width, cut_height,
-                                        cnx, cny, cspx, cspy, nx, ny, spx, spy, add_layers)
+                                        cnx, cny, cspx, cspy, nx, ny, spx, spy, add_layers,
+                                        commit=commit)
 
     def add_via_primitive(self, via_type,  # type: str
                           loc,  # type: PointType
@@ -1360,6 +1375,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           spy=0,  # type: CoordType
                           add_layers=False,  # type: bool
                           unit_mode=True,  # type: bool
+                          commit=True,  # type: bool
                           ):
         # type: (...) -> PyVia
         """Adds via(s) by specifying all parameters.
@@ -1402,6 +1418,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             True to add metal rectangles on top and bottom layers.
         unit_mode : bool
             Deprecated parameter.
+        commit : bool
+            True to commit the object immediately.
 
         Returns
         -------
@@ -1416,10 +1434,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         enc2 = enc2 or default_enc
         return self._layout.add_via_arr(via_type, enc1, enc2, loc[0], loc[1],
                                         Orientation[orient].value, cut_width, cut_height, num_cols,
-                                        num_rows, sp_cols, sp_rows, nx, ny, spx, spy, add_layers)
+                                        num_rows, sp_cols, sp_rows, nx, ny, spx, spy, add_layers,
+                                        commit=commit)
 
-    def add_via_on_grid(self, bot_layer_id, bot_track, top_track, bot_width=1, top_width=1):
-        # type: (int, TrackType, TrackType, int, int) -> PyVia
+    def add_via_on_grid(self, bot_layer_id, bot_track, top_track, bot_width=1, top_width=1,
+                        commit=True):
+        # type: (int, TrackType, TrackType, int, int, bool) -> PyVia
         """Add a via on the routing grid.
 
         Parameters
@@ -1434,6 +1454,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the bottom track width.
         top_width : int
             the top track width.
+        commit : bool
+            True to commit the object immediately.
+
+        Returns
+        -------
+        via : PyVia
+            the via object created.
         """
         grid = self.grid
         bl, bu = grid.get_wire_bounds(bot_layer_id, bot_track, width=bot_width)
@@ -1446,7 +1473,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         bname = grid.get_layer_name(bot_layer_id, bot_track)
         tname = grid.get_layer_name(bot_layer_id + 1, top_track)
 
-        return self.add_via(bbox, bname, tname, bot_dir)
+        return self.add_via(bbox, bname, tname, bot_dir, commit=commit)
 
     def extend_wires(self,  # type: TemplateBase
                      warr_list,  # type: Union[WireArray, List[Optional[WireArray]]]
