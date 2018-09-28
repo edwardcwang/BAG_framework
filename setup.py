@@ -27,9 +27,12 @@ setup(
         'rtree',
         'h5py',
         'Shapely',
-        'openmdao',
     ],
+    extras_require={
+        'mdao': ['openmdao']
+    }
     tests_require=[
+        'openmdao',
         'pytest',
     ],
     package_data={
