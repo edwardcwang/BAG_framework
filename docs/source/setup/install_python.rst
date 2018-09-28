@@ -20,20 +20,6 @@ Required Packages
 In addition to the default packages that come with Anaconda (numpy, scipy, etc.), you'll need the following additional
 packages:
 
-- `python-future <https://pypi.python.org/pypi/future>`_
-
-  This package provides Python 2/3 compatibility.  It is installable from ``pip``:
-
-  .. code-block:: bash
-
-      > pip install future
-
-  ``pip`` also works for pre-downloaded tar file:
-
-  .. code-block:: bash
-
-      > pip install future-0.16.0.tar.gz
-
 - `subprocess32 <https://pypi.python.org/pypi/subprocess32>`_ (Python 2 only)
 
   This package is a backport of Python 3.2's subprocess module to Python 2.  It is installable from ``pip``.
