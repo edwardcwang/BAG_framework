@@ -18,7 +18,7 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
     def __init__(self, config, tech_params, mos_entry_name='mos'):
         # type: (Dict[str, Any], Dict[str, Any], str) -> None
         TechInfo.__init__(self, config['resolution'], config['layout_unit'],
-                          config['tech_lib'], tech_params)
+                          config['tech_lib'], tech_params, config)
 
         self.config = config
         self._mos_entry_name = mos_entry_name

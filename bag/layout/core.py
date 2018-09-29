@@ -39,6 +39,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         the via technology library name.  This is usually the PDK library name.
     process_params : Dict[str, Any]
         process specific parameters.
+    pybag_params : Dict[str, Any]
+        PyTech parameters.
 
     Attributes
     ----------
@@ -46,13 +48,13 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         technology specific parameters.
     """
 
-    def __init__(self, res, layout_unit, via_tech, process_params):
-        # type: (float, float, str, Dict[str, Any]) -> None
+    def __init__(self, res, layout_unit, via_tech, process_params, pybag_params):
+        # type: (float, float, str, Dict[str, Any], Dict[str, Any]) -> None
         self._resolution = res
         self._layout_unit = layout_unit
         self._via_tech = via_tech
         self.tech_params = process_params
-        self.pybag_tech = PyTech(process_params['pybag'], bag.io.get_encoding())
+        self.pybag_tech = PyTech(pybag_params, bag.io.get_encoding())
 
     @abc.abstractmethod
     def get_well_layers(self, sub_type):
@@ -1070,7 +1072,7 @@ class DummyTechInfo(TechInfo):
     """
 
     def __init__(self, tech_params):
-        TechInfo.__init__(self, 0.001, 1e-6, '', tech_params)
+        TechInfo.__init__(self, 0.001, 1e-6, '', tech_params, {})
 
     def get_well_layers(self, sub_type):
         return []
