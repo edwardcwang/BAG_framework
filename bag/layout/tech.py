@@ -15,15 +15,22 @@ if TYPE_CHECKING:
 
 class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
     """An implementation of TechInfo that implements most methods with a technology file."""
-    def __init__(self, config, tech_params, mos_entry_name='mos'):
-        # type: (Dict[str, Any], Dict[str, Any], str) -> None
+    def __init__(self, config_fname, config, tech_params, mos_entry_name='mos'):
+        # type: (str, Dict[str, Any], Dict[str, Any], str) -> None
         TechInfo.__init__(self, config['resolution'], config['layout_unit'],
-                          config['tech_lib'], tech_params, config)
+                          config['tech_lib'], tech_params, config_fname)
 
         self.config = config
         self._mos_entry_name = mos_entry_name
         self.idc_temp = tech_params['layout']['em']['dc_temp']
         self.irms_dt = tech_params['layout']['em']['rms_dt']
+        self._layer_id_lookup = {}
+        for key, val in config['layer_name'].items():
+            if isinstance(val, str):
+                self._layer_id_lookup[val] = key
+            else:
+                for sub_name in val:
+                    self._layer_id_lookup[sub_name] = key
 
     @abc.abstractmethod
     def get_metal_em_specs(self, layer_name, w, l=-1, vertical=False, **kwargs):
@@ -126,11 +133,8 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
         return name_dict[layer_id]
 
     def get_layer_id(self, layer_name):
-        # type: (str) -> int
-        for key, val in self.config['layer_name'].items():
-            if val == layer_name:
-                return key
-        raise ValueError('Unknown layer: %s' % layer_name)
+        # type: (str) -> Optional[int]
+        return self._layer_id_lookup.get(layer_name, None)
 
     def get_layer_type(self, layer_name):
         # type: (str) -> str
@@ -212,39 +216,6 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
                     return arr_test_tmp(ncol, nrow)
 
         return sp, sp2_list, sp3_list, dim, enc_cur, arr_enc, arr_test
-
-    def _space_helper(self, config_name, layer_type, width):
-        sp_min_config = self.config[config_name]
-        if layer_type not in sp_min_config:
-            raise ValueError('Unsupported layer type: %s' % layer_type)
-
-        sp_min_config = sp_min_config[layer_type]
-        w_list = sp_min_config['w_list']
-        sp_list = sp_min_config['sp_list']
-
-        for w, sp in zip(w_list, sp_list):
-            if width <= w:
-                return sp
-        return None
-
-    def get_min_space(self, layer_type, w_unit, unit_mode=True, same_color=False):
-        # type: (str, int, bool, bool) -> int
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
-        if not same_color or 'sp_sc_min' not in self.config:
-            config_name = 'sp_min'
-        else:
-            config_name = 'sp_sc_min'
-
-        return self._space_helper(config_name, layer_type, w_unit)
-
-    def get_min_line_end_space(self, layer_type, width, unit_mode=True):
-        # type: (str, int, bool) -> int
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
-        return self._space_helper('sp_le_min', layer_type, width)
 
     def layer_id_to_type(self, layer_id):
         # type: (int) -> str

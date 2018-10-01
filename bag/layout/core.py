@@ -17,6 +17,7 @@ from bag.util.search import BinaryIterator
 
 # try to import cython classes
 from pybag.layout import PyTech
+from pybag.layout.pyutil import SpaceQueryMode
 
 if TYPE_CHECKING:
     from pybag.layout import PyLayInstance
@@ -39,8 +40,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         the via technology library name.  This is usually the PDK library name.
     process_params : Dict[str, Any]
         process specific parameters.
-    pybag_params : Dict[str, Any]
-        PyTech parameters.
+    pybag_file : str
+        PyTech configuration file name.
 
     Attributes
     ----------
@@ -48,13 +49,13 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         technology specific parameters.
     """
 
-    def __init__(self, res, layout_unit, via_tech, process_params, pybag_params):
-        # type: (float, float, str, Dict[str, Any], Dict[str, Any]) -> None
+    def __init__(self, res, layout_unit, via_tech, process_params, pybag_file):
+        # type: (float, float, str, Dict[str, Any], str) -> None
         self._resolution = res
         self._layout_unit = layout_unit
         self._via_tech = via_tech
         self.tech_params = process_params
-        self.pybag_tech = PyTech(pybag_params, bag.io.get_encoding())
+        self.pybag_tech = PyTech(pybag_file, bag.io.get_encoding())
 
     @abc.abstractmethod
     def get_well_layers(self, sub_type):
@@ -207,7 +208,6 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         """
         return (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
 
-    @abc.abstractmethod
     def get_min_space(self, layer_type, width, unit_mode=True, same_color=False):
         # type: (str, int, bool, bool) -> int
         """Returns the minimum spacing needed around a wire on the given layer with the given width.
@@ -228,9 +228,12 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         sp : int
             the minimum spacing needed.
         """
-        return 0
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
 
-    @abc.abstractmethod
+        sp_type = SpaceQueryMode.SAME_COLOR if same_color else SpaceQueryMode.DIFF_COLOR
+        return self.pybag_tech.get_min_space(layer_type, width, sp_type.value)
+
     def get_min_line_end_space(self, layer_type, width, unit_mode=True):
         # type: (str, int, bool) -> int
         """Returns the minimum line-end spacing of a wire with given width.
@@ -249,7 +252,10 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         sp : int
             the minimum line-end space.
         """
-        return 0
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
+        return self.pybag_tech.get_min_space(layer_type, width, SpaceQueryMode.LINE_END.value)
 
     @abc.abstractmethod
     def get_min_length(self, layer_type, w_unit):
@@ -1072,7 +1078,7 @@ class DummyTechInfo(TechInfo):
     """
 
     def __init__(self, tech_params):
-        TechInfo.__init__(self, 0.001, 1e-6, '', tech_params, {})
+        TechInfo.__init__(self, 0.001, 1e-6, '', tech_params, '')
 
     def get_well_layers(self, sub_type):
         return []

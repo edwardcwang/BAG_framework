@@ -243,7 +243,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         # initialize template attributes
         self._parent_grid = kwargs.get('grid', temp_db.grid)
-        self._grid = self._parent_grid.copy()
+        self._grid = self._parent_grid.copy()  # type: RoutingGrid
         self._size = None  # type: SizeType
         self._ports = {}
         self._port_params = {}
@@ -906,6 +906,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._layout.add_prim_instance(lib_name, cell_name, view_name, inst_name, params, loc[0],
                                        loc[1], Orientation[orient].value, nx, ny, spx, spy)
 
+    def is_horizontal(self, layer):
+        # type: (LayerType) -> bool
+        layer_name = layer if isinstance(layer, str) else layer[0]
+        lay_id = self._grid.tech_info.get_layer_id(layer_name)
+        return (lay_id is None) or self._grid.is_horizontal(lay_id)
+
     def add_rect(self, layer, bbox, commit=True):
         # type: (LayerType, BBox, bool) -> PyRect
         """Add a new rectangle.
@@ -924,7 +930,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         rect : PyRect
             the added rectangle.
         """
-        return self._layout.add_rect(layer, bbox, commit=commit)
+        return self._layout.add_rect(layer, bbox, self.is_horizontal(layer), commit=commit)
 
     def add_rect_arr(self, layer, bbox, nx=1, ny=1, spx=0, spy=0):
         # type: (LayerType, BBox, int, int, CoordType, CoordType) -> None
@@ -945,7 +951,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         spy : int
             row pitch.
         """
-        self._layout.add_rect_arr(layer, bbox, nx, ny, spx, spy)
+        self._layout.add_rect_arr(layer, bbox, self.is_horizontal(layer), nx, ny, spx, spy)
 
     def add_res_metal(self, layer_id, bbox, commit=True):
         # type: (int, BBox, bool) -> List[PyRect]
@@ -965,7 +971,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         rect_list : List[PyRect]
             list of rectangles defining the metal resistor.
         """
-        return [self.add_rect(lay, bbox, commit=commit) for lay in
+        is_horiz = self._grid.is_horizontal(layer_id)
+        return [self._layout.add_rect(lay, bbox, is_horiz, commit=commit) for lay in
                 self.grid.tech_info.get_res_metal_layers(layer_id)]
 
     def add_path(self, layer, width, points, start_style, join_style, stop_style='', commit=True):
@@ -995,9 +1002,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the added path object.
         """
         stop_style = stop_style or start_style
-        return self._layout.add_path(layer, points, width, PathStyle[start_style].value,
-                                     PathStyle[stop_style].value, PathStyle[join_style].value,
-                                     commit=commit)
+        return self._layout.add_path(layer, points, self.is_horizontal(layer), width,
+                                     PathStyle[start_style].value, PathStyle[stop_style].value,
+                                     PathStyle[join_style].value, commit=commit)
 
     def add_path45_bus(self,
                        layer,  # type: LayerType
@@ -1038,7 +1045,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         stop_style = stop_style or start_style
         return self._layout.add_path45_bus(layer, points, widths, spaces,
-                                           PathStyle[start_style].value,
+                                           self.is_horizontal(layer), PathStyle[start_style].value,
                                            PathStyle[stop_style].value, PathStyle[join_style].value,
                                            commit=commit)
 
@@ -1060,7 +1067,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         polygon : PyPolygon
             the added polygon object.
         """
-        return self._layout.add_polygon(layer, points, commit=commit)
+        return self._layout.add_polygon(layer, points, self.is_horizontal(layer), commit=commit)
 
     def add_blockage(self, layer, blk_type, points, commit=True):
         # type: (LayerType, str, Sequence[PointType], bool) -> PyBlockage
@@ -1353,10 +1360,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         enc1 = params['enc1']
         enc2 = params['enc2']
 
+        bot_horiz = self.is_horizontal(bot_layer)
+        top_horiz = self.is_horizontal(top_layer)
         return self._layout.add_via_arr(params['id'], enc1, enc2, loc[0], loc[1],
                                         Orientation[orient].value, cut_width, cut_height,
                                         cnx, cny, cspx, cspy, nx, ny, spx, spy, add_layers,
-                                        commit=commit)
+                                        bot_horiz, top_horiz, commit=commit)
 
     def add_via_primitive(self, via_type,  # type: str
                           loc,  # type: PointType
@@ -1373,7 +1382,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           ny=1,  # type: int
                           spx=0,  # type: CoordType
                           spy=0,  # type: CoordType
-                          add_layers=False,  # type: bool
                           unit_mode=True,  # type: bool
                           commit=True,  # type: bool
                           ):
@@ -1414,8 +1422,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             column pitch.
         spy : CoordType
             row pitch.
-        add_layers : bool
-            True to add metal rectangles on top and bottom layers.
         unit_mode : bool
             Deprecated parameter.
         commit : bool
@@ -1434,8 +1440,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         enc2 = enc2 or default_enc
         return self._layout.add_via_arr(via_type, enc1, enc2, loc[0], loc[1],
                                         Orientation[orient].value, cut_width, cut_height, num_cols,
-                                        num_rows, sp_cols, sp_rows, nx, ny, spx, spy, add_layers,
-                                        commit=commit)
+                                        num_rows, sp_cols, sp_rows, nx, ny, spx, spy, False,
+                                        False, False, commit=commit)
 
     def add_via_on_grid(self, bot_layer_id, bot_track, top_track, bot_width=1, top_width=1,
                         commit=True):
