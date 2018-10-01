@@ -2695,7 +2695,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         for idx in tr_w_idx_iter:
             cur_layer = warr_layer + layer_dir * (idx + 1)
             if tr_w_list[idx] < 0:
-                tr_w_list[idx] = grid.get_track_width_inverse(cur_layer, tr_w_prev)
+                tr_w_list[idx] = max(1, grid.get_track_width_inverse(cur_layer, tr_w_prev))
             tr_w_prev = grid.get_track_width(cur_layer, tr_w_list[idx])
 
         # draw via stacks
