@@ -304,24 +304,30 @@ class SubProcessChecker(Checker, metaclass=abc.ABCMeta):
         """
         return '', '', None, None
 
-    async def async_run_lvs(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
-        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[bool, str]
+    async def async_run_lvs(self, lib_name: str, cell_name: str,
+                            sch_view: str = 'schematic',
+                            lay_view: str = 'layout',
+                            params: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
         flow_info = self.setup_lvs_flow(lib_name, cell_name, sch_view, lay_view, params)
         return await self._manager.async_new_subprocess_flow(flow_info)
 
-    async def async_run_rcx(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
-        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[str, str]
+    async def async_run_rcx(self, lib_name: str, cell_name: str,
+                            sch_view: str = 'schematic',
+                            lay_view: str = 'layout',
+                            params: Optional[Dict[str, Any]] = None) -> Tuple[str, str]:
         flow_info = self.setup_rcx_flow(lib_name, cell_name, sch_view, lay_view, params)
         return await self._manager.async_new_subprocess_flow(flow_info)
 
-    async def async_export_layout(self, lib_name, cell_name, out_file, view_name='layout', params=None):
-        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
+    async def async_export_layout(self, lib_name: str, cell_name: str,
+                                  out_file: str, view_name: str = 'layout',
+                                  params: Optional[Dict[str, Any]] = None) -> str:
         proc_info = self.setup_export_layout(lib_name, cell_name, out_file, view_name, params)
         await self._manager.async_new_subprocess(*proc_info)
         return proc_info[1]
 
-    async def async_export_schematic(self, lib_name, cell_name, out_file, view_name='layout', params=None):
-        # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
+    async def async_export_schematic(self, lib_name: str, cell_name: str,
+                                     out_file: str, view_name: str = 'layout',
+                                     params: Optional[Dict[str, Any]] = None) -> str:
         proc_info = self.setup_export_schematic(lib_name, cell_name, out_file, view_name, params)
         await self._manager.async_new_subprocess(*proc_info)
         return proc_info[1]

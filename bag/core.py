@@ -382,8 +382,9 @@ class Testbench(object):
         batch_async_task([coro])
         return self.save_dir
 
-    async def async_run_simulation(self, precision=6, sim_tag=None):
-        # type: (int, Optional[str]) -> str
+    async def async_run_simulation(self,
+                                   precision: int = 6,
+                                   sim_tag: Optional[str] = None) -> str:
         """A coroutine that runs the simulation.
 
         Parameters
@@ -403,8 +404,7 @@ class Testbench(object):
                                                             precision=precision, sim_tag=sim_tag)
         return self.save_dir
 
-    async def async_load_results(self, hist_name, precision=6):
-        # type: (str, int) -> str
+    async def async_load_results(self, hist_name: str, precision: int = 6) -> str:
         """A coroutine that loads previous simulation data.
 
         Parameters
@@ -1128,8 +1128,7 @@ class BagProject(object):
             return None
         return ['' if isinstance(val, Exception) else val for val in temp_results]
 
-    async def async_run_lvs(self, lib_name, cell_name, **kwargs):
-        # type: (str, str, **kwargs) -> Tuple[bool, str]
+    async def async_run_lvs(self, lib_name: str, cell_name: str, **kwargs) -> Tuple[bool, str]:
         """A coroutine for running LVS.
 
         Parameters
@@ -1155,11 +1154,10 @@ class BagProject(object):
         return await self.impl_db.async_run_lvs(lib_name, cell_name, **kwargs)
 
     async def async_run_rcx(self,  # type: BagProject
-                            lib_name,  # type: str
-                            cell_name,  # type: str
+                            lib_name: str,
+                            cell_name: str,
                             **kwargs  # type: **kwargs
-                            ):
-        # type: (...) -> Tuple[Union[bool, Optional[str]], str]
+                            ) -> Tuple[Union[bool, Optional[str]], str]:
         """Run RCX on the given cell.
 
         The behavior and the first return value of this method depends on the

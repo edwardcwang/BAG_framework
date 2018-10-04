@@ -74,8 +74,7 @@ class SubProcessManager(object):
         self._cancel_timeout = cancel_timeout
         self._semaphore = asyncio.Semaphore(max_workers)
 
-    async def _kill_subprocess(self, proc):
-        # type: (Optional[Process]) -> None
+    async def _kill_subprocess(self, proc: Optional[Process]) -> None:
         """Helper method; send SIGTERM/SIGKILL to a subprocess.
 
         This method first sends SIGTERM to the subprocess.  If the process hasn't terminated
@@ -104,8 +103,11 @@ class SubProcessManager(object):
                 except ProcessLookupError:
                     pass
 
-    async def async_new_subprocess(self, args, log, env=None, cwd=None):
-        # type: (Union[str, Sequence[str]], str, Optional[Dict[str, str]], Optional[str]) -> Optional[int]
+    async def async_new_subprocess(self,
+                                   args: Union[str, Sequence[str]],
+                                   log: str,
+                                   env: Optional[Dict[str, str]] = None,
+                                   cwd: Optional[str] = None) -> Optional[int]:
         """A coroutine which starts a subprocess.
 
         If this coroutine is cancelled, it will shut down the subprocess gracefully using SIGTERM/SIGKILL,
@@ -150,8 +152,8 @@ class SubProcessManager(object):
                     await self._kill_subprocess(proc)
                     raise err
 
-    async def async_new_subprocess_flow(self, proc_info_list):
-        # type: (Sequence[FlowInfo]) -> Any
+    async def async_new_subprocess_flow(self,
+                                        proc_info_list: Sequence[FlowInfo]) -> Any:
         """A coroutine which runs a series of subprocesses.
 
         If this coroutine is cancelled, it will shut down the current subprocess gracefully using SIGTERM/SIGKILL,
