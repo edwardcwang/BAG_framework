@@ -817,7 +817,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 yield from inst.all_rect_iter()
 
     def intersection_rect_iter(self, layer_id, box):
-        # type: () -> Generator[BBox, None, None]
+        # type: (int, BBox) -> Generator[BBox, None, None]
         yield from self._used_tracks.intersection_rect_iter(layer_id, box)
         if not self._merge_used_tracks:
             for inst in self._layout.inst_iter():

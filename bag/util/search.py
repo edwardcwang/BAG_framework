@@ -133,7 +133,7 @@ class FloatBinaryIterator(object):
     """
 
     def __init__(self, low, high, tol=1.0, search_step=1.0):
-        # type: (float, Optional[float], float) -> None
+        # type: (float, Optional[float], float, float) -> None
         self._offset = low
         self._tol = tol
         self._low = 0

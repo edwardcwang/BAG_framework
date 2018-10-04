@@ -210,14 +210,14 @@ class WireArray(object):
         the lower coordinate along the track direction.
     upper : float
         the upper coordinate along the track direction.
-    res : float
+    res : Optional[float]
         the resolution unit.
     unit_mode : bool
         True if lower/upper are specified in resolution units.
     """
 
     def __init__(self, track_id, lower, upper, res=None, unit_mode=False):
-        # type: (TrackID, float, float, float) -> None
+        # type: (TrackID, float, float, Optional[float], bool) -> None
         if res is None:
             raise ValueError('Please specify the layout distance resolution.')
 
