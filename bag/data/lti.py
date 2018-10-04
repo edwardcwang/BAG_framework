@@ -31,10 +31,10 @@ class LTICircuit(object):
     def __init__(self, udot_tol=1e-12):
         # type: (float) -> None
         self._num_n = 0
-        self._gmat_data = {}
-        self._cmat_data = {}
-        self._vcvs_list = []
-        self._ind_data = {}
+        self._gmat_data = {}  # type: Dict[Tuple[int, int], float]
+        self._cmat_data = {}  # type: Dict[Tuple[int, int], float]
+        self._vcvs_list = []  # type: List[Tuple[int, int, int, int, float]]
+        self._ind_data = {}  # type: Dict[Tuple[int, int], float]
         self._node_id = {'gnd': -1}
         self._udot_tol = udot_tol
 
@@ -50,6 +50,7 @@ class LTICircuit(object):
 
     @staticmethod
     def _add(mat, key, val):
+        # type: (Dict[Tuple[int, int], float], Tuple[int, int], float) -> None
         if key in mat:
             mat[key] += val
         else:
