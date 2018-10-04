@@ -177,7 +177,7 @@ class DesignMaster(abc.ABC):
         optional parameters.
     """
     def __init__(self, master_db, lib_name, params, used_names, **kwargs):
-        # type: (MasterDB, str, Dict[str, Any], Set[str], **kwargs) -> None
+        # type: (MasterDB, str, Dict[str, Any], Set[str], Any) -> None
         self._master_db = master_db
         self._lib_name = lib_name
         self._used_names = used_names
@@ -206,7 +206,7 @@ class DesignMaster(abc.ABC):
         self._key = self.compute_unique_key()
 
     def populate_params(self, table, params_info, default_params, **kwargs):
-        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **kwargs) -> None
+        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], Any) -> None
         """Fill params dictionary with values from table and default_params"""
         for key, desc in params_info.items():
             if key not in table:
@@ -409,7 +409,7 @@ class MasterDB(abc.ABC):
 
     @abc.abstractmethod
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[MasterType], str, Dict[str, Any], Set[str], **kwargs) -> MasterType
+        # type: (Type[MasterType], str, Dict[str, Any], Set[str], Any) -> MasterType
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.

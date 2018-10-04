@@ -470,7 +470,7 @@ class SkillInterface(DbAccess):
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
-        # type: (str, str, str, Optional[str], **kwargs) -> None
+        # type: (str, str, str, Optional[str], Any) -> None
         """Create a schematic from a netlist.
 
         This is mainly used to create extracted schematic from an extracted netlist.
@@ -557,7 +557,7 @@ class SkillInterface(DbAccess):
         return os.path.join(lib_dir, cell_name)
 
     def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
-        # type: (str, str, str, **kwargs) -> None
+        # type: (str, str, str, Any) -> None
         """Create a verilog view for mix-signal simulation.
 
         Parameters

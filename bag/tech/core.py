@@ -623,7 +623,7 @@ class CharDB(abc.ABC):
         return {}
 
     def _get_function_index(self, **kwargs):
-        # type: (**kwargs) -> List[int]
+        # type: (Any) -> List[int]
         """Returns the function index corresponding to given discrete parameter values.
 
         simulation environment index will be set to 0
@@ -698,7 +698,7 @@ class CharDB(abc.ABC):
         return ftable[fidx_list]
 
     def get_function(self, name, env='', **kwargs):
-        # type: (str, str, **kwargs) -> Union[VectorDiffFunction, DiffFunction]
+        # type: (str, str, Any) -> Union[VectorDiffFunction, DiffFunction]
         """Returns a function for the given output.
 
         Parameters
@@ -748,7 +748,7 @@ class CharDB(abc.ABC):
         return self._cont_params, [(vec[0], vec[-1]) for vec in self._cont_values]
 
     def _get_fun_arg(self, **kwargs):
-        # type: (**kwargs) -> np.ndarray
+        # type: (Any) -> np.ndarray
         """Make numpy array of interpolation function arguments."""
         val_list = []
         for par in self._cont_params:
@@ -760,7 +760,7 @@ class CharDB(abc.ABC):
         return np.array(val_list)
 
     def query(self, **kwargs):
-        # type: (**kwargs) -> Dict[str, np.ndarray]
+        # type: (Any) -> Dict[str, np.ndarray]
         """Query the database for the values associated with the given parameters.
 
         All parameters must be specified.
