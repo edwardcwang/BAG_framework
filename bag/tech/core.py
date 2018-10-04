@@ -231,7 +231,7 @@ class CharDB(abc.ABC):
                  opt_package='scipy',  # type: str
                  opt_method='SLSQP',  # type: str
                  opt_settings=None,  # type: Optional[Dict[str, Any]]
-                 **kwargs  # type: **kwargs
+                 **kwargs
                  ):
         # type: (...) -> None
 
@@ -794,7 +794,7 @@ class CharDB(abc.ABC):
                  cons=None,  # type: Dict[str, Dict[str, float]]
                  vector_params=None,  # type: Set[str]
                  debug=False,  # type: bool
-                 **kwargs  # type: **kwargs
+                 **kwargs
                  ):
         # type: (...) -> Dict[str, Union[np.ndarray, float]]
         """Find operating point that minimizes the given objective.

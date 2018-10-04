@@ -1399,7 +1399,7 @@ class BagLayout(object):
                                sp_cols=0,  # type: Union[float, int]
                                params=None,  # type: Optional[Dict[str, Any]]
                                unit_mode=False,  # type: bool
-                               **kwargs  # type: **kwargs
+                               **kwargs
                                ):
         """Adds a new (arrayed) primitive instance to this layout.
 

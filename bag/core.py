@@ -983,7 +983,7 @@ class BagProject(object):
     def run_lvs(self,  # type: BagProject
                 lib_name,  # type: str
                 cell_name,  # type: str
-                **kwargs  # type: **kwargs
+                **kwargs
                 ):
         # type: (...) -> Tuple[bool, str]
         """Run LVS on the given cell.
@@ -1016,7 +1016,7 @@ class BagProject(object):
     def run_rcx(self,  # type: BagProject
                 lib_name,  # type: str
                 cell_name,  # type: str
-                **kwargs  # type: **kwargs
+                **kwargs
                 ):
         # type: (...) -> Tuple[Union[bool, Optional[str]], str]
         """Run RCX on the given cell.
@@ -1156,7 +1156,7 @@ class BagProject(object):
     async def async_run_rcx(self,  # type: BagProject
                             lib_name: str,
                             cell_name: str,
-                            **kwargs  # type: **kwargs
+                            **kwargs
                             ) -> Tuple[Union[bool, Optional[str]], str]:
         """Run RCX on the given cell.
 
