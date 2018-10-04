@@ -208,15 +208,18 @@ class SimProcessManager(SimAccess, metaclass=abc.ABCMeta):
         """
         return '', '', None, None, ''
 
-    async def async_run_simulation(self, tb_lib, tb_cell, outputs, precision=6, sim_tag=None):
-        # type: (str, str, Dict[str, str], int, Optional[str]) -> str
+    async def async_run_simulation(self, tb_lib: str, tb_cell: str,
+                                   outputs: Dict[str, str],
+                                   precision: int = 6,
+                                   sim_tag: Optional[str] = None) -> str:
         args, log, env, cwd, save_dir = self.setup_sim_process(tb_lib, tb_cell, outputs, precision, sim_tag)
 
         await self._manager.async_new_subprocess(args, log, env=env, cwd=cwd)
         return save_dir
 
-    async def async_load_results(self, lib, cell, hist_name, outputs, precision=6):
-        # type: (str, str, str, Dict[str, str], int) -> str
+    async def async_load_results(self, lib: str, cell: str, hist_name: str,
+                                 outputs: Dict[str, str],
+                                 precision: int = 6) -> str:
         args, log, env, cwd, save_dir = self.setup_load_process(lib, cell, hist_name, outputs, precision)
 
         await self._manager.async_new_subprocess(args, log, env=env, cwd=cwd)

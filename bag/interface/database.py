@@ -417,8 +417,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         else:
             return netlist, log_fname
 
-    async def async_run_lvs(self, lib_name, cell_name, **kwargs):
-        # type: (str, str, **kwargs) -> Tuple[bool, str]
+    async def async_run_lvs(self, lib_name: str, cell_name: str, **kwargs) -> Tuple[bool, str]:
         """A coroutine for running LVS.
 
         Parameters
@@ -445,12 +444,11 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         return await self.checker.async_run_lvs(lib_name, cell_name, **kwargs)
 
     async def async_run_rcx(self,  # type: DbAccess
-                            lib_name,  # type: str
-                            cell_name,  # type: str
-                            create_schematic=True,  # type: bool
-                            **kwargs  # type: **kwargs
-                            ):
-        # type: (...) -> Tuple[Union[bool, Optional[str]], str]
+                            lib_name: str,
+                            cell_name: str,
+                            create_schematic: bool = True,
+                            **kwargs
+                            ) -> Tuple[Union[bool, Optional[str]], str]:
         """Run RCX on the given cell.
 
         The behavior and the first return value of this method depends on the
@@ -491,9 +489,9 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
         return self._process_rcx_output(netlist, log_fname, lib_name, cell_name, create_schematic)
 
-    async def async_export_layout(self, lib_name, cell_name, out_file, *args, **kwargs):
-        # type: (str, str, str, *args, **kwargs) -> str
-        """export layout.
+    async def async_export_layout(self, lib_name: str, cell_name: str,
+                                  out_file: str, *args, **kwargs) -> str:
+        """Export layout.
 
         Parameters
         ----------
