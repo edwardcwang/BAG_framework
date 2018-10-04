@@ -39,9 +39,9 @@ def mos_y_to_ss(sim_data, char_freq, fg, ibias, cfit_method='average'):
     """
     w = 2 * np.pi * char_freq
 
-    gm = (sim_data['y21'].real - sim_data['y31'].real) / 2.0
-    gds = (sim_data['y22'].real - sim_data['y32'].real) / 2.0
-    gb = (sim_data['y33'].real - sim_data['y23'].real) / 2.0 - gm - gds
+    gm = (sim_data['y21'].real - sim_data['y31'].real) / 2.0  # type: np.ndarray
+    gds = (sim_data['y22'].real - sim_data['y32'].real) / 2.0  # type: np.ndarray
+    gb = (sim_data['y33'].real - sim_data['y23'].real) / 2.0 - gm - gds  # type: np.ndarray
 
     cgd12 = -sim_data['y12'].imag / w
     cgd21 = -sim_data['y21'].imag / w
@@ -54,9 +54,9 @@ def mos_y_to_ss(sim_data, char_freq, fg, ibias, cfit_method='average'):
     css = sim_data['y33'].imag / w
 
     if cfit_method == 'average':
-        cgd = (cgd12 + cgd21) / 2
-        cgs = (cgs13 + cgs31) / 2
-        cds = (cds23 + cds32) / 2
+        cgd = (cgd12 + cgd21) / 2  # type: np.ndarray
+        cgs = (cgs13 + cgs31) / 2  # type: np.ndarray
+        cds = (cds23 + cds32) / 2  # type: np.ndarray
     elif cfit_method == 'worst':
         cgd = np.maximum(cgd12, cgd21)
         cgs = np.maximum(cgs13, cgs31)
@@ -64,20 +64,20 @@ def mos_y_to_ss(sim_data, char_freq, fg, ibias, cfit_method='average'):
     else:
         raise ValueError('Unknown cfit_method = %s' % cfit_method)
 
-    cgb = cgg - cgd - cgs
-    cdb = cdd - cds - cgd
-    csb = css - cgs - cds
+    cgb = cgg - cgd - cgs  # type: np.ndarray
+    cdb = cdd - cds - cgd  # type: np.ndarray
+    csb = css - cgs - cds  # type: np.ndarray
 
-    ibias = ibias / fg  # type: np.ndarray
-    gm = gm / fg  # type: np.ndarray
-    gds = gds / fg  # type: np.ndarray
-    gb = gb / fg  # type: np.ndarray
-    cgd = cgd / fg  # type: np.ndarray
-    cgs = cgs / fg  # type: np.ndarray
-    cds = cds / fg  # type: np.ndarray
-    cgb = cgb / fg  # type: np.ndarray
-    cdb = cdb / fg  # type: np.ndarray
-    csb = csb / fg  # type: np.ndarray
+    ibias = ibias / fg
+    gm = gm / fg
+    gds = gds / fg
+    gb = gb / fg
+    cgd = cgd / fg
+    cgs = cgs / fg
+    cds = cds / fg
+    cgb = cgb / fg
+    cdb = cdb / fg
+    csb = csb / fg
 
     return dict(
         ibias=ibias,
