@@ -53,7 +53,7 @@ def de_bruijn(n, symbols=None):
 
 
 def dig_to_pwl(values, tper, trf, td=0):
-    # type: (List[float], float, float, float, float) -> Tuple[List[float], List[float]]
+    # type: (List[float], float, float, float) -> Tuple[List[float], List[float]]
     """Convert a list of digital bits to PWL waveform.
 
     This function supports negative delay.  However, time/value pairs for negative data

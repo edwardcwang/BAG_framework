@@ -162,7 +162,7 @@ class SubProcessChecker(Checker, metaclass=abc.ABCMeta):
     """
 
     def __init__(self, tmp_dir, max_workers, cancel_timeout):
-        # type: (str) -> None
+        # type: (str, int, float) -> None
         Checker.__init__(self, tmp_dir)
         self._manager = SubProcessManager(max_workers=max_workers, cancel_timeout=cancel_timeout)
 
