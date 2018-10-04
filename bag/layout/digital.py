@@ -162,7 +162,6 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
         top_layer : int
             the top level routing layer.  If negative, default to standard cell top routing layer.
         """
-        # type: (Tuple[int, int]) -> None
         num_col, num_row = std_size
         self._std_size_bare = std_size
         if self._draw_boundaries:
@@ -185,11 +184,11 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
             self.prim_bound_box = self.array_box
 
     def update_routing_grid(self):
+        # type: () -> None
         """Register standard cell routing layers in the RoutingGrid.
 
         This method must be called first in draw_layout().
         """
-        # type: () -> None
         layers = self._tech_params['layers']
         widths = self._tech_params['widths']
         spaces = self._tech_params['spaces']
