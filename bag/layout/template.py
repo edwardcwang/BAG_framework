@@ -1961,7 +1961,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     cap_box,  # type: BBox
                     bot_layer,  # type: int
                     num_layer,  # type: int
-                    port_widths=1,  # type: Union[int, List[int], Dict[int, int]
+                    port_widths=1,  # type: Union[int, List[int], Dict[int, int]]
                     port_parity=None,
                     # type: Optional[Union[Tuple[int, int], Dict[int, Tuple[int, int]]]]
                     array=False,  # type: bool
