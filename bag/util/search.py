@@ -34,7 +34,10 @@ class BinaryIterator(object):
 
         self._offset = low
         self._step = step
-        self._low = 0
+        self._high = None  # type: Optional[int]
+        self._low = 0  # type: int
+        self._current = 0  # type: int
+        self._save_marker = None  # type: Optional[int]
 
         if high is not None:
             if not isinstance(high, int):
@@ -90,7 +93,7 @@ class BinaryIterator(object):
 
     def save(self):
         # type: () -> None
-        """Save the current index"""
+        """Save the current index."""
         self._save_marker = self._current
 
     def save_info(self, info):
@@ -136,8 +139,10 @@ class FloatBinaryIterator(object):
         # type: (float, Optional[float], float, float) -> None
         self._offset = low
         self._tol = tol
-        self._low = 0
+        self._high = None  # type: Optional[float]
+        self._low = 0.0  # type: float
         self._search_step = search_step
+        self._save_marker = None  # type: Optional[float]
 
         if high is not None:
             self._high = high - low
@@ -455,7 +460,10 @@ def minimize_cost_golden_float(f, vmin, start, stop, tol=1e-8, maxiter=1000):
     if fa >= vmin:
         # solution found at start
         return MinCostResult(x=start, xmax=None, vmax=None, nfev=1)
-    fb = f(stop)
+
+    fb = f(stop)  # type: Optional[float]
+    if fb is None:
+        raise TypeError("f(stop) returned None instead of float")
     if fb >= vmin:
         # found upper bound, use binary search to find answer
         return minimize_cost_binary_float(f, vmin, start, stop, tol=tol, save=stop, nfev=2)
@@ -465,14 +473,21 @@ def minimize_cost_golden_float(f, vmin, start, stop, tol=1e-8, maxiter=1000):
     delta = (stop - start) / gr
     c = stop - delta
     d = start + delta
-    fc = f(c)
+
+    fc = f(c)  # type: Optional[float]
+    if fc is None:
+        raise TypeError("f(c) returned None instead of float")
     if fc >= vmin:
         # found upper bound, use binary search to find answer
         return minimize_cost_binary_float(f, vmin, start, c, tol=tol, save=stop, nfev=3)
-    fd = f(d)
+
+    fd = f(d)  # type: Optional[float]
+    if fd is None:
+        raise TypeError("f(d) returned None instead of float")
     if fd >= vmin:
         # found upper bound, use binary search to find answer
         return minimize_cost_binary_float(f, vmin, start, c, tol=tol, save=stop, nfev=4)
+
     if fc > fd:
         a, b, d = start, d, c
         c = b - (b - a) / gr
