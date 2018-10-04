@@ -53,7 +53,7 @@ class ModuleDB(MasterDB):
         self.lib_path = lib_path
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[Module], str, Dict[str, Any], Set[str], **kwargs) -> Module
+        # type: (Type[Module], str, Dict[str, Any], Set[str], Any) -> Module
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.
@@ -273,12 +273,12 @@ class SchInstance(object):
         return self._gen_lib_name if self.is_primitive else impl_lib
 
     def design_specs(self, *args, **kwargs):
-        # type: (*args, **kwargs) -> None
+        # type: (Any, Any) -> None
         """Update the instance master."""
         self._update_master('design_specs', args, kwargs)
 
     def design(self, *args, **kwargs):
-        # type: (*args, **kwargs) -> None
+        # type: (Any, Any) -> None
         """Update the instance master."""
         self._update_master('design', args, kwargs)
 
@@ -301,7 +301,7 @@ class SchInstance(object):
             self.parameters.update(self._master.get_schematic_parameters())
 
     def implement_design(self, lib_name, top_cell_name='', prefix='', suffix='', **kwargs):
-        # type: (str, str, str, str, **kwargs) -> None
+        # type: (str, str, str, str, Any) -> None
         """Implement this design module in the given library.
 
         If the given library already exists, this method will not delete or override
@@ -343,7 +343,7 @@ class SchInstance(object):
                                      debug=debug, rename_dict=rename_dict)
 
     def get_layout_params(self, **kwargs):
-        # type: (**kwargs) -> Dict[str, Any]
+        # type: (Any) -> Dict[str, Any]
         """Backwards compatibility function."""
         if hasattr(self._master, 'get_layout_params'):
             return getattr(self._master, 'get_layout_params')(**kwargs)
@@ -375,7 +375,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
     # noinspection PyUnusedLocal
     def __init__(self, database, yaml_fname, **kwargs):
-        # type: (ModuleDB, str, **kwargs) -> None
+        # type: (ModuleDB, str, Any) -> None
 
         lib_name = kwargs['lib_name']
         params = kwargs['params']

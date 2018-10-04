@@ -249,7 +249,7 @@ class Testbench(object):
         self.parameters[name] = default_val
 
     def set_sweep_parameter(self, name, precision=6, **kwargs):
-        # type: (str, int, **kwargs) -> None
+        # type: (str, int, Any) -> None
         """Set to sweep the given parameter.
 
         To set the sweep values directly:
@@ -746,7 +746,7 @@ class BagProject(object):
 
     # noinspection PyUnusedLocal
     def create_design_module(self, lib_name, cell_name, **kwargs):
-        # type: (str, str, **kwargs) -> SchInstance
+        # type: (str, str, Any) -> SchInstance
         """Create a new top level design module for the given schematic template
 
         Parameters
@@ -767,7 +767,7 @@ class BagProject(object):
 
     def new_schematic_instance(self, lib_name='', cell_name='', params=None, sch_cls=None,
                                debug=False, **kwargs):
-        # type: (str, str, Dict[str, Any], Type[ModuleType], bool, **kwargs) -> SchInstance
+        # type: (str, str, Dict[str, Any], Type[ModuleType], bool, Any) -> SchInstance
         """Create a new schematic instance
 
         This method is the schematic equivalent of TemplateDB's new_template() method.
@@ -1065,7 +1065,7 @@ class BagProject(object):
         return results[0]
 
     def export_layout(self, lib_name, cell_name, out_file, **kwargs):
-        # type: (str, str, str, **kwargs) -> str
+        # type: (str, str, str, Any) -> str
         """export layout.
 
         Parameters
@@ -1196,7 +1196,7 @@ class BagProject(object):
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
-        # type: (str, str, str, Optional[str], **kwargs) -> None
+        # type: (str, str, str, Optional[str], Any) -> None
         """Create a schematic from a netlist.
 
         This is mainly used to create extracted schematic from an extracted netlist.
@@ -1221,7 +1221,7 @@ class BagProject(object):
                                                           sch_view=sch_view, **kwargs)
 
     def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
-        # type: (str, str, str, **kwargs) -> None
+        # type: (str, str, str, Any) -> None
         """Create a verilog view for mix-signal simulation.
 
         Parameters
