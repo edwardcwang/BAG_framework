@@ -604,6 +604,7 @@ class SubstrateRing(TemplateBase):
         for master in master_list:
             edge_params = dict(
                 is_end=True,
+                is_sub_ring=True,
                 guard_ring_nf=fg_side,
                 name_id=master.get_layout_basename(),
                 layout_info=master.get_edge_layout_info(),

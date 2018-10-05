@@ -1407,7 +1407,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # construct row_info_list
         row_info_list = []
         for od_y, md_y, row_y, po_y in zip(od_y_list, md_y_list, row_y_list, po_y_list):
-            row_info_list.append(RowInfo(od_x_list=(0, 0), od_type=('dum', sub_type),
+            row_info_list.append(RowInfo(od_x_list=[(0, 0)], od_type=('dum', sub_type),
                                          od_y=od_y, row_y=row_y, po_y=po_y, md_y=md_y))
 
         lr_edge_info = EdgeInfo(od_type='dum', draw_layers={}, y_intv={})
@@ -1456,7 +1456,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         #. Compute CPO location, and PO coordinates if we need to draw PO.
         #. Compute implant location.
         """
-        is_sub_ring = kwargs.get('is_sub_ring', False)
         dnw_mode = kwargs.get('dnw_mode', '')
         end_ext_info = kwargs.get('end_ext_info', None)
 
@@ -1503,10 +1502,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 imp_yb = min(po_yb, (cpo_bot_yt + cpo_bot_yb) // 2)
                 min_yb = min(finbound_yb, cpo_bot_yb, imp_yb - edge_margin)
                 # make sure all layers are in first quadrant
-                if is_sub_ring_end:
-                    yshift = -min_yb
-                else:
-                    yshift = -(min_yb // blk_pitch) * blk_pitch
+                yshift = -(min_yb // blk_pitch) * blk_pitch
                 arr_yt += yshift
                 cpo_bot_yt += yshift
                 cpo_bot_yb += yshift
@@ -1555,7 +1551,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # edge parameters
             sub_type=sub_type,
             imp_params=None,
-            is_sub_ring=is_sub_ring,
+            is_sub_ring=is_sub_ring_end,
             is_planar_sub=is_planar_sub,
             dnw_mode=dnw_mode,
             # adjacent block information list
@@ -1610,11 +1606,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         kwargs['end_ext_info'] = end_ext_info
         return self._get_end_blk_info(lch_unit, sub_type, threshold, fg, True, 1, **kwargs)
 
-    def get_outer_edge_info(self, guard_ring_nf, layout_info, is_end, adj_blk_info):
-        # type: (int, Dict[str, Any], bool, Optional[Any]) -> Dict[str, Any]
+    def get_outer_edge_info(self, guard_ring_nf, layout_info, is_end, adj_blk_info, **kwargs):
+        # type: (int, Dict[str, Any], bool, Optional[Any], Any) -> Dict[str, Any]
         mos_layer_table = self.config['mos_layer_table']
         imp_layers_info_struct = self.mos_config['imp_layers']
         thres_layers_info_struct = self.mos_config['thres_layers']
+        is_sub_ring = kwargs.get('is_sub_ring', False)
 
         blk_type = layout_info['blk_type']
         lch_unit = layout_info['lch_unit']
@@ -1725,8 +1722,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         return layout_info
 
-    def get_gr_sub_info(self, guard_ring_nf, layout_info):
-        # type: (int, Dict[str, Any]) -> Dict[str, Any]
+    def get_gr_sub_info(self, guard_ring_nf, layout_info, **kwargs):
+        # type: (int, Dict[str, Any], Any) -> Dict[str, Any]
+        is_sub_ring = kwargs.get('is_sub_ring', False)
+
         mos_layer_table = self.config['mos_layer_table']
 
         imp_layers_info_struct = self.mos_config['imp_layers']
@@ -1840,8 +1839,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                                    idx > fg_od_margin + guard_ring_nf)))
         return layout_info
 
-    def get_gr_sep_info(self, layout_info, adj_blk_info):
-        # type: (Dict[str, Any], Any) -> Dict[str, Any]
+    def get_gr_sep_info(self, layout_info, adj_blk_info, **kwargs):
+        # type: (Dict[str, Any], Any, Any) -> Dict[str, Any]
+        is_sub_ring = kwargs.get('is_sub_ring', False)
+
         mos_layer_table = self.config['mos_layer_table']
 
         blk_type = layout_info['blk_type']
