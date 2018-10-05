@@ -9,9 +9,9 @@ import os
 
 import yaml
 
-from bag import float_to_si_string
+from bag.math import float_to_si_string
 from bag.io import read_yaml, open_file, load_sim_results, save_sim_results, load_sim_file
-from bag.layout import RoutingGrid, TemplateDB
+from bag.layout import TemplateDB
 from bag.concurrent.core import batch_async_task
 
 if TYPE_CHECKING:
@@ -686,9 +686,14 @@ class DesignManager(object):
         meas_name = self.get_measurement_name(dsn_name, meas_type)
         return os.path.join(self._root_dir, dsn_name, meas_name)
 
-    def make_tdb(self):
-        # type: () -> TemplateDB
+    def make_tdb(self, **kwargs):
+        # type: (Any) -> TemplateDB
         """Create and return a new TemplateDB object.
+
+        Parameters
+        ----------
+        kwargs : Any
+            Optional parameters for TemplateDB constructor.
 
         Returns
         -------
@@ -698,17 +703,10 @@ class DesignManager(object):
         if self.prj is None:
             raise ValueError('BagProject instance is not given.')
 
-        target_lib = self.specs['impl_lib']
+        impl_lib = self.specs['impl_lib']
         grid_specs = self.specs['routing_grid']
-        layers = grid_specs['layers']
-        spaces = grid_specs['spaces']
-        widths = grid_specs['widths']
-        bot_dir = grid_specs['bot_dir']
-        width_override = grid_specs.get('width_override', None)
 
-        routing_grid = RoutingGrid(self.prj.tech_info, layers, spaces, widths, bot_dir, width_override=width_override)
-        tdb = TemplateDB('', routing_grid, target_lib, use_cybagoa=True)
-        return tdb
+        return self.prj.make_template_db(impl_lib, grid_specs, **kwargs)
 
     def get_layout_params(self, val_list):
         # type: (Tuple[Any, ...]) -> Dict[str, Any]

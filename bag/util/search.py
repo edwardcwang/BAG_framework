@@ -207,11 +207,19 @@ class FloatBinaryIterator(object):
         return self._save_info
 
 
-def minimize_cost_binary(f, vmin, start=0, stop=None, step=1, save=None, nfev=0):
-    # type: (Callable[[int], float], float, int, Optional[int], int, Optional[int], int) -> MinCostResult
+def minimize_cost_binary(f,  # type: Callable[[int], float]
+                         vmin,  # type: float
+                         start=0,  # type: int
+                         stop=None,  # type: Optional[int]
+                         step=1,  # type: int
+                         save=None,  # type: Optional[int]
+                         nfev=0,  # type: int
+                         ):
+    # type: (...) -> MinCostResult
     """Minimize cost given minimum output constraint using binary search.
 
-    Given discrete function f, find the minimum integer x such that f(x) >= vmin using binary search.
+    Given discrete function f, find the minimum integer x such that f(x) >= vmin using
+    binary search.
 
     This algorithm only works if f is monotonically increasing, or if f monontonically increases
     then monontonically decreases, but stop is given and f(stop) >= vmin.
@@ -339,14 +347,15 @@ def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
                                 # found upper bound, use binary search to find answer
                                 stop = step * x + offset
                                 return minimize_cost_binary(f, vmin, start=step * (a + 1) + offset,
-                                                            stop=stop, save=stop, step=step, nfev=nfev)
+                                                            stop=stop, save=stop, step=step,
+                                                            nfev=nfev)
                         else:
                             if u > x:
                                 b = u
                             else:
                                 a = u
 
-                    # golden section search terminated, we found the maximum and it is less than vmin
+                    # golden section search terminated, the maximum is less than vmin
                     return MinCostResult(x=None, xmax=step * x + offset, vmax=fx, nfev=nfev)
             else:
                 # still not close to maximum, continue searching
@@ -361,11 +370,19 @@ def minimize_cost_golden(f, vmin, offset=0, step=1, maxiter=1000):
     raise ValueError('Maximum number of iteration achieved')
 
 
-def minimize_cost_binary_float(f, vmin, start, stop, tol=1e-8, save=None, nfev=0):
-    # type: (Callable[[float], float], float, float, float, float, float, int) -> MinCostResult
+def minimize_cost_binary_float(f,  # type: Callable[[float], float]
+                               vmin,  # type: float
+                               start,  # type: float
+                               stop,  # type: float
+                               tol=1e-8,  # type: float
+                               save=None,  # type: Optional[float]
+                               nfev=0,  # type: int
+                               ):
+    # type: (...) -> MinCostResult
     """Minimize cost given minimum output constraint using binary search.
 
-    Given discrete function f and an interval, find minimum input x such that f(x) >= vmin using binary search.
+    Given discrete function f and an interval, find minimum input x such that f(x) >= vmin using
+    binary search.
 
     This algorithm only works if f is monotonically increasing, or if f monontonically increases
     then monontonically decreases, and f(stop) >= vmin.
