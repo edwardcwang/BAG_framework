@@ -2,7 +2,6 @@
 
 """This module handles exporting schematic/layout from Virtuoso.
 """
-
 from typing import TYPE_CHECKING, Optional, Dict, Any
 
 import os
@@ -20,7 +19,7 @@ if TYPE_CHECKING:
     from .base import ProcInfo
 
 
-class VirtuosoChecker(SubProcessChecker, metaclass=abc.ABCMeta):
+class VirtuosoChecker(SubProcessChecker, abc.ABC):
     """the base Checker class for Virtuoso.
 
     This class implement layout/schematic export procedures.
@@ -36,6 +35,7 @@ class VirtuosoChecker(SubProcessChecker, metaclass=abc.ABCMeta):
     source_added_file : str
         file to include for schematic export.
     """
+
     def __init__(self, tmp_dir, max_workers, cancel_timeout, source_added_file):
         # type: (str, int, float, str) -> None
         SubProcessChecker.__init__(self, tmp_dir, max_workers, cancel_timeout)
@@ -68,7 +68,8 @@ class VirtuosoChecker(SubProcessChecker, metaclass=abc.ABCMeta):
 
         return cmd, log_file, None, os.environ['BAG_WORK_DIR']
 
-    def setup_export_schematic(self, lib_name, cell_name, out_file, view_name='schematic', params=None):
+    def setup_export_schematic(self, lib_name, cell_name, out_file, view_name='schematic',
+                               params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> ProcInfo
         out_file = os.path.abspath(out_file)
 
