@@ -23,10 +23,10 @@ class IntervalSet(object):
 
     def __init__(self, intv_list=None, val_list=None):
         # type: (Optional[Iterable[Tuple[int, int]]], Optional[Iterable[Any]]) -> None
-        self._start_list = []
-        self._end_list = []
+        self._start_list = []  # type: List[int]
+        self._end_list = []  # type: List[int]
         if intv_list is None:
-            self._val_list = []
+            self._val_list = []  # type: List[Any]
         else:
             for v0, v1 in intv_list:
                 self._start_list.append(v0)

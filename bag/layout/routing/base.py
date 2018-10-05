@@ -3,7 +3,7 @@
 """This module provides basic routing classes.
 """
 
-from typing import TYPE_CHECKING, Tuple, Union, Iterable, Dict, List, Sequence, Any
+from typing import TYPE_CHECKING, Tuple, Union, Iterable, Dict, List, Sequence, Any, Optional
 
 from math import trunc, ceil, floor
 from numbers import Integral, Real
@@ -484,7 +484,7 @@ class WireArray(object):
         the lower coordinate along the track direction.
     upper : int
         the upper coordinate along the track direction.
-    res : float
+    res : Optional[float]
         deprecated parameter.
     unit_mode : bool
         deprecated parameter.
@@ -492,7 +492,7 @@ class WireArray(object):
 
     # noinspection PyUnusedLocal
     def __init__(self, track_id, lower, upper, res=None, unit_mode=True):
-        # type: (TrackID, int, int, float, bool) -> None
+        # type: (TrackID, int, int, Optional[float], bool) -> None
         if not unit_mode:
             raise ValueError('unit_mode = False not supported.')
 

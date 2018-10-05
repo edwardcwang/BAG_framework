@@ -70,8 +70,8 @@ class TestbenchManager(object, metaclass=abc.ABCMeta):
         """
         pass
 
-    async def setup_and_simulate(self, prj, sch_params):
-        # type: (BagProject, Dict[str, Any]) -> Dict[str, Any]
+    async def setup_and_simulate(self, prj: BagProject,
+                                 sch_params: Dict[str, Any]) -> Dict[str, Any]:
         if sch_params is None:
             print('loading testbench %s' % self.tb_name)
             tb = prj.load_testbench(self.impl_lib, self.tb_name)
@@ -273,8 +273,9 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
         """Returns a default testbench name given testbench type."""
         return '%s_TB_%s' % (self.meas_name, tb_type)
 
-    async def async_measure_performance(self, prj, load_from_file=False):
-        # type: (BagProject, bool) -> Dict[str, Any]
+    async def async_measure_performance(self,
+                                        prj: BagProject,
+                                        load_from_file: bool = False) -> Dict[str, Any]:
         """A coroutine that performs measurement.
 
         The measurement is done like a FSM.  On each iteration, depending on the current
@@ -448,8 +449,8 @@ class DesignManager(object):
         # type: () -> Tuple[str, ...]
         return self._swp_var_list
 
-    async def extract_design(self, lib_name, dsn_name, rcx_params):
-        # type: (str, str, Optional[Dict[str, Any]]) -> None
+    async def extract_design(self, lib_name: str, dsn_name: str,
+                             rcx_params: Optional[Dict[str, Any]]) -> None:
         """A coroutine that runs LVS/RCX on a given design.
 
         Parameters
@@ -474,8 +475,8 @@ class DesignManager(object):
             raise ValueError('RCX failed for %s.  Log file: %s' % (dsn_name, rcx_log))
         print('RCX passed on %s' % dsn_name)
 
-    async def verify_design(self, lib_name, dsn_name, load_from_file=False):
-        # type: (str, str, bool) -> None
+    async def verify_design(self, lib_name: str, dsn_name: str,
+                            load_from_file: bool = False) -> None:
         """Run all measurements on the given design.
 
         Parameters
@@ -525,9 +526,11 @@ class DesignManager(object):
         with open_file(os.path.join(dsn_data_dir, summary_fname), 'w') as f:
             yaml.dump(result_summary, f)
 
-    async def main_task(self, lib_name, dsn_name, rcx_params, extract=True,
-                        measure=True, load_from_file=False):
-        # type: (str, str, Optional[Dict[str, Any]], bool, bool, bool) -> None
+    async def main_task(self, lib_name: str, dsn_name: str,
+                        rcx_params: Optional[Dict[str, Any]],
+                        extract: bool = True,
+                        measure: bool = True,
+                        load_from_file: bool = False) -> None:
         """The main coroutine."""
         if extract:
             await self.extract_design(lib_name, dsn_name, rcx_params)

@@ -530,7 +530,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         if term_list is None:
             term_list = [{}] * len(inst_name_list)
         self._cv.array_instance(self.instances, inst_name, inst_name_list, term_list,
-                                dx=dy, dy=dy)
+                                dx=dx, dy=dy)
 
     def design_dc_bias_sources(self,  # type: Module
                                vbias_dict,  # type: Optional[Dict[str, List[str]]]
