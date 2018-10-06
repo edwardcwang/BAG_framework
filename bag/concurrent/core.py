@@ -3,17 +3,15 @@
 """This module define utility classes for performing concurrent operations.
 """
 
-from typing import TYPE_CHECKING, Optional, Sequence, Dict, Union, Tuple, Callable, Any
+from typing import Optional, Sequence, Dict, Union, Tuple, Callable, Any
 
 import os
 import asyncio
+# noinspection PyProtectedMember
+from asyncio.subprocess import Process
 import subprocess
 import multiprocessing
 from concurrent.futures import CancelledError
-
-if TYPE_CHECKING:
-    # noinspection PyProtectedMember
-    from asyncio.subprocess import Process
 
 
 def batch_async_task(coro_list):
@@ -97,7 +95,8 @@ class SubProcessManager(object):
                     if proc.returncode is None:
                         proc.kill()
                         try:
-                            await asyncio.shield(asyncio.wait_for(proc.wait(), self._cancel_timeout))
+                            await asyncio.shield(
+                                asyncio.wait_for(proc.wait(), self._cancel_timeout))
                         except CancelledError:
                             pass
                 except ProcessLookupError:
@@ -110,8 +109,8 @@ class SubProcessManager(object):
                                    cwd: Optional[str] = None) -> Optional[int]:
         """A coroutine which starts a subprocess.
 
-        If this coroutine is cancelled, it will shut down the subprocess gracefully using SIGTERM/SIGKILL,
-        then raise CancelledError.
+        If this coroutine is cancelled, it will shut down the subprocess gracefully using
+        SIGTERM/SIGKILL, then raise CancelledError.
 
         Parameters
         ----------
@@ -144,7 +143,8 @@ class SubProcessManager(object):
                 logf.write('command: %s\n' % (' '.join(args)))
                 logf.flush()
                 try:
-                    proc = await asyncio.create_subprocess_exec(*args, stdout=logf, stderr=subprocess.STDOUT,
+                    proc = await asyncio.create_subprocess_exec(*args, stdout=logf,
+                                                                stderr=subprocess.STDOUT,
                                                                 env=env, cwd=cwd)
                     retcode = await proc.wait()
                     return retcode
@@ -156,8 +156,8 @@ class SubProcessManager(object):
                                         proc_info_list: Sequence[FlowInfo]) -> Any:
         """A coroutine which runs a series of subprocesses.
 
-        If this coroutine is cancelled, it will shut down the current subprocess gracefully using SIGTERM/SIGKILL,
-        then raise CancelledError.
+        If this coroutine is cancelled, it will shut down the current subprocess gracefully using
+        SIGTERM/SIGKILL, then raise CancelledError.
 
         Parameters
         ----------
@@ -174,13 +174,14 @@ class SubProcessManager(object):
                 working directory path.  None to inherit from parent.
             vfun : Sequence[Callable[[Optional[int], str], Any]]
                 a function to validate if it is ok to execute the next process.  The output of the
-                last function is returned.  The first argument is the return code, the second argument is
-                the log file name.
+                last function is returned.  The first argument is the return code, the second
+                argument is the log file name.
 
         Returns
         -------
         result : Any
-            the return value of the last validate function.  None if validate function returns False.
+            the return value of the last validate function.  None if validate function
+            returns False.
         """
         num_proc = len(proc_info_list)
         if num_proc == 0:
@@ -202,7 +203,8 @@ class SubProcessManager(object):
                     logf.write('command: %s\n' % (' '.join(args)))
                     logf.flush()
                     try:
-                        proc = await asyncio.create_subprocess_exec(*args, stdout=logf, stderr=subprocess.STDOUT,
+                        proc = await asyncio.create_subprocess_exec(*args, stdout=logf,
+                                                                    stderr=subprocess.STDOUT,
                                                                     env=env, cwd=cwd)
                         retcode = await proc.wait()
                     except CancelledError as err:
@@ -243,7 +245,8 @@ class SubProcessManager(object):
         if num_proc == 0:
             return []
 
-        coro_list = [self.async_new_subprocess(args, log, env, cwd) for args, log, env, cwd in proc_info_list]
+        coro_list = [self.async_new_subprocess(args, log, env, cwd) for args, log, env, cwd in
+                     proc_info_list]
 
         return batch_async_task(coro_list)
 
@@ -266,8 +269,8 @@ class SubProcessManager(object):
                 working directory path.  None to inherit from parent.
             vfun : Sequence[Callable[[Optional[int], str], Any]]
                 a function to validate if it is ok to execute the next process.  The output of the
-                last function is returned.  The first argument is the return code, the second argument is
-                the log file name.
+                last function is returned.  The first argument is the return code, the second
+                argument is the log file name.
 
         Returns
         -------
