@@ -535,6 +535,12 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return self.pybag_tech.pin_purpose
 
     @property
+    def default_purpose(self):
+        # type: () -> str
+        """Returns the default purpose name."""
+        return self.pybag_tech.default_purpose
+
+    @property
     def resolution(self):
         # type: () -> float
         """Returns the grid resolution."""
@@ -861,10 +867,10 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             the bounding box of the via.
         bot_layer : LayerType
             the bottom layer name, or a tuple of layer name and purpose name.
-            If purpose name not given, defaults to 'drawing'.
+            If purpose name not given, use default purpose.
         top_layer : LayerType
             the top layer name, or a tuple of layer name and purpose name.
-            If purpose name not given, defaults to 'drawing'.
+            If purpose name not given, use default purpose.
         bot_dir : str
             the bottom layer extension direction.  Either 'x' or 'y'
         bot_len : int

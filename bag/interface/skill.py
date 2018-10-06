@@ -77,7 +77,7 @@ def to_skill_list_str(pylist):
     return "'( %s )" % content
 
 
-def _handle_reply(reply):
+def handle_reply(reply):
     """Process the given reply."""
     if isinstance(reply, dict):
         if reply.get('type') == 'error':
@@ -163,7 +163,7 @@ class SkillInterface(DbAccess):
         )
 
         reply = self.send(request)
-        return _handle_reply(reply)
+        return handle_reply(reply)
 
     def get_exit_object(self):
         # type: () -> Any

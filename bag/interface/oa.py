@@ -10,6 +10,7 @@ import shutil
 
 import bag.io
 from .database import DbAccess
+from .skill import handle_reply
 
 try:
     from pybagoa.oa import PyOADatabase
@@ -19,30 +20,6 @@ except ImportError:
 if TYPE_CHECKING:
     from .zmqwrapper import ZMQDealer
     from ..design.module import ModuleDB
-
-
-def _handle_reply(reply):
-    """Process the given reply."""
-    if isinstance(reply, dict):
-        if reply.get('type') == 'error':
-            if 'data' not in reply:
-                raise Exception('Unknown reply format: %s' % reply)
-            raise VirtuosoException(reply['data'])
-        else:
-            try:
-                return reply['data']
-            except Exception:
-                raise Exception('Unknown reply format: %s' % reply)
-    else:
-        raise Exception('Unknown reply format: %s' % reply)
-
-
-class VirtuosoException(Exception):
-    """Exception raised when Virtuoso returns an error."""
-
-    def __init__(self, *args, **kwargs):
-        # noinspection PyArgumentList
-        Exception.__init__(self, *args, **kwargs)
 
 
 class OAInterface(DbAccess):
@@ -102,7 +79,7 @@ class OAInterface(DbAccess):
 
         Raises
         ------
-        :class: `.VirtuosoException` :
+        VirtuosoException :
             if virtuoso encounters errors while evaluating the expression.
         """
         request = dict(
@@ -113,7 +90,7 @@ class OAInterface(DbAccess):
         )
 
         reply = self.send(request)
-        return _handle_reply(reply)
+        return handle_reply(reply)
 
     def close(self):
         # type: () -> None

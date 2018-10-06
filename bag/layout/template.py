@@ -4,7 +4,7 @@
 """
 
 from typing import TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, \
-    Optional, Tuple, Iterable, Sequence, Callable
+    Optional, Tuple, Iterable, Sequence, Callable, Generator
 from bag.typing import CoordType, LayerType, PointType
 
 import abc
@@ -23,14 +23,16 @@ from .routing import Port, TrackID, WireArray
 from pybag.layout.pyutil import Orientation, PathStyle, BlockageType, BoundaryType, GeometryMode
 from pybag.layout import BBox, BBoxArray
 from pybag.layout import PyPath, PyBlockage, PyBoundary
-from pybag.layout import PyLayCellView, PyLayInstance, PyRect, PyPolygon, PyVia
+from pybag.layout import PyLayCellView, PyLayInstance, PyRect, PyVia
+from pybag.layout import PyPolygon90, PyPolygon45, PyPolygon
 
 if TYPE_CHECKING:
     from bag.core import BagProject
     from .routing import RoutingGrid
     from bag.typing import TrackType, SizeType
 
-TemplateType = TypeVar('TemplateType', bound='TemplateBase')
+    GeoType = Union[PyRect, PyPolygon90, PyPolygon45, PyPolygon]
+    TemplateType = TypeVar('TemplateType', bound='TemplateBase')
 
 _io_encoding = get_encoding()
 
@@ -474,63 +476,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         else:
             raise RuntimeError('Template already finalized.')
 
-    def is_track_available(self,  # type: TemplateBase
-                           layer_id,  # type: int
-                           tr_idx,  # type: TrackType
-                           lower,  # type: int
-                           upper,  # type: int
-                           width=1,  # type: int
-                           sp=0,  # type: int
-                           sp_le=0,  # type: int
-                           unit_mode=True,  # type: bool
-                           ):
-        # type: (...) -> bool
-        """Returns True if the given track is available.
-
-        Parameters
-        ----------
-        layer_id : int
-            the layer ID.
-        tr_idx : TrackType
-            the track ID.
-        lower : int
-            the lower track coordinate.
-        upper : int
-            the upper track coordinate.
-        width : int
-            the track width.
-        sp : int
-            required space around the track.
-        sp_le : int
-            required line-end space around the track.
-        unit_mode : bool
-            deprecated parameter.
-
-        Returns
-        -------
-        available : bool
-            True if the track is available.
-        """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
-        is_x = self.grid.is_horizontal(layer_id)
-        track_id = TrackID(layer_id, tr_idx, width=width)
-        warr = WireArray(track_id, lower, upper)
-        sp = max(sp, self.grid.get_space(layer_id, width))
-        sp_le = max(sp_le, self.grid.get_line_end_space(layer_id, width))
-        test_box = warr.get_bbox_array(self.grid).base
-        if is_x:
-            test_box = test_box.expand(dx=sp_le, dy=sp)
-        else:
-            test_box = test_box.expand(dx=sp, dy=sp_le)
-
-        try:
-            next(self.blockage_iter(layer_id, test_box))
-        except StopIteration:
-            return True
-        return False
-
     def set_geometry_mode(self, mode):
         # type: (GeometryMode) -> None
         """Sets the geometry mode of this layout.
@@ -799,7 +744,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         unit_mode : bool
             deprecated parameter.
         """
-        raise NotImplementedError("Not implemented")
+        # TODO: Implement this
+        raise ValueError("Not implemented")
 
     def add_instance(self,  # type: TemplateBase
                      master,  # type: TemplateBase
@@ -1225,7 +1171,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         bbox : BBox
             the pin bounding box.
         """
-        raise NotImplementedError('Not implemented yet.')
+        # TODO: Implement this
+        raise ValueError('Not implemented yet.')
 
     def add_pin(self, net_name, wire_arr_list, label='', show=True, edge_mode=0):
         # type: (str, Union[WireArray, List[WireArray]], str, bool, int) -> None
@@ -1314,10 +1261,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the via bounding box, not including extensions.
         bot_layer : LayerType
             the bottom layer name, or a tuple of layer name and purpose name.
-            If purpose name not given, defaults to 'drawing'.
+            If purpose name not given, use default purpose.
         top_layer : LayerType
             the top layer name, or a tuple of layer name and purpose name.
-            If purpose name not given, defaults to 'drawing'.
+            If purpose name not given, use default purpose.
         bot_dir : str
             the bottom layer extension direction.  Either 'x' or 'y'.
         nx : int
@@ -1940,7 +1887,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         lay_name = self.grid.get_layer_name(layer_id, track_idx)
         # self._used_tracks.record_rect(self.grid, lay_name, warr.get_bbox_array(self.grid))
-        raise NotImplementedError('Not implemented yet.')
+        raise ValueError('Not implemented yet.')
 
     def connect_wires(self,  # type: TemplateBase
                       wire_arr_list,  # type: Union[WireArray, List[WireArray]]
@@ -3129,13 +3076,121 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                 top_lay_name = self.grid.get_layer_name(top_layer_id, top_index)
                                 self.add_via(box, bot_lay_name, top_lay_name, bot_dir)
 
+    def has_blockage(self, layer_id, test_box, spx=0, spy=0):
+        # type: (int, BBox, int, int) -> bool
+        """Returns true if there are blockage objects.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer ID.
+        test_box : BBox
+            the BBox object.
+        spx : int
+            minimum horizontal spacing between objects and the given BBox.
+        spy : int
+            minimum vertical spacing between objects and the given BBox.
+
+        Return
+        ------
+        has_blockage : bool
+            True if some objects are too close to the given box.
+        """
+        layer_name = self._grid.tech_info.get_layer_name(layer_id)
+        if isinstance(layer_name, str):
+            return self._layout.has_blockage(layer_name, test_box, spx=spx, spy=spy)
+        else:
+            for lay_name in layer_name:
+                if self._layout.has_blockage(lay_name, test_box, spx=spx, spy=spy):
+                    return True
+            return False
+
+    def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
+        # type: (int, BBox, int, int) -> Generator[GeoType, None, None]
+        """Returns all geometries that are too close to the given BBox.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer ID.
+        test_box : BBox
+            the BBox object.
+        spx : int
+            minimum horizontal spacing between objects and the given BBox.
+        spy : int
+            minimum vertical spacing between objects and the given BBox.
+
+        Yields
+        ------
+        obj : GeoType
+            objects that are too close to the given BBox.
+        """
+        layer_name = self._grid.tech_info.get_layer_name(layer_id)
+        if isinstance(layer_name, str):
+            return self._layout.blockage_iter(layer_name, test_box, spx=spx, spy=spy)
+        else:
+            for lay_name in layer_name:
+                yield from self._layout.blockage_iter(lay_name, test_box, spx=spx, spy=spy)
+
+    def is_track_available(self,  # type: TemplateBase
+                           layer_id,  # type: int
+                           tr_idx,  # type: TrackType
+                           lower,  # type: int
+                           upper,  # type: int
+                           width=1,  # type: int
+                           sp=0,  # type: int
+                           sp_le=0,  # type: int
+                           unit_mode=True,  # type: bool
+                           ):
+        # type: (...) -> bool
+        """Returns True if the given track is available.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer ID.
+        tr_idx : TrackType
+            the track ID.
+        lower : int
+            the lower track coordinate.
+        upper : int
+            the upper track coordinate.
+        width : int
+            the track width.
+        sp : int
+            required space around the track.
+        sp_le : int
+            required line-end space around the track.
+        unit_mode : bool
+            deprecated parameter.
+
+        Returns
+        -------
+        available : bool
+            True if the track is available.
+        """
+        if not unit_mode:
+            raise ValueError('unit_mode = False not supported.')
+
+        grid = self._grid
+        is_x = grid.is_horizontal(layer_id)
+        track_id = TrackID(layer_id, tr_idx, width=width)
+        warr = WireArray(track_id, lower, upper)
+        sp = max(sp, grid.get_space(layer_id, width))
+        sp_le = max(sp_le, grid.get_line_end_space(layer_id, width))
+        test_box = warr.get_bbox_array(grid).base
+        if is_x:
+            return not self.has_blockage(layer_id, test_box, spx=sp_le, spy=sp)
+        else:
+            return not self.has_blockage(layer_id, test_box, spx=sp, spy=sp_le)
+
     def mark_bbox_used(self, layer_id, bbox):
         # type: (int, BBox) -> None
         """Marks the given bounding-box region as used in this Template."""
         # TODO: fix this method
         layer_name = self.grid.get_layer_name(layer_id, 0)
         # self._used_tracks.record_rect(self.grid, layer_name, BBoxArray(bbox), dx=0, dy=0)
-        raise NotImplementedError('Not implemented yet')
+        raise ValueError('Not implemented yet')
 
     def get_available_tracks(self,  # type: TemplateBase
                              layer_id,  # type: int
@@ -3148,7 +3203,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                              ):
         # type: (...) -> List[int]
         """Returns empty tracks"""
-        raise NotImplementedError('Not implemented yet')
+        # TODO: fix this method
+        raise ValueError('Not implemented yet')
 
     def do_power_fill(self,  # type: TemplateBase
                       layer_id,  # type: int
@@ -3168,15 +3224,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                       ):
         # type: (...) -> Tuple[List[WireArray], List[WireArray]]
         """Draw power fill on the given layer."""
-        raise NotImplementedError('Not implemented yet')
-
-    def do_max_space_fill2(self,  # type: TemplateBase
-                           layer_id,  # type: int
-                           bound_box=None,  # type: Optional[BBox]
-                           ):
-        # type: (...) -> None
-        """Draw density fill on the given layer."""
-        raise NotImplementedError('Not implemented yet')
+        # TODO: fix this method
+        raise ValueError('Not implemented yet')
 
     def do_max_space_fill(self,  # type: TemplateBase
                           layer_id,  # type: int
@@ -3185,7 +3234,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           ):
         # type: (...) -> None
         """Draw density fill on the given layer."""
-        raise NotImplementedError('Not implemented yet')
+        # TODO: fix this method
+        raise ValueError('Not implemented yet')
 
 
 class BlackBoxTemplate(TemplateBase):
