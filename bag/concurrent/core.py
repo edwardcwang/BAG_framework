@@ -50,7 +50,7 @@ FlowInfo = Tuple[Union[str, Sequence[str]], str, Optional[Dict[str, str]], Optio
 
 
 class SubProcessManager(object):
-    """A class that provides convenient methods to run multiple subprocesses in parallel using asyncio.
+    """A class that provides methods to run multiple subprocesses in parallel using asyncio.
 
     Parameters
     ----------
