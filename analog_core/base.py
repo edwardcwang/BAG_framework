@@ -16,7 +16,6 @@ from bag.util.search import BinaryIterator
 from bag.layout.template import TemplateBase
 from bag.layout.routing import TrackID, WireArray
 from bag.layout.util import BBox
-from bag.layout.objects import Instance
 
 from ..analog_mos.core import MOSTech
 from ..analog_mos.mos import AnalogMOSBase, AnalogMOSExt
@@ -29,6 +28,8 @@ from .placement import WireGroup, WireTree
 if TYPE_CHECKING:
     from bag.layout.template import TemplateDB
     from bag.layout.routing import RoutingGrid
+
+    from pybag.layout import PyLayInstance
 
 
 class AnalogBaseEdgeInfo(object):
@@ -1717,7 +1718,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                     tech_cls_name=self._tech_cls_name,
                 )
                 conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
-                conn_inst = self.add_instance(conn_master, loc=inst_loc, orient=orient)
+                conn_inst = self.add_instance(conn_master, loc=inst_loc, orient=orient,
+                                              commit=False)
                 sub_type = master.params['sub_type']
                 # save substrate instance
                 if sub_type == 'ptap':
@@ -2057,7 +2059,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def _connect_substrate(self,  # type: AnalogBase
                            sub_type,  # type: str
-                           sub_list,  # type: List[Instance]
+                           sub_list,  # type: List[PyLayInstance]
                            row_idx_list,  # type: List[int]
                            lower=None,  # type: Optional[int]
                            upper=None,  # type: Optional[int]
@@ -2073,7 +2075,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         ----------
         sub_type : str
             substrate type.  Either 'ptap' or 'ntap'.
-        sub_list : List[Instance]
+        sub_list : List[PyLayInstance]
             list of substrates to connect.
         row_idx_list : List[int]
             list of substrate row indices.
@@ -2299,8 +2301,8 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
                            intv_set_list,  # type: List[IntervalSet]
                            cap_intv_set_list,  # type: List[IntervalSet]
                            cap_wires_dict,  # type: Dict[int, List[WireArray]]
-                           bot_sub_inst,  # type: Optional[Instance]
-                           top_sub_inst,  # type: Optional[Instance]
+                           bot_sub_inst,  # type: Optional[PyLayInstance]
+                           top_sub_inst,  # type: Optional[PyLayInstance]
                            bot_tracks,  # type: List[int]
                            top_tracks,  # type: List[int]
                            export_both  # type: bool
@@ -2320,9 +2322,9 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
         cap_wires_dict : Dict[int, List[WireArray]]
             dictionary from substrate ID to decap wires that need to connect to that substrate.
             bottom substrate has ID of 1, and top substrate has ID of -1.
-        bot_sub_inst : Optional[Instance]
+        bot_sub_inst : Optional[PyLayInstance]
             the bottom substrate instance.
-        top_sub_inst : Optional[Instance]
+        top_sub_inst : Optional[PyLayInstance]
             the top substrate instance.
         bot_tracks : List[int]
             list of port track indices that needs to be exported on bottom substrate.
@@ -2641,6 +2643,7 @@ class AnalogBase(TemplateBase, metaclass=abc.ABCMeta):
 
         sub_inst.new_master_with(dum_tracks=dum_tracks, port_tracks=new_port_tracks,
                                  dummy_only=dum_only, exc_tracks=exc_tracks)
+        sub_inst.commit()
 
 
 class AnalogBaseEnd(TemplateBase):
