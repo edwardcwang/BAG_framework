@@ -800,9 +800,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if not unit_mode:
             raise ValueError('unit_mode = False not supported.')
 
-        self.children.add(master.key)
-        return self._layout.add_instance(self.grid, master, self._lib_name, inst_name,
-                                         loc[0], loc[1], Orientation[orient].value,
+        return self._layout.add_instance(self.grid, self.children, master, self._lib_name,
+                                         inst_name, loc[0], loc[1], Orientation[orient].value,
                                          nx, ny, spx, spy, commit=commit)
 
     def add_instance_primitive(self,  # type: TemplateBase
