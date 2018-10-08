@@ -204,46 +204,25 @@ class HalfInt(Integral):
         raise TypeError('Cannot or HalfInt')
 
     def __iadd__(self, other):
-        other = HalfInt.convert(other)
-        self._val += other._val
-        return self
+        return self + other
 
     def __isub__(self, other):
-        self.__iadd__(-other)
-        return self
+        return self - other
 
     def __imul__(self, other):
-        other = HalfInt.convert(other)
-        q, r = divmod(self._val * other._val, 2)
-        if r == 0:
-            self._val = q
-            return self
-        raise ValueError('result is not a HalfInt.')
+        return self * other
 
     def __itruediv__(self, other):
-        other = HalfInt.convert(other)
-        q, r = divmod(2 * self._val, other._val)
-        if r == 0:
-            self._val = q
-            return self
-        raise ValueError('result is not a HalfInt.')
+        return self / other
 
     def __ifloordiv__(self, other):
-        other = HalfInt.convert(other)
-        self._val = 2 * (self._val // other._val)
-        return self
+        return self // other
 
     def __imod__(self, other):
-        other = HalfInt.convert(other)
-        self._val %= other._val
-        return self
+        return self % other
 
     def __ipow__(self, other):
-        other = HalfInt.convert(other)
-        if self.is_integer() and other.is_integer():
-            self._val = 2 * (self._val // 2) ** (other._val // 2)
-            return self
-        raise ValueError('result is not a HalfInt.')
+        return self ** other
 
     def __ilshift__(self, other):
         raise TypeError('Cannot lshift HalfInt')
