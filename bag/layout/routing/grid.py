@@ -83,7 +83,7 @@ class RoutingGrid(object):
         self.sp_tracks = {}
         self.w_tracks = {}
         self.offset_tracks = {}
-        self.dir_tracks = {}
+        self.dir_tracks = {}  # type: Dict[int, Orient2D]
         self.max_num_tr_tracks = {}
         self.block_pitch = {}
         self.w_override = {}
@@ -1125,7 +1125,7 @@ class RoutingGrid(object):
                 else:
                     bbox = BBox(0, 0, width, bot_w)
                 vinfo = self.tech_info.get_via_info(bbox, bot_layer_name, layer_name,
-                                                    bot_dir, **kwargs)
+                                                    bot_dir.name, **kwargs)
                 if (vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or
                         iac_peak > vinfo['iac_peak']):
                     bin_iter.up()
@@ -1136,7 +1136,7 @@ class RoutingGrid(object):
                 else:
                     bbox = BBox(0, 0, width, top_w)
                 vinfo = self.tech_info.get_via_info(bbox, layer_name, top_layer_name,
-                                                    tr_dir, **kwargs)
+                                                    tr_dir.name, **kwargs)
                 if (vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or
                         iac_peak > vinfo['iac_peak']):
                     bin_iter.up()
@@ -1288,14 +1288,14 @@ class RoutingGrid(object):
 
         if bot_dir is Orient2D.x:
             vbox = BBox(0, 0, top_dim, bot_dim)
-            vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir)
+            vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir.name)
             if vinfo is None:
                 raise ValueError('Cannot create via')
             bot_ext = (vinfo['bot_box'].width_unit - top_dim) // 2
             top_ext = (vinfo['top_box'].height_unit - bot_dim) // 2
         else:
             vbox = BBox(0, 0, bot_dim, top_dim)
-            vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir)
+            vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir.name)
             if vinfo is None:
                 raise ValueError('Cannot create via')
             bot_ext = (vinfo['bot_box'].height_unit - top_dim) // 2
