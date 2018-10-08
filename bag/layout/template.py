@@ -476,6 +476,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         else:
             raise RuntimeError('Template already finalized.')
 
+    @property
+    def layout_cellview(self):
+        # type: () -> PyLayCellView
+        """Returns the internal layout object."""
+        return self._layout
+
     def set_geometry_mode(self, mode):
         # type: (GeometryMode) -> None
         """Sets the geometry mode of this layout.
