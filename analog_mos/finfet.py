@@ -60,7 +60,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_mos_yloc_info(self, lch_unit, w, **kwargs):
-        # type: (int, int, **kwargs) -> Dict[str, Any]
+        # type: (int, int, Any) -> Dict[str, Any]
         """Computes Y coordinates of various layers in the transistor row.
 
         The returned dictionary should have the following entries:
@@ -93,7 +93,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_sub_yloc_info(self, lch_unit, w, **kwargs):
-        # type: (int, int, **kwargs) -> Dict[str, Any]
+        # type: (int, int, Any) -> Dict[str, Any]
         """Computes Y coordinates of various layers in the substrate row.
 
         The returned dictionary should have the following entries:
@@ -377,7 +377,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return (w - 1) * fin_p + fin_h + 2 * od_fin_exty
 
     def get_od_h_inverse(self, lch_unit, od_h, round_up=None):
-        # type: (int, int) -> int
+        # type: (int, int, bool) -> int
         """Calculate number of fins from OD height."""
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
@@ -394,7 +394,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return w
 
     def get_od_spy_nfin(self, lch_unit, sp, round_up=True):
-        # type: (int, int) -> int
+        # type: (int, int, bool) -> int
         """Calculate OD vertical space in number of fin pitches, rounded up.
 
         Space of 0 means no fins are between the two OD.
@@ -465,7 +465,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return self.get_od_edge(lch_unit, fin_idx, top_edge)
 
     def get_edge_info(self, lch_unit, guard_ring_nf, is_end, **kwargs):
-        # type: (int, int, bool, **kwargs) -> Dict[str, Any]
+        # type: (int, int, bool, Any) -> Dict[str, Any]
         is_sub_ring = kwargs.get('is_sub_ring', False)
         dnw_mode = kwargs.get('dnw_mode', '')
 
@@ -537,13 +537,14 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             fg_od_margin=fg_od_margin,
         )
 
+    # noinspection PyUnusedLocal
     @abc.abstractmethod
     def is_planar_substrate(self, lch_unit, **kwargs):
         # return True to draw planar style substrate
         return False
 
     def _get_mos_blk_info(self, lch_unit, fg, w, mos_type, sub_type, threshold, **kwargs):
-        # type: (int, int, int, str, str, str, **kwargs) -> Dict[str, Any]
+        # type: (int, int, int, str, str, str, Any) -> Dict[str, Any]
 
         dnw_mode = kwargs.get('dnw_mode', '')
         is_sub_ring = kwargs.get('is_sub_ring', False)
@@ -636,7 +637,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             fill_info_list=fill_info_list,
             # edge parameters
             sub_type=sub_type,
-            imp_params=None if is_sub else [(implant_type, threshold, blk_yb, blk_yt, blk_yb, blk_yt)],
+            imp_params=None if is_sub else [(implant_type, threshold, blk_yb, blk_yt,
+                                             blk_yb, blk_yt)],
             is_sub_ring=is_sub_ring,
             is_planar_sub=is_planar_sub,
             dnw_mode='',
@@ -668,12 +670,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         )
 
     def get_mos_info(self, lch_unit, w, mos_type, threshold, fg, **kwargs):
-        # type: (int, int, str, str, int, **kwargs) -> Dict[str, Any]
+        # type: (int, int, str, str, int, Any) -> Dict[str, Any]
         sub_type = 'ptap' if mos_type == 'nch' else 'ntap'
         return self._get_mos_blk_info(lch_unit, fg, w, mos_type, sub_type, threshold, **kwargs)
 
     def get_valid_extension_widths(self, lch_unit, top_ext_info, bot_ext_info, **kwargs):
-        # type: (int, ExtInfo, ExtInfo, **kwargs) -> List[int]
+        # type: (int, ExtInfo, ExtInfo, Any) -> List[int]
         """Compute a list of valid extension widths.
 
         The DRC rules that we consider are:
@@ -1087,7 +1089,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return adj_row_list, adj_edgel_infos, adj_edger_infos, thres_split_y, imp_split_y
 
     def get_ext_info(self, lch_unit, w, fg, top_ext_info, bot_ext_info, **kwargs):
-        # type: (int, int, int, ExtInfo, ExtInfo, **kwargs) -> Dict[str, Any]
+        # type: (int, int, int, ExtInfo, ExtInfo, Any) -> Dict[str, Any]
         """Draw extension block.
 
         extension block has zero or more rows of dummy transistors, which are
@@ -1392,7 +1394,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         )
 
     def get_sub_ring_ext_info(self, sub_type, height, fg, end_ext_info, **kwargs):
-        # type: (str, int, int, ExtInfo, **kwargs) -> Dict[str, Any]
+        # type: (str, int, int, ExtInfo, Any) -> Dict[str, Any]
         dnw_mode = kwargs.get('dnw_mode', '')
 
         lch = self.get_substrate_ring_lch()
@@ -1439,12 +1441,12 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         )
 
     def get_substrate_info(self, lch_unit, w, sub_type, threshold, fg, blk_pitch=1, **kwargs):
-        # type: (int, int, str, str, int, int, **kwargs) -> Dict[str, Any]
+        # type: (int, int, str, str, int, int, Any) -> Dict[str, Any]
         return self._get_mos_blk_info(lch_unit, fg, w, sub_type, sub_type, threshold,
                                       blk_pitch=blk_pitch, **kwargs)
 
     def _get_end_blk_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
-        # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
+        # type: (int, str, str, int, bool, int, Any) -> Dict[str, Any]
         """Get substrate end layout information
 
         Layout is quite simple.  We draw the right CPO width, and extend PO so PO-CPO overlap
@@ -1586,7 +1588,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return ans
 
     def get_analog_end_info(self, lch_unit, sub_type, threshold, fg, is_end, blk_pitch, **kwargs):
-        # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
+        # type: (int, str, str, int, bool, int, Any) -> Dict[str, Any]
         """Get substrate end layout information
 
         Layout is quite simple.  We draw the right CPO width, and extend PO so PO-CPO overlap
@@ -1602,7 +1604,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                       blk_pitch, **kwargs)
 
     def get_sub_ring_end_info(self, sub_type, threshold, fg, end_ext_info, **kwargs):
-        # type: (str, str, int, ExtInfo, **kwargs) -> Dict[str, Any]
+        # type: (str, str, int, ExtInfo, Any) -> Dict[str, Any]
         """Empty block, just reserve space for margin."""
         lch = self.get_substrate_ring_lch()
         lch_unit = int(round(lch / self.config['layout_unit'] / self.res))
@@ -2104,7 +2106,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         if extra_rect_list:
             for (lay, xl, yb, xr, yt) in extra_rect_list:
-                template.add_rect(lay, BBox(xl, yb, xr, yt, res, unit_mode=True), unit_mode=True)
+                template.add_rect(lay, BBox(xl, yb, xr, yt))
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
@@ -2682,8 +2684,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 po_xl = od_xl + po_od_extx - sd_pitch
                 po_xr = po_xl + lch_unit
                 nx = 1 + ((od_xr - po_xr - po_od_extx + sd_pitch) // sd_pitch)
-                template.add_rect(po_lay, BBox(po_xl, po_yb, po_xr, po_yt, res, unit_mode=True),
-                                  nx=nx, spx=sd_pitch, unit_mode=True)
+                template.add_rect_arr(po_lay, BBox(po_xl, po_yb, po_xr, po_yt), nx=nx, spx=sd_pitch)
 
         # draw other layers
         od_xl = od_x_list[0][0]
