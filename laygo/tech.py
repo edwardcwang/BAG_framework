@@ -128,7 +128,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_laygo_sub_row_info(self, lch_unit, w, mos_type, threshold, **kwargs):
-        # type: (int, int, str, str, **kwargs) -> Dict[str, Any]
+        # type: (int, int, str, str, Any) -> Dict[str, Any]
         """Returns the information dictionary for laygo substrate row.
 
         Parameters
@@ -192,7 +192,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_laygo_blk_info(self, blk_type, w, row_info, **kwargs):
-        # type: (str, int, Dict[str, Any], **kwargs) -> Dict[str, Any]
+        # type: (str, int, Dict[str, Any], Any) -> Dict[str, Any]
         """Returns the layout information dictionary for the given laygo block.
 
         Parameters
@@ -226,7 +226,7 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_laygo_end_info(self, lch_unit, mos_type, threshold, fg, is_end, blk_pitch, **kwargs):
-        # type: (int, str, str, int, bool, int, **kwargs) -> Dict[str, Any]
+        # type: (int, str, str, int, bool, int, Any) -> Dict[str, Any]
         """Returns the LaygoBase end row layout information dictionary.
 
         Parameters
@@ -608,6 +608,5 @@ class LaygoTech(MOSTech, metaclass=abc.ABCMeta):
         gr_vss_warrs = template.connect_wires(gr_vss_warrs)
 
         arr_box_x = laygo_info.get_placement_info(num_col).arr_box_x
-        arr_box = BBox(arr_box_x[0], arr_box.bottom_unit, arr_box_x[1], arr_box.top_unit,
-                       arr_box.resolution, unit_mode=True)
+        arr_box = BBox(arr_box_x[0], arr_box.bottom_unit, arr_box_x[1], arr_box.top_unit)
         return arr_box, gr_vdd_warrs, gr_vss_warrs
