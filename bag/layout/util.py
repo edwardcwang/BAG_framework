@@ -3,7 +3,7 @@
 """This module contains utility classes used for layout
 """
 
-from typing import Iterator, Union, Tuple, List
+from typing import Iterator, Union, Tuple, List, Any
 
 import pprint
 
@@ -21,6 +21,15 @@ transform_table = {'R0': np.array([[1, 0], [0, 1]], dtype=int),
                    'MYR90': np.array([[0, -1], [-1, 0]], dtype=int),
                    'R270': np.array([[0, 1], [-1, 0]], dtype=int),
                    }
+
+
+def tuple2_to_int(input_tuple: Tuple[Any, Any]) -> Tuple[int, int]:
+    """
+    Cast a tuple of 2 elements to a tuple of 2 ints.
+    :param input_tuple: Tuple of two elements
+    :return: Tuple of two ints
+    """
+    return int(input_tuple[0]), int(input_tuple[1])
 
 
 def transform_point(x, y, loc, orient):
@@ -560,8 +569,8 @@ class BBoxArray(object):
         self._nx = nx
         self._ny = ny
         if unit_mode:
-            self._spx_unit = spx
-            self._spy_unit = spy
+            self._spx_unit = int(spx)  # type: int
+            self._spy_unit = int(spy)  # type: int
         else:
             self._spx_unit = int(round(spx / bbox.resolution))
             self._spy_unit = int(round(spy / bbox.resolution))
