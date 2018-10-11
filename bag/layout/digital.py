@@ -109,7 +109,7 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
             number of standard cell columns that span the given number of tracks.
         """
         col_width_unit = int(round(self._tech_params['col_pitch'] / self.grid.resolution))
-        tr_pitch = self.grid.get_track_pitch(layer_id, unit_mode=True)  # type: int
+        tr_pitch = int(self.grid.get_track_pitch(layer_id, unit_mode=True))  # type: int
         return -(-(tr_pitch * num_tr) // col_width_unit)  # ceiling division
 
     def set_draw_boundaries(self, draw_boundaries):
@@ -219,7 +219,7 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
         ncol, nrow = std_size
 
         tdir = self.grid.get_direction(layer_id)
-        pitch = self.grid.get_track_pitch(layer_id, unit_mode=True)
+        pitch = int(self.grid.get_track_pitch(layer_id, unit_mode=True))
         if tdir == 'x':
             tot_dim = nrow * int(round(self.std_row_height / self.grid.resolution))
         else:

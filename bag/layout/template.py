@@ -21,7 +21,7 @@ import shapely.geometry as shgeo
 from bag.util.cache import DesignMaster, MasterDB
 from bag.util.interval import IntervalSet
 from .core import BagLayout
-from .util import BBox, BBoxArray
+from .util import BBox, BBoxArray, tuple2_to_int
 from ..io import get_encoding, open_file
 from .routing import Port, TrackID, WireArray
 from .routing.fill import UsedTracks, fill_symmetric_max_num_info, fill_symmetric_interval, \
@@ -839,8 +839,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         intv_dir = self.grid.get_direction(layer_id)
         warr = WireArray(track_id, lower, upper, res=res, unit_mode=True)
         test_box = warr.get_bbox_array(self.grid).base
-        sp = max(sp, self.grid.get_space(layer_id, width, unit_mode=True))
-        sp_le = max(sp_le, self.grid.get_line_end_space(layer_id, width, unit_mode=True))
+        sp = max(sp, int(self.grid.get_space(layer_id, width, unit_mode=True)))
+        sp_le = max(sp_le, int(self.grid.get_line_end_space(layer_id, width, unit_mode=True)))
         if intv_dir == 'x':
             spx, spy = sp_le, sp
         else:
@@ -848,7 +848,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         intv_set = IntervalSet()
         for box in self.blockage_iter(layer_id, test_box, spx=spx, spy=spy):
-            bl, bu = box.get_interval(intv_dir, unit_mode=True)
+            bl, bu = tuple2_to_int(box.get_interval(intv_dir, unit_mode=True))
             intv_set.add((max(bl, lower), min(bu, upper)), merge=True, abut=True)
 
         for intv in intv_set.complement_iter((lower, upper)):
@@ -877,8 +877,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         track_id = TrackID(layer_id, tr_idx, width=width)
         warr = WireArray(track_id, lower, upper, res=res, unit_mode=True)
         test_box = warr.get_bbox_array(self.grid).base
-        sp = max(sp, self.grid.get_space(layer_id, width, unit_mode=True))
-        sp_le = max(sp_le, self.grid.get_line_end_space(layer_id, width, unit_mode=True))
+        sp = max(sp, int(self.grid.get_space(layer_id, width, unit_mode=True)))
+        sp_le = max(sp_le, int(self.grid.get_line_end_space(layer_id, width, unit_mode=True)))
         if intv_dir == 'x':
             spx, spy = sp_le, sp
         else:
@@ -1786,8 +1786,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         grid = self.grid
         res = grid.resolution
-        bl, bu = grid.get_wire_bounds(bot_layer_id, bot_track, width=bot_width, unit_mode=True)
-        tl, tu = grid.get_wire_bounds(bot_layer_id + 1, top_track, width=top_width, unit_mode=True)
+        bl, bu = tuple2_to_int(grid.get_wire_bounds(bot_layer_id, bot_track, width=bot_width, unit_mode=True))
+        tl, tu = tuple2_to_int(grid.get_wire_bounds(bot_layer_id + 1, top_track, width=top_width, unit_mode=True))
         bot_dir = grid.get_direction(bot_layer_id)
         if bot_dir == 'x':
             bbox = BBox(tl, bl, tu, bu, res, unit_mode=True)
@@ -2017,20 +2017,20 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # get via extensions on each layer
         for vbot_layer in range(bot_layer, top_layer):
             vtop_layer = vbot_layer + 1
-            bport_w = self.grid.get_track_width(vbot_layer, port_widths[vbot_layer], unit_mode=True)
-            tport_w = self.grid.get_track_width(vtop_layer, port_widths[vtop_layer], unit_mode=True)
+            bport_w = int(self.grid.get_track_width(vbot_layer, port_widths[vbot_layer], unit_mode=True))
+            tport_w = int(self.grid.get_track_width(vtop_layer, port_widths[vtop_layer], unit_mode=True))
             bcap_w = int(round(cap_info[vbot_layer][0] / res))
             tcap_w = int(round(cap_info[vtop_layer][0] / res))
 
             # port-to-port via
-            vbext1, vtext1 = self.grid.get_via_extensions_dim(vbot_layer, bport_w, tport_w,
-                                                              unit_mode=True)
+            vbext1, vtext1 = tuple2_to_int(self.grid.get_via_extensions_dim(vbot_layer, bport_w, tport_w,
+                                                              unit_mode=True))
             # cap-to-port via
-            vbext2 = self.grid.get_via_extensions_dim(vbot_layer, bcap_w, tport_w,
-                                                      unit_mode=True)[0]
+            vbext2 = int(self.grid.get_via_extensions_dim(vbot_layer, bcap_w, tport_w,
+                                                      unit_mode=True)[0])
             # port-to-cap via
-            vtext2 = self.grid.get_via_extensions_dim(vbot_layer, bport_w, tcap_w,
-                                                      unit_mode=True)[1]
+            vtext2 = int(self.grid.get_via_extensions_dim(vbot_layer, bport_w, tcap_w,
+                                                      unit_mode=True)[1])
 
             # record extension due to via
             via_ext_dict[vbot_layer] = max(via_ext_dict[vbot_layer], vbext1, vbext2)
@@ -2074,16 +2074,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if tr_lower + 2 * (cur_num_ports - 1) * port_delta >= tr_upper:
                 raise ValueError('Cannot draw MOM cap; area too small.')
 
-            ll0, lu0 = self.grid.get_wire_bounds(cur_layer, tr_lower, width=cur_port_width,
-                                                 unit_mode=True)
-            ll1, lu1 = self.grid.get_wire_bounds(cur_layer,
-                                                 tr_lower + (cur_num_ports - 1) * port_delta,
-                                                 width=cur_port_width, unit_mode=True)
-            ul0, uu0 = self.grid.get_wire_bounds(cur_layer,
-                                                 tr_upper - (cur_num_ports - 1) * port_delta,
-                                                 width=cur_port_width, unit_mode=True)
-            ul1, uu1 = self.grid.get_wire_bounds(cur_layer, tr_upper, width=cur_port_width,
-                                                 unit_mode=True)
+            ll0, lu0 = tuple2_to_int(self.grid.get_wire_bounds(cur_layer, tr_lower, width=cur_port_width,
+                                                               unit_mode=True))
+            ll1, lu1 = tuple2_to_int(self.grid.get_wire_bounds(cur_layer,
+                                                               tr_lower + (cur_num_ports - 1) * port_delta,
+                                                               width=cur_port_width, unit_mode=True))
+            ul0, uu0 = tuple2_to_int(self.grid.get_wire_bounds(cur_layer,
+                                                               tr_upper - (cur_num_ports - 1) * port_delta,
+                                                               width=cur_port_width, unit_mode=True))
+            ul1, uu1 = tuple2_to_int(self.grid.get_wire_bounds(cur_layer, tr_upper, width=cur_port_width,
+                                                               unit_mode=True))
 
             # compute space from MOM cap wires to port wires
             port_w = lu0 - ll0
@@ -2329,7 +2329,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         direction = grid.get_direction(layer_id)
         is_horiz = direction == 'x'
         perp_dir = 'y' if direction == 'x' else 'x'
-        htr_pitch = grid.get_track_pitch(layer_id, unit_mode=True) // 2
+        htr_pitch = int(grid.get_track_pitch(layer_id, unit_mode=True)) // 2
         intv_set = IntervalSet()
         for wire_arr in wire_arr_list:
             if wire_arr.layer_id != layer_id:
@@ -2338,7 +2338,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             cur_range = wire_arr.lower_unit, wire_arr.upper_unit
             box_arr = wire_arr.get_bbox_array(grid)
             for box in box_arr:
-                intv = box.get_interval(perp_dir, unit_mode=True)
+                intv = tuple2_to_int(box.get_interval(perp_dir, unit_mode=True))
                 intv_rang_item = intv_set.get_first_overlap_item(intv)
                 if intv_rang_item is None:
                     range_set = IntervalSet()
@@ -2401,8 +2401,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                         count += 1
                     else:
                         # pitch does not match, add current wires and start anew
-                        tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv,
-                                                                  unit_mode=True)
+                        tr_idx, tr_width = tuple2_to_int(grid.interval_to_track(layer_id, base_intv,
+                                                                                unit_mode=True))
                         track_id = TrackID(layer_id, tr_idx, width=tr_width,
                                            num=count, pitch=hpitch / 2)
                         warr = WireArray(track_id, base_start, base_end, res=res, unit_mode=True)
@@ -2412,7 +2412,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                         hpitch = 0
                 else:
                     # length/width does not match, add cumulated wires and start anew
-                    tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv, unit_mode=True)
+                    tr_idx, tr_width = tuple2_to_int(grid.interval_to_track(layer_id, base_intv, unit_mode=True))
                     track_id = TrackID(layer_id, tr_idx, width=tr_width,
                                        num=count, pitch=hpitch / 2)
                     warr = WireArray(track_id, base_start, base_end, res=res, unit_mode=True)
@@ -2428,7 +2428,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             last_lower = cur_lower
 
         # add last wires
-        tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv, unit_mode=True)
+        tr_idx, tr_width = tuple2_to_int(grid.interval_to_track(layer_id, base_intv, unit_mode=True))
         track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
         warr = WireArray(track_id, base_start, base_end, res=res, unit_mode=True)
         new_warr_list.append(warr)
@@ -2460,7 +2460,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 top_layer = grid.get_layer_name(tr_layer_id, base_idx)
                 bot_dir = w_dir
             # compute via bounding box
-            tl, tu = grid.get_wire_bounds(tr_layer_id, base_idx, width=tr_width, unit_mode=True)
+            tl, tu = tuple2_to_int(grid.get_wire_bounds(tr_layer_id, base_idx, width=tr_width, unit_mode=True))
             if tr_dir == 'x':
                 via_box = BBox(wbase.left_unit, tl, wbase.right_unit, tu, res, unit_mode=True)
                 nx, ny = box_arr.nx, sub_track_id.num
@@ -2707,11 +2707,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         bot_layer_id = min(w_layer_id, tr_layer_id)
 
         # compute wire_lower/upper without via extension
-        w_lower, w_upper = grid.get_wire_bounds(tr_layer_id, tr_idx_list[0], width=width,
-                                                unit_mode=True)
+        w_lower, w_upper = tuple2_to_int(grid.get_wire_bounds(tr_layer_id, tr_idx_list[0], width=width,
+                                                              unit_mode=True))
         for tr_idx in islice(tr_idx_list, 1, None):
-            cur_low, cur_up = grid.get_wire_bounds(tr_layer_id, tr_idx, width=width,
-                                                   unit_mode=True)
+            cur_low, cur_up = tuple2_to_int(grid.get_wire_bounds(tr_layer_id, tr_idx, width=width,
+                                                                 unit_mode=True))
             w_lower = min(w_lower, cur_low)
             w_upper = max(w_upper, cur_up)
 
@@ -2731,13 +2731,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if w_layer_id < tr_layer_id:
                 bot_dim = base.width_unit if tr_horizontal else base.height_unit
                 top_dim = tr_width
-                w_ext, tr_ext = grid.get_via_extensions_dim(bot_layer_id, bot_dim, top_dim,
-                                                            unit_mode=True)
+                w_ext, tr_ext = tuple2_to_int(grid.get_via_extensions_dim(bot_layer_id, bot_dim, top_dim,
+                                                                          unit_mode=True))
             else:
                 bot_dim = tr_width
                 top_dim = base.width_unit if tr_horizontal else base.height_unit
-                tr_ext, w_ext = grid.get_via_extensions_dim(bot_layer_id, bot_dim, top_dim,
-                                                            unit_mode=True)
+                tr_ext, w_ext = tuple2_to_int(grid.get_via_extensions_dim(bot_layer_id, bot_dim, top_dim,
+                                                                          unit_mode=True))
 
             if bbox_bounds[0] is None:
                 bbox_bounds[0] = w_lower - w_ext
@@ -2747,7 +2747,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 bbox_bounds[1] = max(bbox_bounds[1], w_upper + w_ext)
 
             # compute track lower/upper including via extension
-            tr_bounds = box_arr.get_overall_bbox().get_interval(tr_dir, unit_mode=True)
+            tr_bounds = tuple2_to_int(box_arr.get_overall_bbox().get_interval(tr_dir, unit_mode=True))
             if track_lower is None:
                 track_lower = tr_bounds[0] - tr_ext
             else:
@@ -2838,7 +2838,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         # find min/max track Y coordinates
         tr_layer_id = track_id.layer_id
-        wl, wu = track_id.get_bounds(grid, unit_mode=True)
+        wl, wu = tuple2_to_int(track_id.get_bounds(grid, unit_mode=True))
         if wire_lower is not None:
             if not unit_mode:
                 wire_lower = int(round(wire_lower / res))
@@ -2879,7 +2879,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         if min_len_mode is not None:
             # extend track to meet minimum length
-            min_len = grid.get_min_length(tr_layer_id, track_id.width, unit_mode=True)
+            min_len = int(grid.get_min_length(tr_layer_id, track_id.width, unit_mode=True))
             # make sure minimum length is even so that middle coordinate exists
             min_len = -(-min_len // 2) * 2
             tr_len = track_upper - track_lower
@@ -3164,11 +3164,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             raise ValueError('Cannot strap wires with different directions.')
 
         # convert base track index
-        base_coord = self.grid.track_to_coord(wire_layer, wire_tid.base_index, unit_mode=True)
-        base_tid = self.grid.coord_to_track(targ_layer, base_coord, unit_mode=True)
+        base_coord = int(self.grid.track_to_coord(wire_layer, wire_tid.base_index, unit_mode=True))
+        base_tid = int(self.grid.coord_to_track(targ_layer, base_coord, unit_mode=True))
         # convert pitch
-        wire_pitch = self.grid.get_track_pitch(wire_layer, unit_mode=True)
-        targ_pitch = self.grid.get_track_pitch(targ_layer, unit_mode=True)
+        wire_pitch = int(self.grid.get_track_pitch(wire_layer, unit_mode=True))
+        targ_pitch = int(self.grid.get_track_pitch(targ_layer, unit_mode=True))
         targ_pitch_half = targ_pitch // 2
         pitch_unit = int(round(wire_pitch * wire_tid.pitch))
         if pitch_unit % targ_pitch_half != 0:
@@ -3180,7 +3180,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             num_pitch /= 2
         # convert width
         if tr_w < 0:
-            width_unit = self.grid.get_track_width(wire_layer, wire_tid.width, unit_mode=True)
+            width_unit = int(self.grid.get_track_width(wire_layer, wire_tid.width, unit_mode=True))
             tr_w = max(1, self.grid.get_track_width_inverse(targ_layer, width_unit, mode=-1,
                                                             unit_mode=True))
 
@@ -3190,13 +3190,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         w_lower = lower  # type: int
         w_upper = upper  # type: int
         for tid in wire_tid:
-            coord = self.grid.track_to_coord(wire_layer, tid, unit_mode=True)
-            tid2 = self.grid.coord_to_track(targ_layer, coord, unit_mode=True)
+            coord = int(self.grid.track_to_coord(wire_layer, tid, unit_mode=True))
+            tid2 = int(self.grid.coord_to_track(targ_layer, coord, unit_mode=True))
             w_name = self.grid.get_layer_name(wire_layer, tid)
             t_name = self.grid.get_layer_name(targ_layer, tid2)
 
-            w_yb, w_yt = self.grid.get_wire_bounds(wire_layer, tid, wire_tid.width, unit_mode=True)
-            t_yb, t_yt = self.grid.get_wire_bounds(targ_layer, tid2, tr_w, unit_mode=True)
+            w_yb, w_yt = tuple2_to_int(self.grid.get_wire_bounds(wire_layer, tid, wire_tid.width, unit_mode=True))
+            t_yb, t_yt = tuple2_to_int(self.grid.get_wire_bounds(targ_layer, tid2, tr_w, unit_mode=True))
             vbox = BBox(lower, max(w_yb, t_yb), upper, min(w_yt, t_yt), res, unit_mode=True)
             if wdir == 'y':
                 vbox = vbox.flip_xy()
@@ -3219,7 +3219,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 w_upper = max(w_upper, wbox.top_unit)
 
         # handle minimum length DRC rule
-        min_len = self.grid.get_min_length(targ_layer, tr_w, unit_mode=True)
+        min_len = int(self.grid.get_min_length(targ_layer, tr_w, unit_mode=True))
         ext = min_len - (new_upper - new_lower)
         if mlen_mode is not None and ext > 0:
             if mlen_mode < 0:
@@ -3384,10 +3384,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             raise ValueError('No tracks given')
 
         # compute wire_lower/upper without via extension
-        w_lower, w_upper = grid.get_wire_bounds(tr_layer_id, tr_idx_list[0], width=width,
-                                                unit_mode=True)
+        w_lower, w_upper = tuple2_to_int(grid.get_wire_bounds(tr_layer_id, tr_idx_list[0], width=width,
+                                                              unit_mode=True))
         for tr_idx in islice(tr_idx_list, 1, None):
-            cur_low, cur_up = grid.get_wire_bounds(tr_layer_id, tr_idx, width=width, unit_mode=True)
+            cur_low, cur_up = tuple2_to_int(grid.get_wire_bounds(tr_layer_id, tr_idx, width=width, unit_mode=True))
             w_lower = min(w_lower, cur_low)
             w_upper = max(w_upper, cur_up)
 
@@ -3411,18 +3411,19 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 cur_layer_id = warr_tid.layer_id
                 cur_width = warr_tid.width
                 if cur_layer_id == tr_layer_id + 1:
-                    tr_ext, w_ext = grid.get_via_extensions(tr_layer_id, width, cur_width,
+                    tr_w_ext = grid.get_via_extensions(tr_layer_id, width, cur_width,
                                                             unit_mode=True)
                     top_warrs[idx].append(warr)
                     cur_bounds = top_bounds
                 elif cur_layer_id == tr_layer_id - 1:
-                    w_ext, tr_ext = grid.get_via_extensions(cur_layer_id, cur_width, width,
+                    tr_w_ext = grid.get_via_extensions(cur_layer_id, cur_width, width,
                                                             unit_mode=True)
                     bot_warrs[idx].append(warr)
                     cur_bounds = bot_bounds
                 else:
                     raise ValueError('Cannot connect wire on layer %d '
                                      'to track on layer %d' % (cur_layer_id, tr_layer_id))
+                tr_ext, w_ext = tuple2_to_int(tr_w_ext)
 
                 # compute wire lower/upper including via extension
                 if cur_bounds[0] is None:
@@ -3493,8 +3494,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             bot_horizontal = (bot_dir == 'x')
             for bot_index in bot_track_idx:
                 bot_lay_name = self.grid.get_layer_name(bot_layer_id, bot_index)
-                btl, btu = grid.get_wire_bounds(bot_layer_id, bot_index, width=bot_width,
-                                                unit_mode=True)
+                btl, btu = tuple2_to_int(grid.get_wire_bounds(bot_layer_id, bot_index, width=bot_width,
+                                                              unit_mode=True))
                 for twarr in top_warr_list:
                     top_tl = twarr.lower_unit
                     top_tu = twarr.upper_unit
@@ -3503,8 +3504,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     if top_tu >= btu and top_tl <= btl:
                         # top wire cuts bottom wire, possible intersection
                         for top_index in top_track_idx:
-                            ttl, ttu = grid.get_wire_bounds(top_layer_id, top_index,
-                                                            width=top_width, unit_mode=True)
+                            ttl, ttu = tuple2_to_int(grid.get_wire_bounds(top_layer_id, top_index,
+                                                                          width=top_width, unit_mode=True))
                             if bot_tu >= ttu and bot_tl <= ttl:
                                 # bottom wire cuts top wire, we have intersection.  Make bbox
                                 if bot_horizontal:
@@ -3568,8 +3569,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             y_margin = int(round(y_margin / res))
             tr_offset = int(round(tr_offset / res))
             min_len = int(round(min_len / res))
+        else:
+            space = int(space)
+            space_le = int(space_le)
+            x_margin = int(x_margin)
+            y_margin = int(y_margin)
+            tr_offset = int(tr_offset)
+            min_len = int(min_len)
 
-        min_len = max(min_len, self.grid.get_min_length(layer_id, fill_width, unit_mode=True))
+        min_len = max(min_len, int(self.grid.get_min_length(layer_id, fill_width, unit_mode=True)))
         if bound_box is None:
             if self.bound_box is None:
                 raise ValueError("bound_box is not set")
@@ -3577,7 +3585,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         bound_box = bound_box.expand(dx=-x_margin, dy=-y_margin, unit_mode=True)
 
-        tr_off = self.grid.coord_to_track(layer_id, tr_offset, unit_mode=True)
+        tr_off = int(self.grid.coord_to_track(layer_id, tr_offset, unit_mode=True))
         htr0 = int(tr_off * 2) + 1 + fill_width + fill_space
         htr_pitch = 2 * (fill_width + fill_space)
         is_horizontal = (self.grid.get_direction(layer_id) == 'x')
@@ -3588,10 +3596,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             cl, cu = bound_box.left_unit, bound_box.right_unit
             lower, upper = bound_box.bottom_unit, bound_box.top_unit
 
-        tr_bot = self.grid.find_next_track(layer_id, cl, tr_width=fill_width, half_track=True,
-                                           mode=1, unit_mode=True)
-        tr_top = self.grid.find_next_track(layer_id, cu, tr_width=fill_width, half_track=True,
-                                           mode=-1, unit_mode=True)
+        tr_bot = int(self.grid.find_next_track(layer_id, cl, tr_width=fill_width, half_track=True,
+                                           mode=1, unit_mode=True))
+        tr_top = int(self.grid.find_next_track(layer_id, cu, tr_width=fill_width, half_track=True,
+                                           mode=-1, unit_mode=True))
         n0 = - (-(int(tr_bot * 2) + 1 - htr0) // htr_pitch)
         n1 = (int(tr_top * 2) + 1 - htr0) // htr_pitch
         top_vdd = []  # type: List[WireArray]
@@ -3649,8 +3657,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             tran_dir = 'y'
             spx = sp_le_max2
             spy = sp_max2
-        dim_tran0, dim_tran1 = bound_box.get_interval(tran_dir, unit_mode=True)
-        dim_long0, dim_long1 = bound_box.get_interval(long_dir, unit_mode=True)
+        dim_tran0, dim_tran1 = tuple2_to_int(bound_box.get_interval(tran_dir, unit_mode=True))
+        dim_long0, dim_long1 = tuple2_to_int(bound_box.get_interval(long_dir, unit_mode=True))
         dim_tranl = min(dim_tran1, dim_tran0 + sp_max2)
         dim_tranu = max(dim_tran0, dim_tran1 - sp_max2)
         dim_longl = min(dim_long1, dim_long0 + sp_le_max2)
@@ -3662,19 +3670,19 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if dim_tran <= ip_margin or dim_long <= ip_margin_le:
             return
 
-        min_len = grid.get_min_length(layer_id, 1, unit_mode=True)
-        htr0 = self.grid.coord_to_nearest_track(layer_id, dim_tranl, half_track=True,
-                                                mode=-1, unit_mode=True)
-        htr1 = self.grid.coord_to_nearest_track(layer_id, dim_tranu, half_track=True,
-                                                mode=1, unit_mode=True)
+        min_len = int(grid.get_min_length(layer_id, 1, unit_mode=True))
+        htr0 = int(self.grid.coord_to_nearest_track(layer_id, dim_tranl, half_track=True,
+                                                mode=-1, unit_mode=True))
+        htr1 = int(self.grid.coord_to_nearest_track(layer_id, dim_tranu, half_track=True,
+                                                mode=1, unit_mode=True))
         htr0 = int(round(htr0 * 2 + 1))
         htr1 = int(round(htr1 * 2 + 1))
         num_htr_tot = htr1 - htr0 + 1
 
         # calculate track pitch based on density/max space
-        tr_w, tr_sp = grid.get_track_info(layer_id, unit_mode=True)
-        sp_le = grid.get_line_end_space(layer_id, 1, unit_mode=True)
-        tr_pitch2 = grid.get_track_pitch(layer_id, unit_mode=True) // 2
+        tr_w, tr_sp = tuple2_to_int(grid.get_track_info(layer_id, unit_mode=True))
+        sp_le = int(grid.get_line_end_space(layer_id, 1, unit_mode=True))
+        tr_pitch2 = int(grid.get_track_pitch(layer_id, unit_mode=True)) // 2
         num_tracks = int(round(-(-(dim_tran * density) // tr_w)))
         num_tracks = min(max(num_tracks, -(-num_htr_tot // ((sp_max - tr_sp) // tr_pitch2 + 2))),
                          num_htr_tot // 2)
@@ -3703,8 +3711,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         # handle blockages
         for blk_box in self.blockage_iter(layer_id, bound_box, spx=spx, spy=spy):
-            b_tran0, b_tran1 = blk_box.get_interval(tran_dir, unit_mode=True)
-            b_long0, b_long1 = blk_box.get_interval(long_dir, unit_mode=True)
+            b_tran0, b_tran1 = tuple2_to_int(blk_box.get_interval(tran_dir, unit_mode=True))
+            b_long0, b_long1 = tuple2_to_int(blk_box.get_interval(long_dir, unit_mode=True))
             b_long0_lim = max(b_long0, dim_longl)
             b_long1_lim = min(b_long1, dim_longu)
             blk_intv = (b_long0_lim, b_long1_lim)
@@ -3714,10 +3722,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     intv_tran0.add(blk_intv, merge=True, abut=True)
                 if b_tran0 <= dim_tranu and dim_tran1 <= b_tran1:
                     intv_tran1.add(blk_intv, merge=True, abut=True)
-            cur_htr0 = self.grid.find_next_track(layer_id, b_tran0, half_track=True, mode=1,
-                                                 unit_mode=True)
-            cur_htr1 = self.grid.find_next_track(layer_id, b_tran1, half_track=True, mode=-1,
-                                                 unit_mode=True)
+            cur_htr0 = int(self.grid.find_next_track(layer_id, b_tran0, half_track=True, mode=1,
+                                                 unit_mode=True))
+            cur_htr1 = int(self.grid.find_next_track(layer_id, b_tran1, half_track=True, mode=-1,
+                                                 unit_mode=True))
             cur_htr0 = max(htr0, int(round(cur_htr0 * 2 + 1)))
             cur_htr1 = min(htr1, int(round(cur_htr1 * 2 + 1)))
             htr_idx0 = bisect.bisect_left(htr_list, cur_htr0)
@@ -3734,15 +3742,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                         intv_list[htr_idx].add(blk_intv, merge=True, abut=True)
 
         # add fill in edges on transverse sides
-        trl = self.grid.coord_to_nearest_track(layer_id, dim_tran0 + margin, half_track=True,
-                                               mode=-1, unit_mode=True)
-        trr = self.grid.coord_to_nearest_track(layer_id, dim_tran1 - margin, half_track=True,
-                                               mode=1, unit_mode=True)
+        trl = int(self.grid.coord_to_nearest_track(layer_id, dim_tran0 + margin, half_track=True,
+                                               mode=-1, unit_mode=True))
+        trr = int(self.grid.coord_to_nearest_track(layer_id, dim_tran1 - margin, half_track=True,
+                                               mode=1, unit_mode=True))
         if trr < trl + 1:
             # handle cases where the given bounding box is small
             dim_mid = (dim_tran0 + dim_tran1) // 2
-            trl = self.grid.coord_to_nearest_track(layer_id, dim_mid, half_track=True,
-                                                   mode=0, unit_mode=True)
+            trl = int(self.grid.coord_to_nearest_track(layer_id, dim_mid, half_track=True,
+                                                   mode=0, unit_mode=True))
             tran_edge_iter = ((intv_tran0, trl),)
         else:
             tran_edge_iter = ((intv_tran0, trl), (intv_tran1, trr))
@@ -3915,7 +3923,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                               mode=-1, unit_mode=True)
             tr1 = grid.coord_to_nearest_track(layer_id, yt, half_track=True,
                                               mode=1, unit_mode=True)
-            wl, wu = grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True)
+            wl, wu = tuple2_to_int(grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True))
             comb = shgeo.MultiPolygon([shgeo.box(xl, wl + tr_p2 * idx, xr, wu + tr_p2 * idx)
                                        for idx in range(0, int(round(2 * (tr1 - tr0))) + 2,
                                                         fill_htr)])
@@ -3924,7 +3932,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                               mode=-1, unit_mode=True)
             tr1 = grid.coord_to_nearest_track(layer_id, xr, half_track=True,
                                               mode=1, unit_mode=True)
-            wl, wu = grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True)
+            wl, wu = tuple2_to_int(grid.get_wire_bounds(layer_id, tr0, width=1, unit_mode=True))
             comb = shgeo.MultiPolygon([shgeo.box(wl + tr_p2 * idx, yb, wu + tr_p2 * idx, yt)
                                        for idx in range(0, int(round(2 * (tr1 - tr0))) + 2,
                                                         fill_htr)])
