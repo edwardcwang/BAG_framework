@@ -3296,7 +3296,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if track_lower is not None:
                 track_lower = int(round(track_lower / res))
             if track_upper is not None:
-                track_upper = int(round(track_lower / res))
+                track_upper = int(round(track_upper / res))
 
         p_tid = pout_warr.track_id
         lay_id = p_tid.layer_id
