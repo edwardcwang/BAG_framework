@@ -3,7 +3,7 @@
 """This module defines various interpolation classes.
 """
 
-from typing import List, Tuple, Union, Sequence
+from typing import List, Tuple, Union, Sequence, Optional
 
 import numpy as np
 import scipy.interpolate as interp
@@ -16,7 +16,7 @@ __all__ = ['interpolate_grid', 'LinearInterpolator']
 
 
 def _scales_to_points(scale_list, values, delta=1e-4):
-    # type: (List[Tuple[float, float]], np.multiarray.ndarray, delta) -> Tuple[List[np.multiarray.ndarray], List[float]]
+    # type: (List[Tuple[float, float]], np.multiarray.ndarray, float) -> Tuple[List[np.multiarray.ndarray], List[float]]
     """convert scale_list to list of point values and finite difference deltas."""
 
     ndim = len(values.shape)
@@ -169,6 +169,9 @@ class LinearInterpolator(DiffFunction):
             float if this interpolator has only 1 dimension, otherwise a new
             LinearInterpolator is returned.
         """
+        if self.delta_list is None:
+            raise ValueError("Finite differences must be enabled")
+
         if logx != logy:
             raise ValueError('Currently only works for linear or log-log relationship.')
 
@@ -243,10 +246,10 @@ class LinearInterpolator(DiffFunction):
             mp1 = m[log_idxb] + 1
             x2 = np.exp(lx2[log_idxb])
             area[log_idxb] = scale[log_idxb] / mp1 * (np.power(x2, mp1) - np.power(x1[log_idxb], mp1))
-            new_values = np.sum(area, axis=-1)
+            new_values = np.sum(area, axis=-1)  # type: np.multiarray.ndarray
         else:
             # just use trapezoid integration
-            new_values = np.trapz(values, x=integ_x, axis=axis)  # type: np.multiarray.ndarray
+            new_values = np.trapz(values, x=integ_x, axis=axis)
 
         if not raw and new_points:
             return LinearInterpolator(new_points, new_values, new_deltas, extrapolate=self._extrapolate)

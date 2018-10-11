@@ -31,7 +31,7 @@ class DiffFunction(abc.ABC):
             raise ValueError('finite difference list length inconsistent.')
 
         self._input_ranges = input_ranges
-        self.delta_list = delta_list
+        self.delta_list = delta_list  # type: Optional[List[float]]
 
     @property
     def input_ranges(self):
