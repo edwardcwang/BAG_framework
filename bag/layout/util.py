@@ -3,7 +3,7 @@
 """This module contains utility classes used for layout
 """
 
-from typing import Generator, Union, Tuple, List
+from typing import Iterator, Union, Tuple, List
 
 import pprint
 
@@ -567,7 +567,7 @@ class BBoxArray(object):
             self._spy_unit = int(round(spy / bbox.resolution))
 
     def __iter__(self):
-        # type: () -> Generator[BBox]
+        # type: () -> Iterator[BBox]
         """Iterates over all bounding boxes in this BBoxArray.
 
         traverses from left to right, then from bottom to top.
