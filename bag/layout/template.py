@@ -1689,7 +1689,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return via
 
     def add_via_primitive(self, via_type,  # type: str
-                          loc,  # type: List[float]
+                          loc,  # type: Tuple[float, float]
                           num_rows=1,  # type: int
                           num_cols=1,  # type: int
                           sp_rows=0.0,  # type: float
@@ -1712,8 +1712,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         via_type : str
             the via type name.
-        loc : List[float]
-            the via location as a two-element list.
+        loc : Tuple[float, float]
+            the via location as a two-element tuple.
         num_rows : int
             number of via cut rows.
         num_cols : int

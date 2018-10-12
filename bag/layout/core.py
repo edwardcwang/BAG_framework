@@ -1565,8 +1565,8 @@ class BagLayout(object):
         ----------
         via_type : str
             the via type name.
-        loc : list[float]
-            the via location as a two-element list.
+        loc : Tuple[float, float]
+            the via location as a two-element tuple.
         num_rows : int
             number of via cut rows.
         num_cols : int
