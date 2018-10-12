@@ -2781,7 +2781,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           return_wires=False,  # type: bool
                           debug=False,  # type: bool
                           ):
-        # type: (...) -> Union[Optional[WireArray], Tuple[Optional[WireArray], List[WireArray]]]
+        # type: (...) -> Optional[Union[WireArray, Tuple[WireArray, List[WireArray]]]]
         """Connect all given WireArrays to the given track(s).
 
         All given wires should be on adjacent layers of the track.
@@ -2813,7 +2813,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         Returns
         -------
         wire_arr : Optional[Union[WireArray, Tuple[WireArray, List[WireArray]]]]
-            WireArray representing the tracks/wires created.  None if nothing to do.
+            WireArray representing the tracks/wires created.
+            If there was nothing to do, returns a None.
+            If return_wires is True, returns a Tuple[WireArray, List[WireArray]].
+            Otherwise, returns a WireArray.
         """
         if isinstance(wire_arr_list, WireArray):
             # convert to list.
@@ -2824,7 +2827,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if not wire_arr_list:
             # do nothing
             if return_wires:
-                return None, []
+                return None
             return None
 
         grid = self.grid
