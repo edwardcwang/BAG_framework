@@ -206,9 +206,9 @@ class WireArray(object):
     ----------
     track_id : :class:`bag.layout.routing.TrackID`
         TrackArray representing the track locations of this wire array.
-    lower : float
+    lower : Union[float, int]
         the lower coordinate along the track direction.
-    upper : float
+    upper : Union[float, int]
         the upper coordinate along the track direction.
     res : Optional[float]
         the resolution unit.
@@ -217,15 +217,15 @@ class WireArray(object):
     """
 
     def __init__(self, track_id, lower, upper, res=None, unit_mode=False):
-        # type: (TrackID, float, float, Optional[float], bool) -> None
+        # type: (TrackID, Union[float, int], Union[float, int], Optional[float], bool) -> None
         if res is None:
             raise ValueError('Please specify the layout distance resolution.')
 
         self._track_id = track_id
         self._res = res
         if unit_mode:
-            self._lower_unit = lower
-            self._upper_unit = upper
+            self._lower_unit = int(lower)  # type: int
+            self._upper_unit = int(upper)  # type: int
         else:
             self._lower_unit = int(round(lower / res))
             self._upper_unit = int(round(upper / res))
