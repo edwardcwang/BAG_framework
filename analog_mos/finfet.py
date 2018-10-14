@@ -27,7 +27,8 @@ FillInfo = namedtuple('FillInfo', ['layer', 'exc_layer', 'x_intv_list', 'y_intv_
 
 
 class ExtInfo(namedtuple('ExtInfoBase', ['margins', 'od_h', 'imp_min_h', 'mtype', 'thres',
-                                         'po_types', 'edgel_info', 'edger_info'])):
+                                         'po_types', 'edgel_info', 'edger_info',
+                                         'is_sub_ring'])):
     __slots__ = ()
 
     def reverse(self):
@@ -482,7 +483,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         cpo_po_extx = mos_constants['cpo_po_extx']
         po_od_extx = mos_constants['po_od_extx']
         fg_outer_gr = mos_constants.get('fg_outer_gr', 0)
-        is_planar_sub = self.is_planar_substrate(lch_unit, guard_ring_nf=guard_ring_nf)
+        is_planar_sub = self.is_planar_substrate(lch_unit, guard_ring_nf=guard_ring_nf, **kwargs)
 
         if 0 < guard_ring_nf < fg_gr_min:
             raise ValueError('guard_ring_nf = %d < %d' % (guard_ring_nf, fg_gr_min))
@@ -558,7 +559,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         is_sub = (mos_type == sub_type)
         if is_sub:
-            implant_type = sub_type + '_planar' if is_planar_sub else sub_type
+            implant_type = sub_type + '_planar' if (is_planar_sub or is_sub_ring) else sub_type
         else:
             implant_type = mos_type
 
@@ -599,6 +600,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             po_types=po_types,
             edgel_info=lr_edge_info,
             edger_info=lr_edge_info,
+            is_sub_ring=is_sub_ring,
         )
         ext_bot_info = ExtInfo(
             margins=bot_margins,
@@ -609,6 +611,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             po_types=po_types,
             edgel_info=lr_edge_info,
             edger_info=lr_edge_info,
+            is_sub_ring=is_sub_ring,
         )
 
         # Compute layout information
@@ -1016,8 +1019,10 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         return od_y_list, md_y_list, row_y_list, po_y_list, cpo_yc_list
 
     def _get_ext_adj_split_info(self, lch_unit, w, bot_ext_info, top_ext_info, od_y_list,
-                                cpo_yc_list):
+                                cpo_yc_list, **kwargs):
         """Compute adjacent block information and Y split coordinate in extension block."""
+        is_sub_ring = kwargs.get('is_sub_ring', False)
+
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_p = mos_constants['mos_pitch']
         cpo_spy = mos_constants['cpo_spy']
@@ -1063,7 +1068,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             adj_edgel_infos = []
             adj_edger_infos = []
 
-            if no_sub_dummy:
+            if no_sub_dummy and not is_sub_ring:
                 if top_is_sub and bot_is_sub:
                     raise ValueError('Impossible to draw extensions; both rows are substrates.')
                 all_or_nothing = top_is_sub or bot_is_sub
@@ -1134,7 +1139,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_spx = mos_constants['od_spx']
         od_fill_w_max = mos_constants['od_fill_w_max']
         cpo_po_ency = mos_constants['cpo_po_ency']
-        is_planar_sub = self.is_planar_substrate(lch_unit, **kwargs)
+        is_sub_ring = bot_ext_info.is_sub_ring and top_ext_info.is_sub_ring
+        is_planar_sub = self.is_planar_substrate(lch_unit, is_sub_ring=is_sub_ring, **kwargs)
 
         yt = w * fin_p
         yc = yt // 2
@@ -1309,7 +1315,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                       (top_mtype, top_thres, imp_ysep, yt, thres_ysep, yt)]
 
         for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
-            if is_planar_sub and (mtype == 'ntap' or mtype == 'ptap'):
+            if (is_planar_sub or is_sub_ring) and (mtype == 'ntap' or mtype == 'ptap'):
                 mtype = mtype + '_planar'
             imp_layers_info = imp_layers_info_struct[mtype]
             thres_layers_info = thres_layers_info_struct[mtype][thres]
@@ -1374,7 +1380,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # edge parameters
             sub_type=sub_type,
             imp_params=imp_params,
-            is_sub_ring=False,
+            is_sub_ring=is_sub_ring,
             is_planar_sub=is_planar_sub,
             between_gr=between_gr,
             dnw_mode='',
@@ -1401,7 +1407,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         tmp = self._get_dummy_yloc(lch_unit, end_ext_info, end_ext_info, height)
         od_y_list, md_y_list, row_y_list, po_y_list, cpo_yc_list = tmp
         tmp = self._get_ext_adj_split_info(lch_unit, height, end_ext_info, end_ext_info,
-                                           od_y_list, cpo_yc_list)
+                                           od_y_list, cpo_yc_list, is_sub_ring=True)
         adj_row_list, adj_edgel_infos, adj_edger_infos, _, _ = tmp
 
         # construct row_info_list
@@ -1460,6 +1466,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         end_ext_info = kwargs.get('end_ext_info', None)
 
         is_sub_ring_end = (end_ext_info is not None)
+        is_sub_ring = kwargs.get('is_sub_ring', False) or is_sub_ring_end
 
         dnw_margins = self.config['dnw_margins']
         mos_layer_table = self.config['mos_layer_table']
@@ -1486,7 +1493,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         if is_end:
             blk_pitch = lcm([blk_pitch, fin_p])
             # first assume top Y coordinate is 0
-            if is_planar_sub or not has_cpo:
+            if is_planar_sub or is_sub_ring or not has_cpo:
                 arr_yt = -(-edge_margin // blk_pitch) * blk_pitch
                 imp_yb = arr_yt
                 finbound_yb = arr_yt - fin_p2 - fin_h2
@@ -1522,7 +1529,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
             finbound_yt = arr_yt + fin_p2 + fin_h2
             for lay in self.get_mos_layers(sub_type, threshold):
-                if lay == finbound_lay:
+                if lay == finbound_lay and not is_sub_ring_end:
                     yb, yt = finbound_yb, finbound_yt
                 else:
                     yb, yt = imp_yb, arr_yt
@@ -1531,7 +1538,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         else:
             # we just draw CPO
             imp_yb = arr_yt = 0
-            if is_planar_sub or not has_cpo:
+            if is_planar_sub or is_sub_ring or not has_cpo:
                 lay_info_list = []
             else:
                 lay_info_list = [(cpo_lay, 0, -cpo_h // 2, cpo_h // 2)]
@@ -1551,7 +1558,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # edge parameters
             sub_type=sub_type,
             imp_params=None,
-            is_sub_ring=is_sub_ring_end,
+            is_sub_ring=is_sub_ring,
             is_planar_sub=is_planar_sub,
             dnw_mode=dnw_mode,
             # adjacent block information list
@@ -1577,6 +1584,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 po_types=('PO_sub',) * fg,
                 edgel_info=lr_edge_info,
                 edger_info=lr_edge_info,
+                is_sub_ring=is_sub_ring,
             )
 
         return ans
@@ -1625,7 +1633,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         imp_edge_dx = mos_constants.get('imp_edge_dx', {})
         sd_pitch = mos_constants['sd_pitch']
-        is_planar_sub = self.is_planar_substrate(lch_unit, guard_ring_nf=guard_ring_nf)
+        is_planar_sub = self.is_planar_substrate(lch_unit, guard_ring_nf=guard_ring_nf, **kwargs)
 
         edge_info = self.get_edge_info(lch_unit, guard_ring_nf, is_end, dnw_mode=dnw_mode)
         fg_outer = edge_info['fg_outer']
@@ -1656,7 +1664,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # get new implant layers
             for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
                 sub_type = 'ptap' if mtype == 'nch' or mtype == 'ptap' else 'ntap'
-                implant_type = sub_type + '_planar' if is_planar_sub else sub_type
+                implant_type = sub_type + '_planar' if (is_planar_sub or is_sub_ring) else sub_type
                 imp_layers_info = imp_layers_info_struct[implant_type]
                 thres_layers_info = thres_layers_info_struct[implant_type][thres]
                 for cur_yb, cur_yt, lay_info in [(imp_yb, imp_yt, imp_layers_info),
@@ -1710,6 +1718,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # TODO: figure out how to draw fill in outer edge block
             fill_info_list=[],
             is_planar_sub=is_planar_sub,
+            is_sub_ring=is_sub_ring,
             # adjacent block information
             adj_row_list=new_adj_row_list,
             left_blk_info=EdgeInfo(od_type=None, draw_layers={}, y_intv={}),
@@ -1734,6 +1743,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         nw_dnw_ovl = self.mos_config['nw_dnw_ovl']
 
         blk_type = layout_info['blk_type']
+        sub_type = layout_info['sub_type']
         lch_unit = layout_info['lch_unit']
         arr_y = layout_info['arr_y']
         lay_info_list = layout_info['lay_info_list']
@@ -1758,12 +1768,17 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         # noinspection PyProtectedMember
         row_info_list = [rinfo._replace(od_x_list=od_x_list, od_type=('sub', rinfo.od_type[1]))
                          for rinfo in row_info_list]
-        if is_planar_sub:
+        if is_planar_sub or is_sub_ring:
             if blk_type == 'sub':
                 edge_blk_type = 'gr_sub_sub'
             elif blk_type == 'end' or between_gr:
                 edge_blk_type = 'gr_sub_end'
                 row_info_list = []
+            elif blk_type == 'end_subring':
+                edge_blk_type = 'gr_sub_end_sub'
+                row_info_list = [RowInfo(od_x_list=od_x_list, od_type=('sub', sub_type), row_y=arr_y,
+                                         od_y=arr_y, po_y=arr_y, md_y=(0, 0))]
+                imp_params = [(sub_type, 'none', arr_y[0], arr_y[1], arr_y[0], arr_y[1])]
             else:
                 edge_blk_type = 'gr_sub'
         else:
@@ -1791,7 +1806,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # compute substrate implant layers
             for mtype, thres, imp_yb, imp_yt, thres_yb, thres_yt in imp_params:
                 sub_type = 'ptap' if mtype == 'nch' or mtype == 'ptap' else 'ntap'
-                implant_type = sub_type + '_planar' if is_planar_sub else sub_type
+                implant_type = sub_type + '_planar' if (is_planar_sub or is_sub_ring) else sub_type
                 imp_layers_info = imp_layers_info_struct[implant_type]
                 thres_layers_info = thres_layers_info_struct[implant_type][thres]
                 for cur_yb, cur_yt, lay_info in [(imp_yb, imp_yt, imp_layers_info),
@@ -1807,7 +1822,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     new_lay_list.append((lay_name, wblk - nw_dnw_ovl, 0, arr_y[1]))
 
         # compute new adj_row_list
-        po_types = ('PO_dummy',) * (fg_od_margin - 1) + ('PO_edge',) + \
+        if is_sub_ring:
+            po_types = ('PO_dummy',) * (fg_od_margin - 1) + ('PO_sub',) + \
+                   ('PO_sub',) * (guard_ring_nf + fg_od_margin)
+        else:
+            po_types = ('PO_dummy',) * (fg_od_margin - 1) + ('PO_edge',) + \
                    ('PO_sub',) * guard_ring_nf + ('PO_edge',) + ('PO_dummy',) * (fg_od_margin - 1)
         # noinspection PyProtectedMember
         new_adj_row_list = [ar_info._replace(po_types=po_types) for ar_info in adj_row_list]
@@ -1826,6 +1845,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             lay_info_list=new_lay_list,
             fill_info_list=fill_info_list,
             is_planar_sub=is_planar_sub,
+            is_sub_ring=is_sub_ring,
             # adjacent block information list
             adj_row_list=new_adj_row_list,
             left_blk_info=None,
@@ -1841,7 +1861,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
     def get_gr_sep_info(self, layout_info, adj_blk_info, **kwargs):
         # type: (Dict[str, Any], Any, Any) -> Dict[str, Any]
-        is_sub_ring = kwargs.get('is_sub_ring', False)
 
         mos_layer_table = self.config['mos_layer_table']
 
@@ -1864,7 +1883,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         cpo_xl = edge_constants['cpo_xl']
 
         # compute new row_info_list
-        if is_planar_sub:
+        if is_planar_sub or is_sub_ring:
             cpo_lay = mos_layer_table['CPO']
             new_lay_list = [(lay, cpo_xl, yb, yt) if lay == cpo_lay else (lay, 0, yb, yt)
                             for lay, _, yb, yt in lay_info_list]
@@ -1905,6 +1924,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             # TODO: figure out how to compute fill information
             fill_info_list=[],
             is_planar_sub=is_planar_sub,
+            is_sub_ring=is_sub_ring,
             # adjacent block information list
             adj_row_list=new_adj_list,
             left_blk_info=None,
@@ -2114,6 +2134,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         md_w = mos_constants['md_w']
         po_od_extx = mos_constants['po_od_extx']
         is_planar_sub = layout_info.get('is_planar_sub', False)
+        is_sub_ring = layout_info.get('is_sub_ring', False)
 
         fin_p2 = fin_p // 2
         fin_h2 = fin_h // 2
@@ -2162,6 +2183,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             po_on_od = [False] * fg
             md_on_od = [False] * (fg + 1)
             po_is_edge = [False] * fg
+            is_gr_sub = (blk_type == 'gr_sub' or blk_type == 'gr_sub_sub'
+                         or blk_type == 'gr_sub_end_sub')
             if od_yt > od_yb:
                 for od_start, od_stop in od_x_list:
                     # mark PO/MD indices that are on OD
@@ -2172,12 +2195,17 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                         md_on_od[idx] = True
                         if idx < fg:
                             po_on_od[idx] = True
-                            po_is_edge[idx] = idx == od_stop
+                            if not is_gr_sub:
+                                po_is_edge[idx] = idx == od_stop
+
+                    if is_gr_sub:
+                        for idx in range(od_stop + 1, fg):
+                            po_on_od[idx] = True
 
                     if draw_od:
                         od_xl = po_xc - lch_unit // 2 + od_start * sd_pitch - po_od_extx
                         od_xr = po_xc + lch_unit // 2 + (od_stop - 1) * sd_pitch + po_od_extx
-                        if is_planar_sub:
+                        if is_planar_sub or is_sub_ring:
                             # modify OD geometry inside planar guard ring
                             if blk_type == 'gr_sub_sub':
                                 self.draw_od(template, od_name,
@@ -2236,7 +2264,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                             lay = 'PO_dummy'
 
                         self.draw_poly(template, mos_constants, lay, (po_xl, po_xr), row_y,
-                                       po_y, pode_y)
+                                       po_y, pode_y, is_sub_ring)
 
             # draw MD
             if md_yt > md_yb and fg > 0:
@@ -2260,7 +2288,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 yb = (yb - fin_p2 + fin_h2) // fin_p * fin_p + fin_p2 - fin_h2
                 yt = -(-(yt - fin_p2 - fin_h2) // fin_p) * fin_p + fin_p2 + fin_h2
             box = BBox(xl, yb, blk_w, yt, res, unit_mode=True)
-            if box.is_physical():
+            if box.is_physical() and imp_lay[0] != 'none':
                 self.draw_mos_rect(template, imp_lay, box)
 
         # draw adjacent row geometries
@@ -2273,7 +2301,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                         po_xl = po_xc + idx * sd_pitch - lch_unit // 2
                         po_xr = po_xl + lch_unit
                         self.draw_poly(template, mos_constants, po_type, (po_xl, po_xr), row_y,
-                                       po_y, (po_y[0], po_y[0]))
+                                       po_y, (po_y[0], po_y[0]), is_sub_ring)
 
         # set size and add PR boundary
         arr_box = BBox(0, arr_yb, blk_w, arr_yt, res, unit_mode=True)

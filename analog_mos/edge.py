@@ -307,6 +307,7 @@ class AnalogEdge(TemplateBase):
         return dict(
             is_end=True,
             is_laygo=False,
+            is_sub_ring=False,
             tech_cls_name=None,
         )
 
@@ -373,18 +374,19 @@ class AnalogEdge(TemplateBase):
             )
             master = self.new_template(params=sub_params, temp_cls=AnalogSubstrateCore)
             inst = self.add_instance(master, 'XSUB', loc=loc, unit_mode=True)
-            conn_params = dict(
-                layout_name='%s_subconn' % basename,
-                layout_info=sub_info,
-                is_laygo=is_laygo,
-                is_guardring=True,
-                tech_cls_name=tech_cls_name,
-            )
-            conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
-            if conn_master.has_connection:
-                conn_inst = self.add_instance(conn_master, loc=loc, unit_mode=True)
-                for port_name in conn_inst.port_names_iter():
-                    self.reexport(conn_inst.get_port(port_name), show=False)
+            if sub_info['blk_type'] != 'gr_sub_end_sub':
+                conn_params = dict(
+                    layout_name='%s_subconn' % basename,
+                    layout_info=sub_info,
+                    is_laygo=is_laygo,
+                    is_guardring=True,
+                    tech_cls_name=tech_cls_name,
+                )
+                conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
+                if conn_master.has_connection:
+                    conn_inst = self.add_instance(conn_master, loc=loc, unit_mode=True)
+                    for port_name in conn_inst.port_names_iter():
+                        self.reexport(conn_inst.get_port(port_name), show=False)
 
             x0 = inst.array_box.right_unit
             sep_info = tech_cls.get_gr_sep_info(layout_info, adj_blk_info, is_sub_ring=is_sub_ring)
