@@ -1984,6 +1984,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                   row_y,  # type: Tuple[int, int]
                   po_y,  # type: Tuple[int, int]
                   od_y,  # type: Tuple[int, int]
+                  **kwargs,
                   ):
         # type: (...) -> None
         """This method draws a transistor poly.
@@ -2264,7 +2265,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                             lay = 'PO_dummy'
 
                         self.draw_poly(template, mos_constants, lay, (po_xl, po_xr), row_y,
-                                       po_y, pode_y, is_sub_ring)
+                                       po_y, pode_y, is_sub_ring=is_sub_ring)
 
             # draw MD
             if md_yt > md_yb and fg > 0:
@@ -2301,7 +2302,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                         po_xl = po_xc + idx * sd_pitch - lch_unit // 2
                         po_xr = po_xl + lch_unit
                         self.draw_poly(template, mos_constants, po_type, (po_xl, po_xr), row_y,
-                                       po_y, (po_y[0], po_y[0]), is_sub_ring)
+                                       po_y, (po_y[0], po_y[0]), is_sub_ring=is_sub_ring)
 
         # set size and add PR boundary
         arr_box = BBox(0, arr_yb, blk_w, arr_yt, res, unit_mode=True)
