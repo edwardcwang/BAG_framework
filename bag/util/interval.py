@@ -53,48 +53,6 @@ class IntervalSet(object):
         idx = self._get_first_overlap_idx(key)
         return idx >= 0 and key[0] == self._start_list[idx] and key[1] == self._end_list[idx]
 
-    def __getitem__(self, intv):
-        # type: (Tuple[int, int]) -> Any
-        """Returns the value associated with the given interval.
-
-        Raises KeyError if the given interval is not in this IntervalSet.
-
-        Parameters
-        ----------
-        intv : Tuple[int, int]
-            the interval to query.
-
-        Returns
-        -------
-        val : Any
-            the value associated with the given interval.
-        """
-        idx = self._get_first_overlap_idx(intv)
-        if idx < 0 or intv[0] != self._start_list[idx] or intv[1] != self._end_list[idx]:
-            raise KeyError('Invalid interval: %s' % repr(intv))
-        return self._val_list[idx]
-
-    def __setitem__(self, intv, value):
-        # type: (Tuple[int, int], Any) -> None
-        """Update the value associated with the given interval.
-
-        Raises KeyError if the given interval is not in this IntervalSet.
-
-        Parameters
-        ----------
-        intv : Tuple[int, int]
-            the interval to update.
-        value : Any
-            the new value.
-        """
-        idx = self._get_first_overlap_idx(intv)
-        if idx < 0:
-            self.add(intv, value)
-        elif intv[0] != self._start_list[idx] or intv[1] != self._end_list[idx]:
-            raise KeyError('Invalid interval: %s' % repr(intv))
-        else:
-            self._val_list[idx] = value
-
     def __iter__(self):
         # type: () -> Iterable[Tuple[int, int]]
         """Iterates over intervals in this IntervalSet in increasing order.
@@ -138,17 +96,6 @@ class IntervalSet(object):
             the end of the last interval.
         """
         return self._end_list[-1]
-
-    def get_interval(self, idx):
-        # type: (int) -> Tuple[int, int]
-        if idx < 0:
-            idx += len(self._start_list)
-        if idx < 0:
-            raise IndexError('Invalid index: %d' % idx)
-        if idx >= len(self._start_list):
-            raise IndexError('Invalid index: %d' % idx)
-
-        return self._start_list[idx], self._end_list[idx]
 
     def copy(self):
         # type: () -> IntervalSet
@@ -420,23 +367,18 @@ class IntervalSet(object):
             return True
 
     def subtract(self, intv):
-        # type: (Tuple[int, int]) -> List[Tuple[int, int]]
+        # type: (Tuple[int, int]) -> None
         """Subtract the given interval from this IntervalSet.
 
         Parameters
         ----------
         intv : Tuple[int, int]
             the interval to subtract.
-
-        Returns
-        -------
-        remaining_intvs : List[Tuple[int, int]]
-            intervals created from subtraction.
         """
         bidx = self._get_first_overlap_idx(intv)
-        insert_intv = []
         if bidx >= 0:
             eidx = self._get_last_overlap_idx(intv)
+            insert_intv = []
             insert_val = []
             if self._start_list[bidx] < intv[0]:
                 insert_intv.append((self._start_list[bidx], intv[0]))
@@ -453,8 +395,6 @@ class IntervalSet(object):
                 self._end_list.insert(insert_idx, new_end)
                 self._val_list.insert(insert_idx, val)
                 insert_idx += 1
-
-        return insert_intv
 
     def items(self):
         # type: () -> Iterable[Tuple[Tuple[int, int], Any]]
