@@ -284,9 +284,9 @@ class IntervalSet(object):
         complement : IntervalSet
             the complement of this IntervalSet.
         """
-        return IntervalSet(intv_list=self.complement_iter(total_intv))
+        return IntervalSet(intv_list=self._complement_iter(total_intv))
 
-    def complement_iter(self, total_intv):
+    def _complement_iter(self, total_intv):
         # type: (Tuple[int, int]) -> Generator[Tuple[int, int], None, None]
         """Iterate over all intervals that;s the complement of this one."""
         if not self._start_list:
