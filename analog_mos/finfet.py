@@ -345,6 +345,9 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants['od_fin_exty'] = (offset + int(round(h_scale * fin_h)) +
                                         int(round(p_scale * fin_p)))
 
+    def get_has_cpo(self, mos_constants, **kwargs):
+        return mos_constants['has_cpo']
+
     def get_od_w(self, lch_unit, fg):
         # type: (int, int) -> int
         """Calculate OD width."""
@@ -553,7 +556,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         nw_dnw_ovl = mos_constants['nw_dnw_ovl']
         dnw_layers = mos_constants['dnw_layers']
-        has_cpo = mos_constants['has_cpo']
+        has_cpo = self.get_has_cpo(mos_constants, **kwargs)
         cpo_h = mos_constants['cpo_h']
         is_planar_sub = self.is_planar_substrate(lch_unit, **kwargs)
 
@@ -709,7 +712,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         od_spy_dum = mos_constants.get('od_spy_dum', mos_constants['od_spy'])
         od_nfin_min = mos_constants['od_fill_h'][0]
         imp_od_ency = mos_constants['imp_od_ency']
-        has_cpo = mos_constants['has_cpo']
+        has_cpo = self.get_has_cpo(mos_constants, **kwargs)
         cpo_h = mos_constants['cpo_h']
         cpo_od_sp = mos_constants['cpo_od_sp']
         cpo_spy = mos_constants['cpo_spy']
@@ -802,7 +805,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         mos_constants = self.get_mos_tech_constants(lch_unit)
         od_min_density = kwargs.get('od_min_density', mos_constants['od_min_density'])
-        has_cpo = kwargs.get('has_cpo', mos_constants['has_cpo'])
+        has_cpo = self.get_has_cpo(mos_constants, **kwargs)
         od_spy = mos_constants['od_spy']
         od_nfin_min, od_nfin_max = mos_constants['od_fill_h']
         po_spy = mos_constants['po_spy']
@@ -916,7 +919,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         md_h_min = mos_constants['md_h_min']
         md_od_exty = mos_constants['md_od_exty']
         md_spy = mos_constants['md_spy']
-        has_cpo = mos_constants['has_cpo']
+        has_cpo = self.get_has_cpo(mos_constants, **kwargs)
         cpo_h = mos_constants['cpo_h']
         cpo_od_sp = mos_constants['cpo_od_sp']
         po_od_exty = mos_constants['po_od_exty']
@@ -1027,7 +1030,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         fin_p = mos_constants['mos_pitch']
         cpo_spy = mos_constants['cpo_spy']
         imp_od_ency = mos_constants['imp_od_ency']
-        has_cpo = mos_constants['has_cpo']
+        has_cpo = self.get_has_cpo(mos_constants, **kwargs)
         cpo_h = mos_constants['cpo_h']
         no_sub_dummy = mos_constants.get('no_sub_dummy', False)
 
@@ -1131,7 +1134,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         imp_layers_info_struct = mos_constants['imp_layers']
         thres_layers_info_struct = mos_constants['thres_layers']
         fin_p = mos_constants['mos_pitch']
-        has_cpo = mos_constants['has_cpo']
+        has_cpo = self.get_has_cpo(mos_constants, **kwargs)
         cpo_spy = mos_constants['cpo_spy']
         cpo_h = mos_constants['cpo_h']
         cpo_h_end = mos_constants['cpo_h_end']
@@ -1404,7 +1407,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         lch = self.get_substrate_ring_lch()
         lch_unit = int(round(lch / self.config['layout_unit'] / self.res))
 
-        tmp = self._get_dummy_yloc(lch_unit, end_ext_info, end_ext_info, height)
+        tmp = self._get_dummy_yloc(lch_unit, end_ext_info, end_ext_info, height, is_sub_ring=True)
         od_y_list, md_y_list, row_y_list, po_y_list, cpo_yc_list = tmp
         tmp = self._get_ext_adj_split_info(lch_unit, height, end_ext_info, end_ext_info,
                                            od_y_list, cpo_yc_list, is_sub_ring=True)
@@ -1474,7 +1477,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants = self.get_mos_tech_constants(lch_unit)
         fin_h = mos_constants['fin_h']
         fin_p = mos_constants['mos_pitch']
-        has_cpo = mos_constants['has_cpo']
+        has_cpo = self.get_has_cpo(mos_constants, **kwargs)
         cpo_h = mos_constants['cpo_h']
         cpo_h_end = mos_constants['cpo_h_end']
         cpo_po_ency = mos_constants['cpo_po_ency']
@@ -1528,13 +1531,13 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     adj_edge_infos = []
 
             finbound_yt = arr_yt + fin_p2 + fin_h2
-            for lay in self.get_mos_layers(sub_type, threshold):
+            implant_type = sub_type + '_planar' if (is_planar_sub or is_sub_ring) else sub_type
+            for lay in self.get_mos_layers(implant_type, threshold):
                 if lay == finbound_lay and not is_sub_ring_end:
                     yb, yt = finbound_yb, finbound_yt
                 else:
                     yb, yt = imp_yb, arr_yt
-                if yt > yb:
-                    lay_info_list.append((lay, 0, yb, yt))
+                lay_info_list.append((lay, 0, yb, yt))
         else:
             # we just draw CPO
             imp_yb = arr_yt = 0
@@ -1778,7 +1781,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 edge_blk_type = 'gr_sub_end_sub'
                 row_info_list = [RowInfo(od_x_list=od_x_list, od_type=('sub', sub_type), row_y=arr_y,
                                          od_y=arr_y, po_y=arr_y, md_y=(0, 0))]
-                imp_params = [(sub_type, 'none', arr_y[0], arr_y[1], arr_y[0], arr_y[1])]
             else:
                 edge_blk_type = 'gr_sub'
         else:
@@ -1793,6 +1795,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             for lay_name, xl, yb, yt in lay_info_list:
                 if lay_name in dnw_layers:
                     new_lay_list.append((lay_name, wblk - nw_dnw_ovl, yb, yt))
+                elif edge_blk_type == 'gr_sub_end_sub':
+                    new_lay_list.append((lay_name, xl, arr_y[0], arr_y[1]))
                 else:
                     if not (is_planar_sub and lay_name == cpo_lay):
                         new_lay_list.append((lay_name, xl, yb, yt))
@@ -2012,7 +2016,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             the OD Y bounds that intersects this PO.
         """
         mos_layer_table = self.config['mos_layer_table']
-        has_cpo = mos_constants['has_cpo']
+        has_cpo = self.get_has_cpo(mos_constants, **kwargs)
 
         po_lay = mos_layer_table[po_type]
         res = template.grid.resolution
@@ -2289,7 +2293,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 yb = (yb - fin_p2 + fin_h2) // fin_p * fin_p + fin_p2 - fin_h2
                 yt = -(-(yt - fin_p2 - fin_h2) // fin_p) * fin_p + fin_p2 + fin_h2
             box = BBox(xl, yb, blk_w, yt, res, unit_mode=True)
-            if box.is_physical() and imp_lay[0] != 'none':
+            if box.is_physical() and imp_lay[0] != '':
                 self.draw_mos_rect(template, imp_lay, box)
 
         # draw adjacent row geometries
