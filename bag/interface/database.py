@@ -403,7 +403,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
-        # type: (str, str, str, Optional[str], Any) -> None
+        # type: (str, str, str, Optional[str], **Any) -> None
         """Create a schematic from a netlist.
 
         This is mainly used to create extracted schematic from an extracted netlist.
@@ -418,14 +418,14 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             cell_name
         sch_view : Optional[str]
             schematic view name.  The default value is implemendation dependent.
-        **kwargs
+        **kwargs : Any
             additional implementation-dependent arguments.
         """
         pass
 
     @abc.abstractmethod
     def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
-        # type: (str, str, str, Any) -> None
+        # type: (str, str, str, **Any) -> None
         """Create a verilog view for mix-signal simulation.
 
         Parameters
@@ -436,7 +436,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             library name.
         cell_name : str
             cell name.
-        **kwargs
+        **kwargs : Any
             additional implementation-dependent arguments.
         """
         pass

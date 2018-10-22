@@ -43,9 +43,9 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
         self._spaces = self._config['spaces']
         self._bound_params = self._config['boundaries']
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._std_size = None
-        self._std_size_bare = None
-        self._draw_boundaries = False
+        self._std_size = None  # type: Optional[Tuple[int, int]]
+        self._std_size_bare = None  # type: Optional[Tuple[int, int]]
+        self._draw_boundaries = False  # type: bool
         self._used_blocks = []  # type: List[IntervalSet]
 
     @property
@@ -82,8 +82,8 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
 
     @property
     def std_size(self):
-        # type: () -> Tuple[int, int]
-        """Returns the number of columns/rows this standard cell occupy."""
+        # type: () -> Optional[Tuple[int, int]]
+        """Returns the number of columns/rows that this standard cell occupies."""
         return self._std_size
 
     @property
@@ -109,7 +109,7 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
             number of standard cell columns that span the given number of tracks.
         """
         col_width_unit = int(round(self._tech_params['col_pitch'] / self.grid.resolution))
-        tr_pitch = self.grid.get_track_pitch(layer_id, unit_mode=True)  # type: int
+        tr_pitch = int(self.grid.get_track_pitch(layer_id, unit_mode=True))  # type: int
         return -(-(tr_pitch * num_tr) // col_width_unit)  # ceiling division
 
     def set_draw_boundaries(self, draw_boundaries):
@@ -119,7 +119,7 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
         To draw boundaries around a standard cell, first call this method
         with draw_boundaries=True, then call set_std_size() method when
         all blocks have been placed.  Finally, call draw_boundaries()
-        to draw the boundard cells.
+        to draw the bounded cells.
 
         Parameters
         ----------
@@ -213,10 +213,13 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
         num_tracks : int
             number of tracks on the given layer in this standard cell.
         """
-        ncol, nrow = self.std_size
+        std_size = self.std_size
+        if std_size is None:
+            raise ValueError("std_size is unset. Try calling set_std_size()?")
+        ncol, nrow = std_size
 
         tdir = self.grid.get_direction(layer_id)
-        pitch = self.grid.get_track_pitch(layer_id, unit_mode=True)
+        pitch = int(self.grid.get_track_pitch(layer_id, unit_mode=True))
         if tdir == 'x':
             tot_dim = nrow * int(round(self.std_row_height / self.grid.resolution))
         else:
@@ -256,7 +259,10 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
             raise ValueError('row pitch must be even')
 
         # update self._used_blocks
-        inst_ncol, inst_nrow = master.std_size
+        master_std_size = master.std_size
+        if master_std_size is None:
+            raise ValueError("master.std_size is unset. Try calling master.set_std_size()?")
+        inst_ncol, inst_nrow = master_std_size
         cur_nrow = loc[1] + inst_nrow + (ny - 1) * spy
         while len(self._used_blocks) < cur_nrow:
             self._used_blocks.append(IntervalSet())
@@ -286,21 +292,24 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
             else:
                 orient = 'R180'
 
-        spx *= col_pitch
-        spy *= row_pitch
+        spx_new = spx * col_pitch
+        spy_new = spy * row_pitch
         if self._draw_boundaries:
             dx += self._bound_params['lr_width'] * self.std_col_width
             dy += self._bound_params['tb_height'] * self.std_row_height
 
         return self.add_instance(master, inst_name=inst_name, loc=(dx, dy),
-                                 orient=orient, nx=nx, ny=ny, spx=spx, spy=spy)
+                                 orient=orient, nx=nx, ny=ny, spx=spx_new, spy=spy_new)
 
     def draw_boundaries(self):
         # type: () -> None
         """Draw the boundary cells around this standard cell."""
         lib_name = self._bound_params['lib_name']
         suffix = self._bound_params.get('suffix', '')
-        num_col, num_row = self._std_size_bare
+        std_size_bare = self._std_size_bare
+        if std_size_bare is None:
+            raise ValueError("std_size_bare is unset. Try calling set_std_size()?")
+        num_col, num_row = std_size_bare
         num_row_even = (num_row + 1) // 2
         num_row_odd = num_row - num_row_even
         wcol, hrow = self.std_col_width, self.std_row_height
@@ -359,7 +368,10 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
     def fill_space(self):
         # type: () -> None
         """Fill all unused blocks with spaces."""
-        tot_intv = (0, self._std_size_bare[0])
+        std_size_bare = self._std_size_bare
+        if std_size_bare is None:
+            raise ValueError("std_size_bare is unset. Try calling set_std_size()?")
+        tot_intv = (0, std_size_bare[0])
         for row_idx, intv_set in enumerate(self._used_blocks):
             for intv in intv_set.get_complement(tot_intv).intervals():
                 loc = (intv[0], row_idx)

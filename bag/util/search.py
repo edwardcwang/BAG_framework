@@ -520,6 +520,8 @@ def minimize_cost_golden_float(f, vmin, start, stop, tol=1e-8, maxiter=1000):
             fc = f(c)
         else:
             fd = f(d)
+        assert fc is not None, 'Either fc or fd was None and the above should have set it'
+        assert fd is not None, 'Either fc or fd was None and the above should have set it'
         nfev += 1
         if fc > fd:
             if fc >= vmin:

@@ -3,7 +3,7 @@
 """This module defines various interpolation classes.
 """
 
-from typing import List, Tuple, Union, Sequence
+from typing import List, Tuple, Union, Sequence, Optional
 
 import numpy as np
 import scipy.interpolate as interp
@@ -16,7 +16,7 @@ __all__ = ['interpolate_grid', 'LinearInterpolator']
 
 
 def _scales_to_points(scale_list, values, delta=1e-4):
-    # type: (List[Tuple[float, float]], np.multiarray.ndarray, delta) -> Tuple[List[np.multiarray.ndarray], List[float]]
+    # type: (List[Tuple[float, float]], np.multiarray.ndarray, float) -> Tuple[List[np.multiarray.ndarray], List[float]]
     """convert scale_list to list of point values and finite difference deltas."""
 
     ndim = len(values.shape)
@@ -155,6 +155,7 @@ class LinearInterpolator(DiffFunction):
             the X stop value.
         axis : int
             the axis of integration.
+            If unspecified, this will be the last axis.
         logx : bool
             True if the values on the given axis are actually the logarithm of
             the real values.
@@ -169,45 +170,55 @@ class LinearInterpolator(DiffFunction):
             float if this interpolator has only 1 dimension, otherwise a new
             LinearInterpolator is returned.
         """
+        if self.delta_list is None:
+            raise ValueError("Finite differences must be enabled")
+
         if logx != logy:
             raise ValueError('Currently only works for linear or log-log relationship.')
 
         ndim = self.ndim
         if axis < 0:
-            axis += ndim
+            axis = ndim - 1
         if axis < 0 or axis >= ndim:
             raise IndexError('index out of range.')
 
+        if len(self._points) < ndim:
+            raise ValueError("len(self._points) != ndim")
+
+        def calculate_integ_x() -> np.ndarray:
+            # find data points between xstart and xstop
+            vec = self._points[axis]
+            start_idx, stop_idx = np.searchsorted(vec, [xstart, xstop])
+
+            cur_len = stop_idx - start_idx
+            if vec[start_idx] > xstart:
+                cur_len += 1
+                istart = 1
+            else:
+                istart = 0
+            if vec[stop_idx - 1] < xstop:
+                cur_len += 1
+                istop = cur_len - 1
+            else:
+                istop = cur_len
+
+            integ_x = np.empty(cur_len)
+            integ_x[istart:istop] = vec[start_idx:stop_idx]
+            if istart != 0:
+                integ_x[0] = xstart
+
+            if istop != cur_len:
+                integ_x[cur_len - 1] = xstop
+
+            return integ_x
+
         # get all input sample points we need to integrate.
         plist = []
-        integ_x = None
+        integ_x = calculate_integ_x()  # type: np.ndarray
         new_points = []
         new_deltas = []
         for axis_idx, vec in enumerate(self._points):
             if axis == axis_idx:
-                # find data points between xstart and xstop
-                start_idx, stop_idx = np.searchsorted(vec, [xstart, xstop])
-
-                cur_len = stop_idx - start_idx
-                if vec[start_idx] > xstart:
-                    cur_len += 1
-                    istart = 1
-                else:
-                    istart = 0
-                if vec[stop_idx - 1] < xstop:
-                    cur_len += 1
-                    istop = cur_len - 1
-                else:
-                    istop = cur_len
-
-                integ_x = np.empty(cur_len)
-                integ_x[istart:istop] = vec[start_idx:stop_idx]
-                if istart != 0:
-                    integ_x[0] = xstart
-
-                if istop != cur_len:
-                    integ_x[cur_len - 1] = xstop
-
                 plist.append(integ_x)
             else:
                 plist.append(vec)
@@ -243,10 +254,10 @@ class LinearInterpolator(DiffFunction):
             mp1 = m[log_idxb] + 1
             x2 = np.exp(lx2[log_idxb])
             area[log_idxb] = scale[log_idxb] / mp1 * (np.power(x2, mp1) - np.power(x1[log_idxb], mp1))
-            new_values = np.sum(area, axis=-1)
+            new_values = np.sum(area, axis=-1)  # type: np.multiarray.ndarray
         else:
             # just use trapezoid integration
-            new_values = np.trapz(values, x=integ_x, axis=axis)  # type: np.multiarray.ndarray
+            new_values = np.trapz(values, x=integ_x, axis=axis)
 
         if not raw and new_points:
             return LinearInterpolator(new_points, new_values, new_deltas, extrapolate=self._extrapolate)

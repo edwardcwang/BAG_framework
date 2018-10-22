@@ -711,12 +711,15 @@ def get_w_crossings(num, den, atol=1e-8):
     # solve for w_phase/w_gain
     poly_list = [apoly**2 + bpoly**2 - cpoly**2 - dpoly**2,
                  apoly * dpoly - bpoly * cpoly]
+
     w_list = [None, None]  # type: List[Optional[float]]
     for idx in range(2):
         for root in poly_list[idx].roots:
             root_real = float(root.real)
-            if abs(root.imag) < atol < root_real and (w_list[idx] is None or root_real < w_list[idx]):
-                w_list[idx] = root_real
+            if abs(root.imag) < atol < root_real:
+                w_list_idx = w_list[idx]
+                if w_list_idx is None or root_real < w_list_idx:
+                        w_list[idx] = root_real
 
     return w_list[0], w_list[1]
 

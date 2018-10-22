@@ -3,7 +3,7 @@
 """This module defines classes used to cache existing design masters
 """
 
-from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable
+from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable, Iterable
 
 import sys
 import os
@@ -18,7 +18,7 @@ from .search import BinaryIterator
 
 
 def _get_unique_name(basename, *args):
-    # type: (str, Any) -> str
+    # type: (str, *Iterable[str]) -> str
     """Returns a unique name that's not used yet.
 
     This method appends an index to the given basename.  Binary
@@ -64,7 +64,9 @@ def _get_unique_name(basename, *args):
             bin_iter.save()
             bin_iter.down()
 
-    return '%s_%d' % (basename, bin_iter.get_last_save())
+    last_save = bin_iter.get_last_save()
+    assert last_save is not None, "No save marker defined"
+    return '%s_%d' % (basename, last_save)
 
 
 class ClassImporter(object):
@@ -184,7 +186,7 @@ class DesignMaster(abc.ABC):
         optional parameters.
     """
     def __init__(self, master_db, lib_name, params, used_names, **kwargs):
-        # type: (MasterDB, str, Dict[str, Any], Set[str], Any) -> None
+        # type: (MasterDB, str, Dict[str, Any], Set[str], **Any) -> None
         self._master_db = master_db
         self._lib_name = lib_name
         self._used_names = used_names
@@ -192,12 +194,12 @@ class DesignMaster(abc.ABC):
         # set parameters
         params_info = self.get_params_info()
         default_params = self.get_default_param_values()
-        self.params = {}
+        self._cell_name = ""  # type: str
+        self.params = {}  # type: Dict[str, Any]
         if params_info is None:
             # compatibility with old schematics generators
             self.params.update(params)
             self._prelim_key = self.to_immutable_id((self._get_qualified_name(), params))
-            self._cell_name = None
             self._key = None
         else:
             self.populate_params(params, params_info, default_params, **kwargs)
@@ -213,7 +215,7 @@ class DesignMaster(abc.ABC):
         self._key = self.compute_unique_key()
 
     def populate_params(self, table, params_info, default_params, **kwargs):
-        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], Any) -> None
+        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **Any) -> None
         """Fill params dictionary with values from table and default_params"""
         for key, desc in params_info.items():
             if key not in table:
@@ -404,7 +406,7 @@ class MasterDB(abc.ABC):
         self._importer = ClassImporter(lib_defs) if os.path.isfile(lib_defs) else None
         self._key_lookup = {}  # type: Dict[Any, Any]
         self._master_lookup = {}  # type: Dict[Any, DesignMaster]
-        self._rename_dict = {}
+        self._rename_dict = {}  # type: Dict[str, str]
 
     def clear(self):
         """Clear all existing schematic masters."""
@@ -414,7 +416,7 @@ class MasterDB(abc.ABC):
 
     @abc.abstractmethod
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[MasterType], str, Dict[str, Any], Set[str], Any) -> MasterType
+        # type: (Type[MasterType], str, Dict[str, Any], Set[str], **Any) -> MasterType
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.
@@ -429,7 +431,7 @@ class MasterDB(abc.ABC):
             instance parameters dictionary.
         used_cell_names : Set[str]
             a set of all used cell names.
-        **kwargs
+        **kwargs : Any
             optional arguments for the generator.
 
         Returns
@@ -483,16 +485,16 @@ class MasterDB(abc.ABC):
         """Returns the cell name suffix."""
         return self._name_suffix
 
-    @property
-    def used_cell_names(self):
-        # type: () -> Set[str]
-        return self._used_cell_names
-
     @cell_suffix.setter
     def cell_suffix(self, new_val):
         # type: (str) -> None
         """Change the cell name suffix."""
         self._name_suffix = new_val
+
+    @property
+    def used_cell_names(self):
+        # type: () -> Set[str]
+        return self._used_cell_names
 
     def format_cell_name(self, cell_name):
         # type: (str) -> str
@@ -696,7 +698,7 @@ class MasterDB(abc.ABC):
         # configure renaming dictionary.  Verify that renaming dictionary is one-to-one.
         rename = self._rename_dict
         rename.clear()
-        reverse_rename = {}
+        reverse_rename = {}  # type: Dict[str, str]
         if rename_dict:
             for key, val in rename_dict.items():
                 if key != val:

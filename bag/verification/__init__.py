@@ -3,6 +3,8 @@
 """This package contains LVS/RCX related verification methods.
 """
 
+from typing import Any
+
 import importlib
 
 from .base import Checker
@@ -11,15 +13,16 @@ __all__ = ['make_checker', 'Checker']
 
 
 def make_checker(checker_cls, tmp_dir, **kwargs):
+    # type: (str, str, **Any) -> Checker
     """Returns a checker object.
 
     Parameters
     -----------
     checker_cls : str
         the Checker class absolute path name.
-    tmp_dir : string
+    tmp_dir : str
         directory to save temporary files in.
-    kwargs : dict
+    **kwargs : Any
         keyword arguments needed to create a Checker object.
     """
     sections = checker_cls.split('.')

@@ -3,7 +3,7 @@
 """This module implements all CAD database manipulations using skill commands.
 """
 
-from typing import TYPE_CHECKING, Sequence, List, Dict, Optional, Any, Tuple
+from typing import TYPE_CHECKING, Sequence, List, Dict, Optional, Any, Tuple, Set
 
 import os
 import shutil
@@ -342,7 +342,24 @@ class SkillInterface(DbAccess):
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
-        # type: (str, str, str, Optional[str], Any) -> None
+        # type: (str, str, str, Optional[str], **Any) -> None
+        """Create a schematic from a netlist.
+
+        This is mainly used to create extracted schematic from an extracted netlist.
+
+        Parameters
+        ----------
+        netlist : str
+            the netlist file name.
+        lib_name : str
+            library name.
+        cell_name : str
+            cell_name
+        sch_view : Optional[str]
+            schematic view name.  The default value is implemendation dependent.
+        **kwargs : Any
+            additional implementation-dependent arguments.
+        """
         calview_config = self.db_config.get('calibreview', None)
         use_calibreview = self.db_config.get('use_calibreview', True)
         if calview_config is not None and use_calibreview:
@@ -412,7 +429,7 @@ class SkillInterface(DbAccess):
         return os.path.join(lib_dir, cell_name)
 
     def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
-        # type: (str, str, str, Any) -> None
+        # type: (str, str, str, **Any) -> None
         # delete old verilog view
         cmd = 'delete_cellview( "%s" "%s" "verilog" )' % (lib_name, cell_name)
         self._eval_skill(cmd)
@@ -430,6 +447,7 @@ class SkillInterface(DbAccess):
             self._import_design(lib_name, cell_name, imported_cells, dsn_db, new_lib_path)
 
     def _import_design(self, lib_name, cell_name, imported_cells, dsn_db, new_lib_path):
+        # type: (str, str, Set[str], ModuleDB, str) -> None
         """Recursive helper for import_design_library.
         """
         # check if we already imported this schematic
@@ -478,18 +496,6 @@ class SkillInterface(DbAccess):
     def parse_schematic_template(self, lib_name, cell_name):
         # type: (str, str) -> str
         """Parse the given schematic template.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the library.
-        cell_name : str
-            name of the cell.
-
-        Returns
-        -------
-        template : str
-            the content of the netlist structure file.
         """
         cmd = 'parse_cad_sch( "%s" "%s" {netlist_info} )' % (lib_name, cell_name)
         return self._eval_skill(cmd, out_file='netlist_info')

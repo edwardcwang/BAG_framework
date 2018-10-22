@@ -84,7 +84,7 @@ class TemplateDB(MasterDB):
         self._pure_oa = pure_oa
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[TemplateType], str, Dict[str, Any], Set[str], Any) -> TemplateType
+        # type: (Type[TemplateType], str, Dict[str, Any], Set[str], **Any) -> TemplateType
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.
@@ -99,7 +99,7 @@ class TemplateDB(MasterDB):
             instance parameters dictionary.
         used_cell_names : Set[str]
             a set of all used cell names.
-        **kwargs
+        **kwargs: Any
             optional arguments for the generator.
 
         Returns
@@ -131,7 +131,7 @@ class TemplateDB(MasterDB):
 
     def new_template(self, lib_name='', temp_name='', params=None, temp_cls=None, debug=False,
                      **kwargs):
-        # type: (str, str, Dict[str, Any], Type[TemplateType], bool, Any) -> TemplateType
+        # type: (str, str, Dict[str, Any], Type[TemplateType], bool, **Any) -> TemplateType
         """Create a new template.
 
         Parameters
@@ -146,7 +146,7 @@ class TemplateDB(MasterDB):
             the template class to instantiate.
         debug : bool
             True to print debug messages.
-        **kwargs
+        **kwargs : Any
             optional template parameters.
 
         Returns
@@ -241,7 +241,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
 
         # initialize template attributes
         self._parent_grid = kwargs.get('grid', temp_db.grid)
@@ -286,7 +286,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         pass
 
     def populate_params(self, table, params_info, default_params, **kwargs):
-        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], Any) -> None
+        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **Any) -> None
         """Fill params dictionary with values from table and default_params"""
         DesignMaster.populate_params(self, table, params_info, default_params, **kwargs)
 
@@ -572,8 +572,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         grid = self.grid
 
-        dx = self.array_box.left_unit
-        dy = self.array_box.bottom_unit
+        array_box = self.array_box
+        if array_box is None:
+            raise ValueError("array_box is not set")
+
+        dx = array_box.left_unit
+        dy = array_box.bottom_unit
         if dx < 0 or dy < 0:
             raise ValueError('lower-left corner of array box must be in first quadrant.')
 
@@ -604,6 +608,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         # get size information
         bnd_box = self.bound_box
+        if bnd_box is None:
+            raise ValueError("bound_box is not set")
         info = {
             lib_name: {
                 cell_name: dict(
@@ -712,7 +718,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self._prim_ports.keys()
 
     def new_template(self, params=None, temp_cls=None, debug=False, **kwargs):
-        # type: (Dict[str, Any], Type[TemplateType], bool, Any) -> TemplateType
+        # type: (Dict[str, Any], Type[TemplateType], bool, **Any) -> TemplateType
         """Create a new template.
 
         Parameters
@@ -723,7 +729,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the template class to instantiate.
         debug : bool
             True to print debug messages.
-        **kwargs
+        **kwargs : Any
             optional template parameters.
 
         Returns
@@ -1440,7 +1446,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                      unit_mode=True,  # type: bool
                      min_len_mode=None,  # type: Optional[int]
                      ):
-        # type: (...) -> List[WireArray]
+        # type: (...) -> List[Optional[WireArray]]
         """Extend the given wires to the given coordinates.
 
         Parameters
@@ -1459,8 +1465,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        warr_list : List[WireArray]
+        warr_list : List[Optional[WireArray]]
             list of added wire arrays.
+            If any elements in warr_list were None, they will be None in the return.
         """
         if not unit_mode:
             raise ValueError('unit_mode = False not supported.')
@@ -1643,7 +1650,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             port_parity = {lay: port_parity.get(lay, (0, 1)) for lay in
                            range(bot_layer, top_layer + 1)}
 
-        via_ext_dict = {lay: 0 for lay in range(bot_layer, top_layer + 1)}
+        via_ext_dict = {lay: 0 for lay in range(bot_layer, top_layer + 1)}  # type: Dict[int, int]
         # get via extensions on each layer
         for vbot_layer in range(bot_layer, top_layer):
             vtop_layer = vbot_layer + 1
@@ -1738,6 +1745,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 tmpl, tmpu = cap_exts[cur_layer - 1]
                 lower = tmpl if lower is None else min(lower, tmpl)
                 upper = tmpu if upper is None else max(upper, tmpu)
+            assert lower is not None and upper is not None, 'cur_layer is iterating and should never be equal to both bot_layer and top_layer at the same time'
 
             via_ext = via_ext_dict[cur_layer]
             lower -= via_ext
@@ -1883,6 +1891,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         # TODO: fix this method
         bnd_box = self.bound_box
+        if bnd_box is None:
+            raise ValueError("bound_box is not set")
+
         tid = TrackID(layer_id, track_idx, width=width, num=num, pitch=pitch)
         if self.grid.get_direction(layer_id) == 'x':
             upper = bnd_box.width_unit
@@ -1966,15 +1977,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         # draw wires, group into arrays
         new_warr_list = []
-        base_start = base_end = None
-        base_intv = None
-        base_width = None
+        base_start = None  # type: Optional[int]
+        base_end = None  # type: Optional[int]
+        base_intv = None  # type: Optional[Tuple[int, int]]
+        base_width = None  # type: Optional[int]
         count = 0
         hpitch = 0
         last_lower = 0
         for intv, range_set in intv_set.items():
-            cur_start = range_set.get_start()
-            cur_end = range_set.get_end()
+            cur_start = range_set.get_start()  # type: int
+            cur_end = range_set.get_end()  # type: int
             add = len(range_set) > 1
             if lower is not None and lower < cur_start:
                 cur_start = lower
@@ -2001,9 +2013,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 base_start = cur_start
                 base_end = cur_end
                 base_width = cur_upper - cur_lower
-                count = 1
+                count += 1
                 hpitch = 0
             else:
+                assert base_intv is not None, "count == 0 should have set base_intv"
+                assert base_width is not None, "count == 0 should have set base_width"
+                assert base_start is not None, "count == 0 should have set base_start"
+                assert base_end is not None, "count == 0 should have set base_end"
                 if cur_start == base_start and cur_end == base_end and base_width == cur_width:
                     # length and width matches
                     cur_hpitch = (cur_lower - last_lower) // htr_pitch
@@ -2041,6 +2057,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             # update last lower coordinate
             last_lower = cur_lower
 
+        assert base_intv is not None, "count == 0 should have set base_intv"
+        assert base_start is not None, "count == 0 should have set base_start"
+        assert base_end is not None, "count == 0 should have set base_end"
+
         # add last wires
         tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv)
         track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
@@ -2050,7 +2070,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     def _draw_via_on_track(self, wlayer, box_arr, track_id, tl_unit=None,
                            tu_unit=None):
-        # type: (str, BBoxArray, TrackID, int, int) -> Tuple[int, int]
+        # type: (str, BBoxArray, TrackID, Optional[int], Optional[int]) -> Tuple[int, int]
         """Helper method.  Draw vias on the intersection of the BBoxArray and TrackID."""
         grid = self.grid
 
@@ -2104,6 +2124,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     tu_unit = vtbox.top_unit + (ny - 1) * box_arr.spy_unit
                 else:
                     tu_unit = max(tu_unit, vtbox.top_unit + (ny - 1) * box_arr.spy_unit)
+        assert tl_unit is not None and tu_unit is not None, "for loop should have assigned tl_unit and tu_unit"
 
         return tl_unit, tu_unit
 
@@ -2340,11 +2361,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 tr_ext, w_ext = grid.get_via_extensions_dim(bot_layer_id, bot_dim, top_dim)
 
             if bbox_bounds[0] is None:
-                bbox_bounds[0] = w_lower - w_ext
-                bbox_bounds[1] = w_upper + w_ext
+                bbox_bounds = (w_lower - w_ext, w_upper + w_ext)
             else:
-                bbox_bounds[0] = min(bbox_bounds[0], w_lower - w_ext)
-                bbox_bounds[1] = max(bbox_bounds[1], w_upper + w_ext)
+                bbox_bounds = (min(bbox_bounds[0], w_lower - w_ext), max(bbox_bounds[1], w_upper + w_ext))
 
             # compute track lower/upper including via extension
             tr_bounds = box_arr.get_overall_bbox().get_interval(tr_dir)
@@ -2356,9 +2375,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 track_upper = tr_bounds[1] + tr_ext
             else:
                 track_upper = max(track_upper, tr_bounds[1] + tr_ext)
+        assert track_lower is not None and track_upper is not None, "track_lower/track_upper should be set above"
 
         # draw tracks
-        track_list = []
+        track_list = []  # type: List[Optional[WireArray]]
         for box_arr, tr_idx in zip(box_arr_list, tr_idx_list):
             track_list.append(self.add_wires(tr_layer_id, tr_idx, track_lower, track_upper,
                                              width=width))
@@ -2381,7 +2401,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           return_wires=False,  # type: bool
                           debug=False,  # type: bool
                           ):
-        # type: (...) -> Union[Optional[WireArray], Tuple[Optional[WireArray], List[WireArray]]]
+        # type: (...) -> Optional[Union[WireArray, Tuple[WireArray, List[WireArray]]]]
         """Connect all given WireArrays to the given track(s).
 
         All given wires should be on adjacent layers of the track.
@@ -2413,7 +2433,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         Returns
         -------
         wire_arr : Optional[Union[WireArray, Tuple[WireArray, List[WireArray]]]]
-            WireArray representing the tracks/wires created.  None if nothing to do.
+            WireArray representing the tracks/wires created.
+            If there was nothing to do, returns a None.
+            If return_wires is True, returns a Tuple[WireArray, List[WireArray]].
+            Otherwise, returns a WireArray.
         """
         if not unit_mode:
             raise ValueError('unit_mode = False not supported.')
@@ -2427,7 +2450,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if not wire_arr_list:
             # do nothing
             if return_wires:
-                return None, []
+                return None
             return None
 
         grid = self.grid
@@ -2466,6 +2489,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     track_lower, track_upper = self._draw_via_on_track(wlayer, box_arr, track_id,
                                                                        tl_unit=track_lower,
                                                                        tu_unit=track_upper)
+        assert track_lower is not None and track_upper is not None, "track_lower/track_upper should have been set just above"
 
         if min_len_mode is not None:
             # extend track to meet minimum length
@@ -2616,9 +2640,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             raise ValueError('tr_mode_list must have exactly %d elements.' % num_connections)
 
         if min_len_mode_list is None:
-            min_len_mode_list = [None] * num_connections
+            min_len_mode_list_resolved = [None] * num_connections  # type: List[Optional[int]]
         elif isinstance(min_len_mode_list, int):
-            min_len_mode_list = [min_len_mode_list] * num_connections
+            min_len_mode_list_resolved = [min_len_mode_list] * num_connections
         elif len(min_len_mode_list) != num_connections:
             raise ValueError('min_len_mode_list must have exactly %d elements.' % num_connections)
 
@@ -2651,9 +2675,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             tr_w_prev = grid.get_track_width(cur_layer, tr_w_list[idx])
 
         # draw via stacks
-        results = []
+        results = []  # type: List[WireArray]
         targ_layer = warr_layer
-        for tr_w, tr_mode, min_len_mode in zip(tr_w_list, tr_mode_list, min_len_mode_list):
+        for tr_w, tr_mode, min_len_mode in zip(tr_w_list, tr_mode_list, min_len_mode_list_resolved):
             targ_layer += layer_dir
 
             # determine track index to connect to
@@ -2707,7 +2731,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             # no need to do anything
             return warr
 
-        num_connections = abs(targ_layer - warr_layer)
+        num_connections = abs(targ_layer - warr_layer)  # type: int
 
         # set default values
         if tr_w_list is None:
@@ -2719,12 +2743,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             tr_w_list = list(tr_w_list)
 
         if min_len_mode_list is None:
-            min_len_mode_list = [None] * num_connections
-        elif len(min_len_mode_list) != num_connections:
+            min_len_mode_list_resolved = ([None] * num_connections)  # type: List[Optional[int]]
+        else:
+            # List[int] is a List[Optional[int]]
+            min_len_mode_list_resolved = cast(List[Optional[int]], min_len_mode_list)
+
+        if len(min_len_mode_list_resolved) != num_connections:
             raise ValueError('min_len_mode_list must have exactly %d elements.' % num_connections)
 
         layer_dir = 1 if targ_layer > warr_layer else -1
-        for tr_w, mlen_mode in zip(tr_w_list, min_len_mode_list):
+        for tr_w, mlen_mode in zip(tr_w_list, min_len_mode_list_resolved):
             warr = self._strap_wires_helper(warr, warr.layer_id + layer_dir, tr_w, mlen_mode)
 
         return warr
@@ -2758,19 +2786,21 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         pitch_unit = int(round(wire_pitch * wire_tid.pitch))
         if pitch_unit % targ_pitch_half != 0:
             raise ValueError('Cannot strap wires on layers with mismatched pitch ')
-        num_pitch = pitch_unit // targ_pitch_half
-        if num_pitch % 2 == 0:
-            num_pitch //= 2
+        num_pitch_2 = pitch_unit // targ_pitch_half
+        if num_pitch_2 % 2 == 0:
+            num_pitch = num_pitch_2 // 2  # type: Union[float, int]
         else:
-            num_pitch /= 2
+            num_pitch = num_pitch_2 / 2
         # convert width
         if tr_w < 0:
             width_unit = self.grid.get_track_width(wire_layer, wire_tid.width)
             tr_w = max(1, self.grid.get_track_width_inverse(targ_layer, width_unit, mode=-1))
 
         # draw vias.  Update WireArray lower/upper
-        new_lower, new_upper = lower, upper
-        w_lower, w_upper = lower, upper
+        new_lower = lower  # type: int
+        new_upper = upper  # type: int
+        w_lower = lower  # type: int
+        w_upper = upper  # type: int
         for tid in wire_tid:
             coord = self.grid.track_to_coord(wire_layer, tid)
             tid2 = self.grid.coord_to_track(targ_layer, coord)
@@ -2951,7 +2981,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         grid = self.grid
 
         # simple error checking
-        num_tracks = len(tr_idx_list)
+        num_tracks = len(tr_idx_list)  # type: int
         if num_tracks != len(warr_list_list):
             raise ValueError('wire list length and track index list length mismatch.')
         if num_tracks == 0:
@@ -2994,6 +3024,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 else:
                     raise ValueError('Cannot connect wire on layer %d '
                                      'to track on layer %d' % (cur_layer_id, tr_layer_id))
+                tr_ext, w_ext = tuple2_to_int(tr_w_ext)
 
                 # compute wire lower/upper including via extension
                 if cur_bounds[0] is None:
@@ -3014,8 +3045,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 else:
                     track_upper = max(track_upper, warr_bounds[1] + tr_ext)
 
+        assert track_lower is not None and track_upper is not None, "track_lower/track_upper should have been set above"
+
         # draw tracks
-        track_list = []
+        track_list = []  # type: List[Optional[WireArray]]
         for bwarr_list, twarr_list, tr_idx in zip(bot_warrs, top_warrs, tr_idx_list):
             track_list.append(self.add_wires(tr_layer_id, tr_idx, track_lower, track_upper,
                                              width=width))
@@ -3249,7 +3282,7 @@ class BlackBoxTemplate(TemplateBase):
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._sch_params = None
+        self._sch_params = {}  # type: Dict[str, Any]
 
     @property
     def sch_params(self):
