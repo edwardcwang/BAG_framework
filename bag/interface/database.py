@@ -368,7 +368,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
-        # type: (str, str, str, Optional[str], Any) -> None
+        # type: (str, str, str, Optional[str], **Any) -> None
         """Create a schematic from a netlist.
 
         This is mainly used to create extracted schematic from an extracted netlist.
@@ -383,14 +383,14 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             cell_name
         sch_view : Optional[str]
             schematic view name.  The default value is implemendation dependent.
-        **kwargs
+        **kwargs : Any
             additional implementation-dependent arguments.
         """
         pass
 
     @abc.abstractmethod
     def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
-        # type: (str, str, str, Any) -> None
+        # type: (str, str, str, **Any) -> None
         """Create a verilog view for mix-signal simulation.
 
         Parameters
@@ -401,7 +401,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             library name.
         cell_name : str
             cell name.
-        **kwargs
+        **kwargs : Any
             additional implementation-dependent arguments.
         """
         pass
@@ -417,7 +417,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         else:
             return netlist, log_fname
 
-    async def async_run_lvs(self, lib_name: str, cell_name: str, **kwargs) -> Tuple[bool, str]:
+    async def async_run_lvs(self, lib_name: str, cell_name: str, **kwargs: Any) -> Tuple[bool, str]:
         """A coroutine for running LVS.
 
         Parameters
@@ -426,7 +426,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             library name.
         cell_name : str
             cell_name
-        **kwargs :
+        **kwargs : Any
             optional keyword arguments.  See Checker class for details.
             LVS parameters should be specified as lvs_params.
 
@@ -447,7 +447,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
                             lib_name: str,
                             cell_name: str,
                             create_schematic: bool = True,
-                            **kwargs
+                            **kwargs: Any
                             ) -> Tuple[Union[bool, Optional[str]], str]:
         """Run RCX on the given cell.
 
@@ -473,7 +473,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         create_schematic : bool
             True to automatically create extracted schematic in database if RCX
             is successful and it is supported.
-        **kwargs :
+        **kwargs : Any
             optional keyword arguments.  See Checker class for details.
             RCX parameters should be specified as rcx_params.
 
@@ -490,7 +490,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         return self._process_rcx_output(netlist, log_fname, lib_name, cell_name, create_schematic)
 
     async def async_export_layout(self, lib_name: str, cell_name: str,
-                                  out_file: str, *args, **kwargs) -> str:
+                                  out_file: str, *args: Any, **kwargs: Any) -> str:
         """Export layout.
 
         Parameters
@@ -501,9 +501,9 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             cell name.
         out_file : str
             output file name.
-        *args :
+        *args : Any
             optional list arguments.
-        **kwargs :
+        **kwargs : Any
             optional keyword arguments.  See Checker class for details.
 
         Returns

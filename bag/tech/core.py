@@ -698,7 +698,7 @@ class CharDB(abc.ABC):
         return ftable[fidx_list]
 
     def get_function(self, name, env='', **kwargs):
-        # type: (str, str, Any) -> Union[VectorDiffFunction, DiffFunction]
+        # type: (str, str, **Any) -> Union[VectorDiffFunction, DiffFunction]
         """Returns a function for the given output.
 
         Parameters
@@ -707,7 +707,7 @@ class CharDB(abc.ABC):
             name of the function.
         env : str
             if not empty, we will return function for just the given simulation environment.
-        **kwargs :
+        **kwargs : Any
             dictionary of discrete parameter values.
 
         Returns

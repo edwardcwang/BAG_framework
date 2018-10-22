@@ -1072,7 +1072,7 @@ class RoutingGrid(object):
 
     def get_min_track_width(self, layer_id, idc=0, iac_rms=0, iac_peak=0, l=-1,
                             bot_w=-1, top_w=-1, unit_mode=False, **kwargs):
-        # type: (int, float, float, float, float, float, float, bool, Any) -> int
+        # type: (int, float, float, float, float, float, float, bool, **Any) -> int
         """Returns the minimum track width required for the given EM specs.
 
         Parameters
@@ -1096,7 +1096,7 @@ class RoutingGrid(object):
             that the via between the two tracks meet EM specs too.
         unit_mode : bool
             True if l/bot_w/top_w are given in resolution units.
-        **kwargs :
+        **kwargs : Any
             override default EM spec parameters.
 
         Returns

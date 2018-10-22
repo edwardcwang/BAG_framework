@@ -249,7 +249,7 @@ class Testbench(object):
         self.parameters[name] = default_val
 
     def set_sweep_parameter(self, name, precision=6, **kwargs):
-        # type: (str, int, Any) -> None
+        # type: (str, int, **Any) -> None
         """Set to sweep the given parameter.
 
         To set the sweep values directly:
@@ -270,7 +270,7 @@ class Testbench(object):
             parameter name.
         precision : int
             the parameter value will be rounded to this precision.
-        **kwargs :
+        **kwargs : Any
             the sweep parameters.  Refer to the above for example calls.
         """
         if 'values' in kwargs:
@@ -746,7 +746,7 @@ class BagProject(object):
 
     # noinspection PyUnusedLocal
     def create_design_module(self, lib_name, cell_name, **kwargs):
-        # type: (str, str, Any) -> SchInstance
+        # type: (str, str, **Any) -> SchInstance
         """Create a new top level design module for the given schematic template
 
         Parameters
@@ -755,7 +755,7 @@ class BagProject(object):
             the library name.
         cell_name : str
             the cell name.
-        **kwargs
+        **kwargs : Any
             optional parameters.
 
         Returns
@@ -767,7 +767,7 @@ class BagProject(object):
 
     def new_schematic_instance(self, lib_name='', cell_name='', params=None, sch_cls=None,
                                debug=False, **kwargs):
-        # type: (str, str, Dict[str, Any], Type[ModuleType], bool, Any) -> SchInstance
+        # type: (str, str, Dict[str, Any], Type[ModuleType], bool, **Any) -> SchInstance
         """Create a new schematic instance
 
         This method is the schematic equivalent of TemplateDB's new_template() method.
@@ -787,7 +787,7 @@ class BagProject(object):
             the schematic generator class to instantiate.
         debug : bool
             True to print debug messages.
-        **kwargs
+        **kwargs : Any
             optional parameters.
 
         Returns
@@ -1065,7 +1065,7 @@ class BagProject(object):
         return results[0]
 
     def export_layout(self, lib_name, cell_name, out_file, **kwargs):
-        # type: (str, str, str, Any) -> str
+        # type: (str, str, str, **Any) -> str
         """export layout.
 
         Parameters
@@ -1076,7 +1076,7 @@ class BagProject(object):
             cell name.
         out_file : str
             output file name.
-        **kwargs :
+        **kwargs : Any
             optional keyword arguments.  See Checker class for details.
 
         Returns
@@ -1128,7 +1128,7 @@ class BagProject(object):
             return None
         return ['' if isinstance(val, Exception) else val for val in temp_results]
 
-    async def async_run_lvs(self, lib_name: str, cell_name: str, **kwargs) -> Tuple[bool, str]:
+    async def async_run_lvs(self, lib_name: str, cell_name: str, **kwargs: Any) -> Tuple[bool, str]:
         """A coroutine for running LVS.
 
         Parameters
@@ -1137,7 +1137,7 @@ class BagProject(object):
             library name.
         cell_name : str
             cell_name
-        **kwargs :
+        **kwargs : Any
             optional keyword arguments.  See Checker class for details.
             LVS parameters should be specified as lvs_params.
 
@@ -1196,7 +1196,7 @@ class BagProject(object):
 
     def create_schematic_from_netlist(self, netlist, lib_name, cell_name,
                                       sch_view=None, **kwargs):
-        # type: (str, str, str, Optional[str], Any) -> None
+        # type: (str, str, str, Optional[str], **Any) -> None
         """Create a schematic from a netlist.
 
         This is mainly used to create extracted schematic from an extracted netlist.
@@ -1211,7 +1211,7 @@ class BagProject(object):
             cell_name
         sch_view : Optional[str]
             schematic view name.  The default value is implemendation dependent.
-        **kwargs
+        **kwargs : Any
             additional implementation-dependent arguments.
         """
         if self.impl_db is None:
@@ -1221,7 +1221,7 @@ class BagProject(object):
                                                           sch_view=sch_view, **kwargs)
 
     def create_verilog_view(self, verilog_file, lib_name, cell_name, **kwargs):
-        # type: (str, str, str, Any) -> None
+        # type: (str, str, str, **Any) -> None
         """Create a verilog view for mix-signal simulation.
 
         Parameters
@@ -1232,7 +1232,7 @@ class BagProject(object):
             library name.
         cell_name : str
             cell name.
-        **kwargs
+        **kwargs : Any
             additional implementation-dependent arguments.
         """
         if self.impl_db is None:
