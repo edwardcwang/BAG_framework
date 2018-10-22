@@ -4,7 +4,7 @@
 """
 
 from typing import TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, \
-    Optional, Tuple, Iterable, Sequence, Callable, Generator
+    Optional, Tuple, Iterable, Sequence, Callable, Generator, cast
 from bag.typing import CoordType, LayerType, PointType
 
 import abc
@@ -610,12 +610,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         bnd_box = self.bound_box
         if bnd_box is None:
             raise ValueError("bound_box is not set")
+        res = self.grid.resolution
         info = {
             lib_name: {
                 cell_name: dict(
                     pins=pin_dict,
                     xy0=[0.0, 0.0],
-                    xy1=[bnd_box.width, bnd_box.height],
+                    xy1=[bnd_box.width_unit * res, bnd_box.height_unit * res],
                 ),
             },
         }
@@ -1745,7 +1746,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 tmpl, tmpu = cap_exts[cur_layer - 1]
                 lower = tmpl if lower is None else min(lower, tmpl)
                 upper = tmpu if upper is None else max(upper, tmpu)
-            assert lower is not None and upper is not None, 'cur_layer is iterating and should never be equal to both bot_layer and top_layer at the same time'
+
+            assert_msg = ('cur_layer is iterating and should never be equal to both '
+                          'bot_layer and top_layer at the same time')
+            assert lower is not None and upper is not None, assert_msg
 
             via_ext = via_ext_dict[cur_layer]
             lower -= via_ext
@@ -2013,7 +2017,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 base_start = cur_start
                 base_end = cur_end
                 base_width = cur_upper - cur_lower
-                count += 1
+                count = 1
                 hpitch = 0
             else:
                 assert base_intv is not None, "count == 0 should have set base_intv"
@@ -2124,7 +2128,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     tu_unit = vtbox.top_unit + (ny - 1) * box_arr.spy_unit
                 else:
                     tu_unit = max(tu_unit, vtbox.top_unit + (ny - 1) * box_arr.spy_unit)
-        assert tl_unit is not None and tu_unit is not None, "for loop should have assigned tl_unit and tu_unit"
+
+        assert_msg = "for loop should have assigned tl_unit and tu_unit"
+        assert tl_unit is not None and tu_unit is not None, assert_msg
 
         return tl_unit, tu_unit
 
@@ -2363,7 +2369,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if bbox_bounds[0] is None:
                 bbox_bounds = (w_lower - w_ext, w_upper + w_ext)
             else:
-                bbox_bounds = (min(bbox_bounds[0], w_lower - w_ext), max(bbox_bounds[1], w_upper + w_ext))
+                bbox_bounds = (min(bbox_bounds[0], w_lower - w_ext),
+                               max(bbox_bounds[1], w_upper + w_ext))
 
             # compute track lower/upper including via extension
             tr_bounds = box_arr.get_overall_bbox().get_interval(tr_dir)
@@ -2375,7 +2382,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 track_upper = tr_bounds[1] + tr_ext
             else:
                 track_upper = max(track_upper, tr_bounds[1] + tr_ext)
-        assert track_lower is not None and track_upper is not None, "track_lower/track_upper should be set above"
+
+        assert_msg = "track_lower/track_upper should be set above"
+        assert track_lower is not None and track_upper is not None, assert_msg
 
         # draw tracks
         track_list = []  # type: List[Optional[WireArray]]
@@ -2401,7 +2410,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           return_wires=False,  # type: bool
                           debug=False,  # type: bool
                           ):
-        # type: (...) -> Optional[Union[WireArray, Tuple[WireArray, List[WireArray]]]]
+        # type: (...) -> Union[Optional[WireArray], Tuple[Optional[WireArray], List[WireArray]]]
         """Connect all given WireArrays to the given track(s).
 
         All given wires should be on adjacent layers of the track.
@@ -2432,10 +2441,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        wire_arr : Optional[Union[WireArray, Tuple[WireArray, List[WireArray]]]]
+        wire_arr : Union[Optional[WireArray], Tuple[Optional[WireArray], List[WireArray]]]
             WireArray representing the tracks/wires created.
-            If there was nothing to do, returns a None.
-            If return_wires is True, returns a Tuple[WireArray, List[WireArray]].
+            If return_wires is True, returns a Tuple[Optional[WireArray], List[WireArray]].
+            If there was nothing to do, the first argument will be None.
             Otherwise, returns a WireArray.
         """
         if not unit_mode:
@@ -2450,7 +2459,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if not wire_arr_list:
             # do nothing
             if return_wires:
-                return None
+                return None, []
             return None
 
         grid = self.grid
@@ -2489,7 +2498,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     track_lower, track_upper = self._draw_via_on_track(wlayer, box_arr, track_id,
                                                                        tl_unit=track_lower,
                                                                        tu_unit=track_upper)
-        assert track_lower is not None and track_upper is not None, "track_lower/track_upper should have been set just above"
+        assert_msg = "track_lower/track_upper should have been set just above"
+        assert track_lower is not None and track_upper is not None, assert_msg
 
         if min_len_mode is not None:
             # extend track to meet minimum length
@@ -2645,6 +2655,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             min_len_mode_list_resolved = [min_len_mode_list] * num_connections
         elif len(min_len_mode_list) != num_connections:
             raise ValueError('min_len_mode_list must have exactly %d elements.' % num_connections)
+        else:
+            min_len_mode_list_resolved = min_len_mode_list
 
         # determine via location
         grid = self.grid
@@ -2782,15 +2794,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # convert pitch
         wire_pitch = self.grid.get_track_pitch(wire_layer)
         targ_pitch = self.grid.get_track_pitch(targ_layer)
-        targ_pitch_half = targ_pitch // 2
-        pitch_unit = int(round(wire_pitch * wire_tid.pitch))
-        if pitch_unit % targ_pitch_half != 0:
+        pitch_unit = wire_pitch * wire_tid.pitch
+        if pitch_unit % (targ_pitch // 2) != 0:
             raise ValueError('Cannot strap wires on layers with mismatched pitch ')
-        num_pitch_2 = pitch_unit // targ_pitch_half
-        if num_pitch_2 % 2 == 0:
-            num_pitch = num_pitch_2 // 2  # type: Union[float, int]
-        else:
-            num_pitch = num_pitch_2 / 2
+        num_pitch = pitch_unit // targ_pitch
         # convert width
         if tr_w < 0:
             width_unit = self.grid.get_track_width(wire_layer, wire_tid.width)
@@ -3024,7 +3031,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 else:
                     raise ValueError('Cannot connect wire on layer %d '
                                      'to track on layer %d' % (cur_layer_id, tr_layer_id))
-                tr_ext, w_ext = tuple2_to_int(tr_w_ext)
 
                 # compute wire lower/upper including via extension
                 if cur_bounds[0] is None:
@@ -3045,7 +3051,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 else:
                     track_upper = max(track_upper, warr_bounds[1] + tr_ext)
 
-        assert track_lower is not None and track_upper is not None, "track_lower/track_upper should have been set above"
+        assert_msg = "track_lower/track_upper should have been set above"
+        assert track_lower is not None and track_upper is not None, assert_msg
 
         # draw tracks
         track_list = []  # type: List[Optional[WireArray]]

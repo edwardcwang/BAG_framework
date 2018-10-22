@@ -496,6 +496,18 @@ class SkillInterface(DbAccess):
     def parse_schematic_template(self, lib_name, cell_name):
         # type: (str, str) -> str
         """Parse the given schematic template.
+
+        Parameters
+        ----------
+        lib_name : str
+            name of the library.
+        cell_name : str
+            name of the cell.
+
+        Returns
+        -------
+        template : str
+            the content of the netlist structure file.
         """
         cmd = 'parse_cad_sch( "%s" "%s" {netlist_info} )' % (lib_name, cell_name)
         return self._eval_skill(cmd, out_file='netlist_info')

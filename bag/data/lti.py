@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""This module defines functions and classes useful for characterizing linear time-invariant circuits.
+"""This module defines functions/classes for characterizing linear time-invariant circuits.
 """
 
 from typing import Dict, List, Tuple, Union, Optional
@@ -231,8 +231,8 @@ class LTICircuit(object):
         Parameters
         ----------
         tran_info : Dict[str, float]
-            a dictionary of 1-finger transistor small signal parameters.  Should contain gm, gds, gb,
-            cgd, cgs, cgb, cds, cdb, and csb.
+            a dictionary of 1-finger transistor small signal parameters.  Should contain gm, gds,
+            gb, cgd, cgs, cgb, cds, cdb, and csb.
         d_name : str
             drain net name.
         g_name : str
@@ -577,7 +577,8 @@ class LTICircuit(object):
         in_type : str
             set to 'v' for input voltage sources.  Otherwise, current sources.
         atol : float
-            absolute tolerance for checking zeros in the numerator.  Used to filter out scipy warnings.
+            absolute tolerance for checking zeros in the numerator.  Used to filter out scipy
+            warnings.
 
         Returns
         -------
@@ -610,7 +611,8 @@ class LTICircuit(object):
         in_type : str
             set to 'v' for input voltage sources.  Otherwise, current sources.
         atol : float
-            absolute tolerance for checking zeros in the numerator.  Used to filter out scipy warnings.
+            absolute tolerance for checking zeros in the numerator.  Used to filter out scipy
+            warnings.
 
         Returns
         -------
@@ -627,12 +629,13 @@ class LTICircuit(object):
         Parameters
         ----------
         node_name : str
-            the node to compute impedance for.  We will inject a current into this node and measure the voltage
-            on this node.
+            the node to compute impedance for.  We will inject a current into this node and
+            measure the voltage on this node.
         freq : float
             the frequency to compute the impedance at, in Hertz.
         atol : float
-            absolute tolerance for checking zeros in the numerator.  Used to filter out scipy warnings.
+            absolute tolerance for checking zeros in the numerator.  Used to filter out scipy
+            warnings.
 
         Returns
         -------
@@ -645,9 +648,12 @@ class LTICircuit(object):
         return zin_vec[0]
 
 
-def get_w_crossings(num, den, atol=1e-8):
-    # type: (np.multiarray.ndarray, np.multiarray.ndarray, float) -> Tuple[Optional[float], Optional[float]]
-    """Given the numerator and denominator of the transfer function, compute gain margin/phase margin frequencies.
+def get_w_crossings(num,  # type: np.multiarray.ndarray
+                    den,  # type: np.multiarray.ndarray
+                    atol=1e-8,  # type: float
+                    ):
+    # type: (...) -> Tuple[Optional[float], Optional[float]]
+    """Compte gain margin/phase margin frequencies from the transfer function,
 
     To determine the crossover frequencies, we write the transfer function as:
 
@@ -655,8 +661,8 @@ def get_w_crossings(num, den, atol=1e-8):
 
         \\frac{A(w) + jB(w)}{C(w) + jD(w)}
 
-    where :math:`A(w)`, :math:`B(w)`, :math:`C(w)`, and :math:`D(w)` are real polynomials.  The gain margin frequency
-    is the frequency at which:
+    where :math:`A(w)`, :math:`B(w)`, :math:`C(w)`, and :math:`D(w)` are real polynomials.  The
+    gain margin frequency is the frequency at which:
 
     .. math::
 
@@ -678,14 +684,17 @@ def get_w_crossings(num, den, atol=1e-8):
     den : np.multiarray.ndarray
         the denominator polynomial coefficients array.  index 0 is coefficient for highest term.
     atol : float
-        absolute tolerance used to check if the imaginary part of a root is 0, or if a root is greater than 0.
+        absolute tolerance used to check if the imaginary part of a root is 0, or if a root is
+        greater than 0.
 
     Returns
     -------
     w_phase : Optional[float]
-        lowest positive frequency in rad/s at which the gain becomes unity.  None if no such frequency exist.
+        lowest positive frequency in rad/s at which the gain becomes unity.  None if no such
+        frequency exist.
     w_gain : Optional[float]
-        lower positive frequency in rad/s at which the phase becomes 180 degrees.  None if no such frequency exist.
+        lower positive frequency in rad/s at which the phase becomes 180 degrees.  None if no such
+        frequency exist.
     """
     # construct A(w), B(w), C(w), and D(w)
     num_flip = num[::-1]
@@ -711,7 +720,6 @@ def get_w_crossings(num, den, atol=1e-8):
     # solve for w_phase/w_gain
     poly_list = [apoly**2 + bpoly**2 - cpoly**2 - dpoly**2,
                  apoly * dpoly - bpoly * cpoly]
-
     w_list = [None, None]  # type: List[Optional[float]]
     for idx in range(2):
         for root in poly_list[idx].roots:
@@ -728,15 +736,15 @@ def get_w_3db(num, den, atol=1e-8):
     # type: (np.multiarray.ndarray, np.multiarray.ndarray, float) -> Optional[float]
     """Given the numerator and denominator of the transfer function, compute the 3dB frequency.
 
-    To determine the 3dB frequency, we first normalize the transfer function so that its DC gain is one,
-    then we write the transfer function as:
+    To determine the 3dB frequency, we first normalize the transfer function so that its
+    DC gain is one, then we write the transfer function as:
 
     .. math::
 
         \\frac{A(w) + jB(w)}{C(w) + jD(w)}
 
-    where :math:`A(w)`, :math:`B(w)`, :math:`C(w)`, and :math:`D(w)` are real polynomials.  The 3dB frequency
-    is the frequency at which:
+    where :math:`A(w)`, :math:`B(w)`, :math:`C(w)`, and :math:`D(w)` are real polynomials.  The
+    3dB frequency is the frequency at which:
 
     .. math::
 
@@ -751,7 +759,8 @@ def get_w_3db(num, den, atol=1e-8):
     den : np.multiarray.ndarray
         the denominator polynomial coefficients array.  index 0 is coefficient for highest term.
     atol : float
-        absolute tolerance used to check if the imaginary part of a root is 0, or if a root is greater than 0.
+        absolute tolerance used to check if the imaginary part of a root is 0, or if a root is
+        greater than 0.
 
     Returns
     -------
@@ -824,7 +833,7 @@ def get_stability_margins(num, den, rtol=1e-8, atol=1e-8):
 
     # compute phase margin
     if w_phase is None:
-        # gain never equal to 1.  That means gain is always greater than 1 or gain is always less than 1.
+        # gain never equal to 1; that means gain is always greater than 1 or less than 1.
         dc_gain = poly_n(0) / poly_d(0)
         if dc_gain < 1 - max(rtol, atol):
             # gain is always less than 1, infinite phase margin

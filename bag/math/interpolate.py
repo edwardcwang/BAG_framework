@@ -3,7 +3,7 @@
 """This module defines various interpolation classes.
 """
 
-from typing import List, Tuple, Union, Sequence, Optional
+from typing import List, Tuple, Union, Sequence
 
 import numpy as np
 import scipy.interpolate as interp
@@ -15,8 +15,11 @@ __author__ = 'erichang'
 __all__ = ['interpolate_grid', 'LinearInterpolator']
 
 
-def _scales_to_points(scale_list, values, delta=1e-4):
-    # type: (List[Tuple[float, float]], np.multiarray.ndarray, float) -> Tuple[List[np.multiarray.ndarray], List[float]]
+def _scales_to_points(scale_list,  # type: List[Tuple[float, float]]
+                      values,  # type: np.multiarray.ndarray
+                      delta=1e-4,  # type: float
+                      ):
+    # type: (...) -> Tuple[List[np.multiarray.ndarray], List[float]]
     """convert scale_list to list of point values and finite difference deltas."""
 
     ndim = len(values.shape)
@@ -39,9 +42,14 @@ def _scales_to_points(scale_list, values, delta=1e-4):
     return points, delta_list
 
 
-def interpolate_grid(scale_list, values, method='spline',
-                     extrapolate=False, delta=1e-4, num_extrapolate=3):
-    # type: (List[Tuple[float, float]], np.multiarray.ndarray, str, bool, float, int) -> DiffFunction
+def interpolate_grid(scale_list,  # type: List[Tuple[float, float]]
+                     values,  # type: np.multiarray.ndarray
+                     method='spline',  # type: str
+                     extrapolate=False,  # type: bool
+                     delta=1e-4,  # type: float
+                     num_extrapolate=3,  # type: int
+                     ):
+    # type: (...) -> DiffFunction
     """Interpolates multidimensional data on a regular grid.
 
     returns an Interpolator for the given dataset.
@@ -187,30 +195,30 @@ class LinearInterpolator(DiffFunction):
 
         def calculate_integ_x() -> np.ndarray:
             # find data points between xstart and xstop
-            vec = self._points[axis]
-            start_idx, stop_idx = np.searchsorted(vec, [xstart, xstop])
+            vec_inner = self._points[axis]
+            start_idx, stop_idx = np.searchsorted(vec_inner, [xstart, xstop])
 
             cur_len = stop_idx - start_idx
-            if vec[start_idx] > xstart:
+            if vec_inner[start_idx] > xstart:
                 cur_len += 1
                 istart = 1
             else:
                 istart = 0
-            if vec[stop_idx - 1] < xstop:
+            if vec_inner[stop_idx - 1] < xstop:
                 cur_len += 1
                 istop = cur_len - 1
             else:
                 istop = cur_len
 
-            integ_x = np.empty(cur_len)
-            integ_x[istart:istop] = vec[start_idx:stop_idx]
+            integ_x_inner = np.empty(cur_len)
+            integ_x_inner[istart:istop] = vec_inner[start_idx:stop_idx]
             if istart != 0:
-                integ_x[0] = xstart
+                integ_x_inner[0] = xstart
 
             if istop != cur_len:
-                integ_x[cur_len - 1] = xstop
+                integ_x_inner[cur_len - 1] = xstop
 
-            return integ_x
+            return integ_x_inner
 
         # get all input sample points we need to integrate.
         plist = []
@@ -253,14 +261,16 @@ class LinearInterpolator(DiffFunction):
 
             mp1 = m[log_idxb] + 1
             x2 = np.exp(lx2[log_idxb])
-            area[log_idxb] = scale[log_idxb] / mp1 * (np.power(x2, mp1) - np.power(x1[log_idxb], mp1))
+            area[log_idxb] = scale[log_idxb] / mp1 * (np.power(x2, mp1) -
+                                                      np.power(x1[log_idxb], mp1))
             new_values = np.sum(area, axis=-1)  # type: np.multiarray.ndarray
         else:
             # just use trapezoid integration
             new_values = np.trapz(values, x=integ_x, axis=axis)
 
         if not raw and new_points:
-            return LinearInterpolator(new_points, new_values, new_deltas, extrapolate=self._extrapolate)
+            return LinearInterpolator(new_points, new_values, new_deltas,
+                                      extrapolate=self._extrapolate)
         else:
             return new_values
 
@@ -298,7 +308,8 @@ class Interpolator1D(DiffFunction):
 
         offset, scale = scale_list[0]
         num_pts = values.shape[0]
-        points = np.linspace(offset, (num_pts - 1) * scale + offset, num_pts)  # type: np.multiarray.ndarray
+        points = np.linspace(offset, (num_pts - 1) * scale + offset,
+                             num_pts)  # type: np.multiarray.ndarray
 
         DiffFunction.__init__(self, [(points[0], points[-1])], delta_list=None)
 
@@ -543,7 +554,8 @@ class MapCoordinateSpline(DiffFunction):
         xi_ext = xi[ext_idx_vec, :]
         xi_int = xi[int_idx_vec, :]
         ans = np.empty(xi.shape[0])
-        ans[int_idx_vec] = imag_interp.map_coordinates(self._filt_values, xi_int.T, mode='nearest', prefilter=False)
+        ans[int_idx_vec] = imag_interp.map_coordinates(self._filt_values, xi_int.T,
+                                                       mode='nearest', prefilter=False)
         if xi_ext.size > 0:
             if not self._extrapolate:
                 raise ValueError('some inputs are out of bounds.')

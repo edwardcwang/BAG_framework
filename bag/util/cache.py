@@ -194,7 +194,7 @@ class DesignMaster(abc.ABC):
         # set parameters
         params_info = self.get_params_info()
         default_params = self.get_default_param_values()
-        self._cell_name = ""  # type: str
+        self._cell_name = ''  # type: str
         self.params = {}  # type: Dict[str, Any]
         if params_info is None:
             # compatibility with old schematics generators
@@ -485,16 +485,16 @@ class MasterDB(abc.ABC):
         """Returns the cell name suffix."""
         return self._name_suffix
 
+    @property
+    def used_cell_names(self):
+        # type: () -> Set[str]
+        return self._used_cell_names
+
     @cell_suffix.setter
     def cell_suffix(self, new_val):
         # type: (str) -> None
         """Change the cell name suffix."""
         self._name_suffix = new_val
-
-    @property
-    def used_cell_names(self):
-        # type: () -> Set[str]
-        return self._used_cell_names
 
     def format_cell_name(self, cell_name):
         # type: (str) -> str
