@@ -18,7 +18,7 @@ from .search import BinaryIterator
 
 
 def _get_unique_name(basename, *args):
-    # type: (str, List[str]) -> str
+    # type: (str, Container[str]) -> str
     """Returns a unique name that's not used yet.
 
     This method appends an index to the given basename.  Binary
