@@ -2803,7 +2803,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                           return_wires=False,  # type: bool
                           debug=False,  # type: bool
                           ):
-        # type: (...) -> Optional[Union[WireArray, Tuple[WireArray, List[WireArray]]]]
+        # type: (...) -> Union[Optional[WireArray], Tuple[Optional[WireArray], List[WireArray]]]
         """Connect all given WireArrays to the given track(s).
 
         All given wires should be on adjacent layers of the track.
@@ -2834,10 +2834,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        wire_arr : Optional[Union[WireArray, Tuple[WireArray, List[WireArray]]]]
+        wire_arr : Union[Optional[WireArray], Tuple[Optional[WireArray], List[WireArray]]]
             WireArray representing the tracks/wires created.
-            If there was nothing to do, returns a None.
-            If return_wires is True, returns a Tuple[WireArray, List[WireArray]].
+            If return_wires is True, returns a Tuple[Optional[WireArray], List[WireArray]].
+            If there was nothing to do, the first argument will be None.
             Otherwise, returns a WireArray.
         """
         if isinstance(wire_arr_list, WireArray):
@@ -2849,7 +2849,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if not wire_arr_list:
             # do nothing
             if return_wires:
-                return None
+                return None, []
             return None
 
         grid = self.grid
@@ -2910,7 +2910,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     track_lower, track_upper = self._draw_via_on_track(wlayer, box_arr, track_id,
                                                                        tl_unit=track_lower,
                                                                        tu_unit=track_upper)
-        assert track_lower is not None and track_upper is not None, "track_lower/track_upper should have been set just above"
+        assert_msg = "track_lower/track_upper should have been set just above"
+        assert track_lower is not None and track_upper is not None, assert_msg
 
         if min_len_mode is not None:
             # extend track to meet minimum length
@@ -3072,6 +3073,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             min_len_mode_list_resolved = [min_len_mode_list] * num_connections
         elif len(min_len_mode_list) != num_connections:
             raise ValueError('min_len_mode_list must have exactly %d elements.' % num_connections)
+        else:
+            min_len_mode_list_resolved = min_len_mode_list
 
         # determine via location
         grid = self.grid
