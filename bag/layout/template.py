@@ -130,7 +130,7 @@ class TemplateDB(MasterDB):
             print('cache loading took %.5g seconds.' % (end - start))
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[TemplateType], str, Dict[str, Any], Set[str], Any) -> TemplateType
+        # type: (Type[TemplateType], str, Dict[str, Any], Set[str], **Any) -> TemplateType
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.
@@ -145,7 +145,7 @@ class TemplateDB(MasterDB):
             instance parameters dictionary.
         used_cell_names : Set[str]
             a set of all used cell names.
-        **kwargs
+        **kwargs: Any
             optional arguments for the generator.
 
         Returns
@@ -235,7 +235,7 @@ class TemplateDB(MasterDB):
 
     def new_template(self, lib_name='', temp_name='', params=None, temp_cls=None, debug=False,
                      **kwargs):
-        # type: (str, str, Dict[str, Any], Type[TemplateType], bool, Any) -> TemplateType
+        # type: (str, str, Dict[str, Any], Type[TemplateType], bool, **Any) -> TemplateType
         """Create a new template.
 
         Parameters
@@ -250,7 +250,7 @@ class TemplateDB(MasterDB):
             the template class to instantiate.
         debug : bool
             True to print debug messages.
-        **kwargs
+        **kwargs : Any
             optional template parameters.
 
         Returns
@@ -517,7 +517,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     """
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
 
         use_cybagoa = kwargs.get('use_cybagoa', False)
 
@@ -564,7 +564,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         pass
 
     def populate_params(self, table, params_info, default_params, **kwargs):
-        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], Any) -> None
+        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **Any) -> None
         """Fill params dictionary with values from table and default_params"""
         DesignMaster.populate_params(self, table, params_info, default_params, **kwargs)
 
@@ -1180,7 +1180,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self._prim_ports.keys()
 
     def new_template(self, params=None, temp_cls=None, debug=False, **kwargs):
-        # type: (Dict[str, Any], Type[TemplateType], bool, Any) -> TemplateType
+        # type: (Dict[str, Any], Type[TemplateType], bool, **Any) -> TemplateType
         """Create a new template.
 
         Parameters
@@ -1191,7 +1191,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the template class to instantiate.
         debug : bool
             True to print debug messages.
-        **kwargs
+        **kwargs : Any
             optional template parameters.
 
         Returns
@@ -1369,7 +1369,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return rect
 
     def add_res_metal(self, layer_id, bbox, **kwargs):
-        # type: (int, Union[BBox, BBoxArray], Any) -> List[Rect]
+        # type: (int, Union[BBox, BBoxArray], **Any) -> List[Rect]
         """Add a new metal resistor.
 
         Parameters
@@ -1379,7 +1379,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         bbox : Union[BBox, BBoxArray]
             the resistor bounding box.  If BBoxArray is given, its arraying parameters will
             be used instead.
-        **kwargs :
+        **kwargs : Any
             optional arguments to add_rect()
 
         Returns
@@ -4067,7 +4067,7 @@ class CachedTemplate(TemplateBase):
     """A template that's cached in file."""
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
 
     @classmethod
@@ -4105,7 +4105,7 @@ class BlackBoxTemplate(TemplateBase):
     """A black box template."""
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
+        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
         TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
         self._sch_params = {}  # type: Dict[str, Any]
 

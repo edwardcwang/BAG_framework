@@ -472,7 +472,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_res_em_specs(self, res_type, w, l=-1, **kwargs):
-        # type: (str, float, float, Any) -> Tuple[float, float, float]
+        # type: (str, float, float, **Any) -> Tuple[float, float, float]
         """Returns a tuple of EM current/resistance specs of the given resistor.
 
         Parameters
@@ -484,7 +484,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         l : float
             the length of the metal in layout units (dimension parallel to current flow).
             If negative, disable length enhancement.
-        **kwargs :
+        **kwargs : Any
             optional EM specs parameters.
 
         Returns

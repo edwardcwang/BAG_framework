@@ -53,7 +53,7 @@ class ModuleDB(MasterDB):
         self.lib_path = lib_path
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[Module], str, Dict[str, Any], Set[str], Any) -> Module
+        # type: (Type[Module], str, Dict[str, Any], Set[str], **Any) -> Module
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.
@@ -68,7 +68,7 @@ class ModuleDB(MasterDB):
             instance parameters dictionary.
         used_cell_names : Set[str]
             a set of all used cell names.
-        **kwargs
+        **kwargs : Any
             optional arguments for the generator.
 
         Returns
@@ -273,12 +273,12 @@ class SchInstance(object):
         return self._gen_lib_name if self.is_primitive else impl_lib
 
     def design_specs(self, *args, **kwargs):
-        # type: (Any, Any) -> None
+        # type: (*Any, **Any) -> None
         """Update the instance master."""
         self._update_master('design_specs', args, kwargs)
 
     def design(self, *args, **kwargs):
-        # type: (Any, Any) -> None
+        # type: (*Any, **Any) -> None
         """Update the instance master."""
         self._update_master('design', args, kwargs)
 
@@ -301,7 +301,7 @@ class SchInstance(object):
             self.parameters.update(self._master.get_schematic_parameters())
 
     def implement_design(self, lib_name, top_cell_name='', prefix='', suffix='', **kwargs):
-        # type: (str, str, str, str, Any) -> None
+        # type: (str, str, str, str, **Any) -> None
         """Implement this design module in the given library.
 
         If the given library already exists, this method will not delete or override
@@ -322,7 +322,7 @@ class SchInstance(object):
             prefix to add to cell names.
         suffix : str
             suffix to add to cell names.
-        **kwargs :
+        **kwargs : Any
             additional arguments.
         """
         if 'erase' in kwargs:
@@ -375,7 +375,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
     # noinspection PyUnusedLocal
     def __init__(self, database, yaml_fname, **kwargs):
-        # type: (ModuleDB, str, Any) -> None
+        # type: (ModuleDB, str, **Any) -> None
 
         lib_name = kwargs['lib_name']
         params = kwargs['params']

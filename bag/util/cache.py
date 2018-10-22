@@ -3,7 +3,7 @@
 """This module defines classes used to cache existing design masters
 """
 
-from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable, List
+from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable, Iterable
 
 import sys
 import os
@@ -18,7 +18,7 @@ from .search import BinaryIterator
 
 
 def _get_unique_name(basename, *args):
-    # type: (str, Container[str]) -> str
+    # type: (str, *Iterable[str]) -> str
     """Returns a unique name that's not used yet.
 
     This method appends an index to the given basename.  Binary
@@ -179,7 +179,7 @@ class DesignMaster(abc.ABC):
         optional parameters.
     """
     def __init__(self, master_db, lib_name, params, used_names, **kwargs):
-        # type: (MasterDB, str, Dict[str, Any], Set[str], Any) -> None
+        # type: (MasterDB, str, Dict[str, Any], Set[str], **Any) -> None
         self._master_db = master_db
         self._lib_name = lib_name
         self._used_names = used_names
@@ -208,7 +208,7 @@ class DesignMaster(abc.ABC):
         self._key = self.compute_unique_key()
 
     def populate_params(self, table, params_info, default_params, **kwargs):
-        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], Any) -> None
+        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **Any) -> None
         """Fill params dictionary with values from table and default_params"""
         for key, desc in params_info.items():
             if key not in table:
@@ -411,7 +411,7 @@ class MasterDB(abc.ABC):
 
     @abc.abstractmethod
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[MasterType], str, Dict[str, Any], Set[str], Any) -> MasterType
+        # type: (Type[MasterType], str, Dict[str, Any], Set[str], **Any) -> MasterType
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.
@@ -426,7 +426,7 @@ class MasterDB(abc.ABC):
             instance parameters dictionary.
         used_cell_names : Set[str]
             a set of all used cell names.
-        **kwargs
+        **kwargs : Any
             optional arguments for the generator.
 
         Returns
