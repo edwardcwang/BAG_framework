@@ -3,7 +3,7 @@
 """This module provides search related utilities.
 """
 
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Any, Container
 
 from collections import namedtuple
 
@@ -205,6 +205,36 @@ class FloatBinaryIterator(object):
         # type: () -> Any
         """Return last save information."""
         return self._save_info
+
+
+def get_new_name(base_name, used_names):
+    # type: (str, Container[str]) -> str
+    """Generate a new unique name.
+
+    Parameters
+    ----------
+    base_name : str
+        the prefix of the base name.
+    used_names : Container[str]
+        a container of all the used names.
+
+    Returns
+    -------
+    new_name : str
+        a new unique name.
+    """
+    new_name = base_name
+    bin_iter = BinaryIterator(1, None)
+    while new_name in used_names:
+        new_name = '{}_{:d}'.format(base_name, bin_iter.get_next())
+        if new_name in used_names:
+            bin_iter.up()
+        else:
+            bin_iter.save_info(new_name)
+            bin_iter.down()
+
+    assert bin_iter.get_last_save_info() is not None, 'bin_iter should find an unused name'
+    return bin_iter.get_last_save_info()
 
 
 def minimize_cost_binary(f,  # type: Callable[[int], float]
