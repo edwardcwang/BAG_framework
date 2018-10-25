@@ -446,6 +446,7 @@ class SubstrateRing(TemplateBase):
         xl_list = [dx, dx + e_sub_w, dx + e_sub_w + sub_w]
         yl_list = [0, e1_h, e1_h + sub_h]
         o_list = ['R0', 'R0', 'MY']
+        flip_ud_y = [False, False, True]
         self._blk_loc = ((wtot - box_w) // 2, (htot - box_h) // 2)
 
         # substrate connection master
@@ -461,9 +462,10 @@ class SubstrateRing(TemplateBase):
         conn_list = []
         tid_list = []
         hm_pitch = self.grid.get_track_pitch(mtop_lay, unit_mode=True)
-        for name_fmt, flip_ud, yoff in (('XB%d', False, 0), ('XT%d', True, htot)):
+        for name_fmt, flip_ud1, yoff in (('XB%d', False, 0), ('XT%d', True, htot)):
             m_idx = 0
-            for yidx, yl in enumerate(yl_list):
+            for yidx, (yl, flip_ud2) in enumerate(zip(yl_list, flip_ud_y)):
+                flip_ud = (flip_ud1 != flip_ud2)
                 for xidx, (xl, orient) in enumerate(zip(xl_list, o_list)):
                     master = m_list[m_idx]
                     cur_name = name_fmt % m_idx  # type: str
@@ -471,13 +473,25 @@ class SubstrateRing(TemplateBase):
                         if flip_ud:
                             orient = 'MX' if orient == 'R0' else 'R180'
                         if orient == 'R0':
-                            loc = (xl, yl)
+                            if flip_ud1:
+                                loc = (xl, yoff - yl - master.bound_box.height_unit)
+                            else:
+                                loc = (xl, yl)
                         elif orient == 'MY':
-                            loc = (xl + master.bound_box.width_unit, yl)
+                            if flip_ud1:
+                                loc = (xl + master.bound_box.width_unit, yoff - yl - master.bound_box.height_unit)
+                            else:
+                                loc = (xl + master.bound_box.width_unit, yl)
                         elif orient == 'MX':
-                            loc = (xl, yoff - yl)
+                            if flip_ud1:
+                                loc = (xl, yoff - yl)
+                            else:
+                                loc = (xl, yl + master.bound_box.height_unit)
                         elif orient == 'R180':
-                            loc = (xl + master.bound_box.width_unit, yoff - yl)
+                            if flip_ud1:
+                                loc = (xl + master.bound_box.width_unit, yoff - yl)
+                            else:
+                                loc = (xl + master.bound_box.width_unit, yl + master.bound_box.height_unit)
                         else:
                             raise ValueError('Unsupported orientation: %s' % orient)
                         inst = self.add_instance(master, inst_name=cur_name, loc=loc,
@@ -604,6 +618,7 @@ class SubstrateRing(TemplateBase):
         for master in master_list:
             edge_params = dict(
                 is_end=True,
+                is_sub_ring=True,
                 guard_ring_nf=fg_side,
                 name_id=master.get_layout_basename(),
                 layout_info=master.get_edge_layout_info(),

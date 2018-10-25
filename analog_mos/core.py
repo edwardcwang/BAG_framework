@@ -282,8 +282,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         return {}
 
     @abc.abstractmethod
-    def get_outer_edge_info(self, guard_ring_nf, layout_info, is_end, adj_blk_info):
-        # type: (int, Dict[str, Any], bool, Optional[Any]) -> Dict[str, Any]
+    def get_outer_edge_info(self, guard_ring_nf, layout_info, is_end, adj_blk_info, **kwargs):
+        # type: (int, Dict[str, Any], bool, Optional[Any], Any) -> Dict[str, Any]
         """Returns the outer edge layout information dictionary.
 
         Parameters
@@ -297,6 +297,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         adj_blk_info : Optional[Any]
             data structure storing layout information of adjacent block.
             If None, will use default settings.
+        **kwargs : Any
+            Optoinal layout parameters.
 
         Returns
         -------
@@ -306,8 +308,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         return {}
 
     @abc.abstractmethod
-    def get_gr_sub_info(self, guard_ring_nf, layout_info):
-        # type: (int, Dict[str, Any]) -> Dict[str, Any]
+    def get_gr_sub_info(self, guard_ring_nf, layout_info, **kwargs):
+        # type: (int, Dict[str, Any], Any) -> Dict[str, Any]
         """Returns the guard ring substrate layout information dictionary.
 
         Parameters
@@ -316,6 +318,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
             guard ring width in number of fingers.  0 if there is no guard ring.
         layout_info : Dict[str, Any]
             layout information dictionary of the center block.
+        **kwargs : Any
+            Optional layout parameters.
 
         Returns
         -------
@@ -325,8 +329,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         return {}
 
     @abc.abstractmethod
-    def get_gr_sep_info(self, layout_info, adj_blk_info):
-        # type: (Dict[str, Any], Any) -> Dict[str, Any]
+    def get_gr_sep_info(self, layout_info, adj_blk_info, **kwargs):
+        # type: (Dict[str, Any], Any, Any) -> Dict[str, Any]
         """Returns the guard ring separator layout information dictionary.
 
         Parameters
@@ -336,6 +340,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         adj_blk_info : Optional[Any]
             data structure storing layout information of adjacent block.
             If None, will use default settings.
+        **kwargs : Any
+            Optional layout parameters.
 
         Returns
         -------

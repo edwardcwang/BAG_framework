@@ -296,6 +296,7 @@ class AnalogEdge(TemplateBase):
             name_id='cell name ID.',
             layout_info='the layout information dictionary.',
             is_end='True if this edge is at the end.',
+            is_sub_ring='True if this is a substrate ring edge block.',
             is_laygo='True if this extension is used in LaygoBase.',
             tech_cls_name='Technology class name.',
         )
@@ -306,6 +307,7 @@ class AnalogEdge(TemplateBase):
         return dict(
             is_end=True,
             is_laygo=False,
+            is_sub_ring=False,
             tech_cls_name=None,
         )
 
@@ -322,6 +324,7 @@ class AnalogEdge(TemplateBase):
         adj_blk_info = self.params['adj_blk_info']
         layout_info = self.params['layout_info']
         is_end = self.params['is_end']
+        is_sub_ring = self.params['is_sub_ring']
         is_laygo = self.params['is_laygo']
         tech_cls_name = self.params['tech_cls_name']
 
@@ -337,7 +340,8 @@ class AnalogEdge(TemplateBase):
         else:
             outer_adj_blk = adj_blk_info
 
-        out_info = tech_cls.get_outer_edge_info(guard_ring_nf, layout_info, is_end, outer_adj_blk)
+        out_info = tech_cls.get_outer_edge_info(guard_ring_nf, layout_info, is_end, outer_adj_blk,
+                                                is_sub_ring=is_sub_ring)
         # add outer edge
         out_params = dict(
             layout_name='%s_outer' % basename,
@@ -358,7 +362,7 @@ class AnalogEdge(TemplateBase):
         if guard_ring_nf > 0:
             # draw guard ring and guard ring separator
             x0 = self.array_box.right_unit
-            sub_info = tech_cls.get_gr_sub_info(guard_ring_nf, layout_info)
+            sub_info = tech_cls.get_gr_sub_info(guard_ring_nf, layout_info, is_sub_ring=is_sub_ring)
             loc = x0, 0
             sub_params = dict(
                 dummy_only=False,
@@ -370,21 +374,22 @@ class AnalogEdge(TemplateBase):
             )
             master = self.new_template(params=sub_params, temp_cls=AnalogSubstrateCore)
             inst = self.add_instance(master, 'XSUB', loc=loc, unit_mode=True)
-            conn_params = dict(
-                layout_name='%s_subconn' % basename,
-                layout_info=sub_info,
-                is_laygo=is_laygo,
-                is_guardring=True,
-                tech_cls_name=tech_cls_name,
-            )
-            conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
-            if conn_master.has_connection:
-                conn_inst = self.add_instance(conn_master, loc=loc, unit_mode=True)
-                for port_name in conn_inst.port_names_iter():
-                    self.reexport(conn_inst.get_port(port_name), show=False)
+            if sub_info['blk_type'] != 'gr_sub_end_sub':
+                conn_params = dict(
+                    layout_name='%s_subconn' % basename,
+                    layout_info=sub_info,
+                    is_laygo=is_laygo,
+                    is_guardring=True,
+                    tech_cls_name=tech_cls_name,
+                )
+                conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
+                if conn_master.has_connection:
+                    conn_inst = self.add_instance(conn_master, loc=loc, unit_mode=True)
+                    for port_name in conn_inst.port_names_iter():
+                        self.reexport(conn_inst.get_port(port_name), show=False)
 
             x0 = inst.array_box.right_unit
-            sep_info = tech_cls.get_gr_sep_info(layout_info, adj_blk_info)
+            sep_info = tech_cls.get_gr_sep_info(layout_info, adj_blk_info, is_sub_ring=is_sub_ring)
             sep_params = dict(
                 layout_name='%s_sep' % basename,
                 layout_info=sep_info,
