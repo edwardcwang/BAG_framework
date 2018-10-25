@@ -13,10 +13,11 @@ from bag import float_to_si_string
 from bag.io import read_yaml, open_file, load_sim_results, save_sim_results, load_sim_file
 from bag.layout import RoutingGrid, TemplateDB
 from bag.concurrent.core import batch_async_task
+from bag import BagProject
 
 if TYPE_CHECKING:
     import numpy as np
-    from bag.core import BagProject, Testbench
+    from bag.core import Testbench
 
 
 class TestbenchManager(object, metaclass=abc.ABCMeta):
