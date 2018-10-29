@@ -3,16 +3,19 @@
 """This module defines base design module class and primitive design classes.
 """
 
+from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Set, Callable, Union
+
 import os
 import abc
-from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Set, Callable, Union
+from itertools import zip_longest
 
 from ..math import float_to_si_string
 from ..io import get_encoding
 from ..util.cache import DesignMaster
+from .instance import SchInstance
 
 try:
-    import pybag
+    from pybag.base.schematic import PySchCellView
 except ImportError:
     raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
@@ -55,13 +58,14 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         self.tech_info = database.tech_info
 
         self._yaml_fname = os.path.abspath(yaml_fname)
-        self._cv = pybag.PySchCellView(self._yaml_fname, 'symbol', get_encoding())
+        self._cv = PySchCellView(self._yaml_fname, 'symbol', get_encoding())
         self._orig_lib_name = self._cv.lib_name
         self._orig_cell_name = self._cv.cell_name
 
         self._design_fun = design_fun
         self._design_args = design_args
-        self.instances = self._cv.get_instances(database)
+        self.instances = {name: SchInstance(database, ref, database.is_lib_excluded(ref.lib_name))
+                          for (name, ref) in self._cv.inst_refs()}  # type: Dict[str, SchInstance]
 
         self._inputs = self._outputs = self._inouts = None
 
@@ -105,7 +109,18 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         pass
 
     def set_param(self, key, val):
-        # type: (str, Union[int, float, str, bool]) -> None
+        # type: (str, Union[int, float, bool, str]) -> None
+        """Set schematic parameters for this master.
+
+        This method is only used to set parameters for BAG primitives.
+
+        Parameters
+        ----------
+        key : str
+            parameter name.
+        val : Union[int, float, bool, str]
+            parameter value.
+        """
         self._cv.set_param(key, val)
 
     def finalize(self):
@@ -122,7 +137,6 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
         # get set of children master keys
         for inst in self.instances.values():
-            inst.update_primitive_flag()
             if not inst.is_primitive:
                 self.children.add(inst.master_key)
 
@@ -424,10 +438,25 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         dy : int
             the Y coordinate shift.  If dx = dy = 0, default to shift right.
         """
+        # get instance/terminal list iterator
         if term_list is None:
-            term_list = [{}] * len(inst_name_list)
-        self._cv.array_instance(self.instances, inst_name, inst_name_list, term_list,
-                                dx=dx, dy=dy)
+            inst_term_iter = zip_longest(inst_name, [], fillvalue={})
+        elif len(inst_name_list) != len(term_list):
+            raise ValueError('inst_name_list and term_list length mismatch.')
+        else:
+            inst_term_iter = zip_longest(inst_name, term_list)
+
+        # array instance
+        self._cv.array_instance(inst_name, inst_term_iter, dx=dx, dy=dy)
+
+        # update instance dictionary
+        orig_inst = self.instances.pop(inst_name)
+        db = orig_inst.database
+        is_static = orig_inst.static
+        for name in inst_name_list:
+            inst_ptr = self._cv.get_inst_ref(name)
+            self.instances[name] = inst = SchInstance(db, inst_ptr, is_static)
+            inst.master = orig_inst.master
 
     def design_dc_bias_sources(self,  # type: Module
                                vbias_dict,  # type: Optional[Dict[str, List[str]]]

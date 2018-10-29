@@ -170,6 +170,7 @@ class SchInstance(DesignInstance):
         DesignInstance.__init__(self, db, '', '')
         self._static = is_static
         self._ptr = inst_ptr
+        self._ptr.is_primitive = is_static
 
     @property
     def static(self):
@@ -210,7 +211,7 @@ class SchInstance(DesignInstance):
     @property
     def is_primitive(self):
         # type: () -> bool
-        """bool: True if this is a primitive schematic instance."""
+        """bool: True if this is a primitive (static or in BAG_prim) schematic instance."""
         if self._static:
             return True
         if self.master is None:
@@ -231,11 +232,6 @@ class SchInstance(DesignInstance):
         if self.master is None:
             raise ValueError('Instance {} has no master; cannot get key')
         return self.master.key
-
-    def update_primitive_flag(self):
-        # type: () -> None
-        """Update the is_primitive flag of the underlying instance reference."""
-        self._ptr.is_primitive = self.is_primitive
 
     def _update_master(self, design_fun, args, kwargs):
         # type: (str, Tuple[Any], Dict[str, Any]) -> None
@@ -259,10 +255,8 @@ class SchInstance(DesignInstance):
             True if this is actually a fixed schematic, not a generator.
         """
         self.master = None
-        self._ptr.lib_name = gen_lib_name
-        self._ptr.cell_name = gen_cell_name
         self._static = static
-        self._ptr.reset()
+        self._ptr.update_master(gen_lib_name, gen_cell_name, prim=static)
 
     def set_param(self, key, val):
         # type: (str, Any) -> None
