@@ -141,9 +141,9 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 self.children.add(inst.master_key)
 
         # get pins
-        self._inputs = self._cv.get_inputs()
-        self._outputs = self._cv.get_outputs()
-        self._inouts = self._cv.get_inouts()
+        self._inputs = list(self._cv.in_terms())
+        self._outputs = list(self._cv.out_terms())
+        self._inouts = list(self._cv.io_iterms())
 
         # update cell name
         old_cell_name = self._cv.cell_name
