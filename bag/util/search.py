@@ -3,7 +3,7 @@
 """This module provides search related utilities.
 """
 
-from typing import Optional, Callable, Any, Container
+from typing import Optional, Callable, Any, Container, Iterable
 
 from collections import namedtuple
 
@@ -207,34 +207,47 @@ class FloatBinaryIterator(object):
         return self._save_info
 
 
-def get_new_name(base_name, used_names):
-    # type: (str, Container[str]) -> str
+def _contains(test_name, container_list):
+    # type: (str, Iterable[Container[str]]) -> bool
+    """Returns true if test_name is in any container."""
+    for container in container_list:
+        if test_name in container:
+            return True
+    return False
+
+
+def get_new_name(base_name, *args):
+    # type: (str, *Container[str]) -> str
     """Generate a new unique name.
+
+    This method appends an index to the given basename.  Binary
+    search is used to achieve logarithmic run time.
 
     Parameters
     ----------
     base_name : str
-        the prefix of the base name.
-    used_names : Container[str]
-        a container of all the used names.
+        the base name.
+    *args : Container[str]
+        a list of containers of used names.
 
     Returns
     -------
     new_name : str
-        a new unique name.
+        the unique name.
     """
     new_name = base_name
     bin_iter = BinaryIterator(1, None)
-    while new_name in used_names:
+    while _contains(new_name, args):
         new_name = '{}_{:d}'.format(base_name, bin_iter.get_next())
-        if new_name in used_names:
+        if _contains(new_name, args):
             bin_iter.up()
         else:
             bin_iter.save_info(new_name)
             bin_iter.down()
 
-    assert bin_iter.get_last_save_info() is not None, 'bin_iter should find an unused name'
-    return bin_iter.get_last_save_info()
+    result = bin_iter.get_last_save_info()
+    assert result is not None, 'bin_iter should find an unused name'
+    return result
 
 
 def minimize_cost_binary(f,  # type: Callable[[int], float]

@@ -3,168 +3,15 @@
 """This module defines classes used to cache existing design masters
 """
 
-from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable, Iterable
+from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable
 
-import sys
-import os
+import abc
 import time
 import numbers
-import importlib
-import abc
 from collections import OrderedDict
 
-from ..io import readlines_iter, write_file, fix_string
-from .search import BinaryIterator
-
-
-def _get_unique_name(basename, *args):
-    # type: (str, *Iterable[str]) -> str
-    """Returns a unique name that's not used yet.
-
-    This method appends an index to the given basename.  Binary
-    search is used to achieve logarithmic run time.
-
-    Parameters
-    ----------
-    basename : str
-        the base name.
-    *args :
-        a list of containers of used names.
-
-    Returns
-    -------
-    new_name : str
-        the unique name.
-    """
-    new_name = basename
-    exist = False
-    for used_names in args:
-        if new_name in used_names:
-            # the original name just works
-            exist = True
-            break
-
-    if not exist:
-        return new_name
-
-    bin_iter = BinaryIterator(1, None)
-    while bin_iter.has_next():
-        cur_name = '%s_%d' % (basename, bin_iter.get_next())
-
-        exist = False
-        for used_names in args:
-            if cur_name in used_names:
-                # the original name just works
-                exist = True
-                break
-
-        if exist:
-            bin_iter.up()
-        else:
-            bin_iter.save()
-            bin_iter.down()
-
-    last_save = bin_iter.get_last_save()
-    assert last_save is not None, "No save marker defined"
-    return '%s_%d' % (basename, last_save)
-
-
-class ClassImporter(object):
-    """A class that dynamically imports Python class from a definition file.
-
-    This class is used to import design modules to enable code reuse and design collaboration.
-
-    Parameters
-    ----------
-    lib_defs : str
-        path to the design library definition file.
-    """
-    def __init__(self, lib_defs):
-        # type: (str) -> None
-        lib_defs = os.path.abspath(lib_defs)
-        if not os.path.exists(lib_defs):
-            raise Exception("design library definition file %s not found" % lib_defs)
-
-        self.lib_defs = lib_defs
-        self.libraries = {}
-        for line in readlines_iter(lib_defs):
-            line = line.strip()
-            # ignore comments and empty lines
-            if line and not line.startswith('#'):
-                lib_name, lib_path = line.split()
-                lib_path = os.path.abspath(os.path.expandvars(lib_path))
-                check_path = os.path.join(lib_path, lib_name)
-                if not os.path.exists(check_path):
-                    raise Exception('Library %s not found.' % check_path)
-                # make sure every library is on python path, so we can import it.
-                if lib_path not in sys.path:
-                    sys.path.append(lib_path)
-                self.libraries[lib_name] = lib_path
-
-    def append_library(self, lib_name, lib_path):
-        # type: (str, str) -> None
-        """Adds a new library to the library definition file.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the library.
-        lib_path : str
-            path to this library.
-        """
-        if lib_name not in self.libraries:
-            lib_path = os.path.abspath(lib_path)
-            self.libraries[lib_name] = lib_path
-            write_file(self.lib_defs, '%s %s\n' % (lib_name, lib_path), append=True)
-
-    def get_library_path(self, lib_name):
-        # type: (str) -> str
-        """Returns the location of the given library.
-
-        Parameters
-        ----------
-        lib_name : str
-            the library name.
-
-        Returns
-        -------
-        lib_path : str
-            the location of the library, or empty string if library not defined.
-        """
-        return self.libraries.get(lib_name, '')
-
-    def get_library_mapping(self):
-        # type: () -> Dict[str, str]
-        """Returns a dictionary from library name to the library path."""
-        return self.libraries
-
-    def get_class(self, lib_name, cell_name):
-        # type: (str, str) -> Any
-        """Returns the Python class with the given library and cell name.
-
-        Parameters
-        ----------
-        lib_name : str
-            design module library name.
-        cell_name : str
-            design module cell name
-
-        Returns
-        -------
-        cls : Any
-            the corresponding Python class.
-        """
-
-        if lib_name not in self.libraries:
-            raise Exception("Library %s not listed in definition "
-                            "file %s" % (lib_name, self.lib_defs))
-
-        module_name = '%s.%s' % (lib_name, cell_name)
-        module_cls = '%s__%s' % (lib_name, cell_name)
-
-        lib_package = importlib.import_module(lib_name)
-        cell_package = importlib.import_module(module_name, package=lib_package)
-        return getattr(cell_package, module_cls)
+from ..io import fix_string
+from .search import get_new_name
 
 
 class DesignMaster(abc.ABC):
@@ -211,7 +58,7 @@ class DesignMaster(abc.ABC):
         self._finalized = False
 
     def update_master_info(self):
-        self._cell_name = _get_unique_name(self.get_master_basename(), self._used_names)
+        self._cell_name = get_new_name(self.get_master_basename(), self._used_names)
         self._key = self.compute_unique_key()
 
     def populate_params(self, table, params_info, default_params, **kwargs):
@@ -385,25 +232,21 @@ class MasterDB(abc.ABC):
     Parameters
     ----------
     lib_name : str
-        the cadence library to put all generated templates in.
-    lib_defs : str
-        generator library definition file path.  If empty, then assume user supplies
-        Python class directly.
+        the library to put all generated templates in.
     name_prefix : str
         generated master name prefix.
     name_suffix : str
         generated master name suffix.
     """
 
-    def __init__(self, lib_name, lib_defs='', name_prefix='', name_suffix=''):
-        # type: (str, str, str, str) -> None
+    def __init__(self, lib_name, name_prefix='', name_suffix=''):
+        # type: (str, str, str) -> None
 
         self._lib_name = lib_name
         self._name_prefix = name_prefix
         self._name_suffix = name_suffix
 
         self._used_cell_names = set()  # type: Set[str]
-        self._importer = ClassImporter(lib_defs) if os.path.isfile(lib_defs) else None
         self._key_lookup = {}  # type: Dict[Any, Any]
         self._master_lookup = {}  # type: Dict[Any, DesignMaster]
         self._rename_dict = {}  # type: Dict[str, str]
@@ -513,73 +356,9 @@ class MasterDB(abc.ABC):
         cell_name = self._rename_dict.get(cell_name, cell_name)
         return '%s%s%s' % (self._name_prefix, cell_name, self._name_suffix)
 
-    def append_library(self, lib_name, lib_path):
-        # type: (str, str) -> None
-        """Adds a new library to the library definition file.
-
-        Parameters
-        ----------
-        lib_name : str
-            name of the library.
-        lib_path : str
-            path to this library.
-        """
-        if self._importer is None:
-            raise ValueError('Cannot add generator library; library definition file not specified.')
-
-        self._importer.append_library(lib_name, lib_path)
-
-    def get_library_path(self, lib_name):
-        # type: (str) -> str
-        """Returns the location of the given library.
-
-        Parameters
-        ----------
-        lib_name : str
-            the library name.
-
-        Returns
-        -------
-        lib_path : str
-            the location of the library, or empty string if library not defined.
-        """
-        if self._importer is None:
-            raise ValueError('Cannot get generator library path; '
-                             'library definition file not specified.')
-
-        return self._importer.get_library_path(lib_name)
-
-    def get_library_mapping(self):
-        # type: () -> Dict[str, str]
-        """Returns a dictionary from library name to the library path."""
-        return self._importer.get_library_mapping()
-
-    def get_generator_class(self, lib_name, cell_name):
-        # type: (str, str) -> Any
-        """Returns the corresponding generator Python class.
-
-        Parameters
-        ----------
-        lib_name : str
-            template library name.
-        cell_name : str
-            generator cell name
-
-        Returns
-        -------
-        temp_cls : Any
-            the corresponding Python class.
-        """
-        if self._importer is None:
-            raise ValueError('Cannot get generator class; library definition file not specified.')
-
-        return self._importer.get_class(lib_name, cell_name)
-
     def new_master(self,  # type: MasterDB
-                   lib_name='',  # type: str
-                   cell_name='',  # type: str
+                   gen_cls,  # type: Type[MasterType]
                    params=None,  # type: Optional[Dict[str, Any]]
-                   gen_cls=None,  # type: Optional[Type[MasterType]]
                    debug=False,  # type: bool
                    **kwargs):
         # type: (...) -> MasterType
@@ -587,14 +366,10 @@ class MasterDB(abc.ABC):
 
         Parameters
         ----------
-        lib_name : str
-            generator library name.
-        cell_name : str
-            generator name
+        gen_cls : Type[MasterType]
+            the generator class to instantiate.  Overrides lib_name and cell_name.
         params : Optional[Dict[str, Any]]
             the parameter dictionary.
-        gen_cls : Optional[Type[MasterType]]
-            the generator class to instantiate.  Overrides lib_name and cell_name.
         debug : bool
             True to print debug messages.
         **kwargs :
@@ -607,9 +382,6 @@ class MasterDB(abc.ABC):
         """
         if params is None:
             params = {}
-
-        if gen_cls is None:
-            gen_cls = self.get_generator_class(lib_name, cell_name)
 
         master = self.create_master_instance(gen_cls, self._lib_name, params,
                                              self._used_cell_names, **kwargs)
@@ -719,7 +491,7 @@ class MasterDB(abc.ABC):
 
                 if name in self._used_cell_names:
                     # name is an already used name, so we need to rename it to something else
-                    name2 = _get_unique_name(name, self._used_cell_names, reverse_rename)
+                    name2 = get_new_name(name, self._used_cell_names, reverse_rename)
                     rename[name] = name2
                     reverse_rename[name2] = name
 
