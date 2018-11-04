@@ -30,7 +30,7 @@ setup(
     ],
     extras_require={
         'mdao': ['openmdao']
-    }
+    },
     tests_require=[
         'openmdao',
         'pytest',
