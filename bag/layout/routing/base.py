@@ -615,7 +615,7 @@ class TrackManager(object):
                  grid,  # type: RoutingGrid
                  tr_widths,  # type: Dict[str, Dict[int, int]]
                  tr_spaces,  # type: Dict[Union[str, Tuple[str, str]], Dict[int, Union[float, int]]]
-                 **kwargs,
+                 **kwargs
                  ):
         # type: (...) -> None
         half_space = kwargs.get('half_space', False)
