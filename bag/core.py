@@ -16,7 +16,6 @@ import yaml
 
 from .interface import ZMQDealer
 from .interface.database import DbAccess
-from .design import ModuleDB
 from .layout.routing import RoutingGrid
 from .layout.template import TemplateDB
 from .layout.core import DummyTechInfo
@@ -33,6 +32,7 @@ if TYPE_CHECKING:
     from .layout.template import TemplateBase
     from .layout.core import TechInfo
     from .design.module import Module
+    from .design.database import ModuleDB
 
     ModuleType = TypeVar('ModuleType', bound=Module)
     TemplateType = TypeVar('TemplateType', bound=TemplateBase)
@@ -499,22 +499,19 @@ class BagProject(object):
         # create TechInfo instance
         self.tech_info = create_tech_info(bag_config_path=bag_config_path)
 
-        # create design module database.
-        try:
-            lib_defs_file = _get_config_file_abspath(self.bag_config['lib_defs'])
-        except ValueError:
-            lib_defs_file = ''
-        sch_exc_libs = self.bag_config['database']['schematic']['exclude_libraries']
-        self.dsn_db = ModuleDB(lib_defs_file, self.tech_info, sch_exc_libs, prj=self)
-
         if port is not None:
             # make DbAccess instance.
             dealer = ZMQDealer(port, **dealer_kwargs)
         else:
             dealer = None
 
+        # create database interface object
+        try:
+            lib_defs_file = _get_config_file_abspath(self.bag_config['lib_defs'])
+        except ValueError:
+            lib_defs_file = ''
         db_cls = _import_class_from_str(self.bag_config['database']['class'])
-        self.impl_db = db_cls(dealer, bag_tmp_dir, self.bag_config['database'])
+        self.impl_db = db_cls(dealer, bag_tmp_dir, self.bag_config['database'], lib_defs_file)
         self._default_lib_path = self.impl_db.default_lib_path
 
         # make SimAccess instance.
@@ -539,26 +536,35 @@ class BagProject(object):
             self.sim.close()
             self.sim = None
 
-    def import_sch_cellview(self, lib_name, cell_name):
-        # type: (str, str) -> None
+    def import_sch_cellview(self, lib_name, cell_name, view_name='schematic'):
+        # type: (str, str, str) -> None
         """Import the given schematic and symbol template into Python.
 
         This import process is done recursively.
-        """
-        new_lib_path = self.bag_config['new_lib_path']
-        self.impl_db.import_sch_cellview(lib_name, cell_name, self.dsn_db, new_lib_path)
 
-    def import_design_library(self, lib_name):
-        # type: (str) -> None
+        Parameters
+        ----------
+        lib_name : str
+            library name.
+        cell_name : str
+            cell name.
+        view_name : str
+            view name.
+        """
+        self.impl_db.import_sch_cellview(lib_name, cell_name, view_name)
+
+    def import_design_library(self, lib_name, view_name='schematic'):
+        # type: (str, str) -> None
         """Import all design templates in the given library from CAD database.
 
         Parameters
         ----------
         lib_name : str
             name of the library.
+        view_name : str
+            the view name to import from the library.
         """
-        new_lib_path = self.bag_config['new_lib_path']
-        self.impl_db.import_design_library(lib_name, self.dsn_db, new_lib_path)
+        self.impl_db.import_design_library(lib_name, view_name)
 
     def get_cells_in_library(self, lib_name):
         # type: (str) -> Sequence[str]
@@ -579,7 +585,7 @@ class BagProject(object):
         return self.impl_db.get_cells_in_library(lib_name)
 
     def make_template_db(self, impl_lib, grid_specs, **kwargs):
-        # type: (str, Dict[str, Any], Any) -> TemplateDB
+        # type: (str, Dict[str, Any], **Any) -> TemplateDB
         """Create and return a new TemplateDB instance.
 
         Parameters
@@ -588,9 +594,9 @@ class BagProject(object):
             the library name to put generated layouts in.
         grid_specs : Dict[str, Any]
             the routing grid specification dictionary.
+        **kwargs : Any
+            optional TemplateDB parameters.
         """
-        gds_lay_file = kwargs.get('gds_lay_file', '')
-
         layers = grid_specs['layers']
         widths = grid_specs['widths']
         spaces = grid_specs['spaces']
@@ -599,13 +605,27 @@ class BagProject(object):
 
         routing_grid = RoutingGrid(self.tech_info, layers, spaces, widths, bot_dir,
                                    width_override=width_override)
-        tdb = TemplateDB(routing_grid, impl_lib, prj=self, gds_lay_file=gds_lay_file)
+        tdb = TemplateDB(routing_grid, impl_lib, prj=self, **kwargs)
 
         return tdb
+
+    def make_module_db(self, impl_lib, **kwargs):
+        # type: (str, **Any) -> ModuleDB
+        """Create and return a new ModuleDB instance.
+
+        Parameters
+        ----------
+        impl_lib : str
+            the library name to put generated layouts in.
+        **kwargs : Any
+            optional ModuleDB parameters.
+        """
+        return ModuleDB(self.tech_info, impl_lib, prj=self, **kwargs)
 
     def generate_cell(self,  # type: BagProject
                       specs,  # type: Dict[str, Any]
                       temp_cls,  # type: Type[TemplateType]
+                      sch_cls=None,  # type: Optional[Type[ModuleType]]
                       gen_lay=True,  # type: bool
                       gen_sch=False,  # type: bool
                       run_lvs=False,  # type: bool
@@ -622,7 +642,9 @@ class BagProject(object):
         specs : Dict[str, Any]
             the specification dictionary.
         temp_cls : Type[TemplateType]
-            the TemplateBase subclass to instantiate.
+            the layout generator class.
+        sch_cls : Optional[Type[ModuleType]]
+            the schematic generator class.
         gen_lay : bool
             True to generate layout.
         gen_sch : bool
@@ -648,27 +670,27 @@ class BagProject(object):
 
         impl_lib = specs['impl_lib']
         impl_cell = specs['impl_cell']
-        sch_lib = specs['sch_lib']
-        sch_cell = specs['sch_cell']
         grid_specs = specs['routing_grid']
         params = specs['params']
         gds_lay_file = specs.get('gds_lay_file', '')
+        gen_sch = gen_sch and (sch_cls is not None)
 
         if gen_lay or gen_sch:
-            temp_db = self.make_template_db(impl_lib, grid_specs, gds_lay_file=gds_lay_file)
+            temp_db = self.make_template_db(impl_lib, grid_specs, gds_lay_file=gds_lay_file,
+                                            name_prefix=prefix, name_suffix=suffix)
 
             name_list = [impl_cell]
             print('computing layout...')
             if profile_fname:
                 profiler = cProfile.Profile()
-                profiler.runcall(temp_db.new_template, params=params, temp_cls=temp_cls,
+                profiler.runcall(temp_db.new_template, temp_cls=temp_cls, params=params,
                                  debug=False)
                 profiler.dump_stats(profile_fname)
                 result = pstats.Stats(profile_fname).strip_dirs()
             else:
                 result = None
 
-            temp = temp_db.new_template(params=params, temp_cls=temp_cls, debug=debug)
+            temp = temp_db.new_template(temp_cls, params=params, debug=debug)
             print('computation done.')
             temp_list = [temp]
 
@@ -678,12 +700,12 @@ class BagProject(object):
                 print('layout done.')
 
             if gen_sch:
-                dsn = self.create_design_module(lib_name=sch_lib, cell_name=sch_cell)
+                module_db = self.make_module_db(impl_lib, name_prefix=prefix, name_suffix=suffix)
                 print('computing schematic...')
-                dsn.design(**temp.sch_params)
+                dsn = module_db.new_schematic(sch_cls, params=params, debug=debug)
+                print('computation done.')
                 print('creating schematic...')
-                dsn.implement_design(impl_lib, top_cell_name=impl_cell, prefix=prefix,
-                                     suffix=suffix)
+                module_db.batch_schematic(self, [dsn], [impl_cell], debug=debug)
                 print('schematic done.')
         else:
             result = None
@@ -720,32 +742,6 @@ class BagProject(object):
             directory to create the library in.  If Empty, use default location.
         """
         return self.impl_db.create_library(lib_name, lib_path=lib_path)
-
-    # noinspection PyUnusedLocal
-    def create_design_module(self, lib_name, cell_name, **kwargs):
-        # type: (str, str, **Any) -> pybag.DesignInstance
-        """Create a new top level design module for the given schematic template
-
-        Parameters
-        ----------
-        lib_name : str
-            the library name.
-        cell_name : str
-            the cell name.
-        **kwargs : Any
-            optional parameters.
-
-        Returns
-        -------
-        dsn : pybag.DesignInstance
-            a configurable design instance of the given schematic generator.
-        """
-        return pybag.DesignInstance(self.dsn_db, lib_name, cell_name)
-
-    def clear_schematic_database(self):
-        # type: () -> None
-        """Reset schematic database."""
-        self.dsn_db.clear()
 
     def instantiate_schematic(self, lib_name, content_list, lib_path=''):
         # type: (str, Sequence[Any], str) -> None
@@ -793,41 +789,48 @@ class BagProject(object):
         else:
             raise NotImplementedError('Hierarchical netlist not implemented yet')
 
-    def batch_schematic(self,  # type: BagProject
-                        lib_name,  # type: str
-                        sch_inst_list,  # type: Sequence[pybag.DesignInstance]
-                        name_list=None,  # type: Optional[Sequence[Optional[str]]]
-                        prefix='',  # type: str
-                        suffix='',  # type: str
-                        debug=False,  # type: bool
-                        rename_dict=None,  # type: Optional[Dict[str, str]]
-                        ):
-        # type: (...) -> None
-        """create all the given schematics in CAD database.
+    def instantiate_layout_pcell(self, lib_name, cell_name, inst_lib, inst_cell, params,
+                                 pin_mapping=None, view_name='layout'):
+        # type: (str, str, str, str, Dict[str, Any], Optional[Dict[str, str]], str) -> None
+        """Create a layout cell with a single pcell instance.
 
         Parameters
         ----------
         lib_name : str
-            name of the new library to put the schematic instances.
-        sch_inst_list : Sequence[pybag.DesignInstance]
-            list of DesignInstance objects.
-        name_list : Optional[Sequence[Optional[str]]]
-            list of master cell names.  If not given, default names will be used.
-        prefix : str
-            prefix to add to cell names.
-        suffix : str
-            suffix to add to cell names.
-        debug : bool
-            True to print debugging messages
-        rename_dict : Optional[Dict[str, str]]
-            optional master cell renaming dictionary.
+            layout library name.
+        cell_name : str
+            layout cell name.
+        inst_lib : str
+            pcell library name.
+        inst_cell : str
+            pcell cell name.
+        params : Dict[str, Any]
+            the parameter dictionary.
+        pin_mapping: Optional[Dict[str, str]]
+            the pin renaming dictionary.
+        view_name : str
+            layout view name, default is "layout".
         """
-        master_list = [inst.master for inst in sch_inst_list]
+        pin_mapping = pin_mapping or {}
+        self.impl_db.instantiate_layout_pcell(lib_name, cell_name, view_name,
+                                              inst_lib, inst_cell, params, pin_mapping)
 
-        self.dsn_db.cell_prefix = prefix
-        self.dsn_db.cell_suffix = suffix
-        self.dsn_db.instantiate_masters(master_list, name_list=name_list, lib_name=lib_name,
-                                        debug=debug, rename_dict=rename_dict)
+    def instantiate_layout(self, lib_name, content_list, lib_path='', view='layout'):
+        # type: (str, Sequence[Any], str, str) -> None
+        """Create a batch of layouts.
+
+        Parameters
+        ----------
+        lib_name : str
+            layout library name.
+        content_list : Sequence[Any]
+            list of layouts to create
+        lib_path : str
+            the path to create the library in.  If empty, use default location.
+        view : str
+            layout view name.
+        """
+        self.impl_db.instantiate_layout(lib_name, content_list, lib_path=lib_path, view=view)
 
     def configure_testbench(self, tb_lib, tb_cell):
         # type: (str, str) -> Testbench
@@ -876,49 +879,6 @@ class BagProject(object):
         cur_envs, all_envs, params, outputs = self.impl_db.get_testbench_info(tb_lib, tb_cell)
         return Testbench(self.sim, self.impl_db, tb_lib, tb_cell, params, all_envs,
                          cur_envs, outputs)
-
-    def instantiate_layout_pcell(self, lib_name, cell_name, inst_lib, inst_cell, params,
-                                 pin_mapping=None, view_name='layout'):
-        # type: (str, str, str, str, Dict[str, Any], Optional[Dict[str, str]], str) -> None
-        """Create a layout cell with a single pcell instance.
-
-        Parameters
-        ----------
-        lib_name : str
-            layout library name.
-        cell_name : str
-            layout cell name.
-        inst_lib : str
-            pcell library name.
-        inst_cell : str
-            pcell cell name.
-        params : Dict[str, Any]
-            the parameter dictionary.
-        pin_mapping: Optional[Dict[str, str]]
-            the pin renaming dictionary.
-        view_name : str
-            layout view name, default is "layout".
-        """
-        pin_mapping = pin_mapping or {}
-        self.impl_db.instantiate_layout_pcell(lib_name, cell_name, view_name,
-                                              inst_lib, inst_cell, params, pin_mapping)
-
-    def instantiate_layout(self, lib_name, content_list, lib_path='', view='layout'):
-        # type: (str, Sequence[Any], str, str) -> None
-        """Create a batch of layouts.
-
-        Parameters
-        ----------
-        lib_name : str
-            layout library name.
-        content_list : Sequence[Any]
-            list of layouts to create
-        lib_path : str
-            the path to create the library in.  If empty, use default location.
-        view : str
-            layout view name.
-        """
-        self.impl_db.instantiate_layout(lib_name, content_list, lib_path=lib_path, view=view)
 
     def release_write_locks(self, lib_name, cell_view_list):
         # type: (str, Sequence[Tuple[str, str]]) -> None

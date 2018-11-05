@@ -98,13 +98,13 @@ class ModuleDB(MasterDB):
         """the :class:`~bag.layout.core.TechInfo` instance."""
         return self._tech_info
 
-    def new_schematic(self, gen_cls, params=None, **kwargs):
+    def new_schematic(self, sch_cls, params=None, **kwargs):
         # type: (Type[ModuleType], Optional[Dict[str, Any]], **Any) -> ModuleType
         """Create a new template.
 
         Parameters
         ----------
-        gen_cls : Type[ModuleType]
+        sch_cls : Type[ModuleType]
             the generator class.
         params : Optional[Dict[str, Any]]
             the parameter dictionary.
@@ -116,7 +116,7 @@ class ModuleDB(MasterDB):
         sch : ModuleType
             the new schematic instance.
         """
-        return self.new_master(gen_cls, params=params, **kwargs)
+        return self.new_master(sch_cls, params=params, **kwargs)
 
     def instantiate_schematic(self, prj, design, top_cell_name=None, debug=False, rename_dict=None):
         # type: (BagProject, Module, Optional[str], bool, Optional[Dict[str, str]]) -> None

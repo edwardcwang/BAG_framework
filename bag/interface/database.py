@@ -18,7 +18,6 @@ from ..verification import make_checker
 if TYPE_CHECKING:
     from .zmqwrapper import ZMQDealer
     from ..verification import Checker
-    from ..design.module import ModuleDB
 
 
 def dict_to_item_list(table):
