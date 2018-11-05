@@ -74,17 +74,17 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
     @property
     def inputs(self):
-        # type: () -> Set[str]
+        # type: () -> List[str]
         return self._inputs
 
     @property
     def outputs(self):
-        # type: () -> Set[str]
+        # type: () -> List[str]
         return self._outputs
 
     @property
     def inouts(self):
-        # type: () -> Set[str]
+        # type: () -> List[str]
         return self._inouts
 
     @abc.abstractmethod
@@ -412,7 +412,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         if inst is None:
             raise ValueError('Cannot find instance {}'.format(inst_name))
 
-        inst.update_connection(term_name, net_name)
+        inst.update_connection(inst_name, term_name, net_name)
 
     def array_instance(self, inst_name, inst_name_list, term_list=None, dx=0, dy=0):
         # type: (str, List[str], Optional[List[Dict[str, str]]], int, int) -> None
@@ -572,10 +572,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 d_name = d_net if d_net else sup_name
                 inst = self.instances[name]
                 inst.change_generator('BAG_prim', cell_name)
-                inst.update_connection('G', sup_name)
-                inst.update_connection('B', sup_name)
-                inst.update_connection('D', d_name)
-                inst.update_connection('S', s_name)
+                inst.update_connection(name, 'G', sup_name)
+                inst.update_connection(name, 'B', sup_name)
+                inst.update_connection(name, 'D', d_name)
+                inst.update_connection(name, 'S', s_name)
                 inst.design(w=w, l=lch, nf=fg, intent=th)
 
 

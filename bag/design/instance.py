@@ -191,12 +191,6 @@ class SchInstance(DesignInstance):
         return self._ptr.cell_name
 
     @property
-    def name(self):
-        # type: () -> str
-        """str: the name of this instance in the parent schematic."""
-        return self._ptr.name
-
-    @property
     def width(self):
         # type: () -> int
         """int: the instance symbol width."""
@@ -271,18 +265,20 @@ class SchInstance(DesignInstance):
         """
         self._ptr.set_param(key, val)
 
-    def update_connection(self, term_name, net_name):
-        # type: (str, str) -> None
+    def update_connection(self, inst_name, term_name, net_name):
+        # type: (str, str, str) -> None
         """Update connections of this schematic instance.
 
         Parameters
         ----------
+        inst_name : str
+            The instance name.
         term_name : str
             The terminal (in other words, port) of the instance.
         net_name : str
             The net to connect the terminal to.
         """
-        self._ptr.update_connection(term_name, net_name)
+        self._ptr.update_connection(inst_name, term_name, net_name)
 
     def get_master_lib_name(self, impl_lib):
         # type: (str) -> str
