@@ -13,22 +13,21 @@ from .database import DbAccess
 from .skill import handle_reply
 
 try:
-    from pybagoa.oa import PyOADatabase
+    from pybag.oa import PyOADatabase
 except ImportError:
-    raise ImportError('Cannot import pybagoa library.  Do you have the right shared library file?')
+    raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
 if TYPE_CHECKING:
     from .zmqwrapper import ZMQDealer
-    from ..design.module import ModuleDB
 
 
 class OAInterface(DbAccess):
     """OpenAccess interface between bag and Virtuoso.
     """
 
-    def __init__(self, dealer, tmp_dir, db_config):
-        # type: (ZMQDealer, str, Dict[str, Any]) -> None
-        DbAccess.__init__(self, dealer, tmp_dir, db_config)
+    def __init__(self, dealer, tmp_dir, db_config, lib_defs_file):
+        # type: (ZMQDealer, str, Dict[str, Any], str) -> None
+        DbAccess.__init__(self, dealer, tmp_dir, db_config, lib_defs_file)
         self._rcx_jobs = {}
 
         if 'lib_def_path' in db_config:
@@ -38,7 +37,14 @@ class OAInterface(DbAccess):
         else:
             cds_lib_path = os.path.abspath('./cds.lib')
 
-        self._oa_db = PyOADatabase(cds_lib_path, bag.io.get_encoding())
+        self._oa_db = PyOADatabase(cds_lib_path)
+        for lib_name in db_config['schematic']['exclude_libraries']:
+            self._oa_db.add_primitive_lib(lib_name)
+
+    def add_sch_library(self, lib_name):
+        """Override; register yaml path in PyOADatabase too."""
+        lib_path = DbAccess.add_sch_library(self, lib_name)
+        self._oa_db.add_yaml_path(lib_name, os.path.join(lib_path, 'netlist_info'))
 
     def _eval_skill(self, expr, input_files=None, out_file=None):
         # type: (str, Optional[Dict[str, Any]], Optional[str]) -> str
@@ -234,34 +240,31 @@ class OAInterface(DbAccess):
         cmd = 'schInstallHDL("%s" "%s" "verilog" "%s" t)' % (lib_name, cell_name, verilog_file)
         self._eval_skill(cmd)
 
-    def import_sch_cellview(self, lib_name, cell_name, dsn_db, new_lib_path):
-        # type: (str, str, ModuleDB, str) -> None
+    def import_sch_cellview(self, lib_name, cell_name, view_name):
+        # type: (str, str, str) -> None
+        if lib_name not in self.lib_path_map:
+            self.add_sch_library(lib_name)
 
         # read schematic information
-        cell_list = self._oa_db.read_sch_recursive(lib_name, cell_name, 'schematic', new_lib_path,
-                                                   dsn_db.get_library_mapping(), self.exc_libs)
+        cell_list = self._oa_db.read_sch_recursive(lib_name, cell_name, view_name)
 
         # create python templates
-        self._create_sch_templates(cell_list, dsn_db, new_lib_path)
+        self._create_sch_templates(cell_list)
 
-    def import_design_library(self, lib_name, dsn_db, new_lib_path):
-        # type: (str, ModuleDB, str) -> None
+    def import_design_library(self, lib_name, view_name):
+        # type: (str, str) -> None
+        if lib_name not in self.lib_path_map:
+            self.add_sch_library(lib_name)
 
         # read schematic information
-        cell_list = self._oa_db.read_library(lib_name, 'schematic', new_lib_path,
-                                             dsn_db.get_library_mapping(), self.exc_libs)
+        cell_list = self._oa_db.read_library(lib_name, view_name)
 
         # create python templates
-        self._create_sch_templates(cell_list, dsn_db, new_lib_path)
+        self._create_sch_templates(cell_list)
 
-    def _create_sch_templates(self, cell_list, dsn_db, new_lib_path):
+    def _create_sch_templates(self, cell_list):
         for lib, cell in cell_list:
-            root_path = dsn_db.get_library_path(lib)
-            if not root_path:
-                root_path = new_lib_path
-                dsn_db.append_library(lib, new_lib_path)
-
-            python_file = os.path.join(root_path, lib, '%s.py' % cell)
+            python_file = os.path.join(self.lib_path_map[lib], cell + '.py')
             if not os.path.exists(python_file):
                 content = self.get_python_template(lib, cell,
                                                    self.db_config.get('prim_table', {}))

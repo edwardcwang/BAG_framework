@@ -108,9 +108,10 @@ class SkillInterface(DbAccess):
     an external Virtuoso process, then get the result from it.
     """
 
-    def __init__(self, dealer, tmp_dir, db_config):
-        # type: (ZMQDealer, str, Dict[str, Any]) -> None
-        DbAccess.__init__(self, dealer, tmp_dir, db_config)
+    def __init__(self, dealer, tmp_dir, db_config, lib_defs_file):
+        # type: (ZMQDealer, str, Dict[str, Any], str) -> None
+        DbAccess.__init__(self, dealer, tmp_dir, db_config, lib_defs_file)
+        self.exc_libs = set(db_config['schematic']['exclude_libraries'])
         self._rcx_jobs = {}
 
     def _eval_skill(self, expr, input_files=None, out_file=None):
@@ -436,18 +437,18 @@ class SkillInterface(DbAccess):
         cmd = 'schInstallHDL("%s" "%s" "verilog" "%s" t)' % (lib_name, cell_name, verilog_file)
         self._eval_skill(cmd)
 
-    def import_sch_cellview(self, lib_name, cell_name, dsn_db, new_lib_path):
-        # type: (str, str, ModuleDB, str) -> None
-        self._import_design(lib_name, cell_name, set(), dsn_db, new_lib_path)
+    def import_sch_cellview(self, lib_name, cell_name, view_name):
+        # type: (str, str, str) -> None
+        self._import_design(lib_name, cell_name, view_name, set())
 
-    def import_design_library(self, lib_name, dsn_db, new_lib_path):
-        # type: (str, ModuleDB, str) -> None
+    def import_design_library(self, lib_name, view_name):
+        # type: (str, str) -> None
         imported_cells = set()
         for cell_name in self.get_cells_in_library(lib_name):
-            self._import_design(lib_name, cell_name, imported_cells, dsn_db, new_lib_path)
+            self._import_design(lib_name, cell_name, view_name, imported_cells)
 
-    def _import_design(self, lib_name, cell_name, imported_cells, dsn_db, new_lib_path):
-        # type: (str, str, Set[str], ModuleDB, str) -> None
+    def _import_design(self, lib_name, cell_name, view_name, imported_cells):
+        # type: (str, str, str, Set[str]) -> None
         """Recursive helper for import_design_library.
         """
         # check if we already imported this schematic

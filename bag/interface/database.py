@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, List, Dict, Tuple, Optional, Sequence, Any, Un
 
 import os
 import abc
+import importlib
 import traceback
 
 from jinja2 import Template
@@ -72,16 +73,17 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         temporary file directory for DbAccess.
     db_config : Dict[str, Any]
         the database configuration dictionary.
+    lib_defs_file : str
+        name of the file that contains generator library names.
     """
 
-    def __init__(self, dealer, tmp_dir, db_config):
-        # type: (ZMQDealer, str, Dict[str, Any]) -> None
+    def __init__(self, dealer, tmp_dir, db_config, lib_defs_file):
+        # type: (ZMQDealer, str, Dict[str, Any], str) -> None
         """Create a new DbAccess object.
         """
         self.handler = dealer
         self.tmp_dir = bag.io.make_temp_dir('dbTmp', parent_dir=tmp_dir)
         self.db_config = db_config
-        self.exc_libs = set(db_config['schematic']['exclude_libraries'])
         # noinspection PyBroadException
         try:
             check_kwargs = self.db_config['checker'].copy()
@@ -95,6 +97,13 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
         # set default lib path
         self._default_lib_path = self.get_default_lib_path(db_config)
+
+        # get yaml path mapping
+        self.lib_path_map = {}
+        with bag.io.open_file(lib_defs_file, 'r') as f:
+            for line in f:
+                lib_name = line.strip()
+                self.add_sch_library(lib_name)
 
     @classmethod
     def get_default_lib_path(cls, db_config):
@@ -442,8 +451,8 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def import_sch_cellview(self, lib_name, cell_name, dsn_db, new_lib_path):
-        # type: (str, str, ModuleDB, str) -> None
+    def import_sch_cellview(self, lib_name, cell_name, view_name):
+        # type: (str, str, str) -> None
         """Recursively import the given schematic and symbol cellview.
 
         Parameters
@@ -452,26 +461,22 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             library name.
         cell_name : str
             cell name.
-        dsn_db : ModuleDB
-            the design database object.
-        new_lib_path: str
-            location to import new libraries to.
+        view_name : str
+            view name.
         """
         pass
 
     @abc.abstractmethod
-    def import_design_library(self, lib_name, dsn_db, new_lib_path):
-        # type: (str, ModuleDB, str) -> None
+    def import_design_library(self, lib_name, view_name):
+        # type: (str, str) -> None
         """Import all design templates in the given library from CAD database.
 
         Parameters
         ----------
         lib_name : str
             name of the library.
-        dsn_db : ModuleDB
-            the design database object.
-        new_lib_path: str
-            location to import new libraries to.
+        view_name : str
+            the view name to import from the library.
         """
         pass
 
@@ -606,3 +611,13 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
         return await self.checker.async_export_layout(lib_name, cell_name, out_file,
                                                       *args, **kwargs)
+
+    def add_sch_library(self, lib_name):
+        # type: (str) -> str
+        try:
+            lib_module = importlib.import_module(lib_name + '.schematic')
+        except ImportError:
+            raise ImportError("Cannot find python package {}.schematic, "
+                              "make sure it's on your PYTHONPATH".format(lib_name))
+        self.lib_path_map[lib_name] = lib_module.__path__
+        return lib_module.__path__

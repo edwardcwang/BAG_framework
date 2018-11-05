@@ -3,6 +3,8 @@
 """This module handles file related IO.
 """
 
+from typing import TextIO
+
 import os
 import tempfile
 import time
@@ -15,20 +17,21 @@ from .common import bag_encoding, bag_codec_error
 
 
 def open_file(fname, mode):
+    # type: (str, str) -> TextIO
     """Opens a file with the correct encoding interface.
 
     Use this method if you need to have a file handle.
 
     Parameters
     ----------
-    fname : string
+    fname : str
         the file name.
-    mode : string
+    mode : str
         the mode, either 'r', 'w', or 'a'.
 
     Returns
     -------
-    file_obj : file
+    file_obj : TextIO
         a file objects that reads/writes string with the BAG system encoding.
     """
     if mode != 'r' and mode != 'w' and mode != 'a':

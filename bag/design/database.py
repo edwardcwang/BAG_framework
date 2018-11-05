@@ -3,7 +3,9 @@
 """This module defines the design database class.
 """
 
-from typing import TYPE_CHECKING, List, Dict, Optional, Any, Type, Set, Sequence
+from typing import TYPE_CHECKING, TypeVar, Dict, Optional, Any, Type, Set, Sequence
+
+import time
 
 from ..util.cache import MasterDB
 
@@ -11,6 +13,8 @@ if TYPE_CHECKING:
     from ..core import BagProject
     from ..layout.core import TechInfo
     from .module import Module
+
+    ModuleType = TypeVar('ModuleType', bound=Module)
 
 
 class ModuleDB(MasterDB):
@@ -21,42 +25,39 @@ class ModuleDB(MasterDB):
 
     Parameters
     ----------
-    lib_defs : str
-        path to the design library definition file.
     tech_info : TechInfo
         the TechInfo instance.
-    sch_exc_libs : List[str]
-        list of libraries that are excluded from import.
+    lib_name : str
+        the cadence library to put all generated templates in.
     prj : Optional[BagProject]
         the BagProject instance.
     name_prefix : str
-        generated layout name prefix.
+        generated schematic name prefix.
     name_suffix : str
-        generated layout name suffix.
-    lib_path : str
-        path to create generated library in.
+        generated schematic name suffix.
+    **kwargs :
+        additional arguments.
     """
 
-    def __init__(self, lib_defs, tech_info, sch_exc_libs, prj=None, name_prefix='',
-                 name_suffix='', lib_path=''):
-        # type: (str, TechInfo, List[str], Optional[BagProject], str, str, str) -> None
-        MasterDB.__init__(self, '', lib_defs=lib_defs, name_prefix=name_prefix,
+    # noinspection PyUnusedLocal
+    def __init__(self, tech_info, lib_name, prj=None, name_prefix='',
+                 name_suffix='', **kwargs):
+        # type: (TechInfo, str, Optional[BagProject], str, str, **Any) -> None
+        MasterDB.__init__(self, lib_name, name_prefix=name_prefix,
                           name_suffix=name_suffix)
 
         self._prj = prj
         self._tech_info = tech_info
-        self._exc_libs = set(sch_exc_libs)
-        self.lib_path = lib_path
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[Module], str, Dict[str, Any], Set[str], **Any) -> Module
+        # type: (Type[ModuleType], str, Dict[str, Any], Set[str], **Any) -> ModuleType
         """Create a new non-finalized master instance.
 
         This instance is used to determine if we created this instance before.
 
         Parameters
         ----------
-        gen_cls : Type[Module]
+        gen_cls : Type[ModuleType]
             the generator Python class.
         lib_name : str
             generated instance library name.
@@ -69,27 +70,27 @@ class ModuleDB(MasterDB):
 
         Returns
         -------
-        master : Module
+        master : ModuleType
             the non-finalized generated instance.
         """
-        kwargs = kwargs.copy()
-        kwargs['lib_name'] = lib_name
-        kwargs['params'] = params
-        kwargs['used_names'] = used_cell_names
-        # noinspection PyTypeChecker
-        return gen_cls(self, **kwargs)
+        return gen_cls(self, lib_name, params, used_cell_names, **kwargs)
 
     def create_masters_in_db(self, lib_name, content_list, debug=False, output='', **kwargs):
         # type: (str, Sequence[Any], bool, str, Any) -> None
         if self._prj is None:
             raise ValueError('BagProject is not defined.')
 
+        start = time.time()
         if output == 'schematic':
-            self._prj.instantiate_schematic(lib_name, content_list, lib_path=self.lib_path)
+            self._prj.instantiate_schematic(lib_name, content_list)
         elif output == 'netlist':
             self._prj.instantiate_netlist(lib_name, content_list, **kwargs)
         else:
             raise ValueError('Unsupported output type: {}'.format(output))
+        end = time.time()
+
+        if debug:
+            print('layout instantiation took %.4g seconds' % (end - start))
 
     @property
     def tech_info(self):
@@ -97,18 +98,71 @@ class ModuleDB(MasterDB):
         """the :class:`~bag.layout.core.TechInfo` instance."""
         return self._tech_info
 
-    def is_lib_excluded(self, lib_name):
-        # type: (str) -> bool
-        """Returns true if the given schematic library does not contain generators.
+    def new_schematic(self, gen_cls, params=None, **kwargs):
+        # type: (Type[ModuleType], Optional[Dict[str, Any]], **Any) -> ModuleType
+        """Create a new template.
 
         Parameters
         ----------
-        lib_name : str
-            library name
+        gen_cls : Type[ModuleType]
+            the generator class.
+        params : Optional[Dict[str, Any]]
+            the parameter dictionary.
+        **kwargs : Any
+            optional template parameters.
 
         Returns
         -------
-        is_excluded : bool
-            True if given library is excluded.
+        sch : ModuleType
+            the new schematic instance.
         """
-        return lib_name in self._exc_libs
+        return self.new_master(gen_cls, params=params, **kwargs)
+
+    def instantiate_schematic(self, prj, design, top_cell_name=None, debug=False, rename_dict=None):
+        # type: (BagProject, Module, Optional[str], bool, Optional[Dict[str, str]]) -> None
+        """Instantiate the layout of the given :class:`~bag.layout.template.TemplateBase`.
+
+        Parameters
+        ----------
+        prj : BagProject
+            the BagProject instance.
+        design : Module
+            the schematic to instantiate.
+        top_cell_name : Optional[str]
+            name of the top level cell.  If None, a default name is used.
+        debug : bool
+            True to print debugging messages
+        rename_dict : Optional[Dict[str, str]]
+            optional master cell renaming dictionary.
+        """
+        self.batch_schematic(prj, [design], [top_cell_name], debug=debug, rename_dict=rename_dict)
+
+    def batch_schematic(self,
+                        prj,  # type: BagProject
+                        design_list,  # type: Sequence[Module]
+                        name_list=None,  # type: Optional[Sequence[Optional[str]]]
+                        lib_name='',  # type: str
+                        debug=False,  # type: bool
+                        rename_dict=None,  # type: Optional[Dict[str, str]]
+                        ):
+        # type: (...) -> None
+        """Instantiate all given templates.
+
+        Parameters
+        ----------
+        prj : BagProject
+            the BagProject instance.
+        design_list : Sequence[Module]
+            list of schematics to instantiate.
+        name_list : Optional[Sequence[Optional[str]]]
+            list of schematic names.  If not given, default names will be used.
+        lib_name : str
+            Library to create the masters in.  If empty or None, use default library.
+        debug : bool
+            True to print debugging messages
+        rename_dict : Optional[Dict[str, str]]
+            optional master cell renaming dictionary.
+        """
+        self._prj = prj
+        self.instantiate_masters(design_list, name_list=name_list, lib_name=lib_name,
+                                 debug=debug, rename_dict=rename_dict)

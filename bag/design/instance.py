@@ -159,14 +159,14 @@ class SchInstance(DesignInstance):
     ----------
     db : ModuleDB
         the design database.
-    inst_ptr : pybag.base.schematic.PySchInstRef
+    inst_ptr : pybag.schematic.PySchInstRef
         a reference to the actual schematic instance object.
     is_static : bool
         rue if this instance points to a static/fixed schematic.
     """
 
     def __init__(self, db, inst_ptr, is_static):
-        # type: (ModuleDB, pybag.base.schematic.PySchInstRef, bool) -> None
+        # type: (ModuleDB, pybag.schematic.PySchInstRef, bool) -> None
         DesignInstance.__init__(self, db, '', '')
         self._static = is_static
         self._ptr = inst_ptr

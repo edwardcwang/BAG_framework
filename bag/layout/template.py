@@ -117,7 +117,7 @@ class TemplateDB(MasterDB):
 
         # create layouts
         start = time.time()
-        self._prj.instantiate_layout(self._lib_name, content_list)
+        self._prj.instantiate_layout(lib_name, content_list)
         end = time.time()
 
         if debug:
@@ -129,23 +129,16 @@ class TemplateDB(MasterDB):
         """Returns the default routing grid instance."""
         return self._grid
 
-    def new_template(self, lib_name='', temp_name='', params=None, temp_cls=None, debug=False,
-                     **kwargs):
-        # type: (str, str, Dict[str, Any], Type[TemplateType], bool, **Any) -> TemplateType
+    def new_template(self, temp_cls, params=None, **kwargs):
+        # type: (Type[TemplateType], Optional[Dict[str, Any]], **Any) -> TemplateType
         """Create a new template.
 
         Parameters
         ----------
-        lib_name : str
-            template library name.
-        temp_name : str
-            template name
-        params : Dict[str, Any]
-            the parameter dictionary.
         temp_cls : Type[TemplateType]
             the template class to instantiate.
-        debug : bool
-            True to print debug messages.
+        params : Optional[Dict[str, Any]]
+            the parameter dictionary.
         **kwargs : Any
             optional template parameters.
 
@@ -154,10 +147,7 @@ class TemplateDB(MasterDB):
         template : TemplateType
             the new template instance.
         """
-        master = self.new_master(lib_name=lib_name, cell_name=temp_name, params=params,
-                                 gen_cls=temp_cls, debug=debug, **kwargs)
-
-        return master
+        return self.new_master(temp_cls, params=params, **kwargs)
 
     def instantiate_layout(self, prj, template, top_cell_name=None, debug=False, rename_dict=None):
         # type: (BagProject, TemplateBase, Optional[str], bool, Optional[Dict[str, str]]) -> None

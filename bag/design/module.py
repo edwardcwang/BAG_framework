@@ -15,7 +15,7 @@ from ..util.cache import DesignMaster
 from .instance import SchInstance
 
 try:
-    from pybag.base.schematic import PySchCellView
+    from pybag.schematic import PySchCellView
 except ImportError:
     raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
