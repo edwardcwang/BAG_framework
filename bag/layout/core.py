@@ -10,14 +10,12 @@ import abc
 import math
 from itertools import chain
 
-import bag
-import bag.io
 from .util import BBox
 from bag.util.search import BinaryIterator
 
 # try to import cython classes
-from pybag.layout import PyTech
-from pybag.layout.pyutil import SpaceQueryMode
+from pybag.layout.tech import PyTech
+from pybag.enum import SpaceQueryMode
 
 if TYPE_CHECKING:
     from pybag.layout import PyLayInstance
@@ -55,7 +53,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         self._layout_unit = layout_unit
         self._via_tech = via_tech
         self.tech_params = process_params
-        self.pybag_tech = PyTech(pybag_file, bag.io.get_encoding())
+        self.pybag_tech = PyTech(pybag_file)
 
     @abc.abstractmethod
     def get_well_layers(self, sub_type):
