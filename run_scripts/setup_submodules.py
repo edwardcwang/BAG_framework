@@ -7,7 +7,7 @@
 # call this script again using BAG_PYTHON.  If
 # this script is run under Python, this block of code
 # effectively does nothing.
-if "true": '''\'
+if "true" : '''\'
 then
 if [[ $BAG_PYTHON ]]; then
 exec ${BAG_PYTHON} "$0" "$@"
@@ -110,6 +110,7 @@ def add_git_submodule(module_name, url, branch):
         # if already exists, just check out the branch
         run_command(['git', 'fetch', 'origin', branch], cwd=module_name)
         run_command(['git', 'checkout', branch], cwd=module_name)
+        run_command(['git', 'pull'], cwd=module_name)
     else:
         run_command(['git', 'submodule', 'add', '-b', branch, url])
 
