@@ -106,7 +106,7 @@ def run_command(cmd, cwd=None, get_output=False):
     elif proc.returncode < 0:
         raise ValueError('process terminated with return code = %d' % proc.returncode)
     elif proc.returncode > 0:
-         raise ValueError('command %s failed' % ' '.join(cmd))
+        raise ValueError('command %s failed' % ' '.join(cmd))
 
     if get_output:
         print('output: ' + output)
@@ -116,7 +116,8 @@ def run_command(cmd, cwd=None, get_output=False):
 def add_git_submodule(module_name, url, branch):
     if os.path.exists(module_name):
         # check current branch
-        cur_branch = run_command(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd=module_name, get_output=True)
+        cur_branch = run_command(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd=module_name,
+                                 get_output=True)
         if cur_branch != branch:
             # if branch different, check out the branch
             run_command(['git', 'fetch', 'origin', branch], cwd=module_name)
