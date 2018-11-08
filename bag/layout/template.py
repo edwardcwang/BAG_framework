@@ -17,19 +17,19 @@ import yaml
 from bag.util.cache import DesignMaster, MasterDB
 from bag.util.interval import IntervalSet
 from ..io import get_encoding, open_file
-from .routing import Port, TrackID, WireArray
+from .routing.base import Port, TrackID, WireArray
 
 # try to import cython modules
-from pybag.layout.pyutil import Orientation, PathStyle, BlockageType, BoundaryType, GeometryMode
-from pybag.layout import BBox, BBoxArray
-from pybag.layout import PyPath, PyBlockage, PyBoundary
-from pybag.layout import PyLayCellView, PyLayInstance, PyRect, PyVia
-from pybag.layout import PyPolygon90, PyPolygon45, PyPolygon
+from pybag.enum import Orientation, PathStyle, BlockageType, BoundaryType, GeometryMode
+from pybag.util.geometry import BBox, BBoxArray
 
 if TYPE_CHECKING:
     from bag.core import BagProject
-    from .routing import RoutingGrid
+    from .routing.grid import RoutingGrid
     from bag.typing import TrackType, SizeType
+    from pybag.layout import PyPath, PyBlockage, PyBoundary
+    from pybag.layout import PyLayCellView, PyLayInstance, PyRect, PyVia
+    from pybag.layout import PyPolygon90, PyPolygon45, PyPolygon
 
     GeoType = Union[PyRect, PyPolygon90, PyPolygon45, PyPolygon]
     TemplateType = TypeVar('TemplateType', bound='TemplateBase')

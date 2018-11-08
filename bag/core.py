@@ -16,7 +16,7 @@ import yaml
 
 from .interface import ZMQDealer
 from .interface.database import DbAccess
-from .layout.routing import RoutingGrid
+from .layout.routing.grid import RoutingGrid
 from .layout.template import TemplateDB
 from .layout.core import DummyTechInfo
 from .io import read_file, sim_data, get_encoding

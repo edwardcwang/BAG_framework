@@ -38,6 +38,7 @@ def setup_python_path(module_list):
              '',
              "sys.path.append(os.environ['BAG_FRAMEWORK'])",
              "sys.path.append(os.environ['BAG_TECH_CONFIG_DIR'])",
+             "sys.path.append(os.path.join(os.environ['BAG_FRAMEWORK'], 'pybag', '_build', 'lib'))",
              ]
     template = "sys.path.append(os.path.join(os.environ['BAG_WORK_DIR'], '%s'))"
     for mod_name, _ in module_list:
