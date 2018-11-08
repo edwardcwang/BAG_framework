@@ -7,12 +7,12 @@
 # call this script again using BAG_PYTHON.  If
 # this script is run under Python, this block of code
 # effectively does nothing.
-if "true" : '''\'
+if "true": '''\'
 then
 if [[ $BAG_PYTHON ]]; then
 exec ${BAG_PYTHON} "$0" "$@"
 else
-echo "BAG_PYTHON environment variable is not set"
+echo "ERROR! BAG_PYTHON environment variable is not set"
 fi
 exit 127
 fi
@@ -21,6 +21,8 @@ import os
 import subprocess
 
 import yaml
+
+BAG_DIR = 'BAG_framework'
 
 
 def write_to_file(fname, lines):
@@ -38,45 +40,42 @@ def setup_python_path(module_list):
              "sys.path.append(os.environ['BAG_TECH_CONFIG_DIR'])",
              ]
     template = "sys.path.append(os.path.join(os.environ['BAG_WORK_DIR'], '%s'))"
-    lines.append(template % 'BAG2_TEMPLATES_EC')
     for mod_name, _ in module_list:
-        lines.append(template % mod_name)
+        if mod_name != BAG_DIR:
+            lines.append(template % mod_name)
 
     write_to_file('bag_startup.py', lines)
 
 
-def get_sch_libraries(mod_name, mod_info):
-    bag_modules = mod_info.get('lib_path', 'BagModules')
-    root_dir = os.path.realpath(os.path.join(mod_name, bag_modules))
+def get_sch_libraries(mod_name):
+    root_dir = os.path.realpath(os.path.join(mod_name, 'OA'))
     if not os.path.isdir(root_dir):
         return []
     return [name for name in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, name))]
 
 
 def setup_libs_def(module_list):
-    lines = ['BAG_prim $BAG_TECH_CONFIG_DIR/DesignModules']
-    template = '%s $BAG_WORK_DIR/%s/%s'
+    lines = ['BAG_prim']
     for mod_name, mod_info in module_list:
-        bag_modules = mod_info.get('lib_path', 'BagModules')
-        for lib_name in get_sch_libraries(mod_name, mod_info):
-            lines.append(template % (lib_name, mod_name, bag_modules))
+        for lib_name in get_sch_libraries(mod_name):
+            lines.append(lib_name)
 
     write_to_file('bag_libs.def', lines)
 
 
 def setup_cds_lib(module_list):
     lines = ['DEFINE BAG_prim $BAG_TECH_CONFIG_DIR/BAG_prim']
-    template = 'DEFINE %s $BAG_WORK_DIR/%s/%s'
+    template = 'DEFINE {} $BAG_WORK_DIR/{}/OA/{}'
     for mod_name, mod_info in module_list:
-        for lib_name in get_sch_libraries(mod_name, mod_info):
-            lines.append(template % (lib_name, mod_name, lib_name))
+        for lib_name in get_sch_libraries(mod_name):
+            lines.append(template.format(lib_name, mod_name, lib_name))
 
     write_to_file('cds.lib.bag', lines)
 
 
-def run_command(cmd):
+def run_command(cmd, cwd=None):
     timeout = 5
-    proc = subprocess.Popen(cmd)
+    proc = subprocess.Popen(cmd, cwd=cwd)
     try:
         proc.communicate()
     except KeyboardInterrupt:
@@ -104,12 +103,13 @@ def run_command(cmd):
         raise ValueError('command %s failed' % ' '.join(cmd))
 
 
-def add_git_submodule(module_name, url):
+def add_git_submodule(module_name, url, branch):
     if os.path.exists(module_name):
-        # skip if already exists
-        return
-
-    run_command(['git', 'submodule', 'add', url])
+        # if already exists, just check out the branch
+        run_command(['git', 'fetch', 'origin', branch], cwd=module_name)
+        run_command(['git', 'checkout', branch], cwd=module_name)
+    else:
+        run_command(['git', 'submodule', 'add', '-b', branch, url])
 
 
 def add_git_file(fname):
@@ -129,31 +129,41 @@ def link_submodule(repo_path, module_name):
 
 
 def setup_git_submodules(module_list):
-    add_git_submodule('BAG2_TEMPLATES_EC', 'git@github.com:ucb-art/BAG2_TEMPLATES_EC')
-
     for module_name, module_info in module_list:
-        add_git_submodule(module_name, module_info['url'])
+        add_git_submodule(module_name, module_info['url'], module_info.get('branch', 'master'))
 
 
 def setup_submodule_links(module_list, repo_path):
-    link_submodule(repo_path, 'BAG2_TEMPLATES_EC')
     for module_name, _ in module_list:
         link_submodule(repo_path, module_name)
 
 
 def run_main():
+    default_submodules = {
+        BAG_DIR: {
+            'url': 'git@github.com:ucb-art/BAG_framework.git',
+        },
+        'BAG2_TEMPLATES_EC': {
+            'url': 'git@github.com:ucb-art/BAG2_TEMPLATES_EC.git',
+        },
+    }
+
     with open('bag_submodules.yaml', 'r') as f:
         modules_info = yaml.load(f)
+
+    # add default submodules
+    for name, info in default_submodules.items():
+        if name not in modules_info:
+            modules_info[name] = info
 
     module_list = [(key, modules_info[key]) for key in sorted(modules_info.keys())]
 
     # error checking
-    bag_dir = 'BAG_framework'
-    if not os.path.isdir(bag_dir):
-        raise ValueError('Cannot find directory %s' % bag_dir)
+    if not os.path.isdir(BAG_DIR):
+        raise ValueError('Cannot find directory %s' % BAG_DIR)
 
     # get real absolute path of parent directory of BAG_framework
-    repo_path = os.path.dirname(os.path.realpath(bag_dir))
+    repo_path = os.path.dirname(os.path.realpath(BAG_DIR))
     cur_path = os.path.realpath('.')
     if cur_path == repo_path:
         # BAG_framework is an actual directory in this repo; add dependencies as git submodules
