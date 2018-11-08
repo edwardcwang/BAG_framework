@@ -66,7 +66,7 @@ def setup_libs_def(module_list):
 
 
 def setup_cds_lib(module_list):
-    lines = ['DEFINE BAG_prim $BAG_TECH_CONFIG_DIR/BAG_prim']
+    lines = ['DEFINE BAG_prim $BAG_TECH_CONFIG_DIR/OA/BAG_prim']
     template = 'DEFINE {} $BAG_WORK_DIR/{}/OA/{}'
     for mod_name, _ in module_list:
         for lib_name in get_sch_libraries(mod_name):
@@ -75,11 +75,15 @@ def setup_cds_lib(module_list):
     write_to_file('cds.lib.bag', lines)
 
 
-def run_command(cmd, cwd=None):
+def run_command(cmd, cwd=None, get_output=False):
     timeout = 5
-    proc = subprocess.Popen(cmd, cwd=cwd)
+    print('cmd: {}, cwd: {}'.format(' '.join(cmd), cwd))
+    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE if get_output else None)
+    output = ''
     try:
-        proc.communicate()
+        output = proc.communicate()[0]
+        if output is not None:
+            output = output.decode('utf-8').strip()
     except KeyboardInterrupt:
         print('Ctrl-C detected, terminating')
         if proc.returncode is None:
@@ -102,15 +106,22 @@ def run_command(cmd, cwd=None):
     elif proc.returncode < 0:
         raise ValueError('process terminated with return code = %d' % proc.returncode)
     elif proc.returncode > 0:
-        raise ValueError('command %s failed' % ' '.join(cmd))
+         raise ValueError('command %s failed' % ' '.join(cmd))
+
+    if get_output:
+        print('output: ' + output)
+    return output
 
 
 def add_git_submodule(module_name, url, branch):
     if os.path.exists(module_name):
-        # if already exists, just check out the branch
-        run_command(['git', 'fetch', 'origin', branch], cwd=module_name)
-        run_command(['git', 'checkout', branch], cwd=module_name)
-        run_command(['git', 'pull'], cwd=module_name)
+        # check current branch
+        cur_branch = run_command(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd=module_name, get_output=True)
+        if cur_branch != branch:
+            # if branch different, check out the branch
+            run_command(['git', 'fetch', 'origin', branch], cwd=module_name)
+            run_command(['git', 'checkout', branch], cwd=module_name)
+            run_command(['git', 'pull'], cwd=module_name)
     else:
         run_command(['git', 'submodule', 'add', '-b', branch, url])
 
