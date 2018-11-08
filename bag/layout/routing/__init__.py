@@ -1,8 +1,4 @@
 # -*- coding: utf-8 -*-
 
-"""This package provide routing classes.
+"""This package provide routing grid related classes and methods.
 """
-
-from .base import TrackID, WireArray, Port, TrackManager
-from .grid import RoutingGrid
-from .fill import UsedTracks

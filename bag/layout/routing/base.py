@@ -3,13 +3,15 @@
 """This module provides basic routing classes.
 """
 
-from typing import TYPE_CHECKING, Tuple, Union, Iterable, Dict, List, Sequence, Any, Optional
+from typing import (
+    TYPE_CHECKING, Tuple, Union, Iterable, Iterator, Dict, List, Sequence, Any, Optional
+)
 
 from math import trunc, ceil, floor
 from numbers import Integral, Real
 
-from pybag.layout.pyutil import Orientation
-from pybag.layout import BBox, BBoxArray
+from pybag.enum import Orientation
+from pybag.util.geometry import BBox, BBoxArray
 
 from ...util.search import BinaryIterator
 
@@ -319,6 +321,7 @@ class TrackID(object):
         self._pitch = HalfInt(0) if num == 1 else HalfInt.convert(pitch)
 
     def __repr__(self):
+        # type: () -> str
         arg_list = ['layer={}'.format(self._layer_id), 'track={}'.format(self._idx.val_str())]
         if self._w != 1:
             arg_list.append('width={}'.format(self._w))
@@ -329,6 +332,7 @@ class TrackID(object):
         return '{}({})'.format(self.__class__.__name__, ', '.join(arg_list))
 
     def __str__(self):
+        # type: () -> str
         return repr(self)
 
     @property
@@ -357,6 +361,7 @@ class TrackID(object):
         return self._pitch
 
     def get_immutable_key(self):
+        # type: () -> Tuple[str, int, HalfInt, int, int, HalfInt]
         return self.__class__.__name__, self._layer_id, self._idx, self._w, self._n, self._pitch
 
     def get_bounds(self, grid, unit_mode=True):
@@ -386,7 +391,7 @@ class TrackID(object):
         return lower, upper
 
     def __iter__(self):
-        # type: () -> Iterable[HalfInt]
+        # type: () -> Iterator[HalfInt]
         """Iterate over all middle track indices in this TrackID."""
         return (self._idx + idx * self._pitch for idx in range(self._n))
 
@@ -441,13 +446,12 @@ class TrackID(object):
                 base_idx = self._idx
             else:
                 base_idx = -self._idx - (self._n - 1) * self._pitch - 1
-        elif orient == 'R180':
+        elif oenum is Orientation.R180:
             base_idx = -self._idx - (self._n - 1) * self._pitch - 1
         else:
-            raise ValueError('Unsupported orientation: %s' % orient)
+            raise ValueError('Unsupported orientation: {}'.format(oenum))
 
-        delta = loc[1] if is_x else loc[0]
-        delta = grid.coord_to_track(layer_id, delta) + 0.5
+        delta = grid.coord_to_track(layer_id, loc[1] if is_x else loc[0]) + 0.5
         return TrackID(layer_id, base_idx + delta, width=self._w,
                        num=self._n, pitch=self._pitch)
 

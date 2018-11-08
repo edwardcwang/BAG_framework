@@ -5,8 +5,8 @@
 
 from typing import TYPE_CHECKING, Sequence, Union, Tuple, List, Optional, Dict, Any
 
-from pybag.layout import BBox
-from pybag.layout.pyutil import Orientation, Orient2D
+from pybag.util.geometry import BBox
+from pybag.enum import Orientation, Orient2D
 
 from bag.util.search import BinaryIterator
 from bag.math import lcm
