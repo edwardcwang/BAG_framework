@@ -49,14 +49,16 @@ def setup_python_path(module_list):
 
 def get_sch_libraries(mod_name):
     root_dir = os.path.realpath(os.path.join(mod_name, 'OA'))
-    if not os.path.isdir(root_dir):
-        return []
-    return [name for name in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, name))]
+    if os.path.isdir(root_dir):
+        return [name for name in os.listdir(root_dir) if
+                os.path.isdir(os.path.join(root_dir, name))]
+
+    return []
 
 
 def setup_libs_def(module_list):
     lines = ['BAG_prim']
-    for mod_name, mod_info in module_list:
+    for mod_name, _ in module_list:
         for lib_name in get_sch_libraries(mod_name):
             lines.append(lib_name)
 
@@ -66,7 +68,7 @@ def setup_libs_def(module_list):
 def setup_cds_lib(module_list):
     lines = ['DEFINE BAG_prim $BAG_TECH_CONFIG_DIR/BAG_prim']
     template = 'DEFINE {} $BAG_WORK_DIR/{}/OA/{}'
-    for mod_name, mod_info in module_list:
+    for mod_name, _ in module_list:
         for lib_name in get_sch_libraries(mod_name):
             lines.append(template.format(lib_name, mod_name, lib_name))
 
