@@ -27,9 +27,9 @@ class OAInterface(DbAccess):
 
     def __init__(self, dealer, tmp_dir, db_config, lib_defs_file):
         # type: (ZMQDealer, str, Dict[str, Any], str) -> None
-        DbAccess.__init__(self, dealer, tmp_dir, db_config, lib_defs_file)
-        self._rcx_jobs = {}
 
+        # Create PyOADatabase object before calling super constructor,
+        # So that schematic library yaml path is added correctly.
         if 'lib_def_path' in db_config:
             cds_lib_path = db_config['lib_def_path']
         elif 'CDSLIBPATH' in os.environ:
@@ -40,6 +40,8 @@ class OAInterface(DbAccess):
         self._oa_db = PyOADatabase(cds_lib_path)
         for lib_name in db_config['schematic']['exclude_libraries']:
             self._oa_db.add_primitive_lib(lib_name)
+
+        DbAccess.__init__(self, dealer, tmp_dir, db_config, lib_defs_file)
 
     def add_sch_library(self, lib_name):
         """Override; register yaml path in PyOADatabase too."""
@@ -111,7 +113,7 @@ class OAInterface(DbAccess):
 
     def get_cells_in_library(self, lib_name):
         # type: (str) -> List[str]
-        return self._oa_db.get_cells_in_library(lib_name)
+        return self._oa_db.get_cells_in_lib(lib_name)
 
     def create_library(self, lib_name, lib_path=''):
         # type: (str, str) -> None
@@ -150,8 +152,7 @@ class OAInterface(DbAccess):
         self.release_write_locks(lib_name, cell_view_list)
         # create schematics
         self.create_library(lib_name, lib_path=lib_path)
-        self._oa_db.implement_sch_list(lib_name, content_list, sch_view=sch_view,
-                                       sym_view=sym_view)
+        self._oa_db.implement_sch_list(lib_name, sch_view, sym_view, content_list)
         # refresh cell views
         self.refresh_cellviews(lib_name, cell_view_list)
 
@@ -168,7 +169,7 @@ class OAInterface(DbAccess):
         self.release_write_locks(lib_name, cell_view_list)
         # create layouts
         self.create_library(lib_name, lib_path=lib_path)
-        self._oa_db.implement_lay_list(lib_name, content_list, view=view)
+        self._oa_db.implement_lay_list(lib_name, view, content_list)
         # refresh cell views
         self.refresh_cellviews(lib_name, cell_view_list)
 

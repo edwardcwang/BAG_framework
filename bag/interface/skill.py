@@ -112,7 +112,6 @@ class SkillInterface(DbAccess):
         # type: (ZMQDealer, str, Dict[str, Any], str) -> None
         DbAccess.__init__(self, dealer, tmp_dir, db_config, lib_defs_file)
         self.exc_libs = set(db_config['schematic']['exclude_libraries'])
-        self._rcx_jobs = {}
 
     def _eval_skill(self, expr, input_files=None, out_file=None):
         # type: (str, Optional[Dict[str, Any]], Optional[str]) -> str
