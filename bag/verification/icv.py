@@ -7,10 +7,8 @@ from typing import TYPE_CHECKING, Optional, List, Tuple, Dict, Any, Sequence
 
 import os
 
-from jinja2 import Template
-
 from .virtuoso import VirtuosoChecker
-from ..io import read_file, open_temp, readlines_iter
+from ..io import read_file, open_temp
 
 if TYPE_CHECKING:
     from .base import FlowInfo
@@ -149,10 +147,10 @@ class ICV(VirtuosoChecker):
             log_file = logf.name
 
         # set _drPROCESS
-        drPROCESS_str = '_drPROCESS=' + lvs_params_actual['_drPROCESS']
+        dr_process_str = '_drPROCESS=' + lvs_params_actual['_drPROCESS']
 
-        cmd = ['icv', '-D', drPROCESS_str, '-i', lay_file, '-s', sch_file, '-sf', 'SPICE', '-f', 'GDSII',
-               '-c', cell_name, '-vue', '-I']
+        cmd = ['icv', '-D', dr_process_str, '-i', lay_file, '-s', sch_file, '-sf', 'SPICE',
+               '-f', 'GDSII', '-c', cell_name, '-vue', '-I']
         for f in self.lvs_link_files:
             cmd.append(f)
 
@@ -186,12 +184,13 @@ class ICV(VirtuosoChecker):
             # first: run Extraction LVS
             lvs_params_actual = self.default_lvs_params.copy()
 
-            drPROCESS_str = '_drPROCESS=' + lvs_params_actual['_drPROCESS']
+            dr_process_str = '_drPROCESS=' + lvs_params_actual['_drPROCESS']
 
-            # cmd = ['icv', '-D', drPROCESS_str, '-i', lay_file, '-s', sch_file, '-sf', 'SPICE', '-f', 'GDSII',
-            #        '-c', cell_name, '-I']
-            cmd = ['icv', '-D', '_drRCextract', '-D', drPROCESS_str, '-D', '_drICFOAlayers', '-i', lay_file, '-s',
-                   sch_file, '-sf', 'SPICE', '-f', 'GDSII', '-c', cell_name, '-I']
+            # cmd = ['icv', '-D', drPROCESS_str, '-i', lay_file, '-s', sch_file, '-sf', 'SPICE',
+            #        '-f', 'GDSII', '-c', cell_name, '-I']
+            cmd = ['icv', '-D', '_drRCextract', '-D', dr_process_str, '-D', '_drICFOAlayers',
+                   '-i', lay_file, '-s', sch_file, '-sf', 'SPICE', '-f', 'GDSII',
+                   '-c', cell_name, '-I']
             for f in self.lvs_link_files:
                 cmd.append(f)
 
@@ -209,7 +208,8 @@ class ICV(VirtuosoChecker):
             flow_list.append((cmd, None, None, run_dir, _all_pass))
 
             # generate new cmd for StarXtract
-            cmd_content, result = self.modify_starrc_cmd(run_dir, lib_name, cell_name, rcx_params_actual, sch_file)
+            cmd_content, result = self.modify_starrc_cmd(run_dir, lib_name, cell_name,
+                                                         rcx_params_actual, sch_file)
 
             # save cmd for StarXtract
             with open_temp(dir=run_dir, delete=False) as cmd_file:
@@ -260,15 +260,15 @@ class ICV(VirtuosoChecker):
             the extracted netlist file.
         """
         output_name = '%s.spf' % cell_name
-
-        template = read_file(self.rcx_runset)
-        starrc_cmd = Template(template).render(cell_name=cell_name,
-                                               extract_type=starrc_params['extract'].get('type'),
-                                               netlist_format=starrc_params.get('netlist_format', 'SPF'),
-                                               sch_file=sch_file,
-                                               cds_lib=starrc_params['cds_lib'],
-                                               lib_name=lib_name,
-                                               run_dir=run_dir,
-                                               )
-
-        return starrc_cmd, os.path.join(run_dir, output_name)
+        content = self.render_string_template(read_file(self.rcx_runset),
+                                              dict(
+                                                  cell_name=cell_name,
+                                                  extract_type=starrc_params['extract'].get('type'),
+                                                  netlist_format=starrc_params.get('netlist_format',
+                                                                                   'SPF'),
+                                                  sch_file=sch_file,
+                                                  cds_lib=starrc_params['cds_lib'],
+                                                  lib_name=lib_name,
+                                                  run_dir=run_dir,
+                                              ))
+        return content, os.path.join(run_dir, output_name)

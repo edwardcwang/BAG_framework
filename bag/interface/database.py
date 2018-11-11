@@ -358,9 +358,9 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         """
         pass
 
-    def get_file_template(self, temp_name, params):
+    def render_file_template(self, temp_name, params):
         # type: (str, Dict[str, Any]) -> str
-        """Returns the string content of a new file from the given template."""
+        """Returns the rendered content from the given template file."""
         template = self._tmp_env.get_template(temp_name)
         return template.render(**params)
 
@@ -407,10 +407,10 @@ class DbAccess(object, metaclass=abc.ABCMeta):
                     raise Exception('Unknown primitive cell: %s' % cell_name)
 
                 param_dict['module_name'] = module_name
-                return self.get_file_template('PrimModule.pyi', param_dict)
+                return self.render_file_template('PrimModule.pyi', param_dict)
         else:
             # use default empty template.
-            return self.get_file_template('Module.pyi', param_dict)
+            return self.render_file_template('Module.pyi', param_dict)
 
     def _process_rcx_output(self, netlist, log_fname, lib_name, cell_name, create_schematic):
         if create_schematic:
