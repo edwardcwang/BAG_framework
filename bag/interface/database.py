@@ -11,9 +11,9 @@ import traceback
 
 import yaml
 
-import bag.io
+from ..io.file import make_temp_dir, read_file, write_file
 from ..verification import make_checker
-from bag.io.template import new_template_env
+from .base import InterfaceBase
 
 if TYPE_CHECKING:
     from ..verification import Checker
@@ -60,22 +60,22 @@ def format_inst_map(inst_map):
     return ans
 
 
-class DbAccess(object, metaclass=abc.ABCMeta):
+class DbAccess(InterfaceBase, abc.ABC):
     """A class that manipulates the CAD database.
 
     Parameters
     ----------
-    tmp_dir : string
+    tmp_dir : str
         temporary file directory for DbAccess.
-    db_config : dict[string, any]
+    db_config : Dict[str, Any]
         the database configuration dictionary.
     """
 
     def __init__(self, tmp_dir, db_config):
-        """Create a new DbAccess object.
-        """
-        self._tmp_env = new_template_env('bag.interface', 'templates')
-        self.tmp_dir = bag.io.make_temp_dir('dbTmp', parent_dir=tmp_dir)
+        # type: (str, Dict[str, Any]) -> None
+        InterfaceBase.__init__(self)
+
+        self.tmp_dir = make_temp_dir('dbTmp', parent_dir=tmp_dir)
         self.db_config = db_config
         self.exc_libs = set(db_config['schematic']['exclude_libraries'])
         # noinspection PyBroadException
@@ -358,12 +358,6 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         """
         pass
 
-    def render_file_template(self, temp_name, params):
-        # type: (str, Dict[str, Any]) -> str
-        """Returns the rendered content from the given template file."""
-        template = self._tmp_env.get_template(temp_name)
-        return template.render(**params)
-
     def get_python_template(self, lib_name, cell_name, primitive_table):
         # type: (str, str, Dict[str, str]) -> str
         """Returns the default Python Module template for the given schematic.
@@ -386,7 +380,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         if lib_name == 'BAG_prim':
             if cell_name in primitive_table:
                 # load template from user defined file
-                template = self._tmp_env.from_string(bag.io.read_file(primitive_table[cell_name]))
+                template = self._tmp_env.from_string(read_file(primitive_table[cell_name]))
                 return template.render(**param_dict)
             else:
                 if cell_name.startswith('nmos4_') or cell_name.startswith('pmos4_'):
@@ -560,14 +554,14 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         yaml_dir = os.path.dirname(yaml_file)
         if not os.path.exists(yaml_dir):
             os.makedirs(yaml_dir)
-            bag.io.write_file(os.path.join(package_path, '__init__.py'), '\n',
-                              mkdir=False)
+            write_file(os.path.join(package_path, '__init__.py'), '\n',
+                       mkdir=False)
 
         # update netlist file
         content = self.parse_schematic_template(lib_name, cell_name)
         sch_info = yaml.load(content)
         try:
-            bag.io.write_file(yaml_file, content)
+            write_file(yaml_file, content)
         except IOError:
             print('Warning: cannot write to %s.' % yaml_file)
 
@@ -575,7 +569,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         if not os.path.exists(python_file):
             content = self.get_python_template(lib_name, cell_name,
                                                self.db_config.get('prim_table', {}))
-            bag.io.write_file(python_file, content + '\n', mkdir=False)
+            write_file(python_file, content + '\n', mkdir=False)
 
         # recursively import all children
         for inst_name, inst_attrs in sch_info['instances'].items():

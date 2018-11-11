@@ -41,7 +41,6 @@ setup(
         'pytest',
     ],
     package_data={
-        'bag': ['virtuoso_files/*'],
         'bag.interface': ['templates/*'],
         'bag.verification': ['templates/*'],
     },
