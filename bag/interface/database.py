@@ -9,11 +9,11 @@ import os
 import abc
 import traceback
 
-from jinja2 import Template
 import yaml
 
 import bag.io
 from ..verification import make_checker
+from ..util.template import new_template_env
 
 if TYPE_CHECKING:
     from ..verification import Checker
@@ -60,55 +60,6 @@ def format_inst_map(inst_map):
     return ans
 
 
-def get_python_template(lib_name, cell_name, primitive_table):
-    """Returns the default Python Module template for the given schematic.
-
-    Parameters
-    ----------
-    lib_name : str
-        the library name.
-    cell_name : str
-        the cell name.
-    primitive_table : dict[str, str]
-        a dictionary from primitive cell name to module template file name.
-
-    Returns
-    -------
-    template : str
-        the default Python Module template.
-    """
-    param_dict = dict(lib_name=lib_name, cell_name=cell_name)
-    if lib_name == 'BAG_prim':
-        if cell_name in primitive_table:
-            # load template from user defined file
-            content = bag.io.read_file(primitive_table[cell_name])
-        else:
-            if cell_name.startswith('nmos4_') or cell_name.startswith('pmos4_'):
-                # transistor template
-                module_name = 'MosModuleBase'
-            elif cell_name == 'res_ideal':
-                # ideal resistor template
-                module_name = 'ResIdealModuleBase'
-            elif cell_name == 'res_metal':
-                module_name = 'ResMetalModule'
-            elif cell_name == 'cap_ideal':
-                # ideal capacitor template
-                module_name = 'CapIdealModuleBase'
-            elif cell_name.startswith('res_'):
-                # physical resistor template
-                module_name = 'ResPhysicalModuleBase'
-            else:
-                raise Exception('Unknown primitive cell: %s' % cell_name)
-
-            content = bag.io.read_resource(__name__, os.path.join('templates', 'PrimModule.pytemp'))
-            param_dict['module_name'] = module_name
-    else:
-        # use default empty template.
-        content = bag.io.read_resource(__name__, os.path.join('templates', 'Module.pytemp'))
-
-    return Template(content).render(**param_dict)
-
-
 class DbAccess(object, metaclass=abc.ABCMeta):
     """A class that manipulates the CAD database.
 
@@ -123,6 +74,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
     def __init__(self, tmp_dir, db_config):
         """Create a new DbAccess object.
         """
+        self._tmp_env = new_template_env('bag.interface', 'templates')
         self.tmp_dir = bag.io.make_temp_dir('dbTmp', parent_dir=tmp_dir)
         self.db_config = db_config
         self.exc_libs = set(db_config['schematic']['exclude_libraries'])
@@ -406,6 +358,55 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         """
         pass
 
+    def get_python_template(self, lib_name, cell_name, primitive_table):
+        # type: (str, str, Dict[str, str]) -> str
+        """Returns the default Python Module template for the given schematic.
+
+        Parameters
+        ----------
+        lib_name : str
+            the library name.
+        cell_name : str
+            the cell name.
+        primitive_table : Dict[str, str]
+            a dictionary from primitive cell name to module template file name.
+
+        Returns
+        -------
+        template : str
+            the default Python Module template.
+        """
+        param_dict = dict(lib_name=lib_name, cell_name=cell_name)
+        if lib_name == 'BAG_prim':
+            if cell_name in primitive_table:
+                # load template from user defined file
+                template = self._tmp_env.from_string(bag.io.read_file(primitive_table[cell_name]))
+            else:
+                if cell_name.startswith('nmos4_') or cell_name.startswith('pmos4_'):
+                    # transistor template
+                    module_name = 'MosModuleBase'
+                elif cell_name == 'res_ideal':
+                    # ideal resistor template
+                    module_name = 'ResIdealModuleBase'
+                elif cell_name == 'res_metal':
+                    module_name = 'ResMetalModule'
+                elif cell_name == 'cap_ideal':
+                    # ideal capacitor template
+                    module_name = 'CapIdealModuleBase'
+                elif cell_name.startswith('res_'):
+                    # physical resistor template
+                    module_name = 'ResPhysicalModuleBase'
+                else:
+                    raise Exception('Unknown primitive cell: %s' % cell_name)
+
+                template = self._tmp_env.get_template('PrimModule.pyi')
+                param_dict['module_name'] = module_name
+        else:
+            # use default empty template.
+            template = self._tmp_env.get_template('Module.pyi')
+
+        return template.render(**param_dict)
+
     def _process_rcx_output(self, netlist, log_fname, lib_name, cell_name, create_schematic):
         if create_schematic:
             if netlist is None:
@@ -567,8 +568,8 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
         # generate new design module file if necessary.
         if not os.path.exists(python_file):
-            content = get_python_template(lib_name, cell_name,
-                                          self.db_config.get('prim_table', {}))
+            content = self.get_python_template(lib_name, cell_name,
+                                               self.db_config.get('prim_table', {}))
             bag.io.write_file(python_file, content + '\n', mkdir=False)
 
         # recursively import all children
