@@ -5,10 +5,7 @@ from typing import Dict
 import os
 import pkg_resources
 
-from bag.design import Module
-
-
-yaml_file = pkg_resources.resource_filename(__name__, os.path.join('netlist_info', '{{ cell_name }}.yaml'))
+from bag.design.module import Module
 
 
 # noinspection PyPep8Naming
@@ -17,9 +14,13 @@ class {{ lib_name }}__{{ cell_name }}(Module):
 
     Fill in high level description here.
     """
+    yaml_file = pkg_resources.resource_filename(__name__,
+                                                os.path.join('netlist_info',
+                                                             '{{ cell_name }}.yaml'))
 
-    def __init__(self, bag_config, parent=None, prj=None, **kwargs):
-        Module.__init__(self, bag_config, yaml_file, parent=parent, prj=prj, **kwargs)
+
+    def __init__(self, database, parent=None, prj=None, **kwargs):
+        Module.__init__(self, database, self.yaml_file, parent=parent, prj=prj, **kwargs)
 
     @classmethod
     def get_params_info(cls):
