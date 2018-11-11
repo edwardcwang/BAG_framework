@@ -613,10 +613,16 @@ class DbAccess(object, metaclass=abc.ABCMeta):
 
     def add_sch_library(self, lib_name):
         # type: (str) -> str
+        module_name = lib_name + '.schematic'
         try:
-            lib_module = importlib.import_module(lib_name + '.schematic')
+            lib_module = importlib.import_module(module_name)
         except ImportError:
-            raise ImportError("Cannot find python package {}.schematic, "
-                              "make sure it's on your PYTHONPATH".format(lib_name))
-        self.lib_path_map[lib_name] = lib_module.__path__
-        return lib_module.__path__
+            raise ImportError("Cannot find python package {}, "
+                              "make sure it's on your PYTHONPATH".format(module_name))
+        if not hasattr(lib_module, '__file__'):
+            raise ImportError(
+                '{} is not a normal python package (no __file__ attribute).'.format(module_name))
+
+        lib_path = os.path.dirname(lib_module.__file__)
+        self.lib_path_map[lib_name] = lib_path
+        return lib_path
