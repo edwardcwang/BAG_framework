@@ -6,13 +6,14 @@ from typing import TYPE_CHECKING, List, Dict, Any, Tuple, Sequence, Optional
 
 import abc
 
+from ..io.template import new_template_env
 from ..concurrent.core import SubProcessManager
 
 if TYPE_CHECKING:
     from ..concurrent.core import FlowInfo, ProcInfo
 
 
-class Checker(object, metaclass=abc.ABCMeta):
+class Checker(abc.ABC):
     """A class that handles LVS/RCX.
 
     Parameters
@@ -23,6 +24,7 @@ class Checker(object, metaclass=abc.ABCMeta):
     def __init__(self, tmp_dir):
         # type: (str) -> None
         self.tmp_dir = tmp_dir
+        self._tmp_env = new_template_env('bag.verification', 'templates')
 
     @abc.abstractmethod
     def get_rcx_netlists(self, lib_name, cell_name):
@@ -44,7 +46,8 @@ class Checker(object, metaclass=abc.ABCMeta):
         return []
 
     @abc.abstractmethod
-    async def async_run_lvs(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
+    async def async_run_lvs(self, lib_name, cell_name, sch_view='schematic',
+                            lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[bool, str]
         """A coroutine for running LVS.
 
@@ -71,7 +74,8 @@ class Checker(object, metaclass=abc.ABCMeta):
         return False, ''
 
     @abc.abstractmethod
-    async def async_run_rcx(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
+    async def async_run_rcx(self, lib_name, cell_name, sch_view='schematic',
+                            lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Tuple[Optional[str], str]
         """A coroutine for running RCX.
 
@@ -91,14 +95,16 @@ class Checker(object, metaclass=abc.ABCMeta):
         Returns
         -------
         netlist : Optional[str]
-            The RCX netlist file name.  None if RCX failed, empty if no extracted netlist is generated
+            The RCX netlist file name.  None if RCX failed, empty if no extracted
+            netlist is generated
         log_fname : str
             RCX log file name.
         """
         return '', ''
 
     @abc.abstractmethod
-    async def async_export_layout(self, lib_name, cell_name, out_file, view_name='layout', params=None):
+    async def async_export_layout(self, lib_name, cell_name, out_file,
+                                  view_name='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
         """A coroutine for exporting layout.
 
@@ -123,7 +129,8 @@ class Checker(object, metaclass=abc.ABCMeta):
         return ''
 
     @abc.abstractmethod
-    async def async_export_schematic(self, lib_name, cell_name, out_file, view_name='schematic', params=None):
+    async def async_export_schematic(self, lib_name, cell_name, out_file,
+                                     view_name='schematic', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> str
         """A coroutine for exporting schematic.
 
@@ -147,8 +154,20 @@ class Checker(object, metaclass=abc.ABCMeta):
         """
         return ''
 
+    def render_file_template(self, temp_name, params):
+        # type: (str, Dict[str, Any]) -> str
+        """Returns the rendered content from the given template file."""
+        template = self._tmp_env.get_template(temp_name)
+        return template.render(**params)
 
-class SubProcessChecker(Checker, metaclass=abc.ABCMeta):
+    def render_string_template(self, content, params):
+        # type: (str, Dict[str, Any]) -> str
+        """Returns the rendered content from the given template string."""
+        template = self._tmp_env.from_string(content)
+        return template.render(**params)
+
+
+class SubProcessChecker(Checker, abc.ABC):
     """An implementation of :class:`Checker` using :class:`SubProcessManager`.
 
     Parameters
@@ -167,7 +186,8 @@ class SubProcessChecker(Checker, metaclass=abc.ABCMeta):
         self._manager = SubProcessManager(max_workers=max_workers, cancel_timeout=cancel_timeout)
 
     @abc.abstractmethod
-    def setup_lvs_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
+    def setup_lvs_flow(self, lib_name, cell_name, sch_view='schematic',
+                       lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
         """This method performs any setup necessary to configure a LVS subprocess flow.
 
@@ -199,13 +219,14 @@ class SubProcessChecker(Checker, metaclass=abc.ABCMeta):
                 working directory path.  None to inherit from parent.
             vfun : Sequence[Callable[[Optional[int], str], Any]]
                 a function to validate if it is ok to execute the next process.  The output of the
-                last function is returned.  The first argument is the return code, the second argument is
-                the log file name.
+                last function is returned.  The first argument is the return code, the
+                second argument is the log file name.
         """
         return []
 
     @abc.abstractmethod
-    def setup_rcx_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout', params=None):
+    def setup_rcx_flow(self, lib_name, cell_name, sch_view='schematic',
+                       lay_view='layout', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> Sequence[FlowInfo]
         """This method performs any setup necessary to configure a RCX subprocess flow.
 
@@ -237,8 +258,8 @@ class SubProcessChecker(Checker, metaclass=abc.ABCMeta):
                 working directory path.  None to inherit from parent.
             vfun : Sequence[Callable[[Optional[int], str], Any]]
                 a function to validate if it is ok to execute the next process.  The output of the
-                last function is returned.  The first argument is the return code, the second argument is
-                the log file name.
+                last function is returned.  The first argument is the return code, the
+                second argument is the log file name.
         """
         return []
 
@@ -274,7 +295,8 @@ class SubProcessChecker(Checker, metaclass=abc.ABCMeta):
         return '', '', None, None
 
     @abc.abstractmethod
-    def setup_export_schematic(self, lib_name, cell_name, out_file, view_name='schematic', params=None):
+    def setup_export_schematic(self, lib_name, cell_name, out_file,
+                               view_name='schematic', params=None):
         # type: (str, str, str, str, Optional[Dict[str, Any]]) -> ProcInfo
         """This method performs any setup necessary to export schematic.
 

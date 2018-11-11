@@ -511,7 +511,7 @@ class SkillInterface(DbAccess):
                 calibre_cellmap=cell_map,
                 view_name=sch_view,
             )
-            content = self.get_file_template('calibreview_setup.txt', tmp_params)
+            content = self.render_file_template('calibreview_setup.txt', tmp_params)
             with open_temp(prefix='calview', dir=self.tmp_dir, delete=False) as f:
                 fname = f.name
                 f.write(content)

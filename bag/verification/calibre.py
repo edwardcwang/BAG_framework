@@ -9,7 +9,6 @@ import os
 
 from .virtuoso import VirtuosoChecker
 from ..io import read_file, open_temp, readlines_iter
-from ..io.template import new_template_env
 
 if TYPE_CHECKING:
     from .base import FlowInfo
@@ -101,7 +100,6 @@ class Calibre(VirtuosoChecker):
     def __init__(self, tmp_dir, lvs_run_dir, lvs_runset, rcx_run_dir, rcx_runset,
                  source_added_file='$DK/Calibre/lvs/source.added', rcx_mode='pex',
                  xact_rules='', **kwargs):
-        self._tmp_env = new_template_env('bag.verification', 'templates')
 
         max_workers = kwargs.get('max_workers', None)
         cancel_timeout = kwargs.get('cancel_timeout_ms', None)
@@ -435,16 +433,17 @@ class Calibre(VirtuosoChecker):
         power_names = xact_params.get('power_names', 'VDD')
         ground_names = xact_params.get('ground_names', 'VSS')
 
-        template = self._tmp_env.from_string(read_file(self.xact_rules))
         output_name = '%s.pex.netlist' % cell_name
-        content = template.render(cell_name=cell_name,
-                                  gds_file=gds_file,
-                                  netlist=netlist,
-                                  substrate_name=substrate_name,
-                                  power_names=power_names,
-                                  ground_names=ground_names,
-                                  output_name=output_name,
-                                  )
+        content = self.render_string_template(read_file(self.xact_rules),
+                                              dict(
+                                                  cell_name=cell_name,
+                                                  gds_file=gds_file,
+                                                  netlist=netlist,
+                                                  substrate_name=substrate_name,
+                                                  power_names=power_names,
+                                                  ground_names=ground_names,
+                                                  output_name=output_name,
+                                              ))
 
         return content, os.path.join(run_dir, output_name)
 
@@ -473,12 +472,12 @@ class Calibre(VirtuosoChecker):
             the extracted netlist file.
         """
         output_name = '%s.spf' % cell_name
+        content = self.render_string_template(read_file(self.rcx_runset),
+                                              dict(
+                                                  cell_name=cell_name,
+                                                  query_input=query_input,
+                                                  extract_type=starrc_params['extract'].get('type'),
+                                                  sch_file=sch_file,
+                                              ))
 
-        template = self._tmp_env.from_string(read_file(self.rcx_runset))
-        starrc_cmd = template.render(cell_name=cell_name,
-                                     query_input=query_input,
-                                     extract_type=starrc_params['extract'].get('type'),
-                                     sch_file=sch_file,
-                                     )
-
-        return starrc_cmd, os.path.join(run_dir, output_name)
+        return content, os.path.join(run_dir, output_name)
