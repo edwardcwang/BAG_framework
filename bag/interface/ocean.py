@@ -7,12 +7,11 @@ from typing import TYPE_CHECKING, Dict, Any, Optional
 
 import os
 
-from jinja2 import Template
-
 import bag.io
 from .simulator import SimProcessManager
 
-run_script = bag.io.read_resource(bag.__name__, os.path.join('virtuoso_files', 'run_simulation.ocn'))
+run_script = bag.io.read_resource(bag.__name__,
+                                  os.path.join('virtuoso_files', 'run_simulation.ocn'))
 load_script = bag.io.read_resource(bag.__name__, os.path.join('virtuoso_files', 'load_results.ocn'))
 
 if TYPE_CHECKING:
@@ -40,9 +39,10 @@ class OceanInterface(SimProcessManager):
         # type: (Dict[str, Any], int) -> str
         """Format the given parameter value as a string.
 
-        To support both single value parameter and parameter sweeps, each parameter value is represented
-        as a string instead of simple floats.  This method will cast a parameter configuration (which can
-        either be a single value or a sweep) to a simulator-specific string.
+        To support both single value parameter and parameter sweeps, each parameter value is
+        represented as a string instead of simple floats.  This method will cast a parameter
+        configuration (which can either be a single value or a sweep) to a
+        simulator-specific string.
 
         Parameters
         ----------
@@ -124,18 +124,20 @@ class OceanInterface(SimProcessManager):
         script_fname = os.path.join(save_dir, 'run.ocn')
 
         # setup ocean simulation script
-        script = Template(run_script).render(lib=lib,
-                                             cell=cell,
-                                             view=view,
-                                             state=state,
-                                             init_file=init_file,
-                                             save_dir=save_dir,
-                                             precision=precision,
-                                             sim_tag=sim_tag,
-                                             outputs=outputs,
-                                             job_opt_str=job_opt_str,
-                                             )
-        bag.io.write_file(script_fname, script + '\n')
+        script = self.render_file_template('run_simulation.ocn',
+                                           dict(
+                                               lib=lib,
+                                               cell=cell,
+                                               view=view,
+                                               state=state,
+                                               init_file=init_file,
+                                               save_dir=save_dir,
+                                               precision=precision,
+                                               sim_tag=sim_tag,
+                                               outputs=outputs,
+                                               job_opt_str=job_opt_str,
+                                           ))
+        bag.io.write_file(script_fname, script)
 
         return self._get_ocean_info(save_dir, script_fname, log_fname)
 
@@ -151,16 +153,18 @@ class OceanInterface(SimProcessManager):
         script_fname = os.path.join(save_dir, 'run.ocn')
 
         # setup ocean load script
-        script = Template(load_script).render(lib=lib,
-                                              cell=cell,
-                                              view=view,
-                                              init_file=init_file,
-                                              save_dir='{{ save_dir }}',
-                                              precision=precision,
-                                              hist_name=hist_name,
-                                              outputs=outputs,
-                                              )
-        bag.io.write_file(script_fname, script + '\n')
+        script = self.render_file_template('load_results.ocn',
+                                           dict(
+                                               lib=lib,
+                                               cell=cell,
+                                               view=view,
+                                               init_file=init_file,
+                                               save_dir=save_dir,
+                                               precision=precision,
+                                               hist_name=hist_name,
+                                               outputs=outputs,
+                                           ))
+        bag.io.write_file(script_fname, script)
 
         # launch ocean
         return self._get_ocean_info(save_dir, script_fname, log_fname)

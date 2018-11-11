@@ -1600,7 +1600,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     port_parity=None,
                     # type: Optional[Union[Tuple[int, int], Dict[int, Tuple[int, int]]]]
                     array=False,  # type: bool
+<<<<<<< HEAD
                     **kwargs,  # type: Any
+=======
+                    **kwargs
+>>>>>>> master
                     ):
         # type: (...) -> Any
         """Draw mom cap in the defined bounding box."""

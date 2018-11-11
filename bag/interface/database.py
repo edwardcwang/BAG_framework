@@ -10,10 +10,15 @@ import abc
 import importlib
 import traceback
 
+<<<<<<< HEAD
 from jinja2 import Template
+=======
+import yaml
+>>>>>>> master
 
-import bag.io
+from ..io.file import make_temp_dir, read_file, write_file
 from ..verification import make_checker
+from .base import InterfaceBase
 
 if TYPE_CHECKING:
     from .zmqwrapper import ZMQDealer
@@ -61,13 +66,20 @@ def format_inst_map(inst_map):
     return ans
 
 
+<<<<<<< HEAD
 class DbAccess(object, metaclass=abc.ABCMeta):
+=======
+class DbAccess(InterfaceBase, abc.ABC):
+>>>>>>> master
     """A class that manipulates the CAD database.
 
     Parameters
     ----------
+<<<<<<< HEAD
     dealer : Optional[ZMQDealer]
         an optional socket that can be used to communicate with the CAD database.
+=======
+>>>>>>> master
     tmp_dir : str
         temporary file directory for DbAccess.
     db_config : Dict[str, Any]
@@ -76,12 +88,20 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         name of the file that contains generator library names.
     """
 
+<<<<<<< HEAD
     def __init__(self, dealer, tmp_dir, db_config, lib_defs_file):
         # type: (ZMQDealer, str, Dict[str, Any], str) -> None
         """Create a new DbAccess object.
         """
         self.handler = dealer
         self.tmp_dir = bag.io.make_temp_dir('dbTmp', parent_dir=tmp_dir)
+=======
+    def __init__(self, tmp_dir, db_config):
+        # type: (str, Dict[str, Any]) -> None
+        InterfaceBase.__init__(self)
+
+        self.tmp_dir = make_temp_dir('dbTmp', parent_dir=tmp_dir)
+>>>>>>> master
         self.db_config = db_config
         # noinspection PyBroadException
         try:
@@ -449,14 +469,21 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         """
         pass
 
+<<<<<<< HEAD
     @abc.abstractmethod
     def import_sch_cellview(self, lib_name, cell_name, view_name):
         # type: (str, str, str) -> None
         """Recursively import the given schematic and symbol cellview.
+=======
+    def get_python_template(self, lib_name, cell_name, primitive_table):
+        # type: (str, str, Dict[str, str]) -> str
+        """Returns the default Python Module template for the given schematic.
+>>>>>>> master
 
         Parameters
         ----------
         lib_name : str
+<<<<<<< HEAD
             library name.
         cell_name : str
             cell name.
@@ -499,6 +526,48 @@ class DbAccess(object, metaclass=abc.ABCMeta):
                 self.handler.send(exit_obj)
             self.handler.close()
             self.handler = None
+=======
+            the library name.
+        cell_name : str
+            the cell name.
+        primitive_table : Dict[str, str]
+            a dictionary from primitive cell name to module template file name.
+
+        Returns
+        -------
+        template : str
+            the default Python Module template.
+        """
+        param_dict = dict(lib_name=lib_name, cell_name=cell_name)
+        if lib_name == 'BAG_prim':
+            if cell_name in primitive_table:
+                # load template from user defined file
+                template = self._tmp_env.from_string(read_file(primitive_table[cell_name]))
+                return template.render(**param_dict)
+            else:
+                if cell_name.startswith('nmos4_') or cell_name.startswith('pmos4_'):
+                    # transistor template
+                    module_name = 'MosModuleBase'
+                elif cell_name == 'res_ideal':
+                    # ideal resistor template
+                    module_name = 'ResIdealModuleBase'
+                elif cell_name == 'res_metal':
+                    module_name = 'ResMetalModule'
+                elif cell_name == 'cap_ideal':
+                    # ideal capacitor template
+                    module_name = 'CapIdealModuleBase'
+                elif cell_name.startswith('res_'):
+                    # physical resistor template
+                    module_name = 'ResPhysicalModuleBase'
+                else:
+                    raise Exception('Unknown primitive cell: %s' % cell_name)
+
+                param_dict['module_name'] = module_name
+                return self.render_file_template('PrimModule.pyi', param_dict)
+        else:
+            # use default empty template.
+            return self.render_file_template('Module.pyi', param_dict)
+>>>>>>> master
 
     def _process_rcx_output(self, netlist, log_fname, lib_name, cell_name, create_schematic):
         if create_schematic:
@@ -611,6 +680,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         return await self.checker.async_export_layout(lib_name, cell_name, out_file,
                                                       *args, **kwargs)
 
+<<<<<<< HEAD
     def add_sch_library(self, lib_name):
         # type: (str) -> str
         module_name = lib_name + '.schematic'
@@ -626,3 +696,97 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         lib_path = os.path.dirname(lib_module.__file__)
         self.lib_path_map[lib_name] = lib_path
         return lib_path
+=======
+    def import_design_library(self, lib_name, dsn_db, new_lib_path):
+        """Import all design templates in the given library from CAD database.
+
+        Parameters
+        ----------
+        lib_name : str
+            name of the library.
+        dsn_db : ModuleDB
+            the design database object.
+        new_lib_path: str
+            location to import new libraries to.
+        """
+        imported_cells = set()
+        for cell_name in self.get_cells_in_library(lib_name):
+            self._import_design(lib_name, cell_name, imported_cells, dsn_db, new_lib_path)
+
+    def _import_design(self, lib_name, cell_name, imported_cells, dsn_db, new_lib_path):
+        """Recursive helper for import_design_library.
+        """
+        # check if we already imported this schematic
+        key = '%s__%s' % (lib_name, cell_name)
+        if key in imported_cells:
+            return
+        imported_cells.add(key)
+
+        # create root directory if missing
+        root_path = dsn_db.get_library_path(lib_name)
+        if root_path is None:
+            root_path = new_lib_path
+            dsn_db.append_library(lib_name, new_lib_path)
+
+        package_path = os.path.join(root_path, lib_name)
+        python_file = os.path.join(package_path, '%s.py' % cell_name)
+        yaml_file = os.path.join(package_path, 'netlist_info', '%s.yaml' % cell_name)
+        yaml_dir = os.path.dirname(yaml_file)
+        if not os.path.exists(yaml_dir):
+            os.makedirs(yaml_dir)
+            write_file(os.path.join(package_path, '__init__.py'), '\n',
+                       mkdir=False)
+
+        # update netlist file
+        content = self.parse_schematic_template(lib_name, cell_name)
+        sch_info = yaml.load(content)
+        try:
+            write_file(yaml_file, content)
+        except IOError:
+            print('Warning: cannot write to %s.' % yaml_file)
+
+        # generate new design module file if necessary.
+        if not os.path.exists(python_file):
+            content = self.get_python_template(lib_name, cell_name,
+                                               self.db_config.get('prim_table', {}))
+            write_file(python_file, content + '\n', mkdir=False)
+
+        # recursively import all children
+        for inst_name, inst_attrs in sch_info['instances'].items():
+            inst_lib_name = inst_attrs['lib_name']
+            if inst_lib_name not in self.exc_libs:
+                inst_cell_name = inst_attrs['cell_name']
+                self._import_design(inst_lib_name, inst_cell_name, imported_cells, dsn_db,
+                                    new_lib_path)
+
+    def instantiate_schematic(self, lib_name, content_list, lib_path=''):
+        """Create the given schematics in CAD database.
+
+        Parameters
+        ----------
+        lib_name : str
+            name of the new library to put the concrete schematics.
+        content_list : Sequence[Any]
+            list of schematics to create.
+        lib_path : str
+            the path to create the library in.  If empty, use default location.
+        """
+        template_list, change_list = [], []
+        for content in content_list:
+            if content is not None:
+                master_lib, master_cell, impl_cell, pin_map, inst_map, new_pins = content
+
+                # add to template list
+                template_list.append([master_lib, master_cell, impl_cell])
+
+                # construct change object
+                change = dict(
+                    name=impl_cell,
+                    pin_map=dict_to_item_list(pin_map),
+                    inst_list=format_inst_map(inst_map),
+                    new_pins=new_pins,
+                )
+                change_list.append(change)
+
+        self.create_implementation(lib_name, template_list, change_list, lib_path=lib_path)
+>>>>>>> master

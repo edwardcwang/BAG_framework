@@ -5,21 +5,20 @@
 from typing import TYPE_CHECKING, Optional, Dict, Any
 
 import os
-import abc
+from abc import ABC
 
-from jinja2 import Template
-
-from ..io import read_resource, write_file, open_temp
+from ..io import write_file, open_temp
 from .base import SubProcessChecker
-
-lay_template = read_resource(__name__, os.path.join('templates', 'layout_export_config.pytemp'))
-sch_template = read_resource(__name__, os.path.join('templates', 'si_env.pytemp'))
 
 if TYPE_CHECKING:
     from .base import ProcInfo
 
 
+<<<<<<< HEAD
 class VirtuosoChecker(SubProcessChecker, abc.ABC):
+=======
+class VirtuosoChecker(SubProcessChecker, ABC):
+>>>>>>> master
     """the base Checker class for Virtuoso.
 
     This class implement layout/schematic export procedures.
@@ -52,12 +51,14 @@ class VirtuosoChecker(SubProcessChecker, abc.ABC):
         os.makedirs(run_dir, exist_ok=True)
 
         # fill in stream out configuration file.
-        content = Template(lay_template).render(lib_name=lib_name,
+        content = self.render_file_template('layout_export_config.txt',
+                                            dict(
+                                                lib_name=lib_name,
                                                 cell_name=cell_name,
                                                 view_name=view_name,
                                                 output_name=out_name,
                                                 run_dir=run_dir,
-                                                )
+                                            ))
 
         with open_temp(prefix='stream_template', dir=run_dir, delete=False) as config_file:
             config_fname = config_file.name
@@ -78,13 +79,15 @@ class VirtuosoChecker(SubProcessChecker, abc.ABC):
         log_file = os.path.join(run_dir, 'schematic_export.log')
 
         # fill in stream out configuration file.
-        content = Template(sch_template).render(lib_name=lib_name,
+        content = self.render_file_template('si_env.txt',
+                                            dict(
+                                                lib_name=lib_name,
                                                 cell_name=cell_name,
                                                 view_name=view_name,
                                                 output_name=out_name,
                                                 source_added_file=self._source_added_file,
                                                 run_dir=run_dir,
-                                                )
+                                            ))
 
         # create configuration file.
         config_fname = os.path.join(run_dir, 'si.env')

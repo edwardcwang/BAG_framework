@@ -9,14 +9,18 @@ import os
 import shutil
 
 import yaml
-from jinja2 import Template
 
-import bag.io
+import bag
+from ..io.common import get_encoding, fix_string
+from ..io.file import open_temp
 from .database import DbAccess
 
+<<<<<<< HEAD
 calibre_tmp = bag.io.read_resource(bag.__name__,
                                    os.path.join('virtuoso_files', 'calibreview_setup.pytemp'))
 
+=======
+>>>>>>> master
 try:
     import cybagoa
 except ImportError:
@@ -43,7 +47,7 @@ def _dict_to_pcell_params(table):
     param_list = []
     for key, val in table.items():
         # python 2/3 compatibility: convert raw bytes to string.
-        val = bag.io.fix_string(val)
+        val = fix_string(val)
         if isinstance(val, float):
             param_list.append([key, "float", val])
         elif isinstance(val, str):
@@ -178,8 +182,13 @@ class SkillInterface(DbAccess):
         # type: (str, str) -> None
         lib_path = lib_path or self.default_lib_path
         tech_lib = self.db_config['schematic']['tech_lib']
+<<<<<<< HEAD
         self._eval_skill(
             'create_or_erase_library("%s" "%s" "%s" nil)' % (lib_name, tech_lib, lib_path))
+=======
+        return self._eval_skill('create_or_erase_library('
+                                '"{}" "{}" "{}" nil)'.format(lib_name, tech_lib, lib_path))
+>>>>>>> master
 
     def create_implementation(self, lib_name, template_list, change_list, lib_path=''):
         # type: (str, Sequence[Any], Sequence[Any], str) -> None
@@ -190,7 +199,7 @@ class SkillInterface(DbAccess):
             cds_lib_path = os.environ.get('CDS_LIB_PATH', './cds.lib')
             sch_name = 'schematic'
             sym_name = 'symbol'
-            encoding = bag.io.get_encoding()
+            encoding = get_encoding()
             # release write locks
             cell_view_list = []
             for _, _, cell_name in template_list:
@@ -260,17 +269,47 @@ class SkillInterface(DbAccess):
         output = yaml.load(self._eval_skill(cmd, out_file='result_file'))
         return output['enabled_corners'], output['corners'], output['parameters'], output['outputs']
 
+<<<<<<< HEAD
     def update_testbench(self,  # type: SkillInterface
+=======
+    def update_testbench(self,
+>>>>>>> master
                          lib,  # type: str
                          cell,  # type: str
                          parameters,  # type: Dict[str, str]
                          sim_envs,  # type: List[str]
                          config_rules,  # type: List[List[str]]
+<<<<<<< HEAD
                          env_parameters,  # type: List[List[Tuple[str, str]]]
                          ):
         # type: (...) -> None
         cmd = 'modify_testbench("%s" "%s" {conf_rules} ' \
               '{run_opts} {sim_envs} {params} {env_params})' % (lib, cell)
+=======
+                         env_parameters  # type: List[List[Tuple[str, str]]]
+                         ):
+        # type: (...) -> None
+        """Update the given testbench configuration.
+
+        Parameters
+        ----------
+        lib : str
+            testbench library.
+        cell : str
+            testbench cell.
+        parameters : Dict[str, str]
+            testbench parameters.
+        sim_envs : List[str]
+            list of enabled simulation environments.
+        config_rules : List[List[str]]
+            config view mapping rules, list of (lib, cell, view) rules.
+        env_parameters : List[List[Tuple[str, str]]]
+            list of param/value list for each simulation environment.
+        """
+
+        cmd = ('modify_testbench("%s" "%s" {conf_rules} {run_opts} '
+               '{sim_envs} {params} {env_params})' % (lib, cell))
+>>>>>>> master
         in_files = {'conf_rules': config_rules,
                     'run_opts': [],
                     'sim_envs': sim_envs,
@@ -368,12 +407,15 @@ class SkillInterface(DbAccess):
             sch_view = sch_view or calview_config['view_name']
 
             # create calibre view config file
-            content = Template(calibre_tmp).render(netlist_file=netlist,
-                                                   lib_name=lib_name,
-                                                   cell_name=cell_name,
-                                                   calibre_cellmap=cell_map,
-                                                   view_name=sch_view)
-            with bag.io.open_temp(prefix='calview', dir=self.tmp_dir, delete=False) as f:
+            tmp_params = dict(
+                netlist_file=netlist,
+                lib_name=lib_name,
+                cell_name=cell_name,
+                calibre_cellmap=cell_map,
+                view_name=sch_view,
+            )
+            content = self.render_file_template('calibreview_setup.txt', tmp_params)
+            with open_temp(prefix='calview', dir=self.tmp_dir, delete=False) as f:
                 fname = f.name
                 f.write(content)
 
