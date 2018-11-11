@@ -12,9 +12,10 @@ import abc
 
 from ..io import make_temp_dir
 from ..concurrent.core import SubProcessManager
+from .base import InterfaceBase
 
 
-class SimAccess(object, metaclass=abc.ABCMeta):
+class SimAccess(InterfaceBase, abc.ABC):
     """A class that interacts with a simulator.
 
     Parameters
@@ -27,6 +28,8 @@ class SimAccess(object, metaclass=abc.ABCMeta):
 
     def __init__(self, tmp_dir, sim_config):
         # type: (str, Dict[str, Any]) -> None
+        InterfaceBase.__init__(self)
+
         self.sim_config = sim_config
         self.tmp_dir = make_temp_dir('simTmp', parent_dir=tmp_dir)
 
@@ -212,7 +215,8 @@ class SimProcessManager(SimAccess, metaclass=abc.ABCMeta):
                                    outputs: Dict[str, str],
                                    precision: int = 6,
                                    sim_tag: Optional[str] = None) -> str:
-        args, log, env, cwd, save_dir = self.setup_sim_process(tb_lib, tb_cell, outputs, precision, sim_tag)
+        args, log, env, cwd, save_dir = self.setup_sim_process(tb_lib, tb_cell, outputs, precision,
+                                                               sim_tag)
 
         await self._manager.async_new_subprocess(args, log, env=env, cwd=cwd)
         return save_dir
@@ -220,7 +224,8 @@ class SimProcessManager(SimAccess, metaclass=abc.ABCMeta):
     async def async_load_results(self, lib: str, cell: str, hist_name: str,
                                  outputs: Dict[str, str],
                                  precision: int = 6) -> str:
-        args, log, env, cwd, save_dir = self.setup_load_process(lib, cell, hist_name, outputs, precision)
+        args, log, env, cwd, save_dir = self.setup_load_process(lib, cell, hist_name, outputs,
+                                                                precision)
 
         await self._manager.async_new_subprocess(args, log, env=env, cwd=cwd)
         return save_dir
