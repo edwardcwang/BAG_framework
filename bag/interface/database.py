@@ -13,7 +13,7 @@ import yaml
 
 import bag.io
 from ..verification import make_checker
-from ..util.template import new_template_env
+from bag.io.template import new_template_env
 
 if TYPE_CHECKING:
     from ..verification import Checker
@@ -358,6 +358,12 @@ class DbAccess(object, metaclass=abc.ABCMeta):
         """
         pass
 
+    def get_file_template(self, temp_name, params):
+        # type: (str, Dict[str, Any]) -> str
+        """Returns the string content of a new file from the given template."""
+        template = self._tmp_env.get_template(temp_name)
+        return template.render(**params)
+
     def get_python_template(self, lib_name, cell_name, primitive_table):
         # type: (str, str, Dict[str, str]) -> str
         """Returns the default Python Module template for the given schematic.
@@ -381,6 +387,7 @@ class DbAccess(object, metaclass=abc.ABCMeta):
             if cell_name in primitive_table:
                 # load template from user defined file
                 template = self._tmp_env.from_string(bag.io.read_file(primitive_table[cell_name]))
+                return template.render(**param_dict)
             else:
                 if cell_name.startswith('nmos4_') or cell_name.startswith('pmos4_'):
                     # transistor template
@@ -399,13 +406,11 @@ class DbAccess(object, metaclass=abc.ABCMeta):
                 else:
                     raise Exception('Unknown primitive cell: %s' % cell_name)
 
-                template = self._tmp_env.get_template('PrimModule.pyi')
                 param_dict['module_name'] = module_name
+                return self.get_file_template('PrimModule.pyi', param_dict)
         else:
             # use default empty template.
-            template = self._tmp_env.get_template('Module.pyi')
-
-        return template.render(**param_dict)
+            return self.get_file_template('Module.pyi', param_dict)
 
     def _process_rcx_output(self, netlist, log_fname, lib_name, cell_name, create_schematic):
         if create_schematic:
