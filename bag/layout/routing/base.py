@@ -870,13 +870,8 @@ class TrackManager(object):
     def __init__(self,
                  grid,  # type: RoutingGrid
                  tr_widths,  # type: Dict[str, Dict[int, int]]
-<<<<<<< HEAD
                  tr_spaces,  # type: Dict[Union[str, Tuple[str, str]], Dict[int, TrackType]]
                  **kwargs,  # type: Any
-=======
-                 tr_spaces,  # type: Dict[Union[str, Tuple[str, str]], Dict[int, Union[float, int]]]
-                 **kwargs
->>>>>>> master
                  ):
         # type: (...) -> None
         half_space = kwargs.get('half_space', True)

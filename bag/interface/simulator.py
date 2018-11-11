@@ -38,9 +38,10 @@ class SimAccess(InterfaceBase, abc.ABC):
         # type: (Dict[str, Any], int) -> str
         """Format the given parameter value as a string.
 
-        To support both single value parameter and parameter sweeps, each parameter value is represented
-        as a string instead of simple floats.  This method will cast a parameter configuration (which can
-        either be a single value or a sweep) to a simulator-specific string.
+        To support both single value parameter and parameter sweeps, each parameter value is
+        represented as a string instead of simple floats.  This method will cast a parameter
+        configuration (which can either be a single value or a sweep) to a
+        simulator-specific string.
 
         Parameters
         ----------

@@ -14,11 +14,7 @@ if TYPE_CHECKING:
     from .base import ProcInfo
 
 
-<<<<<<< HEAD
-class VirtuosoChecker(SubProcessChecker, abc.ABC):
-=======
 class VirtuosoChecker(SubProcessChecker, ABC):
->>>>>>> master
     """the base Checker class for Virtuoso.
 
     This class implement layout/schematic export procedures.

@@ -8,12 +8,9 @@ import os
 import pkg_resources
 
 from bag.design.module import Module
-<<<<<<< HEAD:bag/interface/templates/Module.pytemp
 
 if TYPE_CHECKING:
     from bag.design.database import ModuleDB
-=======
->>>>>>> master:bag/interface/templates/Module.pyi
 
 
 # noinspection PyPep8Naming
@@ -22,12 +19,7 @@ class {{ lib_name }}__{{ cell_name }}(Module):
 
     Fill in high level description here.
     """
-    yaml_file = pkg_resources.resource_filename(__name__,
-                                                os.path.join('netlist_info',
-                                                             '{{ cell_name }}.yaml'))
 
-
-<<<<<<< HEAD:bag/interface/templates/Module.pytemp
     yaml_file = pkg_resources.resource_filename(__name__,
                                                 os.path.join('netlist_info',
                                                              '{{ cell_name }}.yaml'))
@@ -35,10 +27,6 @@ class {{ lib_name }}__{{ cell_name }}(Module):
     def __init__(self, database, lib_name, params, used_names, **kwargs):
         # type: (ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
         Module.__init__(self, self.yaml_file, database, lib_name, params, used_names, **kwargs)
-=======
-    def __init__(self, database, parent=None, prj=None, **kwargs):
-        Module.__init__(self, database, self.yaml_file, parent=parent, prj=prj, **kwargs)
->>>>>>> master:bag/interface/templates/Module.pyi
 
     @classmethod
     def get_params_info(cls):
