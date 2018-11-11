@@ -3,24 +3,25 @@
 """This module defines base design module class and primitive design classes.
 """
 
-from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Set, Callable, Union
+from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Callable, Union, Set
 
 import os
 import abc
 from itertools import zip_longest
 
 from ..math import float_to_si_string
-from ..io import get_encoding
 from ..util.cache import DesignMaster
 from .instance import SchInstance
 
 try:
     from pybag.schematic import PySchCellView
+    from pybag.enum import TermType
 except ImportError:
     raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
 if TYPE_CHECKING:
     from .database import ModuleDB
+    from ..layout.core import TechInfo
 
 
 class Module(DesignMaster, metaclass=abc.ABCMeta):
@@ -30,62 +31,51 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
     Parameters
     ----------
-    database : ModuleDB
-        the design database object.
     yaml_fname : str
         the netlist information file name.
-    **kwargs :
+    database : ModuleDB
+        the design database object.
+    lib_name : str
+        the generated instance library name.
+    params : Dict[str, Any]
+        the parameters dictionary.
+    used_names : Set[str]
+        a set of already used cell names.
+    **kwargs : Any
         additional arguments
 
     Attributes
     ----------
-    parameters : dict[str, any]
-        the design parameters dictionary.
-    instances : dict[str, None or :class:`~bag.design.Module` or list[:class:`~bag.design.Module`]]
+    params : Dict[str, Any]
+        the parameters dictionary.
+    instances : Dict[str, SchInstance]
         the instance dictionary.
     """
 
-    # noinspection PyUnusedLocal
-    def __init__(self, database, yaml_fname, **kwargs):
-        # type: (ModuleDB, str, **Any) -> None
+    def __init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs):
+        # type: (str, ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
 
-        lib_name = kwargs['lib_name']
-        params = kwargs['params']
-        used_names = kwargs['used_names']
-        design_fun = kwargs['design_fun']
-        design_args = kwargs['design_args']
-
-        self.tech_info = database.tech_info
-
+        self._tech_info = database.tech_info
         self._yaml_fname = os.path.abspath(yaml_fname)
-        self._cv = PySchCellView(self._yaml_fname, 'symbol', get_encoding())
-        self._orig_lib_name = self._cv.lib_name
+        self._cv = PySchCellView(self._yaml_fname, 'symbol')
         self._orig_cell_name = self._cv.cell_name
+        self._pins = {}  # type: Dict[str, TermType]
 
-        self._design_fun = design_fun
-        self._design_args = design_args
-        self.instances = {name: SchInstance(database, ref, database.is_lib_excluded(ref.lib_name))
+        self.instances = {name: SchInstance(database, ref)
                           for (name, ref) in self._cv.inst_refs()}  # type: Dict[str, SchInstance]
-
-        self._inputs = self._outputs = self._inouts = None
 
         # initialize schematic master
         DesignMaster.__init__(self, database, lib_name, params, used_names)
 
     @property
-    def inputs(self):
-        # type: () -> List[str]
-        return self._inputs
+    def tech_info(self):
+        # type: () -> TechInfo
+        return self._tech_info
 
     @property
-    def outputs(self):
-        # type: () -> List[str]
-        return self._outputs
-
-    @property
-    def inouts(self):
-        # type: () -> List[str]
-        return self._inouts
+    def pins(self):
+        # type: () -> Dict[str, TermType]
+        return self._pins
 
     @abc.abstractmethod
     def design(self, **kwargs):
@@ -128,22 +118,15 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """Finalize this master instance.
         """
         # invoke design function
-        fun = getattr(self, self._design_fun)
-        if self._design_args:
-            args = self.params.pop(self._design_args)
-            fun(*args, **self.params)
-        else:
-            fun(**self.params)
+        self.design(**self.params)
 
         # get set of children master keys
         for inst in self.instances.values():
             if not inst.is_primitive:
-                self.children.add(inst.master_key)
+                self.add_child_key(inst.master_key)
 
         # get pins
-        self._inputs = list(self._cv.in_terms())
-        self._outputs = list(self._cv.out_terms())
-        self._inouts = list(self._cv.io_iterms())
+        self._pins = dict(self._cv.terminals())
 
         # update cell name
         old_cell_name = self._cv.cell_name
@@ -152,19 +135,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             self._cv.cell_name = new_cell_name
 
         # call super finalize routine
-        super(Module, self).finalize()
-
-    @classmethod
-    def get_params_info(cls):
-        # type: () -> Optional[Dict[str, str]]
-        """Returns a dictionary from parameter names to descriptions.
-
-        Returns
-        -------
-        param_info : Optional[Dict[str, str]]
-            dictionary from parameter names to descriptions.
-        """
-        return None
+        DesignMaster.finalize(self)
 
     def get_master_basename(self):
         # type: () -> str
@@ -288,7 +259,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         self._cv.rename_pin(old_pin, new_pin)
 
     def add_pin(self, new_pin, pin_type):
-        # type: (str, str) -> None
+        # type: (str, Union[TermType, str]) -> None
         """Adds a new pin to this schematic.
 
         NOTE: Make sure to call :meth:`.reconnect_instance_terminal` so that instances are
@@ -298,10 +269,13 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         new_pin : str
             the new pin name.
-        pin_type : str
-            the new pin type.  We current support "input", "output", or "inputOutput"
+        pin_type : Union[TermType, str]
+            the new pin type.
         """
-        self._cv.add_pin(new_pin, pin_type)
+        if isinstance(pin_type, TermType):
+            self._cv.add_pin(new_pin, pin_type)
+        else:
+            self._cv.add_pin(new_pin, TermType[pin_type].value)
 
     def remove_pin(self, remove_pin):
         # type: (str) -> bool
@@ -440,23 +414,21 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         # get instance/terminal list iterator
         if term_list is None:
-            inst_term_iter = zip_longest(inst_name, [], fillvalue={})
+            inst_term_iter = zip_longest(inst_name_list, [], fillvalue=[])
         elif len(inst_name_list) != len(term_list):
             raise ValueError('inst_name_list and term_list length mismatch.')
         else:
-            inst_term_iter = zip_longest(inst_name, term_list)
+            inst_term_iter = zip_longest(inst_name_list, (term.items() for term in term_list))
 
         # array instance
-        self._cv.array_instance(inst_name, inst_term_iter, dx=dx, dy=dy)
+        self._cv.array_instance(inst_name, dx, dy, inst_term_iter)
 
         # update instance dictionary
         orig_inst = self.instances.pop(inst_name)
         db = orig_inst.database
-        is_static = orig_inst.static
         for name in inst_name_list:
             inst_ptr = self._cv.get_inst_ref(name)
-            self.instances[name] = inst = SchInstance(db, inst_ptr, is_static)
-            inst.master = orig_inst.master
+            self.instances[name] = SchInstance(db, inst_ptr, master=orig_inst.master)
 
     def design_dc_bias_sources(self,  # type: Module
                                vbias_dict,  # type: Optional[Dict[str, List[str]]]
@@ -581,19 +553,11 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
 class MosModuleBase(Module):
     """The base design class for the bag primitive transistor.
-
-    Parameters
-    ----------
-    database : ModuleDB
-        the design database object.
-    yaml_file : str
-        the netlist information file name.
-    **kwargs :
-        additional arguments
     """
 
-    def __init__(self, database, yaml_file, **kwargs):
-        Module.__init__(self, database, yaml_file, **kwargs)
+    def __init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs):
+        # type: (str, ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
+        Module.__init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -605,7 +569,7 @@ class MosModuleBase(Module):
             intent='transistor threshold flavor.',
         )
 
-    def design(self, w=1e-6, l=60e-9, nf=1, intent='standard'):
+    def design(self, w, l, nf, intent):
         pass
 
     def get_schematic_parameters(self):
@@ -637,19 +601,11 @@ class MosModuleBase(Module):
 
 class ResPhysicalModuleBase(Module):
     """The base design class for a real resistor parametrized by width and length.
-
-    Parameters
-    ----------
-    database : ModuleDB
-        the design database object.
-    yaml_file : str
-        the netlist information file name.
-    **kwargs :
-        additional arguments
     """
 
-    def __init__(self, database, yaml_file, **kwargs):
-        Module.__init__(self, database, yaml_file, **kwargs)
+    def __init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs):
+        # type: (str, ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
+        Module.__init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -660,7 +616,7 @@ class ResPhysicalModuleBase(Module):
             intent='resistor flavor.',
         )
 
-    def design(self, w=1e-6, l=1e-6, intent='standard'):
+    def design(self, w, l, intent):
         pass
 
     def get_schematic_parameters(self):
@@ -687,19 +643,11 @@ class ResPhysicalModuleBase(Module):
 
 class ResMetalModule(Module):
     """The base design class for a metal resistor.
-
-    Parameters
-    ----------
-    database : ModuleDB
-        the design database object.
-    yaml_file : str
-        the netlist information file name.
-    **kwargs :
-        additional arguments
     """
 
-    def __init__(self, database, yaml_file, **kwargs):
-        Module.__init__(self, database, yaml_file, **kwargs)
+    def __init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs):
+        # type: (str, ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
+        Module.__init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -710,7 +658,7 @@ class ResMetalModule(Module):
             layer='the metal layer ID.',
         )
 
-    def design(self, w=1e-6, l=1e-6, layer=1):
+    def design(self, w, l, layer):
         """Create a metal resistor.
 
         Parameters

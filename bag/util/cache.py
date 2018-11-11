@@ -3,7 +3,7 @@
 """This module defines classes used to cache existing design masters
 """
 
-from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable
+from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable, Iterator
 
 import abc
 import time
@@ -31,39 +31,35 @@ class DesignMaster(abc.ABC):
         a set of already used cell names.
     **kwargs :
         optional parameters.
+
+    Attributes
+    ----------
+    params : Dict[str, Any]
+        the parameters dictionary.
     """
     def __init__(self, master_db, lib_name, params, used_names, **kwargs):
         # type: (MasterDB, str, Dict[str, Any], Set[str], **Any) -> None
         self._master_db = master_db
         self._lib_name = lib_name
         self._used_names = used_names
+        self._children = set()
+        self._finalized = False
 
         # set parameters
         params_info = self.get_params_info()
         default_params = self.get_default_param_values()
-        self._cell_name = ''  # type: str
         self.params = {}  # type: Dict[str, Any]
-        if params_info is None:
-            # compatibility with old schematics generators
-            self.params.update(params)
-            self._prelim_key = self.to_immutable_id((self._get_qualified_name(), params))
-            self._key = None
-        else:
-            self.populate_params(params, params_info, default_params, **kwargs)
-            # get unique cell name
-            self._prelim_key = self.compute_unique_key()
-            self.update_master_info()
+        self.populate_params(params, params_info, default_params, **kwargs)
 
-        self.children = set()
-        self._finalized = False
-
-    def update_master_info(self):
+        # get unique cell name
         self._cell_name = get_new_name(self.get_master_basename(), self._used_names)
         self._key = self.compute_unique_key()
 
     def populate_params(self, table, params_info, default_params, **kwargs):
         # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **Any) -> None
         """Fill params dictionary with values from table and default_params"""
+        hidden_params = kwargs.get('hidden_params', {})
+
         for key, desc in params_info.items():
             if key not in table:
                 if key not in default_params:
@@ -74,7 +70,6 @@ class DesignMaster(abc.ABC):
                 self.params[key] = table[key]
 
         # add hidden parameters
-        hidden_params = kwargs.get('hidden_params', {})
         for name, value in hidden_params.items():
             self.params[name] = table.get(name, value)
 
@@ -102,15 +97,15 @@ class DesignMaster(abc.ABC):
     @classmethod
     @abc.abstractmethod
     def get_params_info(cls):
-        # type: () -> Optional[Dict[str, str]]
+        # type: () -> Dict[str, str]
         """Returns a dictionary from parameter names to descriptions.
 
         Returns
         -------
-        param_info : Optional[Dict[str, str]]
+        param_info : Dict[str, str]
             dictionary from parameter names to descriptions.
         """
-        return None
+        return {}
 
     @classmethod
     def get_default_param_values(cls):
@@ -188,12 +183,6 @@ class DesignMaster(abc.ABC):
         """Returns True if this DesignMaster is finalized."""
         return self._finalized
 
-    @property
-    def prelim_key(self):
-        # type: () -> Any
-        """Returns a preliminary unique key.  For compatibility with old schematic generators."""
-        return self._prelim_key
-
     def _get_qualified_name(self):
         # type: () -> str
         """Returns the qualified name of this class."""
@@ -219,6 +208,16 @@ class DesignMaster(abc.ABC):
             a hashable unique ID representing the given parameters.
         """
         return self.to_immutable_id((self._get_qualified_name(), self.params))
+
+    def add_child_key(self, child_key):
+        # type: (object) -> None
+        """Registers the given child key."""
+        self._children.add(child_key)
+
+    def children(self):
+        # type: () -> Iterator[object]
+        """Iterate over all children's key."""
+        return iter(self._children)
 
 
 MasterType = TypeVar('MasterType', bound=DesignMaster)
@@ -386,45 +385,19 @@ class MasterDB(abc.ABC):
         master = self.create_master_instance(gen_cls, self._lib_name, params,
                                              self._used_cell_names, **kwargs)
         key = master.key
-
-        if key is None:
-            prelim_key = master.prelim_key
-            if prelim_key in self._key_lookup:
-                key = self._key_lookup[prelim_key]
-                master = self._master_lookup[key]
-                if debug:
-                    print('master cached')
-            else:
-                if debug:
-                    print('finalizing master')
-                start = time.time()
-                master.finalize()
-                end = time.time()
-
-                key = master.key
-                self._key_lookup[prelim_key] = key
-                if key in self._master_lookup:
-                    master = self._master_lookup[key]
-                    self._used_cell_names.add(master.cell_name)
-                else:
-                    self.register_master(key, master)
-
-                if debug:
-                    print('finalizing master took %.4g seconds' % (end - start))
+        if key in self._master_lookup:
+            master = self._master_lookup[key]
+            if debug:
+                print('master cached')
         else:
-            if key in self._master_lookup:
-                master = self._master_lookup[key]
-                if debug:
-                    print('master cached')
-            else:
-                if debug:
-                    print('finalizing master')
-                start = time.time()
-                master.finalize()
-                end = time.time()
-                self.register_master(key, master)
-                if debug:
-                    print('finalizing master took %.4g seconds' % (end - start))
+            if debug:
+                print('finalizing master')
+            start = time.time()
+            master.finalize()
+            end = time.time()
+            self.register_master(key, master)
+            if debug:
+                print('finalizing master took %.4g seconds' % (end - start))
 
         return master
 
@@ -530,7 +503,7 @@ class MasterDB(abc.ABC):
             the master object to create.
         """
         # get template master for all children
-        for master_key in master.children:
+        for master_key in master.children():
             child_temp = self._master_lookup[master_key]
             if child_temp.cell_name not in info_dict:
                 self._instantiate_master_helper(info_dict, child_temp)
