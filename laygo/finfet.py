@@ -198,6 +198,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                                po_types=po_types,
                                edgel_info=lr_edge_info,
                                edger_info=lr_edge_info,
+                               is_sub_ring=False,
                                )
         ext_bot_info = ExtInfo(margins=bot_margins,
                                od_h=w_max,
@@ -207,6 +208,7 @@ class LaygoTechFinfetBase(LaygoTech, metaclass=abc.ABCMeta):
                                po_types=po_types,
                                edgel_info=lr_edge_info,
                                edger_info=lr_edge_info,
+                               is_sub_ring=False,
                                )
 
         lay_info_list = [(lay, 0, blk_yb, blk_yt)
