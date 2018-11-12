@@ -13,5 +13,5 @@ def new_template_env(parent_package, tmp_folder):
                        keep_trailing_newline=True,
                        autoescape=select_autoescape(default_for_string=False),
                        loader=PackageLoader(parent_package, package_path=tmp_folder),
-                       enable_async=True,
+                       enable_async=False,
                        )
