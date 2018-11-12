@@ -79,6 +79,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def design(self, **kwargs):
+        # type: (**Any) -> None
         """To be overridden by subclasses to design this module.
 
         To design instances of this module, you can
@@ -227,6 +228,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         return {}
 
     def get_cell_name_from_parameters(self):
+        # type: () -> str
         """Returns new cell name based on parameters.
 
         NOTE: This method is only used by BAG primitives.  This method
@@ -374,24 +376,41 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         self.instances[inst_name].change_generator(lib_name, cell_name, static=static)
 
     def reconnect_instance_terminal(self, inst_name, term_name, net_name):
+        # type: (str, str, str) -> None
         """Reconnect the instance terminal to a new net.
 
         Parameters
         ----------
         inst_name : str
-            the child instance to modify.
-        term_name : Union[str, List[str]]
+            the instance to modify.
+        term_name : str
             the instance terminal name to reconnect.
-            If a list is given, it is applied to each arrayed instance.
-        net_name : Union[str, List[str]]
+        net_name : str
             the net to connect the instance terminal to.
-            If a list is given, it is applied to each arrayed instance.
         """
         inst = self.instances.get(inst_name, None)
         if inst is None:
             raise ValueError('Cannot find instance {}'.format(inst_name))
 
         inst.update_connection(inst_name, term_name, net_name)
+
+    def reconnect_instance(self, inst_name, term_net_iter):
+        # type: (str, Iterable[Tuple[str, str]]) -> None
+        """Reconnect all give instance terminals
+
+        Parameters
+        ----------
+        inst_name : str
+            the instance to modify.
+        term_net_iter : Iterable[Tuple[str, str]]
+            an iterable of (term, net) tuples.
+        """
+        inst = self.instances.get(inst_name, None)
+        if inst is None:
+            raise ValueError('Cannot find instance {}'.format(inst_name))
+
+        for term, net in term_net_iter:
+            inst.update_connection(inst_name, term, net)
 
     def array_instance(self,
                        inst_name: str,
@@ -706,6 +725,7 @@ class MosModuleBase(Module):
         )
 
     def design(self, w, l, nf, intent):
+        # type: (Union[float, int], float, int, str) -> None
         pass
 
     def get_schematic_parameters(self):
@@ -753,6 +773,7 @@ class ResPhysicalModuleBase(Module):
         )
 
     def design(self, w, l, intent):
+        # type: (float, float, str) -> None
         pass
 
     def get_schematic_parameters(self):
@@ -795,6 +816,7 @@ class ResMetalModule(Module):
         )
 
     def design(self, w, l, layer):
+        # type: (float, float, int) -> None
         """Create a metal resistor.
 
         Parameters
