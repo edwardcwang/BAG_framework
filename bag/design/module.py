@@ -293,8 +293,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self._cv.remove_pin(remove_pin)
 
-    def rename_instance(self, old_name, new_name):
-        # type: (str, str) -> None
+    def rename_instance(self, old_name, new_name, conn_list=None):
+        # type: (str, str, Optional[Iterable[Tuple[str, str]]]) -> None
         """Renames an instance in this schematic.
 
         Parameters
@@ -303,9 +303,14 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             the old instance name.
         new_name : str
             the new instance name.
+        conn_list : Optional[Iterable[Tuple[str, str]]]
+            an optional connection list.
         """
         self._cv.rename_instance(old_name, new_name)
-        self.instances[new_name] = self.instances.pop(old_name)
+        self.instances[new_name] = inst = self.instances.pop(old_name)
+        if conn_list:
+            for term, net in conn_list:
+                inst.update_connection(new_name, term, net)
 
     def remove_instance(self, inst_name):
         # type: (str) -> bool
@@ -561,9 +566,20 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 inst.update_connection(name, 'S', s_name)
                 inst.design(w=w, l=lch, nf=fg, intent=th)
 
-    def design_transistor(self, inst_name, w, lch, seg, intent, m, d='', g='',
-                          b='', s='', stack=1):
-        # type: (str, Union[float, int], float, int, str, str, str, str, str, str, int) -> None
+    def design_transistor(self,
+                          inst_name,  # type: str
+                          w,  # type: Union[float, int]
+                          lch,  # type: float
+                          seg,  # type: int
+                          intent,  # type: str
+                          m,  # type: str
+                          d='',  # type: str
+                          g='',  # type: Union[str, List[str]]
+                          s='',  # type: str
+                          b='',  # type: str
+                          stack=1  # type: int
+                          ):
+        # type: (...) -> None
         """Design a BAG_prim transistor (with stacking support).
 
         This is a convenient method to design a stack transistor.  Additional transistors
@@ -587,11 +603,13 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             'midX', where X is an non-negative integer.
         d : str
             the drain name.  Empty string to not rename.
-        g : str
+        g : Union[str, List[str]]
+            the gate name.  Empty string to not rename.
+            If a list is given, then a NAND-gate structure will be built where the gate nets
+            may be different.  Index 0 corresponds to the gate of the source transistor.
+        s : str
             the source name.  Empty string to not rename.
         b : str
-            the gate name.  Empty string to not rename.
-        s : str
             the body name.  Empty string to not rename.
         stack : int
             number of series stack transistors.
@@ -602,17 +620,23 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         if stack <= 0 or seg <= 0:
             raise ValueError('stack and seg must be positive')
 
-        inst.design(w=w, l=lch, nf=seg, intent=intent)
+        g_is_str = isinstance(g, str)
         if stack == 1:
+            # design instance
+            inst.design(w=w, l=lch, nf=seg, intent=intent)
             # connect terminals
+            if not g_is_str:
+                g = g[0]
             for term, net in (('D', d), ('G', g), ('S', s), ('B', b)):
                 if net:
                     inst.update_connection(inst_name, term, net)
         else:
             if not m:
                 raise ValueError('Intermediate node base name cannot be empty.')
+            # design instance
+            inst.design(w=w, l=lch, nf=1, intent=intent)
             # rename G/B
-            if g:
+            if g_is_str and g:
                 inst.update_connection(inst_name, 'G', g)
             if b:
                 inst.update_connection(inst_name, 'B', b)
@@ -620,23 +644,27 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 d = inst.get_connection('D')
             if not s:
                 s = inst.get_connection('S')
+
             if seg == 1:
                 # only one segment, array instance via naming
                 # rename instance
-                new_name = inst_name + '<{}:0>'.format(stack - 1)
+                new_name = inst_name + '<0:{}>'.format(stack - 1)
                 self.rename_instance(inst_name, new_name)
                 # rename D/S
                 if stack > 2:
-                    m += '<{}:0>'.format(stack - 2)
-                new_s = m + ',' + s
-                new_d = d + ',' + m
+                    m += '<0:{}>'.format(stack - 2)
+                new_s = s + ',' + m
+                new_d = m + ',' + d
                 inst.update_connection(new_name, 'D', new_d)
                 inst.update_connection(new_name, 'S', new_s)
+                if not g_is_str:
+                    inst.update_connection(new_name, 'G', ','.join(g))
             else:
                 # multiple segment and stacks, have to array instance
                 # construct instance name/terminal map iterator
                 def iter_fun():
                     last_cnt = (stack - 1) * seg
+                    g_cnt = 0
                     for cnt in range(0, last_cnt + 1, seg):
                         d_suf = '<{}:{}>'.format(cnt + seg - 1, cnt)
                         s_suf = '<{}:{}>'.format(cnt - 1, cnt - seg)
@@ -650,7 +678,11 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                         else:
                             s_name = m + s_suf
                             d_name = m + d_suf
-                        yield iname, [('S', s_name), ('D', d_name)]
+                        term_list = [('S', s_name), ('D', d_name)]
+                        if not g_is_str:
+                            term_list.append(('G', g[g_cnt]))
+                            g_cnt += 1
+                        yield iname, term_list
 
                 self.array_instance(inst_name, inst_term_iter=iter_fun())
 
