@@ -3,7 +3,7 @@
 """This module defines base design module class and primitive design classes.
 """
 
-from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Callable, Union, Set
+from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Callable, Union, Set, Iterable
 
 import os
 import abc
@@ -388,8 +388,14 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
         inst.update_connection(inst_name, term_name, net_name)
 
-    def array_instance(self, inst_name, inst_name_list, term_list=None, dx=0, dy=0):
-        # type: (str, List[str], Optional[List[Dict[str, str]]], int, int) -> None
+    def array_instance(self,
+                       inst_name: str,
+                       inst_name_list: Optional[List[str]] = None,
+                       term_list: Optional[List[Dict[str, str]]] = None,
+                       inst_term_iter: Optional[Iterable[Tuple[str, List[Tuple[str, str]]]]] = None,
+                       dx: int = 0,
+                       dy: int = 0
+                       ) -> None:
         """Replace the given instance by an array of instances.
 
         This method will replace self.instances[inst_name] by a list of
@@ -399,7 +405,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         inst_name : str
             the instance to array.
-        inst_name_list : List[str]
+        inst_name_list : Optional[List[str]]
             a list of the names for each array item.
         term_list : Optional[List[Dict[str, str]]]
             a list of modified terminal connections for each array item.  The keys are
@@ -407,18 +413,23 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             them to.  Only terminal connections different than the parent instance
             should be listed here.
             If None, assume terminal connections are not changed.
+        inst_term_iter : Optional[List[Tuple[str, List[Tuple[str, str]]]]]
+            zipped version of inst_name_list and term_list.  If given, this is used instead.
         dx : int
             the X coordinate shift.  If dx = dy = 0, default to shift right.
         dy : int
             the Y coordinate shift.  If dx = dy = 0, default to shift right.
         """
-        # get instance/terminal list iterator
-        if term_list is None:
-            inst_term_iter = zip_longest(inst_name_list, [], fillvalue=[])
-        elif len(inst_name_list) != len(term_list):
-            raise ValueError('inst_name_list and term_list length mismatch.')
-        else:
-            inst_term_iter = zip_longest(inst_name_list, (term.items() for term in term_list))
+        if inst_term_iter is None:
+            if inst_name_list is None:
+                raise ValueError('inst_name_list cannot be None if inst_term_iter is None.')
+            # get instance/terminal list iterator
+            if term_list is None:
+                inst_term_iter = zip_longest(inst_name_list, [], fillvalue=[])
+            elif len(inst_name_list) != len(term_list):
+                raise ValueError('inst_name_list and term_list length mismatch.')
+            else:
+                inst_term_iter = zip_longest(inst_name_list, (term.items() for term in term_list))
 
         # array instance
         self._cv.array_instance(inst_name, dx, dy, inst_term_iter)
@@ -549,6 +560,99 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 inst.update_connection(name, 'D', d_name)
                 inst.update_connection(name, 'S', s_name)
                 inst.design(w=w, l=lch, nf=fg, intent=th)
+
+    def design_transistor(self, inst_name, w, lch, seg, intent, m, d='', g='',
+                          b='', s='', stack=1):
+        # type: (str, Union[float, int], float, int, str, str, str, str, str, str, int) -> None
+        """Design a BAG_prim transistor (with stacking support).
+
+        This is a convenient method to design a stack transistor.  Additional transistors
+        will be created on the right.  The intermediate nodes of each parallel segment are not
+        shorted together.
+
+        Parameters
+        ----------
+        inst_name : str
+            name of the BAG_prim transistor instance.
+        w : Union[float, int]
+            the width of the transistor, in meters/number of fins.
+        lch : float
+            the channel length, in meters.
+        seg : int
+            number of parallel segments of stacked transistors.
+        intent : str
+            the threshold flavor.
+        m : str
+            base name of the intermediate nodes.  the intermediate nodes will be named
+            'midX', where X is an non-negative integer.
+        d : str
+            the drain name.  Empty string to not rename.
+        g : str
+            the source name.  Empty string to not rename.
+        b : str
+            the gate name.  Empty string to not rename.
+        s : str
+            the body name.  Empty string to not rename.
+        stack : int
+            number of series stack transistors.
+        """
+        inst = self.instances[inst_name]
+        if not issubclass(inst.master_class, MosModuleBase):
+            raise ValueError('This method only works on BAG_prim transistors.')
+        if stack <= 0 or seg <= 0:
+            raise ValueError('stack and seg must be positive')
+
+        inst.design(w=w, l=lch, nf=seg, intent=intent)
+        if stack == 1:
+            # connect terminals
+            for term, net in (('D', d), ('G', g), ('S', s), ('B', b)):
+                if net:
+                    inst.update_connection(inst_name, term, net)
+        else:
+            if not m:
+                raise ValueError('Intermediate node base name cannot be empty.')
+            # rename G/B
+            if g:
+                inst.update_connection(inst_name, 'G', g)
+            if b:
+                inst.update_connection(inst_name, 'B', b)
+            if not d:
+                d = inst.get_connection('D')
+            if not s:
+                s = inst.get_connection('S')
+            if seg == 1:
+                # only one segment, array instance via naming
+                # rename instance
+                new_name = inst_name + '<{}:0>'.format(stack - 1)
+                self.rename_instance(inst_name, new_name)
+                # rename D/S
+                if stack > 2:
+                    m += '<{}:0>'.format(stack - 2)
+                new_s = m + ',' + s
+                new_d = d + ',' + m
+                inst.update_connection(new_name, 'D', new_d)
+                inst.update_connection(new_name, 'S', new_s)
+            else:
+                # multiple segment and stacks, have to array instance
+                # construct instance name/terminal map iterator
+                def iter_fun():
+                    last_cnt = (stack - 1) * seg
+                    for cnt in range(0, last_cnt + 1, seg):
+                        d_suf = '<{}:{}>'.format(cnt + seg - 1, cnt)
+                        s_suf = '<{}:{}>'.format(cnt - 1, cnt - seg)
+                        iname = inst_name + d_suf
+                        if cnt == 0:
+                            s_name = s
+                            d_name = m + d_suf
+                        elif cnt == last_cnt:
+                            s_name = m + s_suf
+                            d_name = d
+                        else:
+                            s_name = m + s_suf
+                            d_name = m + d_suf
+                        yield iname, [('S', s_name), ('D', d_name)]
+
+                self.array_instance(inst_name, inst_term_iter=iter_fun())
 
 
 class MosModuleBase(Module):

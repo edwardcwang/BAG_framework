@@ -3,7 +3,7 @@
 """This module defines classes representing various design instances.
 """
 
-from typing import TYPE_CHECKING, Optional, Any
+from typing import TYPE_CHECKING, Type, Optional, Any
 
 
 if TYPE_CHECKING:
@@ -33,13 +33,27 @@ class SchInstance:
         self._db = db
         self._master = master
         self._ptr = inst_ptr
-        self._static = self._ptr.is_primitive
+        if master is None:
+            lib_name = self._ptr.lib_name
+            static = self._ptr.is_primitive and lib_name != 'BAG_prim'
+            if static:
+                self._sch_cls = None
+            else:
+                cell_name = self._ptr.cell_name
+                self._sch_cls = db.get_schematic_class(lib_name, cell_name)
+        else:
+            self._sch_cls = master.__class__
 
     @property
     def master(self):
         # type: () -> Optional[Module]
         """Optional[Module]: the master object of this instance."""
         return self._master
+
+    @property
+    def master_class(self):
+        # type: () -> Optional[Type[Module]]
+        return self._sch_cls
 
     @property
     def gen_lib_name(self):
@@ -63,7 +77,7 @@ class SchInstance:
     def static(self):
         # type: () -> bool
         """bool: True if this instance points to a static/fixed schematic."""
-        return self._static
+        return self._sch_cls is None
 
     @property
     def width(self):
@@ -81,7 +95,7 @@ class SchInstance:
     def is_primitive(self):
         # type: () -> bool
         """bool: True if this is a primitive (static or in BAG_prim) schematic instance."""
-        if self._static:
+        if self._sch_cls is None:
             return True
         if self.master is None:
             raise ValueError('Schematic instance has no master.  Did you forget to call design()?')
@@ -104,18 +118,16 @@ class SchInstance:
     def design(self, **kwargs):
         # type: (**Any) -> None
         """Call the design method on master."""
-        if self._static:
+        if self._sch_cls is None:
             raise RuntimeError('Cannot call design() method on static instances.')
 
-        sch_cls = self._db.get_schematic_class(self.gen_lib_name, self.gen_cell_name)
-        self._master = self._db.new_schematic(sch_cls, params=kwargs)
+        self._master = self._db.new_schematic(self._sch_cls, params=kwargs)
         if self._master.is_primitive():
             # update parameters
             for key, val in self._master.get_schematic_parameters().items():
                 self.set_param(key, val)
 
         self._ptr.cell_name = self.master_cell_name
-        self._ptr.is_primitive = self.is_primitive
 
     def change_generator(self, gen_lib_name, gen_cell_name, static=False):
         # type: (str, str, bool) -> None
@@ -131,7 +143,10 @@ class SchInstance:
             True if this is actually a fixed schematic, not a generator.
         """
         self._master = None
-        self._static = static
+        if static:
+            self._sch_cls = None
+        else:
+            self._sch_cls = self._db.get_schematic_class(gen_lib_name, gen_cell_name)
         self._ptr.update_master(gen_lib_name, gen_cell_name, prim=static)
 
     def set_param(self, key, val):
@@ -161,6 +176,22 @@ class SchInstance:
             The net to connect the terminal to.
         """
         self._ptr.update_connection(inst_name, term_name, net_name)
+
+    def get_connection(self, term_name):
+        # type: (str) -> str
+        """Get the net name connected to the given terminal.
+
+        Parameters
+        ----------
+        term_name : str
+            the terminal name.
+
+        Returns
+        -------
+        net_name : str
+            the resulting net name.  Empty string if given terminal is not found.
+        """
+        return self._ptr.get_connection(term_name)
 
     def get_master_lib_name(self, impl_lib):
         # type: (str) -> str
