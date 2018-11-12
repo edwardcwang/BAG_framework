@@ -1,16 +1,12 @@
 # -*- coding: utf-8 -*-
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Dict, Any, Set
+from typing import Dict, Any, Set
 
 import os
 import pkg_resources
 
 from bag.design.module import Module
-
-if TYPE_CHECKING:
-    from bag.design.database import ModuleDB
+from bag.design.database import ModuleDB
 
 
 # noinspection PyPep8Naming
