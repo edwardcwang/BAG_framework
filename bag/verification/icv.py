@@ -41,10 +41,17 @@ def lvs_passed(retcode, log_file):
     dirname = os.path.dirname(log_file)
     cell_name = os.path.basename(dirname)
     lvs_error_file = os.path.join(dirname, cell_name + '.LVS_ERRORS')
-    if not os.path.isfile(lvs_error_file):
+
+    # append error file at the end of log file
+    with open(log_file, 'a') as logf:
+        with open(lvs_error_file, 'r') as errf:
+            for line in errf:
+                logf.write(line)
+
+    if not os.path.isfile(log_file):
         return False, ''
 
-    cmd_output = read_file(lvs_error_file)
+    cmd_output = read_file(log_file)
     test_str = 'Final comparison result:PASS'
 
     return test_str in cmd_output, lvs_error_file
@@ -81,7 +88,6 @@ class ICV(VirtuosoChecker):
         rcx_params = kwargs.get('rcx_params', {})
         lvs_params = kwargs.get('lvs_params', {})
         rcx_link_files = kwargs.get('rcx_link_files', None)
-        rcx_source_file = kwargs.get('rcx_source_file', None)
         lvs_link_files = kwargs.get('lvs_link_files', None)
 
         if cancel_timeout is not None:
@@ -97,7 +103,6 @@ class ICV(VirtuosoChecker):
         self.rcx_run_dir = os.path.abspath(rcx_run_dir)
         self.rcx_runset = rcx_runset
         self.rcx_link_files = rcx_link_files
-        self.rcx_source_file = rcx_source_file
         self.rcx_mode = rcx_mode
 
     def get_rcx_netlists(self, lib_name, cell_name):
@@ -135,8 +140,7 @@ class ICV(VirtuosoChecker):
         flow_list = []
         cmd, log, env, cwd = self.setup_export_layout(lib_name, cell_name, lay_file, lay_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
-        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view,
-                                                         None)
+        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
 
         lvs_params_actual = self.default_lvs_params.copy()
@@ -155,7 +159,6 @@ class ICV(VirtuosoChecker):
             cmd.append(f)
 
         flow_list.append((cmd, log_file, None, run_dir, lvs_passed))
-
         return flow_list
 
     def setup_rcx_flow(self, lib_name, cell_name, sch_view='schematic', lay_view='layout',
@@ -176,8 +179,7 @@ class ICV(VirtuosoChecker):
         flow_list = []
         cmd, log, env, cwd = self.setup_export_layout(lib_name, cell_name, lay_file, lay_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
-        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view,
-                                                         None)
+        cmd, log, env, cwd = self.setup_export_schematic(lib_name, cell_name, sch_file, sch_view, None)
         flow_list.append((cmd, log, env, cwd, _all_pass))
 
         if self.rcx_mode == 'starrc':
@@ -186,15 +188,16 @@ class ICV(VirtuosoChecker):
 
             dr_process_str = '_drPROCESS=' + lvs_params_actual['_drPROCESS']
 
-            # cmd = ['icv', '-D', drPROCESS_str, '-i', lay_file, '-s', sch_file, '-sf', 'SPICE',
-            #        '-f', 'GDSII', '-c', cell_name, '-I']
             cmd = ['icv', '-D', '_drRCextract', '-D', dr_process_str, '-D', '_drICFOAlayers',
                    '-i', lay_file, '-s', sch_file, '-sf', 'SPICE', '-f', 'GDSII',
                    '-c', cell_name, '-I']
             for f in self.lvs_link_files:
                 cmd.append(f)
 
-            flow_list.append((cmd, log_file, None, run_dir, lvs_passed))
+            # hack the environment variables to make sure $PWD is the same as current working directory
+            env_copy = os.environ.copy()
+            env_copy['PWD'] = run_dir
+            flow_list.append((cmd, log_file, env_copy, run_dir, lvs_passed))
 
             # second: setup CCP
             # make symlinks
@@ -203,9 +206,6 @@ class ICV(VirtuosoChecker):
                     targ_file = os.path.join(run_dir, os.path.basename(source_file))
                     if not os.path.exists(targ_file):
                         os.symlink(source_file, targ_file)
-
-            cmd = ['source', self.rcx_source_file]
-            flow_list.append((cmd, None, None, run_dir, _all_pass))
 
             # generate new cmd for StarXtract
             cmd_content, result = self.modify_starrc_cmd(run_dir, lib_name, cell_name,
@@ -260,6 +260,10 @@ class ICV(VirtuosoChecker):
             the extracted netlist file.
         """
         output_name = '%s.spf' % cell_name
+        if 'CDSLIBPATH' in os.environ:
+            cds_lib_path = os.path.abspath(os.path.join(os.environ['CDSLIBPATH'], 'cds.lib'))
+        else:
+            cds_lib_path = os.path.abspath('./cds.lib')
         content = self.render_string_template(read_file(self.rcx_runset),
                                               dict(
                                                   cell_name=cell_name,
@@ -267,7 +271,7 @@ class ICV(VirtuosoChecker):
                                                   netlist_format=starrc_params.get('netlist_format',
                                                                                    'SPF'),
                                                   sch_file=sch_file,
-                                                  cds_lib=starrc_params['cds_lib'],
+                                                  cds_lib=cds_lib_path,
                                                   lib_name=lib_name,
                                                   run_dir=run_dir,
                                               ))
