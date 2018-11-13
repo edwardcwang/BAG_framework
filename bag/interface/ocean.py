@@ -10,10 +10,6 @@ import os
 import bag.io
 from .simulator import SimProcessManager
 
-run_script = bag.io.read_resource(bag.__name__,
-                                  os.path.join('virtuoso_files', 'run_simulation.ocn'))
-load_script = bag.io.read_resource(bag.__name__, os.path.join('virtuoso_files', 'load_results.ocn'))
-
 if TYPE_CHECKING:
     from .simulator import ProcInfo
 
