@@ -159,9 +159,6 @@ def run_main():
         BAG_DIR: {
             'url': 'git@github.com:ucb-art/BAG_framework.git',
         },
-        'BAG2_TEMPLATES_EC': {
-            'url': 'git@github.com:ucb-art/BAG2_TEMPLATES_EC.git',
-        },
     }
 
     with open('bag_submodules.yaml', 'r') as f:
