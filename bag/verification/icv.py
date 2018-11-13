@@ -54,7 +54,7 @@ def lvs_passed(retcode, log_file):
     cmd_output = read_file(log_file)
     test_str = 'Final comparison result:PASS'
 
-    return test_str in cmd_output, lvs_error_file
+    return test_str in cmd_output, log_file
 
 
 class ICV(VirtuosoChecker):
