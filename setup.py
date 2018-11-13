@@ -35,6 +35,7 @@ setup(
     tests_require=[
         'openmdao',
         'pytest',
+        'pytest-xdist',
     ],
     packages=find_packages('src'),
     package_dir={'': 'src'},
