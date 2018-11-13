@@ -10,7 +10,6 @@ from typing import Tuple
 import os
 import glob
 import argparse
-from itertools import islice
 
 repl_header = r'''# -*- coding: utf-8 -*-
 

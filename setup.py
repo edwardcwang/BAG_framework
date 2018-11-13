@@ -5,7 +5,8 @@ from setuptools import setup, find_packages
 
 setup(
     name='bag',
-    version='2.0',
+    version='3.0',
+    license='BSD 3-Clause License',
     description='Berkeley Analog Generator',
     classifiers=[
         'Development Status :: 3 - Alpha',
@@ -15,7 +16,6 @@ setup(
     ],
     author='Eric Chang',
     author_email='pkerichang@berkeley.edu',
-    packages=find_packages(),
     python_requires='>=3.7',
     install_requires=[
         'setuptools>=18.5',
@@ -36,6 +36,8 @@ setup(
         'openmdao',
         'pytest',
     ],
+    packages=find_packages('src'),
+    package_dir={'': 'src'},
     package_data={
         'bag.interface': ['templates/*'],
         'bag.verification': ['templates/*'],

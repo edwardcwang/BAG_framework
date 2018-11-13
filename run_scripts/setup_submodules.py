@@ -36,14 +36,14 @@ def setup_python_path(module_list):
              'import os',
              'import sys',
              '',
-             "sys.path.append(os.environ['BAG_FRAMEWORK'])",
-             "sys.path.append(os.environ['BAG_TECH_CONFIG_DIR'])",
+             "sys.path.append(os.path.join(os.environ['BAG_FRAMEWORK'], 'src'))",
+             "sys.path.append(os.path.join(os.environ['BAG_TECH_CONFIG_DIR'], 'src'))",
              "sys.path.append(os.path.join(os.environ['BAG_FRAMEWORK'], 'pybag', '_build', 'lib'))",
              ]
-    template = "sys.path.append(os.path.join(os.environ['BAG_WORK_DIR'], '%s'))"
+    template = "sys.path.append(os.path.join(os.environ['BAG_WORK_DIR'], '{}', 'src'))"
     for mod_name, _ in module_list:
         if mod_name != BAG_DIR:
-            lines.append(template % mod_name)
+            lines.append(template.format(mod_name))
 
     write_to_file('bag_startup.py', lines)
 
