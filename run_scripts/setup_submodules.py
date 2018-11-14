@@ -7,7 +7,7 @@
 # call this script again using BAG_PYTHON.  If
 # this script is run under Python, this block of code
 # effectively does nothing.
-if "true" : '''\'
+if "true": '''\'
 then
 if [[ $BAG_PYTHON ]]; then
 exec ${BAG_PYTHON} "$0" "$@"
@@ -32,20 +32,18 @@ def write_to_file(fname, lines):
 
 
 def setup_python_path(module_list):
-    lines = ['# -*- coding: utf-8 -*-',
-             'import os',
-             'import sys',
+    lines = ['#!/usr/bin/env bash',
              '',
-             "sys.path.append(os.path.join(os.environ['BAG_FRAMEWORK'], 'src'))",
-             "sys.path.append(os.path.join(os.environ['BAG_TECH_CONFIG_DIR'], 'src'))",
-             "sys.path.append(os.path.join(os.environ['BAG_FRAMEWORK'], 'pybag', '_build', 'lib'))",
+             'export PYTHONPATH="${BAG_FRAMEWORK}/src"',
+             'export PYTHONPATH="${PYTHONPATH}:${BAG_FRAMEWORK}/pybag/_build/lib"',
+             'export PYTHONPATH="${PYTHONPATH}:${BAG_TECH_CONFIG_DIR}/src"',
              ]
-    template = "sys.path.append(os.path.join(os.environ['BAG_WORK_DIR'], '{}', 'src'))"
+    template = 'export PYTHONPATH="${PYTHONPATH}:${BAG_WORK_DIR}/%s/src"'
     for mod_name, _ in module_list:
         if mod_name != BAG_DIR:
-            lines.append(template.format(mod_name))
+            lines.append(template % mod_name)
 
-    write_to_file('bag_startup.py', lines)
+    write_to_file('.bashrc_pypath', lines)
 
 
 def get_sch_libraries(mod_name):

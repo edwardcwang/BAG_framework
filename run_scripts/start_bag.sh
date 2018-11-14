@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-export PYTHONPATH=""
+source .bashrc_pypath
 
 # disable QT session manager warnings
 unset SESSION_MANAGER
