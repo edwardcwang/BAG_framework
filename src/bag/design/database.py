@@ -77,7 +77,7 @@ class ModuleDB(MasterDB):
 
             fname = kwargs['fname']
 
-            pybag.implement_yaml(content_list, fname)
+            pybag.implement_yaml(fname, content_list)
         else:
             raise ValueError('Unsupported output type: {}'.format(output))
         end = time.time()
