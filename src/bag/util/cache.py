@@ -7,11 +7,21 @@ from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable, 
 
 import abc
 import time
+import enum
 import numbers
 from collections import OrderedDict
 
 from ..io import fix_string
 from .search import get_new_name
+
+
+class DesignOutput(enum.Enum):
+    """An enum of all supported design output types."""
+    LAYOUT = 0
+    GDS = 1
+    SCHEMATIC = 2
+    NETLIST = 3
+    YAML = 4
 
 
 class DesignMaster(abc.ABC):
@@ -37,6 +47,7 @@ class DesignMaster(abc.ABC):
     params : Dict[str, Any]
         the parameters dictionary.
     """
+
     def __init__(self, master_db, lib_name, params, used_names, **kwargs):
         # type: (MasterDB, str, Dict[str, Any], Set[str], **Any) -> None
         self._master_db = master_db
@@ -250,55 +261,22 @@ class MasterDB(abc.ABC):
         self._master_lookup = {}  # type: Dict[Any, DesignMaster]
         self._rename_dict = {}  # type: Dict[str, str]
 
-    def clear(self):
-        """Clear all existing schematic masters."""
-        self._key_lookup.clear()
-        self._master_lookup.clear()
-        self._rename_dict.clear()
-
     @abc.abstractmethod
-    def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[MasterType], str, Dict[str, Any], Set[str], **Any) -> MasterType
-        """Create a new non-finalized master instance.
-
-        This instance is used to determine if we created this instance before.
-
-        Parameters
-        ----------
-        gen_cls : Type[MasterType]
-            the generator Python class.
-        lib_name : str
-            generated instance library name.
-        params : Dict[str, Any]
-            instance parameters dictionary.
-        used_cell_names : Set[str]
-            a set of all used cell names.
-        **kwargs : Any
-            optional arguments for the generator.
-
-        Returns
-        -------
-        master : MasterType
-            the non-finalized generated instance.
-        """
-        raise NotImplementedError('not implemented')
-
-    @abc.abstractmethod
-    def create_masters_in_db(self, lib_name, content_list, debug=False, output='', **kwargs):
-        # type: (str, Sequence[Any], bool, str, Any) -> None
+    def create_masters_in_db(self, output, lib_name, content_list, debug=False, **kwargs):
+        # type: (DesignOutput, str, Sequence[Any], bool, **Any) -> None
         """Create the masters in the design database.
 
         Parameters
         ----------
+        output : DesignOutput
+            the output type.
         lib_name : str
             library to create the designs in.
         content_list : Sequence[Any]
             a list of the master contents.  Must be created in this order.
         debug : bool
             True to print debug messages
-        output : str
-            the output type.  Default output type is represented by an empty string
-        **kwargs :
+        **kwargs :  Any
             parameters associated with the given output type.
         """
         pass
@@ -337,6 +315,38 @@ class MasterDB(abc.ABC):
         # type: (str) -> None
         """Change the cell name suffix."""
         self._name_suffix = new_val
+
+    def clear(self):
+        """Clear all existing schematic masters."""
+        self._key_lookup.clear()
+        self._master_lookup.clear()
+        self._rename_dict.clear()
+
+    def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
+        # type: (Type[MasterType], str, Dict[str, Any], Set[str], **Any) -> MasterType
+        """Create a new non-finalized master instance.
+
+        This instance is used to determine if we created this instance before.
+
+        Parameters
+        ----------
+        gen_cls : Type[MasterType]
+            the generator Python class.
+        lib_name : str
+            generated instance library name.
+        params : Dict[str, Any]
+            instance parameters dictionary.
+        used_cell_names : Set[str]
+            a set of all used cell names.
+        **kwargs : Any
+            optional arguments for the generator.
+
+        Returns
+        -------
+        master : MasterType
+            the non-finalized generated instance.
+        """
+        return gen_cls(self, lib_name, params, used_cell_names, **kwargs)
 
     def format_cell_name(self, cell_name):
         # type: (str) -> str
@@ -405,15 +415,32 @@ class MasterDB(abc.ABC):
         self._master_lookup[key] = master
         self._used_cell_names.add(master.cell_name)
 
-    def instantiate_masters(self,
-                            master_list,  # type: Sequence[DesignMaster]
-                            name_list=None,  # type: Optional[Sequence[Optional[str]]]
-                            lib_name='',  # type: str
-                            debug=False,  # type: bool
-                            rename_dict=None,  # type: Optional[Dict[str, str]]
-                            output='',  # type: str
-                            **kwargs,  # type: Any
-                            ):
+    def instantiate_master(self, output, master, top_cell_name=None, **kwargs):
+        # type: (DesignOutput, DesignMaster, Optional[str], **Any) -> None
+        """Instantiate the given master.
+
+        Parameters
+        ----------
+        output : DesignOutput
+            the design output type.
+        master : DesignMaster
+            the :class:`~bag.layout.template.TemplateBase` to instantiate.
+        top_cell_name : Optional[str]
+            name of the top level cell.  If None, a default name is used.
+        **kwargs : Any
+            optional arguments for batch_output().
+        """
+        self.batch_output(output, [master], name_list=[top_cell_name], **kwargs)
+
+    def batch_output(self,
+                     output,  # type: DesignOutput
+                     master_list,  # type: Sequence[DesignMaster]
+                     name_list=None,  # type: Optional[Sequence[Optional[str]]]
+                     lib_name='',  # type: str
+                     debug=False,  # type: bool
+                     rename_dict=None,  # type: Optional[Dict[str, str]]
+                     **kwargs,  # type: Any
+                     ):
         # type: (...) -> None
         """create all given masters in the database.
 
@@ -421,6 +448,8 @@ class MasterDB(abc.ABC):
         ----------
         master_list : Sequence[DesignMaster]
             list of masters to instantiate.
+        output : DesignOutput
+            the output type.
         name_list : Optional[Sequence[Optional[str]]]
             list of master cell names.  If not given, default names will be used.
         lib_name : str
@@ -429,9 +458,7 @@ class MasterDB(abc.ABC):
             True to print debugging messages
         rename_dict : Optional[Dict[str, str]]
             optional master cell renaming dictionary.
-        output : str
-            the output type.  Default output type is represented by an empty string
-        **kwargs :
+        **kwargs : Any
             parameters associated with the given output type.
         """
         if name_list is None:
@@ -475,7 +502,7 @@ class MasterDB(abc.ABC):
         info_dict = OrderedDict()  # type: Dict[str, DesignMaster]
         start = time.time()
         for master, top_name in zip(master_list, name_list):
-            self._instantiate_master_helper(info_dict, master)
+            self._batch_output_helper(info_dict, master)
         end = time.time()
 
         if not lib_name:
@@ -489,9 +516,9 @@ class MasterDB(abc.ABC):
         if debug:
             print('master content retrieval took %.4g seconds' % (end - start))
 
-        self.create_masters_in_db(lib_name, content_list, debug=debug, output=output, **kwargs)
+        self.create_masters_in_db(output, lib_name, content_list, debug=debug, **kwargs)
 
-    def _instantiate_master_helper(self, info_dict, master):
+    def _batch_output_helper(self, info_dict, master):
         # type: (Dict[str, DesignMaster], DesignMaster) -> None
         """Helper method for batch_layout().
 
@@ -506,7 +533,7 @@ class MasterDB(abc.ABC):
         for master_key in master.children():
             child_temp = self._master_lookup[master_key]
             if child_temp.cell_name not in info_dict:
-                self._instantiate_master_helper(info_dict, child_temp)
+                self._batch_output_helper(info_dict, child_temp)
 
         # get template master for this cell.
         info_dict[master.cell_name] = self._master_lookup[master.key]

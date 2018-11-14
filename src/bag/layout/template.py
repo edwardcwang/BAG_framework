@@ -10,11 +10,10 @@ from bag.typing import CoordType, LayerType, PointType
 import abc
 import copy
 import time
-from itertools import islice, product
 
 import yaml
 
-from bag.util.cache import DesignMaster, MasterDB
+from bag.util.cache import DesignMaster, MasterDB, DesignOutput
 from bag.util.interval import IntervalSet
 from ..io import get_encoding, open_file
 from .routing.base import Port, TrackID, WireArray
@@ -55,12 +54,6 @@ class TemplateDB(MasterDB):
         generated layout name prefix.
     name_suffix : str
         generated layout name suffix.
-    gds_lay_file : str
-        The GDS layer/purpose mapping file.
-    flatten : bool
-        True to compute flattened layout.
-    **kwargs :
-        additional arguments.
     """
 
     def __init__(self,  # type: TemplateDB
@@ -69,57 +62,28 @@ class TemplateDB(MasterDB):
                  prj=None,  # type: Optional[BagProject]
                  name_prefix='',  # type: str
                  name_suffix='',  # type: str
-                 gds_lay_file='',  # type: str
                  flatten=False,  # type: bool
-                 **kwargs):
+                 ):
         # type: (...) -> None
         MasterDB.__init__(self, lib_name, name_prefix=name_prefix, name_suffix=name_suffix)
 
-        pure_oa = kwargs.get('pure_oa', False)
-
         self._prj = prj
         self._grid = routing_grid
-        self._gds_lay_file = gds_lay_file
         self._flatten = flatten
-        self._pure_oa = pure_oa
 
-    def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[TemplateType], str, Dict[str, Any], Set[str], **Any) -> TemplateType
-        """Create a new non-finalized master instance.
-
-        This instance is used to determine if we created this instance before.
-
-        Parameters
-        ----------
-        gen_cls : Type[TemplateType]
-            the generator Python class.
-        lib_name : str
-            generated instance library name.
-        params : Dict[str, Any]
-            instance parameters dictionary.
-        used_cell_names : Set[str]
-            a set of all used cell names.
-        **kwargs: Any
-            optional arguments for the generator.
-
-        Returns
-        -------
-        master : TemplateType
-            the non-finalized generated instance.
-        """
-        # noinspection PyCallingNonCallable
-        return gen_cls(self, lib_name, params, used_cell_names, **kwargs)
-
-    def create_masters_in_db(self, lib_name, content_list, debug=False, output='', **kwargs):
-        # type: (str, Sequence[Any], bool, str, Any) -> None
-        if self._prj is None:
-            raise ValueError('BagProject is not defined.')
-
-        # create layouts
+    def create_masters_in_db(self, output, lib_name, content_list, debug=False, **kwargs):
+        # type: (DesignOutput, str, Sequence[Any], bool, **Any) -> None
         start = time.time()
-        self._prj.instantiate_layout(lib_name, content_list)
-        end = time.time()
+        if output is DesignOutput.LAYOUT:
+            if self._prj is None:
+                raise ValueError('BagProject is not defined.')
 
+            # create layouts
+            self._prj.instantiate_layout(lib_name, content_list)
+        else:
+            raise ValueError('Unsupported output type: {}'.format(output))
+
+        end = time.time()
         if debug:
             print('layout instantiation took %.4g seconds' % (end - start))
 
@@ -131,72 +95,31 @@ class TemplateDB(MasterDB):
 
     def new_template(self, temp_cls, params=None, **kwargs):
         # type: (Type[TemplateType], Optional[Dict[str, Any]], **Any) -> TemplateType
-        """Create a new template.
-
-        Parameters
-        ----------
-        temp_cls : Type[TemplateType]
-            the template class to instantiate.
-        params : Optional[Dict[str, Any]]
-            the parameter dictionary.
-        **kwargs : Any
-            optional template parameters.
-
-        Returns
-        -------
-        template : TemplateType
-            the new template instance.
+        """Alias for new_master() for backwards compatibility.
         """
         return self.new_master(temp_cls, params=params, **kwargs)
 
-    def instantiate_layout(self, prj, template, top_cell_name=None, debug=False, rename_dict=None):
-        # type: (BagProject, TemplateBase, Optional[str], bool, Optional[Dict[str, str]]) -> None
-        """Instantiate the layout of the given :class:`~bag.layout.template.TemplateBase`.
-
-        Parameters
-        ----------
-        prj : BagProject
-            the :class:`~bag.BagProject` instance used to create layout.
-        template : TemplateBase
-            the :class:`~bag.layout.template.TemplateBase` to instantiate.
-        top_cell_name : Optional[str]
-            name of the top level cell.  If None, a default name is used.
-        debug : bool
-            True to print debugging messages
-        rename_dict : Optional[Dict[str, str]]
-            optional master cell renaming dictionary.
+    def instantiate_layout(self, template, top_cell_name=None, output=DesignOutput.LAYOUT,
+                           **kwargs):
+        # type: (TemplateBase, Optional[str], DesignOutput, **Any) -> None
+        """Alias for instantiate_master(), with default output type of LAYOUT.
         """
-        self.batch_layout(prj, [template], [top_cell_name], debug=debug, rename_dict=rename_dict)
+        self.instantiate_master(output, template, top_cell_name, **kwargs)
 
     def batch_layout(self,
-                     prj,  # type: BagProject
                      template_list,  # type: Sequence[TemplateBase]
                      name_list=None,  # type: Optional[Sequence[Optional[str]]]
                      lib_name='',  # type: str
                      debug=False,  # type: bool
                      rename_dict=None,  # type: Optional[Dict[str, str]]
+                     output=DesignOutput.LAYOUT,  # type: DesignOutput
+                     **kwargs  # type: Any
                      ):
         # type: (...) -> None
-        """Instantiate all given templates.
-
-        Parameters
-        ----------
-        prj : BagProject
-            the :class:`~bag.BagProject` instance used to create layout.
-        template_list : Sequence[TemplateBase]
-            list of templates to instantiate.
-        name_list : Optional[Sequence[Optional[str]]]
-            list of template layout names.  If not given, default names will be used.
-        lib_name : str
-            Library to create the masters in.  If empty or None, use default library.
-        debug : bool
-            True to print debugging messages
-        rename_dict : Optional[Dict[str, str]]
-            optional master cell renaming dictionary.
+        """Alias for batch_output(), with default output type of LAYOUT.
         """
-        self._prj = prj
-        self.instantiate_masters(template_list, name_list=name_list, lib_name=lib_name,
-                                 debug=debug, rename_dict=rename_dict)
+        self.batch_output(output, template_list, name_list=name_list, lib_name=lib_name,
+                          debug=debug, rename_dict=rename_dict, **kwargs)
 
 
 class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
