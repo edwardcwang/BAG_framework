@@ -246,7 +246,9 @@ def get_new_name(base_name, *args):
             bin_iter.down()
 
     result = bin_iter.get_last_save_info()
-    assert result is not None, 'bin_iter should find an unused name'
+    if result is None:
+        # original name is good already
+        return new_name
     return result
 
 

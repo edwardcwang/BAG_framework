@@ -3,17 +3,19 @@
 """This module defines the design database class.
 """
 
-from typing import TYPE_CHECKING, TypeVar, Dict, Optional, Any, Type, Sequence
+from typing import TYPE_CHECKING, TypeVar, Dict, Optional, Any, Type, Sequence, Callable
 
 import time
 import importlib
 
 from ..util.cache import MasterDB, DesignOutput
 
+implement_netlist = None  # type: Optional[Callable]
+
 try:
-    import pybag
+    from pybag.schematic import implement_yaml
 except ImportError:
-    pybag = None
+    implement_yaml = None
 
 if TYPE_CHECKING:
     from ..core import BagProject
@@ -59,7 +61,7 @@ class ModuleDB(MasterDB):
 
             self._prj.instantiate_schematic(lib_name, content_list)
         elif output is DesignOutput.NETLIST:
-            if pybag is None:
+            if implement_netlist is None:
                 raise ValueError('Cannot find pybag C extension; check your LD_LIBRARY_PATH.')
 
             fname = kwargs['fname']
@@ -69,15 +71,14 @@ class ModuleDB(MasterDB):
             flat = kwargs.get('flat', True)
             shell = kwargs.get('shell', False)
 
-            pybag.implement_netlist(content_list, cell_map, inc_list, fmt, fname,
-                                    flat, shell)
+            implement_netlist(content_list, cell_map, inc_list, fmt, fname, flat, shell)
         elif output is DesignOutput.YAML:
-            if pybag is None:
+            if implement_yaml is None:
                 raise ValueError('Cannot find pybag C extension; check your LD_LIBRARY_PATH.')
 
             fname = kwargs['fname']
 
-            pybag.implement_yaml(fname, content_list)
+            implement_yaml(fname, content_list)
         else:
             raise ValueError('Unsupported output type: {}'.format(output))
         end = time.time()

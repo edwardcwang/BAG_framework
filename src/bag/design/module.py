@@ -416,7 +416,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                        inst_name: str,
                        inst_name_list: Optional[List[str]] = None,
                        term_list: Optional[List[Dict[str, str]]] = None,
-                       inst_term_iter: Optional[Iterable[Tuple[str, List[Tuple[str, str]]]]] = None,
+                       inst_term_list: Optional[List[Tuple[str, Iterable[Tuple[str, str]]]]] = None,
                        dx: int = 0,
                        dy: int = 0
                        ) -> None:
@@ -437,26 +437,27 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             them to.  Only terminal connections different than the parent instance
             should be listed here.
             If None, assume terminal connections are not changed.
-        inst_term_iter : Optional[List[Tuple[str, List[Tuple[str, str]]]]]
+        inst_term_list : Optional[List[Tuple[str, List[Tuple[str, str]]]]]
             zipped version of inst_name_list and term_list.  If given, this is used instead.
         dx : int
             the X coordinate shift.  If dx = dy = 0, default to shift right.
         dy : int
             the Y coordinate shift.  If dx = dy = 0, default to shift right.
         """
-        if inst_term_iter is None:
+        if inst_term_list is None:
             if inst_name_list is None:
                 raise ValueError('inst_name_list cannot be None if inst_term_iter is None.')
             # get instance/terminal list iterator
             if term_list is None:
-                inst_term_iter = zip_longest(inst_name_list, [], fillvalue=[])
+                inst_term_list = zip_longest(inst_name_list, [], fillvalue=[])
             elif len(inst_name_list) != len(term_list):
                 raise ValueError('inst_name_list and term_list length mismatch.')
             else:
-                inst_term_iter = zip_longest(inst_name_list, (term.items() for term in term_list))
-
+                inst_term_list = zip_longest(inst_name_list, (term.items() for term in term_list))
+        else:
+            inst_name_list = [arg[0] for arg in inst_term_list]
         # array instance
-        self._cv.array_instance(inst_name, dx, dy, inst_term_iter)
+        self._cv.array_instance(inst_name, dx, dy, inst_term_list)
 
         # update instance dictionary
         orig_inst = self.instances.pop(inst_name)
@@ -585,7 +586,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 inst.update_connection(name, 'S', s_name)
                 inst.design(w=w, l=lch, nf=fg, intent=th)
 
-    def design_transistor(self,
+    def design_transistor(self,  # type: Module
                           inst_name,  # type: str
                           w,  # type: Union[float, int]
                           lch,  # type: float
@@ -681,29 +682,29 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             else:
                 # multiple segment and stacks, have to array instance
                 # construct instance name/terminal map iterator
-                def iter_fun():
-                    last_cnt = (stack - 1) * seg
-                    g_cnt = 0
-                    for cnt in range(0, last_cnt + 1, seg):
-                        d_suf = '<{}:{}>'.format(cnt + seg - 1, cnt)
-                        s_suf = '<{}:{}>'.format(cnt - 1, cnt - seg)
-                        iname = inst_name + d_suf
-                        if cnt == 0:
-                            s_name = s
-                            d_name = m + d_suf
-                        elif cnt == last_cnt:
-                            s_name = m + s_suf
-                            d_name = d
-                        else:
-                            s_name = m + s_suf
-                            d_name = m + d_suf
-                        term_list = [('S', s_name), ('D', d_name)]
-                        if not g_is_str:
-                            term_list.append(('G', g[g_cnt]))
-                            g_cnt += 1
-                        yield iname, term_list
+                inst_term_list = []
+                last_cnt = (stack - 1) * seg
+                g_cnt = 0
+                for cnt in range(0, last_cnt + 1, seg):
+                    d_suf = '<{}:{}>'.format(cnt + seg - 1, cnt)
+                    s_suf = '<{}:{}>'.format(cnt - 1, cnt - seg)
+                    iname = inst_name + d_suf
+                    if cnt == 0:
+                        s_name = s
+                        d_name = m + d_suf
+                    elif cnt == last_cnt:
+                        s_name = m + s_suf
+                        d_name = d
+                    else:
+                        s_name = m + s_suf
+                        d_name = m + d_suf
+                    term_list = [('S', s_name), ('D', d_name)]
+                    if not g_is_str:
+                        term_list.append(('G', g[g_cnt]))
+                        g_cnt += 1
+                    inst_term_list.append((iname, term_list))
 
-                self.array_instance(inst_name, inst_term_iter=iter_fun())
+                self.array_instance(inst_name, inst_term_list=inst_term_list)
 
 
 class MosModuleBase(Module):

@@ -2,6 +2,8 @@
 
 from typing import Dict, Any
 
+import yaml
+
 from bag.design.database import ModuleDB
 from bag.util.cache import DesignOutput
 
@@ -21,5 +23,8 @@ def test_design(tmpdir, module_db: ModuleDB, sch_design_params: Dict[str, Any]) 
 
     module_db.instantiate_master(DesignOutput.YAML, dsn, top_cell_name='PYTEST', fname=str(path))
 
+    with path.open('r') as f:
+        actual = yaml.load(f)
+
     assert path.check(file=1)
-    assert expect == path.read_text()
+    assert expect == actual

@@ -45,6 +45,12 @@ class SchInstance:
             self._sch_cls = master.__class__
 
     @property
+    def database(self):
+        # type: () -> ModuleDB
+        """ModuleDB: the schematic database."""
+        return self._db
+
+    @property
     def master(self):
         # type: () -> Optional[Module]
         """Optional[Module]: the master object of this instance."""
@@ -121,7 +127,7 @@ class SchInstance:
         if self._sch_cls is None:
             raise RuntimeError('Cannot call design() method on static instances.')
 
-        self._master = self._db.new_schematic(self._sch_cls, params=kwargs)
+        self._master = self._db.new_master(self._sch_cls, params=kwargs)
         if self._master.is_primitive():
             # update parameters
             for key, val in self._master.get_schematic_parameters().items():
