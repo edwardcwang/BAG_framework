@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import Tuple, Dict, Any
+from typing import Dict, Any
 
 import pathlib
 import importlib
@@ -17,8 +17,8 @@ def pytest_addoption(parser):
     )
 
 
-def get_test_data_id(data: Tuple[str, Dict[str, Any]]) -> str:
-    return data[0]
+def get_test_data_id(data: Dict[str, Any]) -> str:
+    return data['test_id']
 
 
 def setup_test_data(metafunc, data_name: str, data_type: str) -> None:
@@ -48,7 +48,10 @@ def setup_test_data(metafunc, data_name: str, data_type: str) -> None:
         if p.is_file():
             with open(p, 'r') as f:
                 content = yaml.load(f)
-            data.append((p.stem, content))
+            # inject fields
+            content['lib_name'] = pkg_name
+            content['test_id'] = p.stem
+            data.append(content)
 
     metafunc.parametrize(data_name, data, indirect=True, ids=get_test_data_id)
 
