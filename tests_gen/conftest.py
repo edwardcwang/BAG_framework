@@ -13,6 +13,9 @@ from bag.core import create_tech_info
 
 def pytest_addoption(parser):
     parser.addoption(
+        '--data_root', action='store', default='', help='test data root directory',
+    )
+    parser.addoption(
         '--package', action='store', default='', help='generator package to test',
     )
 
@@ -22,36 +25,44 @@ def get_test_data_id(data: Dict[str, Any]) -> str:
 
 
 def setup_test_data(metafunc, data_name: str, data_type: str) -> None:
-    pkg_name = metafunc.config.getoption("--package")
-    try:
-        package = importlib.import_module(pkg_name)
-    except ImportError:
-        raise ImportError("Cannot find python package {}, "
-                          "make sure it's on your PYTHONPATH".format(pkg_name))
-    if not hasattr(package, '__file__'):
-        raise ImportError(
-            '{} is not a normal python package (no __file__ attribute).'.format(pkg_name))
+    pkg_name = metafunc.config.getoption('package')
+    root_dir = pathlib.Path(metafunc.config.getoption('--data_root'))
 
-    pkg_path = pathlib.Path(package.__file__).parent.parent
-    if pkg_path.stem != 'src':
-        raise ValueError('Non-standard directory structure: '
-                         'package {} not in a "src" directory'.format(pkg_name))
+    # get list of packages
+    if pkg_name:
+        # check package is importable
+        try:
+            importlib.import_module(pkg_name)
+        except ImportError:
+            raise ImportError("Cannot find python package {}, "
+                              "make sure it's on your PYTHONPATH".format(pkg_name))
 
-    repo_path = pkg_path.parent
-    data_dir = repo_path / 'tests_data' / pkg_name / data_type
-    if not data_dir.is_dir():
-        raise ValueError('Non-standard directory structure: '
-                         '{} is not a directory (or does not exist)'.format(data_dir))
+        # check data directory exists
+        tmp = root_dir / pkg_name
+        if not tmp.is_dir():
+            raise ValueError('package data directory {} is not a directory'.format(tmp))
+        pkg_iter = [pkg_name]
+    else:
+        pkg_iter = (d.name for d in root_dir.iterdir() if d.is_dir())
 
     data = []
-    for p in data_dir.iterdir():
-        if p.is_file():
-            with open(p, 'r') as f:
-                content = yaml.load(f)
-            # inject fields
-            content['lib_name'] = pkg_name
-            content['test_id'] = p.stem
-            data.append(content)
+
+    for pkg in pkg_iter:
+        cur_dir = root_dir / pkg / data_type
+        if not cur_dir.is_dir():
+            raise ValueError('Data directory {} is not a directory'.format(cur_dir))
+
+        for p in cur_dir.iterdir():
+            if p.is_file():
+                # noinspection PyTypeChecker
+                with open(p, 'r') as f:
+                    content = yaml.load(f)
+                # inject fields
+                test_id = p.stem  # type: str
+                content['test_id'] = test_id
+                content['lib_name'] = pkg
+                content['cell_name'] = test_id.rsplit('_', maxsplit=1)[0]
+                data.append(content)
 
     metafunc.parametrize(data_name, data, indirect=True, ids=get_test_data_id)
 
