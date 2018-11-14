@@ -7,7 +7,7 @@
 # call this script again using BAG_PYTHON.  If
 # this script is run under Python, this block of code
 # effectively does nothing.
-if "true": '''\'
+if "true" : '''\'
 then
 if [[ $BAG_PYTHON ]]; then
 exec ${BAG_PYTHON} "$0" "$@"
