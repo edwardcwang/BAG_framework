@@ -4,7 +4,7 @@ source .bashrc_pypath
 
 if [[ $# < 1 ]]
 then
-    echo "Usage: ./pytest.sh <repo name> [options...]"
+    echo "Usage: ./test_generators.sh <repo name> [options...]"
     exit 1
 fi
 
