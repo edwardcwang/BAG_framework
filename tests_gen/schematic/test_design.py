@@ -2,13 +2,19 @@
 
 from typing import Dict, Any
 
+import pathlib
+
 import yaml
 
 from bag.design.database import ModuleDB
 from bag.util.cache import DesignOutput
 
 
-def test_design(tmpdir, module_db: ModuleDB, sch_design_params: Dict[str, Any]) -> None:
+def test_design(tmpdir,
+                module_db: ModuleDB,
+                sch_design_params: Dict[str, Any],
+                gen_output: bool,
+                ) -> None:
     """Test design() method of each schematic generator."""
     config = sch_design_params
     lib_name = config['lib_name']
@@ -25,6 +31,14 @@ def test_design(tmpdir, module_db: ModuleDB, sch_design_params: Dict[str, Any]) 
 
     with path.open('r') as f:
         actual = yaml.load(f)
+
+    if gen_output:
+        dir_name = pathlib.Path('pytest_output')
+        out_fname = dir_name / (config['test_id'] + '.yaml')
+        dir_name.mkdir(exist_ok=True)
+        with out_fname.open('w') as f:
+            yaml.dump(actual, f)
+        expect = actual
 
     assert path.check(file=1)
     assert expect == actual

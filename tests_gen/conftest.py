@@ -18,6 +18,10 @@ def pytest_addoption(parser):
     parser.addoption(
         '--package', action='store', default='', help='generator package to test',
     )
+    parser.addoption(
+        '--gen_output', action='store_true', default=False,
+        help='True to generate expected outputs',
+    )
 
 
 def get_test_data_id(data: Dict[str, Any]) -> str:
@@ -59,7 +63,7 @@ def setup_test_data(metafunc, data_name: str, data_type: str) -> None:
                     content = yaml.load(f)
                 # inject fields
                 test_id = p.stem  # type: str
-                content['test_id'] = test_id
+                content['test_id'] = pkg + '__' + test_id
                 content['lib_name'] = pkg
                 content['cell_name'] = test_id.rsplit('_', maxsplit=1)[0]
                 data.append(content)
@@ -73,6 +77,11 @@ def pytest_generate_tests(metafunc):
         if name in metafunc.fixturenames:
             setup_test_data(metafunc, name, dtype)
             break
+
+
+@pytest.fixture(scope='session')
+def gen_output(request):
+    return request.config.getoption("--gen_output")
 
 
 @pytest.fixture(scope='session')
