@@ -10,7 +10,7 @@ import pprint
 import numpy as np
 
 __all__ = ['BBox', 'BBoxArray', 'Pin', 'transform_table', 'transform_point',
-           'get_inverse_transform']
+           'get_inverse_transform', 'tuple2_to_int', 'tuple2_to_float_int']
 
 transform_table = {'R0': np.array([[1, 0], [0, 1]], dtype=int),
                    'MX': np.array([[1, 0], [0, -1]], dtype=int),
@@ -30,6 +30,15 @@ def tuple2_to_int(input_tuple: Tuple[Any, Any]) -> Tuple[int, int]:
     :return: Tuple of two ints
     """
     return int(input_tuple[0]), int(input_tuple[1])
+
+
+def tuple2_to_float_int(input_tuple: Tuple[Any, Any]) -> Tuple[float, int]:
+    """
+    Cast a tuple of 2 elements to a tuple of 2 ints.
+    :param input_tuple: Tuple of two elements
+    :return: Tuple of two ints
+    """
+    return float(input_tuple[0]), int(input_tuple[1])
 
 
 def transform_point(x, y, loc, orient):
