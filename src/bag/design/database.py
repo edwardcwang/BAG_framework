@@ -10,6 +10,11 @@ import importlib
 
 from ..util.cache import MasterDB, DesignOutput
 
+try:
+    import pybag
+except ImportError:
+    pybag = None
+
 if TYPE_CHECKING:
     from ..core import BagProject
     from ..layout.core import TechInfo
@@ -54,7 +59,18 @@ class ModuleDB(MasterDB):
 
             self._prj.instantiate_schematic(lib_name, content_list)
         elif output is DesignOutput.NETLIST:
-            self._prj.instantiate_netlist(lib_name, content_list, **kwargs)
+            if pybag is None:
+                raise ValueError('Cannot find pybag C extension; check your LD_LIBRARY_PATH.')
+
+            fname = kwargs['fname']
+            cell_map = kwargs['cell_map']
+            inc_list = kwargs['includes']
+            fmt = kwargs.get('format', 'cdl')
+            flat = kwargs.get('flat', True)
+            shell = kwargs.get('shell', False)
+
+            pybag.implement_netlist(content_list, cell_map, inc_list, fmt, fname,
+                                    flat, shell)
         elif output is DesignOutput.YAML:
             pass
         else:

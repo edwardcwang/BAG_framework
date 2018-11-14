@@ -19,13 +19,9 @@ from .interface.database import DbAccess
 from .layout.routing.grid import RoutingGrid
 from .layout.template import TemplateDB
 from .layout.core import DummyTechInfo
-from .io import read_file, sim_data, get_encoding
+from .io import read_file, sim_data
 from .concurrent.core import batch_async_task
-
-try:
-    import pybag
-except ImportError:
-    pybag = None
+from .util.cache import DesignOutput
 
 if TYPE_CHECKING:
     from .interface.simulator import SimAccess
@@ -665,47 +661,52 @@ class BagProject(object):
         stats : pstats.Stats
             If profiling is enabled, the statistics object.
         """
-        prefix = kwargs.get('prefix', '')
-        suffix = kwargs.get('suffix', '')
+        prefix = kwargs.pop('prefix', '')
+        suffix = kwargs.pop('suffix', '')
+        output_lay = kwargs.pop('output_lay', DesignOutput.LAYOUT)
+        output_sch = kwargs.pop('output_sch', DesignOutput.SCHEMATIC)
+        options_lay = kwargs.pop('options_lay', {})
+        options_sch = kwargs.pop('options_sch', {})
 
         impl_lib = specs['impl_lib']
         impl_cell = specs['impl_cell']
         grid_specs = specs['routing_grid']
         params = specs['params']
-        gds_lay_file = specs.get('gds_lay_file', '')
         gen_sch = gen_sch and (sch_cls is not None)
 
         if gen_lay or gen_sch:
-            temp_db = self.make_template_db(impl_lib, grid_specs, gds_lay_file=gds_lay_file,
+            temp_db = self.make_template_db(impl_lib, grid_specs,
                                             name_prefix=prefix, name_suffix=suffix)
 
             name_list = [impl_cell]
             print('computing layout...')
             if profile_fname:
                 profiler = cProfile.Profile()
-                profiler.runcall(temp_db.new_template, temp_cls=temp_cls, params=params,
+                profiler.runcall(temp_db.new_master, gen_cls=temp_cls, params=params,
                                  debug=False)
                 profiler.dump_stats(profile_fname)
                 result = pstats.Stats(profile_fname).strip_dirs()
             else:
                 result = None
 
-            temp = temp_db.new_template(temp_cls, params=params, debug=debug)
+            temp = temp_db.new_master(temp_cls, params=params, debug=debug)
             print('computation done.')
             temp_list = [temp]
 
             if gen_lay:
                 print('creating layout...')
-                temp_db.batch_layout(self, temp_list, name_list, debug=debug)
+                temp_db.batch_output(output_lay, temp_list, name_list=name_list, debug=debug,
+                                     **options_lay)
                 print('layout done.')
 
             if gen_sch:
                 module_db = self.make_module_db(impl_lib, name_prefix=prefix, name_suffix=suffix)
                 print('computing schematic...')
-                dsn = module_db.new_schematic(sch_cls, params=params, debug=debug)
+                dsn = module_db.new_master(sch_cls, params=params, debug=debug)
                 print('computation done.')
                 print('creating schematic...')
-                module_db.batch_schematic(self, [dsn], [impl_cell], debug=debug)
+                module_db.batch_output(output_sch, [dsn], name_list=[impl_cell], debug=debug,
+                                       **options_sch)
                 print('schematic done.')
         else:
             result = None
@@ -759,35 +760,6 @@ class BagProject(object):
             the path to create the library in.  If empty, use default location.
         """
         self.impl_db.instantiate_schematic(lib_name, content_list, lib_path=lib_path)
-
-    def instantiate_netlist(self, lib_name, content_list, **kwargs):
-        # type: (str, Sequence[Any], Any) -> None
-        """Create netlists from the given schematic contents.
-
-        NOTE: this is BAG's internal method.
-
-        Parameters
-        ----------
-        lib_name : str
-            the output library name.  Only used when generating hierarchical netlists.
-        content_list : Sequence[Any]
-            list of schematics to create.
-        **kwargs
-            parameters
-        """
-        fmt = kwargs.get('format', 'cdl')
-        encoding = kwargs.get('encoding', get_encoding())
-        flat = kwargs.get('flat', True)
-        shell = kwargs.get('shell', False)
-        cell_map = self.bag_config['netlist'][fmt]['cell_map']
-        inc_list = self.bag_config['netlist'][fmt]['includes']
-
-        if flat:
-            fname = kwargs['fname']
-            pybag.implement_netlist(content_list, cell_map, inc_list, fmt, fname,
-                                    encoding=encoding, flat=True, shell=shell)
-        else:
-            raise NotImplementedError('Hierarchical netlist not implemented yet')
 
     def instantiate_layout_pcell(self, lib_name, cell_name, inst_lib, inst_cell, params,
                                  pin_mapping=None, view_name='layout'):
