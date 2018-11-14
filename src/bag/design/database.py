@@ -72,7 +72,12 @@ class ModuleDB(MasterDB):
             pybag.implement_netlist(content_list, cell_map, inc_list, fmt, fname,
                                     flat, shell)
         elif output is DesignOutput.YAML:
-            pass
+            if pybag is None:
+                raise ValueError('Cannot find pybag C extension; check your LD_LIBRARY_PATH.')
+
+            fname = kwargs['fname']
+
+            pybag.implement_yaml(content_list, fname)
         else:
             raise ValueError('Unsupported output type: {}'.format(output))
         end = time.time()
