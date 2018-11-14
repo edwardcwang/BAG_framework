@@ -2,10 +2,10 @@
 
 source .bashrc_pypath
 
-if [ $# -lt 1 ]
+if [[ $# < 1 ]]
 then
-    echo "Usage: ./pytest.sh <test directory> [options...]"
+    echo "Usage: ./pytest.sh <repo name> [options...]"
     exit 1
 fi
 
-exec ${BAG_PYTEST} $@
+exec ${BAG_PYTEST} BAG_framework/tests_gen --package $@
