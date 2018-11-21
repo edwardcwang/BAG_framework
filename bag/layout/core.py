@@ -682,11 +682,9 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
             extx = 0
             exty = 0
-            for enc in encb + enct:
-                if enc[0] < extx:
-                    extx = enc[0]
-                if enc[1] < exty:
-                    exty = enc[1]
+            for enc in chain(encb, enct):
+                extx = min(extx, enc[0])
+                exty = min(exty, enc[1])
             nx_max = (w + spx_min - 2 * extx) // (dim[0] + spx_min)
             ny_max = (h + spy_min - 2 * exty) // (dim[1] + spy_min)
 
