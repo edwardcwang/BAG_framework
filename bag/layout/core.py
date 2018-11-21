@@ -680,8 +680,15 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                     spx_min = min(spx_min, high_spx)
                     spy_min = min(spy_min, high_spy)
 
-            nx_max = (w + spx_min) // (dim[0] + spx_min)
-            ny_max = (h + spy_min) // (dim[1] + spy_min)
+            extx = 0
+            exty = 0
+            for enc in encb + enct:
+                if enc[0] < extx:
+                    extx = enc[0]
+                if enc[1] < exty:
+                    exty = enc[1]
+            nx_max = (w + spx_min - 2 * extx) // (dim[0] + spx_min)
+            ny_max = (h + spy_min - 2 * exty) // (dim[1] + spy_min)
 
             # print nx_max, ny_max, dim, w, h, spx_min, spy_min
 
