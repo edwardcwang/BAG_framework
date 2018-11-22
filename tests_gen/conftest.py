@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 import pathlib
 import importlib
@@ -9,6 +9,11 @@ import pytest
 import yaml
 
 from bag.core import create_tech_info
+
+
+def pytest_assertrepr_compare(op, left, right):
+    if isinstance(left, dict) and isinstance(right, dict) and op == '==':
+        return get_dict_diff_msg(left, right)
 
 
 def pytest_addoption(parser):
@@ -22,6 +27,58 @@ def pytest_addoption(parser):
         '--gen_output', action='store_true', default=False,
         help='True to generate expected outputs',
     )
+
+
+def get_dict_diff_msg(left: Dict[str, Any], right: Dict[str, Any]) -> List[str]:
+    ans = ['Comparing (Nested) Dictionaries:']  # type: List[str]
+    get_dict_diff_msg_helper(left, right, ans, [])
+    return ans
+
+
+def get_dict_diff_msg_helper(left: Dict[str, Any], right: Dict[str, Any], msgs: List[str],
+                             prefix: List[str]) -> None:
+    keys1 = sorted(left.keys())
+    keys2 = sorted(right.keys())
+
+    idx1 = 0
+    idx2 = 0
+    n1 = len(keys1)
+    n2 = len(keys2)
+    prefix_str = ','.join(prefix)
+    while idx1 < n1 and idx2 < n2:
+        k1 = keys1[idx1]
+        k2 = keys2[idx2]
+        v1 = left[k1]
+        v2 = right[k2]
+        if k1 == k2:
+            if v1 != v2:
+                if isinstance(v1, dict) and isinstance(v2, dict):
+                    next_prefix = prefix.copy()
+                    next_prefix.append(k1)
+                    get_dict_diff_msg_helper(v1, v2, msgs, next_prefix)
+                else:
+                    msgs.append('L[{}]:'.format(prefix_str))
+                    msgs.append('{}'.format(v1))
+                    msgs.append('R[{}]:'.format(prefix_str))
+                    msgs.append('{}'.format(v2))
+            idx1 += 1
+            idx2 += 1
+        elif k1 < k2:
+            msgs.append('R[{}] missing key:'.format(prefix_str))
+            msgs.append('{}'.format(k1))
+            idx1 += 1
+        else:
+            msgs.append('L[{}] missing key:'.format(prefix_str))
+            msgs.append('{}'.format(k2))
+            idx2 += 1
+    while idx1 < n1:
+        msgs.append('R[{}] missing key:'.format(prefix_str))
+        msgs.append('{}'.format(keys1[idx1]))
+        idx1 += 1
+    while idx2 < n2:
+        msgs.append('L[{}] missing key:'.format(prefix_str))
+        msgs.append('{}'.format(keys2[idx2]))
+        idx2 += 1
 
 
 def get_test_data_id(data: Dict[str, Any]) -> str:
