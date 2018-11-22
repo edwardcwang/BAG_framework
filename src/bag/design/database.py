@@ -11,6 +11,7 @@ import importlib
 from ..util.cache import MasterDB, DesignOutput
 
 implement_netlist = None  # type: Optional[Callable]
+implement_yaml = None  # type: Optional[Callable]
 
 try:
     from pybag.schematic import implement_yaml
