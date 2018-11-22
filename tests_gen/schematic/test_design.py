@@ -6,8 +6,9 @@ import pathlib
 
 import yaml
 
+from pybag.enum import DesignOutput
+
 from bag.design.database import ModuleDB
-from bag.util.cache import DesignOutput
 
 
 def test_design(tmpdir,

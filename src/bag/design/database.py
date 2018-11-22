@@ -3,20 +3,15 @@
 """This module defines the design database class.
 """
 
-from typing import TYPE_CHECKING, TypeVar, Dict, Optional, Any, Type, Sequence, Callable
+from typing import TYPE_CHECKING, TypeVar, Dict, Optional, Any, Type, Sequence
 
 import time
 import importlib
 
-from ..util.cache import MasterDB, DesignOutput
+from pybag.enum import DesignOutput
+from pybag.schematic import implement_yaml, implement_netlist
 
-implement_netlist = None  # type: Optional[Callable]
-implement_yaml = None  # type: Optional[Callable]
-
-try:
-    from pybag.schematic import implement_yaml
-except ImportError:
-    implement_yaml = None
+from ..util.cache import MasterDB
 
 if TYPE_CHECKING:
     from ..core import BagProject
@@ -61,27 +56,19 @@ class ModuleDB(MasterDB):
                 raise ValueError('BagProject is not defined.')
 
             self._prj.instantiate_schematic(lib_name, content_list)
-        elif output is DesignOutput.NETLIST:
-            if implement_netlist is None:
-                raise ValueError('Cannot find pybag C extension; check your LD_LIBRARY_PATH.')
-
-            fname = kwargs['fname']
-            cell_map = kwargs['cell_map']
-            inc_list = kwargs['includes']
-            fmt = kwargs.get('format', 'cdl')
-            flat = kwargs.get('flat', True)
-            shell = kwargs.get('shell', False)
-
-            implement_netlist(content_list, cell_map, inc_list, fmt, fname, flat, shell)
         elif output is DesignOutput.YAML:
-            if implement_yaml is None:
-                raise ValueError('Cannot find pybag C extension; check your LD_LIBRARY_PATH.')
-
             fname = kwargs['fname']
 
             implement_yaml(fname, content_list)
         else:
-            raise ValueError('Unsupported output type: {}'.format(output))
+            # assume this is netlist
+            fname = kwargs['fname']
+            prim_fname = kwargs['prim_fname']
+            flat = kwargs.get('flat', True)
+            shell = kwargs.get('shell', False)
+            rmin = kwargs.get('rmin', 2000)
+
+            implement_netlist(fname, content_list, output, flat, shell, rmin, prim_fname)
         end = time.time()
 
         if debug:

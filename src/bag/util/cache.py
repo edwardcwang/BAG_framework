@@ -7,21 +7,13 @@ from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable, 
 
 import abc
 import time
-import enum
 import numbers
 from collections import OrderedDict
 
+from pybag.enum import DesignOutput
+
 from ..io import fix_string
 from .search import get_new_name
-
-
-class DesignOutput(enum.Enum):
-    """An enum of all supported design output types."""
-    LAYOUT = 0
-    GDS = 1
-    SCHEMATIC = 2
-    NETLIST = 3
-    YAML = 4
 
 
 class DesignMaster(abc.ABC):

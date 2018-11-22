@@ -14,6 +14,8 @@ import pstats
 # noinspection PyPackageRequirements
 import yaml
 
+from pybag.enum import DesignOutput
+
 from .interface import ZMQDealer
 from .interface.database import DbAccess
 from .layout.routing.grid import RoutingGrid
@@ -21,7 +23,6 @@ from .layout.template import TemplateDB
 from .layout.core import DummyTechInfo
 from .io import read_file, sim_data
 from .concurrent.core import batch_async_task
-from .util.cache import DesignOutput
 
 if TYPE_CHECKING:
     from .interface.simulator import SimAccess

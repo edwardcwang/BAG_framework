@@ -13,13 +13,15 @@ import time
 
 import yaml
 
-from bag.util.cache import DesignMaster, MasterDB, DesignOutput
+from bag.util.cache import DesignMaster, MasterDB
 from bag.util.interval import IntervalSet
 from ..io import get_encoding, open_file
 from .routing.base import Port, TrackID, WireArray
 
 # try to import cython modules
-from pybag.enum import Orientation, PathStyle, BlockageType, BoundaryType, GeometryMode
+from pybag.enum import (
+    Orientation, PathStyle, BlockageType, BoundaryType, GeometryMode, DesignOutput
+)
 from pybag.util.geometry import BBox, BBoxArray
 
 if TYPE_CHECKING:
