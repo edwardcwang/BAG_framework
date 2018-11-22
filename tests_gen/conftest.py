@@ -114,15 +114,18 @@ def setup_test_data(metafunc, data_name: str, data_type: str) -> None:
             raise ValueError('Data directory {} is not a directory'.format(cur_dir))
 
         for p in cur_dir.iterdir():
-            if p.is_file():
+            if p.is_dir():
+                test_id = p.name  # type: str
                 # noinspection PyTypeChecker
-                with open(p, 'r') as f:
+                with open(p / 'params.yaml', 'r') as f:
                     content = yaml.load(f)
                 # inject fields
-                test_id = p.stem  # type: str
                 content['test_id'] = pkg + '__' + test_id
                 content['lib_name'] = pkg
                 content['cell_name'] = test_id.rsplit('_', maxsplit=1)[0]
+                for fpath in p.iterdir():
+                    if fpath.stem == 'out':
+                        content['out_{}'.format(fpath.suffix[1:])] = str(fpath.absolute())
                 data.append(content)
 
     metafunc.parametrize(data_name, data, indirect=True, ids=get_test_data_id)
