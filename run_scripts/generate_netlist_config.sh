@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Generate configurations files needed to netlist from BAG.
+# This script must be run from the working directory.
 
 source .bashrc_pypath
 
@@ -11,4 +13,7 @@ then
     exit 1
 fi
 
-${BAG_PYTHON} BAG_framework/run_scripts/netlist_config.py $@
+export OUTDIR=${BAG_TECH_CONFIG_DIR##*/}/netlist_setup
+export CONF=${OUTDIR}/gen_config.yaml
+
+${BAG_PYTHON} BAG_framework/run_scripts/netlist_config.py ${CONF} ${OUTDIR}

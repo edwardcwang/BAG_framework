@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 
 """Generate setup yaml files for various netlist outputs
+
+Please run this script through the generate_netlist_config.sh shell script, which will setup
+the PYTHONPATH correctly.
 """
 
 from typing import Dict, Any, Tuple, List
 
 import os
+import copy
 import argparse
 
 import yaml
@@ -27,7 +31,7 @@ mos_default = {
 
 mos_cdl_fmt = """.SUBCKT {cell_name} B D G S
 *.PININFO B:B D:B G:B S:B
-MM0 D G S B {model_name} {l_str}=l {w_str}=w {nf_str}=1*nf {other}
+MM0 D G S B {model_name} {l_str}=l {w_str}=w {nf_str}=nf {other}
 .ENDS
 """
 
@@ -37,7 +41,6 @@ mos_verilog_fmt = """module {cell_name}(
     inout G,
     inout S
 );
-
 endmodule
 """
 
@@ -67,7 +70,7 @@ def populate_mos(config: Dict[str, Any], netlist_map: Dict[str, Any],
                  inc_lines: Dict[DesignOutput, List[str]]) -> None:
     for cell_name, model_name in config['types']:
         # populate netlist_map
-        cur_info = mos_default.copy()
+        cur_info = copy.deepcopy(mos_default)
         cur_info['cell_name'] = cell_name
         netlist_map[cell_name] = cur_info
 
@@ -79,7 +82,7 @@ def populate_mos(config: Dict[str, Any], netlist_map: Dict[str, Any],
             nf_str = out_config['nf_str']
             other = out_config['other']
             mos_fmt = supported_formats[v]['mos']
-            lines.append('')
+            lines.append('\n')
             lines.append(mos_fmt.format(cell_name=cell_name, model_name=model_name,
                                         l_str=l_str, w_str=w_str, nf_str=nf_str, other=other))
 
@@ -96,7 +99,7 @@ def get_info(config: Dict[str, Any], output_dir) -> Tuple[Dict[str, Any], Dict[i
 
     inc_list = {}
     for v, lines in inc_lines.items():
-        fname = os.path.abspath(os.path.join(output_dir, supported_formats[v]['fname']))
+        fname = os.path.join(output_dir, supported_formats[v]['fname'])
         inc_list[v.value] = [fname]
         with open(fname, 'w') as f:
             f.writelines(lines)
