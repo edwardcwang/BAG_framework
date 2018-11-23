@@ -9,6 +9,7 @@ import time
 import importlib
 
 from pybag.enum import DesignOutput
+# noinspection PyUnresolvedReferences
 from pybag.schematic import implement_yaml, implement_netlist
 
 from ..util.cache import MasterDB

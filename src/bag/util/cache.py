@@ -45,7 +45,8 @@ class DesignMaster(abc.ABC):
         self._master_db = master_db
         self._lib_name = lib_name
         self._used_names = used_names
-        self._children = set()
+        # use ordered dictionary so we have deterministic dependency order
+        self._children = OrderedDict()
         self._finalized = False
 
         # set parameters
@@ -215,7 +216,7 @@ class DesignMaster(abc.ABC):
     def add_child_key(self, child_key):
         # type: (object) -> None
         """Registers the given child key."""
-        self._children.add(child_key)
+        self._children[child_key] = None
 
     def children(self):
         # type: () -> Iterator[object]
