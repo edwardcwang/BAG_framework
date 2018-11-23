@@ -124,8 +124,9 @@ def setup_test_data(metafunc, data_name: str, data_type: str) -> None:
                 content['lib_name'] = pkg
                 content['cell_name'] = test_id.rsplit('_', maxsplit=1)[0]
                 for fpath in p.iterdir():
-                    if fpath.stem == 'out':
-                        content['out_{}'.format(fpath.suffix[1:])] = str(fpath.absolute())
+                    if fpath.stem.startswith('out'):
+                        content['{}_{}'.format(fpath.stem, fpath.suffix[1:])] = str(
+                            fpath.absolute())
                 data.append(content)
 
     metafunc.parametrize(data_name, data, indirect=True, ids=get_test_data_id)

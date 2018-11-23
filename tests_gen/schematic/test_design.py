@@ -4,6 +4,7 @@ from typing import Dict, Any
 
 import pathlib
 
+import os
 import yaml
 import pytest
 
@@ -34,28 +35,43 @@ def get_extension(output_type: DesignOutput) -> str:
         raise ValueError('Unsupported design output type: {}'.format(output_type.name))
 
 
-@pytest.mark.parametrize("output_type, kwargs", [
+@pytest.mark.parametrize("output_type, options", [
     (DesignOutput.YAML, {}),
-    (DesignOutput.CDL, {'prim_fname': '', 'flat': True, 'shell': False, 'rmin': 2000}),
+    (DesignOutput.CDL, {'flat': True, 'shell': False, 'rmin': 2000}),
+    (DesignOutput.VERILOG, {'flat': True, 'shell': False, 'rmin': 2000}),
+    (DesignOutput.VERILOG, {'flat': True, 'shell': True, 'rmin': 2000}),
 ])
 def test_design_yaml(tmpdir,
                      module_db: ModuleDB,
                      sch_design_params: Dict[str, Any],
                      output_type: DesignOutput,
-                     kwargs: Dict[str, Any],
+                     options: Dict[str, Any],
                      gen_output: bool,
                      ) -> None:
     """Test design() method of each schematic generator."""
     extension = get_extension(output_type)
-    expect_fname = sch_design_params.get('out_' + extension, '')
+
+    if output_type is DesignOutput.YAML:
+        base = 'out'
+    else:
+        base = 'out_{}'.format(int(options['shell']))
+
+    expect_fname = sch_design_params.get('{}_{}'.format(base, extension), '')
     if not expect_fname and not gen_output:
         pytest.skip('Cannot find expected output file.')
 
     dsn = get_sch_master(module_db, sch_design_params)
 
-    path = tmpdir.join('out.' + extension)
+    path = tmpdir.join('{}.{}'.format(base, extension))
+    if output_type is not DesignOutput.YAML:
+        tech_dir = os.environ.get('BAG_TECH_CONFIG_DIR', '')
+        if not tech_dir:
+            pytest.skip('BAG technology directory not defined.')
+        # noinspection PyTypeChecker
+        options['prim_fname'] = os.path.join(tech_dir, 'netlist_setup', 'netlist_setup.yaml')
+
     module_db.instantiate_master(output_type, dsn, top_cell_name='PYTEST', fname=str(path),
-                                 **kwargs)
+                                 **options)
 
     assert path.check(file=1)
 
@@ -63,8 +79,8 @@ def test_design_yaml(tmpdir,
         actual = f.read()
 
     if gen_output:
-        dir_name = pathlib.Path('pytest_output')
-        out_fname = dir_name / (sch_design_params['test_id'] + '.' + extension)
+        dir_name = pathlib.Path('pytest_output') / sch_design_params['test_id']
+        out_fname = dir_name / (base + '.' + extension)
         dir_name.mkdir(exist_ok=True)
         with out_fname.open('w') as f:
             f.write(actual)
