@@ -40,7 +40,7 @@ class {lib_name}__{cell_name}(Module):
 
 
 def parse_options() -> Tuple[str, str]:
-    parser = argparse.ArgumentParser(description='Convert BAG3 schematic generators to BAG3.')
+    parser = argparse.ArgumentParser(description='Convert BAG2 schematic generators to BAG3.')
     parser.add_argument('root_path', type=str,
                         help='path to schematic generator files.')
     parser.add_argument('lib_name', type=str,
