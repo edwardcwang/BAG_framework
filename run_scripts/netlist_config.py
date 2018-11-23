@@ -27,7 +27,7 @@ mos_default = {
 
 mos_cdl_fmt = """.SUBCKT {cell_name} B D G S
 *.PININFO B:B D:B G:B S:B
-MM0 D G S B {model_name} {l_str}=l {w_str}=w {nf_str}=1*nf
+MM0 D G S B {model_name} {l_str}=l {w_str}=w {nf_str}=1*nf {other}
 .ENDS
 """
 
@@ -56,7 +56,7 @@ supported_formats = {
 
 
 def populate_header(config: Dict[str, Any], inc_lines: Dict[DesignOutput, List[str]]) -> None:
-    for v, lines in inc_lines:
+    for v, lines in inc_lines.items():
         includes = config[v.name]['includes']
         inc_fmt = supported_formats[v]['include']
         for fname in includes:
@@ -72,15 +72,16 @@ def populate_mos(config: Dict[str, Any], netlist_map: Dict[str, Any],
         netlist_map[cell_name] = cur_info
 
         # write bag_prim netlist
-        for v, lines in inc_lines:
+        for v, lines in inc_lines.items():
             out_config = config[v.name]
             l_str = out_config['l_str']
             w_str = out_config['w_str']
             nf_str = out_config['nf_str']
+            other = out_config['other']
             mos_fmt = supported_formats[v]['mos']
             lines.append('')
             lines.append(mos_fmt.format(cell_name=cell_name, model_name=model_name,
-                                        l_str=l_str, w_str=w_str, nf_str=nf_str))
+                                        l_str=l_str, w_str=w_str, nf_str=nf_str, other=other))
 
 
 def get_info(config: Dict[str, Any], output_dir) -> Tuple[Dict[str, Any], Dict[int, List[str]]]:
@@ -94,7 +95,7 @@ def get_info(config: Dict[str, Any], output_dir) -> Tuple[Dict[str, Any], Dict[i
     populate_mos(mos_config, netlist_map, inc_lines)
 
     inc_list = {}
-    for v, lines in inc_lines:
+    for v, lines in inc_lines.items():
         fname = os.path.abspath(os.path.join(output_dir, supported_formats[v]['fname']))
         inc_list[v.value] = [fname]
         with open(fname, 'w') as f:
