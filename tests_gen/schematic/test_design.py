@@ -23,54 +23,39 @@ def get_sch_master(module_db: ModuleDB, sch_design_params: Dict[str, Any]) -> Mo
     return ans
 
 
+def get_extension(output_type: DesignOutput) -> str:
+    if output_type is DesignOutput.YAML:
+        return 'yaml'
+    elif output_type is DesignOutput.CDL:
+        return 'cdl'
+    elif output_type is DesignOutput.VERILOG:
+        return 'v'
+    else:
+        raise ValueError('Unsupported design output type: {}'.format(output_type.name))
+
+
+@pytest.mark.parametrize("output_type, kwargs", [
+    (DesignOutput.YAML, {}),
+    (DesignOutput.CDL, {'prim_fname': '', 'flat': True, 'shell': False, 'rmin': 2000}),
+])
 def test_design_yaml(tmpdir,
                      module_db: ModuleDB,
                      sch_design_params: Dict[str, Any],
+                     output_type: DesignOutput,
+                     kwargs: Dict[str, Any],
                      gen_output: bool,
                      ) -> None:
     """Test design() method of each schematic generator."""
-    expect_fname = sch_design_params.get('out_yaml', '')
+    extension = get_extension(output_type)
+    expect_fname = sch_design_params.get('out_' + extension, '')
     if not expect_fname and not gen_output:
-        pytest.skip('Cannot find expected YAML output')
+        pytest.skip('Cannot find expected output file.')
 
     dsn = get_sch_master(module_db, sch_design_params)
 
-    path = tmpdir.join('out.yaml')
-    module_db.instantiate_master(DesignOutput.YAML, dsn, top_cell_name='PYTEST', fname=str(path))
-
-    assert path.check(file=1)
-
-    with path.open('r') as f:
-        actual = yaml.load(f)
-
-    if gen_output:
-        dir_name = pathlib.Path('pytest_output')
-        out_fname = dir_name / (sch_design_params['test_id'] + '.yaml')
-        dir_name.mkdir(exist_ok=True)
-        with out_fname.open('w') as f:
-            yaml.dump(actual, f)
-        expect = actual
-    else:
-        with open(expect_fname, 'r') as f:
-            expect = yaml.load(f)
-
-    assert expect == actual
-
-
-def test_design_cdl(tmpdir,
-                    module_db: ModuleDB,
-                    sch_design_params: Dict[str, Any],
-                    gen_output: bool,
-                    ) -> None:
-    """Test design() method of each schematic generator."""
-    expect_fname = sch_design_params.get('out_cdl', '')
-    if not expect_fname and not gen_output:
-        pytest.skip('Cannot find expected CDL output')
-
-    dsn = get_sch_master(module_db, sch_design_params)
-
-    path = tmpdir.join('out.cdl')
-    module_db.instantiate_master(DesignOutput.CDL, dsn, top_cell_name='PYTEST', fname=str(path))
+    path = tmpdir.join('out.' + extension)
+    module_db.instantiate_master(output_type, dsn, top_cell_name='PYTEST', fname=str(path),
+                                 **kwargs)
 
     assert path.check(file=1)
 
@@ -79,7 +64,7 @@ def test_design_cdl(tmpdir,
 
     if gen_output:
         dir_name = pathlib.Path('pytest_output')
-        out_fname = dir_name / (sch_design_params['test_id'] + '.cdl')
+        out_fname = dir_name / (sch_design_params['test_id'] + '.' + extension)
         dir_name.mkdir(exist_ok=True)
         with out_fname.open('w') as f:
             f.write(actual)
@@ -88,4 +73,9 @@ def test_design_cdl(tmpdir,
         with open(expect_fname, 'r') as f:
             expect = f.read()
 
-    assert expect == actual
+    if output_type is DesignOutput.YAML:
+        actual_dict = yaml.load(actual)
+        expect_dict = yaml.load(expect)
+        assert actual_dict == expect_dict
+    else:
+        assert actual == expect
