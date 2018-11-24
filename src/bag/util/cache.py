@@ -12,9 +12,10 @@ from typing import (
 import abc
 import time
 import numbers
+from itertools import zip_longest
 from collections import OrderedDict
 
-from pybag.enum import DesignOutput, is_netlist_type
+from pybag.enum import DesignOutput, is_netlist_type, is_model_type
 # noinspection PyUnresolvedReferences
 from pybag.schematic import implement_yaml, implement_netlist
 
@@ -264,7 +265,6 @@ class MasterDB:
         self._used_cell_names = set()  # type: Set[str]
         self._key_lookup = {}  # type: Dict[Any, Any]
         self._master_lookup = {}  # type: Dict[Any, DesignMaster]
-        self._rename_dict = {}  # type: Dict[str, str]
 
     def create_masters_in_db(self, output, lib_name, content_list, debug=False, **kwargs):
         # type: (DesignOutput, str, Sequence[Any], bool, **Any) -> None
@@ -353,7 +353,6 @@ class MasterDB:
         """Clear all existing schematic masters."""
         self._key_lookup.clear()
         self._master_lookup.clear()
-        self._rename_dict.clear()
 
     def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
         # type: (Type[MasterType], str, Dict[str, Any], Set[str], **Any) -> MasterType
@@ -380,23 +379,6 @@ class MasterDB:
             the non-finalized generated instance.
         """
         return gen_cls(self, lib_name, params, used_cell_names, **kwargs)
-
-    def format_cell_name(self, cell_name):
-        # type: (str) -> str
-        """Returns the formatted cell name.
-
-        Parameters
-        ----------
-        cell_name : str
-            the original cell name.
-
-        Returns
-        -------
-        final_name : str
-            the new cell name.
-        """
-        cell_name = self._rename_dict.get(cell_name, cell_name)
-        return '%s%s%s' % (self._name_prefix, cell_name, self._name_suffix)
 
     def new_master(self,  # type: MasterDB
                    gen_cls,  # type: Type[MasterType]
@@ -495,14 +477,16 @@ class MasterDB:
             parameters associated with the given output type.
         """
         if name_list is None:
-            name_list = [None] * len(master_list)  # type: Sequence[Optional[str]]
+            rename_iter = zip_longest((m.cell_name for m in master_list), [], fillvalue=None)
+            master_name_iter = zip_longest(master_list, [], fillvalue=None)
         else:
             if len(name_list) != len(master_list):
                 raise ValueError("Master list and name list length mismatch.")
+            rename_iter = zip((m.cell_name for m in master_list), name_list)
+            master_name_iter = zip(master_list, name_list)
 
         # configure renaming dictionary.  Verify that renaming dictionary is one-to-one.
-        rename = self._rename_dict
-        rename.clear()
+        rename = {}
         reverse_rename = {}  # type: Dict[str, str]
         if rename_dict:
             for key, val in rename_dict.items():
@@ -513,14 +497,13 @@ class MasterDB:
                     rename[key] = val
                     reverse_rename[val] = key
 
-        for master, name in zip(master_list, name_list):
-            if name is not None and name != master.cell_name:
-                cur_name = master.cell_name
+        for m_name, name in rename_iter:
+            if name is not None and name != m_name:
                 if name in reverse_rename:
                     raise ValueError('Both %s and %s are renamed '
-                                     'to %s' % (cur_name, reverse_rename[name], name))
-                rename[cur_name] = name
-                reverse_rename[name] = cur_name
+                                     'to %s' % (m_name, reverse_rename[name], name))
+                rename[m_name] = name
+                reverse_rename[name] = m_name
 
                 if name in self._used_cell_names:
                     # name is an already used name, so we need to rename it to something else
@@ -534,7 +517,7 @@ class MasterDB:
         # use ordered dict so that children are created before parents.
         info_dict = OrderedDict()  # type: Dict[str, DesignMaster]
         start = time.time()
-        for master, top_name in zip(master_list, name_list):
+        for master, top_name in master_name_iter:
             self._batch_output_helper(info_dict, master)
         end = time.time()
 
@@ -543,7 +526,12 @@ class MasterDB:
         if not lib_name:
             raise ValueError('master library name is not specified.')
 
-        content_list = [master.get_content(self.format_cell_name)
+        def format_cell_name(cell_name):
+            # type: (str) -> str
+            cell_name = rename.get(cell_name, cell_name)
+            return '%s%s%s' % (self._name_prefix, cell_name, self._name_suffix)
+
+        content_list = [master.get_content(format_cell_name)
                         for master in info_dict.values()]
 
         if debug:
