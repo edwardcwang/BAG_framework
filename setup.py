@@ -28,6 +28,7 @@ setup(
         'scipy>=0.17',
         'matplotlib>=1.5',
         'h5py',
+        'sortedcontainers',
     ],
     extras_require={
         'mdao': ['openmdao']

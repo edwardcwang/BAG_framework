@@ -182,24 +182,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         pass
 
-    def populate_params(self, table, params_info, default_params, **kwargs):
-        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **Any) -> None
-        """Fill params dictionary with values from table and default_params"""
-        DesignMaster.populate_params(self, table, params_info, default_params, **kwargs)
-
-        # add hidden parameters
-        hidden_params = kwargs.get('hidden_params', {})
-        for name, value in hidden_params.items():
-            self.params[name] = table.get(name, value)
-
-        # always add flip_parity parameter
-        if 'flip_parity' not in self.params:
-            self.params['flip_parity'] = table.get('flip_parity', None)
-        # update RoutingGrid
-        fp_dict = self.params['flip_parity']
-        if fp_dict is not None:
-            self._grid.set_flip_parity(fp_dict)
-
     def get_master_basename(self):
         # type: () -> str
         """Returns the base name to use for this instance.

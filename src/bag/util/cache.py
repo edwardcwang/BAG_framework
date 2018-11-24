@@ -10,6 +10,7 @@ from typing import (
 )
 
 import abc
+import sys
 import time
 import numbers
 from itertools import zip_longest
@@ -19,11 +20,69 @@ from pybag.enum import DesignOutput, is_netlist_type, is_model_type
 # noinspection PyUnresolvedReferences
 from pybag.schematic import implement_yaml, implement_netlist
 
+from sortedcontainers import SortedDict
+
 from ..io import fix_string
 from .search import get_new_name
 
 if TYPE_CHECKING:
     from ..core import BagProject
+
+
+class Param:
+    def __init__(self):
+        self._table = SortedDict()
+        self._hash_value = 0
+
+    @classmethod
+    def to_param(cls, table: Dict[Any, Any]):
+        ans = Param()
+        for key, val in table.items():
+            ans.add(key, val)
+        ans.update_hash()
+        return ans
+
+    @classmethod
+    def get_hash(cls, val: object) -> int:
+        if isinstance(val, list):
+            seed = 0
+            for item in val:
+                seed = cls._combine_hash(seed, cls.get_hash(item))
+            return seed
+        else:
+            return hash(val)
+
+    @classmethod
+    def _combine_hash(cls, seed: int, v: int) -> int:
+        # boost::hash_combine port
+        seed ^= v + 0x9e3779b9 + (seed << 6) + (seed >> 2)
+        return seed & sys.maxsize
+
+    def add(self, name: object, value: object):
+        if isinstance(value, dict):
+            self._table[name] = self.to_param(value)
+        else:
+            self._table[name] = value
+
+    def update_hash(self) -> None:
+        self._hash_value = 0
+        for key, val in self._table.items():
+            self._hash_value = self._combine_hash(self._hash_value, hash(key))
+            self._hash_value = self._combine_hash(self._hash_value, self.get_hash(val))
+
+    def __getitem__(self, item: object):
+        return self._table[item]
+
+    def keys(self):
+        return self._table.keys()
+
+    def __hash__(self) -> int:
+        return self._hash_value
+
+    def __eq__(self, other: object):
+        if isinstance(other, Param):
+            return self._table == other._table
+        return False
 
 
 class DesignMaster(abc.ABC):
@@ -46,7 +105,7 @@ class DesignMaster(abc.ABC):
 
     Attributes
     ----------
-    params : Dict[str, Any]
+    params : Param
         the parameters dictionary.
     """
 
@@ -62,7 +121,7 @@ class DesignMaster(abc.ABC):
         # set parameters
         params_info = self.get_params_info()
         default_params = self.get_default_param_values()
-        self.params = {}  # type: Dict[str, Any]
+        self.params = Param()  # type: Param
         self.populate_params(params, params_info, default_params, **kwargs)
 
         # get unique cell name
@@ -79,13 +138,15 @@ class DesignMaster(abc.ABC):
                 if key not in default_params:
                     raise ValueError('Parameter %s not specified.  Description:\n%s' % (key, desc))
                 else:
-                    self.params[key] = default_params[key]
+                    self.params.add(key, default_params[key])
             else:
-                self.params[key] = table[key]
+                self.params.add(key, table[key])
 
         # add hidden parameters
         for name, value in hidden_params.items():
-            self.params[name] = table.get(name, value)
+            self.params.add(name, table.get(name, value))
+
+        self.params.update_hash()
 
     @classmethod
     def to_immutable_id(cls, val):
@@ -95,12 +156,13 @@ class DesignMaster(abc.ABC):
         # python 2/3 compatibility: convert raw bytes to string
         val = fix_string(val)
 
-        if val is None or isinstance(val, numbers.Number) or isinstance(val, str):
+        if (val is None or isinstance(val, numbers.Number) or isinstance(val, str) or
+                isinstance(val, Param)):
             return val
         elif isinstance(val, list) or isinstance(val, tuple):
             return tuple((cls.to_immutable_id(item) for item in val))
         elif isinstance(val, dict):
-            return tuple(((k, cls.to_immutable_id(val[k])) for k in sorted(val.keys())))
+            return Param.to_param(val)
         elif isinstance(val, set):
             return tuple((k for k in sorted(val)))
         elif hasattr(val, 'get_immutable_key') and callable(val.get_immutable_key):
@@ -221,7 +283,7 @@ class DesignMaster(abc.ABC):
         unique_id : Any
             a hashable unique ID representing the given parameters.
         """
-        return self.to_immutable_id((self._get_qualified_name(), self.params))
+        return self._get_qualified_name(), self.params
 
     def add_child_key(self, child_key):
         # type: (object) -> None
