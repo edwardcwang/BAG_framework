@@ -3,14 +3,11 @@
 """This module defines the design database class.
 """
 
-from typing import TYPE_CHECKING, TypeVar, Dict, Optional, Any, Type, Sequence
+from typing import TYPE_CHECKING, TypeVar, Dict, Optional, Any, Sequence, Type
 
-import time
 import importlib
 
 from pybag.enum import DesignOutput
-# noinspection PyUnresolvedReferences
-from pybag.schematic import implement_yaml, implement_netlist
 
 from ..util.cache import MasterDB
 
@@ -25,8 +22,8 @@ if TYPE_CHECKING:
 class ModuleDB(MasterDB):
     """A database of all modules.
 
-    This class is responsible for keeping track of module libraries and
-    creating new modules.
+    This class is a subclass of MasterDB that defines some extra properties/function
+    aliases to make creating schematics easier.
 
     Parameters
     ----------
@@ -44,36 +41,9 @@ class ModuleDB(MasterDB):
 
     def __init__(self, tech_info, lib_name, prj=None, name_prefix='', name_suffix=''):
         # type: (TechInfo, str, Optional[BagProject], str, str) -> None
-        MasterDB.__init__(self, lib_name, name_prefix=name_prefix, name_suffix=name_suffix)
+        MasterDB.__init__(self, lib_name, prj=prj, name_prefix=name_prefix, name_suffix=name_suffix)
 
-        self._prj = prj
         self._tech_info = tech_info
-
-    def create_masters_in_db(self, output, lib_name, content_list, debug=False, **kwargs):
-        # type: (DesignOutput, str, Sequence[Any], bool, **Any) -> None
-        start = time.time()
-        if output is DesignOutput.SCHEMATIC:
-            if self._prj is None:
-                raise ValueError('BagProject is not defined.')
-
-            self._prj.instantiate_schematic(lib_name, content_list)
-        elif output is DesignOutput.YAML:
-            fname = kwargs['fname']
-
-            implement_yaml(fname, content_list)
-        else:
-            # assume this is netlist
-            fname = kwargs['fname']
-            prim_fname = kwargs['prim_fname']
-            flat = kwargs.get('flat', True)
-            shell = kwargs.get('shell', False)
-            rmin = kwargs.get('rmin', 2000)
-
-            implement_netlist(fname, content_list, output, flat, shell, rmin, prim_fname)
-        end = time.time()
-
-        if debug:
-            print('schematic instantiation took %.4g seconds' % (end - start))
 
     @classmethod
     def get_schematic_class(cls, lib_name, cell_name):

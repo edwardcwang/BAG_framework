@@ -22,6 +22,7 @@ from .routing.base import Port, TrackID, WireArray
 from pybag.enum import (
     Orientation, PathStyle, BlockageType, BoundaryType, GeometryMode, DesignOutput
 )
+# noinspection PyUnresolvedReferences
 from pybag.util.geometry import BBox, BBoxArray
 
 if TYPE_CHECKING:
@@ -41,8 +42,8 @@ _io_encoding = get_encoding()
 class TemplateDB(MasterDB):
     """A database of all templates.
 
-    This class is responsible for keeping track of template libraries and
-    creating new templates.
+    This class is a subclass of MasterDB that defines some extra properties/function
+    aliases to make creating layouts easier.
 
     Parameters
     ----------
@@ -64,30 +65,11 @@ class TemplateDB(MasterDB):
                  prj=None,  # type: Optional[BagProject]
                  name_prefix='',  # type: str
                  name_suffix='',  # type: str
-                 flatten=False,  # type: bool
                  ):
         # type: (...) -> None
-        MasterDB.__init__(self, lib_name, name_prefix=name_prefix, name_suffix=name_suffix)
+        MasterDB.__init__(self, lib_name, prj=prj, name_prefix=name_prefix, name_suffix=name_suffix)
 
-        self._prj = prj
         self._grid = routing_grid
-        self._flatten = flatten
-
-    def create_masters_in_db(self, output, lib_name, content_list, debug=False, **kwargs):
-        # type: (DesignOutput, str, Sequence[Any], bool, **Any) -> None
-        start = time.time()
-        if output is DesignOutput.LAYOUT:
-            if self._prj is None:
-                raise ValueError('BagProject is not defined.')
-
-            # create layouts
-            self._prj.instantiate_layout(lib_name, content_list)
-        else:
-            raise ValueError('Unsupported output type: {}'.format(output))
-
-        end = time.time()
-        if debug:
-            print('layout instantiation took %.4g seconds' % (end - start))
 
     @property
     def grid(self):

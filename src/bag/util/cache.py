@@ -3,17 +3,26 @@
 """This module defines classes used to cache existing design masters
 """
 
-from typing import Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable, Iterator
+from __future__ import annotations
+
+from typing import (
+    TYPE_CHECKING, Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable, Iterator
+)
 
 import abc
 import time
 import numbers
 from collections import OrderedDict
 
-from pybag.enum import DesignOutput
+from pybag.enum import DesignOutput, is_netlist_type
+# noinspection PyUnresolvedReferences
+from pybag.schematic import implement_yaml, implement_netlist
 
 from ..io import fix_string
 from .search import get_new_name
+
+if TYPE_CHECKING:
+    from ..core import BagProject
 
 
 class DesignMaster(abc.ABC):
@@ -227,7 +236,7 @@ class DesignMaster(abc.ABC):
 MasterType = TypeVar('MasterType', bound=DesignMaster)
 
 
-class MasterDB(abc.ABC):
+class MasterDB:
     """A database of existing design masters.
 
     This class keeps track of existing design masters and maintain design dependency hierarchy.
@@ -236,15 +245,18 @@ class MasterDB(abc.ABC):
     ----------
     lib_name : str
         the library to put all generated templates in.
+    prj : Optional[BagProject]
+        the BagProject instance.
     name_prefix : str
         generated master name prefix.
     name_suffix : str
         generated master name suffix.
     """
 
-    def __init__(self, lib_name, name_prefix='', name_suffix=''):
-        # type: (str, str, str) -> None
+    def __init__(self, lib_name, prj=None, name_prefix='', name_suffix=''):
+        # type: (str, Optional[BagProject], str, str) -> None
 
+        self._prj = prj
         self._lib_name = lib_name
         self._name_prefix = name_prefix
         self._name_suffix = name_suffix
@@ -254,7 +266,6 @@ class MasterDB(abc.ABC):
         self._master_lookup = {}  # type: Dict[Any, DesignMaster]
         self._rename_dict = {}  # type: Dict[str, str]
 
-    @abc.abstractmethod
     def create_masters_in_db(self, output, lib_name, content_list, debug=False, **kwargs):
         # type: (DesignOutput, str, Sequence[Any], bool, **Any) -> None
         """Create the masters in the design database.
@@ -272,7 +283,36 @@ class MasterDB(abc.ABC):
         **kwargs :  Any
             parameters associated with the given output type.
         """
-        pass
+        start = time.time()
+        if output is DesignOutput.LAYOUT:
+            if self._prj is None:
+                raise ValueError('BagProject is not defined.')
+
+            # create layouts
+            self._prj.instantiate_layout(lib_name, content_list)
+        elif output is DesignOutput.SCHEMATIC:
+            if self._prj is None:
+                raise ValueError('BagProject is not defined.')
+
+            self._prj.instantiate_schematic(lib_name, content_list)
+        elif output is DesignOutput.YAML:
+            fname = kwargs['fname']
+
+            implement_yaml(fname, content_list)
+        elif is_netlist_type(output):
+            fname = kwargs['fname']
+            prim_fname = kwargs['prim_fname']
+            flat = kwargs.get('flat', True)
+            shell = kwargs.get('shell', False)
+            rmin = kwargs.get('rmin', 2000)
+
+            implement_netlist(fname, content_list, output, flat, shell, rmin, prim_fname)
+        else:
+            raise ValueError('Unknown design output type: {}'.format(output.name))
+        end = time.time()
+
+        if debug:
+            print('design instantiation took %.4g seconds' % (end - start))
 
     @property
     def lib_name(self):

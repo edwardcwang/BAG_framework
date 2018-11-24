@@ -8,7 +8,7 @@ import os
 import yaml
 import pytest
 
-from pybag.enum import DesignOutput
+from pybag.enum import DesignOutput, get_extension
 
 from bag.design.database import ModuleDB
 from bag.design.module import Module
@@ -22,17 +22,6 @@ def get_sch_master(module_db: ModuleDB, sch_design_params: Dict[str, Any]) -> Mo
     gen_cls = module_db.get_schematic_class(lib_name, cell_name)
     ans = module_db.new_master(gen_cls, params=params)  # type: Module
     return ans
-
-
-def get_extension(output_type: DesignOutput) -> str:
-    if output_type is DesignOutput.YAML:
-        return 'yaml'
-    elif output_type is DesignOutput.CDL:
-        return 'cdl'
-    elif output_type is DesignOutput.VERILOG:
-        return 'v'
-    else:
-        raise ValueError('Unsupported design output type: {}'.format(output_type.name))
 
 
 @pytest.mark.parametrize("output_type, options", [
