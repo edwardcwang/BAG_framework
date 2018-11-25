@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from typing import (
-    TYPE_CHECKING, Sequence, Dict, Set, Any, Optional, TypeVar, Type, Callable, Iterator
+    TYPE_CHECKING, Sequence, Dict, Set, Any, Optional, TypeVar, Type, Tuple, Iterator
 )
 
 import abc
@@ -16,7 +16,7 @@ import numbers
 from itertools import zip_longest
 from collections import OrderedDict
 
-from pybag.enum import DesignOutput, is_netlist_type, is_model_type
+from pybag.enum import DesignOutput, is_netlist_type
 # noinspection PyUnresolvedReferences
 from pybag.schematic import implement_yaml, implement_netlist
 
@@ -29,16 +29,16 @@ if TYPE_CHECKING:
     from ..core import BagProject
 
 
-class Param:
+class Param(SortedDict):
     def __init__(self):
-        self._table = SortedDict()
+        SortedDict.__init__(self)
         self._hash_value = 0
 
     @classmethod
     def to_param(cls, table: Dict[Any, Any]):
         ans = Param()
         for key, val in table.items():
-            ans.add(key, val)
+            ans.assign(key, val)
         ans.update_hash()
         return ans
 
@@ -58,31 +58,23 @@ class Param:
         seed ^= v + 0x9e3779b9 + (seed << 6) + (seed >> 2)
         return seed & sys.maxsize
 
-    def add(self, name: object, value: object):
-        if isinstance(value, dict):
-            self._table[name] = self.to_param(value)
+    def assign(self, name: object, value: object):
+        if isinstance(value, Param) or not isinstance(value, dict):
+            SortedDict.__setitem__(self, name, value)
         else:
-            self._table[name] = value
+            SortedDict.__setitem__(self, name, self.to_param(value))
 
     def update_hash(self) -> None:
         self._hash_value = 0
-        for key, val in self._table.items():
+        for key, val in self.items():
             self._hash_value = self._combine_hash(self._hash_value, hash(key))
             self._hash_value = self._combine_hash(self._hash_value, self.get_hash(val))
 
-    def __getitem__(self, item: object):
-        return self._table[item]
-
-    def keys(self):
-        return self._table.keys()
+    def __setitem__(self, name: object, value: object) -> None:
+        raise TypeError('Cannot call __setitem__ on a Param object.')
 
     def __hash__(self) -> int:
         return self._hash_value
-
-    def __eq__(self, other: object):
-        if isinstance(other, Param):
-            return self._table == other._table
-        return False
 
 
 class DesignMaster(abc.ABC):
@@ -138,13 +130,13 @@ class DesignMaster(abc.ABC):
                 if key not in default_params:
                     raise ValueError('Parameter %s not specified.  Description:\n%s' % (key, desc))
                 else:
-                    self.params.add(key, default_params[key])
+                    self.params.assign(key, default_params[key])
             else:
-                self.params.add(key, table[key])
+                self.params.assign(key, table[key])
 
         # add hidden parameters
         for name, value in hidden_params.items():
-            self.params.add(name, table.get(name, value))
+            self.params.assign(name, table.get(name, value))
 
         self.params.update_hash()
 
@@ -169,6 +161,12 @@ class DesignMaster(abc.ABC):
             return val.get_immutable_key()
         else:
             raise Exception('Unrecognized value %s with type %s' % (str(val), type(val)))
+
+    @classmethod
+    def format_cell_name(cls, cell_name, rename_dict, name_prefix, name_suffix):
+        # type: (str, Dict[str, str], str, str) -> str
+        tmp = rename_dict.get(cell_name, cell_name)
+        return name_prefix + tmp + name_suffix
 
     @classmethod
     @abc.abstractmethod
@@ -213,21 +211,29 @@ class DesignMaster(abc.ABC):
         return ''
 
     @abc.abstractmethod
-    def get_content(self, rename_fun):
-        # type: (Callable[[str], str]) -> Any
+    def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
+        # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
         """Returns the content of this master instance.
 
         Parameters
         ----------
-        rename_fun : Callable[[str], str]
-            a function that renames design masters.
+        output_type : DesignOutput
+            the output type.
+        rename_dict : Dict[str, str]
+            the renaming dictionary.
+        name_prefix : str
+            the name prefix.
+        name_suffix : str
+            the name suffix.
 
         Returns
         -------
+        cell_name : str
+            the master cell name.
         content : Any
             the master content data structure.
         """
-        return None
+        return '', None
 
     @property
     def master_db(self):
@@ -588,12 +594,7 @@ class MasterDB:
         if not lib_name:
             raise ValueError('master library name is not specified.')
 
-        def format_cell_name(cell_name):
-            # type: (str) -> str
-            cell_name = rename.get(cell_name, cell_name)
-            return '%s%s%s' % (self._name_prefix, cell_name, self._name_suffix)
-
-        content_list = [master.get_content(format_cell_name)
+        content_list = [master.get_content(output, rename, self._name_prefix, self._name_suffix)
                         for master in info_dict.values()]
 
         if debug:

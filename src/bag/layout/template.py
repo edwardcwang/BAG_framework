@@ -204,24 +204,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self.__class__.__name__
 
-    def get_content(self, rename_fun):
-        # type: (Callable[[str], str]) -> Tuple[str, PyLayCellView]
-        """Returns the content of this master instance.
-
-        Parameters
-        ----------
-        rename_fun : Callable[[str], str]
-            a function that renames design masters.
-
-        Returns
-        -------
-        content : Tuple[str, PyLayCellView]
-            the content of this TemplateBase.
-        """
+    def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
+        # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
         if not self.finalized:
             raise ValueError('This template is not finalized yet')
 
-        return rename_fun(self._layout.cell_name), self._layout
+        cell_name = self.format_cell_name(self._layout.cell_name, rename_dict,
+                                          name_prefix, name_suffix)
+        return name_prefix + cell_name + name_suffix, self._layout
 
     def finalize(self):
         # type: () -> None

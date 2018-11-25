@@ -3,7 +3,7 @@
 """This module defines base design module class and primitive design classes.
 """
 
-from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Callable, Union, Set, Iterable
+from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Union, Set, Iterable
 
 import os
 import abc
@@ -15,7 +15,7 @@ from .instance import SchInstance
 
 try:
     from pybag.schematic import PySchCellView
-    from pybag.enum import TermType
+    from pybag.enum import TermType, DesignOutput, is_model_type, get_extension
 except ImportError:
     raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
@@ -149,24 +149,23 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self._orig_cell_name
 
-    def get_content(self, rename_fun):
-        # type: (Callable[[str], str]) -> Optional[Tuple[Any,...]]
-        """Returns the content of this master instance.
-
-        Parameters
-        ----------
-        rename_fun : Callable[[str], str]
-            a function that renames design masters.
-
-        Returns
-        -------
-        content : Optional[Tuple[Any,...]]
-            the master content data structure.
-        """
+    def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
+        # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
         if self.is_primitive():
-            return None
+            return '', None
 
-        return rename_fun(self.cell_name), self._cv
+        cell_name = self.format_cell_name(self.cell_name, rename_dict, name_prefix,
+                                          name_suffix)
+        if is_model_type(output_type):
+            content = self.get_model_content(get_extension(output_type))
+            if content:
+                return cell_name, content
+        return cell_name, self._cv
+
+    def get_model_content(self, ext):
+        # type: (str) -> str
+        """Returns the model content."""
+        return ''
 
     @property
     def cell_name(self):
