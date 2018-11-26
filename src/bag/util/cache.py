@@ -473,7 +473,7 @@ class MasterDB:
         if params is None:
             params = {}
 
-        master = gen_cls(self, self._lib_name, params, self._used_cell_names, **kwargs)
+        master = gen_cls(self, params, **kwargs)
         key = master.key
         if key in self._master_lookup:
             master = self._master_lookup[key]

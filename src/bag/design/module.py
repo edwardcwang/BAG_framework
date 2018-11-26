@@ -3,7 +3,7 @@
 """This module defines base design module class and primitive design classes.
 """
 
-from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Union, Set, Iterable
+from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Union, Iterable
 
 import os
 import abc
@@ -35,12 +35,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         the netlist information file name.
     database : ModuleDB
         the design database object.
-    lib_name : str
-        the generated instance library name.
     params : Dict[str, Any]
         the parameters dictionary.
-    used_names : Set[str]
-        a set of already used cell names.
     **kwargs : Any
         additional arguments
 
@@ -52,8 +48,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         the instance dictionary.
     """
 
-    def __init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs):
-        # type: (str, ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
+    def __init__(self, yaml_fname, database, params, **kwargs):
+        # type: (str, ModuleDB, Dict[str, Any], **Any) -> None
         copy_state = kwargs.get('copy_state', None)
         self._model_params = kwargs.get('model_params', None)
 
@@ -726,9 +722,9 @@ class MosModuleBase(Module):
     """The base design class for the bag primitive transistor.
     """
 
-    def __init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs):
-        # type: (str, ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
-        Module.__init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs)
+    def __init__(self, yaml_fname, database, params, **kwargs):
+        # type: (str, ModuleDB, Dict[str, Any], **Any) -> None
+        Module.__init__(self, yaml_fname, database, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -775,9 +771,9 @@ class ResPhysicalModuleBase(Module):
     """The base design class for a real resistor parametrized by width and length.
     """
 
-    def __init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs):
-        # type: (str, ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
-        Module.__init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs)
+    def __init__(self, yaml_fname, database, params, **kwargs):
+        # type: (str, ModuleDB, Dict[str, Any], **Any) -> None
+        Module.__init__(self, yaml_fname, database, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -818,9 +814,9 @@ class ResMetalModule(Module):
     """The base design class for a metal resistor.
     """
 
-    def __init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs):
-        # type: (str, ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
-        Module.__init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs)
+    def __init__(self, yaml_fname, database, params, **kwargs):
+        # type: (str, ModuleDB, Dict[str, Any], **Any) -> None
+        Module.__init__(self, yaml_fname, database, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):

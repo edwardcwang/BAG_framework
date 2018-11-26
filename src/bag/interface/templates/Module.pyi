@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import Dict, Any, Set
+from typing import Dict, Any
 
 import os
 import pkg_resources
@@ -20,9 +20,9 @@ class {{ lib_name }}__{{ cell_name }}(Module):
                                                 os.path.join('netlist_info',
                                                              '{{ cell_name }}.yaml'))
 
-    def __init__(self, database, lib_name, params, used_names, **kwargs):
-        # type: (ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
-        Module.__init__(self, self.yaml_file, database, lib_name, params, used_names, **kwargs)
+    def __init__(self, database, params, **kwargs):
+        # type: (ModuleDB, Dict[str, Any], **Any) -> None
+        Module.__init__(self, self.yaml_file, database, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):
