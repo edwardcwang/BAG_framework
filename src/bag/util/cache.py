@@ -28,6 +28,8 @@ from .search import get_new_name
 if TYPE_CHECKING:
     from ..core import BagProject
 
+DBType = TypeVar('DBType', bound='MasterDB')
+
 
 class Param(SortedDict):
     def __init__(self):
@@ -102,22 +104,22 @@ class DesignMaster(abc.ABC):
     """
 
     def __init__(self, master_db, lib_name, params, used_names, **kwargs):
-        # type: (MasterDB, str, Dict[str, Any], Set[str], **Any) -> None
-        self._master_db = master_db
+        # type: (DBType, str, Dict[str, Any], Set[str], **Any) -> None
+        self._master_db = master_db  # type: DBType
         self._lib_name = lib_name
-        self._used_names = used_names
         # use ordered dictionary so we have deterministic dependency order
         self._children = OrderedDict()
         self._finalized = False
 
         # set parameters
+        self.params = Param()  # type: Param
+
         params_info = self.get_params_info()
         default_params = self.get_default_param_values()
-        self.params = Param()  # type: Param
         self.populate_params(params, params_info, default_params, **kwargs)
 
-        # get unique cell name
-        self._cell_name = get_new_name(self.get_master_basename(), self._used_names)
+        # get cell name and unique key
+        self._cell_name = get_new_name(self.get_master_basename(), used_names)
         self._key = self.compute_unique_key()
 
     def populate_params(self, table, params_info, default_params, **kwargs):
@@ -237,7 +239,7 @@ class DesignMaster(abc.ABC):
 
     @property
     def master_db(self):
-        # type: () -> MasterDB
+        # type: () -> DBType
         """Returns the database used to create design masters."""
         return self._master_db
 
@@ -265,7 +267,7 @@ class DesignMaster(abc.ABC):
         """Returns True if this DesignMaster is finalized."""
         return self._finalized
 
-    def _get_qualified_name(self):
+    def get_qualified_name(self):
         # type: () -> str
         """Returns the qualified name of this class."""
         my_module = self.__class__.__module__
@@ -289,7 +291,7 @@ class DesignMaster(abc.ABC):
         unique_id : Any
             a hashable unique ID representing the given parameters.
         """
-        return self._get_qualified_name(), self.params
+        return self.get_qualified_name(), self.params
 
     def add_child_key(self, child_key):
         # type: (object) -> None
@@ -422,32 +424,6 @@ class MasterDB:
         self._key_lookup.clear()
         self._master_lookup.clear()
 
-    def create_master_instance(self, gen_cls, lib_name, params, used_cell_names, **kwargs):
-        # type: (Type[MasterType], str, Dict[str, Any], Set[str], **Any) -> MasterType
-        """Create a new non-finalized master instance.
-
-        This instance is used to determine if we created this instance before.
-
-        Parameters
-        ----------
-        gen_cls : Type[MasterType]
-            the generator Python class.
-        lib_name : str
-            generated instance library name.
-        params : Dict[str, Any]
-            instance parameters dictionary.
-        used_cell_names : Set[str]
-            a set of all used cell names.
-        **kwargs : Any
-            optional arguments for the generator.
-
-        Returns
-        -------
-        master : MasterType
-            the non-finalized generated instance.
-        """
-        return gen_cls(self, lib_name, params, used_cell_names, **kwargs)
-
     def new_master(self,  # type: MasterDB
                    gen_cls,  # type: Type[MasterType]
                    params=None,  # type: Optional[Dict[str, Any]]
@@ -475,8 +451,7 @@ class MasterDB:
         if params is None:
             params = {}
 
-        master = self.create_master_instance(gen_cls, self._lib_name, params,
-                                             self._used_cell_names, **kwargs)
+        master = gen_cls(self, self._lib_name, params, self._used_cell_names, **kwargs)
         key = master.key
         if key in self._master_lookup:
             master = self._master_lookup[key]

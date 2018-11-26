@@ -54,12 +54,11 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
     def __init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs):
         # type: (str, ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
+        model_params = kwargs.get('model_params', None)
 
-        self._tech_info = database.tech_info
-        self._yaml_fname = os.path.abspath(yaml_fname)
-        self._cv = PySchCellView(self._yaml_fname, 'symbol')
-        self._orig_cell_name = self._cv.cell_name
+        self._cv = PySchCellView(os.path.abspath(yaml_fname), 'symbol')
         self._pins = {}  # type: Dict[str, TermType]
+        self._model_params = model_params
 
         self.instances = {name: SchInstance(database, ref)
                           for (name, ref) in self._cv.inst_refs()}  # type: Dict[str, SchInstance]
@@ -67,10 +66,25 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         # initialize schematic master
         DesignMaster.__init__(self, database, lib_name, params, used_names)
 
+    def compute_unique_key(self):
+        # type: () -> Any
+        """Returns a unique hashable object (usually tuple or string) that represents this instance.
+
+        Returns
+        -------
+        unique_id : Any
+            a hashable unique ID representing the given parameters.
+        """
+        return self.get_qualified_name(), self.params, self._model_params
+
+    def get_master_basename(self):
+        # type: () -> str
+        return self.orig_cell_name
+
     @property
     def tech_info(self):
         # type: () -> TechInfo
-        return self._tech_info
+        return self.master_db.tech_info
 
     @property
     def pins(self):
@@ -138,17 +152,6 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         # call super finalize routine
         DesignMaster.finalize(self)
 
-    def get_master_basename(self):
-        # type: () -> str
-        """Returns the base name to use for this instance.
-
-        Returns
-        -------
-        basename : str
-            the base name for this instance.
-        """
-        return self._orig_cell_name
-
     def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
         # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
         if self.is_primitive():
@@ -179,7 +182,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
     def orig_cell_name(self):
         # type: () -> str
         """The original schematic template cell name."""
-        return self._orig_cell_name
+        return self._cv.cell_name
 
     def is_primitive(self):
         # type: () -> bool
