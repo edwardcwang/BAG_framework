@@ -53,14 +53,19 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         copy_state = kwargs.get('copy_state', None)
 
         if copy_state:
+            self._netlist_dir = copy_state['netlist_dir']
             self._cv = copy_state['cv']  # type: PySchCellView
             self._pins = copy_state['pins']  # type: Dict[str, TermType]
             self._model_params = copy_state['model_params']  # type: Optional[Dict[str, Any]]
+            self._orig_cell_name = copy_state['orig_cell_name']
             self.instances = copy_state['instances']  # type: Dict[str, SchInstance]
         else:
-            self._cv = PySchCellView(os.path.abspath(yaml_fname), 'symbol')
+            yaml_fname = os.path.abspath(yaml_fname)
+            self._netlist_dir = os.path.dirname(yaml_fname)
+            self._cv = PySchCellView(yaml_fname, 'symbol')
             self._pins = {}  # type: Dict[str, TermType]
             self._model_params = None  # type: Optional[Dict[str, Any]]
+            self._orig_cell_name = self._cv.cell_name
             self.instances = {name: SchInstance(database, ref)
                               for (name, ref) in
                               self._cv.inst_refs()}  # type: Dict[str, SchInstance]
@@ -84,9 +89,12 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         new_cv = self._cv.get_copy()
         new_inst = {name: SchInstance(self.master_db, ref, master=self.instances[name].master)
                     for name, ref in new_cv.inst_refs()}
+
+        base['netlist_dir'] = self._netlist_dir
         base['cv'] = new_cv
         base['pins'] = self._pins.copy()
         base['model_params'] = self._model_params
+        base['orig_cell_name'] = self._orig_cell_name
         base['instances'] = new_inst
         return base
 
@@ -131,15 +139,18 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
     def design_model(self, model_params):
         # type: (Dict[str, Any]) -> None
         self._model_params = model_params
+        self.update_signature()
 
         if 'view_name' not in model_params:
             # this is a hierarchical model
+            if not self.instances:
+                # found a leaf cell with no behavioral model
+                raise ValueError('Schematic master has no instances and no behavioral model.')
             for name, inst in self.instances.items():
                 cur_params = self._model_params.get(name, None)
                 if cur_params is None:
                     raise ValueError('Cannot find model parameters for instance {}'.format(name))
-                # TODO: finish
-                pass
+                inst.design_model(cur_params)
 
     def set_param(self, key, val):
         # type: (str, Union[int, float, bool, str]) -> None
@@ -180,12 +191,28 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         # call super finalize routine
         DesignMaster.finalize(self)
 
-    def get_content(self, rename_dict, name_prefix, name_suffix):
-        # type: (Dict[str, str], str, str) -> Tuple[str, Any]
+    def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
+        # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
         if self.is_primitive():
-            return '', None
+            return '', ''
 
         cell_name = self.format_cell_name(self.cell_name, rename_dict, name_prefix, name_suffix)
+        if is_model_type(output_type):
+            if self._model_params is None:
+                raise ValueError('Cannot create behavioral models without model parameters.')
+            view_name = self._model_params.get('view_name', None)
+            if view_name is not None:
+                ext = get_extension(output_type)
+                if view_name:
+                    fname = '{}.{}.{}'.format(self.orig_cell_name, view_name, ext)
+                else:
+                    # empty view_name, use default name
+                    fname = '{}.{}'.format(self.orig_cell_name, ext)
+                fname = os.path.join(self._netlist_dir, fname)
+                netlist = self.master_db.generate_model_netlist(fname, cell_name,
+                                                                self._model_params)
+                return cell_name, netlist
+
         return cell_name, self._cv
 
     @property
@@ -200,7 +227,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
     def orig_cell_name(self):
         # type: () -> str
         """The original schematic template cell name."""
-        return self._cv.cell_name
+        return self._orig_cell_name
 
     def is_primitive(self):
         # type: () -> bool

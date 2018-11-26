@@ -110,6 +110,8 @@ class DesignMaster(abc.ABC):
         copy_state = kwargs.get('copy_state', None)
 
         self._master_db = master_db  # type: DBType
+        self._cell_name = ''
+        self._key = None
 
         if copy_state:
             self._children = copy_state['children']
@@ -129,9 +131,8 @@ class DesignMaster(abc.ABC):
             default_params = self.get_default_param_values()
             self.populate_params(params, params_info, default_params, **kwargs)
 
-            # get cell name and unique key
-            self._cell_name = get_new_name(self.get_master_basename(), master_db.used_cell_names)
-            self._key = self.compute_unique_key()
+            # update design master signature
+            self.update_signature()
 
     def populate_params(self, table, params_info, default_params, **kwargs):
         # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **Any) -> None
@@ -152,6 +153,11 @@ class DesignMaster(abc.ABC):
             self.params.assign(name, table.get(name, value))
 
         self.params.update_hash()
+
+    def update_signature(self):
+        # type: () -> None
+        self._cell_name = get_new_name(self.get_master_basename(), self.master_db.used_cell_names)
+        self._key = self.compute_unique_key()
 
     def get_copy_state(self):
         # type: () -> Dict[str, Any]
@@ -240,12 +246,14 @@ class DesignMaster(abc.ABC):
         return ''
 
     @abc.abstractmethod
-    def get_content(self, rename_dict, name_prefix, name_suffix):
-        # type: (Dict[str, str], str, str) -> Tuple[str, Any]
+    def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
+        # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
         """Returns the content of this master instance.
 
         Parameters
         ----------
+        output_type : DesignOutput
+            the output type.
         rename_dict : Dict[str, str]
             the renaming dictionary.
         name_prefix : str
@@ -260,7 +268,6 @@ class DesignMaster(abc.ABC):
         content : Any
             the master content data structure.
         """
-        # TODO: change signature to include output type
         return '', None
 
     @property
@@ -392,7 +399,7 @@ class MasterDB:
             fname = kwargs['fname']
 
             implement_yaml(fname, content_list)
-        elif is_netlist_type(output):
+        elif is_netlist_type(output) or is_model_type(output):
             fname = kwargs['fname']
             prim_fname = kwargs['prim_fname']
             flat = kwargs.get('flat', True)
@@ -400,9 +407,6 @@ class MasterDB:
             rmin = kwargs.get('rmin', 2000)
 
             implement_netlist(fname, content_list, output, flat, shell, rmin, prim_fname)
-        elif is_model_type(output):
-            # TODO: implement this
-            pass
         else:
             raise ValueError('Unknown design output type: {}'.format(output.name))
         end = time.time()
@@ -583,7 +587,7 @@ class MasterDB:
             self._batch_output_helper(info_dict, master)
         end = time.time()
 
-        content_list = [master.get_content(rename, self._name_prefix, self._name_suffix)
+        content_list = [master.get_content(output, rename, self._name_prefix, self._name_suffix)
                         for master in info_dict.values()]
 
         if debug:

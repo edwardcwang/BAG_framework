@@ -199,8 +199,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self.__class__.__name__
 
-    def get_content(self, rename_dict, name_prefix, name_suffix):
-        # type: (Dict[str, str], str, str) -> Tuple[str, Any]
+    def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
+        # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
         if not self.finalized:
             raise ValueError('This template is not finalized yet')
 

@@ -3,7 +3,7 @@
 """This module defines classes representing various design instances.
 """
 
-from typing import TYPE_CHECKING, Type, Optional, Any
+from typing import TYPE_CHECKING, Type, Optional, Any, Dict
 
 
 if TYPE_CHECKING:
@@ -135,6 +135,16 @@ class SchInstance:
             for key, val in self._master.get_schematic_parameters().items():
                 self.set_param(key, val)
 
+        self._ptr.cell_name = self.master_cell_name
+
+    def design_model(self, model_params):
+        # type: (Dict[str, Any]) -> None
+        """Call design_model method on master."""
+        if self._sch_cls is None:
+            # static instance; assume model is defined in include files
+            pass
+
+        self._master = self._db.new_model(self._master, model_params)
         self._ptr.cell_name = self.master_cell_name
 
     def change_generator(self, gen_lib_name, gen_cell_name, static=False):

@@ -10,6 +10,7 @@ import importlib
 from pybag.enum import DesignOutput
 
 from ..util.cache import MasterDB
+from ..io.template import new_template_env_fs
 
 if TYPE_CHECKING:
     from ..core import BagProject
@@ -44,6 +45,7 @@ class ModuleDB(MasterDB):
         MasterDB.__init__(self, lib_name, prj=prj, name_prefix=name_prefix, name_suffix=name_suffix)
 
         self._tech_info = tech_info
+        self._temp_env = new_template_env_fs()
 
     @classmethod
     def get_schematic_class(cls, lib_name, cell_name):
@@ -79,6 +81,11 @@ class ModuleDB(MasterDB):
         # type: () -> TechInfo
         """the :class:`~bag.layout.core.TechInfo` instance."""
         return self._tech_info
+
+    def generate_model_netlist(self, fname, cell_name, model_params):
+        # type: (str, str, Dict[str, Any]) -> str
+        template = self._temp_env.get_template(fname)
+        return template.render(cell_name=cell_name, **model_params)
 
     def instantiate_schematic(self, design, top_cell_name='', output=DesignOutput.SCHEMATIC,
                               **kwargs):
@@ -141,7 +148,7 @@ class ModuleDB(MasterDB):
                     **kwargs,  # type: Any
                     ):
         # type: (...) -> Sequence[Tuple[Module, str]]
-        new_info_list = [(self.new_model(m, m_params, **kwargs), name)
+        new_info_list = [(self.new_model(m, m_params), name)
                          for m, name, m_params in info_list]
         self.batch_output(output, new_info_list, **kwargs)
         return new_info_list
