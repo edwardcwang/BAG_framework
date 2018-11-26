@@ -3,7 +3,7 @@
 """This module defines the design database class.
 """
 
-from typing import TYPE_CHECKING, TypeVar, Dict, Optional, Any, Sequence, Type
+from typing import TYPE_CHECKING, TypeVar, Dict, Optional, Any, Sequence, Type, Tuple
 
 import importlib
 
@@ -80,24 +80,29 @@ class ModuleDB(MasterDB):
         """the :class:`~bag.layout.core.TechInfo` instance."""
         return self._tech_info
 
-    def instantiate_schematic(self, design, top_cell_name=None, output=DesignOutput.SCHEMATIC,
+    def instantiate_schematic(self, design, top_cell_name='', output=DesignOutput.SCHEMATIC,
                               **kwargs):
-        # type: (Module, Optional[str], DesignOutput, **Any) -> None
+        # type: (Module, str, DesignOutput, **Any) -> None
         """Alias for instantiate_master(), with default output type of SCHEMATIC.
         """
         self.instantiate_master(output, design, top_cell_name, **kwargs)
 
     def batch_schematic(self,
-                        design_list,  # type: Sequence[Module]
-                        name_list=None,  # type: Optional[Sequence[Optional[str]]]
-                        lib_name='',  # type: str
-                        debug=False,  # type: bool
-                        rename_dict=None,  # type: Optional[Dict[str, str]]
+                        info_list,  # type: Sequence[Tuple[Module, str]]
                         output=DesignOutput.SCHEMATIC,  # type: DesignOutput
                         **kwargs  # type: Any
                         ):
         # type: (...) -> None
         """Alias for batch_output(), with default output type of SCHEMATIC.
         """
-        self.batch_output(output, design_list, name_list=name_list, lib_name=lib_name,
-                          debug=debug, rename_dict=rename_dict, **kwargs)
+        self.batch_output(output, info_list, **kwargs)
+
+    def batch_model(self,
+                    info_list,  # type: Sequence[Tuple[Module, Optional[str], Dict[str, Any]]]
+                    debug=False,  # type: bool
+                    rename_dict=None,  # type: Optional[Dict[str, str]]
+                    output=DesignOutput.SYSVERILOG,  # type: DesignOutput
+                    **kwargs  # type: Any
+                    ):
+        # type: (...) -> None
+        pass

@@ -176,23 +176,13 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         # call super finalize routine
         DesignMaster.finalize(self)
 
-    def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
-        # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
+    def get_content(self, rename_dict, name_prefix, name_suffix):
+        # type: (Dict[str, str], str, str) -> Tuple[str, Any]
         if self.is_primitive():
             return '', None
 
-        cell_name = self.format_cell_name(self.cell_name, rename_dict, name_prefix,
-                                          name_suffix)
-        if is_model_type(output_type):
-            content = self.get_model_content(get_extension(output_type))
-            if content:
-                return cell_name, content
+        cell_name = self.format_cell_name(self.cell_name, rename_dict, name_prefix, name_suffix)
         return cell_name, self._cv
-
-    def get_model_content(self, ext):
-        # type: (str) -> str
-        """Returns the model content."""
-        return ''
 
     @property
     def cell_name(self):

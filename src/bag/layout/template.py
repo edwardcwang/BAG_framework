@@ -3,13 +3,14 @@
 """This module defines layout template classes.
 """
 
-from typing import TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, \
-    Optional, Tuple, Iterable, Sequence, Callable, Generator, cast
+from typing import (
+    TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, Optional, Tuple, Iterable,
+    Sequence, Generator, cast
+)
 from bag.typing import CoordType, LayerType, PointType
 
 import abc
 import copy
-import time
 
 import yaml
 
@@ -83,27 +84,22 @@ class TemplateDB(MasterDB):
         """
         return self.new_master(temp_cls, params=params, **kwargs)
 
-    def instantiate_layout(self, template, top_cell_name=None, output=DesignOutput.LAYOUT,
+    def instantiate_layout(self, template, top_cell_name='', output=DesignOutput.LAYOUT,
                            **kwargs):
-        # type: (TemplateBase, Optional[str], DesignOutput, **Any) -> None
+        # type: (TemplateBase, str, DesignOutput, **Any) -> None
         """Alias for instantiate_master(), with default output type of LAYOUT.
         """
         self.instantiate_master(output, template, top_cell_name, **kwargs)
 
     def batch_layout(self,
-                     template_list,  # type: Sequence[TemplateBase]
-                     name_list=None,  # type: Optional[Sequence[Optional[str]]]
-                     lib_name='',  # type: str
-                     debug=False,  # type: bool
-                     rename_dict=None,  # type: Optional[Dict[str, str]]
+                     info_list,  # type: Sequence[Tuple[TemplateBase, str]]
                      output=DesignOutput.LAYOUT,  # type: DesignOutput
                      **kwargs  # type: Any
                      ):
         # type: (...) -> None
         """Alias for batch_output(), with default output type of LAYOUT.
         """
-        self.batch_output(output, template_list, name_list=name_list, lib_name=lib_name,
-                          debug=debug, rename_dict=rename_dict, **kwargs)
+        self.batch_output(output, info_list, **kwargs)
 
 
 class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
@@ -204,8 +200,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self.__class__.__name__
 
-    def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
-        # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
+    def get_content(self, rename_dict, name_prefix, name_suffix):
+        # type: (Dict[str, str], str, str) -> Tuple[str, Any]
         if not self.finalized:
             raise ValueError('This template is not finalized yet')
 

@@ -13,7 +13,6 @@ import abc
 import sys
 import time
 import numbers
-from itertools import zip_longest
 from collections import OrderedDict
 
 from pybag.enum import DesignOutput, is_netlist_type
@@ -246,14 +245,12 @@ class DesignMaster(abc.ABC):
         return ''
 
     @abc.abstractmethod
-    def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
-        # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
+    def get_content(self, rename_dict, name_prefix, name_suffix):
+        # type: (Dict[str, str], str, str) -> Tuple[str, Any]
         """Returns the content of this master instance.
 
         Parameters
         ----------
-        output_type : DesignOutput
-            the output type.
         rename_dict : Dict[str, str]
             the renaming dictionary.
         name_prefix : str
@@ -503,8 +500,8 @@ class MasterDB:
         self._master_lookup[key] = master
         self._used_cell_names.add(master.cell_name)
 
-    def instantiate_master(self, output, master, top_cell_name=None, **kwargs):
-        # type: (DesignOutput, DesignMaster, Optional[str], **Any) -> None
+    def instantiate_master(self, output, master, top_cell_name='', **kwargs):
+        # type: (DesignOutput, DesignMaster, str, **Any) -> None
         """Instantiate the given master.
 
         Parameters
@@ -513,18 +510,16 @@ class MasterDB:
             the design output type.
         master : DesignMaster
             the :class:`~bag.layout.template.TemplateBase` to instantiate.
-        top_cell_name : Optional[str]
-            name of the top level cell.  If None, a default name is used.
+        top_cell_name : str
+            name of the top level cell.  If empty, a default name is used.
         **kwargs : Any
             optional arguments for batch_output().
         """
-        self.batch_output(output, [master], name_list=[top_cell_name], **kwargs)
+        self.batch_output(output, [(master, top_cell_name)], **kwargs)
 
     def batch_output(self,
                      output,  # type: DesignOutput
-                     master_list,  # type: Sequence[DesignMaster]
-                     name_list=None,  # type: Optional[Sequence[Optional[str]]]
-                     lib_name='',  # type: str
+                     info_list,  # type: Sequence[Tuple[DesignMaster, str]]
                      debug=False,  # type: bool
                      rename_dict=None,  # type: Optional[Dict[str, str]]
                      **kwargs,  # type: Any
@@ -534,14 +529,11 @@ class MasterDB:
 
         Parameters
         ----------
-        master_list : Sequence[DesignMaster]
-            list of masters to instantiate.
         output : DesignOutput
-            the output type.
-        name_list : Optional[Sequence[Optional[str]]]
-            list of master cell names.  If not given, default names will be used.
-        lib_name : str
-            Library to create the masters in.  If empty or None, use default library.
+            The output type.
+        info_list : Sequence[Tuple[DesignMaster, str]]
+            Sequence of (master, cell_name) tuples to instantiate.
+            Use empty string cell_name to use default names.
         debug : bool
             True to print debugging messages
         rename_dict : Optional[Dict[str, str]]
@@ -549,15 +541,6 @@ class MasterDB:
         **kwargs : Any
             parameters associated with the given output type.
         """
-        if name_list is None:
-            rename_iter = zip_longest((m.cell_name for m in master_list), [], fillvalue=None)
-            master_name_iter = zip_longest(master_list, [], fillvalue=None)
-        else:
-            if len(name_list) != len(master_list):
-                raise ValueError("Master list and name list length mismatch.")
-            rename_iter = zip((m.cell_name for m in master_list), name_list)
-            master_name_iter = zip(master_list, name_list)
-
         # configure renaming dictionary.  Verify that renaming dictionary is one-to-one.
         rename = {}
         reverse_rename = {}  # type: Dict[str, str]
@@ -570,8 +553,9 @@ class MasterDB:
                     rename[key] = val
                     reverse_rename[val] = key
 
-        for m_name, name in rename_iter:
-            if name is not None and name != m_name:
+        for m, name in info_list:
+            m_name = m.cell_name
+            if name and name != m_name:
                 if name in reverse_rename:
                     raise ValueError('Both %s and %s are renamed '
                                      'to %s' % (m_name, reverse_rename[name], name))
@@ -590,22 +574,17 @@ class MasterDB:
         # use ordered dict so that children are created before parents.
         info_dict = OrderedDict()  # type: Dict[str, DesignMaster]
         start = time.time()
-        for master, top_name in master_name_iter:
+        for master, _ in info_list:
             self._batch_output_helper(info_dict, master)
         end = time.time()
 
-        if not lib_name:
-            lib_name = self.lib_name
-        if not lib_name:
-            raise ValueError('master library name is not specified.')
-
-        content_list = [master.get_content(output, rename, self._name_prefix, self._name_suffix)
+        content_list = [master.get_content(rename, self._name_prefix, self._name_suffix)
                         for master in info_dict.values()]
 
         if debug:
             print('master content retrieval took %.4g seconds' % (end - start))
 
-        self.create_masters_in_db(output, lib_name, content_list, debug=debug, **kwargs)
+        self.create_masters_in_db(output, self.lib_name, content_list, debug=debug, **kwargs)
 
     def _batch_output_helper(self, info_dict, master):
         # type: (Dict[str, DesignMaster], DesignMaster) -> None
