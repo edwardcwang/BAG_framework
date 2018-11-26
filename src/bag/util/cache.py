@@ -15,7 +15,7 @@ import time
 import numbers
 from collections import OrderedDict
 
-from pybag.enum import DesignOutput, is_netlist_type
+from pybag.enum import DesignOutput, is_netlist_type, is_model_type
 # noinspection PyUnresolvedReferences
 from pybag.schematic import implement_yaml, implement_netlist
 
@@ -260,6 +260,7 @@ class DesignMaster(abc.ABC):
         content : Any
             the master content data structure.
         """
+        # TODO: change signature to include output type
         return '', None
 
     @property
@@ -399,6 +400,9 @@ class MasterDB:
             rmin = kwargs.get('rmin', 2000)
 
             implement_netlist(fname, content_list, output, flat, shell, rmin, prim_fname)
+        elif is_model_type(output):
+            # TODO: implement this
+            pass
         else:
             raise ValueError('Unknown design output type: {}'.format(output.name))
         end = time.time()
@@ -475,23 +479,29 @@ class MasterDB:
 
         master = gen_cls(self, params, **kwargs)
         key = master.key
-        if key in self._master_lookup:
-            master = self._master_lookup[key]
+        test = self.find_master(key)
+        if test is not None:
             if debug:
                 print('master cached')
-        else:
-            if debug:
-                print('finalizing master')
-            start = time.time()
-            master.finalize()
-            end = time.time()
-            self.register_master(key, master)
-            if debug:
-                print('finalizing master took %.4g seconds' % (end - start))
+            return test
+
+        if debug:
+            print('finalizing master')
+        start = time.time()
+        master.finalize()
+        end = time.time()
+        self.register_master(key, master)
+        if debug:
+            print('finalizing master took %.4g seconds' % (end - start))
 
         return master
 
+    def find_master(self, key):
+        # type: (Any) -> Optional[MasterType]
+        return self._master_lookup.get(key, None)
+
     def register_master(self, key, master):
+        # type: (Any, MasterType) -> None
         self._master_lookup[key] = master
         self._used_cell_names.add(master.cell_name)
 
