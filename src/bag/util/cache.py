@@ -333,6 +333,11 @@ class DesignMaster(abc.ABC):
         """Registers the given child key."""
         self._children[child_key] = None
 
+    def clear_children_key(self):
+        # type: () -> None
+        """Remove all children keys."""
+        self._children.clear()
+
     def children(self):
         # type: () -> Iterator[object]
         """Iterate over all children's key."""

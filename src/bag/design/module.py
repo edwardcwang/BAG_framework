@@ -69,6 +69,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             self.instances = {name: SchInstance(database, ref)
                               for (name, ref) in
                               self._cv.inst_refs()}  # type: Dict[str, SchInstance]
+            if not self.is_primitive():
+                self._cv.lib_name = database.lib_name
 
         # initialize schematic master
         DesignMaster.__init__(self, database, params, copy_state=copy_state)
@@ -140,17 +142,21 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         # type: (Param) -> None
         self._model_params = model_params
         self.update_signature()
-
+        self._cv.cell_name = self.cell_name
         if 'view_name' not in model_params:
             # this is a hierarchical model
             if not self.instances:
                 # found a leaf cell with no behavioral model
                 raise ValueError('Schematic master has no instances and no behavioral model.')
+
+            self.clear_children_key()
             for name, inst in self.instances.items():
                 cur_params = self._model_params.get(name, None)
                 if cur_params is None:
                     raise ValueError('Cannot find model parameters for instance {}'.format(name))
                 inst.design_model(cur_params)
+                if not inst.is_primitive:
+                    self.add_child_key(inst.master_key)
 
     def set_param(self, key, val):
         # type: (str, Union[int, float, bool, str]) -> None
@@ -183,24 +189,25 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         self._pins = dict(self._cv.terminals())
 
         # update cell name
-        old_cell_name = self._cv.cell_name
-        new_cell_name = self.cell_name
-        if old_cell_name != new_cell_name:
-            self._cv.cell_name = new_cell_name
+        self._cv.cell_name = self.cell_name
 
         # call super finalize routine
         DesignMaster.finalize(self)
 
     def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
         # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
-        if self.is_primitive():
-            return '', (None, '')
-
         cell_name = self.format_cell_name(self.cell_name, rename_dict, name_prefix, name_suffix)
+
+        if self.is_primitive():
+            return cell_name, (None, '')
+
         netlist = ''
         if is_model_type(output_type):
             if self._model_params is None:
-                raise ValueError('Cannot create behavioral models without model parameters.')
+                # model parameters is unset.  This happens if a behavioral model view is used
+                # at a top level block, and this cell gets shadows out.
+                # If this is the case, just return None so this cellview won't be netlisted.
+                return cell_name, (None, '')
             view_name = self._model_params.get('view_name', None)
             if view_name is not None:
                 ext = get_extension(output_type)

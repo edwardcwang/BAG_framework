@@ -65,13 +65,13 @@ class SchInstance:
         return self._sch_cls
 
     @property
-    def gen_lib_name(self):
+    def lib_name(self):
         # type: () -> str
         """str: the generator library name."""
         return self._ptr.lib_name
 
     @property
-    def gen_cell_name(self):
+    def cell_name(self):
         # type: () -> str
         """str: the generator cell name."""
         return self._ptr.cell_name
@@ -80,7 +80,7 @@ class SchInstance:
     def master_cell_name(self):
         # type: () -> str
         """str: the cell name of the master object"""
-        return self.gen_cell_name if self.master is None else self.master.cell_name
+        return self.cell_name if self.master is None else self.master.cell_name
 
     @property
     def static(self):
@@ -135,18 +135,19 @@ class SchInstance:
             # update parameters
             for key, val in self._master.get_schematic_parameters().items():
                 self.set_param(key, val)
-
-        self._ptr.cell_name = self.master_cell_name
+        else:
+            self._ptr.lib_name = self._master.lib_name
+        self._ptr.cell_name = self._master.cell_name
 
     def design_model(self, model_params):
         # type: (Param) -> None
         """Call design_model method on master."""
         if self._sch_cls is None:
             # static instance; assume model is defined in include files
-            pass
+            return
 
         self._master = self._db.new_model(self._master, model_params)
-        self._ptr.cell_name = self.master_cell_name
+        self._ptr.cell_name = self._master.cell_name
 
     def change_generator(self, gen_lib_name, gen_cell_name, static=False):
         # type: (str, str, bool) -> None
@@ -230,4 +231,4 @@ class SchInstance:
             the master library name.
 
         """
-        return self.gen_lib_name if self.is_primitive else impl_lib
+        return self.lib_name if self.is_primitive else impl_lib
