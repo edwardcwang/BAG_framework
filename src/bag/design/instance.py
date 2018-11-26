@@ -33,6 +33,8 @@ class SchInstance:
         self._db = db
         self._master = master
         self._ptr = inst_ptr
+
+        # get schematic class object from master
         if master is None:
             lib_name = self._ptr.lib_name
             static = self._ptr.is_primitive and lib_name != 'BAG_prim'

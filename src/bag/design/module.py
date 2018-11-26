@@ -54,17 +54,23 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
     def __init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs):
         # type: (str, ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
-        model_params = kwargs.get('model_params', None)
+        copy_state = kwargs.get('copy_state', None)
+        self._model_params = kwargs.get('model_params', None)
 
-        self._cv = PySchCellView(os.path.abspath(yaml_fname), 'symbol')
-        self._pins = {}  # type: Dict[str, TermType]
-        self._model_params = model_params
-
-        self.instances = {name: SchInstance(database, ref)
-                          for (name, ref) in self._cv.inst_refs()}  # type: Dict[str, SchInstance]
+        if copy_state:
+            self._cv = copy_state['cv']  # type: PySchCellView
+            self._pins = copy_state['pins']  # type: Dict[str, TermType]
+            self.instances = copy_state['instances']  # type: Dict[str, SchInstance]
+        else:
+            self._cv = PySchCellView(os.path.abspath(yaml_fname), 'symbol')
+            self._pins = {}  # type: Dict[str, TermType]
+            self.instances = {name: SchInstance(database, ref)
+                              for (name, ref) in
+                              self._cv.inst_refs()}  # type: Dict[str, SchInstance]
 
         # initialize schematic master
-        DesignMaster.__init__(self, database, lib_name, params, used_names)
+        DesignMaster.__init__(self, database, lib_name, params, used_names,
+                              copy_state=copy_state)
 
     def compute_unique_key(self):
         # type: () -> Any
@@ -80,6 +86,24 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
     def get_master_basename(self):
         # type: () -> str
         return self.orig_cell_name
+
+    def get_copy_state(self):
+        # type: () -> Dict[str, Any]
+        base = DesignMaster.get_copy_state(self)
+        new_cv = self._cv.copy()
+        new_inst = {name: SchInstance(self.master_db, ref, master=self.instances[name].master)
+                    for name, ref in new_cv.inst_refs()}
+        base['cv'] = new_cv
+        base['pins'] = self._pins.copy()
+        base['instances'] = new_inst
+        return base
+
+    def copy(self):
+        # type: () -> Module
+        """Returns a copy of this master instance."""
+        copy_state = self.get_copy_state()
+        return self.__class__('', self._master_db, self._lib_name, {}, set(),
+                              copy_state=copy_state, model_params=self._model_params)
 
     @property
     def tech_info(self):

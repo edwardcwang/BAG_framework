@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from typing import (
-    TYPE_CHECKING, Sequence, Dict, Set, Any, Optional, TypeVar, Type, Tuple, Iterator
+    TYPE_CHECKING, Sequence, Dict, Set, Any, Optional, TypeVar, Type, Tuple, Iterator, Iterable
 )
 
 import abc
@@ -28,13 +28,17 @@ from .search import get_new_name
 if TYPE_CHECKING:
     from ..core import BagProject
 
+MasterType = TypeVar('MasterType', bound='DesignMaster')
 DBType = TypeVar('DBType', bound='MasterDB')
 
 
 class Param(SortedDict):
-    def __init__(self):
-        SortedDict.__init__(self)
-        self._hash_value = 0
+    def __init__(self, items: Optional[Iterable[Any, Any]] = None, hash_value: int = 0) -> None:
+        if items is None:
+            SortedDict.__init__(self)
+        else:
+            SortedDict.__init__(self, items)
+        self._hash_value = hash_value
 
     @classmethod
     def to_param(cls, table: Dict[Any, Any]):
@@ -59,6 +63,9 @@ class Param(SortedDict):
         # boost::hash_combine port
         seed ^= v + 0x9e3779b9 + (seed << 6) + (seed >> 2)
         return seed & sys.maxsize
+
+    def copy(self) -> Param:
+        return self.__class__(items=self.items(), hash_value=self._hash_value)
 
     def assign(self, name: object, value: object):
         if isinstance(value, Param) or not isinstance(value, dict):
@@ -105,22 +112,32 @@ class DesignMaster(abc.ABC):
 
     def __init__(self, master_db, lib_name, params, used_names, **kwargs):
         # type: (DBType, str, Dict[str, Any], Set[str], **Any) -> None
+        copy_state = kwargs.get('copy_state', None)
+
         self._master_db = master_db  # type: DBType
         self._lib_name = lib_name
-        # use ordered dictionary so we have deterministic dependency order
-        self._children = OrderedDict()
-        self._finalized = False
 
-        # set parameters
-        self.params = Param()  # type: Param
+        if copy_state:
+            self._children = copy_state['children']
+            self._finalized = copy_state['finalized']
+            self.params = copy_state['params']
+            self._cell_name = copy_state['cell_name']
+            self._key = copy_state['key']
+        else:
+            # use ordered dictionary so we have deterministic dependency order
+            self._children = OrderedDict()
+            self._finalized = False
 
-        params_info = self.get_params_info()
-        default_params = self.get_default_param_values()
-        self.populate_params(params, params_info, default_params, **kwargs)
+            # set parameters
+            self.params = Param()  # type: Param
 
-        # get cell name and unique key
-        self._cell_name = get_new_name(self.get_master_basename(), used_names)
-        self._key = self.compute_unique_key()
+            params_info = self.get_params_info()
+            default_params = self.get_default_param_values()
+            self.populate_params(params, params_info, default_params, **kwargs)
+
+            # get cell name and unique key
+            self._cell_name = get_new_name(self.get_master_basename(), used_names)
+            self._key = self.compute_unique_key()
 
     def populate_params(self, table, params_info, default_params, **kwargs):
         # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **Any) -> None
@@ -141,6 +158,22 @@ class DesignMaster(abc.ABC):
             self.params.assign(name, table.get(name, value))
 
         self.params.update_hash()
+
+    def get_copy_state(self):
+        # type: () -> Dict[str, Any]
+        return {
+            'children': self._children.copy(),
+            'finalized': self._finalized,
+            'params': self.params.copy(),
+            'cell_name': self._cell_name,
+            'key': self._key,
+        }
+
+    def copy(self):
+        # type: () -> MasterType
+        """Returns a copy of this master instance."""
+        copy_state = self.get_copy_state()
+        return self.__class__(self._master_db, self._lib_name, {}, set(), copy_state=copy_state)
 
     @classmethod
     def to_immutable_id(cls, val):
@@ -302,9 +335,6 @@ class DesignMaster(abc.ABC):
         # type: () -> Iterator[object]
         """Iterate over all children's key."""
         return iter(self._children)
-
-
-MasterType = TypeVar('MasterType', bound=DesignMaster)
 
 
 class MasterDB:
