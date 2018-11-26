@@ -69,8 +69,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                               self._cv.inst_refs()}  # type: Dict[str, SchInstance]
 
         # initialize schematic master
-        DesignMaster.__init__(self, database, lib_name, params, used_names,
-                              copy_state=copy_state)
+        DesignMaster.__init__(self, database, params, copy_state=copy_state)
 
     def compute_unique_key(self):
         # type: () -> Any
@@ -102,8 +101,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         # type: () -> Module
         """Returns a copy of this master instance."""
         copy_state = self.get_copy_state()
-        return self.__class__('', self._master_db, self._lib_name, {}, set(),
-                              copy_state=copy_state, model_params=self._model_params)
+        return self.__class__('', self._master_db, {}, copy_state=copy_state,
+                              model_params=self._model_params)
 
     @property
     def tech_info(self):

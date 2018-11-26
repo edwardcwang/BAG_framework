@@ -94,12 +94,8 @@ class DesignMaster(abc.ABC):
     ----------
     master_db : MasterDB
         the master database.
-    lib_name : str
-        the generated instance library name.
     params : Dict[str, Any]
         the parameters dictionary.
-    used_names : Set[str]
-        a set of already used cell names.
     **kwargs :
         optional parameters.
 
@@ -109,12 +105,11 @@ class DesignMaster(abc.ABC):
         the parameters dictionary.
     """
 
-    def __init__(self, master_db, lib_name, params, used_names, **kwargs):
-        # type: (DBType, str, Dict[str, Any], Set[str], **Any) -> None
+    def __init__(self, master_db, params, **kwargs):
+        # type: (DBType, Dict[str, Any], **Any) -> None
         copy_state = kwargs.get('copy_state', None)
 
         self._master_db = master_db  # type: DBType
-        self._lib_name = lib_name
 
         if copy_state:
             self._children = copy_state['children']
@@ -135,7 +130,7 @@ class DesignMaster(abc.ABC):
             self.populate_params(params, params_info, default_params, **kwargs)
 
             # get cell name and unique key
-            self._cell_name = get_new_name(self.get_master_basename(), used_names)
+            self._cell_name = get_new_name(self.get_master_basename(), master_db.used_cell_names)
             self._key = self.compute_unique_key()
 
     def populate_params(self, table, params_info, default_params, **kwargs):
@@ -172,7 +167,7 @@ class DesignMaster(abc.ABC):
         # type: () -> MasterType
         """Returns a copy of this master instance."""
         copy_state = self.get_copy_state()
-        return self.__class__(self._master_db, self._lib_name, {}, set(), copy_state=copy_state)
+        return self.__class__(self._master_db, {}, copy_state=copy_state)
 
     @classmethod
     def to_immutable_id(cls, val):
@@ -277,7 +272,7 @@ class DesignMaster(abc.ABC):
     def lib_name(self):
         # type: () -> str
         """The master library name"""
-        return self._lib_name
+        return self._master_db.lib_name
 
     @property
     def cell_name(self):

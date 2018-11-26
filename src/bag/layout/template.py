@@ -156,8 +156,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             hidden_params = {}
         hidden_params['flip_parity'] = None
 
-        DesignMaster.__init__(self, temp_db, lib_name, params, used_names,
-                              hidden_params=hidden_params)
+        DesignMaster.__init__(self, temp_db, params, hidden_params=hidden_params)
         # update RoutingGrid
         fp_dict = self.params['flip_parity']
         if fp_dict is not None:
@@ -672,7 +671,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if not unit_mode:
             raise ValueError('unit_mode = False not supported.')
 
-        return self._layout.add_instance(self.grid, self.children, master, self._lib_name,
+        return self._layout.add_instance(self.grid, self.children, master, self.lib_name,
                                          inst_name, loc[0], loc[1], Orientation[orient].value,
                                          nx, ny, spx, spy, commit=commit)
 
