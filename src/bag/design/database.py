@@ -9,7 +9,7 @@ import importlib
 
 from pybag.enum import DesignOutput
 
-from ..util.cache import MasterDB
+from ..util.cache import MasterDB, Param
 from ..io.template import new_template_env_fs
 
 if TYPE_CHECKING:
@@ -85,7 +85,7 @@ class ModuleDB(MasterDB):
     def generate_model_netlist(self, fname, cell_name, model_params):
         # type: (str, str, Dict[str, Any]) -> str
         template = self._temp_env.get_template(fname)
-        return template.render(cell_name=cell_name, **model_params)
+        return template.render(_cell_name=cell_name, **model_params)
 
     def instantiate_schematic(self, design, top_cell_name='', output=DesignOutput.SCHEMATIC,
                               **kwargs):
@@ -106,7 +106,7 @@ class ModuleDB(MasterDB):
 
     def new_model(self,
                   master,  # type: Module
-                  model_params,  # type: Dict[str, Any]
+                  model_params,  # type: Param
                   **kwargs,  # type: Any
                   ):
         # type: (...) -> Module
@@ -148,7 +148,7 @@ class ModuleDB(MasterDB):
                     **kwargs,  # type: Any
                     ):
         # type: (...) -> Sequence[Tuple[Module, str]]
-        new_info_list = [(self.new_model(m, m_params), name)
+        new_info_list = [(self.new_model(m, Param.to_param(m_params)), name)
                          for m, name, m_params in info_list]
         self.batch_output(output, new_info_list, **kwargs)
         return new_info_list

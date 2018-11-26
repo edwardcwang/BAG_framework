@@ -54,7 +54,11 @@ supported_formats = {
         'fname': 'bag_prim.v',
         'include': '`include "{fname}"',
         'mos': mos_verilog_fmt,
-    }
+    },
+    DesignOutput.SYSVERILOG: {
+        'fname': 'bag_prim.sv',
+        'include': '`include "{fname}"',
+    },
 }
 
 
@@ -81,10 +85,11 @@ def populate_mos(config: Dict[str, Any], netlist_map: Dict[str, Any],
             w_str = out_config['w_str']
             nf_str = out_config['nf_str']
             other = out_config['other']
-            mos_fmt = supported_formats[v]['mos']
-            lines.append('\n')
-            lines.append(mos_fmt.format(cell_name=cell_name, model_name=model_name,
-                                        l_str=l_str, w_str=w_str, nf_str=nf_str, other=other))
+            mos_fmt = supported_formats[v].get('mos', '')
+            if mos_fmt:
+                lines.append('\n')
+                lines.append(mos_fmt.format(cell_name=cell_name, model_name=model_name,
+                                            l_str=l_str, w_str=w_str, nf_str=nf_str, other=other))
 
 
 def get_info(config: Dict[str, Any], output_dir) -> Tuple[Dict[str, Any], Dict[int, List[str]]]:
@@ -100,9 +105,12 @@ def get_info(config: Dict[str, Any], output_dir) -> Tuple[Dict[str, Any], Dict[i
     inc_list = {}
     for v, lines in inc_lines.items():
         fname = os.path.join(output_dir, supported_formats[v]['fname'])
-        inc_list[v.value] = [fname]
-        with open(fname, 'w') as f:
-            f.writelines(lines)
+        if lines:
+            inc_list[v.value] = [fname]
+            with open(fname, 'w') as f:
+                f.writelines(lines)
+        else:
+            inc_list[v.value] = []
 
     return {'BAG_prim': netlist_map}, inc_list
 

@@ -10,7 +10,7 @@ import abc
 from itertools import zip_longest
 
 from ..math import float_to_si_string
-from ..util.cache import DesignMaster
+from ..util.cache import DesignMaster, Param
 from .instance import SchInstance
 
 try:
@@ -64,7 +64,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             self._netlist_dir = os.path.dirname(yaml_fname)
             self._cv = PySchCellView(yaml_fname, 'symbol')
             self._pins = {}  # type: Dict[str, TermType]
-            self._model_params = None  # type: Optional[Dict[str, Any]]
+            self._model_params = None  # type: Optional[Param]
             self._orig_cell_name = self._cv.cell_name
             self.instances = {name: SchInstance(database, ref)
                               for (name, ref) in
@@ -74,7 +74,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         DesignMaster.__init__(self, database, params, copy_state=copy_state)
 
     def compute_unique_key(self, model_params=None):
-        # type: (Optional[Dict[str, Any]]) -> Any
+        # type: (Optional[Param]) -> Any
         if model_params is None:
             model_params = self._model_params
         return self.get_qualified_name(), self.params, model_params
@@ -102,7 +102,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         # type: () -> Module
         """Returns a copy of this master instance."""
         copy_state = self.get_copy_state()
-        return self.__class__('', self._master_db, {}, copy_state=copy_state)
+        return self.__class__(self._master_db, {}, copy_state=copy_state)
 
     @property
     def tech_info(self):
@@ -137,7 +137,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         pass
 
     def design_model(self, model_params):
-        # type: (Dict[str, Any]) -> None
+        # type: (Param) -> None
         self._model_params = model_params
         self.update_signature()
 
@@ -194,9 +194,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
     def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
         # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
         if self.is_primitive():
-            return '', ''
+            return '', (None, '')
 
         cell_name = self.format_cell_name(self.cell_name, rename_dict, name_prefix, name_suffix)
+        netlist = ''
         if is_model_type(output_type):
             if self._model_params is None:
                 raise ValueError('Cannot create behavioral models without model parameters.')
@@ -208,12 +209,11 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 else:
                     # empty view_name, use default name
                     fname = '{}.{}'.format(self.orig_cell_name, ext)
-                fname = os.path.join(self._netlist_dir, fname)
+                fname = os.path.join(os.path.dirname(self._netlist_dir), 'models', fname)
                 netlist = self.master_db.generate_model_netlist(fname, cell_name,
                                                                 self._model_params)
-                return cell_name, netlist
 
-        return cell_name, self._cv
+        return cell_name, (self._cv, netlist)
 
     @property
     def cell_name(self):

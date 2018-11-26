@@ -8,7 +8,7 @@ import os
 import yaml
 import pytest
 
-from pybag.enum import DesignOutput, get_extension
+from pybag.enum import DesignOutput, get_extension, is_model_type
 
 from bag.design.database import ModuleDB
 from bag.design.module import Module
@@ -29,16 +29,25 @@ def get_sch_master(module_db: ModuleDB, sch_design_params: Dict[str, Any]) -> Mo
     (DesignOutput.CDL, {'flat': True, 'shell': False, 'rmin': 2000}),
     (DesignOutput.VERILOG, {'flat': True, 'shell': False, 'rmin': 2000}),
     (DesignOutput.VERILOG, {'flat': True, 'shell': True, 'rmin': 2000}),
+    (DesignOutput.SYSVERILOG, {'flat': True, 'shell': False, 'rmin': 2000}),
 ])
-def test_design_yaml(tmpdir,
-                     module_db: ModuleDB,
-                     sch_design_params: Dict[str, Any],
-                     output_type: DesignOutput,
-                     options: Dict[str, Any],
-                     gen_output: bool,
-                     ) -> None:
+def test_design(tmpdir,
+                module_db: ModuleDB,
+                sch_design_params: Dict[str, Any],
+                output_type: DesignOutput,
+                options: Dict[str, Any],
+                gen_output: bool,
+                ) -> None:
     """Test design() method of each schematic generator."""
     extension = get_extension(output_type)
+
+    if is_model_type(output_type):
+        model_params = sch_design_params.get('model_params', None)
+        if model_params is None:
+            pytest.skip('Cannot find model parameters.')
+    else:
+        model_params = None
+
 
     if output_type is DesignOutput.YAML:
         base = 'out'
@@ -59,8 +68,12 @@ def test_design_yaml(tmpdir,
         # noinspection PyTypeChecker
         options['prim_fname'] = os.path.join(tech_dir, 'netlist_setup', 'netlist_setup.yaml')
 
-    module_db.instantiate_master(output_type, dsn, top_cell_name='PYTEST', fname=str(path),
-                                 **options)
+    if is_model_type(output_type):
+        module_db.batch_model([(dsn, 'PYTEST', model_params)], output=output_type,
+                              fname=str(path), **options)
+    else:
+        module_db.instantiate_master(output_type, dsn, top_cell_name='PYTEST', fname=str(path),
+                                     **options)
 
     assert path.check(file=1)
 

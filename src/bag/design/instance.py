@@ -3,8 +3,9 @@
 """This module defines classes representing various design instances.
 """
 
-from typing import TYPE_CHECKING, Type, Optional, Any, Dict
+from typing import TYPE_CHECKING, Type, Optional, Any
 
+from ..util.cache import Param
 
 if TYPE_CHECKING:
     from .database import ModuleDB
@@ -138,7 +139,7 @@ class SchInstance:
         self._ptr.cell_name = self.master_cell_name
 
     def design_model(self, model_params):
-        # type: (Dict[str, Any]) -> None
+        # type: (Param) -> None
         """Call design_model method on master."""
         if self._sch_cls is None:
             # static instance; assume model is defined in include files

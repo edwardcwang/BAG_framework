@@ -6,7 +6,8 @@
 from __future__ import annotations
 
 from typing import (
-    TYPE_CHECKING, Sequence, Dict, Set, Any, Optional, TypeVar, Type, Tuple, Iterator, Iterable
+    TYPE_CHECKING, Sequence, Dict, Set, Any, Optional, TypeVar, Type, Tuple, Iterator,
+    Iterable, List
 )
 
 import abc
@@ -16,7 +17,6 @@ import numbers
 from collections import OrderedDict
 
 from pybag.enum import DesignOutput, is_netlist_type, is_model_type
-# noinspection PyUnresolvedReferences
 from pybag.schematic import implement_yaml, implement_netlist
 
 from sortedcontainers import SortedDict
@@ -41,6 +41,8 @@ class Param(SortedDict):
 
     @classmethod
     def to_param(cls, table: Dict[Any, Any]):
+        if isinstance(table, Param):
+            return table
         ans = Param()
         for key, val in table.items():
             ans.assign(key, val)
@@ -367,7 +369,7 @@ class MasterDB:
         self._master_lookup = {}  # type: Dict[Any, DesignMaster]
 
     def create_masters_in_db(self, output, lib_name, content_list, debug=False, **kwargs):
-        # type: (DesignOutput, str, Sequence[Any], bool, **Any) -> None
+        # type: (DesignOutput, str, List[Any], bool, **Any) -> None
         """Create the masters in the design database.
 
         Parameters
