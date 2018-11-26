@@ -97,12 +97,51 @@ class ModuleDB(MasterDB):
         """
         self.batch_output(output, info_list, **kwargs)
 
+    def new_model(self,
+                  master,  # type: Module
+                  model_params,  # type: Dict[str, Any]
+                  **kwargs,  # type: Any
+                  ):
+        # type: (...) -> Module
+        """Create a new schematic master instance with behavioral model information
+
+        Parameters
+        ----------
+        master : Module
+            the schematic master instance.
+        model_params : Dict[str, Any]
+            model parameters.
+        **kwargs : Any
+            optional arguments
+
+        Returns
+        -------
+        master : Module
+            the new master instance.
+        """
+        debug = kwargs.get('debug', False)
+
+        key = master.compute_unique_key(model_params=model_params)
+        test = self.find_master(key)
+        if test is not None:
+            if debug:
+                print('model master cached')
+            return test
+
+        if debug:
+            print('generating model master')
+        new_master = master.get_copy()
+        new_master.design_model(model_params)
+        self.register_master(key, new_master)
+        return new_master
+
     def batch_model(self,
-                    info_list,  # type: Sequence[Tuple[Module, Optional[str], Dict[str, Any]]]
-                    debug=False,  # type: bool
-                    rename_dict=None,  # type: Optional[Dict[str, str]]
+                    info_list,  # type: Sequence[Tuple[Module, str, Dict[str, Any]]]
                     output=DesignOutput.SYSVERILOG,  # type: DesignOutput
-                    **kwargs  # type: Any
+                    **kwargs,  # type: Any
                     ):
-        # type: (...) -> None
-        pass
+        # type: (...) -> Sequence[Tuple[Module, str]]
+        new_info_list = [(self.new_model(m, m_params, **kwargs), name)
+                         for m, name, m_params in info_list]
+        self.batch_output(output, new_info_list, **kwargs)
+        return new_info_list

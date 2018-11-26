@@ -55,15 +55,16 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
     def __init__(self, yaml_fname, database, lib_name, params, used_names, **kwargs):
         # type: (str, ModuleDB, str, Dict[str, Any], Set[str], **Any) -> None
         copy_state = kwargs.get('copy_state', None)
-        self._model_params = kwargs.get('model_params', None)
 
         if copy_state:
             self._cv = copy_state['cv']  # type: PySchCellView
             self._pins = copy_state['pins']  # type: Dict[str, TermType]
+            self._model_params = copy_state['model_params']  # type: Optional[Dict[str, Any]]
             self.instances = copy_state['instances']  # type: Dict[str, SchInstance]
         else:
             self._cv = PySchCellView(os.path.abspath(yaml_fname), 'symbol')
             self._pins = {}  # type: Dict[str, TermType]
+            self._model_params = None  # type: Optional[Dict[str, Any]]
             self.instances = {name: SchInstance(database, ref)
                               for (name, ref) in
                               self._cv.inst_refs()}  # type: Dict[str, SchInstance]
@@ -72,16 +73,11 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         DesignMaster.__init__(self, database, lib_name, params, used_names,
                               copy_state=copy_state)
 
-    def compute_unique_key(self):
-        # type: () -> Any
-        """Returns a unique hashable object (usually tuple or string) that represents this instance.
-
-        Returns
-        -------
-        unique_id : Any
-            a hashable unique ID representing the given parameters.
-        """
-        return self.get_qualified_name(), self.params, self._model_params
+    def compute_unique_key(self, model_params=None):
+        # type: (Optional[Dict[str, Any]]) -> Any
+        if model_params is None:
+            model_params = self._model_params
+        return self.get_qualified_name(), self.params, model_params
 
     def get_master_basename(self):
         # type: () -> str
@@ -95,6 +91,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                     for name, ref in new_cv.inst_refs()}
         base['cv'] = new_cv
         base['pins'] = self._pins.copy()
+        base['model_params'] = self._model_params
         base['instances'] = new_inst
         return base
 
@@ -103,7 +100,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """Returns a copy of this master instance."""
         copy_state = self.get_copy_state()
         return self.__class__('', self._master_db, self._lib_name, {}, set(),
-                              copy_state=copy_state, model_params=self._model_params)
+                              copy_state=copy_state)
 
     @property
     def tech_info(self):
@@ -136,6 +133,19 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         :meth:`.array_instance`
         """
         pass
+
+    def design_model(self, model_params):
+        # type: (Dict[str, Any]) -> None
+        self._model_params = model_params
+
+        if 'view_name' not in model_params:
+            # this is a hierarchical model
+            for name, inst in self.instances.items():
+                cur_params = self._model_params.get(name, None)
+                if cur_params is None:
+                    raise ValueError('Cannot find model parameters for instance {}'.format(name))
+                # TODO: finish
+                pass
 
     def set_param(self, key, val):
         # type: (str, Union[int, float, bool, str]) -> None
