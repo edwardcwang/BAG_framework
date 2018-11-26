@@ -90,7 +90,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
     def get_copy_state(self):
         # type: () -> Dict[str, Any]
         base = DesignMaster.get_copy_state(self)
-        new_cv = self._cv.copy()
+        new_cv = self._cv.get_copy()
         new_inst = {name: SchInstance(self.master_db, ref, master=self.instances[name].master)
                     for name, ref in new_cv.inst_refs()}
         base['cv'] = new_cv
@@ -98,7 +98,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         base['instances'] = new_inst
         return base
 
-    def copy(self):
+    def get_copy(self):
         # type: () -> Module
         """Returns a copy of this master instance."""
         copy_state = self.get_copy_state()

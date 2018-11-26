@@ -169,7 +169,7 @@ class DesignMaster(abc.ABC):
             'key': self._key,
         }
 
-    def copy(self):
+    def get_copy(self):
         # type: () -> MasterType
         """Returns a copy of this master instance."""
         copy_state = self.get_copy_state()
