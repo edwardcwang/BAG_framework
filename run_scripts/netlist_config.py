@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 """Generate setup yaml files for various netlist outputs
 
 Please run this script through the generate_netlist_config.sh shell script, which will setup
@@ -47,27 +46,23 @@ endmodule
 supported_formats = {
     DesignOutput.CDL: {
         'fname': 'bag_prim.cdl',
-        'include': '.INCLUDE {fname}',
         'mos': mos_cdl_fmt,
     },
     DesignOutput.VERILOG: {
         'fname': 'bag_prim.v',
-        'include': '`include "{fname}"',
         'mos': mos_verilog_fmt,
     },
     DesignOutput.SYSVERILOG: {
         'fname': 'bag_prim.sv',
-        'include': '`include "{fname}"',
     },
 }
 
 
-def populate_header(config: Dict[str, Any], inc_lines: Dict[DesignOutput, List[str]]) -> None:
+def populate_header(config: Dict[str, Any], inc_lines: Dict[DesignOutput, List[str]],
+                    inc_list: Dict[int, List[str]]) -> None:
     for v, lines in inc_lines.items():
+        inc_list[v.value] = config[v.name]['includes']
         includes = config[v.name]['includes']
-        inc_fmt = supported_formats[v]['include']
-        for fname in includes:
-            lines.append(inc_fmt.format(fname=fname))
 
 
 def populate_mos(config: Dict[str, Any], netlist_map: Dict[str, Any],
@@ -88,8 +83,14 @@ def populate_mos(config: Dict[str, Any], netlist_map: Dict[str, Any],
             mos_fmt = supported_formats[v].get('mos', '')
             if mos_fmt:
                 lines.append('\n')
-                lines.append(mos_fmt.format(cell_name=cell_name, model_name=model_name,
-                                            l_str=l_str, w_str=w_str, nf_str=nf_str, other=other))
+                lines.append(
+                    mos_fmt.format(
+                        cell_name=cell_name,
+                        model_name=model_name,
+                        l_str=l_str,
+                        w_str=w_str,
+                        nf_str=nf_str,
+                        other=other))
 
 
 def get_info(config: Dict[str, Any], output_dir) -> Tuple[Dict[str, Any], Dict[int, List[str]]]:
@@ -99,28 +100,28 @@ def get_info(config: Dict[str, Any], output_dir) -> Tuple[Dict[str, Any], Dict[i
     netlist_map = {}
     inc_lines = {v: [] for v in supported_formats}
 
-    populate_header(header_config, inc_lines)
+    inc_list = {}
+    populate_header(header_config, inc_lines, inc_list)
     populate_mos(mos_config, netlist_map, inc_lines)
 
-    inc_list = {}
+    prim_files = {}
     for v, lines in inc_lines.items():
         fname = os.path.join(output_dir, supported_formats[v]['fname'])
         if lines:
-            inc_list[v.value] = [fname]
+            prim_files[v.value] = fname
             with open(fname, 'w') as f:
                 f.writelines(lines)
         else:
-            inc_list[v.value] = []
+            prim_files[v.value] = ''
 
-    return {'BAG_prim': netlist_map}, inc_list
+    return {'BAG_prim': netlist_map}, inc_list, prim_files
 
 
 def parse_options() -> Tuple[str, str]:
     parser = argparse.ArgumentParser(description='Generate netlist setup file.')
-    parser.add_argument('config_fname', type=str,
-                        help='YAML file containing technology information.')
-    parser.add_argument('output_dir', type=str,
-                        help='Output directory.')
+    parser.add_argument(
+        'config_fname', type=str, help='YAML file containing technology information.')
+    parser.add_argument('output_dir', type=str, help='Output directory.')
     args = parser.parse_args()
     return args.config_fname, args.output_dir
 
@@ -133,8 +134,9 @@ def main() -> None:
     with open(config_fname, 'r') as f:
         config = yaml.load(f)
 
-    netlist_map, inc_list = get_info(config, output_dir)
+    netlist_map, inc_list, prim_files = get_info(config, output_dir)
     result = {
+        'prim_files': prim_files,
         'inc_list': inc_list,
         'netlist_map': netlist_map,
     }
