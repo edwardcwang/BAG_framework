@@ -10,7 +10,7 @@ fi
 
 if [ -z ${BAG_PYTEST+x} ]
 then
-    echo "PYBAG_PYTEST is unset"
+    echo "BAG_PYTEST is unset"
     exit 1
 fi
 
