@@ -52,25 +52,33 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         # type: (str, ModuleDB, Dict[str, Any], **Any) -> None
         copy_state = kwargs.get('copy_state', None)
 
+        self._cv = None  # type: Optional[PySchCellView]
         if copy_state:
             self._netlist_dir = copy_state['netlist_dir']
-            self._cv = copy_state['cv']  # type: PySchCellView
+            self._cv = copy_state['cv']
             self._pins = copy_state['pins']  # type: Dict[str, TermType]
             self._model_params = copy_state['model_params']  # type: Optional[Dict[str, Any]]
             self._orig_cell_name = copy_state['orig_cell_name']
             self.instances = copy_state['instances']  # type: Dict[str, SchInstance]
         else:
-            yaml_fname = os.path.abspath(yaml_fname)
-            self._netlist_dir = os.path.dirname(yaml_fname)
-            self._cv = PySchCellView(yaml_fname, 'symbol')
             self._pins = {}  # type: Dict[str, TermType]
             self._model_params = None  # type: Optional[Param]
-            self._orig_cell_name = self._cv.cell_name
-            self.instances = {name: SchInstance(database, ref)
-                              for (name, ref) in
-                              self._cv.inst_refs()}  # type: Dict[str, SchInstance]
-            if not self.is_primitive():
-                self._cv.lib_name = database.lib_name
+            if yaml_fname:
+                # normal schematic
+                yaml_fname = os.path.abspath(yaml_fname)
+                self._netlist_dir = os.path.dirname(yaml_fname)
+                self._cv = PySchCellView(yaml_fname, 'symbol')
+                self._orig_cell_name = self._cv.cell_name
+                self.instances = {name: SchInstance(database, ref)
+                                  for (name, ref) in
+                                  self._cv.inst_refs()}  # type: Dict[str, SchInstance]
+                if not self.is_primitive():
+                    self._cv.lib_name = database.lib_name
+            else:
+                # empty yaml file name, this is a BAG primitive
+                self._netlist_dir = ''
+                self._orig_cell_name = self.__class__.__name__.split('__')[1]
+                self.instances = {}  # type: Dict[str, SchInstance]
 
         # initialize schematic master
         DesignMaster.__init__(self, database, params, copy_state=copy_state)
@@ -185,11 +193,11 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             if not inst.is_primitive:
                 self.add_child_key(inst.master_key)
 
-        # get pins
-        self._pins = dict(self._cv.terminals())
-
-        # update cell name
-        self._cv.cell_name = self.cell_name
+        if self._cv is not None:
+            # get pins
+            self._pins = dict(self._cv.terminals())
+            # update cell name
+            self._cv.cell_name = self.cell_name
 
         # call super finalize routine
         DesignMaster.finalize(self)
@@ -768,6 +776,7 @@ class MosModuleBase(Module):
     def __init__(self, yaml_fname, database, params, **kwargs):
         # type: (str, ModuleDB, Dict[str, Any], **Any) -> None
         Module.__init__(self, yaml_fname, database, params, **kwargs)
+        self._pins = dict(G=TermType.inout, D=TermType.inout, S=TermType.inout, B=TermType.inout)
 
     @classmethod
     def get_params_info(cls):
@@ -817,6 +826,7 @@ class ResPhysicalModuleBase(Module):
     def __init__(self, yaml_fname, database, params, **kwargs):
         # type: (str, ModuleDB, Dict[str, Any], **Any) -> None
         Module.__init__(self, yaml_fname, database, params, **kwargs)
+        self._pins = dict(PLUS=TermType.inout, MINUS=TermType.inout, BULK=TermType.inout)
 
     @classmethod
     def get_params_info(cls):
@@ -860,6 +870,7 @@ class ResMetalModule(Module):
     def __init__(self, yaml_fname, database, params, **kwargs):
         # type: (str, ModuleDB, Dict[str, Any], **Any) -> None
         Module.__init__(self, yaml_fname, database, params, **kwargs)
+        self._pins = dict(PLUS=TermType.inout, MINUS=TermType.inout)
 
     @classmethod
     def get_params_info(cls):
