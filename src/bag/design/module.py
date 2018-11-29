@@ -790,9 +790,9 @@ class MosModuleBase(Module):
         w = self.params['w']
         l = self.params['l']
         nf = self.params['nf']
-        wstr = w if isinstance(w, str) else float_to_si_string(int(round(w / w_res)) * w_res)
-        lstr = l if isinstance(l, str) else float_to_si_string(int(round(l / l_res)) * l_res)
-        nstr = nf if isinstance(nf, str) else '%d' % nf
+        wstr = float_to_si_string(int(round(w / w_res)) * w_res)
+        lstr = float_to_si_string(int(round(l / l_res)) * l_res)
+        nstr = str(nf)
 
         return dict(w=wstr, l=lstr, nf=nstr)
 
@@ -807,7 +807,7 @@ class MosModuleBase(Module):
 
     def should_delete_instance(self):
         # type: () -> bool
-        return self.params['nf'] == 0 or self.params['w'] == 0 or self.params['l'] == 0
+        return self.params['nf'] == 0 or self.params['w'] == 0
 
 
 class ResPhysicalModuleBase(Module):
@@ -835,8 +835,8 @@ class ResPhysicalModuleBase(Module):
         # type: () -> Dict[str, str]
         w = self.params['w']
         l = self.params['l']
-        wstr = w if isinstance(w, str) else float_to_si_string(w)
-        lstr = l if isinstance(l, str) else float_to_si_string(l)
+        wstr = float_to_si_string(w)
+        lstr = float_to_si_string(l)
 
         return dict(w=wstr, l=lstr)
 
@@ -872,44 +872,22 @@ class ResMetalModule(Module):
 
     def design(self, w, l, layer):
         # type: (float, float, int) -> None
-        """Create a metal resistor.
+        pass
 
-        Parameters
-        ----------
-        w : float
-            the resistor width, in meters.
-        l: float
-            the resistor length, in meters.
-        layer : int
-            the metal layer ID.
-        """
-        # get technology parameters
-        tech_dict = self.tech_info.tech_params['res_metal']
-        lib_name = tech_dict['lib_name']
-        l_name = tech_dict['l_name']
-        w_name = tech_dict['w_name']
-        layer_name = tech_dict.get('layer_name', None)
-        precision = tech_dict.get('precision', 6)
-        cell_name = tech_dict['cell_table'][layer]
+    def get_schematic_parameters(self):
+        # type: () -> Dict[str, str]
+        w = self.params['w']
+        l = self.params['l']
+        layer = self.params['layer']
+        wstr = float_to_si_string(w)
+        lstr = float_to_si_string(l)
+        lay_str = str(layer)
+        return dict(w=wstr, l=lstr, layer=lay_str)
 
-        inst = self.instances['R0']
+    def is_primitive(self):
+        # type: () -> bool
+        return True
 
-        if layer_name is None:
-            # replace resistor cellview
-            inst.change_generator(lib_name, cell_name, static=True)
-        else:
-            inst.set_param(layer_name, cell_name)
-
-        inst.set_param(l_name, float_to_si_string(l, precision=precision))
-        inst.set_param(w_name, float_to_si_string(w, precision=precision))
-        for key, val in tech_dict['others'].items():
-            if isinstance(val, float):
-                val = float_to_si_string(val, precision=6)
-            elif isinstance(val, int):
-                val = '{:d}'.format(val)
-            elif isinstance(val, bool) or isinstance(val, str):
-                pass
-            else:
-                raise ValueError('unsupported type: %s' % type(val))
-
-            inst.set_param(key, val)
+    def should_delete_instance(self):
+        # type: () -> bool
+        return self.params['w'] == 0 or self.params['l'] == 0
