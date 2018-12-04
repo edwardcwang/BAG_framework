@@ -30,7 +30,7 @@ mos_default = {
 
 mos_cdl_fmt = """.SUBCKT {cell_name} B D G S
 *.PININFO B:B D:B G:B S:B
-MM0 D G S B {model_name} {l_str}=l {w_str}=w {nf_str}=nf {other}
+MM0 D G S B {model_name} {l_str} {w_str} {nf_str} {other}
 .ENDS
 """
 
