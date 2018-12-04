@@ -12,7 +12,7 @@ import copy
 import argparse
 
 import yaml
-from jinja2 import Template
+from jinja2 import Environment, DictLoader
 
 from pybag.enum import DesignOutput
 
@@ -35,7 +35,7 @@ MM0 D G S B {{ model_name }}{% for key, val in param_list %} {{ key }}={{ val }}
 .ENDS
 """
 
-mos_verilog_fmt = """module {cell_name}(
+mos_verilog_fmt = """module {{ cell_name }}(
     inout B,
     inout D,
     inout G,
@@ -47,16 +47,22 @@ endmodule
 supported_formats = {
     DesignOutput.CDL: {
         'fname': 'bag_prim.cdl',
-        'mos': mos_cdl_fmt,
+        'mos': 'mos_cdl',
     },
     DesignOutput.VERILOG: {
         'fname': 'bag_prim.v',
-        'mos': mos_verilog_fmt,
+        'mos': 'mos_verilog',
     },
     DesignOutput.SYSVERILOG: {
         'fname': 'bag_prim.sv',
+        'mos': '',
     },
 }
+
+jinja_env = Environment(
+    loader=DictLoader({'mos_cdl': mos_cdl_fmt, 'mos_verilog': mos_verilog_fmt}),
+    keep_trailing_newline=True,
+)
 
 
 def populate_header(config: Dict[str, Any], inc_lines: Dict[DesignOutput, List[str]],
@@ -77,11 +83,12 @@ def populate_mos(config: Dict[str, Any], netlist_map: Dict[str, Any],
         # write bag_prim netlist
         for v, lines in inc_lines.items():
             param_list = config[v.name]
-            mos_fmt = Template(supported_formats[v].get('mos', ''))
-            if mos_fmt:
+            template_name = supported_formats[v]['mos']
+            if template_name:
+                mos_template = jinja_env.get_template(template_name)
                 lines.append('\n')
                 lines.append(
-                    mos_fmt.render(
+                    mos_template.render(
                         cell_name=cell_name,
                         model_name=model_name,
                         param_list=param_list,
