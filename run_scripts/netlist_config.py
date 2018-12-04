@@ -12,6 +12,7 @@ import copy
 import argparse
 
 import yaml
+from jinja2 import Template
 
 from pybag.enum import DesignOutput
 
@@ -28,9 +29,9 @@ mos_default = {
     },
 }
 
-mos_cdl_fmt = """.SUBCKT {cell_name} B D G S
+mos_cdl_fmt = """.SUBCKT {{ cell_name }} B D G S
 *.PININFO B:B D:B G:B S:B
-MM0 D G S B {model_name} {l_str} {w_str} {nf_str} {other}
+MM0 D G S B {{ model_name }}{% for key, val in param_list %} {{ key }}={{ val }}{% endfor %}
 .ENDS
 """
 
@@ -75,22 +76,16 @@ def populate_mos(config: Dict[str, Any], netlist_map: Dict[str, Any],
 
         # write bag_prim netlist
         for v, lines in inc_lines.items():
-            out_config = config[v.name]
-            l_str = out_config['l_str']
-            w_str = out_config['w_str']
-            nf_str = out_config['nf_str']
-            other = out_config['other']
-            mos_fmt = supported_formats[v].get('mos', '')
+            param_list = config[v.name]
+            mos_fmt = Template(supported_formats[v].get('mos', ''))
             if mos_fmt:
                 lines.append('\n')
                 lines.append(
-                    mos_fmt.format(
+                    mos_fmt.render(
                         cell_name=cell_name,
                         model_name=model_name,
-                        l_str=l_str,
-                        w_str=w_str,
-                        nf_str=nf_str,
-                        other=other))
+                        param_list=param_list,
+                        ))
 
 
 def get_info(config: Dict[str, Any], output_dir) -> Tuple[Dict[str, Any], Dict[int, List[str]]]:
