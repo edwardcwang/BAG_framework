@@ -4,7 +4,7 @@
 """
 
 # noinspection PyUnresolvedReferences
-from pybag.util.geometry import BBox, BBoxArray, BBoxCollection
+from pybag.core import BBox, BBoxArray, BBoxCollection
 
 
 class PortSpec(object):

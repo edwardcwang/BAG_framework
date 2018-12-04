@@ -14,7 +14,7 @@ from ..util.cache import DesignMaster, Param
 from .instance import SchInstance
 
 try:
-    from pybag.schematic import PySchCellView
+    from pybag.core import PySchCellView
     from pybag.enum import TermType, DesignOutput, is_model_type, get_extension
 except ImportError:
     raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')

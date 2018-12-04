@@ -14,11 +14,11 @@ from .util import BBox
 from bag.util.search import BinaryIterator
 
 # try to import cython classes
-from pybag.layout.tech import PyTech
+from pybag.core import PyTech
 from pybag.enum import SpaceQueryMode
 
 if TYPE_CHECKING:
-    from pybag.layout import PyLayInstance
+    from pybag.core import PyLayInstance
     from .template import TemplateBase
 
 

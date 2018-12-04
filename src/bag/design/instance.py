@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from .module import Module
 
     try:
-        from pybag.schematic import PySchInstRef
+        from pybag.core import PySchInstRef
     except ImportError:
         raise ImportError(
             'Cannot import pybag library.  Do you have the right shared library file?')

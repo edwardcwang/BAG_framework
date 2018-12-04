@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from bag.layout.template import TemplateDB
     from bag.layout.routing import RoutingGrid
 
-    from pybag.layout import PyLayInstance
+    from pybag.core import PyLayInstance
 
 
 class AnalogBaseEdgeInfo(object):

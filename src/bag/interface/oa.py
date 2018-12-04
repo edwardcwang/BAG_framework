@@ -13,7 +13,7 @@ from .database import DbAccess
 from .skill import handle_reply
 
 try:
-    from pybag.oa import PyOADatabase
+    from pybag.core import PyOADatabase
 except ImportError:
     raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 

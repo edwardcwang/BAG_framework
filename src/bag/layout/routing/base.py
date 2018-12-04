@@ -11,7 +11,7 @@ from math import trunc, ceil, floor
 from numbers import Integral, Real
 
 from pybag.enum import Orientation
-from pybag.util.geometry import BBox, BBoxArray
+from pybag.core import BBox, BBoxArray
 
 from ...util.search import BinaryIterator
 

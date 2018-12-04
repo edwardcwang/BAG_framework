@@ -17,7 +17,7 @@ import numbers
 from collections import OrderedDict
 
 from pybag.enum import DesignOutput, is_netlist_type, is_model_type
-from pybag.schematic import implement_yaml, implement_netlist
+from pybag.core import implement_yaml, implement_netlist
 
 from sortedcontainers import SortedDict
 
