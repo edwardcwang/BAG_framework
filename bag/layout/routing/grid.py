@@ -1175,6 +1175,25 @@ class RoutingGrid(object):
 
         return bin_iter.get_last_save()
 
+    def get_min_track_width_for_via(self,
+                                    layer_id,
+                                    **kwargs,
+                                    ) -> int:
+        """Returns the minimum track width required to fit a via to the next layer.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer ID.
+
+        Returns
+        -------
+        track_width : int
+            the minimum track width in number of tracks
+        """
+        next_layer_min_width_unit = self.get_track_width(layer_id=layer_id + 1, width_ntr=1, unit_mode=True)
+        return self.get_min_track_width(layer_id=layer_id, top_w=next_layer_min_width_unit, unit_mode=True, **kwargs)
+
     def get_track_index_range(self,  # type: RoutingGrid
                               layer_id,  # type: int
                               lower,  # type: Union[float, int]
