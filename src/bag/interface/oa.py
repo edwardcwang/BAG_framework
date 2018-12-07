@@ -40,6 +40,8 @@ class OAInterface(DbAccess):
         self._oa_db = PyOADatabase(cds_lib_path)
         for lib_name in db_config['schematic']['exclude_libraries']:
             self._oa_db.add_primitive_lib(lib_name)
+        # BAG_prim is always excluded
+        self._oa_db.add_primitive_lib('BAG_prim')
 
         DbAccess.__init__(self, dealer, tmp_dir, db_config, lib_defs_file)
 
@@ -182,9 +184,10 @@ class OAInterface(DbAccess):
 
     def refresh_cellviews(self, lib_name, cell_view_list):
         # type: (str, Sequence[Tuple[str, str]]) -> None
-        cmd = 'refresh_cellviews( "%s" {cell_view_list} )' % lib_name
-        in_files = {'cell_view_list': cell_view_list}
-        self._eval_skill(cmd, input_files=in_files)
+        if self.has_bag_server:
+            cmd = 'refresh_cellviews( "%s" {cell_view_list} )' % lib_name
+            in_files = {'cell_view_list': cell_view_list}
+            self._eval_skill(cmd, input_files=in_files)
 
     def perform_checks_on_cell(self, lib_name, cell_name, view_name):
         # type: (str, str, str) -> None
