@@ -175,9 +175,10 @@ class OAInterface(DbAccess):
 
     def release_write_locks(self, lib_name, cell_view_list):
         # type: (str, Sequence[Tuple[str, str]]) -> None
-        cmd = 'release_write_locks( "%s" {cell_view_list} )' % lib_name
-        in_files = {'cell_view_list': cell_view_list}
-        self._eval_skill(cmd, input_files=in_files)
+        if self.has_bag_server:
+            cmd = 'release_write_locks( "%s" {cell_view_list} )' % lib_name
+            in_files = {'cell_view_list': cell_view_list}
+            self._eval_skill(cmd, input_files=in_files)
 
     def refresh_cellviews(self, lib_name, cell_view_list):
         # type: (str, Sequence[Tuple[str, str]]) -> None

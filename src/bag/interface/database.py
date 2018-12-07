@@ -117,14 +117,15 @@ class DbAccess(InterfaceBase, abc.ABC):
     @property
     def default_lib_path(self):
         # type: () -> str
-        """Returns the default directory to create new libraries in.
-
-        Returns
-        -------
-        lib_path : str
-            directory to create new libraries in.
+        """str: The default directory to create new libraries in.
         """
         return self._default_lib_path
+
+    @property
+    def has_bag_server(self):
+        # type: () -> bool
+        """bool: True if the BAG server is up."""
+        return self.handler is not None
 
     @abc.abstractmethod
     def get_exit_object(self):
