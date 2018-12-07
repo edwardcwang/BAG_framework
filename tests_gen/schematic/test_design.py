@@ -4,7 +4,6 @@ from typing import Dict, Any
 
 import pathlib
 
-import os
 import yaml
 import pytest
 
@@ -12,6 +11,7 @@ from pybag.enum import DesignOutput, get_extension, is_model_type
 
 from bag.design.database import ModuleDB
 from bag.design.module import Module
+from bag.core import get_netlist_setup_file
 
 
 def get_sch_master(module_db: ModuleDB, sch_design_params: Dict[str, Any]) -> Module:
@@ -61,11 +61,14 @@ def test_design(tmpdir,
 
     path = tmpdir.join('{}.{}'.format(base, extension))
     if output_type is not DesignOutput.YAML:
-        tech_dir = os.environ.get('BAG_TECH_CONFIG_DIR', '')
-        if not tech_dir:
+        try:
+            prim_fname = get_netlist_setup_file()
+        except ValueError:
+            prim_fname = ''
             pytest.skip('BAG technology directory not defined.')
+
         # noinspection PyTypeChecker
-        options['prim_fname'] = os.path.join(tech_dir, 'netlist_setup', 'netlist_setup.yaml')
+        options['prim_fname'] = prim_fname
 
     if is_model_type(output_type):
         module_db.batch_model([(dsn, 'PYTEST', model_params)], output=output_type,

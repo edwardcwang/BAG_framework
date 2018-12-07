@@ -408,10 +408,15 @@ class MasterDB:
             implement_yaml(fname, content_list)
         elif is_netlist_type(output) or is_model_type(output):
             fname = kwargs['fname']
-            prim_fname = kwargs['prim_fname']
+            prim_fname = kwargs.get('prim_fname', '')
             flat = kwargs.get('flat', True)
             shell = kwargs.get('shell', False)
             rmin = kwargs.get('rmin', 2000)
+
+            if not prim_fname:
+                if self._prj is None:
+                    raise ValueError('prim_fname not set, and BagProject is not defined.')
+                prim_fname = self._prj.netlist_setup_file
 
             implement_netlist(fname, content_list, output, flat, shell, rmin, prim_fname)
         else:

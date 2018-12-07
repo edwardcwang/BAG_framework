@@ -427,13 +427,13 @@ class Testbench(object):
         return self.save_dir
 
 
-def create_tech_info(bag_config_path=None):
-    # type: (Optional[str]) -> TechInfo
+def create_tech_info(bag_config_path=''):
+    # type: (str) -> TechInfo
     """Create TechInfo object."""
-    if bag_config_path is None:
-        if 'BAG_CONFIG_PATH' not in os.environ:
-            raise Exception('BAG_CONFIG_PATH not defined.')
-        bag_config_path = os.environ['BAG_CONFIG_PATH']
+    if not bag_config_path:
+        bag_config_path = os.environ.get('BAG_CONFIG_PATH', '')
+        if not bag_config_path:
+            raise ValueError('Environment variable BAG_CONFIG_PATH not defined.')
 
     bag_config = _parse_yaml_file(bag_config_path)
     tech_params = _parse_yaml_file(bag_config['tech_config_path'])
@@ -446,6 +446,16 @@ def create_tech_info(bag_config_path=None):
         tech_info = DummyTechInfo(tech_params)
 
     return tech_info
+
+
+def get_netlist_setup_file(tech_dir=''):
+    # type: (str) -> str
+    if not tech_dir:
+        tech_dir = os.environ.get('BAG_TECH_CONFIG_DIR', '')
+        if not tech_dir:
+            raise ValueError('Environment variable BAG_TECH_CONFIG_DIR not defined.')
+
+    return os.path.join(tech_dir, 'netlist_setup', 'netlist_setup.yaml')
 
 
 class BagProject(object):
@@ -495,6 +505,7 @@ class BagProject(object):
 
         # create TechInfo instance
         self.tech_info = create_tech_info(bag_config_path=bag_config_path)
+        self._netlist_file = get_netlist_setup_file()
 
         if port is not None:
             # make DbAccess instance.
@@ -519,6 +530,11 @@ class BagProject(object):
     def default_lib_path(self):
         # type: () -> str
         return self._default_lib_path
+
+    @property
+    def netlist_setup_file(self):
+        # type: () -> str
+        return self._netlist_file
 
     def close_bag_server(self):
         # type: () -> None
