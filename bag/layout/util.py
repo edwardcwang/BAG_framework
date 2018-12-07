@@ -409,6 +409,9 @@ class BBox(object):
         box : BBox
             the new bounding box.
         """
+        if not self.is_valid():
+            return BBox.get_invalid_bbox()
+
         if not unit_mode:
             loc = int(round(loc[0] / self._res)), int(round(loc[1] / self._res))
 
