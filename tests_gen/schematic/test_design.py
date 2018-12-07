@@ -48,7 +48,6 @@ def test_design(tmpdir,
     else:
         model_params = None
 
-
     if output_type is DesignOutput.YAML:
         base = 'out'
     else:

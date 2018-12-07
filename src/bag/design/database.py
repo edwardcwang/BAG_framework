@@ -142,6 +142,11 @@ class ModuleDB(MasterDB):
         self.register_master(key, new_master)
         return new_master
 
+    def instantiate_model(self, design, model_params, top_cell_name='',
+                          **kwargs):
+        # type: (Module, Dict[str, Any], str, **Any) -> None
+        self.batch_model([(design, top_cell_name, model_params)], **kwargs)
+
     def batch_model(self,
                     info_list,  # type: Sequence[Tuple[Module, str, Dict[str, Any]]]
                     output=DesignOutput.SYSVERILOG,  # type: DesignOutput
