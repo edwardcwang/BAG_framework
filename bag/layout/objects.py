@@ -899,13 +899,12 @@ class Instance(Arrayable):
             loc = int(round(loc[0] / res)), int(round(loc[1] / res))
 
         if not copy:
-            self._loc_unit = loc
-            self._orient = orient
-            return self
+            ans = self
         else:
-            return Instance(self._parent_grid, self._lib_name, self._master, self._loc_unit,
-                            self._orient, name=self._inst_name, nx=self.nx, ny=self.ny,
-                            spx=self.spx_unit, spy=self.spy_unit, unit_mode=True)
+            ans = deepcopy(self)
+        ans._loc_unit = loc
+        ans._orient = orient
+        return ans
 
 
 class Rect(Arrayable):
@@ -1034,13 +1033,14 @@ class Rect(Arrayable):
         # type: (Tuple[ldim, ldim], str, bool, bool) -> Optional[Figure]
         """Transform this figure."""
         new_box = self._bbox.transform(loc=loc, orient=orient, unit_mode=unit_mode)
-        if copy:
+        if not copy:
             print("WARNING: USING THIS BREAKS POWER FILL ALGORITHM.")
-            self._bbox = new_box
-            return self
+            ans = self
         else:
-            return Rect(self._layer, new_box, nx=self.nx, ny=self.ny, spx=self.spx_unit,
-                        spy=self.spy_unit, unit_mode=True)
+            ans = deepcopy(self)
+
+        ans._bbox = new_box
+        return ans
 
     def destroy(self):
         # type: () -> None
