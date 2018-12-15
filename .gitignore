@@ -1,7 +1,11 @@
 *~
 *.pyc
-.idea
 build
 dist
 bag.egg-info
 __pycache__
+
+# Pycharm related files
+.idea/workspace.xml
+.idea/usage.statistics.xml
+.idea/tasks.xml
