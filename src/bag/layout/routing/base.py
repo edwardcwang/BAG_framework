@@ -3,6 +3,8 @@
 """This module provides basic routing classes.
 """
 
+from __future__ import annotations
+
 from typing import (
     TYPE_CHECKING, Tuple, Union, Iterable, Iterator, Dict, List, Sequence, Any, Optional
 )
@@ -11,7 +13,7 @@ from math import trunc, ceil, floor
 from numbers import Integral, Real
 
 from pybag.enum import Orientation
-from pybag.core import BBox, BBoxArray
+from pybag.core import BBox, BBoxArray, Transform
 
 from ...util.search import BinaryIterator
 
@@ -425,15 +427,11 @@ class TrackID(object):
         else:
             yield self
 
-    def transform(self, grid, loc=(0, 0), orient="R0", unit_mode=True):
-        # type: (RoutingGrid, Tuple[int, int], str, bool) -> TrackID
-        """returns a transformation of this TrackID."""
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
+    def get_transform(self, xform: Transform, grid: RoutingGrid) -> TrackID:
+        """returns a transformed TrackID."""
         layer_id = self._layer_id
         is_x = grid.is_horizontal(layer_id)
-        oenum = Orientation[orient]
+        oenum = xform.orient
         if oenum is Orientation.R0:
             base_idx = self._idx
         elif oenum is Orientation.MX:
@@ -451,7 +449,7 @@ class TrackID(object):
         else:
             raise ValueError('Unsupported orientation: {}'.format(oenum))
 
-        delta = grid.coord_to_track(layer_id, loc[1] if is_x else loc[0]) + 0.5
+        delta = grid.coord_to_track(layer_id, xform.y if is_x else xform.x) + 0.5
         return TrackID(layer_id, base_idx + delta, width=self._w,
                        num=self._n, pitch=self._pitch)
 
@@ -666,32 +664,24 @@ class WireArray(object):
 
             yield cur_layer, box_arr
 
-    def transform(self, grid, loc=(0, 0), orient='R0', unit_mode=True):
-        # type: (RoutingGrid, Tuple[int, int], str, bool) -> WireArray
+    def get_transform(self, xform: Transform, grid: RoutingGrid) -> WireArray:
         """Return a new transformed WireArray.
 
         Parameters
         ----------
+        xform : Transform
+            the transformation object.
         grid : RoutingGrid
             the RoutingGrid of this WireArray.
-        loc : Tuple[int, int]
-            the X/Y coordinate shift.
-        orient : str
-            the new orientation.
-        unit_mode : bool
-            deprecated parameter.
 
         Returns
         -------
         warr : WireArray
             the new WireArray object.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         layer_id = self.layer_id
         is_x = grid.is_horizontal(layer_id)
-        oenum = Orientation[orient]
+        oenum = xform.orient
         if oenum is Orientation.R0:
             lower, upper = self._lower_unit, self._upper_unit
         elif oenum is Orientation.MX:
@@ -707,10 +697,10 @@ class WireArray(object):
         elif oenum is Orientation.R180:
             lower, upper = -self._upper_unit, -self._lower_unit
         else:
-            raise ValueError('Unsupported orientation: %s' % orient)
+            raise ValueError('Unsupported orientation: ' + oenum.name)
 
-        delta = loc[0] if is_x else loc[1]
-        return WireArray(self.track_id.transform(grid, loc=loc, orient=orient),
+        delta = xform.x if is_x else xform.y
+        return WireArray(self.track_id.get_transform(xform, grid),
                          lower + delta, upper + delta)
 
 
@@ -816,32 +806,24 @@ class Port(object):
                 box = box.merge(geo.get_bbox_array(grid).get_overall_bbox())
         return box
 
-    def transform(self, grid, loc=(0, 0), orient='R0', unit_mode=True):
-        # type: (RoutingGrid, Tuple[int, int], str, bool) -> Port
+    def get_transform(self, xform: Transform, grid: RoutingGrid) -> Port:
         """Return a new transformed Port.
 
         Parameters
         ----------
+        xform : Transform
+            the transform object.
         grid : RoutingGrid
-            the RoutingGrid of this Port.
-        loc : Tuple[int, int]
-            the X/Y coordinate shift.
-        orient : str
-            the new orientation.
-        unit_mode: bool
-            deprecated parameter.
+            the RoutingGrid object.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         new_pin_dict = {}
         for lay, geo_list in self._pin_dict.items():
             new_geo_list = []
             for geo in geo_list:
                 if isinstance(geo, BBox):
-                    new_geo_list.append(geo.transform(loc=loc, orient=orient))
+                    new_geo_list.append(geo.get_transform(xform))
                 else:
-                    new_geo_list.append(geo.transform(grid, loc=loc, orient=orient))
+                    new_geo_list.append(geo.get_transform(xform, grid=grid))
             new_pin_dict[lay] = new_geo_list
 
         return Port(self._term_name, new_pin_dict, self._label)

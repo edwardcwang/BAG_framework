@@ -51,7 +51,7 @@ class PyLayInstance:
     @property
     def transformation(self) -> Transform:
         """Transform: The instance transformation object."""
-        return self._ref.transformation
+        return self._ref.xform
 
     @property
     def bound_box(self) -> BBox:
@@ -146,7 +146,7 @@ class PyLayInstance:
         dy : int
             the Y shift.
         """
-        self._ref.transformation.move_by(dx, dy)
+        self._ref.move_by(dx, dy)
 
     def transform(self, xform: Transform) -> None:
         """Transform the location of this instance.
@@ -156,7 +156,7 @@ class PyLayInstance:
         xform : Transform
             the transformation to apply to this instance.
         """
-        self._ref.transformation.transform_by(xform)
+        self._ref.transform(xform)
 
     def new_master_with(self, **kwargs: Any) -> None:
         """Change the master template of this instance.
@@ -171,9 +171,9 @@ class PyLayInstance:
             a dictionary of new parameter values.
         """
         self._master = self._master.new_template_with(**kwargs)
-        self._ref.update_master(self._master.layout_cellview)
+        self._ref.set_master(self._master.layout_cellview)
 
-    def transform_master_object(self, obj: T, row: int = 0, col: int = 0) -> T:
+    def transform_master_object(self, obj: T, row: int = 0, col: int = 0, **kwargs: Any) -> T:
         """Transforms the given object in instance master with respect to this instance's Transform object.
 
         Parameters
@@ -184,6 +184,8 @@ class PyLayInstance:
             the instance row index.  Index 0 is the bottom-most row.
         col : int
             the instance column index.  Index 0 is the left-most column.
+        **kwargs : Any
+            additional parameters needed by the get_transform() function.
 
         Returns
         -------
@@ -192,7 +194,7 @@ class PyLayInstance:
         """
         dx, dy = self.get_item_location(row=row, col=col)
         xform = self.transformation.get_move_by(dx, dy)
-        return obj.get_transform(xform)
+        return obj.get_transform(xform, **kwargs)
 
     def get_port(self, name: str = '', row: int = 0, col: int = 0) -> Port:
         """Returns the port object of the given instance in the array.
@@ -212,8 +214,7 @@ class PyLayInstance:
         port : Port
             the port object.
         """
-        # TODO: add get_transform() to Port
-        return self.transform_master_object(self._master.get_port(name), row, col)
+        return self.transform_master_object(self._master.get_port(name), row, col, grid=self._master.grid)
 
     def get_pin(self, name: str = '', row: int = 0, col: int = 0, layer: int = -1) -> Union[WireArray, BBox]:
         """Returns the first pin with the given name.
