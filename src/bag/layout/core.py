@@ -5,13 +5,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Tuple
+from typing import TYPE_CHECKING, Any, Tuple, TypeVar, Union, Iterable, List
 
-# noinspection PyUnresolvedReferences
-from pybag.core import PyLayInstRef, BBox
+from pybag.core import PyLayInstRef, BBox, Transform, BBoxArray
+
+from .routing.base import Port, WireArray
 
 if TYPE_CHECKING:
     from .template import TemplateBase
+
+T = TypeVar('T')
 
 
 class PyLayInstance:
@@ -31,53 +34,50 @@ class PyLayInstance:
         return self._ref.ny
 
     @property
-    def spx_unit(self) -> int:
+    def spx(self) -> int:
         """int: The column pitch."""
         return self._ref.spx
 
     @property
-    def spy_unit(self) -> int:
+    def spy(self) -> int:
         """int: The row pitch."""
         return self._ref.spy
 
     @property
     def master(self) -> TemplateBase:
-        """TemplateBase: the master of this instance."""
+        """TemplateBase: The master of this instance."""
         return self._master
 
     @property
-    def location_unit(self) -> Tuple[int, int]:
-        """Tuple[int, int]: The instance location"""
-        return self._ref.location
-
-    @property
-    def orientation(self) -> str:
-        """str: The instance orientation"""
-        return self._ref.orientation
+    def transformation(self) -> Transform:
+        """Transform: The instance transformation object."""
+        return self._ref.transformation
 
     @property
     def bound_box(self) -> BBox:
         """BBox: Returns the overall bounding box of this instance."""
-        return self._master.bound_box.tr
-        return self._translate_master_box_w_array(self._master.bound_box)
+        barr = BBoxArray(self._master.bound_box, nx=self.nx, ny=self.ny, spx=self.spx, spy=self.spy)
+        return barr.transform(self.transformation).get_overall_bbox()
 
     @property
-    def array_box(self):
+    def array_box(self) -> BBox:
         """Returns the array box of this instance."""
         master_box = getattr(self._master, 'array_box', None)  # type: BBox
         if master_box is None:
             raise ValueError('Master template array box is not defined.')
 
-        return self._translate_master_box_w_array(master_box)
+        barr = BBoxArray(master_box, nx=self.nx, ny=self.ny, spx=self.spx, spy=self.spy)
+        return barr.transform(self.transformation).get_overall_bbox()
 
     @property
-    def fill_box(self):
+    def fill_box(self) -> BBox:
         """Returns the fill box of this instance."""
         master_box = getattr(self._master, 'fill_box', None)  # type: BBox
         if master_box is None:
             raise ValueError('Master template fill box is not defined.')
 
-        return self._translate_master_box_w_array(master_box)
+        barr = BBoxArray(master_box, nx=self.nx, ny=self.ny, spx=self.spx, spy=self.spy)
+        return barr.transform(self.transformation).get_overall_bbox()
 
     @nx.setter
     def nx(self, val: int) -> None:
@@ -87,24 +87,15 @@ class PyLayInstance:
     def ny(self, val: int) -> None:
         self._ref.ny = val
 
-    @spx_unit.setter
-    def spx_unit(self, val: int) -> None:
+    @spx.setter
+    def spx(self, val: int) -> None:
         self._ref.spx = val
 
-    @spy_unit.setter
-    def spy_unit(self, val: int) -> None:
+    @spy.setter
+    def spy(self, val: int) -> None:
         self._ref.spy = val
 
-    @location_unit.setter
-    def location_unit(self, new_loc: Tuple[int, int]) -> None:
-        self._ref.location = new_loc
-
-    @orientation.setter
-    def orientation(self, val: str) -> None:
-        self._ref.orientation = val
-
-    def get_item_location(self, row=0, col=0, unit_mode=True):
-        # type: (int, int, bool) -> Tuple[int, int]
+    def get_item_location(self, row: int = 0, col: int = 0) -> Tuple[int, int]:
         """Returns the location of the given item in the array.
 
         Parameters
@@ -113,36 +104,40 @@ class PyLayInstance:
             the item row index.  0 is the bottom-most row.
         col : int
             the item column index.  0 is the left-most column.
-        unit_mode : bool
-            deprecated parameter.
 
         Returns
         -------
-        xo : Union[float, int]
+        xo : int
             the item X coordinate.
-        yo : Union[float, int]
+        yo : int
             the item Y coordinate.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
         if row < 0 or row >= self.ny or col < 0 or col >= self.nx:
             raise ValueError('Invalid row/col index: row=%d, col=%d' % (row, col))
 
-        return col * self.spx_unit, row * self.spy_unit
+        return col * self.spx, row * self.spy
 
-    def get_bound_box_of(self, row=0, col=0):
-        # type: (int, int) -> BBox
-        """Returns the bounding box of an instance in this mosaic."""
+    def get_bound_box_of(self, row: int = 0, col: int = 0) -> BBox:
+        """Returns the bounding box of an instance in this mosaic.
+
+        Parameters
+        ----------
+        row : int
+            the item row index.  0 is the bottom-most row.
+        col : int
+            the item column index.  0 is the left-most column.
+
+        Returns
+        -------
+        bbox : BBox
+            the bounding box.
+        """
         dx, dy = self.get_item_location(row=row, col=col)
-        cdef
-        BBox
-        box = self._master.bound_box
-        box = box.c_transform(self._ref.obj.xform)
+        box = self._master.bound_box.get_transform(self.transformation)
         return box.move_by(dx, dy)
 
-    def move_by(self, dx=0, dy=0, unit_mode=True):
-        # type: (int, int, bool) -> None
-        """Move this instance by the given amount.
+    def move_by(self, dx: int = 0, dy: int = 0) -> None:
+        """Moves this instance by the given amount.
 
         Parameters
         ----------
@@ -150,18 +145,20 @@ class PyLayInstance:
             the X shift.
         dy : int
             the Y shift.
-        unit_mode : bool
-            deprecated parameter.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-        if self._ref.parent == NULL:
-            raise ValueError('Cannot change object after commit')
+        self._ref.transformation.move_by(dx, dy)
 
-        self._ref.obj.xform.move_by(dx, dy)
+    def transform(self, xform: Transform) -> None:
+        """Transform the location of this instance.
 
-    def new_master_with(self, **kwargs):
-        # type: (Any) -> None
+        Parameters
+        ----------
+        xform : Transform
+            the transformation to apply to this instance.
+        """
+        self._ref.transformation.transform_by(xform)
+
+    def new_master_with(self, **kwargs: Any) -> None:
         """Change the master template of this instance.
 
         This method will get the old master template layout parameters, update
@@ -170,90 +167,40 @@ class PyLayInstance:
 
         Parameters
         ----------
-        **kwargs
+        **kwargs : Any
             a dictionary of new parameter values.
         """
         self._master = self._master.new_template_with(**kwargs)
-        self._update_inst_master(self._master.layout_cellview)
+        self._ref.update_master(self._master.layout_cellview)
 
-    def translate_master_box(self, BBox box
-
-        ):
-        # type: (BBox) -> BBox
-        """Transform the bounding box in master template.
+    def transform_master_object(self, obj: T, row: int = 0, col: int = 0) -> T:
+        """Transforms the given object in instance master with respect to this instance's Transform object.
 
         Parameters
         ----------
-        box : BBox
-            the BBox in master template coordinate.
+        obj : T
+            the object to transform.  Must have get_transform() method defined.
+        row : int
+            the instance row index.  Index 0 is the bottom-most row.
+        col : int
+            the instance column index.  Index 0 is the left-most column.
 
         Returns
         -------
-        new_box : BBox
-            the corresponding BBox in instance coordinate.
+        ans : T
+            the transformed object.
         """
-        return box.c_transform(self._ref.obj.xform)
+        dx, dy = self.get_item_location(row=row, col=col)
+        xform = self.transformation.get_move_by(dx, dy)
+        return obj.get_transform(xform)
 
-
-    def translate_master_location(self, mloc, unit_mode=True):
-        # type: (Tuple[int, int], bool) -> Tuple[int, int]
-        """Returns the actual location of the given point in master template.
-
-        Parameters
-        ----------
-        mloc : Tuple[int, int]
-            the location in master coordinate.
-        unit_mode : bool
-            deprecated parameter.
-
-        Returns
-        -------
-        loc : Tuple[int, int]
-            The actual location.
-        """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
-        cdef
-        coord_t
-        x = mloc[0]
-        cdef
-        coord_t
-        y = mloc[1]
-        self._ref.obj.xform.transform(x, y)
-
-        return x, y
-
-
-    def translate_master_track(self, layer_id, track_idx):
-        # type: (int, Union[float, int]) -> Union[float, int]
-        """Returns the actual track index of the given track in master template.
-
-        Parameters
-        ----------
-        layer_id : int
-            the layer ID.
-        track_idx : Union[float, int]
-            the track index.
-
-        Returns
-        -------
-        new_idx : Union[float, int]
-            the new track index.
-        """
-        dx, dy = self.location_unit
-        return self._grid.transform_track(layer_id, track_idx, dx=dx, dy=dy,
-                                          orient=self.orientation)
-
-
-    def get_port(self, name='', row=0, col=0):
-        # type: (Optional[str], int, int) -> Port
+    def get_port(self, name: str = '', row: int = 0, col: int = 0) -> Port:
         """Returns the port object of the given instance in the array.
 
         Parameters
         ----------
-        name : Optional[str]
-            the port terminal name.  If None or empty, check if this
+        name : str
+            the port terminal name.  If empty, check if this
             instance has only one port, then return it.
         row : int
             the instance row index.  Index 0 is the bottom-most row.
@@ -265,22 +212,17 @@ class PyLayInstance:
         port : Port
             the port object.
         """
-        dx, dy = self.get_item_location(row=row, col=col)
-        xshift, yshift = self.location_unit
-        loc = (xshift + dx, yshift + dy)
-        return self._master.get_port(name).transform(self._grid, loc=loc,
-                                                     orient=self.orientation)
+        # TODO: add get_transform() to Port
+        return self.transform_master_object(self._master.get_port(name), row, col)
 
-
-    def get_pin(self, name='', row=0, col=0, layer=-1):
-        # type: (Optional[str], int, int, int) -> Union[WireArray, BBox]
+    def get_pin(self, name: str = '', row: int = 0, col: int = 0, layer: int = -1) -> Union[WireArray, BBox]:
         """Returns the first pin with the given name.
 
         This is an efficient method if you know this instance has exactly one pin.
 
         Parameters
         ----------
-        name : Optional[str]
+        name : str
             the port terminal name.  If None or empty, check if this
             instance has only one port, then return it.
         row : int
@@ -298,14 +240,12 @@ class PyLayInstance:
         """
         return self.get_port(name, row, col).get_pins(layer)[0]
 
-
-    def port_pins_iter(self, name='', layer=-1):
-        # type: (Optional[str], int) -> Iterable[WireArray]
+    def port_pins_iter(self, name: str = '', layer: int = -1) -> Iterable[WireArray]:
         """Iterate through all pins of all ports with the given name in this instance array.
 
         Parameters
         ----------
-        name : Optional[str]
+        name : str
             the port terminal name.  If None or empty, check if this
             instance has only one port, then return it.
         layer : int
@@ -326,9 +266,7 @@ class PyLayInstance:
                 for warr in port.get_pins(layer):
                     yield warr
 
-
-    def get_all_port_pins(self, name='', layer=-1):
-        # type: (Optional[str], int) -> List[WireArray]
+    def get_all_port_pins(self, name: str = '', layer: int = -1) -> List[WireArray]:
         """Returns a list of all pins of all ports with the given name in this instance array.
 
         This method gathers ports from all instances in this array with the given name,
@@ -336,7 +274,7 @@ class PyLayInstance:
 
         Parameters
         ----------
-        name : Optional[str]
+        name : str
             the port terminal name.  If None or empty, check if this
             instance has only one port, then return it.
         layer : int
@@ -350,9 +288,7 @@ class PyLayInstance:
         """
         return list(self.port_pins_iter(name=name, layer=layer))
 
-
-    def port_names_iter(self):
-        # type: () -> Iterable[str]
+    def port_names_iter(self) -> Iterable[str]:
         """Iterates over port names in this instance.
 
         Yields
@@ -362,27 +298,23 @@ class PyLayInstance:
         """
         return self._master.port_names_iter()
 
-
-    def has_port(self, port_name):
-        # type: (str) -> bool
+    def has_port(self, port_name: str) -> bool:
         """Returns True if this instance has the given port."""
         return self._master.has_port(port_name)
 
-
-    def has_prim_port(self, port_name):
-        # type: (str) -> bool
+    def has_prim_port(self, port_name: str) -> bool:
         """Returns True if this instance has the given primitive port."""
         return self._master.has_prim_port(port_name)
 
-
-    def commit(self):
-        if self._grid.tech_info.use_flip_parity():
+    def commit(self) -> None:
+        grid = self._master.grid
+        if grid.tech_info.use_flip_parity():
             # update track parity
             top_layer = self._master.top_layer
-            bot_layer = self._grid.get_bot_common_layer(self._master.grid, top_layer)
-            fp_dict = self._grid.get_flip_parity_at(bot_layer, top_layer, self.location_unit,
-                                                    self.orientation)
+            bot_layer = grid.get_bot_common_layer(self._master.grid, top_layer)
+            # TODO: update get_flip_parity_at() to accept Transform object
+            fp_dict = grid.get_flip_parity_at(bot_layer, top_layer, self.transformation)
             self.new_master_with(flip_parity=fp_dict)
 
-        self._dep_set.add(self._master.key)
+        self._parent.add_child_key(self._master.key)
         self._ref.commit()
