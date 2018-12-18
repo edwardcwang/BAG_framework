@@ -5,7 +5,7 @@
 
 from typing import TYPE_CHECKING, Sequence, Union, Tuple, List, Optional, Dict, Any
 
-from pybag.core import BBox
+from pybag.core import BBox, Transform
 from pybag.enum import Orientation, Orient2D
 
 from bag.util.search import BinaryIterator
@@ -14,7 +14,7 @@ from bag.math import lcm
 from .base import HalfInt
 
 if TYPE_CHECKING:
-    from bag.layout.core import TechInfo
+    from bag.layout.tech import TechInfo
     from bag.typing import TrackType
 
 
@@ -157,14 +157,7 @@ class RoutingGrid(object):
 
         return my_bot_layer
 
-    def get_flip_parity_at(self,  # type: RoutingGrid
-                           bot_layer,  # type: int
-                           top_layer,  # type: int
-                           loc,  # type: Tuple[int, int]
-                           orient,  # type: str
-                           unit_mode=True,  # type: bool
-                           ):
-        # type: (...) -> Dict[int, Tuple[int, int]]
+    def get_flip_parity_at(self, bot_layer: int, top_layer: int, xform: Transform) -> Dict[int, Tuple[int, int]]:
         """Compute the flip parity dictionary for an instance placed at the given location.
 
         Parameters
@@ -173,24 +166,20 @@ class RoutingGrid(object):
             the bottom layer ID, inclusive.
         top_layer : int
             the top layer ID, inclusive.
-        loc : Tuple[int, int]
-            the instance origin location.
-        orient : str
-            the instance orientation.
-        unit_mode : bool
-            Deprecated parameter.
+        xform : Transform
+            the transformation object.
+
 
         Returns
         -------
         flip_parity : Dict[int, Tuple[int, int]]
             the flip_parity dictionary.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported')
 
-        xo, yo = loc
+        xo = xform.x
+        yo = xform.y
+        oenum = xform.orient
 
-        oenum = Orientation[orient]
         if oenum is Orientation.R0:
             xscale, yscale = 1, 1
         elif oenum is Orientation.MX:
@@ -200,7 +189,7 @@ class RoutingGrid(object):
         elif oenum is Orientation.R180:
             xscale, yscale = -1, -1
         else:
-            raise ValueError('Unknown orientation: %s' % orient)
+            raise ValueError('Unsupported orientation: ' + oenum.name)
 
         flip_par = {}
         for lay in range(bot_layer, top_layer + 1):
