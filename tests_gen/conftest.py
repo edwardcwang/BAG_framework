@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from bag.core import create_tech_info
+from bag.layout.routing.grid import RoutingGrid
 
 
 def pytest_assertrepr_compare(op, left, right):

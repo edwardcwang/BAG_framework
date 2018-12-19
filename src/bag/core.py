@@ -427,16 +427,20 @@ class Testbench(object):
         return self.save_dir
 
 
-def create_tech_info(bag_config_path=''):
-    # type: (str) -> TechInfo
-    """Create TechInfo object."""
+def get_tech_params(bag_config_path: str) -> Dict[str, Any]:
     if not bag_config_path:
         bag_config_path = os.environ.get('BAG_CONFIG_PATH', '')
         if not bag_config_path:
             raise ValueError('Environment variable BAG_CONFIG_PATH not defined.')
 
     bag_config = _parse_yaml_file(bag_config_path)
-    tech_params = _parse_yaml_file(bag_config['tech_config_path'])
+    return _parse_yaml_file(bag_config['tech_config_path'])
+
+
+def create_tech_info(bag_config_path: str = '') -> TechInfo:
+    """Create TechInfo object."""
+    tech_params = get_tech_params(bag_config_path)
+
     if 'class' in tech_params:
         tech_cls = _import_class_from_str(tech_params['class'])
         tech_info = tech_cls(tech_params)
@@ -446,6 +450,14 @@ def create_tech_info(bag_config_path=''):
         tech_info = DummyTechInfo(tech_params)
 
     return tech_info
+
+
+def create_routing_grid(bag_config_path: str = '') -> RoutingGrid:
+    """Create TechInfo object."""
+    grid_params = get_tech_params(bag_config_path)['routing_grid']
+
+    tech_info = create_tech_info(bag_config_path=bag_config_path)
+    return RoutingGrid(tech_info, **grid_params)
 
 
 def get_netlist_setup_file(tech_dir=''):
