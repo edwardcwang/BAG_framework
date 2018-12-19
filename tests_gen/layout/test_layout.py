@@ -33,12 +33,16 @@ def get_master(temp_db: TemplateDB, lay_design_params: Dict[str, Any]) -> Templa
 @pytest.mark.parametrize("output_type", [
     DesignOutput.GDS,
 ])
-def test_design(temp_db: TemplateDB,
+def test_layout(temp_db: TemplateDB,
                 lay_design_params: Dict[str, Any],
                 output_type: DesignOutput,
                 gen_output: bool,
                 ) -> None:
     """Test design() method of each schematic generator."""
+    if lay_design_params is None:
+        # no layout tests
+        return
+
     extension = get_extension(output_type)
 
     base = 'out'

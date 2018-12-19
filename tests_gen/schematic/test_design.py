@@ -39,6 +39,10 @@ def test_design(tmpdir,
                 gen_output: bool,
                 ) -> None:
     """Test design() method of each schematic generator."""
+    if sch_design_params is None:
+        # No schematic tests
+        return
+
     extension = get_extension(output_type)
 
     if is_model_type(output_type):

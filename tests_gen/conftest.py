@@ -112,7 +112,7 @@ def setup_test_data(metafunc, data_name: str, data_type: str) -> None:
     for pkg in pkg_iter:
         cur_dir = root_dir / pkg / data_type
         if not cur_dir.is_dir():
-            raise ValueError('Data directory {} is not a directory'.format(cur_dir))
+            continue
 
         for p in cur_dir.iterdir():
             if p.is_dir():
@@ -129,8 +129,8 @@ def setup_test_data(metafunc, data_name: str, data_type: str) -> None:
                         content['{}_{}'.format(fpath.stem, fpath.suffix[1:])] = str(
                             fpath.absolute())
                 data.append(content)
-
-    metafunc.parametrize(data_name, data, indirect=True, ids=get_test_data_id)
+    if data:
+        metafunc.parametrize(data_name, data, indirect=True, ids=get_test_data_id)
 
 
 def pytest_generate_tests(metafunc):
@@ -153,9 +153,9 @@ def tech_info():
 
 @pytest.fixture
 def sch_design_params(request):
-    return request.param
+    return request.param if hasattr(request, 'param') else None
 
 
 @pytest.fixture
 def lay_design_params(request):
-    return request.param
+    return request.param if hasattr(request, 'param') else None

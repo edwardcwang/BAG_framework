@@ -20,14 +20,13 @@ from .interface import ZMQDealer
 from .interface.database import DbAccess
 from .layout.routing.grid import RoutingGrid
 from .layout.template import TemplateDB
-from .layout.tech import DummyTechInfo
+from .layout.tech import DummyTechInfo, TechInfo
 from .io import read_file, sim_data
 from .concurrent.core import batch_async_task
 
 if TYPE_CHECKING:
     from .interface.simulator import SimAccess
     from .layout.template import TemplateBase
-    from .layout.tech import TechInfo
     from .design.module import Module
     from .design.database import ModuleDB
 
