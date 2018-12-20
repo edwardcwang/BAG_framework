@@ -3,6 +3,8 @@
 """This module defines layout template classes.
 """
 
+from __future__ import annotations
+
 from typing import (
     TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, Optional, Tuple, Iterable,
     Sequence, Generator, cast
@@ -19,19 +21,17 @@ from bag.util.interval import IntervalSet
 from ..io import get_encoding, open_file
 from .routing.base import Port, TrackID, WireArray
 
-# try to import cython modules
 from pybag.enum import (
     Orientation, PathStyle, BlockageType, BoundaryType, GeometryMode, DesignOutput
 )
-# noinspection PyUnresolvedReferences
-from pybag.core import BBox, BBoxArray
+from pybag.core import BBox, BBoxArray, PyLayCellView
 
 if TYPE_CHECKING:
     from bag.core import BagProject
     from .routing.grid import RoutingGrid
     from bag.typing import TrackType, SizeType
     from pybag.core import PyPath, PyBlockage, PyBoundary
-    from pybag.core import PyLayCellView, PyLayInstance, PyRect, PyVia
+    from pybag.core import PyRect, PyVia
     from pybag.core import PyPolygon90, PyPolygon45, PyPolygon
 
     GeoType = Union[PyRect, PyPolygon90, PyPolygon45, PyPolygon]
@@ -148,12 +148,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             self._grid.set_flip_parity(fp_dict)
 
         # create Cython wrapper object
-        self._layout = PyLayCellView(self._grid.tech_info.pybag_tech, self.cell_name,
-                                     get_encoding())
+        self._layout = PyLayCellView(self._grid.tech_info.pybag_tech, self.cell_name)
 
     @abc.abstractmethod
-    def draw_layout(self):
-        # type: () -> None
+    def draw_layout(self) -> None:
         """Draw the layout of this template.
 
         Override this method to create the layout.
@@ -162,8 +160,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         pass
 
-    def get_master_basename(self):
-        # type: () -> str
+    def get_master_basename(self) -> str:
         """Returns the base name to use for this instance.
 
         Returns
@@ -173,8 +170,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self.get_layout_basename()
 
-    def get_layout_basename(self):
-        # type: () -> str
+    def get_layout_basename(self) -> str:
         """Returns the base name for this template.
 
         Returns
@@ -184,8 +180,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self.__class__.__name__
 
-    def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
-        # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
+    def get_content(self, output_type: DesignOutput, rename_dict: Dict[str, str],
+                    name_prefix: str, name_suffix: str) -> Tuple[str, Any]:
         if not self.finalized:
             raise ValueError('This template is not finalized yet')
 
@@ -193,8 +189,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                           name_prefix, name_suffix)
         return name_prefix + cell_name + name_suffix, self._layout
 
-    def finalize(self):
-        # type: () -> None
+    def finalize(self) -> None:
         """Finalize this master instance.
         """
         # create layout
@@ -212,7 +207,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 for wire_arr_list in pin_dict.values():
                     for wire_arr in wire_arr_list:  # type: WireArray
                         for layer_name, bbox in wire_arr.wire_iter(self.grid):
-                            self._layout.add_pin(net_name, layer_name, bbox, label)
+                            self._layout.add_pin(layer_name, net_name, label, bbox)
             self._ports[net_name] = Port(net_name, pin_dict, label)
 
         # construct primitive port objects
@@ -223,74 +218,62 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 label = port_params['label']
                 for layer_name, box_list in pin_dict.items():
                     for box in box_list:
-                        self._layout.add_pin(net_name, layer_name, box, label)
+                        self._layout.add_pin(layer_name, net_name, label, box)
             self._ports[net_name] = Port(net_name, pin_dict, label)
 
         # call super finalize routine
         DesignMaster.finalize(self)
 
     @property
-    def template_db(self):
-        # type: () -> TemplateDB
-        """Returns the template database object"""
+    def template_db(self) -> TemplateDB:
+        """TemplateDB: The template database object"""
         # noinspection PyTypeChecker
         return self.master_db
 
     @property
-    def is_empty(self):
-        # type: () -> bool
-        """Returns True if this template is empty."""
+    def is_empty(self) -> bool:
+        """bool: True if this template is empty."""
         return self._layout.is_empty
 
     @property
-    def grid(self):
-        # type: () -> RoutingGrid
-        """Returns the RoutingGrid object"""
+    def grid(self) -> RoutingGrid:
+        """RoutingGrid: The RoutingGrid object"""
         return self._grid
 
     @grid.setter
-    def grid(self, new_grid):
-        # type: (RoutingGrid) -> None
-        """Change the RoutingGrid of this template."""
+    def grid(self, new_grid: RoutingGrid) -> None:
         if not self._finalized:
             self._grid = new_grid
         else:
             raise RuntimeError('Template already finalized.')
 
     @property
-    def array_box(self):
-        # type: () -> Optional[BBox]
-        """Returns the array/abutment bounding box of this template."""
+    def array_box(self) -> Optional[BBox]:
+        """Optional[BBox]: The array/abutment bounding box of this template."""
         return self._array_box
 
     @array_box.setter
-    def array_box(self, new_array_box):
-        # type: (BBox) -> None
-        """Sets the array/abutment bound box of this template."""
+    def array_box(self, new_array_box: BBox) -> None:
         if not self._finalized:
             self._array_box = new_array_box
         else:
             raise RuntimeError('Template already finalized.')
 
     @property
-    def fill_box(self):
-        # type: () -> Optional[BBox]
-        """Returns the dummy fill bounding box of this template."""
+    def fill_box(self) -> Optional[BBox]:
+        """Optional[BBox]: The dummy fill bounding box of this template."""
         return self._fill_box
 
     @fill_box.setter
-    def fill_box(self, new_box):
-        # type: (BBox) -> None
-        """Sets the array/abutment bound box of this template."""
+    def fill_box(self, new_box: BBox) -> None:
         if not self._finalized:
             self._fill_box = new_box
         else:
             raise RuntimeError('Template already finalized.')
 
     @property
-    def top_layer(self):
-        # type: () -> int
-        """Returns the top layer used in this template."""
+    def top_layer(self) -> int:
+        """int: The top layer ID used in this template."""
         if self.size is None:
             if self.prim_top_layer is None:
                 raise Exception('Both size and prim_top_layer are unset.')
@@ -298,15 +281,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self.size[0]
 
     @property
-    def size(self):
-        # type: () -> Optional[SizeType]
-        """The size of this template, in (layer, num_x_block,  num_y_block) format."""
+    def size(self) -> Optional[SizeType]:
+        """Optional[SizeType]: The size of this template, in (layer, num_x_block,  num_y_block) format."""
         return self._size
 
     @property
-    def bound_box(self):
-        # type: () -> Optional[BBox]
-        """Returns the BBox with the size of this template.  None if size not set yet."""
+    def bound_box(self) -> Optional[BBox]:
+        """Optional[BBox]: Returns the BBox with the size of this template.  None if size not set yet."""
         mysize = self.size
         if mysize is None:
             if self.prim_bound_box is None:
@@ -317,22 +298,18 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return BBox(0, 0, wblk, hblk)
 
     @size.setter
-    def size(self, new_size):
-        # type: (SizeType) -> None
-        """Sets the size of this template."""
+    def size(self, new_size: SizeType) -> None:
         if not self._finalized:
             self._size = new_size
         else:
             raise RuntimeError('Template already finalized.')
 
     @property
-    def layout_cellview(self):
-        # type: () -> PyLayCellView
-        """Returns the internal layout object."""
+    def layout_cellview(self) -> PyLayCellView:
+        """PyLayCellView: The internal layout object."""
         return self._layout
 
-    def set_geometry_mode(self, mode):
-        # type: (GeometryMode) -> None
+    def set_geometry_mode(self, mode: GeometryMode) -> None:
         """Sets the geometry mode of this layout.
 
         Parameters
@@ -342,8 +319,27 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         self._layout.set_geometry_mode(mode.value)
 
-    def get_rect_bbox(self, layer):
-        # type: (LayerType) -> BBox
+    @staticmethod
+    def get_layer_purpose(layer: LayerType) -> Tuple[str, str]:
+        """Get layer/purpose pair.
+
+        Parameters
+        ----------
+        layer : LayerType
+            the layer/purpose tuple, or the layer string.
+
+        Returns
+        -------
+        lay : str
+            the layer name.
+        purp : str
+            the purpose name.  Empty string if not specified.
+        """
+        if isinstance(layer, str):
+            return layer, ''
+        return layer
+
+    def get_rect_bbox(self, layer: LayerType) -> BBox:
         """Returns the overall bounding box of all rectangles on the given layer.
 
         Note: currently this does not check primitive instances or vias.
@@ -358,10 +354,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         box : BBox
             the overall bounding box of the given layer.
         """
-        return self._layout.get_rect_bbox(layer)
+        lay, purp = self.get_layer_purpose(layer)
+        return self._layout.get_rect_bbox(lay, purp)
 
-    def new_template_with(self, **kwargs):
-        # type: (Any) -> TemplateBase
+    def new_template_with(self, **kwargs: Any) -> TemplateBase:
         """Create a new template with the given parameters.
 
         This method will update the parameter values with the given dictionary,
@@ -369,8 +365,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        **kwargs
+        **kwargs : Any
             a dictionary of new parameter values.
+
+        Returns
+        -------
+        new_temp : TemplateBase
+            A new layout master object.
         """
         # get new parameter dictionary.
         new_params = copy.deepcopy(self.params)
@@ -381,9 +382,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self.template_db.new_template(params=new_params, temp_cls=self.__class__,
                                              grid=self._parent_grid)
 
-    def set_size_from_bound_box(self, top_layer_id, bbox, round_up=False,
-                                half_blk_x=True, half_blk_y=True):
-        # type: (int, BBox, bool, bool, bool) -> None
+    def set_size_from_bound_box(self, top_layer_id: int, bbox: BBox, round_up: bool = False,
+                                half_blk_x: bool = True, half_blk_y: bool = True):
         """Compute the size from overall bounding box.
 
         Parameters
@@ -401,15 +401,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         grid = self.grid
 
-        if bbox.left_unit != 0 or bbox.bottom_unit != 0:
+        if bbox.xl != 0 or bbox.yl != 0:
             raise ValueError('lower-left corner of overall bounding box must be (0, 0).')
 
-        self.size = grid.get_size_tuple(top_layer_id, bbox.width_unit, bbox.height_unit,
-                                        round_up=round_up, half_blk_x=half_blk_x,
-                                        half_blk_y=half_blk_y)
+        self.size = grid.get_size_tuple(top_layer_id, bbox.w, bbox.h, round_up=round_up,
+                                        half_blk_x=half_blk_x, half_blk_y=half_blk_y)
 
-    def set_size_from_array_box(self, top_layer_id):
-        # type: (int) -> None
+    def set_size_from_array_box(self, top_layer_id: int) -> None:
         """Automatically compute the size from array_box.
 
         Assumes the array box is exactly in the center of the template.
@@ -425,19 +423,19 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if array_box is None:
             raise ValueError("array_box is not set")
 
-        dx = array_box.left_unit
-        dy = array_box.bottom_unit
+        dx = array_box.xl
+        dy = array_box.yl
         if dx < 0 or dy < 0:
             raise ValueError('lower-left corner of array box must be in first quadrant.')
 
         self.size = grid.get_size_tuple(top_layer_id, 2 * dx + self.array_box.width_unit,
                                         2 * dy + self.array_box.height_unit)
 
-    def write_summary_file(self, fname, lib_name, cell_name):
-        # type: (str, str, str) -> None
+    def write_summary_file(self, fname: str, lib_name: str, cell_name: str) -> None:
         """Create a summary file for this template layout."""
         # get all pin information
         pin_dict = {}
+        res = self.grid.resolution
         for port_name in self.port_names_iter():
             pin_cnt = 0
             port = self.get_port(port_name)
@@ -451,21 +449,20 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     pin_dict[pin_name] = dict(
                         layer=[layer_name, self._grid.tech_info.pybag_tech.pin_purpose],
                         netname=port_name,
-                        xy0=[bbox.left, bbox.bottom],
-                        xy1=[bbox.right, bbox.top],
+                        xy0=[bbox.xl * res, bbox.yl * res],
+                        xy1=[bbox.xh * res, bbox.yh * res],
                     )
 
         # get size information
         bnd_box = self.bound_box
         if bnd_box is None:
             raise ValueError("bound_box is not set")
-        res = self.grid.resolution
         info = {
             lib_name: {
                 cell_name: dict(
                     pins=pin_dict,
                     xy0=[0.0, 0.0],
-                    xy1=[bnd_box.width_unit * res, bnd_box.height_unit * res],
+                    xy1=[bnd_box.w * res, bnd_box.h * res],
                 ),
             },
         }
@@ -473,8 +470,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         with open_file(fname, 'w') as f:
             yaml.dump(info, f)
 
-    def get_pin_name(self, name):
-        # type: (str) -> str
+    def get_pin_name(self, name: str) -> str:
         """Get the actual name of the given pin from the renaming dictionary.
 
         Given a pin name, If this Template has a parameter called 'rename_dict',
@@ -493,8 +489,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         rename_dict = self.params.get('rename_dict', {})
         return rename_dict.get(name, name)
 
-    def get_port(self, name=''):
-        # type: (str) -> Port
+    def get_port(self, name: str = '') -> Port:
         """Returns the port object with the given name.
 
         Parameters
@@ -514,24 +509,21 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             name = next(iter(self._ports))
         return self._ports[name]
 
-    def has_port(self, port_name):
-        # type: (str) -> bool
+    def has_port(self, port_name: str) -> bool:
         """Returns True if this template has the given port."""
         return port_name in self._ports
 
-    def port_names_iter(self):
-        # type: () -> Iterable[str]
+    def port_names_iter(self) -> Iterable[str]:
         """Iterates over port names in this template.
 
         Yields
         ------
-        port_name : string
+        port_name : str
             name of a port in this template.
         """
         return self._ports.keys()
 
-    def get_prim_port(self, name=''):
-        # type: (str) -> Port
+    def get_prim_port(self, name: str = '') -> Port:
         """Returns the primitive port object with the given name.
 
         Parameters
@@ -551,13 +543,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             name = next(iter(self._ports))
         return self._prim_ports[name]
 
-    def has_prim_port(self, port_name):
-        # type: (str) -> bool
+    def has_prim_port(self, port_name: str) -> bool:
         """Returns True if this template has the given primitive port."""
         return port_name in self._prim_ports
 
-    def prim_port_names_iter(self):
-        # type: () -> Iterable[str]
+    def prim_port_names_iter(self) -> Iterable[str]:
         """Iterates over primitive port names in this template.
 
         Yields
@@ -567,18 +557,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self._prim_ports.keys()
 
-    def new_template(self, params=None, temp_cls=None, debug=False, **kwargs):
-        # type: (Dict[str, Any], Type[TemplateType], bool, **Any) -> TemplateType
+    def new_template(self, temp_cls: Type[TemplateType], params: Optional[Dict[str, Any]] = None,
+                     **kwargs: Any) -> TemplateType:
         """Create a new template.
 
         Parameters
         ----------
-        params : Dict[str, Any]
-            the parameter dictionary.
         temp_cls : Type[TemplateType]
             the template class to instantiate.
-        debug : bool
-            True to print debug messages.
+        params : Optional[Dict[str, Any]]
+            the parameter dictionary.
         **kwargs : Any
             optional template parameters.
 
@@ -588,11 +576,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the new template instance.
         """
         kwargs['grid'] = self.grid
-        return self.template_db.new_template(params=params, temp_cls=temp_cls, debug=debug,
-                                             **kwargs)
+        return self.template_db.new_template(params=params, temp_cls=temp_cls, **kwargs)
 
-    def move_all_by(self, dx=0, dy=0, unit_mode=True):
-        # type: (int, int, bool) -> None
+    def move_all_by(self, dx: int = 0, dy: int = 0) -> None:
         """Move all layout objects Except pins in this layout by the given amount.
 
         Note: this method invalidates all WireArray objects and non-primitive pins.
@@ -603,8 +589,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the X shift.
         dy : int
             the Y shift.
-        unit_mode : bool
-            deprecated parameter.
         """
         # TODO: Implement this
         raise ValueError("Not implemented")
