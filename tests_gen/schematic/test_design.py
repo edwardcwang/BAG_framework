@@ -87,9 +87,9 @@ def test_design(tmpdir,
         actual = f.read()
 
     if gen_output:
-        dir_name = pathlib.Path('pytest_output') / sch_design_params['test_id']
+        dir_name = pathlib.Path('pytest_output') / sch_design_params['test_output_dir']
         out_fname = dir_name / (base + '.' + extension)
-        dir_name.mkdir(exist_ok=True)
+        dir_name.mkdir(parents=True, exist_ok=True)
         with out_fname.open('w') as f:
             f.write(actual)
         expect = actual

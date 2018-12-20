@@ -9,7 +9,6 @@ import pytest
 import yaml
 
 from bag.core import create_tech_info
-from bag.layout.routing.grid import RoutingGrid
 
 
 def pytest_assertrepr_compare(op, left, right):
@@ -122,6 +121,7 @@ def setup_test_data(metafunc, data_name: str, data_type: str) -> None:
                     content = yaml.load(f)
                 # inject fields
                 content['test_id'] = pkg + '__' + test_id
+                content['test_output_dir'] = str(pathlib.Path(pkg) / data_type / test_id)
                 content['lib_name'] = pkg
                 content['cell_name'] = test_id.rsplit('_', maxsplit=1)[0]
                 for fpath in p.iterdir():
