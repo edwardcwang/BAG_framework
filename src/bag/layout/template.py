@@ -18,13 +18,14 @@ import yaml
 
 from bag.util.cache import DesignMaster, MasterDB
 from bag.util.interval import IntervalSet
+from .core import PyLayInstance
 from ..io import get_encoding, open_file
 from .routing.base import Port, TrackID, WireArray
 
 from pybag.enum import (
     Orientation, PathStyle, BlockageType, BoundaryType, GeometryMode, DesignOutput
 )
-from pybag.core import BBox, BBoxArray, PyLayCellView
+from pybag.core import BBox, BBoxArray, PyLayCellView, Transform, PyLayInstRef
 
 if TYPE_CHECKING:
     from bag.core import BagProject
@@ -319,43 +320,24 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         self._layout.set_geometry_mode(mode.value)
 
-    @staticmethod
-    def get_layer_purpose(layer: LayerType) -> Tuple[str, str]:
-        """Get layer/purpose pair.
-
-        Parameters
-        ----------
-        layer : LayerType
-            the layer/purpose tuple, or the layer string.
-
-        Returns
-        -------
-        lay : str
-            the layer name.
-        purp : str
-            the purpose name.  Empty string if not specified.
-        """
-        if isinstance(layer, str):
-            return layer, ''
-        return layer
-
-    def get_rect_bbox(self, layer: LayerType) -> BBox:
+    def get_rect_bbox(self, layer: str, purpose: str = '') -> BBox:
         """Returns the overall bounding box of all rectangles on the given layer.
 
         Note: currently this does not check primitive instances or vias.
 
         Parameters
         ----------
-        layer : LayerType
+        layer : str
             the layer name.
+        purpose : str
+            the purpose name.
 
         Returns
         -------
         box : BBox
             the overall bounding box of the given layer.
         """
-        lay, purp = self.get_layer_purpose(layer)
-        return self._layout.get_rect_bbox(lay, purp)
+        return self._layout.get_rect_bbox(layer, purpose)
 
     def new_template_with(self, **kwargs: Any) -> TemplateBase:
         """Create a new template with the given parameters.
@@ -593,19 +575,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # TODO: Implement this
         raise ValueError("Not implemented")
 
-    def add_instance(self,  # type: TemplateBase
-                     master,  # type: TemplateBase
-                     inst_name=None,  # type: Optional[str]
-                     loc=(0, 0),  # type: PointType
-                     orient='R0',  # type: str
-                     nx=1,  # type: int
-                     ny=1,  # type: int
-                     spx=0,  # type: CoordType
-                     spy=0,  # type: CoordType
-                     unit_mode=True,  # type: bool
-                     commit=True,  # type: bool
-                     ):
-        # type: (...) -> PyLayInstance
+    def add_instance(self,
+                     master: TemplateBase,
+                     inst_name: str = '',
+                     xform: Optional[Transform] = None,
+                     nx: int = 1,
+                     ny: int = 1,
+                     spx: int = 0,
+                     spy: int = 0,
+                     commit: bool = True,
+                     ) -> PyLayInstance:
         """Adds a new (arrayed) instance to layout.
 
         Parameters
@@ -615,10 +594,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         inst_name : Optional[str]
             instance name.  If None or an instance with this name already exists,
             a generated unique name is used.
-        loc : PointType
-            instance location.
-        orient : str
-            instance orientation.  Defaults to 'R0'.
+        xform : Optional[Transform]
+            the transformation object.
         nx : int
             number of columns.  Must be positive integer.
         ny : int
@@ -627,8 +604,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             column pitch.  Used for arraying given instance.
         spy : CoordType
             row pitch.  Used for arraying given instance.
-        unit_mode : bool
-            deprecated parameter.
         commit : bool
             True to commit the object immediately.
 
@@ -637,28 +612,26 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         inst : PyLayInstance
             the added instance.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
+        if xform is None:
+            xform = Transform()
 
-        return self._layout.add_instance(self.grid, self.children, master, self.lib_name,
-                                         inst_name, loc[0], loc[1], Orientation[orient].value,
-                                         nx, ny, spx, spy, commit=commit)
+        ref = self._layout.add_instance(master.layout_cellview, inst_name, xform, nx, ny, spx, spy, commit)
+        return PyLayInstance(self, master, ref)
 
-    def add_instance_primitive(self,  # type: TemplateBase
-                               lib_name,  # type: str
-                               cell_name,  # type: str
-                               loc,  # type: PointType
-                               view_name='layout',  # type: str
-                               inst_name=None,  # type: Optional[str]
-                               orient='R0',  # type: str
-                               nx=1,  # type: int
-                               ny=1,  # type: int
-                               spx=0,  # type: CoordType
-                               spy=0,  # type: CoordType
-                               params=None,  # type: Optional[Dict[str, Any]]
-                               **kwargs  # type: Any
-                               ):
-        # type: (...) -> None
+    def add_instance_primitive(self,
+                               lib_name: str,
+                               cell_name: str,
+                               xform: Optional[Transform] = None,
+                               view_name: str = 'layout',
+                               inst_name: str = '',
+                               nx: int = 1,
+                               ny: int = 1,
+                               spx: int = 0,
+                               spy: int = 0,
+                               params: Optional[Dict[str, Any]] = None,
+                               commit: bool = True,
+                               **kwargs: Any,
+                               ) -> PyLayInstRef:
         """Adds a new (arrayed) primitive instance to layout.
 
         Parameters
@@ -667,15 +640,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             instance library name.
         cell_name : str
             instance cell name.
-        loc : PointType
-            instance location.
+        xform : Optional[Transform]
+            the transformation object.
         view_name : str
             instance view name.  Defaults to 'layout'.
         inst_name : Optional[str]
             instance name.  If None or an instance with this name already exists,
             a generated unique name is used.
-        orient : str
-            instance orientation.  Defaults to "R0"
         nx : int
             number of columns.  Must be positive integer.
         ny : int
@@ -686,31 +657,44 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             row pitch.  Used for arraying given instance.
         params : Optional[Dict[str, Any]]
             the parameter dictionary.  Used for adding pcell instance.
-        **kwargs
+        commit : bool
+            True to commit the object immediately.
+        **kwargs : Any
             additional arguments.  Usually implementation specific.
+
+        Returns
+        -------
+        ref : PyLayInstRef
+            A reference to the primitive instance.
         """
         if not params:
             params = kwargs
         else:
             params.update(kwargs)
+        if xform is None:
+            xform = Transform()
 
-        self._layout.add_prim_instance(lib_name, cell_name, view_name, inst_name, params, loc[0],
-                                       loc[1], Orientation[orient].value, nx, ny, spx, spy)
+        # TODO: support pcells
+        if params:
+            raise ValueError("layout pcells not supported yet; see developer")
 
-    def is_horizontal(self, layer):
-        # type: (LayerType) -> bool
-        layer_name = layer if isinstance(layer, str) else layer[0]
-        lay_id = self._grid.tech_info.get_layer_id(layer_name)
+        return self._layout.add_prim_instance(lib_name, cell_name, view_name, inst_name, xform,
+                                              nx, ny, spx, spy, commit)
+
+    def is_horizontal(self, layer: str) -> bool:
+        """Returns True if the given layer has no direction or is horizontal."""
+        lay_id = self._grid.tech_info.get_layer_id(layer)
         return (lay_id is None) or self._grid.is_horizontal(lay_id)
 
-    def add_rect(self, layer, bbox, commit=True):
-        # type: (LayerType, BBox, bool) -> PyRect
+    def add_rect(self, layer: str, purpose: str, bbox: BBox, commit: bool = True) -> PyRect:
         """Add a new rectangle.
 
         Parameters
         ----------
-        layer: LayerType
-            the layer name, or the (layer, purpose) pair.
+        layer: str
+            the layer name.
+        purpose: str
+            the purpose name.
         bbox : BBox
             the rectangle bounding box.
         commit : bool
@@ -721,31 +705,23 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         rect : PyRect
             the added rectangle.
         """
-        return self._layout.add_rect(layer, bbox, self.is_horizontal(layer), commit=commit)
+        return self._layout.add_rect(layer, purpose, self.is_horizontal(layer), bbox, commit=commit)
 
-    def add_rect_arr(self, layer, bbox, nx=1, ny=1, spx=0, spy=0):
-        # type: (LayerType, BBox, int, int, CoordType, CoordType) -> None
-        """Add a new rectangle.
+    def add_rect_arr(self, layer: str, purpose: str, barr: BBoxArray) -> None:
+        """Add a new rectangle array.
 
         Parameters
         ----------
-        layer: LayerType
-            the layer name, or the (layer, purpose) pair.
-        bbox : BBox
-            the rectangle bounding box.
-        nx : int
-            number of columns.
-        ny : int
-            number of rows.
-        spx : int
-            column pitch.
-        spy : int
-            row pitch.
+        layer: str
+            the layer name.
+        purpose: str
+            the purpose name.
+        barr : BBoxArray
+            the rectangle bounding box array.
         """
-        self._layout.add_rect_arr(layer, bbox, self.is_horizontal(layer), nx, ny, spx, spy)
+        self._layout.add_rect_arr(layer, purpose, self.is_horizontal(layer), barr)
 
-    def add_res_metal(self, layer_id, bbox, commit=True):
-        # type: (int, BBox, bool) -> List[PyRect]
+    def add_res_metal(self, layer_id: int, bbox: BBox, commit: bool = True) -> List[PyRect]:
         """Add a new metal resistor.
 
         Parameters
@@ -763,7 +739,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             list of rectangles defining the metal resistor.
         """
         is_horiz = self._grid.is_horizontal(layer_id)
-        return [self._layout.add_rect(lay, bbox, is_horiz, commit=commit) for lay in
+        return [self._layout.add_rect(lay, purp, is_horiz, bbox, commit=commit) for lay, purp in
                 self.grid.tech_info.get_res_metal_layers(layer_id)]
 
     def add_path(self, layer, width, points, start_style, join_style, stop_style='', commit=True):
