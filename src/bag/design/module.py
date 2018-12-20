@@ -12,6 +12,7 @@ from itertools import zip_longest
 from ..math import float_to_si_string
 from ..util.cache import DesignMaster, Param
 from .instance import SchInstance
+from ..layout.tech import TechInfo
 
 try:
     from pybag.core import PySchCellView
@@ -21,7 +22,6 @@ except ImportError:
 
 if TYPE_CHECKING:
     from .database import ModuleDB
-    from ..layout.core import TechInfo
 
 
 class Module(DesignMaster, metaclass=abc.ABCMeta):
@@ -115,8 +115,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         return self.__class__(self._master_db, {}, copy_state=copy_state)
 
     @property
-    def tech_info(self):
-        # type: () -> TechInfo
+    def tech_info(self) -> TechInfo:
         return self.master_db.tech_info
 
     @property

@@ -4,8 +4,8 @@ from bag.layout.template import TemplateBase
 
 
 class TestWire00(TemplateBase):
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db, params, **kwargs):
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):

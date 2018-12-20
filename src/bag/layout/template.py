@@ -108,34 +108,19 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     Parameters
     ----------
     temp_db : TemplateDB
-            the template database.
-    lib_name : str
-        the layout library name.
+        the template database.
     params : Dict[str, Any]
         the parameter values.
-    used_names : Set[str]
-        a set of already used cell names.
-    **kwargs
+    **kwargs : Any
         dictionary of the following optional parameters:
 
         grid : RoutingGrid
             the routing grid to use for this template.
         use_cybagoa : bool
             True to use cybagoa module to accelerate layout.
-
-    Attributes
-    ----------
-    pins : dict
-        the pins dictionary.
-    children : List[str]
-        a list of template cells this template uses.
-    params : Dict[str, Any]
-        the parameter values of this template.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-
+    def __init__(self, temp_db: TemplateDB, params: Dict[str, Any], **kwargs: Any) -> None:
         # initialize template attributes
         self._parent_grid = kwargs.get('grid', temp_db.grid)
         self._grid = self._parent_grid.copy()  # type: RoutingGrid
