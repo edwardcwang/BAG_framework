@@ -3,7 +3,7 @@
 """This module define utility classes for performing concurrent operations.
 """
 
-from typing import Optional, Sequence, Dict, Union, Tuple, Callable, Any
+from typing import Optional, Sequence, Dict, Union, Tuple, Callable, Any, Coroutine
 
 import os
 import asyncio
@@ -14,19 +14,19 @@ import multiprocessing
 from concurrent.futures import CancelledError
 
 
-def batch_async_task(coro_list):
+def batch_async_task(coro_list: Sequence[Coroutine]) -> Optional[Tuple[Any]]:
     """Execute a list of coroutines or futures concurrently.
 
     User may press Ctrl-C to cancel all given tasks.
 
     Parameters
     ----------
-    coro_list :
+    coro_list : Sequence[Coroutine]
         a list of coroutines or futures to run concurrently.
 
     Returns
     -------
-    results :
+    results : Optional[Tuple[Any]]
         a list of return values or raised exceptions of given tasks.
     """
     top_future = asyncio.gather(*coro_list, return_exceptions=True)
@@ -57,17 +57,14 @@ class SubProcessManager(object):
     max_workers : Optional[int]
         number of maximum allowed subprocesses.  If None, defaults to system
         CPU count.
-    cancel_timeout : Optional[float]
+    cancel_timeout : float
         Number of seconds to wait for a process to terminate once SIGTERM or
         SIGKILL is issued.  Defaults to 10 seconds.
     """
 
-    def __init__(self, max_workers=None, cancel_timeout=10.0):
-        # type: (Optional[int], Optional[float]) -> None
+    def __init__(self, max_workers: Optional[int] = None, cancel_timeout: float = 10.0) -> None:
         if max_workers is None:
             max_workers = multiprocessing.cpu_count()
-        if cancel_timeout is None:
-            cancel_timeout = 10.0
 
         self._cancel_timeout = cancel_timeout
         self._semaphore = asyncio.Semaphore(max_workers)
@@ -217,8 +214,7 @@ class SubProcessManager(object):
                 elif not fun_output:
                     return None
 
-    def batch_subprocess(self, proc_info_list):
-        # type: (Sequence[ProcInfo]) -> Optional[Sequence[Union[int, Exception]]]
+    def batch_subprocess(self, proc_info_list: Sequence[ProcInfo]) -> Optional[Sequence[Union[int, Exception]]]:
         """Run all given subprocesses in parallel.
 
         Parameters
@@ -250,8 +246,8 @@ class SubProcessManager(object):
 
         return batch_async_task(coro_list)
 
-    def batch_subprocess_flow(self, proc_info_list):
-        # type: (Sequence[Sequence[FlowInfo]]) -> Optional[Sequence[Union[int, Exception]]]
+    def batch_subprocess_flow(self, proc_info_list: Sequence[Sequence[FlowInfo]]) -> \
+            Optional[Sequence[Union[int, Exception]]]:
         """Run all given subprocesses flow in parallel.
 
         Parameters
