@@ -742,23 +742,26 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return [self._layout.add_rect(lay, purp, is_horiz, bbox, commit=commit) for lay, purp in
                 self.grid.tech_info.get_res_metal_layers(layer_id)]
 
-    def add_path(self, layer, width, points, start_style, join_style, stop_style='', commit=True):
-        # type: (LayerType, int, Sequence[PointType], str, str, str, bool) -> PyPath
+    def add_path(self, layer: str, purpose: str, width: int, points: Sequence[PointType],
+                 start_style: PathStyle, join_style: PathStyle, stop_style: Optional[PathStyle] = None,
+                 commit: bool=True) -> PyPath:
         """Add a new path.
 
         Parameters
         ----------
-        layer : LayerType
-            the path layer.
+        layer : str
+            the layer name.
+        purpose : str
+            the purpose name.
         width : int
             the path width.
         points : Sequence[PointType]
             points defining this path.
-        start_style : str
+        start_style : PathStyle
             the path beginning style.
-        join_style : str
+        join_style : PathStyle
             path style for the joints.
-        stop_style : str
+        stop_style : Optional[PathStyle]
             the path ending style.  Defaults to start style.
         commit : bool
             True to commit the object immediately.
@@ -768,7 +771,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         path : PyPath
             the added path object.
         """
-        stop_style = stop_style or start_style
+        if stop_style is None:
+            stop_style = start_style
         return self._layout.add_path(layer, points, self.is_horizontal(layer), width,
                                      PathStyle[start_style].value, PathStyle[stop_style].value,
                                      PathStyle[join_style].value, commit=commit)
