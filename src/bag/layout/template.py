@@ -742,9 +742,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return [self._layout.add_rect(lay, purp, is_horiz, bbox, commit=commit) for lay, purp in
                 self.grid.tech_info.get_res_metal_layers(layer_id)]
 
-    def add_path(self, layer: str, purpose: str, width: int, points: Sequence[PointType],
-                 start_style: PathStyle, join_style: PathStyle, stop_style: Optional[PathStyle] = None,
-                 commit: bool=True) -> PyPath:
+    def add_path(self, layer: str, purpose: str, width: int, points: List[PointType],
+                 start_style: PathStyle, join_style: PathStyle = PathStyle.round,
+                 stop_style: Optional[PathStyle] = None,
+                 commit: bool = True) -> PyPath:
         """Add a new path.
 
         Parameters
@@ -755,7 +756,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the purpose name.
         width : int
             the path width.
-        points : Sequence[PointType]
+        points : List[PointType]
             points defining this path.
         start_style : PathStyle
             the path beginning style.
@@ -773,38 +774,40 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         if stop_style is None:
             stop_style = start_style
-        return self._layout.add_path(layer, points, self.is_horizontal(layer), width,
-                                     PathStyle[start_style].value, PathStyle[stop_style].value,
-                                     PathStyle[join_style].value, commit=commit)
+        half_width = width // 2
+        is_horiz = self.is_horizontal(layer)
+        return self._layout.add_path(layer, purpose, is_horiz, points, half_width, start_style,
+                                     stop_style, join_style, commit)
 
     def add_path45_bus(self,
-                       layer,  # type: LayerType
-                       points,  # type: Sequence[PointType]
-                       widths,  # type: Sequence[int]
-                       spaces,  # type: Sequence[int]
-                       start_style,  # type: str
-                       join_style='round',  # type: str
-                       stop_style='',  # type: str
-                       commit=True,  # type: bool
-                       ):
-        # type: (...) -> PyPath
+                       layer: str,
+                       purpose: str,
+                       points: List[PointType],
+                       widths: List[int],
+                       spaces: List[int],
+                       start_style: PathStyle,
+                       join_style: PathStyle = PathStyle.round,
+                       stop_style: Optional[PathStyle] = None,
+                       commit: bool = True) -> PyPath:
         """Add a path bus that only contains 45 degree turns.
 
         Parameters
         ----------
-        layer : LayerType
+        layer : str
             the path layer.
-        points : Sequence[PointType]
+        purpose : str
+            the purpose name.
+        points : List[PointType]
             points defining this path.
-        widths : Sequence[int]
+        widths : List[int]
             width of each path in the bus.
-        spaces : Sequence[int]
+        spaces : List[int]
             space between each path.
-        start_style : str
+        start_style : PathStyle
             the path beginning style.
-        join_style : str
+        join_style : PathStyle
             path style for the joints.
-        stop_style : str
+        stop_style : Optional[PathStyle]
             the path ending style.  Defaults to start style.
         commit : bool
             True to commit the object immediately.
@@ -814,21 +817,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         path : PyPath
             the added path object.
         """
-        stop_style = stop_style or start_style
-        return self._layout.add_path45_bus(layer, points, widths, spaces,
-                                           self.is_horizontal(layer), PathStyle[start_style].value,
-                                           PathStyle[stop_style].value, PathStyle[join_style].value,
-                                           commit=commit)
+        if stop_style is None:
+            stop_style = start_style
+        is_horiz = self.is_horizontal(layer)
+        return self._layout.add_path45_bus(layer, purpose, is_horiz, points, widths, spaces,
+                                           start_style, stop_style, join_style, commit)
 
-    def add_polygon(self, layer, points, commit=True):
-        # type: (LayerType, Sequence[PointType], bool) -> PyPolygon
+    def add_polygon(self, layer: str, purpose: str, points: List[PointType], commit: bool = True) -> PyPolygon:
         """Add a new polygon.
 
         Parameters
         ----------
-        layer : LayerType
+        layer : str
             the polygon layer.
-        points : Sequence[PointType]
+        purpose: str
+            the layer purpose.
+        points : List[PointType]
             vertices of the polygon.
         commit : bool
             True to commit the object immediately.
@@ -838,19 +842,19 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         polygon : PyPolygon
             the added polygon object.
         """
-        return self._layout.add_polygon(layer, points, self.is_horizontal(layer), commit=commit)
+        return self._layout.add_poly(layer, purpose, self.is_horizontal(layer), points, commit)
 
-    def add_blockage(self, layer, blk_type, points, commit=True):
-        # type: (LayerType, str, Sequence[PointType], bool) -> PyBlockage
-        """Add a new polygon.
+    def add_blockage(self, layer: str, blk_type: BlockageType, points: List[PointType],
+                     commit: bool = True) -> PyBlockage:
+        """Add a new blockage object.
 
         Parameters
         ----------
-        layer : LayerType
-            the path layer.
-        blk_type : str
+        layer : str
+            the layer name.
+        blk_type : BlockageType
             the blockage type.
-        points : Sequence[PointType]
+        points : List[PointType]
             vertices of the blockage object.
         commit : bool
             True to commit the object immediately.
@@ -860,31 +864,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         blockage : PyBlockage
             the added blockage object.
         """
-        return self._layout.add_blockage(layer, points, BlockageType[blk_type].value,
-                                         commit=commit)
+        return self._layout.add_blockage(layer, blk_type, points, commit)
 
-    def add_cell_boundary(self, box):
-        # type: (BBox) -> None
-        """Adds a cell boundary object to the this template.
-
-        This is usually the PR boundary.
-
-        Parameters
-        ----------
-        box : BBox
-            the cell boundary bounding box.
-        """
-        self._grid.tech_info.add_cell_boundary(self, box)
-
-    def add_boundary(self, bnd_type, points, commit=True):
-        # type: (str, Sequence[PointType], bool) -> PyBoundary
+    def add_boundary(self, bnd_type: BoundaryType, points: List[PointType], commit: bool = True) -> PyBoundary:
         """Add a new boundary.
 
         Parameters
         ----------
         bnd_type : str
             the boundary type.
-        points : Sequence[PointType]
+        points : List[PointType]
             vertices of the boundary object.
         commit : bool
             True to commit the object immediately.
@@ -894,10 +883,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         boundary : PyBoundary
             the added boundary object.
         """
-        return self._layout.add_boundary(points, BoundaryType[bnd_type].value, commit=commit)
+        return self._layout.add_boundary(bnd_type, points, commit)
 
-    def reexport(self, port, net_name='', label='', show=True):
-        # type: (Port, str, str, bool) -> None
+    def reexport(self, port: Port, net_name: str = '', label: str = '', show: bool = True) -> None:
         """Re-export the given port object.
 
         Add all geometries in the given port as pins with optional new name
@@ -941,8 +929,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             else:
                 port_pins[layer_id].append(wire_arr)
 
-    def add_pin_primitive(self, net_name, layer, bbox, label='', show=True):
-        # type: (str, str, BBox, str, bool) -> None
+    def add_pin_primitive(self, net_name: str, layer: str, bbox: BBox, label: str = '', show: bool = True):
         """Add a primitive pin to the layout.
 
         Parameters
@@ -981,8 +968,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         else:
             port_pins[layer] = [bbox]
 
-    def add_label(self, label, layer, bbox):
-        # type: (str, LayerType, BBox) -> None
+    def add_label(self, label: str, layer: str, purpose: str, bbox: BBox) -> None:
         """Adds a label to the layout.
 
         This is mainly used to add voltage text labels.
@@ -991,10 +977,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         label : str
             the label text.
-        layer : LayerType
-            the pin layer name.
+        layer : str
+            the layer name.
+        purpose : str
+            the purpose name.
         bbox : BBox
-            the pin bounding box.
+            the label bounding box.
         """
         # TODO: Implement this
         raise ValueError('Not implemented yet.')
