@@ -58,6 +58,9 @@ class HalfInt(Integral):
     def down(self) -> None:
         self._val -= 1
 
+    def increment(self, other: Any) -> None:
+        self._val += HalfInt.convert(other)._val
+
     def __str__(self):
         return repr(self)
 

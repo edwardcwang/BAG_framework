@@ -29,7 +29,7 @@ ViaArrEncType = Optional[ViaEncType]
 ViaArrTestType = Optional[Callable[[int, int], bool]]
 ViaInfoType = Tuple[ViaSpType, ViaSpListType, ViaSpListType, ViaDimType, ViaEncType,
                     ViaArrEncType, ViaArrTestType]
-ViaBestType = Optional[Tuple[Tuple[int, int], List[List[Tuple[int, int]]], str, ViaDimType,
+ViaBestType = Optional[Tuple[Tuple[int, int], List[Tuple[int, int]], str, ViaDimType,
                              ViaSpType, ViaDimType]]
 
 
@@ -485,6 +485,11 @@ class TechInfo(abc.ABC):
     def layout_unit(self) -> float:
         """float: Returns the layout unit length, in meters."""
         return self._layout_unit
+
+    def get_layer_type_from_id(self, layer_id: int) -> str:
+        """Get the layer type from the given layer ID."""
+        layer_name = self.get_lay_purp_list(layer_id)[0][0]
+        return self.get_layer_type(layer_name)
 
     def get_min_space(self, layer_type: str, width: int, same_color: bool = False) -> int:
         """Returns the minimum spacing needed around a wire on the given layer with the given width.
