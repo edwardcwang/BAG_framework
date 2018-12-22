@@ -29,7 +29,7 @@ ViaArrEncType = Optional[ViaEncType]
 ViaArrTestType = Optional[Callable[[int, int], bool]]
 ViaInfoType = Tuple[ViaSpType, ViaSpListType, ViaSpListType, ViaDimType, ViaEncType,
                     ViaArrEncType, ViaArrTestType]
-ViaBestType = Optional[Tuple[Tuple[int, int], List[List[int, int]], str, ViaDimType,
+ViaBestType = Optional[Tuple[Tuple[int, int], List[List[Tuple[int, int]]], str, ViaDimType,
                              ViaSpType, ViaDimType]]
 
 

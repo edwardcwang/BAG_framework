@@ -12,10 +12,10 @@ from bag.util.search import BinaryIterator
 from bag.math import lcm
 
 from .base import HalfInt
+from ...typing import TrackType
 
 if TYPE_CHECKING:
     from bag.layout.tech import TechInfo
-    from bag.typing import TrackType
 
 
 class RoutingGrid(object):
