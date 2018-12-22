@@ -2,8 +2,9 @@
 
 """This module defines BAG's technology related classes"""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Dict, List, Tuple, Optional, Any, Union, Callable
-from bag.typing import LayerType
 
 import abc
 import math
@@ -14,20 +15,28 @@ from bag.util.search import BinaryIterator
 # try to import cython classes
 # noinspection PyUnresolvedReferences
 from pybag.core import BBox, PyTech
-from pybag.enum import SpaceQueryMode
+from pybag.enum import SpaceQueryMode, Orient2D
 
 if TYPE_CHECKING:
-    from pybag.core import PyLayInstance
+    from .core import PyLayInstance
     from .template import TemplateBase
 
-ViaArrEncType = Optional[List[Tuple[int, int]]]
+ViaSpType = Tuple[int, int]
+ViaSpListType = Optional[List[Tuple[int, int]]]
+ViaDimType = Tuple[int, int]
+ViaEncType = List[Tuple[int, int]]
+ViaArrEncType = Optional[ViaEncType]
+ViaArrTestType = Optional[Callable[[int, int], bool]]
+ViaInfoType = Tuple[ViaSpType, ViaSpListType, ViaSpListType, ViaDimType, ViaEncType,
+                    ViaArrEncType, ViaArrTestType]
+ViaBestType = Optional[Tuple[Tuple[int, int], List[List[int, int]], str, ViaDimType,
+                             ViaSpType, ViaDimType]]
 
 
-class TechInfo(object, metaclass=abc.ABCMeta):
-    """A base class that create vias.
+class TechInfo(abc.ABC):
+    """The base technology class.
 
-    This class provides the API for making vias.  Each process should subclass this class and
-    implement the make_via method.
+    This class provides various methods for querying technology-specific information.
 
     Parameters
     ----------
@@ -48,8 +57,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         technology specific parameters.
     """
 
-    def __init__(self, res, layout_unit, via_tech, process_params, pybag_file):
-        # type: (float, float, str, Dict[str, Any], str) -> None
+    def __init__(self, res: float, layout_unit: float, via_tech: str,
+                 process_params: Dict[str, Any], pybag_file: str) -> None:
         self._resolution = res
         self._layout_unit = layout_unit
         self._via_tech = via_tech
@@ -57,21 +66,19 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         self.pybag_tech = PyTech(pybag_file)
 
     @abc.abstractmethod
-    def get_well_layers(self, sub_type):
-        # type: (str) -> List[Tuple[str, str]]
+    def get_well_layers(self, sub_type: str) -> List[Tuple[str, str]]:
         """Returns a list of well layers associated with the given substrate type."""
         return []
 
     @abc.abstractmethod
-    def get_implant_layers(self, mos_type, res_type=None):
-        # type: (str, Optional[str]) -> List[Tuple[str, str]]
+    def get_implant_layers(self, mos_type: str, res_type: str = '') -> List[Tuple[str, str]]:
         """Returns a list of implant layers associated with the given device type.
 
         Parameters
         ----------
         mos_type : str
             one of 'nch', 'pch', 'ntap', or 'ptap'
-        res_type : Optional[str]
+        res_type : str
             If given, the return layers will be for the substrate of the given resistor type.
 
         Returns
@@ -82,20 +89,18 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return []
 
     @abc.abstractmethod
-    def get_threshold_layers(self, mos_type, threshold, res_type=None):
-        # type: (str, str, Optional[str]) -> List[Tuple[str, str]]
+    def get_threshold_layers(self, mos_type: str, threshold: str,
+                             res_type: str = '') -> List[Tuple[str, str]]:
         """Returns a list of threshold layers."""
         return []
 
     @abc.abstractmethod
-    def get_exclude_layer(self, layer_id):
-        # type: (int) -> Tuple[str, str]
+    def get_exclude_layer(self, layer_id: int) -> Tuple[str, str]:
         """Returns the metal exclude layer"""
         return '', ''
 
     @abc.abstractmethod
-    def get_dnw_margin_unit(self, dnw_mode):
-        # type: (str) -> int
+    def get_dnw_margin(self, dnw_mode: str) -> int:
         """Returns the required DNW margin given the DNW mode.
 
         Parameters
@@ -111,8 +116,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return 0
 
     @abc.abstractmethod
-    def get_dnw_layers(self):
-        # type: () -> List[Tuple[str, str]]
+    def get_dnw_layers(self) -> List[Tuple[str, str]]:
         """Returns a list of layers that defines DNW.
 
         Returns
@@ -123,8 +127,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return []
 
     @abc.abstractmethod
-    def get_res_metal_layers(self, layer_id):
-        # type: (int) -> List[Tuple[str, str]]
+    def get_res_metal_layers(self, layer_id: int) -> List[Tuple[str, str]]:
         """Returns a list of layers associated with the given metal resistor.
 
         Parameters
@@ -140,8 +143,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return []
 
     @abc.abstractmethod
-    def add_cell_boundary(self, template, box):
-        # type: (TemplateBase, BBox) -> None
+    def add_cell_boundary(self, template: TemplateBase, box: BBox) -> None:
         """Adds a cell boundary object to the given template.
 
         This is usually the PR boundary.
@@ -156,8 +158,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def draw_device_blockage(self, template):
-        # type: (TemplateBase) -> None
+    def draw_device_blockage(self, template: TemplateBase) -> None:
         """Draw device blockage layers on the given template.
 
         Parameters
@@ -168,7 +169,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def get_via_drc_info(self, vname, vtype, mtype, mw_unit, is_bot):
+    def get_via_drc_info(self, vname: str, vtype: str, mtype: str, mw_unit: int,
+                         is_bot: bool) -> ViaInfoType:
         """Return data structures used to identify VIA DRC rules.
 
         Parameters
@@ -186,79 +188,32 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        sp : Tuple[int, int]
+        sp : ViaSpType
             horizontal/vertical space between adjacent vias, in resolution units.
-        sp3 : Optional[Tuple[int, int]]
-            horizontal/vertical space between adjacent vias if the via has 3 or more neighbors.
-            None if no constraint.
-        dim : Tuple[int, int]
+        sp2_list : ViaSpListType
+            allowed horizontal/vertical space between adjacent vias if the via
+            is 2x2.  None if no constraint.
+        sp3_list : ViaSpListType
+            allowed horizontal/vertical space between adjacent vias if the via
+            is next to 3 or more vias.  None if no constraint.
+        dim : ViaDimType
             the via width/height in resolution units.
-        enc : List[Tuple[int, int]]
+        enc : ViaEncType
             a list of valid horizontal/vertical enclosure of the via on the given metal
             layer, in resolution units.
-        arr_enc : Optional[List[Tuple[int, int]]]
+        arr_enc : ViaArrEncType
             a list of valid horizontal/vertical enclosure of the via on the given metal
             layer if this is a "via array", in layout units.
             None if no constraint.
-        arr_test : Optional[Callable[[int, int], bool]]
+        arr_test : ViaArrTestType
             a function that accepts two inputs, the number of via rows and number of via
             columns, and returns True if those numbers describe a "via array".
             None if no constraint.
         """
-        return (0, 0), (0, 0), (0, 0), [(0, 0)], None, None
-
-    def get_min_space(self, layer_type, width, unit_mode=True, same_color=False):
-        # type: (str, int, bool, bool) -> int
-        """Returns the minimum spacing needed around a wire on the given layer with the given width.
-
-        Parameters
-        ----------
-        layer_type : str
-            the wiring layer type.
-        width : int
-            the width of the wire, in resolution units.
-        unit_mode : bool
-            deprecated parameter.
-        same_color : bool
-            True to use same-color spacing.
-
-        Returns
-        -------
-        sp : int
-            the minimum spacing needed.
-        """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
-        sp_type = SpaceQueryMode.SAME_COLOR if same_color else SpaceQueryMode.DIFF_COLOR
-        return self.pybag_tech.get_min_space(layer_type, width, sp_type.value)
-
-    def get_min_line_end_space(self, layer_type, width, unit_mode=True):
-        # type: (str, int, bool) -> int
-        """Returns the minimum line-end spacing of a wire with given width.
-
-        Parameters
-        ----------
-        layer_type : str
-            the wiring layer type.
-        width : int
-            the width of the wire, in layout units.
-        unit_mode : bool
-            deprecated parameter.
-
-        Returns
-        -------
-        sp : int
-            the minimum line-end space.
-        """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
-        return self.pybag_tech.get_min_space(layer_type, width, SpaceQueryMode.LINE_END.value)
+        return (0, 0), None, None, (0, 0), [(0, 0)], None, None
 
     @abc.abstractmethod
-    def get_min_length(self, layer_type, w_unit):
-        # type: (str, int) -> int
+    def get_min_length(self, layer_type: str, w_unit: int) -> int:
         """Returns the minimum length of a wire on the given layer with the given width.
 
         Parameters
@@ -266,7 +221,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         layer_type : str
             the wiring layer type.
         w_unit : int
-            the width of the wire, in layout units.
+            the width of the wire.
 
         Returns
         -------
@@ -276,8 +231,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return 0
 
     @abc.abstractmethod
-    def get_layer_id(self, layer_name):
-        # type: (str) -> int
+    def get_layer_id(self, layer_name: str) -> int:
         """Return the layer id for the given layer name.
 
         Parameters
@@ -293,8 +247,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return 0
 
     @abc.abstractmethod
-    def get_layer_name(self, layer_id):
-        # type: (int) -> Union[str, Tuple[str, ...]]
+    def get_layer_name(self, layer_id: int) -> Union[str, Tuple[str, ...]]:
         """Return the layer name(s) for the given routing grid layer ID.
 
         Parameters
@@ -311,8 +264,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return ''
 
     @abc.abstractmethod
-    def get_layer_type(self, layer_name):
-        # type: (str) -> str
+    def get_layer_type(self, layer_name: str) -> str:
         """Returns the metal type of the given wiring layer.
 
         Parameters
@@ -328,8 +280,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return ''
 
     @abc.abstractmethod
-    def get_via_name(self, bot_layer_id):
-        # type: (int) -> str
+    def get_via_name(self, bot_layer_id: int) -> str:
         """Returns the via type name of the given via.
 
         Parameters
@@ -345,8 +296,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return ''
 
     @abc.abstractmethod
-    def get_metal_em_specs(self, layer_name, w, l=-1, vertical=False, **kwargs):
-        # type: (str, int, int, bool, Any) -> Tuple[float, float, float]
+    def get_metal_em_specs(self, layer_name: str, w: int, *, l: int = -1,
+                           vertical: bool = False, **kwargs: Any) -> Tuple[float, float, float]:
         """Returns a tuple of EM current/resistance specs of the given wire.
 
         Parameters
@@ -375,16 +326,10 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return float('inf'), float('inf'), float('inf')
 
     @abc.abstractmethod
-    def get_via_em_specs(self, via_name,  # type: str
-                         bm_layer,  # type: str
-                         tm_layer,  # type: str
-                         via_type='square',  # type: str
-                         bm_dim=(-1, -1),  # type: Tuple[int, int]
-                         tm_dim=(-1, -1),  # type: Tuple[int, int]
-                         array=False,  # type: bool
-                         **kwargs,  # type: Any
-                         ):
-        # type: (...) -> Tuple[float ,float, float]
+    def get_via_em_specs(self, via_name: str, bm_layer: str, tm_layer: str, *,
+                         via_type: str = 'square', bm_dim: Tuple[int, int] = (-1, -1),
+                         tm_dim: Tuple[int, int] = (-1, -1), array: bool = False,
+                         **kwargs: Any) -> Tuple[float, float, float]:
         """Returns a tuple of EM current/resistance specs of the given via.
 
         Parameters
@@ -420,8 +365,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return float('inf'), float('inf'), float('inf')
 
     @abc.abstractmethod
-    def get_res_rsquare(self, res_type):
-        # type: (str) -> float
+    def get_res_rsquare(self, res_type: str) -> float:
         """Returns R-square for the given resistor type.
 
         This is used to do some approximate resistor dimension calculation.
@@ -439,13 +383,12 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return 0.0
 
     @abc.abstractmethod
-    def get_res_width_bounds(self, res_type):
-        # type: (str) -> Tuple[int, int]
+    def get_res_width_bounds(self, res_type: str) -> Tuple[int, int]:
         """Returns the maximum and minimum resistor width for the given resistor type.
 
         Parameters
         ----------
-        res_type : string
+        res_type : str
             the resistor type.
 
         Returns
@@ -458,8 +401,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return 0, 0
 
     @abc.abstractmethod
-    def get_res_length_bounds(self, res_type):
-        # type: (str) -> Tuple[int, int]
+    def get_res_length_bounds(self, res_type: str) -> Tuple[int, int]:
         """Returns the maximum and minimum resistor length for the given resistor type.
 
         Parameters
@@ -477,8 +419,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return 0, 0
 
     @abc.abstractmethod
-    def get_res_min_nsquare(self, res_type):
-        # type: (str) -> float
+    def get_res_min_nsquare(self, res_type: str) -> float:
         """Returns the minimum allowable number of squares for the given resistor type.
 
         Parameters
@@ -494,8 +435,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return 1.0
 
     @abc.abstractmethod
-    def get_res_em_specs(self, res_type, w, l=-1, **kwargs):
-        # type: (str, int, int, **Any) -> Tuple[float, float, float]
+    def get_res_em_specs(self, res_type: str, w: int, *,
+                         l: int = -1, **kwargs: Any) -> Tuple[float, float, float]:
         """Returns a tuple of EM current/resistance specs of the given resistor.
 
         Parameters
@@ -522,44 +463,69 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return float('inf'), float('inf'), float('inf')
 
     @property
-    def via_tech_name(self):
-        # type: () -> str
-        """Returns the via technology library name."""
+    def via_tech_name(self) -> str:
+        """str: Returns the via technology library name."""
         return self._via_tech
 
     @property
-    def pin_purpose(self):
-        # type: () -> str
-        """Returns the layout pin purpose name."""
+    def pin_purpose(self) -> str:
+        """str: Returns the layout pin purpose name."""
         return self.pybag_tech.pin_purpose
 
     @property
-    def default_purpose(self):
-        # type: () -> str
-        """Returns the default purpose name."""
+    def default_purpose(self) -> str:
+        """str: Returns the default purpose name."""
         return self.pybag_tech.default_purpose
 
     @property
-    def resolution(self):
-        # type: () -> float
-        """Returns the grid resolution."""
+    def resolution(self) -> float:
+        """float: Returns the grid resolution."""
         return self._resolution
 
     @property
-    def layout_unit(self):
-        # type: () -> float
-        """Returns the layout unit length, in meters."""
+    def layout_unit(self) -> float:
+        """float: Returns the layout unit length, in meters."""
         return self._layout_unit
 
-    def merge_well(self,
-                   template,  # type: TemplateBase
-                   inst_list,  # type: List[PyLayInstance]
-                   sub_type,  # type: str
-                   threshold=None,  # type: Optional[str]
-                   res_type=None,  # type: Optional[str]
-                   merge_imp=False,  # type: bool
-                   ):
-        # type: (...) -> None
+    def get_min_space(self, layer_type: str, width: int, same_color: bool = False) -> int:
+        """Returns the minimum spacing needed around a wire on the given layer with the given width.
+
+        Parameters
+        ----------
+        layer_type : str
+            the wiring layer type.
+        width : int
+            the width of the wire, in resolution units.
+        same_color : bool
+            True to use same-color spacing.
+
+        Returns
+        -------
+        sp : int
+            the minimum spacing needed.
+        """
+        sp_type = SpaceQueryMode.SAME_COLOR if same_color else SpaceQueryMode.DIFF_COLOR
+        return self.pybag_tech.get_min_space(layer_type, width, sp_type.value)
+
+    def get_min_line_end_space(self, layer_type: str, width: int) -> int:
+        """Returns the minimum line-end spacing of a wire with given width.
+
+        Parameters
+        ----------
+        layer_type : str
+            the wiring layer type.
+        width : int
+            the width of the wire.
+
+        Returns
+        -------
+        sp : int
+            the minimum line-end space.
+        """
+        return self.pybag_tech.get_min_space(layer_type, width, SpaceQueryMode.LINE_END.value)
+
+    def merge_well(self, template: TemplateBase, inst_list: List[PyLayInstance], sub_type: str, *,
+                   threshold: str = '', res_type: str = '', merge_imp: bool = False) -> None:
         """Merge the well of the given instances together."""
 
         if threshold is not None:
@@ -570,21 +536,19 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         if merge_imp:
             lay_iter = chain(lay_iter, self.get_implant_layers(sub_type, res_type=res_type))
 
-        for lay in lay_iter:
+        for lay, purp in lay_iter:
             tot_box = BBox.get_invalid_bbox()
             for inst in inst_list:
-                cur_box = inst.master.get_rect_bbox(lay)
-                tot_box = tot_box.merge(inst.translate_master_box(cur_box))
+                cur_box = inst.master.get_rect_bbox(lay, purp)
+                tot_box.merge(inst.transform_master_object(cur_box))
             if tot_box.is_physical():
-                template.add_rect(lay, tot_box)
+                template.add_rect(lay, purp, tot_box)
 
-    def use_flip_parity(self):
-        # type: () -> bool
+    def use_flip_parity(self) -> bool:
         """Returns True if flip_parity dictionary is needed in this technology."""
         return True
 
-    def finalize_template(self, template):
-        # type: (TemplateBase) -> None
+    def finalize_template(self, template: TemplateBase) -> None:
         """Perform any operations necessary on the given layout template before finalizing it.
 
         By default, nothing is done.
@@ -596,8 +560,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         """
         pass
 
-    def get_res_info(self, res_type, w, l, **kwargs):
-        # type: (str, int, int, Any) -> Dict[str, Any]
+    def get_res_info(self, res_type: str, w: int, l: int, **kwargs: Any) -> Dict[str, Any]:
         """Returns a dictionary containing EM information of the given resistor.
 
         Parameters
@@ -637,11 +600,11 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             iac_peak=ipeak,
         )
 
-    def get_via_types(self, bmtype, tmtype):
-        # type: (str, str) -> List[Tuple[str, int]]
+    def get_via_types(self, bmtype: str, tmtype: str) -> List[Tuple[str, int]]:
         return [('square', 1), ('vrect', 2), ('hrect', 2)]
 
-    def get_best_via_array(self, vname, bmtype, tmtype, bot_dir, top_dir, w, h, extend):
+    def get_best_via_array(self, vname: str, bmtype: str, tmtype: str, bot_dir: Orient2D,
+                           top_dir: Orient2D, w: int, h: int, extend: bool) -> ViaBestType:
         """Maximize the number of vias in the given area.
 
         Parameters
@@ -652,10 +615,10 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             the bottom metal type name.
         tmtype : str
             the top metal type name.
-        bot_dir : str
-            the bottom wire direction.  Either 'x' or 'y'.
-        top_dir : str
-            the top wire direction.  Either 'x' or 'y'.
+        bot_dir : Orient2D
+            the bottom wire direction.
+        top_dir : Orient2D
+            the top wire direction.
         w : int
             width of the via array bounding box.
         h : int
@@ -667,7 +630,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         -------
         best_nxy : Tuple[int, int]
             optimal number of vias per row/column.
-        best_mdim_list : List[Tuple[int, int]]
+        best_mdim_list : List[List[int, int]]
             a list of bottom/top layer width/height, in resolution units.
         vtype : str
             the via type to draw, square/hrect/vrect/etc.
@@ -678,22 +641,22 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         via_arr_dim : Tuple[int, int]
             the via array width/height, in resolution units.
         """
-        if bot_dir == 'x':
+        if bot_dir is Orient2D.x:
             bb, be = h, w
         else:
             bb, be = w, h
-        if top_dir == 'x':
+        if top_dir is Orient2D.x:
             tb, te = h, w
         else:
             tb, te = w, h
 
         best_num = None
-        best_nxy = [-1, -1]
+        best_nxy = (-1, -1)
         best_mdim_list = None
-        best_type = None
-        best_vdim = None
-        best_sp = None
-        best_adim = None
+        best_type = ''
+        best_vdim = (0, 0)
+        best_sp = (0, 0)
+        best_adim = (0, 0)
         via_type_list = self.get_via_types(bmtype, tmtype)
         for vtype, weight in via_type_list:
             try:
@@ -728,10 +691,10 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             nxy_list = sorted(nxy_list, reverse=True)
 
             # find best nx/ny configuration
-            opt_nxy = None
-            opt_mdim_list = None
-            opt_adim = None
-            opt_sp = None
+            opt_nxy = (-1, -1)
+            opt_mdim_list = []
+            opt_adim = (0, 0)
+            opt_sp = (0, 0)
             for num, nx, ny in nxy_list:
                 # check if we need to use sp3
                 if nx == 2 and ny == 2:
@@ -745,7 +708,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                     # get via array bounding box
                     w_arr = nx * (spx + dim[0]) - spx
                     h_arr = ny * (spy + dim[1]) - spy
-                    mdim_list = [None, None]
+                    mdim_list = [[], []]
                     # check at least one enclosure rule is satisfied for both top and bottom layer
                     for idx, (mdir, tot_enc_list, arr_enc, arr_test) in \
                             enumerate([(bot_dir, encb, arr_encb, arr_testb),
@@ -754,7 +717,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                         if arr_test is not None and arr_test(ny, nx):
                             tot_enc_list = tot_enc_list + arr_enc
 
-                        if mdir == 'y':
+                        if mdir is Orient2D.y:
                             enc_idx = 0
                             enc_dim = w_arr
                             ext_dim = h_arr
@@ -813,7 +776,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         return best_nxy, best_mdim_list, best_type, best_vdim, best_sp, best_adim
 
     @staticmethod
-    def _via_better(mdim_list1, mdim_list2):
+    def _via_better(mdim_list1: List[List[int, int]], mdim_list2: List[List[int, int]]) -> bool:
         """Returns true if the via in mdim_list1 has smaller area compared with via in mdim_list2"""
         better = False
         for mdim1, mdim2 in zip(mdim_list1, mdim_list2):
@@ -825,9 +788,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                 return False
         return better
 
-    # noinspection PyMethodMayBeStatic
-    def get_via_id(self, bot_layer, top_layer):
-        # type: (str, str) -> str
+    def get_via_id(self, bot_layer: str, top_layer: str, *, bot_purpose: str = '',
+                   top_purpose: str = '') -> str:
         """Returns the via ID string given bottom and top layer name.
 
         Defaults to "<bot_layer>_<top_layer>"
@@ -838,26 +800,22 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             the bottom layer name.
         top_layer : str
             the top layer name.
+        bot_purpose : str
+            the bottom purpose name.
+        top_purpose : str
+            the top purpose name.
 
         Returns
         -------
         via_id : str
             the via ID string.
         """
-        return '%s_%s' % (top_layer, bot_layer)
+        return '{}_{}'.format(top_layer, bot_layer)
 
-    def get_via_info(self,
-                     bbox,  # type: BBox
-                     bot_layer,  # type: LayerType
-                     top_layer,  # type: LayerType
-                     bot_dir,  # type: str
-                     bot_len=-1,  # type: int
-                     top_len=-1,  # type: int
-                     extend=True,  # type: bool
-                     top_dir=None,  # type: Optional[str]
-                     **kwargs,  # type: Any
-                     ):
-        # type: (...) -> Optional[Dict[str, Any]]
+    def get_via_info(self, bbox: BBox, bot_layer: str, top_layer: str, bot_dir: Orient2D, *,
+                     bot_purpose: str = '', top_purpose: str = '', bot_len: int = -1,
+                     top_len: int = -1, extend: bool = True, top_dir: Optional[Orient2D] = None,
+                     **kwargs: Any) -> Optional[Dict[str, Any]]:
         """Create a via on the routing grid given the bounding box.
 
         Parameters
@@ -865,13 +823,15 @@ class TechInfo(object, metaclass=abc.ABCMeta):
         bbox : BBox
             the bounding box of the via.
         bot_layer : LayerType
-            the bottom layer name, or a tuple of layer name and purpose name.
-            If purpose name not given, use default purpose.
+            the bottom layer name.
         top_layer : LayerType
-            the top layer name, or a tuple of layer name and purpose name.
-            If purpose name not given, use default purpose.
+            the top layer name.
         bot_dir : str
             the bottom layer extension direction.  Either 'x' or 'y'
+        bot_purpose : str
+            bottom purpose name.
+        top_purpose : str
+            top purpose name.
         bot_len : int
             length of bottom wire connected to this Via, in resolution units.
             Used for length enhancement EM calculation.
@@ -902,19 +862,13 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             params : Dict[str, Any]
                 A dictionary of via parameters.
         """
-        # remove purpose
-        if isinstance(bot_layer, tuple):
-            bot_layer = bot_layer[0]
-        if isinstance(top_layer, tuple):
-            top_layer = top_layer[0]
-
         bot_id = self.get_layer_id(bot_layer)
         bmtype = self.get_layer_type(bot_layer)
         tmtype = self.get_layer_type(top_layer)
         vname = self.get_via_name(bot_id)
 
-        if not top_dir:
-            top_dir = 'x' if bot_dir == 'y' else 'y'
+        if top_dir is None:
+            top_dir = bot_dir.perpendicular()
 
         via_result = self.get_best_via_array(vname, bmtype, tmtype, bot_dir, top_dir,
                                              bbox.w, bbox.h, extend)
@@ -948,7 +902,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                                                  bm_dim=(bw, bot_len), tm_dim=(tw, top_len),
                                                  array=nx > 1 or ny > 1, **kwargs)
 
-        params = {'id': self.get_via_id(bot_layer, top_layer),
+        params = {'id': self.get_via_id(bot_layer, top_layer, bot_purpose=bot_purpose,
+                                        top_purpose=top_purpose),
                   'loc': (xc_norm, yc_norm),
                   'orient': 'R0',
                   'num_rows': ny,
@@ -975,9 +930,9 @@ class TechInfo(object, metaclass=abc.ABCMeta):
             top_box=BBox(0, 0, arr_w + 2 * enc2_x, arr_h + 2 * enc2_y),
         )
 
-    def design_resistor(self, res_type, res_targ, idc=0.0, iac_rms=0.0,
-                        iac_peak=0.0, num_even=True, **kwargs):
-        # type: (str, float, float, float, float, int, Any) -> Tuple[int, int, int, int]
+    def design_resistor(self, res_type: str, res_targ: float, idc: float = 0.0,
+                        iac_rms: float = 0.0, iac_peak: float = 0.0, num_even: bool = True,
+                        **kwargs: Any) -> Tuple[int, int, int, int]:
         """Finds the optimal resistor dimension that meets the given specs.
 
         Assumes resistor length does not effect EM specs.
@@ -1098,7 +1053,7 @@ class DummyTechInfo(TechInfo):
         # type: (int) -> Tuple[str, str]
         return '', ''
 
-    def get_dnw_margin_unit(self, dnw_mode):
+    def get_dnw_margin(self, dnw_mode):
         # type: (str) -> int
         return 0
 
@@ -1118,10 +1073,10 @@ class DummyTechInfo(TechInfo):
     def get_via_drc_info(self, vname, vtype, mtype, mw_unit, is_bot):
         return (0, 0), [(0, 0)], [(0, 0)], (0, 0), [(0, 0)], None, None
 
-    def get_min_space(self, layer_type, width, unit_mode=True, same_color=False):
+    def get_min_space(self, layer_type, width, same_color=False):
         return 0
 
-    def get_min_line_end_space(self, layer_type, width, unit_mode=True):
+    def get_min_line_end_space(self, layer_type, width):
         return 0
 
     def get_min_length(self, layer_type, w_unit):
@@ -1162,10 +1117,11 @@ class DummyTechInfo(TechInfo):
         return float('inf'), float('inf'), float('inf')
 
 
-class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
+class TechInfoConfig(TechInfo, abc.ABC):
     """An implementation of TechInfo that implements most methods with a technology file."""
-    def __init__(self, config_fname, config, tech_params, mos_entry_name='mos'):
-        # type: (str, Dict[str, Any], Dict[str, Any], str) -> None
+
+    def __init__(self, config_fname: str, config: Dict[str, Any],
+                 tech_params: Dict[str, Any], mos_entry_name: str = 'mos') -> None:
         TechInfo.__init__(self, config['resolution'], config['layout_unit'],
                           config['tech_lib'], tech_params, config_fname)
 
@@ -1182,116 +1138,65 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
                     self._layer_id_lookup[sub_name] = key
 
     @abc.abstractmethod
-    def get_metal_em_specs(self, layer_name, w, l=-1, vertical=False, **kwargs):
-        # type: (str, int, int, bool, Any) -> Tuple[float, float, float]
-        return float('inf'), float('inf'), float('inf')
-
-    @abc.abstractmethod
-    def get_via_em_specs(self, via_name,  # type: str
-                         bm_layer,  # type: str
-                         tm_layer,  # type: str
-                         via_type='square',  # type: str
-                         bm_dim=(-1, -1),  # type: Tuple[int, int]
-                         tm_dim=(-1, -1),  # type: Tuple[int, int]
-                         array=False,  # type: bool
-                         **kwargs,  # type: Any
-                         ):
-        # type: (...) -> Tuple[float ,float, float]
-        return float('inf'), float('inf'), float('inf')
-
-    @abc.abstractmethod
-    def get_res_em_specs(self, res_type, w, l=-1, **kwargs):
-        # type: (str, int, int, Any) -> Tuple[float, float, float]
-        return float('inf'), float('inf'), float('inf')
-
-    @abc.abstractmethod
-    def add_cell_boundary(self, template, box):
-        # type: (TemplateBase, BBox) -> None
-        pass
-
-    @abc.abstractmethod
-    def draw_device_blockage(self, template):
-        # type: (TemplateBase) -> None
-        pass
-
-    @abc.abstractmethod
-    def get_via_arr_enc(self,
-                        vname,  # type: str
-                        vtype,  # type: str
-                        mtype,  # type: str
-                        mw_unit,  # type: int
-                        is_bot,  # type: bool
-                        ):
-        # type: (...) -> Tuple[ViaArrEncType, Optional[Callable[[int, int], bool]]]
+    def get_via_arr_enc(self, vname: str, vtype: str, mtype: str, mw_unit: int,
+                        is_bot: bool) -> Tuple[ViaArrEncType, ViaArrTestType]:
         return None, None
 
-    def get_via_types(self, bmtype, tmtype):
-        # type: (str, str) -> List[Tuple[str, int]]
+    def get_via_types(self, bmtype: str, tmtype: str) -> List[Tuple[str, int]]:
         default = [('square', 1), ('vrect', 2), ('hrect', 2)]
         if 'via_type_order' in self.config:
             table = self.config['via_type_order']
             return table.get((bmtype, tmtype), default)
         return default
 
-    def get_well_layers(self, sub_type):
-        # type: (str) -> List[Tuple[str, str]]
+    def get_well_layers(self, sub_type: str) -> List[Tuple[str, str]]:
         return self.config['well_layers'][sub_type]
 
-    def get_implant_layers(self, mos_type, res_type=None):
-        # type: (str, Optional[str]) -> List[Tuple[str, str]]
-        if res_type is None:
+    def get_implant_layers(self, mos_type: str, res_type: str = '') -> List[Tuple[str, str]]:
+        if not res_type:
             table = self.config[self._mos_entry_name]
         else:
             table = self.config['resistor']
 
         return list(table['imp_layers'][mos_type].keys())
 
-    def get_threshold_layers(self, mos_type, threshold, res_type=None):
-        # type: (str, str, Optional[str]) -> List[Tuple[str, str]]
-        if res_type is None:
+    def get_threshold_layers(self, mos_type: str, threshold: str,
+                             res_type: str = '') -> List[Tuple[str, str]]:
+        if not res_type:
             table = self.config[self._mos_entry_name]
         else:
             table = self.config['resistor']
 
         return list(table['thres_layers'][mos_type][threshold].keys())
 
-    def get_exclude_layer(self, layer_id):
-        # type: (int) -> Tuple[str, str]
+    def get_exclude_layer(self, layer_id: int) -> Tuple[str, str]:
         """Returns the metal exclude layer"""
         return self.config['metal_exclude_table'][layer_id]
 
-    def get_dnw_margin_unit(self, dnw_mode):
-        # type: (str) -> int
+    def get_dnw_margin(self, dnw_mode: str) -> int:
         return self.config['dnw_margins'][dnw_mode]
 
-    def get_dnw_layers(self):
-        # type: () -> List[Tuple[str, str]]
+    def get_dnw_layers(self) -> List[Tuple[str, str]]:
         return self.config[self._mos_entry_name]['dnw_layers']
 
-    def get_res_metal_layers(self, layer_id):
-        # type: (int) -> List[Tuple[str, str]]
+    def get_res_metal_layers(self, layer_id: int) -> List[Tuple[str, str]]:
         return self.config['res_metal_layer_table'][layer_id]
 
-    def use_flip_parity(self):
-        # type: () -> bool
+    def use_flip_parity(self) -> bool:
         return self.config['use_flip_parity']
 
-    def get_layer_name(self, layer_id):
-        # type: (int) -> str
+    def get_layer_name(self, layer_id: int) -> str:
         name_dict = self.config['layer_name']
         return name_dict[layer_id]
 
-    def get_layer_id(self, layer_name):
-        # type: (str) -> Optional[int]
+    def get_layer_id(self, layer_name: str) -> Optional[int]:
         return self._layer_id_lookup.get(layer_name, None)
 
-    def get_layer_type(self, layer_name):
-        # type: (str) -> str
+    def get_layer_type(self, layer_name: str) -> str:
         type_dict = self.config['layer_type']
         return type_dict[layer_name]
 
-    def get_idc_scale_factor(self, temp, mtype, is_res=False):
-        # type: (float, str, bool) -> float
+    def get_idc_scale_factor(self, temp: float, mtype: str, is_res: bool = False) -> float:
         if is_res:
             mtype = 'res'
         idc_em_scale = self.config['idc_em_scale']
@@ -1308,15 +1213,15 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
                 return scale
         return scale_list[-1]
 
-    def get_via_name(self, bot_layer_id):
-        # type: (int) -> str
+    def get_via_name(self, bot_layer_id: int) -> str:
         return self.config['via_name'][bot_layer_id]
 
-    def get_via_id(self, bot_layer, top_layer):
-        # type: (str, str) -> str
+    def get_via_id(self, bot_layer: str, top_layer: str, *,
+                   bot_purpose: str = '', top_purpose: str = '') -> str:
         return self.config['via_id'][(bot_layer, top_layer)]
 
-    def get_via_drc_info(self, vname, vtype, mtype, mw_unit, is_bot):
+    def get_via_drc_info(self, vname: str, vtype: str, mtype: str, mw_unit: int,
+                         is_bot: bool) -> ViaInfoType:
         via_config = self.config['via']
         if vname not in via_config:
             raise ValueError('Unsupported vname %s' % vname)
@@ -1366,14 +1271,12 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
 
         return sp, sp2_list, sp3_list, dim, enc_cur, arr_enc, arr_test
 
-    def layer_id_to_type(self, layer_id):
-        # type: (int) -> str
+    def layer_id_to_type(self, layer_id: int) -> str:
         name_dict = self.config['layer_name']
         type_dict = self.config['layer_type']
         return type_dict[name_dict[layer_id]]
 
-    def get_min_length(self, layer_type, w_unit):
-        # type: (str, int) -> int
+    def get_min_length(self, layer_type: str, w_unit: int) -> int:
         len_min_config = self.config['len_min']
         if layer_type not in len_min_config:
             raise ValueError('Unsupported layer type: %s' % layer_type)
@@ -1398,18 +1301,14 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
 
         return -(-l_unit // 2) * 2
 
-    def get_res_rsquare(self, res_type):
-        # type: (str) -> float
+    def get_res_rsquare(self, res_type: str) -> float:
         return self.config['resistor']['info'][res_type]['rsq']
 
-    def get_res_width_bounds(self, res_type):
-        # type: (str) -> Tuple[int, int]
+    def get_res_width_bounds(self, res_type: str) -> Tuple[int, int]:
         return self.config['resistor']['info'][res_type]['w_bounds']
 
-    def get_res_length_bounds(self, res_type):
-        # type: (str) -> Tuple[int, int]
+    def get_res_length_bounds(self, res_type: str) -> Tuple[int, int]:
         return self.config['resistor']['info'][res_type]['l_bounds']
 
-    def get_res_min_nsquare(self, res_type):
-        # type: (str) -> float
+    def get_res_min_nsquare(self, res_type: str) -> float:
         return self.config['resistor']['info'][res_type]['min_nsq']
