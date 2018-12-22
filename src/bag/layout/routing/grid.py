@@ -19,6 +19,7 @@ from ...typing import TrackType
 
 SizeType = Tuple[int, HalfInt, HalfInt]
 FillConfigType = Dict[int, Tuple[int, int, int, int]]
+OptHalfIntType = Optional[HalfInt]
 
 
 class RoutingGrid(object):
@@ -910,9 +911,9 @@ class RoutingGrid(object):
         cl, cu = self.get_wire_bounds(layer_id, tr_idx, width=width)
         return BBox(self.get_direction(layer_id), lower, upper, cl, cu)
 
-    def get_min_track_width(self, layer_id, idc=0, iac_rms=0, iac_peak=0, l=-1,
-                            bot_w=-1, top_w=-1, unit_mode=True, **kwargs):
-        # type: (int, float, float, float, int, int, int, bool, Any) -> int
+    def get_min_track_width(self, layer_id: int, *, idc: float = 0, iac_rms: float = 0,
+                            iac_peak: float = 0, l: int = -1, bot_w: int = -1,
+                            top_w: int = -1, **kwargs: Any) -> int:
         """Returns the minimum track width required for the given EM specs.
 
         Parameters
@@ -934,8 +935,6 @@ class RoutingGrid(object):
         top_w : int
             the top layer track width in resolution units.  If given, will make sure
             that the via between the two tracks meet EM specs too.
-        unit_mode : bool
-            deprecated parameter.
         **kwargs :
             override default EM spec parameters.
 
@@ -944,60 +943,46 @@ class RoutingGrid(object):
         track_width : int
             the minimum track width in number of tracks.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         # if double patterning layer, just use any name.
-        layer_name = self.tech_info.get_layer_name(layer_id)
-        if isinstance(layer_name, tuple):
-            layer_name = layer_name[0]
+        lay, purp = self.tech_info.get_lay_purp_list(layer_id)[0]
         if bot_w > 0:
-            bot_layer_name = self.tech_info.get_layer_name(layer_id - 1)
-            if isinstance(bot_layer_name, tuple):
-                bot_layer_name = bot_layer_name[0]
+            blay, bpurp = self.tech_info.get_lay_purp_list(layer_id - 1)[0]
         else:
-            bot_layer_name = None
+            blay = None
+            bpurp = None
         if top_w > 0:
-            top_layer_name = self.tech_info.get_layer_name(layer_id + 1)
-            if isinstance(top_layer_name, tuple):
-                top_layer_name = top_layer_name[0]
+            tlay, tpurp = self.tech_info.get_lay_purp_list(layer_id + 1)[0]
         else:
-            top_layer_name = None
+            tlay = None
+            tpurp = None
 
         # use binary search to find the minimum track width
         bin_iter = BinaryIterator(1, None)
         tr_dir = self.dir_tracks[layer_id]
-        alt_dir = Orient2D.x if tr_dir is Orient2D.y else Orient2D.y
+        alt_dir = tr_dir.perpendicular()
         bot_dir = self.dir_tracks.get(layer_id - 1, alt_dir)
         top_dir = self.dir_tracks.get(layer_id + 1, alt_dir)
         while bin_iter.has_next():
             ntr = bin_iter.get_next()
             width = self.get_track_width(layer_id, ntr)
-            idc_max, irms_max, ipeak_max = self.tech_info.get_metal_em_specs(layer_name,
-                                                                             width,
+            idc_max, irms_max, ipeak_max = self.tech_info.get_metal_em_specs(lay, width,
                                                                              l=l, **kwargs)
             if idc > idc_max or iac_rms > irms_max or iac_peak > ipeak_max:
                 # check metal satisfies EM spec
                 bin_iter.up()
                 continue
             if bot_w > 0 and bot_dir is not tr_dir:
-                if tr_dir is Orient2D.x:
-                    bbox = BBox(0, 0, bot_w, width)
-                else:
-                    bbox = BBox(0, 0, width, bot_w)
-                vinfo = self.tech_info.get_via_info(bbox, bot_layer_name, layer_name,
-                                                    bot_dir.name, **kwargs)
+                bbox = BBox(tr_dir, 0, bot_w, 0, width)
+                vinfo = self.tech_info.get_via_info(bbox, blay, lay, bot_dir, bot_purpose=bpurp,
+                                                    top_purpose=purp, top_dir=tr_dir, **kwargs)
                 if (vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or
                         iac_peak > vinfo['iac_peak']):
                     bin_iter.up()
                     continue
             if top_w > 0 and top_dir is not tr_dir:
-                if tr_dir is Orient2D.x:
-                    bbox = BBox(0, 0, top_w, width)
-                else:
-                    bbox = BBox(0, 0, width, top_w)
-                vinfo = self.tech_info.get_via_info(bbox, layer_name, top_layer_name,
-                                                    tr_dir.name, **kwargs)
+                bbox = BBox(tr_dir, 0, top_w, 0, width)
+                vinfo = self.tech_info.get_via_info(bbox, lay, tlay, tr_dir, bot_purpose=purp,
+                                                    top_purpose=tpurp, top_dir=top_dir, **kwargs)
                 if (vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or
                         iac_peak > vinfo['iac_peak']):
                     bin_iter.up()
@@ -1009,16 +994,9 @@ class RoutingGrid(object):
 
         return bin_iter.get_last_save()
 
-    def get_track_index_range(self,  # type: RoutingGrid
-                              layer_id,  # type: int
-                              lower,  # type: int
-                              upper,  # type: int
-                              num_space=0,  # type: TrackType
-                              edge_margin=0,  # type: int
-                              half_track=True,  # type: bool
-                              unit_mode=True  # type: bool
-                              ):
-        # type: (...) -> Tuple[Optional[HalfInt], Optional[HalfInt]]
+    def get_track_index_range(self, layer_id: int, lower: int, upper: int, *,
+                              num_space: TrackType = 0, edge_margin: int = 0,
+                              half_track: bool = True) -> Tuple[OptHalfIntType, OptHalfIntType]:
         """ Returns the first and last track index strictly in the given range.
 
         Parameters
@@ -1035,25 +1013,20 @@ class RoutingGrid(object):
             minimum space from outer tracks to given range.
         half_track : bool
             True to allow half-integer tracks.
-        unit_mode : bool
-            True if lower/upper/edge_margin are given in resolution units.
 
         Returns
         -------
-        start_track : Optional[HalfInt]
+        start_track : OptHalfIntType
             the first track index.  None if no solution.
-        end_track : Optional[HalfInt]
+        end_track : OptHalfIntType
             the last track index.  None if no solution.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         # get start track half index
         lower_bnd = self.coord_to_nearest_track(layer_id, lower, half_track=True, mode=-1)
         start_track = self.find_next_track(layer_id, lower + edge_margin, half_track=True, mode=1)
         start_track = max(start_track, lower_bnd + num_space)
         # check if half track is allowed
-        if not half_track and not start_track.is_integer():
+        if not half_track and not start_track.is_integer:
             start_track.up()
 
         # get end track half index
@@ -1061,7 +1034,7 @@ class RoutingGrid(object):
         end_track = self.find_next_track(layer_id, upper - edge_margin, half_track=True, mode=-1)
         end_track = min(end_track, upper_bnd - num_space)
         # check if half track is allowed
-        if not half_track and not end_track.is_integer():
+        if not half_track and not end_track.is_integer:
             end_track.down()
 
         if end_track < start_track:
@@ -1069,14 +1042,8 @@ class RoutingGrid(object):
             return None, None
         return start_track, end_track
 
-    def get_overlap_tracks(self,  # type: RoutingGrid
-                           layer_id,  # type: int
-                           lower,  # type: int
-                           upper,  # type: int
-                           half_track=True,  # type: bool
-                           unit_mode=True  # type: bool
-                           ):
-        # type: (...) -> Tuple[Optional[HalfInt], Optional[HalfInt]]
+    def get_overlap_tracks(self, layer_id: int, lower: int, upper: int,
+                           half_track: bool = True) -> Tuple[OptHalfIntType, OptHalfIntType]:
         """ Returns the first and last track index that overlaps with the given range.
 
         Parameters
@@ -1089,19 +1056,14 @@ class RoutingGrid(object):
             the upper coordinate.
         half_track : bool
             True to allow half-integer tracks.
-        unit_mode : bool
-            deprecated parameter.
 
         Returns
         -------
-        start_track : Optional[HalfInt]
+        start_track : OptHalfIntType
             the first track index.  None if no solution.
-        end_track : Optional[HalfInt]
+        end_track : OptHalfIntType
             the last track index.  None if no solution.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         wtr = self.w_tracks[layer_id]
         lower_tr = self.find_next_track(layer_id, lower - wtr, half_track=half_track, mode=1)
         upper_tr = self.find_next_track(layer_id, upper + wtr, half_track=half_track, mode=-1)
@@ -1110,13 +1072,8 @@ class RoutingGrid(object):
             return None, None
         return lower_tr, upper_tr
 
-    def get_via_extensions_dim(self,  # type: RoutingGrid
-                               bot_layer_id,  # type: int
-                               bot_dim,  # type: int
-                               top_dim,  # type: int
-                               unit_mode=True,  # type: bool
-                               ):
-        # type: (...) -> Tuple[int, int]
+    def get_via_extensions_dim(self,  bot_layer_id: int, bot_dim: int,
+                               top_dim: int, **kwargs: Any) -> Tuple[int, int]:
         """Returns the via extension.
 
         Parameters
@@ -1127,8 +1084,8 @@ class RoutingGrid(object):
             the bottom track width in resolution units.
         top_dim : int
             the top track width in resolution units.
-        unit_mode : bool
-            deprecated parameter.
+        **kwargs : Any
+            optional parameters for get_via_info().
 
         Returns
         -------
@@ -1137,32 +1094,22 @@ class RoutingGrid(object):
         top_ext : int
             via extension on the top layer.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
-        bot_lay_name = self.get_layer_name(bot_layer_id, 0)
-        top_lay_name = self.get_layer_name(bot_layer_id + 1, 0)
-        bot_dir = self.dir_tracks[bot_layer_id]
-        top_dir = self.dir_tracks[bot_layer_id + 1]
+        blay, bpurp = self.get_layer_purpose(bot_layer_id, 0)
+        tlay, tpurp = self.get_layer_purpose(bot_layer_id + 1, 0)
+        bot_dir = self.get_direction(bot_layer_id)
+        top_dir = self.get_direction(bot_layer_id + 1)
         if top_dir is bot_dir:
             raise ValueError('This method only works if top and bottom layers are orthogonal.')
 
-        if bot_dir is Orient2D.x:
-            vbox = BBox(0, 0, top_dim, bot_dim)
-            vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir.name)
-            if vinfo is None:
-                raise ValueError('Cannot create via')
-            bot_ext = (vinfo['bot_box'].width_unit - top_dim) // 2
-            top_ext = (vinfo['top_box'].height_unit - bot_dim) // 2
+        vbox = BBox(bot_dir, 0, top_dim, 0, bot_dim)
+        vinfo = self._tech_info.get_via_info(vbox, blay, tlay, bot_dir, but_purpose=bpurp,
+                                             top_purpose=tpurp, top_dir=top_dir, **kwargs)
+        if vinfo is None:
+            raise ValueError('Cannot create via')
         else:
-            vbox = BBox(0, 0, bot_dim, top_dim)
-            vinfo = self._tech_info.get_via_info(vbox, bot_lay_name, top_lay_name, bot_dir.name)
-            if vinfo is None:
-                raise ValueError('Cannot create via')
-            bot_ext = (vinfo['bot_box'].height_unit - top_dim) // 2
-            top_ext = (vinfo['top_box'].width_unit - bot_dim) // 2
-
-        return bot_ext, top_ext
+            bot_ext = (vinfo['bot_box'].get_dim(bot_dir) - top_dim) // 2
+            top_ext = (vinfo['top_box'].get_dim(top_dir) - bot_dim) // 2
+            return bot_ext, top_ext
 
     def get_via_extensions(self, bot_layer_id, bot_width, top_width, unit_mode=True):
         # type: (int, int, int, bool) -> Tuple[int, int]
