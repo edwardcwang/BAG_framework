@@ -1111,8 +1111,8 @@ class RoutingGrid(object):
             top_ext = (vinfo['top_box'].get_dim(top_dir) - bot_dim) // 2
             return bot_ext, top_ext
 
-    def get_via_extensions(self, bot_layer_id, bot_width, top_width, unit_mode=True):
-        # type: (int, int, int, bool) -> Tuple[int, int]
+    def get_via_extensions(self, bot_layer_id: int, bot_width: int,
+                           top_width: int) -> Tuple[int, int]:
         """Returns the via extension.
 
         Parameters
@@ -1123,8 +1123,6 @@ class RoutingGrid(object):
             the bottom track width in number of tracks.
         top_width : int
             the top track width in number of tracks.
-        unit_mode : bool
-            deprecated paramteer.
 
         Returns
         -------
@@ -1133,15 +1131,11 @@ class RoutingGrid(object):
         top_ext : int
             via extension on the top layer.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         bot_dim = self.get_track_width(bot_layer_id, bot_width)
         top_dim = self.get_track_width(bot_layer_id + 1, top_width)
         return self.get_via_extensions_dim(bot_layer_id, bot_dim, top_dim)
 
-    def coord_to_track(self, layer_id, coord, unit_mode=True):
-        # type: (int, int, bool) -> HalfInt
+    def coord_to_track(self, layer_id: int, coord: int) -> HalfInt:
         """Convert given coordinate to track number.
 
         Parameters
@@ -1150,17 +1144,12 @@ class RoutingGrid(object):
             the layer number.
         coord : int
             the coordinate perpendicular to the track direction.
-        unit_mode : bool
-            deprecated parameter.
 
         Returns
         -------
         track : HalfInt
             the track number
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         pitch = self.get_track_pitch(layer_id)
         q, r = divmod(coord - self._get_track_offset(layer_id), pitch)
 
@@ -1171,9 +1160,8 @@ class RoutingGrid(object):
         else:
             raise ValueError('coordinate %.4g is not on track.' % coord)
 
-    def find_next_track(self, layer_id, coord, tr_width=1, half_track=True,
-                        mode=1, unit_mode=True):
-        # type: (int, int, int, bool, int, bool) -> HalfInt
+    def find_next_track(self, layer_id: int, coord: int, *, tr_width: int = 1,
+                        half_track: bool = True, mode: int = 1) -> HalfInt:
         """Find the track such that its edges are on the same side w.r.t. the given coordinate.
 
         Parameters
@@ -1189,17 +1177,12 @@ class RoutingGrid(object):
         mode : int
             1 to find track with both edge coordinates larger than or equal to the given one,
             -1 to find track with both edge coordinates less than or equal to the given one.
-        unit_mode : bool
-            deprecated parameter.
 
         Returns
         -------
         tr_idx : HalfInt
             the center track index.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         tr_w = self.get_track_width(layer_id, tr_width)
         if mode > 0:
             return self.coord_to_nearest_track(layer_id, coord + tr_w // 2, half_track=half_track,
@@ -1208,9 +1191,8 @@ class RoutingGrid(object):
             return self.coord_to_nearest_track(layer_id, coord - tr_w // 2, half_track=half_track,
                                                mode=mode)
 
-    def coord_to_nearest_track(self, layer_id, coord, half_track=True, mode=0,
-                               unit_mode=True):
-        # type: (int, int, bool, int, bool) -> HalfInt
+    def coord_to_nearest_track(self, layer_id: int, coord: int, *,
+                               half_track: bool = True, mode: int = 0) -> HalfInt:
         """Returns the track number closest to the given coordinate.
 
         Parameters
@@ -1237,17 +1219,12 @@ class RoutingGrid(object):
 
             If mode == 2, return the nearest track with coordinate greater
             than coord.
-        unit_mode : bool
-            deprecated parameter.
 
         Returns
         -------
         track : HalfInt
             the track number
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         pitch = self.get_track_pitch(layer_id)
         if half_track:
             pitch //= 2
@@ -1272,9 +1249,8 @@ class RoutingGrid(object):
             return HalfInt(2 * q)
         return HalfInt(q)
 
-    def coord_to_nearest_fill_track(self, layer_id, coord, fill_config, mode=0,
-                                    unit_mode=True):
-        # type: (int, int, Dict[int, Any], int, bool) -> HalfInt
+    def coord_to_nearest_fill_track(self, layer_id: int, coord: int, fill_config: Dict[int, Any],
+                                    mode: int = 0) -> HalfInt:
         """Returns the fill track number closest to the given coordinate.
 
         Parameters
@@ -1301,17 +1277,12 @@ class RoutingGrid(object):
 
             If mode == 2, return the nearest track with coordinate greater
             than coord.
-        unit_mode : bool
-            deprecated parameter.
 
         Returns
         -------
         track : HalfInt
             the track number
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         tr_w, tr_sp, _, _ = fill_config[layer_id]
 
         num_htr = round(2 * (tr_w + tr_sp))
@@ -1335,15 +1306,7 @@ class RoutingGrid(object):
 
         return self.coord_to_track(layer_id, fill_q * fill_pitch + fill_pitch2)
 
-    def transform_track(self,  # type: RoutingGrid
-                        layer_id,  # type: int
-                        track_idx,  # type: TrackType
-                        dx=0,  # type: int
-                        dy=0,  # type: int
-                        orient='R0',  # type: str
-                        unit_mode=True,  # type: bool
-                        ):
-        # type: (...) -> HalfInt
+    def transform_track(self, layer_id: int, track_idx: TrackType, xform: Transform) -> HalfInt:
         """Transform the given track index.
 
         Parameters
@@ -1352,23 +1315,14 @@ class RoutingGrid(object):
             the layer ID.
         track_idx : TrackType
             the track index.
-        dx : int
-            X shift.
-        dy : int
-            Y shift.
-        orient : str
-            orientation.
-        unit_mode : bool
-            deprecated parameter.
+        xform : Transform
+            the transformation object.
 
         Returns
         -------
         new_track_idx : HalfInt
             the transformed track index.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         is_x = self.is_horizontal(layer_id)
         if is_x:
             hidx_shift = int(2 * self.coord_to_track(layer_id, dy)) + 1
