@@ -6,292 +6,18 @@
 from __future__ import annotations
 
 from typing import (
-    TYPE_CHECKING, Tuple, Union, Iterable, Iterator, Dict, List, Sequence, Any, Optional
+    TYPE_CHECKING, Tuple, Union, Iterable, Iterator, Dict, List, Sequence, Any
 )
-
-from math import trunc, ceil, floor
-from numbers import Integral, Real
 
 from pybag.enum import Orientation
 from pybag.core import BBox, BBoxArray, Transform
 
+from ...util.math import HalfInt
 from ...util.search import BinaryIterator
 
 if TYPE_CHECKING:
     from .grid import RoutingGrid
     from bag.typing import TrackType
-
-
-class HalfInt(Integral):
-    """A class that represents a half integer."""
-
-    def __init__(self, dbl_val):
-        if isinstance(dbl_val, Integral):
-            self._val = int(dbl_val)
-        else:
-            raise ValueError('HafInt internal value must be an integer.')
-
-    @classmethod
-    def convert(cls, val):
-        # type: (Any) -> HalfInt
-        if isinstance(val, HalfInt):
-            return val
-        elif isinstance(val, Integral):
-            return HalfInt(2 * int(val))
-        elif isinstance(val, Real):
-            tmp = float(2 * val)
-            if tmp.is_integer():
-                return HalfInt(int(tmp))
-        raise ValueError('Cannot convert {} type {} to HalfInt.'.format(val, type(val)))
-
-    @property
-    def value(self):
-        # type: () -> Union[int, float]
-        q, r = divmod(self._val, 2)
-        return q if r == 0 else q + 0.5
-
-    def is_integer(self):
-        # type: () -> bool
-        return self._val % 2 == 0
-
-    def div2(self, round_up=False):
-        # type: (bool) -> HalfInt
-        q, r = divmod(self._val, 2)
-        if r or not round_up:
-            self._val = q
-        else:
-            self._val = q + 1
-        return self
-
-    def val_str(self):
-        # type: () -> str
-        q, r = divmod(self._val, 2)
-        if r == 0:
-            return '{:d}'.format(q)
-        return '{:d}.5'.format(q)
-
-    def up(self):
-        # type: () -> None
-        self._val += 1
-
-    def down(self):
-        # type: () -> None
-        self._val -= 1
-
-    def __str__(self):
-        return repr(self)
-
-    def __repr__(self):
-        return 'HalfInt({})'.format(self._val / 2)
-
-    def __hash__(self):
-        return hash(self._val)
-
-    def __eq__(self, other):
-        if isinstance(other, HalfInt):
-            return self._val == other._val
-        return self._val == 2 * other
-
-    def __ne__(self, other):
-        return not (self == other)
-
-    def __le__(self, other):
-        if isinstance(other, HalfInt):
-            return self._val <= other._val
-        return self._val <= 2 * other
-
-    def __lt__(self, other):
-        if isinstance(other, HalfInt):
-            return self._val < other._val
-        return self._val < 2 * other
-
-    def __ge__(self, other):
-        return not (self < other)
-
-    def __gt__(self, other):
-        return not (self <= other)
-
-    def __add__(self, other):
-        other = HalfInt.convert(other)
-        return HalfInt(self._val + other._val)
-
-    def __sub__(self, other):
-        return self + (-other)
-
-    def __mul__(self, other):
-        other = HalfInt.convert(other)
-        q, r = divmod(self._val * other._val, 2)
-        if r == 0:
-            return HalfInt(q)
-
-        raise ValueError('result is not a HalfInt.')
-
-    def __truediv__(self, other):
-        other = HalfInt.convert(other)
-        q, r = divmod(2 * self._val, other._val)
-        if r == 0:
-            return HalfInt(q)
-
-        raise ValueError('result is not a HalfInt.')
-
-    def __floordiv__(self, other):
-        other = HalfInt.convert(other)
-        return HalfInt(2 * (self._val // other._val))
-
-    def __mod__(self, other):
-        other = HalfInt.convert(other)
-        return HalfInt(self._val % other._val)
-
-    def __divmod__(self, other):
-        other = HalfInt.convert(other)
-        q, r = divmod(self._val, other._val)
-        return HalfInt(2 * q), HalfInt(r)
-
-    def __pow__(self, other, modulus=None):
-        other = HalfInt.convert(other)
-        if self.is_integer() and other.is_integer():
-            return HalfInt(2 * (self._val // 2)**(other._val // 2))
-        raise ValueError('result is not a HalfInt.')
-
-    def __lshift__(self, other):
-        raise TypeError('Cannot lshift HalfInt')
-
-    def __rshift__(self, other):
-        raise TypeError('Cannot rshift HalfInt')
-
-    def __and__(self, other):
-        raise TypeError('Cannot and HalfInt')
-
-    def __xor__(self, other):
-        raise TypeError('Cannot xor HalfInt')
-
-    def __or__(self, other):
-        raise TypeError('Cannot or HalfInt')
-
-    def __radd__(self, other):
-        return self + other
-
-    def __rsub__(self, other):
-        return (-self) + other
-
-    def __rmul__(self, other):
-        return self * other
-
-    def __rtruediv__(self, other):
-        return HalfInt.convert(other) / self
-
-    def __rfloordiv__(self, other):
-        return HalfInt.convert(other) // self
-
-    def __rmod__(self, other):
-        return HalfInt.convert(other) % self
-
-    def __rdivmod__(self, other):
-        return HalfInt.convert(other).__divmod__(self)
-
-    def __rpow__(self, other):
-        return HalfInt.convert(other)**self
-
-    def __rlshift__(self, other):
-        raise TypeError('Cannot lshift HalfInt')
-
-    def __rrshift__(self, other):
-        raise TypeError('Cannot rshift HalfInt')
-
-    def __rand__(self, other):
-        raise TypeError('Cannot and HalfInt')
-
-    def __rxor__(self, other):
-        raise TypeError('Cannot xor HalfInt')
-
-    def __ror__(self, other):
-        raise TypeError('Cannot or HalfInt')
-
-    def __iadd__(self, other):
-        return self + other
-
-    def __isub__(self, other):
-        return self - other
-
-    def __imul__(self, other):
-        return self * other
-
-    def __itruediv__(self, other):
-        return self / other
-
-    def __ifloordiv__(self, other):
-        return self // other
-
-    def __imod__(self, other):
-        return self % other
-
-    def __ipow__(self, other):
-        return self ** other
-
-    def __ilshift__(self, other):
-        raise TypeError('Cannot lshift HalfInt')
-
-    def __irshift__(self, other):
-        raise TypeError('Cannot rshift HalfInt')
-
-    def __iand__(self, other):
-        raise TypeError('Cannot and HalfInt')
-
-    def __ixor__(self, other):
-        raise TypeError('Cannot xor HalfInt')
-
-    def __ior__(self, other):
-        raise TypeError('Cannot or HalfInt')
-
-    def __neg__(self):
-        return HalfInt(-self._val)
-
-    def __pos__(self):
-        return HalfInt(self._val)
-
-    def __abs__(self):
-        return HalfInt(abs(self._val))
-
-    def __invert__(self):
-        return -self
-
-    def __complex__(self):
-        raise TypeError('Cannot cast to complex')
-
-    def __int__(self):
-        if self._val % 2 == 1:
-            raise ValueError('Not an integer.')
-        return self._val // 2
-
-    def __float__(self):
-        return self._val / 2
-
-    def __index__(self):
-        return int(self)
-
-    def __round__(self, ndigits=0):
-        if self.is_integer():
-            return HalfInt(self._val)
-        else:
-            return HalfInt(round(self._val / 2) * 2)
-
-    def __trunc__(self):
-        if self.is_integer():
-            return HalfInt(self._val)
-        else:
-            return HalfInt(trunc(self._val / 2) * 2)
-
-    def __floor__(self):
-        if self.is_integer():
-            return HalfInt(self._val)
-        else:
-            return HalfInt(floor(self._val / 2) * 2)
-
-    def __ceil__(self):
-        if self.is_integer():
-            return HalfInt(self._val)
-        else:
-            return HalfInt(ceil(self._val / 2) * 2)
 
 
 class TrackID(object):
@@ -311,8 +37,8 @@ class TrackID(object):
         pitch between adjacent tracks, in number of track pitches.
     """
 
-    def __init__(self, layer_id, track_idx, width=1, num=1, pitch=0):
-        # type: (int, TrackType, int, int, TrackType) -> None
+    def __init__(self, layer_id: int, track_idx: TrackType, width: int = 1, num: int = 1,
+                 pitch: TrackType = 0) -> None:
         if num < 1:
             raise ValueError('TrackID must have 1 or more tracks.')
 
@@ -323,59 +49,57 @@ class TrackID(object):
         self._pitch = HalfInt(0) if num == 1 else HalfInt.convert(pitch)
 
     def __repr__(self):
-        # type: () -> str
-        arg_list = ['layer={}'.format(self._layer_id), 'track={}'.format(self._idx.val_str())]
+        arg_list = ['layer={}'.format(self._layer_id), 'track={}'.format(self._idx.to_string())]
         if self._w != 1:
             arg_list.append('width={}'.format(self._w))
         if self._n != 1:
             arg_list.append('num={}'.format(self._n))
-        arg_list.append('pitch={}'.format(self._pitch.val_str()))
+        arg_list.append('pitch={}'.format(self._pitch.to_string()))
 
         return '{}({})'.format(self.__class__.__name__, ', '.join(arg_list))
 
     def __str__(self):
-        # type: () -> str
         return repr(self)
 
+    def __iter__(self) -> Iterator[HalfInt]:
+        """Iterate over all middle track indices in this TrackID."""
+        return (self._idx + idx * self._pitch for idx in range(self._n))
+
     @property
-    def layer_id(self):
-        # type: () -> int
+    def layer_id(self) -> int:
+        """int: The layer ID."""
         return self._layer_id
 
     @property
-    def width(self):
-        # type: () -> int
+    def width(self) -> int:
+        """int: The track width."""
         return self._w
 
     @property
-    def base_index(self):
-        # type: () -> HalfInt
+    def base_index(self) -> HalfInt:
+        """HalfInt: the base index."""
         return self._idx
 
     @property
-    def num(self):
-        # type: () -> int
+    def num(self) -> int:
+        """int: Number of tracks in this TrackID."""
         return self._n
 
     @property
-    def pitch(self):
-        # type: () -> HalfInt
+    def pitch(self) -> HalfInt:
+        """HalfInt: the track pitch."""
         return self._pitch
 
-    def get_immutable_key(self):
-        # type: () -> Tuple[str, int, HalfInt, int, int, HalfInt]
+    def get_immutable_key(self) -> Tuple[str, int, HalfInt, int, int, HalfInt]:
         return self.__class__.__name__, self._layer_id, self._idx, self._w, self._n, self._pitch
 
-    def get_bounds(self, grid, unit_mode=True):
-        # type: (RoutingGrid, bool) -> Tuple[int, int]
+    def get_bounds(self, grid: RoutingGrid) -> Tuple[int, int]:
         """Calculate the track bounds coordinate.
 
         Parameters
         ----------
         grid : RoutingGrid
             the RoutingGrid object.
-        unit_mode : bool
-            deprecated parameter.
 
         Returns
         -------
@@ -384,22 +108,13 @@ class TrackID(object):
         upper : int
             the upper bound coordinate perpendicular to track direction.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         lower, upper = grid.get_wire_bounds(self.layer_id, self._idx, width=self.width)
         pitch_dim = int(self._pitch * grid.get_track_pitch(self._layer_id))
         upper += (self.num - 1) * pitch_dim
         return lower, upper
 
-    def __iter__(self):
-        # type: () -> Iterator[HalfInt]
-        """Iterate over all middle track indices in this TrackID."""
-        return (self._idx + idx * self._pitch for idx in range(self._n))
-
-    def sub_tracks_iter(self, grid):
-        # type: (RoutingGrid) -> Iterable[TrackID]
-        """Iterate through sub-TrackIDs where every track in sub-TrackID has the same layer name.
+    def sub_tracks_iter(self, grid: RoutingGrid) -> Iterable[TrackID]:
+        """Iterate through sub-TrackIDs where every track in sub-TrackID has the same layer/purpose.
 
         This method is used to deal with double patterning layer.  If this TrackID is not
         on a double patterning layer, it simply yields itself.
@@ -412,12 +127,13 @@ class TrackID(object):
         Yields
         ------
         sub_id : TrackID
-            a TrackID where all tracks has the same layer name.
+            a TrackID where all tracks has the same layer/purpose.
         """
         layer_id = self._layer_id
-        layer_names = grid.tech_info.get_layer_name(layer_id)
-        if isinstance(layer_names, tuple):
-            if self._pitch.is_integer() and int(self._pitch) % len(layer_names) == 0:
+        lay_purp_list = grid.tech_info.get_lay_purp_list(layer_id)
+        modulus = len(lay_purp_list)
+        if modulus:
+            if self._pitch.is_integer and int(self._pitch) % modulus == 0:
                 # layer name will never change
                 yield self
             else:
@@ -465,64 +181,52 @@ class WireArray(object):
         the lower coordinate along the track direction.
     upper : int
         the upper coordinate along the track direction.
-    res : Optional[float]
-        deprecated parameter.
-    unit_mode : bool
-        deprecated parameter.
     """
 
-    # noinspection PyUnusedLocal
-    def __init__(self, track_id, lower, upper, res=None, unit_mode=True):
-        # type: (TrackID, int, int, Optional[float], bool) -> None
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
+    def __init__(self, track_id: TrackID, lower: int, upper: int) -> None:
         self._track_id = track_id
-        self._lower_unit = lower
-        self._upper_unit = upper
+        self._lower = lower
+        self._upper = upper
 
     def __repr__(self):
         return '{}({}, {:d}, {:d})'.format(self.__class__.__name__, self._track_id,
-                                           self._lower_unit, self._upper_unit)
+                                           self._lower, self._upper)
 
     def __str__(self):
         return repr(self)
 
     @property
-    def lower_unit(self):
-        # type: () -> int
-        return self._lower_unit
+    def lower(self) -> int:
+        """int: The starting coordinate of this wire."""
+        return self._lower
 
     @property
-    def upper_unit(self):
-        # type: () -> int
-        return self._upper_unit
+    def upper(self) -> int:
+        """int: The stopping coordinate of this wire."""
+        return self._upper
 
     @property
-    def middle_unit(self):
-        # type: () -> int
-        return (self._lower_unit + self._upper_unit) // 2
+    def middle(self) -> int:
+        """int: The midpoint coordinate of this wire."""
+        return (self._lower + self._upper) // 2
 
     @property
-    def track_id(self):
-        # type: () -> TrackID
-        """Returns the TrackID of this WireArray."""
+    def track_id(self) -> TrackID:
+        """TrackID: The TrackID of this WireArray."""
         return self._track_id
 
     @property
-    def layer_id(self):
-        # type: () -> int
-        """Returns the layer ID of this WireArray."""
+    def layer_id(self) -> int:
+        """int:  The layer ID of this WireArray."""
         return self.track_id.layer_id
 
     @property
-    def width(self):
-        # type: () -> int
+    def width(self) -> int:
+        """int: The wire width."""
         return self.track_id.width
 
     @classmethod
-    def list_to_warr(cls, warr_list):
-        # type: (Sequence[WireArray]) -> WireArray
+    def list_to_warr(cls, warr_list: Sequence[WireArray]) -> WireArray:
         """Convert a list of WireArrays to a single WireArray.
 
         this method assumes all WireArrays have the same layer, width, and lower/upper coordinates.
@@ -534,7 +238,8 @@ class WireArray(object):
         tid0 = warr_list[0].track_id
         layer = tid0.layer_id
         width = tid0.width
-        lower, upper = warr_list[0].lower_unit, warr_list[0].upper_unit
+        lower = warr_list[0].lower
+        upper = warr_list[0].upper
         tid_list = sorted(set((idx for warr in warr_list for idx in warr.track_id)))
         base_idx = tid_list[0]
         if len(tid_list) < 2:
@@ -548,34 +253,28 @@ class WireArray(object):
                          lower, upper)
 
     @classmethod
-    def single_warr_iter(cls, warr):
-        # type: (Union[WireArray, Sequence[WireArray]]) -> Iterable[WireArray]
+    def single_warr_iter(cls, warr: Union[WireArray, Sequence[WireArray]]) -> Iterable[WireArray]:
         if isinstance(warr, WireArray):
             yield from warr.warr_iter()
         else:
             for w in warr:
                 yield from w.warr_iter()
 
-    def get_immutable_key(self):
-        # type: () -> Any
-        return (self.__class__.__name__, self._track_id.get_immutable_key(), self._lower_unit,
-                self._upper_unit)
+    def get_immutable_key(self) -> Any:
+        return (self.__class__.__name__, self._track_id.get_immutable_key(), self._lower,
+                self._upper)
 
-    def to_warr_list(self):
-        # type: () -> List[WireArray]
+    def to_warr_list(self) -> List[WireArray]:
         return list(self.warr_iter())
 
-    def warr_iter(self):
-        # type: () -> Iterable[WireArray]
+    def warr_iter(self) -> Iterable[WireArray]:
         tid = self._track_id
         layer = tid.layer_id
         width = tid.width
         for tr in tid:
-            yield WireArray(TrackID(layer, tr, width=width), self._lower_unit,
-                            self._upper_unit)
+            yield WireArray(TrackID(layer, tr, width=width), self._lower, self._upper)
 
-    def get_bbox_array(self, grid):
-        # type: (RoutingGrid) -> BBoxArray
+    def get_bbox_array(self, grid: RoutingGrid) -> BBoxArray:
         """Returns the BBoxArray representing this WireArray.
 
         Parameters
@@ -594,7 +293,7 @@ class WireArray(object):
         base_idx = track_id.base_index
         num = track_id.num
 
-        base_box = grid.get_bbox(layer_id, base_idx, self._lower_unit, self._upper_unit,
+        base_box = grid.get_bbox(layer_id, base_idx, self._lower, self._upper,
                                  width=tr_w)
         tot_pitch = int(track_id.pitch * grid.get_track_pitch(layer_id))
         if grid.get_direction(layer_id) == 'x':
@@ -602,8 +301,7 @@ class WireArray(object):
         else:
             return BBoxArray(base_box, nx=num, spx=tot_pitch)
 
-    def wire_iter(self, grid):
-        # type: (RoutingGrid) -> Iterable[Tuple[str, BBox]]
+    def wire_iter(self, grid: RoutingGrid) -> Iterable[Tuple[Tuple[str, str], BBox]]:
         """Iterate over all wires in this WireArray as layer/BBox pair.
 
         Parameters
@@ -613,21 +311,19 @@ class WireArray(object):
 
         Yields
         ------
-        layer : str
-            the wire layer name.
+        lay_purp : Tuple[str, str]
+            the wire layer/purpose tuple.
         bbox : BBox
             the wire bounding box.
         """
         tr_w = self.track_id.width
         layer_id = self.layer_id
         for tr_idx in self.track_id:
-            layer_name = grid.get_layer_name(layer_id, tr_idx)
-            bbox = grid.get_bbox(layer_id, tr_idx, self._lower_unit, self._upper_unit,
-                                 width=tr_w)
-            yield layer_name, bbox
+            lay_purp = grid.get_layer_purpose(layer_id, tr_idx)
+            bbox = grid.get_bbox(layer_id, tr_idx, self._lower, self._upper, width=tr_w)
+            yield lay_purp, bbox
 
-    def wire_arr_iter(self, grid):
-        # type: (RoutingGrid) -> Iterable[Tuple[str, BBoxArray]]
+    def wire_arr_iter(self, grid: RoutingGrid) -> Iterable[Tuple[Tuple[str, str], BBoxArray]]:
         """Iterate over all wires in this WireArray as layer/BBoxArray pair.
 
         This method group all rectangles in the same layer together.
@@ -639,30 +335,25 @@ class WireArray(object):
 
         Yields
         ------
-        layer : str
-            the wire layer name.
+        lay_purp : Tuple[str, str]
+            the wire layer/purpose tuple.
         bbox : BBoxArray
             the wire bounding boxes.
         """
         tid = self.track_id
         layer_id = tid.layer_id
         tr_width = tid.width
-        track_pitch = grid.get_track_pitch(layer_id, unit_mode=True)
-        is_x = grid.is_horizontal(layer_id)
+        track_pitch = grid.get_track_pitch(layer_id)
+        orient = grid.get_direction(layer_id)
         for track_idx in tid.sub_tracks_iter(grid):
             base_idx = track_idx.base_index
-            cur_layer = grid.get_layer_name(layer_id, base_idx)
+            lay_purp = grid.get_layer_purpose(layer_id, base_idx)
             cur_num = track_idx.num
             wire_pitch = int(track_idx.pitch * track_pitch)
             tl, tu = grid.get_wire_bounds(layer_id, base_idx, width=tr_width)
-            if is_x:
-                base_box = BBox(self._lower_unit, tl, self._upper_unit, tu)
-                box_arr = BBoxArray(base_box, ny=cur_num, spy=wire_pitch)
-            else:
-                base_box = BBox(tl, self._lower_unit, tu, self._upper_unit)
-                box_arr = BBoxArray(base_box, nx=cur_num, spx=wire_pitch)
-
-            yield cur_layer, box_arr
+            base_box = BBox(orient, self._lower, self._upper, tl, tu)
+            box_arr = BBoxArray(base_box, orient, np=cur_num, spp=wire_pitch)
+            yield lay_purp, box_arr
 
     def get_transform(self, xform: Transform, grid: RoutingGrid) -> WireArray:
         """Return a new transformed WireArray.
@@ -683,19 +374,19 @@ class WireArray(object):
         is_x = grid.is_horizontal(layer_id)
         oenum = xform.orient
         if oenum is Orientation.R0:
-            lower, upper = self._lower_unit, self._upper_unit
+            lower, upper = self._lower, self._upper
         elif oenum is Orientation.MX:
             if is_x:
-                lower, upper = self._lower_unit, self._upper_unit
+                lower, upper = self._lower, self._upper
             else:
-                lower, upper = -self._upper_unit, -self._lower_unit
+                lower, upper = -self._upper, -self._lower
         elif oenum is Orientation.MY:
             if is_x:
-                lower, upper = -self._upper_unit, -self._lower_unit
+                lower, upper = -self._upper, -self._lower
             else:
-                lower, upper = self._lower_unit, self._upper_unit
+                lower, upper = self._lower, self._upper
         elif oenum is Orientation.R180:
-            lower, upper = -self._upper_unit, -self._lower_unit
+            lower, upper = -self._upper, -self._lower
         else:
             raise ValueError('Unsupported orientation: ' + oenum.name)
 
@@ -745,10 +436,10 @@ class Port(object):
     def _get_layer(self, layer):
         # type: (Union[int, str]) -> Union[int, str]
         """Get the layer ID or name."""
-        if isinstance(layer, Integral):
-            return self.get_single_layer() if layer < 0 else layer
-        else:
+        if isinstance(layer, str):
             return self.get_single_layer() if not layer else layer
+        else:
+            return self.get_single_layer() if layer < 0 else layer
 
     @property
     def net_name(self):

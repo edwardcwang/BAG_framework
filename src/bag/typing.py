@@ -2,7 +2,7 @@
 
 from typing import Union, Tuple
 
-from bag.layout.routing.base import HalfInt
+from .util.math import HalfInt
 
 CoordType = int
 PointType = Tuple[CoordType, CoordType]
