@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Tuple, Optional, Any, Union, Callable
+from typing import TYPE_CHECKING, Dict, List, Tuple, Optional, Any, Callable
 
 import abc
 import math
@@ -247,8 +247,8 @@ class TechInfo(abc.ABC):
         return 0
 
     @abc.abstractmethod
-    def get_layer_name(self, layer_id: int) -> Union[str, Tuple[str, ...]]:
-        """Return the layer name(s) for the given routing grid layer ID.
+    def get_lay_purp_list(self, layer_id: int) -> List[Tuple[str, str], ...]:
+        """Return list of layer/purpose pairs on the given routing layer.
 
         Parameters
         ----------
@@ -257,11 +257,10 @@ class TechInfo(abc.ABC):
 
         Returns
         -------
-        name : Union[str, Tuple[str, ...]]
-            name of the layer.  Returns a tuple of names if this is a double
-            patterning layer.
+        lay_purp_list : List[Tuple[str, str], ...]
+            list of layer/purpose pairs on the given layer.
         """
-        return ''
+        return []
 
     @abc.abstractmethod
     def get_layer_type(self, layer_name: str) -> str:
@@ -1085,8 +1084,8 @@ class DummyTechInfo(TechInfo):
     def get_layer_id(self, layer_name):
         return -1
 
-    def get_layer_name(self, layer_id):
-        return ''
+    def get_lay_purp_list(self, layer_id: int) -> List[Tuple[str, str], ...]:
+        return []
 
     def get_layer_type(self, layer_name):
         return ''
@@ -1130,12 +1129,9 @@ class TechInfoConfig(TechInfo, abc.ABC):
         self.idc_temp = tech_params['layout']['em']['dc_temp']
         self.irms_dt = tech_params['layout']['em']['rms_dt']
         self._layer_id_lookup = {}
-        for key, val in config['layer_name'].items():
-            if isinstance(val, str):
-                self._layer_id_lookup[val] = key
-            else:
-                for sub_name in val:
-                    self._layer_id_lookup[sub_name] = key
+        for lay_id, lay_purp_list in config['lay_purp_list'].items():
+            for lay, purp in lay_purp_list:
+                self._layer_id_lookup[lay] = lay_id
 
     @abc.abstractmethod
     def get_via_arr_enc(self, vname: str, vtype: str, mtype: str, mw_unit: int,
@@ -1185,8 +1181,8 @@ class TechInfoConfig(TechInfo, abc.ABC):
     def use_flip_parity(self) -> bool:
         return self.config['use_flip_parity']
 
-    def get_layer_name(self, layer_id: int) -> str:
-        name_dict = self.config['layer_name']
+    def get_lay_purp_list(self, layer_id: int) -> List[Tuple[str, str], ...]:
+        name_dict = self.config['lay_purp_list']
         return name_dict[layer_id]
 
     def get_layer_id(self, layer_name: str) -> Optional[int]:
@@ -1272,9 +1268,9 @@ class TechInfoConfig(TechInfo, abc.ABC):
         return sp, sp2_list, sp3_list, dim, enc_cur, arr_enc, arr_test
 
     def layer_id_to_type(self, layer_id: int) -> str:
-        name_dict = self.config['layer_name']
+        lay_purp_list_dict = self.config['lay_purp_list']
         type_dict = self.config['layer_type']
-        return type_dict[name_dict[layer_id]]
+        return type_dict[lay_purp_list_dict[layer_id][0][0]]
 
     def get_min_length(self, layer_type: str, w_unit: int) -> int:
         len_min_config = self.config['len_min']

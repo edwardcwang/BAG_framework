@@ -279,8 +279,7 @@ class RoutingGrid(object):
         """Returns true if the given layer is horizontal."""
         return self.dir_tracks[layer_id] is Orient2D.x
 
-    def get_direction(self, layer_id):
-        # type: (int) -> str
+    def get_direction(self, layer_id: int) -> Orient2D:
         """Returns the track direction of the given layer.
 
         Parameters
@@ -293,7 +292,7 @@ class RoutingGrid(object):
         tdir : str
             'x' for horizontal tracks, 'y' for vertical tracks.
         """
-        return self.dir_tracks[layer_id].name
+        return self.dir_tracks[layer_id]
 
     def get_track_pitch(self, layer_id, unit_mode=True):
         # type: (int, bool) -> int
@@ -929,8 +928,7 @@ class RoutingGrid(object):
 
         return self.w_tracks[layer_id], self.sp_tracks[layer_id]
 
-    def get_track_parity(self, layer_id, tr_idx):
-        # type: (int, TrackType) -> int
+    def get_track_parity(self, layer_id: int, tr_idx: TrackType, modulus: int = 2) -> int:
         """Returns the parity of the given track.
 
         Parameters
@@ -939,23 +937,22 @@ class RoutingGrid(object):
             the layer ID.
         tr_idx : TrackType
             the track index.
+        modulus : int
+            the parity modulus.
 
         Returns
         -------
         parity : int
-            the track parity, either 0 or 1.
+            the track parity.
         """
         # multiply then divide by 2 makes sure negative tracks are colored correctly.
         htr = round(tr_idx * 2 + 1)
         scale, offset = self._flip_parity[layer_id]
         par_htr = scale * htr + offset
-        if par_htr % 4 < 2:
-            return 0
-        return 1
+        return (par_htr % (2 * modulus)) // 2
 
-    def get_layer_name(self, layer_id, tr_idx):
-        # type: (int, TrackType) -> str
-        """Returns the layer name of the given track.
+    def get_layer_purpose(self, layer_id: int, tr_idx: TrackType) -> Tuple[str, str]:
+        """Get the layer/purpose pair of the given track.
 
         Parameters
         ----------
@@ -968,14 +965,12 @@ class RoutingGrid(object):
         -------
         layer_name : str
             the layer name.
+        purpose_name : str
+            the purpose name.
         """
-        layer_name = self.tech_info.get_layer_name(layer_id)
-        if isinstance(layer_name, tuple):
-            # round down half integer track
-            tr_parity = self.get_track_parity(layer_id, tr_idx)
-            return layer_name[tr_parity]
-        else:
-            return layer_name
+        lay_purp_list = self.tech_info.get_lay_purp_list(layer_id)
+        tr_parity = self.get_track_parity(layer_id, tr_idx, modulus=len(lay_purp_list))
+        return lay_purp_list[tr_parity]
 
     def get_wire_bounds(self, layer_id, tr_idx, width=1, unit_mode=True):
         # type: (int, TrackType, int, bool) -> Tuple[int, int]

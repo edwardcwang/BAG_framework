@@ -23,7 +23,7 @@ from ..io import get_encoding, open_file
 from .routing.base import Port, TrackID, WireArray
 
 from pybag.enum import (
-    Orientation, PathStyle, BlockageType, BoundaryType, GeometryMode, DesignOutput, Orient2D
+    PathStyle, BlockageType, BoundaryType, GeometryMode, DesignOutput, Orient2D
 )
 from pybag.core import BBox, BBoxArray, PyLayCellView, Transform, PyLayInstRef
 
@@ -283,12 +283,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     @property
     def size(self) -> Optional[SizeType]:
-        """Optional[SizeType]: The size of this template, in (layer, num_x_block,  num_y_block) format."""
+        """Optional[SizeType]: The size of this template, in (layer, nx_blk, ny_blk) format."""
         return self._size
 
     @property
     def bound_box(self) -> Optional[BBox]:
-        """Optional[BBox]: Returns the BBox with the size of this template.  None if size not set yet."""
+        """Optional[BBox]: Returns the template BBox.  None if size not set yet."""
         mysize = self.size
         if mysize is None:
             if self.prim_bound_box is None:
@@ -616,7 +616,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if xform is None:
             xform = Transform()
 
-        ref = self._layout.add_instance(master.layout_cellview, inst_name, xform, nx, ny, spx, spy, commit)
+        ref = self._layout.add_instance(master.layout_cellview, inst_name, xform, nx, ny,
+                                        spx, spy, commit)
         return PyLayInstance(self, master, ref)
 
     def add_instance_primitive(self,
@@ -744,9 +745,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return [self._layout.add_rect(lay, purp, is_horiz, bbox, commit=commit) for lay, purp in
                 self.grid.tech_info.get_res_metal_layers(layer_id)]
 
-    def add_path(self, layer: str, purpose: str, width: int, points: List[PointType], start_style: PathStyle,
-                 *, join_style: PathStyle = PathStyle.round, stop_style: Optional[PathStyle] = None,
-                 commit: bool = True) -> PyPath:
+    def add_path(self, layer: str, purpose: str, width: int, points: List[PointType],
+                 start_style: PathStyle, *, join_style: PathStyle = PathStyle.round,
+                 stop_style: Optional[PathStyle] = None, commit: bool = True) -> PyPath:
         """Add a new path.
 
         Parameters
@@ -780,8 +781,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self._layout.add_path(layer, purpose, is_horiz, points, half_width, start_style,
                                      stop_style, join_style, commit)
 
-    def add_path45_bus(self, layer: str, purpose: str, points: List[PointType], widths: List[int], spaces: List[int],
-                       start_style: PathStyle, *, join_style: PathStyle = PathStyle.round,
+    def add_path45_bus(self, layer: str, purpose: str, points: List[PointType], widths: List[int],
+                       spaces: List[int], start_style: PathStyle, *,
+                       join_style: PathStyle = PathStyle.round,
                        stop_style: Optional[PathStyle] = None, commit: bool = True) -> PyPath:
         """Add a path bus that only contains 45 degree turns.
 
@@ -817,7 +819,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self._layout.add_path45_bus(layer, purpose, is_horiz, points, widths, spaces,
                                            start_style, stop_style, join_style, commit)
 
-    def add_polygon(self, layer: str, purpose: str, points: List[PointType], commit: bool = True) -> PyPolygon:
+    def add_polygon(self, layer: str, purpose: str, points: List[PointType],
+                    commit: bool = True) -> PyPolygon:
         """Add a new polygon.
 
         Parameters
@@ -860,7 +863,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self._layout.add_blockage(layer, blk_type, points, commit)
 
-    def add_boundary(self, bnd_type: BoundaryType, points: List[PointType], commit: bool = True) -> PyBoundary:
+    def add_boundary(self, bnd_type: BoundaryType, points: List[PointType],
+                     commit: bool = True) -> PyBoundary:
         """Add a new boundary.
 
         Parameters
@@ -879,7 +883,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self._layout.add_boundary(bnd_type, points, commit)
 
-    def reexport(self, port: Port, *, net_name: str = '', label: str = '', show: bool = True) -> None:
+    def reexport(self, port: Port, *,
+                 net_name: str = '', label: str = '', show: bool = True) -> None:
         """Re-export the given port object.
 
         Add all geometries in the given port as pins with optional new name
@@ -923,7 +928,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             else:
                 port_pins[layer_id].append(wire_arr)
 
-    def add_pin_primitive(self, net_name: str, layer: str, bbox: BBox, *, label: str = '', show: bool = True):
+    def add_pin_primitive(self, net_name: str, layer: str, bbox: BBox, *,
+                          label: str = '', show: bool = True):
         """Add a primitive pin to the layout.
 
         Parameters
@@ -1044,9 +1050,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             else:
                 port_pins[layer_id].append(warr)
 
-    def add_via(self, bbox: BBox, bot_layer: str, top_layer: str, bot_dir: Orient2D, *, bot_purpose: str = '',
-                top_purpose: str = '', extend: bool = True, top_dir: Optional[Orient2D] = None,
-                add_layers: bool = False, commit: bool = True) -> PyVia:
+    def add_via(self, bbox: BBox, bot_layer: str, top_layer: str, bot_dir: Orient2D, *,
+                bot_purpose: str = '', top_purpose: str = '', extend: bool = True,
+                top_dir: Optional[Orient2D] = None, add_layers: bool = False,
+                commit: bool = True) -> PyVia:
         """Adds an arrayed via object to the layout.
 
         Parameters
@@ -1077,8 +1084,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         via : PyVia
             the new via object.
         """
-        params = self._grid.tech_info.get_via_info(bbox, bot_layer, top_layer, bot_dir, bot_purpose=bot_purpose,
-                                                   top_purpose=top_purpose, top_dir=top_dir, extend=extend)['params']
+        params = self._grid.tech_info.get_via_info(bbox, bot_layer, top_layer, bot_dir,
+                                                   bot_purpose=bot_purpose, top_purpose=top_purpose,
+                                                   top_dir=top_dir, extend=extend)['params']
         vid = params['id']
         xform = params['xform']
         w = params['cut_width']
@@ -1092,11 +1100,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         bot_horiz = self.is_horizontal(bot_layer)
         top_horiz = self.is_horizontal(top_layer)
-        return self._layout.add_via(xform, vid, add_layers, bot_horiz, top_horiz, vnx, vny, w, h, vspx, vspy,
-                                    l1, r1, t1, b1, l2, r2, t2, b2, commit)
+        return self._layout.add_via(xform, vid, add_layers, bot_horiz, top_horiz, vnx, vny, w, h,
+                                    vspx, vspy, l1, r1, t1, b1, l2, r2, t2, b2, commit)
 
-    def add_via_arr(self, bbox: BBox, bot_layer: str, top_layer: str, bot_dir: Orient2D, *, bot_purpose: str = '',
-                    top_purpose: str = '', nx: int = 1, ny: int = 1, spx: int = 0, spy: int = 0, extend: bool = True,
+    def add_via_arr(self, bbox: BBox, bot_layer: str, top_layer: str, bot_dir: Orient2D, *,
+                    bot_purpose: str = '', top_purpose: str = '', nx: int = 1, ny: int = 1,
+                    spx: int = 0, spy: int = 0, extend: bool = True,
                     top_dir: Optional[Orient2D] = None, add_layers: bool = False) -> None:
         """Adds an arrayed via object to the layout.
 
@@ -1129,8 +1138,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         add_layers : bool
             True to add metal rectangles on top and bottom layers.
         """
-        params = self._grid.tech_info.get_via_info(bbox, bot_layer, top_layer, bot_dir, bot_purpose=bot_purpose,
-                                                   top_purpose=top_purpose, top_dir=top_dir, extend=extend)['params']
+        params = self._grid.tech_info.get_via_info(bbox, bot_layer, top_layer, bot_dir,
+                                                   bot_purpose=bot_purpose, top_purpose=top_purpose,
+                                                   top_dir=top_dir, extend=extend)['params']
         vid = params['id']
         xform = params['xform']
         w = params['cut_width']
@@ -1144,36 +1154,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         bot_horiz = self.is_horizontal(bot_layer)
         top_horiz = self.is_horizontal(top_layer)
-        self._layout.add_via_arr(xform, vid, add_layers, bot_horiz, top_horiz, vnx, vny, w, h, vspx, vspy,
-                                 l1, r1, t1, b1, l2, r2, t2, b2, nx, ny, spx, spy)
+        self._layout.add_via_arr(xform, vid, add_layers, bot_horiz, top_horiz, vnx, vny, w, h,
+                                 vspx, vspy, l1, r1, t1, b1, l2, r2, t2, b2, nx, ny, spx, spy)
 
-    def add_via_primitive(self, via_type,  # type: str
-                          loc,  # type: PointType
-                          cut_width,  # type: Optional[CoordType]
-                          cut_height,  # type: Optional[CoordType]
-                          num_rows=1,  # type: int
-                          num_cols=1,  # type: int
-                          sp_rows=0,  # type: CoordType
-                          sp_cols=0,  # type: CoordType
-                          enc1=None,  # type: Optional[List[CoordType]]
-                          enc2=None,  # type: Optional[List[CoordType]]
-                          orient='R0',  # type: str
-                          nx=1,  # type: int
-                          ny=1,  # type: int
-                          spx=0,  # type: CoordType
-                          spy=0,  # type: CoordType
-                          unit_mode=True,  # type: bool
-                          commit=True,  # type: bool
-                          ):
-        # type: (...) -> PyVia
+    def add_via_primitive(self, via_type: str, xform: Transform, cut_width: int, cut_height: int,
+                          *, num_rows: int = 1, num_cols: int = 1, sp_rows: int = 0,
+                          sp_cols: int = 0, enc1: Tuple[int, int, int, int] = (0, 0, 0, 0),
+                          enc2: Tuple[int, int, int, int] = (0, 0, 0, 0), nx: int = 1, ny: int = 1,
+                          spx: int = 0, spy: int = 0) -> None:
         """Adds via(s) by specifying all parameters.
 
         Parameters
         ----------
         via_type : str
             the via type name.
-        loc : PointType
-            the via location as a two-element list.
+        xform: Transform
+            the transformation object.
         cut_width : CoordType
             via cut width.  This is used to create rectangle via.
         cut_height : CoordType
@@ -1192,40 +1188,23 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         enc2 : Optional[List[CoordType]]
             a list of left, right, top, and bottom enclosure values on top layer.
             Defaults to all 0.
-        orient : str
-            orientation of the via.
         nx : int
             number of columns.
         ny : int
             number of rows.
-        spx : CoordType
+        spx : int
             column pitch.
-        spy : CoordType
+        spy : int
             row pitch.
-        unit_mode : bool
-            Deprecated parameter.
-        commit : bool
-            True to commit the object immediately.
-
-        Returns
-        -------
-        via : PyVia
-            the via object at position (0, 0) of the array.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
+        l1, r1, t1, b1 = enc1
+        l2, r2, t2, b2 = enc2
+        self._layout.add_via_arr(xform, via_type, False, False, False, num_cols, num_rows,
+                                 cut_width, cut_height, sp_cols, sp_rows, l1, r1, t1, b1,
+                                 l2, r2, t2, b2, nx, ny, spx, spy)
 
-        default_enc = [0, 0, 0, 0]
-        enc1 = enc1 or default_enc
-        enc2 = enc2 or default_enc
-        return self._layout.add_via_arr(via_type, enc1, enc2, loc[0], loc[1],
-                                        Orientation[orient].value, cut_width, cut_height, num_cols,
-                                        num_rows, sp_cols, sp_rows, nx, ny, spx, spy, False,
-                                        False, False, commit=commit)
-
-    def add_via_on_grid(self, bot_layer_id, bot_track, top_track, bot_width=1, top_width=1,
-                        commit=True):
-        # type: (int, TrackType, TrackType, int, int, bool) -> PyVia
+    def add_via_on_grid(self, bot_layer_id: int, bot_track: TrackType, top_track: TrackType,
+                        *, bot_width: int = 1, top_width: int = 1, **kwargs: Any) -> PyVia:
         """Add a via on the routing grid.
 
         Parameters
@@ -1240,8 +1219,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the bottom track width.
         top_width : int
             the top track width.
-        commit : bool
-            True to commit the object immediately.
+        **kwargs : Any
+            optional arguments for add_via().
 
         Returns
         -------
@@ -1252,14 +1231,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         bl, bu = grid.get_wire_bounds(bot_layer_id, bot_track, width=bot_width)
         tl, tu = grid.get_wire_bounds(bot_layer_id + 1, top_track, width=top_width)
         bot_dir = grid.get_direction(bot_layer_id)
-        if bot_dir == 'x':
-            bbox = BBox(tl, bl, tu, bu)
-        else:
-            bbox = BBox(bl, tl, bu, tu)
-        bname = grid.get_layer_name(bot_layer_id, bot_track)
-        tname = grid.get_layer_name(bot_layer_id + 1, top_track)
+        top_dir = grid.get_direction(bot_layer_id + 1)
+        bbox = BBox(bot_dir, bl, bu, tl, tu)
+        lay1, purp1 = grid.get_layer_purpose(bot_layer_id, bot_track)
+        lay2, purp2 = grid.get_layer_purpose(bot_layer_id + 1, top_track)
 
-        return self.add_via(bbox, bname, tname, bot_dir, commit=commit)
+        return self.add_via(bbox, lay1, lay2, bot_dir, bot_purpose=purp1,
+                            top_purpose=purp2, top_dir=top_dir, **kwargs)
 
     def extend_wires(self,  # type: TemplateBase
                      warr_list,  # type: Union[WireArray, List[Optional[WireArray]]]
