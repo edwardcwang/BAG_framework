@@ -59,7 +59,7 @@ class RoutingGrid(object):
     """
 
     def __init__(self, tech_info: TechInfo, layers: Sequence[int], spaces: Sequence[int],
-                 widths: Sequence[int], bot_dir: Orient2D,
+                 widths: Sequence[int], bot_dir: Orient2D, *,
                  max_num_tr: Union[int, Sequence[int]] = 1000,
                  width_override: Optional[Dict[int, Dict[int, int]]] = None) -> None:
         # error checking
@@ -1326,8 +1326,7 @@ class RoutingGrid(object):
         """
         return TrackID(layer_id, track_idx).transform(xform, self).base_index
 
-    def track_to_coord(self, layer_id, track_idx, unit_mode=True):
-        # type: (int, TrackType, bool) -> int
+    def track_to_coord(self, layer_id: int, track_idx: TrackType) -> int:
         """Convert given track number to coordinate.
 
         Parameters
@@ -1336,26 +1335,16 @@ class RoutingGrid(object):
             the layer number.
         track_idx : TrackType
             the track number.
-        unit_mode : bool
-            deprecated parameter.
 
         Returns
         -------
         coord : int
             the coordinate perpendicular to track direction.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         pitch = self.get_track_pitch(layer_id)
-        return round(pitch * track_idx) + self._get_track_offset(layer_id)
+        return int(HalfInt.convert(track_idx) * pitch) + self._get_track_offset(layer_id)
 
-    def interval_to_track(self,  # type: RoutingGrid
-                          layer_id,  # type: int
-                          intv,  # type: Tuple[int, int]
-                          unit_mode=True,  # type: bool
-                          ):
-        # type: (...) -> Tuple[HalfInt, int]
+    def interval_to_track(self, layer_id: int, intv: Tuple[int, int]) -> Tuple[HalfInt, int]:
         """Convert given coordinates to track number and width.
 
         Parameters
@@ -1364,8 +1353,6 @@ class RoutingGrid(object):
             the layer number.
         intv : Tuple[int, int]
             lower and upper coordinates perpendicular to the track direction.
-        unit_mode : bool
-            deprecated parameter.
 
         Returns
         -------
@@ -1374,9 +1361,6 @@ class RoutingGrid(object):
         width : int
             the track width, in number of tracks.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         start, stop = intv
         track = self.coord_to_track(layer_id, (start + stop) // 2)
         width = stop - start
@@ -1396,15 +1380,12 @@ class RoutingGrid(object):
         # never found solution; width is not quantized.
         raise ValueError('Interval {} on layer {} width not quantized'.format(intv, layer_id))
 
-    def copy(self):
-        # type: () -> RoutingGrid
+    def copy(self) -> RoutingGrid:
         """Returns a deep copy of this RoutingGrid."""
         cls = self.__class__
         result = cls.__new__(cls)
         attrs = result.__dict__
         attrs['_tech_info'] = self._tech_info
-        attrs['_resolution'] = self._resolution
-        attrs['_layout_unit'] = self._layout_unit
         attrs['_flip_parity'] = self._flip_parity.copy()
         attrs['_ignore_layers'] = self._ignore_layers.copy()
         attrs['layers'] = list(self.layers)
@@ -1421,8 +1402,7 @@ class RoutingGrid(object):
 
         return result
 
-    def ignore_layers_under(self, layer_id):
-        # type: (int) -> None
+    def ignore_layers_under(self, layer_id: int) -> None:
         """Ignore all layers under the given layer (inclusive) when calculating block pitches.
 
         Parameters
@@ -1435,9 +1415,9 @@ class RoutingGrid(object):
                 break
             self._ignore_layers.add(lay)
 
-    def add_new_layer(self, layer_id, tr_space, tr_width, direction,
-                      max_num_tr=100, override=False, unit_mode=True, is_private=True):
-        # type: (int, int, int, str, int, bool, bool, bool) -> None
+    def add_new_layer(self, layer_id: int, tr_space: int, tr_width: int, direction: Orient2D, *,
+                      max_num_tr: int = 1000, override: bool = False,
+                      is_private: bool = True) -> None:
         """Add a new private layer to this RoutingGrid.
 
         This method is used to add customized routing grid per template on lower level layers.
@@ -1461,14 +1441,9 @@ class RoutingGrid(object):
             maximum track width in number of tracks.
         override : bool
             True to override existing layers if they already exist.
-        unit_mode : bool
-            deprecated parameter.
         is_private : bool
             True if this is a private layer.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported')
-
         self._ignore_layers.discard(layer_id)
 
         sp_unit = -(-tr_space // 2) * 2
@@ -1503,8 +1478,7 @@ class RoutingGrid(object):
         if layer_id not in self._flip_parity:
             self._flip_parity[layer_id] = (1, 0)
 
-    def set_track_offset(self, layer_id, offset, unit_mode=True):
-        # type: (int, int, bool) -> None
+    def set_track_offset(self, layer_id: int, offset: int) -> None:
         """Set track offset for this RoutingGrid.
 
         Parameters
@@ -1513,16 +1487,10 @@ class RoutingGrid(object):
             the routing layer ID.
         offset : int
             the track offset.
-        unit_mode : bool
-            deprecated parameter.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         self.offset_tracks[layer_id] = offset
 
-    def add_width_override(self, layer_id, width_ntr, tr_width, unit_mode=True):
-        # type: (int, int, int, bool) -> None
+    def add_width_override(self, layer_id: int, width_ntr: int, tr_width: int) -> None:
         """Add width override.
 
         NOTE: call this method only directly after you construct the RoutingGrid.  Do not
@@ -1536,11 +1504,7 @@ class RoutingGrid(object):
             the width in number of tracks.
         tr_width : int
             the actual width.
-        unit_mode : bool
-            deprecated parameter.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
         if width_ntr == 1:
             raise ValueError('Cannot override width_ntr=1.')
 
