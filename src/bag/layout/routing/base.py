@@ -9,7 +9,6 @@ from typing import (
     TYPE_CHECKING, Tuple, Union, Iterable, Iterator, Dict, List, Sequence, Any
 )
 
-from pybag.enum import Orientation
 from pybag.core import BBox, BBoxArray, Transform
 
 from ...util.math import HalfInt
@@ -143,31 +142,27 @@ class TrackID(object):
         else:
             yield self
 
-    def get_transform(self, xform: Transform, grid: RoutingGrid) -> TrackID:
-        """returns a transformed TrackID."""
+    def transform(self, xform: Transform, grid: RoutingGrid) -> TrackID:
+        """Transform this TrackID."""
+        if xform.flips_xy:
+            raise ValueError('Cannot transform TrackID when axes are swapped.')
+
         layer_id = self._layer_id
-        is_x = grid.is_horizontal(layer_id)
-        oenum = xform.orient
-        if oenum is Orientation.R0:
-            base_idx = self._idx
-        elif oenum is Orientation.MX:
-            if is_x:
-                base_idx = -self._idx - (self._n - 1) * self._pitch - 1
-            else:
-                base_idx = self._idx
-        elif oenum is Orientation.MY:
-            if is_x:
-                base_idx = self._idx
-            else:
-                base_idx = -self._idx - (self._n - 1) * self._pitch - 1
-        elif oenum is Orientation.R180:
+        dir_idx = grid.get_direction(layer_id).value
+        scale = xform.axis_scale[dir_idx]
+        if scale < 0:
             base_idx = -self._idx - (self._n - 1) * self._pitch - 1
         else:
-            raise ValueError('Unsupported orientation: {}'.format(oenum))
+            base_idx = self._idx
 
-        delta = grid.coord_to_track(layer_id, xform.y if is_x else xform.x) + 0.5
-        return TrackID(layer_id, base_idx + delta, width=self._w,
-                       num=self._n, pitch=self._pitch)
+        delta = grid.coord_to_track(layer_id, xform.location[1 - dir_idx]) + 0.5
+        self._idx = base_idx + delta
+        return self
+
+    def get_transform(self, xform: Transform, grid: RoutingGrid) -> TrackID:
+        """returns a transformed TrackID."""
+        return TrackID(self._layer_id, self._idx, width=self._w,
+                       num=self._n, pitch=self._pitch).transform(xform, grid)
 
 
 class WireArray(object):
@@ -355,6 +350,34 @@ class WireArray(object):
             box_arr = BBoxArray(base_box, orient, np=cur_num, spp=wire_pitch)
             yield lay_purp, box_arr
 
+    def transform(self, xform: Transform, grid: RoutingGrid) -> WireArray:
+        """Transform this WireArray.
+
+        Parameters
+        ----------
+        xform : Transform
+            the transformation object.
+        grid : RoutingGrid
+            the RoutingGrid of this WireArray.
+
+        Returns
+        -------
+        warr : WireArray
+            a reference to this object.
+        """
+        self._track_id = self._track_id.get_transform(xform, grid)
+        dir_idx = grid.get_direction(self.layer_id).value
+        scale = xform.axis_scale[dir_idx]
+        if scale < 0:
+            tmp = self._lower
+            self._lower = -self._upper
+            self._upper = -tmp
+
+        delta = xform.location[dir_idx]
+        self._lower += delta
+        self._upper += delta
+        return self
+
     def get_transform(self, xform: Transform, grid: RoutingGrid) -> WireArray:
         """Return a new transformed WireArray.
 
@@ -370,29 +393,7 @@ class WireArray(object):
         warr : WireArray
             the new WireArray object.
         """
-        layer_id = self.layer_id
-        is_x = grid.is_horizontal(layer_id)
-        oenum = xform.orient
-        if oenum is Orientation.R0:
-            lower, upper = self._lower, self._upper
-        elif oenum is Orientation.MX:
-            if is_x:
-                lower, upper = self._lower, self._upper
-            else:
-                lower, upper = -self._upper, -self._lower
-        elif oenum is Orientation.MY:
-            if is_x:
-                lower, upper = -self._upper, -self._lower
-            else:
-                lower, upper = self._lower, self._upper
-        elif oenum is Orientation.R180:
-            lower, upper = -self._upper, -self._lower
-        else:
-            raise ValueError('Unsupported orientation: ' + oenum.name)
-
-        delta = xform.x if is_x else xform.y
-        return WireArray(self.track_id.get_transform(xform, grid),
-                         lower + delta, upper + delta)
+        return WireArray(self._track_id, self._lower, self._upper).transform(xform, grid)
 
 
 class Port(object):

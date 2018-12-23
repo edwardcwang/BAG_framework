@@ -14,7 +14,8 @@ from bag.util.search import BinaryIterator
 from bag.math import lcm
 from bag.layout.tech import TechInfo
 
-from .base import HalfInt
+from .base import TrackID
+from ...util.math import HalfInt
 from ...typing import TrackType
 
 SizeType = Tuple[int, HalfInt, HalfInt]
@@ -1323,25 +1324,7 @@ class RoutingGrid(object):
         new_track_idx : HalfInt
             the transformed track index.
         """
-        is_x = self.is_horizontal(layer_id)
-        if is_x:
-            hidx_shift = int(2 * self.coord_to_track(layer_id, dy)) + 1
-        else:
-            hidx_shift = int(2 * self.coord_to_track(layer_id, dx)) + 1
-
-        if orient == 'R0':
-            hidx_scale = 1
-        elif orient == 'R180':
-            hidx_scale = -1
-        elif orient == 'MX':
-            hidx_scale = -1 if is_x else 1
-        elif orient == 'MY':
-            hidx_scale = 1 if is_x else -1
-        else:
-            raise ValueError('Unsupported orientation: %s' % orient)
-
-        old_hidx = round(track_idx * 2 + 1)
-        return HalfInt(old_hidx * hidx_scale + hidx_shift - 1)
+        return TrackID(layer_id, track_idx).transform(xform, self).base_index
 
     def track_to_coord(self, layer_id, track_idx, unit_mode=True):
         # type: (int, TrackType, bool) -> int
