@@ -9,18 +9,18 @@ from typing import (
     TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, Optional, Tuple, Iterable,
     Sequence, Generator, cast
 )
-from bag.typing import CoordType, PointType
+from bag.typing import PointType
 
 import abc
 import copy
-from itertools import product
+from itertools import product, islice
 
 import yaml
 
 from bag.util.cache import DesignMaster, MasterDB
 from bag.util.interval import IntervalSet
 from .core import PyLayInstance
-from ..io import get_encoding, open_file
+from ..io import open_file
 from .routing.base import Port, TrackID, WireArray
 
 from pybag.enum import (
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     GeoType = Union[PyRect, PyPolygon90, PyPolygon45, PyPolygon]
     TemplateType = TypeVar('TemplateType', bound='TemplateBase')
 
-_io_encoding = get_encoding()
+DiffWarrType = Tuple[Optional[WireArray], Optional[WireArray]]
 
 
 class TemplateDB(MasterDB):
@@ -1129,8 +1129,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the via information dictionary.
         """
         via_info = self._grid.tech_info.get_via_info(barr.base, bot_layer, top_layer, bot_dir,
-                                                   bot_purpose=bot_purpose, top_purpose=top_purpose,
-                                                   top_dir=top_dir, extend=extend)
+                                                     bot_purpose=bot_purpose,
+                                                     top_purpose=top_purpose,
+                                                     top_dir=top_dir, extend=extend)
         params = via_info['params']
 
         vid = params['id']
@@ -1915,27 +1916,23 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         return result
 
-    def connect_bbox_to_differential_tracks(self,  # type: TemplateBase
-                                            layer_name,  # type: str
-                                            pbox,  # type: Union[BBox, BBoxArray]
-                                            nbox,  # type: Union[BBox, BBoxArray]
-                                            tr_layer_id,  # type: int
-                                            ptr_idx,  # type: TrackType
-                                            ntr_idx,  # type: TrackType
-                                            width=1,  # type: int
-                                            track_lower=None,  # type: Optional[CoordType]
-                                            track_upper=None,  # type: Optional[CoordType]
-                                            unit_mode=True,  # type: bool
-                                            ):
-        # type: (...) -> Tuple[Optional[WireArray], Optional[WireArray]]
+    def connect_bbox_to_differential_tracks(self, p_lay_purp: Tuple[str, str],
+                                            n_lay_purp: Tuple[str, str],
+                                            pbox: Union[BBox, BBoxArray],
+                                            nbox: Union[BBox, BBoxArray], tr_layer_id: int,
+                                            ptr_idx: TrackType, ntr_idx: TrackType, *,
+                                            width: int = 1, track_lower: Optional[int] = None,
+                                            track_upper: Optional[int] = None) -> DiffWarrType:
         """Connect the given differential primitive wires to two tracks symmetrically.
 
         This method makes sure the connections are symmetric and have identical parasitics.
 
         Parameters
         ----------
-        layer_name : str
-            the primitive wire layer name.
+        p_lay_purp : Tuple[str, str]
+            positive signal layer/purpose pair.
+        n_lay_purp : Tuple[str, str]
+            negative signal layer/purpose pair.
         pbox : Union[BBox, BBoxArray]
             positive signal wires to connect.
         nbox : Union[BBox, BBoxArray]
@@ -1948,12 +1945,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             negative track index.
         width : int
             track width in number of tracks.
-        track_lower : Optional[CoordType]
+        track_lower : Optional[int]
             if given, extend track(s) to this lower coordinate.
-        track_upper : Optional[CoordType]
+        track_upper : Optional[int]
             if given, extend track(s) to this upper coordinate.
-        unit_mode: bool
-            deprecated parameter.
 
         Returns
         -------
@@ -1962,30 +1957,24 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         n_track : Optional[WireArray]
             the negative track.
         """
-        track_list = self.connect_bbox_to_matching_tracks(layer_name, [pbox, nbox], tr_layer_id,
-                                                          [ptr_idx, ntr_idx], width=width,
-                                                          track_lower=track_lower,
-                                                          track_upper=track_upper,
-                                                          unit_mode=unit_mode)
+        track_list = self.connect_bbox_to_matching_tracks([p_lay_purp, n_lay_purp], [pbox, nbox],
+                                                          tr_layer_id, [ptr_idx, ntr_idx],
+                                                          width=width, track_lower=track_lower,
+                                                          track_upper=track_upper)
         return track_list[0], track_list[1]
 
-    def connect_bbox_to_matching_tracks(self,  # type: TemplateBase
-                                        layer_name,  # type: str
-                                        box_arr_list,  # type: List[Union[BBox, BBoxArray]]
-                                        tr_layer_id,  # type: int
-                                        tr_idx_list,  # type: List[TrackType]
-                                        width=1,  # type: int
-                                        track_lower=None,  # type: Optional[CoordType]
-                                        track_upper=None,  # type: Optional[CoordType]
-                                        unit_mode=True  # type: bool
-                                        ):
-        # type: (...) -> List[Optional[WireArray]]
+    def connect_bbox_to_matching_tracks(self, lay_purp_list: List[Tuple[str, str]],
+                                        box_arr_list: List[Union[BBox, BBoxArray]],
+                                        tr_layer_id: int, tr_idx_list: List[TrackType], *,
+                                        width: int = 1, track_lower: Optional[int] = None,
+                                        track_upper: Optional[int] = None
+                                        ) -> List[Optional[WireArray]]:
         """Connect the given primitive wire to given tracks.
 
         Parameters
         ----------
-        layer_name : str
-            the primitive wire layer name.
+        lay_purp_list : List[Tuple[str, str]]
+            the primitive wire layer/purpose list.
         box_arr_list : List[Union[BBox, BBoxArray]]
             bounding box of the wire(s) to connect to tracks.
         tr_layer_id : int
@@ -1994,20 +1983,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             list of track indices.
         width : int
             track width in number of tracks.
-        track_lower : Optional[CoordType]
+        track_lower : Optional[int]
             if given, extend track(s) to this lower coordinate.
-        track_upper : Optional[CoordType]
+        track_upper : Optional[int]
             if given, extend track(s) to this upper coordinate.
-        unit_mode: bool
-            deprecated parameter.
 
         Returns
         -------
-        wire_arr : WireArray
-            WireArray representing the tracks created.
+        wire_arr : List[Optional[WireArray]]
+            WireArrays representing the tracks created.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
         grid = self.grid
 
         num_tracks = len(tr_idx_list)
@@ -2015,7 +2000,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             raise ValueError('wire list length and track index list length mismatch.')
         if num_tracks == 0:
             raise ValueError('No tracks given')
-        w_layer_id = grid.tech_info.get_layer_id(layer_name)
+
+        w_layer_id = grid.tech_info.get_layer_id(lay_purp_list[0][0])
         if abs(w_layer_id - tr_layer_id) != 1:
             raise ValueError('Given primitive wires not adjacent to given track layer.')
         bot_layer_id = min(w_layer_id, tr_layer_id)
@@ -2030,10 +2016,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # separate wire arrays into bottom/top tracks, compute wire/track lower/upper coordinates
         tr_width = grid.get_track_width(tr_layer_id, width)
         tr_dir = grid.get_direction(tr_layer_id)
-        tr_horizontal = tr_dir == 'x'
-        bbox_bounds = [None, None]  # type: List[int]
+        bbox_bounds = [w_lower, w_upper]  # type: List[Optional[int]]
         for idx, box_arr in enumerate(box_arr_list):
-            # convert to WireArray list
+            # convert to BBoxArray
             if isinstance(box_arr, BBox):
                 box_arr = BBoxArray(box_arr)
             else:
@@ -2041,19 +2026,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
             base = box_arr.base
             if w_layer_id < tr_layer_id:
-                bot_dim = base.width_unit if tr_horizontal else base.height_unit
+                bot_dim = base.get_dim(tr_dir)
                 top_dim = tr_width
                 w_ext, tr_ext = grid.get_via_extensions_dim(bot_layer_id, bot_dim, top_dim)
             else:
                 bot_dim = tr_width
-                top_dim = base.width_unit if tr_horizontal else base.height_unit
+                top_dim = base.get_dim(tr_dir)
                 tr_ext, w_ext = grid.get_via_extensions_dim(bot_layer_id, bot_dim, top_dim)
 
-            if bbox_bounds[0] is None:
-                bbox_bounds = (w_lower - w_ext, w_upper + w_ext)
-            else:
-                bbox_bounds = (min(bbox_bounds[0], w_lower - w_ext),
-                               max(bbox_bounds[1], w_upper + w_ext))
+            bbox_bounds[0] = min(bbox_bounds[0], w_lower - w_ext)
+            bbox_bounds[1] = max(bbox_bounds[1], w_upper + w_ext)
 
             # compute track lower/upper including via extension
             tr_bounds = box_arr.get_overall_bbox().get_interval(tr_dir)
@@ -2071,12 +2053,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         # draw tracks
         track_list = []  # type: List[Optional[WireArray]]
-        for box_arr, tr_idx in zip(box_arr_list, tr_idx_list):
+        for (lay, purp), box_arr, tr_idx in zip(lay_purp_list, box_arr_list, tr_idx_list):
             track_list.append(self.add_wires(tr_layer_id, tr_idx, track_lower, track_upper,
                                              width=width))
 
             tr_id = TrackID(tr_layer_id, tr_idx, width=width)
-            self.connect_bbox_to_tracks(layer_name, box_arr, tr_id, wire_lower=bbox_bounds[0],
+            self.connect_bbox_to_tracks(lay, purp, box_arr, tr_id, wire_lower=bbox_bounds[0],
                                         wire_upper=bbox_bounds[1])
 
         return track_list
