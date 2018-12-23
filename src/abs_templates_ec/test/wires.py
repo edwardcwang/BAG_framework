@@ -1,17 +1,19 @@
 # -*- coding: utf-8 -*-
 
-from bag.layout.template import TemplateBase
+from typing import Dict, Any
+
+from bag.layout.template import TemplateBase, TemplateDB
 
 
 class TestWire00(TemplateBase):
-    def __init__(self, temp_db, params, **kwargs):
+    def __init__(self, temp_db: TemplateDB, params: Dict[str, Any], **kwargs: Any) -> None:
         TemplateBase.__init__(self, temp_db, params, **kwargs)
 
     @classmethod
-    def get_params_info(cls):
+    def get_params_info(cls) -> Dict[str, str]:
         return {}
 
-    def draw_layout(self):
+    def draw_layout(self) -> None:
         # Metal 4 is horizontal, Metal 5 is vertical
         hm_layer = 4
         vm_layer = 5
