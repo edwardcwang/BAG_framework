@@ -1783,7 +1783,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return new_warr_list
 
     def _draw_via_on_track(self, wlay: str, wpurp: str, box_arr: BBoxArray, track_id: TrackID, *,
-                           tlow: Optional[int]=None, tup: Optional[int]=None) -> Tuple[int, int]:
+                           tlow: Optional[int] = None,
+                           tup: Optional[int] = None) -> Tuple[int, int]:
         """Helper method.  Draw vias on the intersection of the BBoxArray and TrackID."""
         grid = self._grid
 
@@ -1834,40 +1835,34 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         return tlow, tup
 
-    def connect_bbox_to_tracks(self,  # type: TemplateBase
-                               layer_name,  # type: str
-                               box_arr,  # type: Union[BBox, BBoxArray]
-                               track_id,  # type: TrackID
-                               track_lower=None,  # type: Optional[CoordType]
-                               track_upper=None,  # type: Optional[CoordType]
-                               unit_mode=True,  # type: bool
-                               min_len_mode=None,  # type: Optional[int]
-                               wire_lower=None,  # type: Optional[CoordType]
-                               wire_upper=None,  # type: Optional[CoordType]
-                               ):
-        # type: (...) -> WireArray
+    def connect_bbox_to_tracks(self, layer: str, purpose: str, box_arr: Union[BBox, BBoxArray],
+                               track_id: TrackID, *, track_lower: Optional[int] = None,
+                               track_upper: Optional[int] = None,
+                               min_len_mode: Optional[int] = None,
+                               wire_lower: Optional[int] = None,
+                               wire_upper: Optional[int] = None) -> WireArray:
         """Connect the given primitive wire to given tracks.
 
         Parameters
         ----------
-        layer_name : str
+        layer : str
             the primitive wire layer name.
+        purpose : str
+            the primitive wire purpose name.
         box_arr : Union[BBox, BBoxArray]
             bounding box of the wire(s) to connect to tracks.
         track_id : TrackID
             TrackID that specifies the track(s) to connect the given wires to.
-        track_lower : Optional[CoordType]
+        track_lower : Optional[int]
             if given, extend track(s) to this lower coordinate.
-        track_upper : Optional[CoordType]
+        track_upper : Optional[int]
             if given, extend track(s) to this upper coordinate.
-        unit_mode: bool
-            deprecated parameter.
         min_len_mode : Optional[int]
             If not None, will extend track so it satisfy minimum length requirement.
             Use -1 to extend lower bound, 1 to extend upper bound, 0 to extend both equally.
-        wire_lower : Optional[CoordType]
+        wire_lower : Optional[int]
             if given, extend wire(s) to this lower coordinate.
-        wire_upper : Optional[CoordType]
+        wire_upper : Optional[int]
             if given, extend wire(s) to this upper coordinate.
 
         Returns
@@ -1875,12 +1870,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         wire_arr : WireArray
             WireArray representing the tracks created.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
         if isinstance(box_arr, BBox):
-            box_arr = BBoxArray(box_arr)
+            new_barr = BBoxArray(box_arr)
         else:
-            pass
+            new_barr = box_arr.get_copy()
 
         grid = self.grid
 
@@ -1892,22 +1885,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             tu = max(wire_upper, tu)
 
         tr_layer = track_id.layer_id
-        tr_dir = grid.get_direction(tr_layer)
-        base = box_arr.base
-        if tr_dir == 'x':
-            self.add_rect_arr(layer_name,
-                              base.extend(y=tl).extend(y=tu),
-                              nx=box_arr.nx, ny=box_arr.ny, spx=box_arr.spx_unit,
-                              spy=box_arr.spy_unit)
-        else:
-            self.add_rect_arr(layer_name,
-                              base.extend(x=tl).extend(x=tu),
-                              nx=box_arr.nx, ny=box_arr.ny, spx=box_arr.spx_unit,
-                              spy=box_arr.spy_unit)
+        ex_dir = grid.get_direction(tr_layer).perpendicular()
+        new_barr.extend_orient(ex_dir, ct=tl).extend_orient(ex_dir, ct=tu)
+        self.add_rect_arr(layer, purpose, new_barr)
 
         # draw vias
-        tl_unit, tu_unit = self._draw_via_on_track(layer_name, box_arr, track_id,
-                                                   tl_unit=track_lower, tu_unit=track_upper)
+        tlow, tup = self._draw_via_on_track(layer, purpose, new_barr, track_id,
+                                            tlow=track_lower, tup=track_upper)
 
         # draw tracks
         if min_len_mode is not None:
@@ -1915,20 +1899,19 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             min_len = grid.get_min_length(tr_layer, track_id.width)
             # make sure minimum length is even so that middle coordinate exists
             min_len = -(-min_len // 2) * 2
-            tr_len = tu_unit - tl_unit
+            tr_len = tup - tlow
             if min_len > tr_len:
                 ext = min_len - tr_len
                 if min_len_mode < 0:
-                    tl_unit -= ext
+                    tlow -= ext
                 elif min_len_mode > 0:
-                    tu_unit += ext
+                    tup += ext
                 else:
-                    tl_unit -= ext // 2
-                    tu_unit = tl_unit + min_len
-        result = WireArray(track_id, tl_unit, tu_unit)
-        for layer_name, bbox_arr in result.wire_arr_iter(grid):
-            self.add_rect_arr(layer_name, bbox_arr.base, nx=bbox_arr.nx, ny=bbox_arr.ny,
-                              spx=bbox_arr.spx_unit, spy=bbox_arr.spy_unit)
+                    tlow -= ext // 2
+                    tup = tlow + min_len
+        result = WireArray(track_id, tlow, tup)
+        for (lay, purp), wbarr in result.wire_arr_iter(grid):
+            self.add_rect_arr(lay, purp, wbarr)
 
         return result
 
