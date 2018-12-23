@@ -48,7 +48,7 @@ class RoutingGrid(object):
         list of track spacings for each layer.
     widths : Sequence[int]
         list of minimum track widths for each layer.
-    bot_dir : Orient2D
+    bot_dir : str
         the direction of the bottom-most layer.  Either 'x' for horizontal tracks or 'y' for
         vertical tracks.
     max_num_tr : Union[int, Sequence[int]]
@@ -59,7 +59,7 @@ class RoutingGrid(object):
     """
 
     def __init__(self, tech_info: TechInfo, layers: Sequence[int], spaces: Sequence[int],
-                 widths: Sequence[int], bot_dir: Orient2D, *,
+                 widths: Sequence[int], bot_dir: str, *,
                  max_num_tr: Union[int, Sequence[int]] = 1000,
                  width_override: Optional[Dict[int, Dict[int, int]]] = None) -> None:
         # error checking
@@ -86,7 +86,7 @@ class RoutingGrid(object):
         self.w_override = {}
         self.private_layers = []
 
-        cur_dir = bot_dir
+        cur_dir = Orient2D[bot_dir]
         for lay, sp, w, max_num in zip(layers, spaces, widths, max_num_tr):
             self.add_new_layer(lay, sp, w, cur_dir, max_num_tr=max_num, is_private=False)
             # alternate track direction
@@ -1448,7 +1448,6 @@ class RoutingGrid(object):
 
         sp_unit = -(-tr_space // 2) * 2
         w_unit = -(-tr_width // 2) * 2
-        dir_enum = Orient2D[direction]
 
         if layer_id in self.sp_tracks:
             # double check to see if we actually need to modify layer
@@ -1456,7 +1455,7 @@ class RoutingGrid(object):
             sp_cur = self.sp_tracks[layer_id]
             dir_cur = self.dir_tracks[layer_id]
 
-            if w_cur == w_unit and sp_cur == sp_unit and dir_cur is dir_enum:
+            if w_cur == w_unit and sp_cur == sp_unit and dir_cur is direction:
                 # everything is the same, just return
                 return
 
@@ -1472,7 +1471,7 @@ class RoutingGrid(object):
 
         self.sp_tracks[layer_id] = sp_unit
         self.w_tracks[layer_id] = w_unit
-        self.dir_tracks[layer_id] = dir_enum
+        self.dir_tracks[layer_id] = direction
         self.w_override[layer_id] = {}
         self.max_num_tr_tracks[layer_id] = max_num_tr
         if layer_id not in self._flip_parity:
