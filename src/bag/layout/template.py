@@ -2213,13 +2213,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             return ans
         return ans[0]
 
-    def strap_wires(self,  # type: TemplateBase
-                    warr,  # type: WireArray
-                    targ_layer,  # type: int
-                    tr_w_list=None,  # type: Optional[List[int]]
-                    min_len_mode_list=None,  # type: Optional[List[int]]
-                    ):
-        # type: (...) -> WireArray
+    def strap_wires(self, warr: WireArray, targ_layer: int, tr_w_list: Optional[List[int]] = None,
+                    min_len_mode_list: Optional[List[int]] = None) -> WireArray:
         """Strap the given WireArrays to the target routing layer.
 
         This method is used to connects wires on adjacent layers that has the same direction.
@@ -2273,39 +2268,35 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         return warr
 
-    def _strap_wires_helper(self,  # type: TemplateBase
-                            warr,  # type: WireArray
-                            targ_layer,  # type: int
-                            tr_w,  # type: int
-                            mlen_mode,  # type: Optional[int]
-                            ):
-        # type: (...) -> WireArray
+    def _strap_wires_helper(self, warr: WireArray, targ_layer: int, tr_w: int,
+                            mlen_mode: Optional[int]) -> WireArray:
         """Helper method for strap_wires().  Connect one layer at a time."""
+        grid = self._grid
         wire_tid = warr.track_id
         wire_layer = wire_tid.layer_id
 
-        lower = warr.lower_unit
-        upper = warr.upper_unit
+        lower = warr.lower
+        upper = warr.upper
 
         # error checking
-        wdir = self.grid.get_direction(wire_layer)
-        if wdir != self.grid.get_direction(targ_layer):
+        wdir = grid.get_direction(wire_layer)
+        if wdir is not grid.get_direction(targ_layer):
             raise ValueError('Cannot strap wires with different directions.')
 
         # convert base track index
-        base_coord = self.grid.track_to_coord(wire_layer, wire_tid.base_index)
-        base_tid = self.grid.coord_to_track(targ_layer, base_coord)
+        base_coord = grid.track_to_coord(wire_layer, wire_tid.base_index)
+        base_tid = grid.coord_to_track(targ_layer, base_coord)
         # convert pitch
-        wire_pitch = self.grid.get_track_pitch(wire_layer)
-        targ_pitch = self.grid.get_track_pitch(targ_layer)
+        wire_pitch = grid.get_track_pitch(wire_layer)
+        targ_pitch = grid.get_track_pitch(targ_layer)
         pitch_unit = wire_pitch * wire_tid.pitch
         if pitch_unit % (targ_pitch // 2) != 0:
             raise ValueError('Cannot strap wires on layers with mismatched pitch ')
         num_pitch = pitch_unit // targ_pitch
         # convert width
         if tr_w < 0:
-            width_unit = self.grid.get_track_width(wire_layer, wire_tid.width)
-            tr_w = max(1, self.grid.get_track_width_inverse(targ_layer, width_unit, mode=-1))
+            tmp_w = grid.get_track_width(wire_layer, wire_tid.width)
+            tr_w = max(1, grid.get_track_width_inverse(targ_layer, tmp_w, mode=-1))
 
         # draw vias.  Update WireArray lower/upper
         new_lower = lower  # type: int
@@ -2313,36 +2304,30 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         w_lower = lower  # type: int
         w_upper = upper  # type: int
         for tid in wire_tid:
-            coord = self.grid.track_to_coord(wire_layer, tid)
-            tid2 = self.grid.coord_to_track(targ_layer, coord)
-            w_name = self.grid.get_layer_name(wire_layer, tid)
-            t_name = self.grid.get_layer_name(targ_layer, tid2)
+            coord = grid.track_to_coord(wire_layer, tid)
+            tid2 = grid.coord_to_track(targ_layer, coord)
+            wlay, wpurp = grid.get_layer_purpose(wire_layer, tid)
+            tlay, tpurp = grid.get_layer_purpose(targ_layer, tid2)
 
-            w_yb, w_yt = self.grid.get_wire_bounds(wire_layer, tid, wire_tid.width)
-            t_yb, t_yt = self.grid.get_wire_bounds(targ_layer, tid2, tr_w)
-            vbox = BBox(lower, max(w_yb, t_yb), upper, min(w_yt, t_yt))
-            if wdir == 'y':
-                vbox = vbox.flip_xy()
+            wlo, whi = grid.get_wire_bounds(wire_layer, tid, wire_tid.width)
+            tlo, thi = grid.get_wire_bounds(targ_layer, tid2, tr_w)
+            vbox = BBox(wdir, lower, upper, max(wlo, tlo), min(whi, thi))
             if wire_layer < targ_layer:
-                via = self.add_via(vbox, w_name, t_name, wdir, extend=True, top_dir=wdir)
+                via = self.add_via(vbox, wlay, tlay, wdir, bot_purpose=wpurp,
+                                   top_purpose=tpurp, top_dir=wdir, extend=True)
                 tbox, wbox = via.top_box, via.bottom_box
             else:
-                via = self.add_via(vbox, t_name, w_name, wdir, extend=True, top_dir=wdir)
+                via = self.add_via(vbox, tlay, wlay, wdir, bot_purpose=tpurp,
+                                   top_purpose=wpurp, top_dir=wdir, extend=True)
                 tbox, wbox = via.bottom_box, via.top_box
 
-            if wdir == 'y':
-                new_lower = min(new_lower, tbox.bottom_unit)
-                new_upper = max(new_upper, tbox.top_unit)
-                w_lower = min(w_lower, wbox.bottom_unit)
-                w_upper = max(w_upper, wbox.top_unit)
-            else:
-                new_lower = min(new_lower, tbox.left_unit)
-                new_upper = max(new_upper, tbox.right_unit)
-                w_lower = min(w_lower, wbox.left_unit)
-                w_upper = max(w_upper, wbox.top_unit)
+            new_lower = min(new_lower, tbox.get_coord(wdir, 0))
+            new_upper = max(new_upper, tbox.get_coord(wdir, 1))
+            w_lower = min(w_lower, wbox.get_coord(wdir, 0))
+            w_upper = max(w_upper, wbox.get_coord(wdir, 1))
 
         # handle minimum length DRC rule
-        min_len = self.grid.get_min_length(targ_layer, tr_w)
+        min_len = grid.get_min_length(targ_layer, tr_w)
         ext = min_len - (new_upper - new_lower)
         if mlen_mode is not None and ext > 0:
             if mlen_mode < 0:
@@ -2359,19 +2344,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self.add_wires(targ_layer, base_tid, new_lower, new_upper, width=tr_w,
                               num=wire_tid.num, pitch=num_pitch)
 
-    def connect_differential_tracks(self,  # type: TemplateBase
-                                    pwarr_list,  # type: Union[WireArray, List[WireArray]]
-                                    nwarr_list,  # type: Union[WireArray, List[WireArray]]
-                                    tr_layer_id,  # type: int
-                                    ptr_idx,  # type: TrackType
-                                    ntr_idx,  # type: TrackType
-                                    width=1,  # type: int
-                                    track_lower=None,  # type: Optional[CoordType]
-                                    track_upper=None,  # type: Optional[CoordType]
-                                    unit_mode=True,  # type: bool
-                                    debug=False  # type: bool
-                                    ):
-        # type: (...) -> Tuple[Optional[WireArray], Optional[WireArray]]
+    def connect_differential_tracks(self, pwarr_list: Union[WireArray, List[WireArray]],
+                                    nwarr_list: Union[WireArray, List[WireArray]],
+                                    tr_layer_id: int, ptr_idx: TrackType, ntr_idx: TrackType, *,
+                                    width: int = 1, track_lower: Optional[int] = None,
+                                    track_upper: Optional[int] = None,
+                                    debug: bool = False) -> Tuple[Optional[WireArray],
+                                                                  Optional[WireArray]]:
         """Connect the given differential wires to two tracks symmetrically.
 
         This method makes sure the connections are symmetric and have identical parasitics.
@@ -2390,12 +2369,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             negative track index.
         width : int
             track width in number of tracks.
-        track_lower : Optional[CoordType]
+        track_lower : Optional[int]
             if given, extend track(s) to this lower coordinate.
-        track_upper : Optional[CoordType]
+        track_upper : Optional[int]
             if given, extend track(s) to this upper coordinate.
-        unit_mode: bool
-            deprecated parameter.
         debug : bool
             True to print debug messages.
 
@@ -2408,26 +2385,45 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         track_list = self.connect_matching_tracks([pwarr_list, nwarr_list], tr_layer_id,
                                                   [ptr_idx, ntr_idx], width=width,
-                                                  track_lower=track_lower,
-                                                  track_upper=track_upper,
-                                                  unit_mode=unit_mode,
+                                                  track_lower=track_lower, track_upper=track_upper,
                                                   debug=debug)
         return track_list[0], track_list[1]
 
-    def connect_differential_wires(self,  # type: TemplateBase
-                                   pin_warrs,  # type: Union[WireArray, List[WireArray]]
-                                   nin_warrs,  # type: Union[WireArray, List[WireArray]]
-                                   pout_warr,  # type: WireArray
-                                   nout_warr,  # type: WireArray
-                                   track_lower=None,  # type: Optional[CoordType]
-                                   track_upper=None,  # type: Optional[CoordType]
-                                   unit_mode=True,  # type: bool
-                                   debug=False  # type: bool
-                                   ):
-        # type: (...) -> Tuple[Optional[WireArray], Optional[WireArray]]
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
+    def connect_differential_wires(self, pin_warrs: Union[WireArray, List[WireArray]],
+                                   nin_warrs: Union[WireArray, List[WireArray]],
+                                   pout_warr: WireArray, nout_warr: WireArray, *,
+                                   track_lower: Optional[int] = None,
+                                   track_upper: Optional[int] = None,
+                                   debug: bool = False) -> Tuple[Optional[WireArray],
+                                                                 Optional[WireArray]]:
+        """Connect the given differential wires to two WireArrays symmetrically.
 
+        This method makes sure the connections are symmetric and have identical parasitics.
+
+        Parameters
+        ----------
+        pin_warrs : Union[WireArray, List[WireArray]]
+            positive signal wires to connect.
+        nin_warrs : Union[WireArray, List[WireArray]]
+            negative signal wires to connect.
+        pout_warr : WireArray
+            positive track wires.
+        nout_warr : WireArray
+            negative track wires.
+        track_lower : Optional[int]
+            if given, extend track(s) to this lower coordinate.
+        track_upper : Optional[int]
+            if given, extend track(s) to this upper coordinate.
+        debug : bool
+            True to print debug messages.
+
+        Returns
+        -------
+        p_track : Optional[WireArray]
+            the positive track.
+        n_track : Optional[WireArray]
+            the negative track.
+        """
         p_tid = pout_warr.track_id
         lay_id = p_tid.layer_id
         pidx = p_tid.base_index
@@ -2435,13 +2431,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         width = p_tid.width
 
         if track_lower is None:
-            tr_lower = pout_warr.lower_unit
+            tr_lower = pout_warr.lower
         else:
-            tr_lower = min(track_lower, pout_warr.lower_unit)
+            tr_lower = min(track_lower, pout_warr.lower)
         if track_upper is None:
-            tr_upper = pout_warr.upper_unit
+            tr_upper = pout_warr.upper
         else:
-            tr_upper = max(track_upper, pout_warr.upper_unit)
+            tr_upper = max(track_upper, pout_warr.upper)
 
         return self.connect_differential_tracks(pin_warrs, nin_warrs, lay_id, pidx, nidx,
                                                 width=width, track_lower=tr_lower,
