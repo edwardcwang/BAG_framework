@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from typing import (
-    TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, Optional, Tuple, Iterable,
+    TYPE_CHECKING, Union, Dict, Any, List, TypeVar, Type, Optional, Tuple, Iterable,
     Sequence, cast
 )
 from bag.typing import PointType
@@ -2719,19 +2719,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 class BlackBoxTemplate(TemplateBase):
     """A black box template."""
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], Any) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Dict[str, Any], **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
         self._sch_params = {}  # type: Dict[str, Any]
 
     @property
-    def sch_params(self):
-        # type: () -> Dict[str, Any]
+    def sch_params(self) -> Dict[str, Any]:
         return self._sch_params
 
     @classmethod
-    def get_params_info(cls):
-        # type: () -> Dict[str, str]
+    def get_params_info(cls) -> Dict[str, str]:
         return dict(
             lib_name='The library name.',
             cell_name='The layout cell name.',
@@ -2741,11 +2738,10 @@ class BlackBoxTemplate(TemplateBase):
             show_pins='True to show pins.',
         )
 
-    def get_layout_basename(self):
+    def get_layout_basename(self) -> str:
         return self.params['cell_name']
 
-    def draw_layout(self):
-        # type: () -> None
+    def draw_layout(self) -> None:
         lib_name = self.params['lib_name']
         cell_name = self.params['cell_name']
         top_layer = self.params['top_layer']
@@ -2755,13 +2751,13 @@ class BlackBoxTemplate(TemplateBase):
 
         tech_info = self.grid.tech_info
         for term_name, pin_dict in ports.items():
-            for lay_name, bbox_list in pin_dict.items():
-                lay_id = tech_info.get_layer_id(lay_name)
+            for lay, bbox_list in pin_dict.items():
+                lay_id = tech_info.get_layer_id(lay)
                 for xl, yb, xr, yt in bbox_list:
                     box = BBox(xl, yb, xr, yt)
-                    self._register_pin(lay_id, lay_name, term_name, box, show_pins)
+                    self._register_pin(lay_id, lay, term_name, box, show_pins)
 
-        self.add_instance_primitive(lib_name, cell_name, (0, 0))
+        self.add_instance_primitive(lib_name, cell_name)
 
         self.prim_top_layer = top_layer
         self.prim_bound_box = BBox(0, 0, size[0], size[1])
@@ -2774,24 +2770,20 @@ class BlackBoxTemplate(TemplateBase):
             cell_name=cell_name,
         )
 
-    def _register_pin(self, lay_id, lay_name, term_name, box, show_pins):
+    def _register_pin(self, lay_id: int, lay: str, term_name: str, box: BBox,
+                      show_pins: bool) -> None:
         if lay_id is None:
-            self.add_pin_primitive(term_name, lay_name, box, show=show_pins)
+            self.add_pin_primitive(term_name, lay, box, show=show_pins)
         else:
-            if self.grid.get_direction(lay_id) == 'x':
-                dim = box.height_unit
-                coord = box.yc_unit
-                lower = box.left_unit
-                upper = box.right_unit
-            else:
-                dim = box.width_unit
-                coord = box.xc_unit
-                lower = box.bottom_unit
-                upper = box.top_unit
+            dir_idx = self.grid.get_direction(lay_id).value
+            dim = box.get_dim(1 - dir_idx)
+            coord = box.get_center(1 - dir_idx)
+            lower, upper = box.get_interval(dir_idx)
+
             try:
                 tr_idx = self.grid.coord_to_track(lay_id, coord)
             except ValueError:
-                self.add_pin_primitive(term_name, lay_name, box, show=show_pins)
+                self.add_pin_primitive(term_name, lay, box, show=show_pins)
                 return
 
             width_ntr = self.grid.get_track_width_inverse(lay_id, dim)
@@ -2800,4 +2792,4 @@ class BlackBoxTemplate(TemplateBase):
                 warr = WireArray(track_id, lower, upper)
                 self.add_pin(term_name, warr, show=show_pins)
             else:
-                self.add_pin_primitive(term_name, lay_name, box, show=show_pins)
+                self.add_pin_primitive(term_name, lay, box, show=show_pins)
