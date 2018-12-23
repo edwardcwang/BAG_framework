@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import (
     TYPE_CHECKING, Union, Dict, Any, List, Set, TypeVar, Type, Optional, Tuple, Iterable,
-    Sequence, Generator, cast
+    Sequence, cast
 )
 from bag.typing import PointType
 
@@ -17,29 +17,28 @@ from itertools import product, islice
 
 import yaml
 
-from bag.util.cache import DesignMaster, MasterDB
-from bag.util.interval import IntervalSet
-from .core import PyLayInstance
+from ..util.cache import DesignMaster, MasterDB
+from ..util.interval import IntervalSet
 from ..io import open_file
+from .core import PyLayInstance
 from .routing.base import Port, TrackID, WireArray
+from .routing.grid import RoutingGrid
 
 from pybag.enum import (
     PathStyle, BlockageType, BoundaryType, GeometryMode, DesignOutput, Orient2D
 )
-from pybag.core import BBox, BBoxArray, PyLayCellView, Transform, PyLayInstRef
+from pybag.core import (
+    BBox, BBoxArray, PyLayCellView, Transform, PyLayInstRef, PyPath, PyBlockage, PyBoundary,
+    PyRect, PyVia, PyPolygon, PyPolygon90, PyPolygon45
+)
+
+GeoType = Union[PyRect, PyPolygon90, PyPolygon45, PyPolygon]
+TemplateType = TypeVar('TemplateType', bound='TemplateBase')
+DiffWarrType = Tuple[Optional[WireArray], Optional[WireArray]]
 
 if TYPE_CHECKING:
     from bag.core import BagProject
-    from .routing.grid import RoutingGrid
     from bag.typing import TrackType, SizeType
-    from pybag.core import PyPath, PyBlockage, PyBoundary
-    from pybag.core import PyRect, PyVia
-    from pybag.core import PyPolygon90, PyPolygon45, PyPolygon
-
-    GeoType = Union[PyRect, PyPolygon90, PyPolygon45, PyPolygon]
-    TemplateType = TypeVar('TemplateType', bound='TemplateBase')
-
-DiffWarrType = Tuple[Optional[WireArray], Optional[WireArray]]
 
 
 class TemplateDB(MasterDB):
@@ -2443,17 +2442,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                                 width=width, track_lower=tr_lower,
                                                 track_upper=tr_upper, debug=debug)
 
-    def connect_matching_tracks(self,  # type: TemplateBase
-                                warr_list_list,  # type: List[Union[WireArray, List[WireArray]]]
-                                tr_layer_id,  # type: int
-                                tr_idx_list,  # type: List[TrackType]
-                                width=1,  # type: int
-                                track_lower=None,  # type: Optional[CoordType]
-                                track_upper=None,  # type: Optional[CoordType]
-                                unit_mode=True,  # type: bool
-                                debug=False  # type: bool
-                                ):
-        # type: (...) -> List[Optional[WireArray]]
+    def connect_matching_tracks(self, warr_list_list: List[Union[WireArray, List[WireArray]]],
+                                tr_layer_id: int, tr_idx_list: List[TrackType], *,
+                                width: int = 1,
+                                track_lower: Optional[int] = None,
+                                track_upper: Optional[int] = None,
+                                debug: bool = False) -> List[Optional[WireArray]]:
         """Connect wires to tracks with optimal matching.
 
         This method connects the wires to tracks in a way that minimizes the parasitic mismatches.
@@ -2468,12 +2462,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             list of track indices.
         width : int
             track width in number of tracks.
-        track_lower : Optional[CoordType]
+        track_lower : Optional[int]
             if given, extend track(s) to this lower coordinate.
-        track_upper : Optional[CoordType]
+        track_upper : Optional[int]
             if given, extend track(s) to this upper coordinate.
-        unit_mode: bool
-            deprecated parameter.
         debug : bool
             True to print debug messages.
 
@@ -2482,10 +2474,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         track_list : List[WireArray]
             list of created tracks.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
-        grid = self.grid
+        grid = self._grid
 
         # simple error checking
         num_tracks = len(tr_idx_list)  # type: int
@@ -2504,8 +2493,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # separate wire arrays into bottom/top tracks, compute wire/track lower/upper coordinates
         bot_warrs = [[] for _ in range(num_tracks)]
         top_warrs = [[] for _ in range(num_tracks)]
-        bot_bounds = [None, None]  # type: List[CoordType]
-        top_bounds = [None, None]  # type: List[CoordType]
+        bot_bounds = [None, None]  # type: List[Optional[int]]
+        top_bounds = [None, None]  # type: List[Optional[int]]
         for idx, warr_list in enumerate(warr_list_list):
             # convert to WireArray list
             if isinstance(warr_list, WireArray):
@@ -2568,8 +2557,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         return track_list
 
-    def draw_vias_on_intersections(self, bot_warr_list, top_warr_list):
-        # type: (Union[WireArray, List[WireArray]], Union[WireArray, List[WireArray]]) -> None
+    def draw_vias_on_intersections(self, bot_warr_list: Union[WireArray, List[WireArray]],
+                                   top_warr_list: Union[WireArray, List[WireArray]]) -> None:
         """Draw vias on all intersections of the two given wire groups.
 
         Parameters
@@ -2587,24 +2576,26 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             top_warr_list = [top_warr_list]
         else:
             pass
+        if not bot_warr_list:
+            return
 
         grid = self.grid
-
+        bot_layer_id = bot_warr_list[0].track_id.layer_id
+        top_layer_id = bot_layer_id + 1
+        bot_dir = grid.get_direction(bot_layer_id)
+        if grid.get_direction(top_layer_id) is bot_dir:
+            raise ValueError('This method only works on orthogonal layers.')
         for bwarr in bot_warr_list:
-            bot_tl = bwarr.lower_unit
-            bot_tu = bwarr.upper_unit
+            bot_tl = bwarr.lower
+            bot_tu = bwarr.upper
             bot_track_idx = bwarr.track_id
-            bot_layer_id = bot_track_idx.layer_id
-            top_layer_id = bot_layer_id + 1
             bot_width = bot_track_idx.width
-            bot_dir = self.grid.get_direction(bot_layer_id)
-            bot_horizontal = (bot_dir == 'x')
             for bot_index in bot_track_idx:
-                bot_lay_name = self.grid.get_layer_name(bot_layer_id, bot_index)
+                blay, bpurp = grid.get_layer_purpose(bot_layer_id, bot_index)
                 btl, btu = grid.get_wire_bounds(bot_layer_id, bot_index, width=bot_width)
                 for twarr in top_warr_list:
-                    top_tl = twarr.lower_unit
-                    top_tu = twarr.upper_unit
+                    top_tl = twarr.lower
+                    top_tu = twarr.upper
                     top_track_idx = twarr.track_id
                     top_width = top_track_idx.width
                     if top_tu >= btu and top_tl <= btl:
@@ -2614,15 +2605,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                                             width=top_width)
                             if bot_tu >= ttu and bot_tl <= ttl:
                                 # bottom wire cuts top wire, we have intersection.  Make bbox
-                                if bot_horizontal:
-                                    box = BBox(ttl, btl, ttu, btu)
-                                else:
-                                    box = BBox(btl, ttl, btu, ttu)
-                                top_lay_name = self.grid.get_layer_name(top_layer_id, top_index)
-                                self.add_via(box, bot_lay_name, top_lay_name, bot_dir)
+                                box = BBox(bot_dir, ttl, ttu, btl, btu)
+                                tlay, tpurp = self.grid.get_layer_purpose(top_layer_id, top_index)
+                                self.add_via(box, blay, tlay, bot_dir, bot_purpose=bpurp,
+                                             top_purpose=tpurp)
 
-    def has_blockage(self, layer_id, test_box, spx=0, spy=0):
-        # type: (int, BBox, int, int) -> bool
+    def has_blockage(self, layer_id: int, test_box: BBox, spx: int = 0, spy: int = 0) -> bool:
         """Returns true if there are blockage objects.
 
         Parameters
@@ -2641,17 +2629,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         has_blockage : bool
             True if some objects are too close to the given box.
         """
-        layer_name = self._grid.tech_info.get_layer_name(layer_id)
-        if isinstance(layer_name, str):
-            return self._layout.has_blockage(layer_name, test_box, spx=spx, spy=spy)
-        else:
-            for lay_name in layer_name:
-                if self._layout.has_blockage(lay_name, test_box, spx=spx, spy=spy):
-                    return True
-            return False
+        return self._layout.has_blockage(layer_id, test_box, spx=spx, spy=spy)
 
-    def blockage_iter(self, layer_id, test_box, spx=0, spy=0):
-        # type: (int, BBox, int, int) -> Generator[GeoType, None, None]
+    def blockage_iter(self, layer_id: int, test_box: BBox,
+                      spx: int = 0, spy: int = 0) -> Iterable[GeoType]:
         """Returns all geometries that are too close to the given BBox.
 
         Parameters
@@ -2670,24 +2651,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         obj : GeoType
             objects that are too close to the given BBox.
         """
-        layer_name = self._grid.tech_info.get_layer_name(layer_id)
-        if isinstance(layer_name, str):
-            return self._layout.blockage_iter(layer_name, test_box, spx=spx, spy=spy)
-        else:
-            for lay_name in layer_name:
-                yield from self._layout.blockage_iter(lay_name, test_box, spx=spx, spy=spy)
+        return self._layout.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
 
-    def is_track_available(self,  # type: TemplateBase
-                           layer_id,  # type: int
-                           tr_idx,  # type: TrackType
-                           lower,  # type: int
-                           upper,  # type: int
-                           width=1,  # type: int
-                           sp=0,  # type: int
-                           sp_le=0,  # type: int
-                           unit_mode=True,  # type: bool
-                           ):
-        # type: (...) -> bool
+    def is_track_available(self, layer_id: int, tr_idx: TrackType, lower: int, upper: int, *,
+                           width: int = 1, sp: int = 0, sp_le: int = 0) -> bool:
         """Returns True if the given track is available.
 
         Parameters
@@ -2706,78 +2673,44 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             required space around the track.
         sp_le : int
             required line-end space around the track.
-        unit_mode : bool
-            deprecated parameter.
 
         Returns
         -------
         available : bool
             True if the track is available.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         grid = self._grid
-        is_x = grid.is_horizontal(layer_id)
         track_id = TrackID(layer_id, tr_idx, width=width)
         warr = WireArray(track_id, lower, upper)
         sp = max(sp, grid.get_space(layer_id, width))
         sp_le = max(sp_le, grid.get_line_end_space(layer_id, width))
         test_box = warr.get_bbox_array(grid).base
-        if is_x:
-            return not self.has_blockage(layer_id, test_box, spx=sp_le, spy=sp)
-        else:
-            return not self.has_blockage(layer_id, test_box, spx=sp, spy=sp_le)
+        wdir = grid.get_direction(layer_id)
+        return self._layout.has_blockage_orient(layer_id, test_box, wdir, sp=sp, sp_le=sp_le)
 
-    def mark_bbox_used(self, layer_id, bbox):
-        # type: (int, BBox) -> None
+    def mark_bbox_used(self, layer_id: int, bbox: BBox) -> None:
         """Marks the given bounding-box region as used in this Template."""
-        # TODO: fix this method
-        layer_name = self.grid.get_layer_name(layer_id, 0)
-        # self._used_tracks.record_rect(self.grid, layer_name, BBoxArray(bbox), dx=0, dy=0)
+        # TODO: Fix this
         raise ValueError('Not implemented yet')
 
-    def get_available_tracks(self,  # type: TemplateBase
-                             layer_id,  # type: int
-                             tr_idx_list,  # type: List[int]
-                             lower,  # type: CoordType
-                             upper,  # type: CoordType
-                             width=1,  # type: int
-                             margin=0,  # type: CoordType
-                             unit_mode=True,  # type: bool
-                             ):
-        # type: (...) -> List[int]
+    def get_available_tracks(self, layer_id: int, tr_idx_list: List[Halfint], lower: int,
+                             upper: int, *, width: int = 1, margin: int = 0) -> List[HalfInt]:
         """Returns empty tracks"""
         # TODO: fix this method
         raise ValueError('Not implemented yet')
 
-    def do_power_fill(self,  # type: TemplateBase
-                      layer_id,  # type: int
-                      space,  # type: CoordType
-                      space_le,  # type: CoordType
-                      vdd_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
-                      vss_warrs=None,  # type: Optional[Union[WireArray, List[WireArray]]]
-                      bound_box=None,  # type: Optional[BBox]
-                      fill_width=1,  # type: int
-                      fill_space=0,  # type: int
-                      x_margin=0,  # type: CoordType
-                      y_margin=0,  # type: CoordType
-                      tr_offset=0,  # type: CoordType
-                      min_len=0,  # type: CoordType
-                      flip=False,  # type: bool
-                      unit_mode=True,  # type: bool
-                      ):
-        # type: (...) -> Tuple[List[WireArray], List[WireArray]]
+    def do_power_fill(self, layer_id: int, space: int, space_le: int, *,
+                      vdd_warrs: Optional[Union[WireArray, List[WireArray]]] = None,
+                      vss_warrs: Optional[Union[WireArray, List[WireArray]]] = None,
+                      bound_box: Optional[BBox] = None, fill_width: int = 1, fill_space: int = 0,
+                      x_margin: int = 0, y_margin: int = 0, tr_offset: int = 0, min_len: int = 0,
+                      flip: bool = False) -> Tuple[List[WireArray], List[WireArray]]:
         """Draw power fill on the given layer."""
         # TODO: fix this method
         raise ValueError('Not implemented yet')
 
-    def do_max_space_fill(self,  # type: TemplateBase
-                          layer_id,  # type: int
-                          bound_box=None,  # type: Optional[BBox]
-                          fill_pitch=1,  # type: TrackType
-                          ):
-        # type: (...) -> None
+    def do_max_space_fill(self, layer_id: int, bound_box: Optional[BBox] = None,
+                          fill_pitch: TrackType = 1) -> None:
         """Draw density fill on the given layer."""
         # TODO: fix this method
         raise ValueError('Not implemented yet')
