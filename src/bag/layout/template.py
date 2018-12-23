@@ -1097,16 +1097,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         return self._layout.add_via(xform, vid, add_layers, bot_horiz, top_horiz, vnx, vny, w, h,
                                     vspx, vspy, l1, r1, t1, b1, l2, r2, t2, b2, commit)
 
-    def add_via_arr(self, bbox: BBox, bot_layer: str, top_layer: str, bot_dir: Orient2D, *,
-                    bot_purpose: str = '', top_purpose: str = '', nx: int = 1, ny: int = 1,
-                    spx: int = 0, spy: int = 0, extend: bool = True,
-                    top_dir: Optional[Orient2D] = None, add_layers: bool = False) -> None:
+    def add_via_arr(self, barr: BBoxArray, bot_layer: str, top_layer: str, bot_dir: Orient2D, *,
+                    bot_purpose: str = '', top_purpose: str = '', extend: bool = True,
+                    top_dir: Optional[Orient2D] = None, add_layers: bool = False) -> Dict[str, Any]:
         """Adds an arrayed via object to the layout.
 
         Parameters
         ----------
-        bbox : BBox
-            the via bounding box, not including extensions.
+        barr : BBoxArray
+            the BBoxArray representing the via bounding boxes, not including extensions.
         bot_layer : str
             the bottom layer name.
         top_layer : str
@@ -1117,24 +1116,23 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             bottom layer purpose.
         top_purpose : str
             top layer purpose.
-        nx : int
-            number of columns.
-        ny : int
-            number of rows.
-        spx : int
-            column pitch.
-        spy : int
-            row pitch.
         extend : bool
             True if via extension can be drawn outside of the box.
         top_dir : Optional[Orient2D]
             top layer extension direction.  Defaults to be perpendicular to bottom layer direction.
         add_layers : bool
             True to add metal rectangles on top and bottom layers.
+
+        Returns
+        -------
+        via_info : Dict[str, Any]
+            the via information dictionary.
         """
-        params = self._grid.tech_info.get_via_info(bbox, bot_layer, top_layer, bot_dir,
+        via_info = self._grid.tech_info.get_via_info(barr.base, bot_layer, top_layer, bot_dir,
                                                    bot_purpose=bot_purpose, top_purpose=top_purpose,
-                                                   top_dir=top_dir, extend=extend)['params']
+                                                   top_dir=top_dir, extend=extend)
+        params = via_info['params']
+
         vid = params['id']
         xform = params['xform']
         w = params['cut_width']
@@ -1149,7 +1147,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         bot_horiz = self.is_horizontal(bot_layer)
         top_horiz = self.is_horizontal(top_layer)
         self._layout.add_via_arr(xform, vid, add_layers, bot_horiz, top_horiz, vnx, vny, w, h,
-                                 vspx, vspy, l1, r1, t1, b1, l2, r2, t2, b2, nx, ny, spx, spy)
+                                 vspx, vspy, l1, r1, t1, b1, l2, r2, t2, b2, barr.nx, barr.ny,
+                                 barr.spx, barr.spy)
+
+        return via_info
 
     def add_via_primitive(self, via_type: str, xform: Transform, cut_width: int, cut_height: int,
                           *, num_rows: int = 1, num_cols: int = 1, sp_rows: int = 0,
@@ -1609,14 +1610,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         return port_dict
 
-    def reserve_tracks(self,  # type: TemplateBase
-                       layer_id,  # type: int
-                       track_idx,  # type: TrackType
-                       width=1,  # type: int
-                       num=1,  # type: int
-                       pitch=0,  # type: TrackType
-                       ):
-        # type: (...) -> None
+    def reserve_tracks(self, layer_id: int, track_idx: TrackType, *,
+                       width: int = 1, num: int = 1, pitch: int = 0) -> None:
         """Reserve the given routing tracks so that power fill will not fill these tracks.
 
         Note: the size of this template should be set before calling this method.
@@ -1635,29 +1630,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the wire pitch.
         """
         # TODO: fix this method
-        bnd_box = self.bound_box
-        if bnd_box is None:
-            raise ValueError("bound_box is not set")
-
-        tid = TrackID(layer_id, track_idx, width=width, num=num, pitch=pitch)
-        if self.grid.get_direction(layer_id) == 'x':
-            upper = bnd_box.width_unit
-        else:
-            upper = bnd_box.height_unit
-        warr = WireArray(tid, 0, upper)
-
-        lay_name = self.grid.get_layer_name(layer_id, track_idx)
-        # self._used_tracks.record_rect(self.grid, lay_name, warr.get_bbox_array(self.grid))
         raise ValueError('Not implemented yet.')
 
-    def connect_wires(self,  # type: TemplateBase
-                      wire_arr_list,  # type: Union[WireArray, List[WireArray]]
-                      lower=None,  # type: Optional[CoordType]
-                      upper=None,  # type: Optional[CoordType]
-                      debug=False,  # type: bool
-                      unit_mode=True,  # type: bool
-                      ):
-        # type: (...) -> List[WireArray]
+    def connect_wires(self,  wire_arr_list: Union[WireArray, List[WireArray]], *,
+                      lower: Optional[int] = None,
+                      upper: Optional[int] = None,
+                      debug: bool = False,
+                      ) -> List[WireArray]:
         """Connect all given WireArrays together.
 
         all WireArrays must be on the same layer.
@@ -1672,18 +1651,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend connection wires to this upper coordinate.
         debug : bool
             True to print debug messages.
-        unit_mode: bool
-            deprecated parameter.
 
         Returns
         -------
         conn_list : List[WireArray]
             list of connection wires created.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
-        grid = self.grid
+        grid = self._grid
 
         if isinstance(wire_arr_list, WireArray):
             wire_arr_list = [wire_arr_list]
@@ -1698,15 +1672,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         a = wire_arr_list[0]
         layer_id = a.layer_id
         direction = grid.get_direction(layer_id)
-        is_horiz = direction == 'x'
-        perp_dir = 'y' if direction == 'x' else 'x'
+        perp_dir = direction.perpendicular()
         htr_pitch = grid.get_track_pitch(layer_id) // 2
         intv_set = IntervalSet()
         for wire_arr in wire_arr_list:
             if wire_arr.layer_id != layer_id:
                 raise ValueError('WireArray layer ID != %d' % layer_id)
 
-            cur_range = wire_arr.lower_unit, wire_arr.upper_unit
+            cur_range = wire_arr.lower, wire_arr.upper
             box_arr = wire_arr.get_bbox_array(grid)
             for box in box_arr:
                 intv = box.get_interval(perp_dir)
@@ -1743,12 +1716,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             cur_lower, cur_upper = intv
             if add:
                 tr_id = grid.coord_to_track(layer_id, (cur_lower + cur_upper) // 2)
-                layer_name = grid.get_layer_name(layer_id, tr_id)
-                if is_horiz:
-                    box = BBox(cur_start, cur_lower, cur_end, cur_upper)
-                else:
-                    box = BBox(cur_lower, cur_start, cur_upper, cur_end)
-                self.add_rect(layer_name, box)
+                lay, purp = grid.get_layer_purpose(layer_id, tr_id)
+                self.add_rect(lay, purp, BBox(direction, cur_start, cur_end, cur_lower, cur_upper))
 
             if debug:
                 print('wires intv: %s, range: (%d, %d)' % (intv, cur_start, cur_end))
@@ -1813,67 +1782,57 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         new_warr_list.append(warr)
         return new_warr_list
 
-    def _draw_via_on_track(self, wlayer, box_arr, track_id, tl_unit=None,
-                           tu_unit=None):
-        # type: (str, BBoxArray, TrackID, Optional[int], Optional[int]) -> Tuple[int, int]
+    def _draw_via_on_track(self, wlay: str, wpurp: str, box_arr: BBoxArray, track_id: TrackID, *,
+                           tlow: Optional[int]=None, tup: Optional[int]=None) -> Tuple[int, int]:
         """Helper method.  Draw vias on the intersection of the BBoxArray and TrackID."""
-        grid = self.grid
+        grid = self._grid
 
         tr_layer_id = track_id.layer_id
         tr_width = track_id.width
         tr_dir = grid.get_direction(tr_layer_id)
         tr_pitch = grid.get_track_pitch(tr_layer_id)
 
-        w_layer_id = grid.tech_info.get_layer_id(wlayer)
-        w_dir = 'x' if tr_dir == 'y' else 'y'
+        w_layer_id = grid.tech_info.get_layer_id(wlay)
+        w_dir = tr_dir.perpendicular()
         wbase = box_arr.base
         for sub_track_id in track_id.sub_tracks_iter(grid):
             base_idx = sub_track_id.base_index
             if w_layer_id > tr_layer_id:
-                bot_layer = grid.get_layer_name(tr_layer_id, base_idx)
-                top_layer = wlayer
+                bot_lay, bot_purp = grid.get_layer_purpose(tr_layer_id, base_idx)
+                top_lay = wlay
+                top_purp = wpurp
                 bot_dir = tr_dir
             else:
-                bot_layer = wlayer
-                top_layer = grid.get_layer_name(tr_layer_id, base_idx)
+                bot_lay = wlay
+                bot_purp = wpurp
+                top_lay, top_purp = grid.get_layer_purpose(tr_layer_id, base_idx)
                 bot_dir = w_dir
             # compute via bounding box
             tl, tu = grid.get_wire_bounds(tr_layer_id, base_idx, width=tr_width)
-            if tr_dir == 'x':
-                via_box = BBox(wbase.left_unit, tl, wbase.right_unit, tu)
-                nx, ny = box_arr.nx, sub_track_id.num
-                spx, spy = box_arr.spx_unit, sub_track_id.pitch * tr_pitch
-                via = self.add_via(via_box, bot_layer, top_layer, bot_dir,
-                                   nx=nx, ny=ny, spx=spx, spy=spy)
-                vtbox = via.bottom_box if w_layer_id > tr_layer_id else via.top_box
-                if tl_unit is None:
-                    tl_unit = vtbox.left_unit
-                else:
-                    tl_unit = min(tl_unit, vtbox.left_unit)
-                if tu_unit is None:
-                    tu_unit = vtbox.right_unit + (nx - 1) * box_arr.spx_unit
-                else:
-                    tu_unit = max(tu_unit, vtbox.right_unit + (nx - 1) * box_arr.spx_unit)
+            wl, wu = wbase.get_interval(tr_dir)
+            vbox_base = BBox(tr_dir, wl, wu, tl, tu)
+            nt, spt = box_arr.get_array_info(tr_dir)
+            np = sub_track_id.num
+            spp = int(sub_track_id.pitch * tr_pitch)
+            vbarr = BBoxArray(vbox_base, tr_dir, nt=nt, spt=spt, np=np, spp=spp)
+            via_info = self.add_via_arr(vbarr, bot_lay, top_lay, bot_dir, bot_purpose=bot_purp,
+                                        top_purpose=top_purp)
+            vtbox = via_info['bot_box'] if w_layer_id > tr_layer_id else via_info['top_box']
+            vlow = vtbox.get_coord(tr_dir, 0)
+            vup = vtbox.get_coord(tr_dir, 1) + (nt - 1) * spt
+            if tlow is None:
+                tlow = vlow
             else:
-                via_box = BBox(tl, wbase.bottom_unit, tu, wbase.top_unit)
-                nx, ny = sub_track_id.num, box_arr.ny
-                spx, spy = sub_track_id.pitch * tr_pitch, box_arr.spy_unit
-                via = self.add_via(via_box, bot_layer, top_layer, bot_dir,
-                                   nx=nx, ny=ny, spx=spx, spy=spy)
-                vtbox = via.bottom_box if w_layer_id > tr_layer_id else via.top_box
-                if tl_unit is None:
-                    tl_unit = vtbox.bottom_unit
-                else:
-                    tl_unit = min(tl_unit, vtbox.bottom_unit)
-                if tu_unit is None:
-                    tu_unit = vtbox.top_unit + (ny - 1) * box_arr.spy_unit
-                else:
-                    tu_unit = max(tu_unit, vtbox.top_unit + (ny - 1) * box_arr.spy_unit)
+                tlow = min(tlow, vlow)
+            if tup is None:
+                tup = vup
+            else:
+                tup = max(tup, vup)
 
         assert_msg = "for loop should have assigned tl_unit and tu_unit"
-        assert tl_unit is not None and tu_unit is not None, assert_msg
+        assert tlow is not None and tup is not None, assert_msg
 
-        return tl_unit, tu_unit
+        return tlow, tup
 
     def connect_bbox_to_tracks(self,  # type: TemplateBase
                                layer_name,  # type: str

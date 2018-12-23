@@ -14,8 +14,8 @@ from bag.util.search import BinaryIterator
 
 # try to import cython classes
 # noinspection PyUnresolvedReferences
-from pybag.core import BBox, PyTech
-from pybag.enum import SpaceQueryMode, Orient2D
+from pybag.core import BBox, PyTech, Transform
+from pybag.enum import SpaceQueryMode, Orient2D, Orientation
 
 if TYPE_CHECKING:
     from .core import PyLayInstance
@@ -908,8 +908,7 @@ class TechInfo(abc.ABC):
 
         params = {'id': self.get_via_id(bot_layer, top_layer, bot_purpose=bot_purpose,
                                         top_purpose=top_purpose),
-                  'loc': (xc_norm, yc_norm),
-                  'orient': 'R0',
+                  'xform': Transform(xc_norm, yc_norm, Orientation.R0),
                   'num_rows': ny,
                   'num_cols': nx,
                   'sp_rows': spy,
@@ -924,14 +923,18 @@ class TechInfo(abc.ABC):
         ntot = nx * ny
         arr_w = nx * (spx + vdim[0]) - spx
         arr_h = ny * (spy + vdim[1]) - spy
+        bot_box = BBox(0, 0, arr_w + 2 * enc1_x, arr_h + 2 * enc1_y)
+        top_box = BBox(0, 0, arr_w + 2 * enc2_x, arr_h + 2 * enc2_y)
+        bot_box.move_by(dx=xc_norm - bot_box.xm, dy=yc_norm - bot_box.ym)
+        top_box.move_by(dx=xc_norm - top_box.xm, dy=yc_norm - top_box.ym)
         return dict(
             resistance=0.0,
             idc=idc * ntot,
             iac_rms=irms * ntot,
             iac_peak=ipeak * ntot,
             params=params,
-            bot_box=BBox(0, 0, arr_w + 2 * enc1_x, arr_h + 2 * enc1_y),
-            top_box=BBox(0, 0, arr_w + 2 * enc2_x, arr_h + 2 * enc2_y),
+            bot_box=bot_box,
+            top_box=top_box,
         )
 
     def design_resistor(self, res_type: str, res_targ: float, idc: float = 0.0,
