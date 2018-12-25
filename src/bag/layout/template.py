@@ -2320,10 +2320,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                    top_purpose=wpurp, top_dir=wdir, extend=True)
                 tbox, wbox = via.bottom_box, via.top_box
 
-            new_lower = min(new_lower, tbox.get_coord(wdir, 0))
-            new_upper = max(new_upper, tbox.get_coord(wdir, 1))
-            w_lower = min(w_lower, wbox.get_coord(wdir, 0))
-            w_upper = max(w_upper, wbox.get_coord(wdir, 1))
+            new_lower = min(new_lower, tbox.get_coord(wdir, False))
+            new_upper = max(new_upper, tbox.get_coord(wdir, True))
+            w_lower = min(w_lower, wbox.get_coord(wdir, False))
+            w_upper = max(w_upper, wbox.get_coord(wdir, True))
 
         # handle minimum length DRC rule
         min_len = grid.get_min_length(targ_layer, tr_w)
