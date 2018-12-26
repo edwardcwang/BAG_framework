@@ -21,6 +21,7 @@ from ..util.cache import DesignMaster, MasterDB
 from ..util.interval import IntervalSet
 from ..io import open_file
 from .core import PyLayInstance
+from .tech import TechInfo
 from .routing.base import Port, TrackID, WireArray
 from .routing.grid import RoutingGrid
 
@@ -61,43 +62,35 @@ class TemplateDB(MasterDB):
         generated layout name suffix.
     """
 
-    def __init__(self,  # type: TemplateDB
-                 routing_grid,  # type: RoutingGrid
-                 lib_name,  # type: str
-                 prj=None,  # type: Optional[BagProject]
-                 name_prefix='',  # type: str
-                 name_suffix='',  # type: str
-                 ):
-        # type: (...) -> None
+    def __init__(self, routing_grid: RoutingGrid, lib_name: str, prj: Optional[BagProject] = None,
+                 name_prefix: str = '', name_suffix: str = '') -> None:
         MasterDB.__init__(self, lib_name, prj=prj, name_prefix=name_prefix, name_suffix=name_suffix)
 
         self._grid = routing_grid
 
     @property
-    def grid(self):
-        # type: () -> RoutingGrid
-        """Returns the default routing grid instance."""
+    def grid(self) -> RoutingGrid:
+        """RoutingGrid: The global RoutingGrid instance."""
         return self._grid
 
-    def new_template(self, temp_cls, params=None, **kwargs):
-        # type: (Type[TemplateType], Optional[Dict[str, Any]], **Any) -> TemplateType
+    @property
+    def tech_info(self) -> TechInfo:
+        return self._grid.tech_info
+
+    def new_template(self, temp_cls: Type[TemplateType], params: Optional[Dict[str, Any]] = None,
+                     **kwargs: Any) -> TemplateType:
         """Alias for new_master() for backwards compatibility.
         """
         return self.new_master(temp_cls, params=params, **kwargs)
 
-    def instantiate_layout(self, template, top_cell_name='', output=DesignOutput.LAYOUT,
-                           **kwargs):
-        # type: (TemplateBase, str, DesignOutput, **Any) -> None
+    def instantiate_layout(self, template: TemplateBase, top_cell_name: str = '',
+                           output: DesignOutput = DesignOutput.LAYOUT, **kwargs: Any) -> None:
         """Alias for instantiate_master(), with default output type of LAYOUT.
         """
         self.instantiate_master(output, template, top_cell_name, **kwargs)
 
-    def batch_layout(self,
-                     info_list,  # type: Sequence[Tuple[TemplateBase, str]]
-                     output=DesignOutput.LAYOUT,  # type: DesignOutput
-                     **kwargs  # type: Any
-                     ):
-        # type: (...) -> None
+    def batch_layout(self, info_list: Sequence[Tuple[TemplateBase, str]],
+                     output: DesignOutput = DesignOutput.LAYOUT, **kwargs: Any) -> None:
         """Alias for batch_output(), with default output type of LAYOUT.
         """
         self.batch_output(output, info_list, **kwargs)

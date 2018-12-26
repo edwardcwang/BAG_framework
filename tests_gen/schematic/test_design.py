@@ -63,7 +63,8 @@ def test_design(tmpdir,
 
     dsn = get_sch_master(module_db, sch_design_params)
 
-    path = tmpdir.join('{}.{}'.format(base, extension))
+    out_base_name = '{}.{}'.format(base, extension)
+    path = tmpdir.join(out_base_name)
     if output_type is not DesignOutput.YAML:
         try:
             prim_fname = get_netlist_setup_file()
@@ -88,7 +89,7 @@ def test_design(tmpdir,
 
     if gen_output:
         dir_name = pathlib.Path('pytest_output') / sch_design_params['test_output_dir']
-        out_fname = dir_name / (base + '.' + extension)
+        out_fname = dir_name / out_base_name
         dir_name.mkdir(parents=True, exist_ok=True)
         with out_fname.open('w') as f:
             f.write(actual)

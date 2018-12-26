@@ -17,7 +17,7 @@ import numbers
 from collections import OrderedDict
 
 from pybag.enum import DesignOutput, is_netlist_type, is_model_type
-from pybag.core import implement_yaml, implement_netlist
+from pybag.core import implement_yaml, implement_netlist, implement_gds
 
 from sortedcontainers import SortedDict
 
@@ -26,6 +26,7 @@ from .search import get_new_name
 
 if TYPE_CHECKING:
     from ..core import BagProject
+    from ..layout.tech import TechInfo
 
 MasterType = TypeVar('MasterType', bound='DesignMaster')
 DBType = TypeVar('DBType', bound='MasterDB')
@@ -344,7 +345,7 @@ class DesignMaster(abc.ABC):
         return iter(self._children)
 
 
-class MasterDB:
+class MasterDB(abc.ABC):
     """A database of existing design masters.
 
     This class keeps track of existing design masters and maintain design dependency hierarchy.
@@ -373,58 +374,11 @@ class MasterDB:
         self._key_lookup = {}  # type: Dict[Any, Any]
         self._master_lookup = {}  # type: Dict[Any, DesignMaster]
 
-    def create_masters_in_db(self, output, lib_name, content_list, debug=False, **kwargs):
-        # type: (DesignOutput, str, List[Any], bool, **Any) -> None
-        """Create the masters in the design database.
-
-        Parameters
-        ----------
-        output : DesignOutput
-            the output type.
-        lib_name : str
-            library to create the designs in.
-        content_list : Sequence[Any]
-            a list of the master contents.  Must be created in this order.
-        debug : bool
-            True to print debug messages
-        **kwargs :  Any
-            parameters associated with the given output type.
-        """
-        start = time.time()
-        if output is DesignOutput.LAYOUT:
-            if self._prj is None:
-                raise ValueError('BagProject is not defined.')
-
-            # create layouts
-            self._prj.instantiate_layout(lib_name, content_list)
-        elif output is DesignOutput.SCHEMATIC:
-            if self._prj is None:
-                raise ValueError('BagProject is not defined.')
-
-            self._prj.instantiate_schematic(lib_name, content_list)
-        elif output is DesignOutput.YAML:
-            fname = kwargs['fname']
-
-            implement_yaml(fname, content_list)
-        elif is_netlist_type(output) or is_model_type(output):
-            fname = kwargs['fname']
-            prim_fname = kwargs.get('prim_fname', '')
-            flat = kwargs.get('flat', True)
-            shell = kwargs.get('shell', False)
-            rmin = kwargs.get('rmin', 2000)
-
-            if not prim_fname:
-                if self._prj is None:
-                    raise ValueError('prim_fname not set, and BagProject is not defined.')
-                prim_fname = self._prj.netlist_setup_file
-
-            implement_netlist(fname, content_list, output, flat, shell, rmin, prim_fname)
-        else:
-            raise ValueError('Unknown design output type: {}'.format(output.name))
-        end = time.time()
-
-        if debug:
-            print('design instantiation took %.4g seconds' % (end - start))
+    @property
+    @abc.abstractmethod
+    def tech_info(self) -> TechInfo:
+        """TechInfo: the TechInfo object."""
+        pass
 
     @property
     def lib_name(self):
@@ -460,6 +414,65 @@ class MasterDB:
         # type: (str) -> None
         """Change the cell name suffix."""
         self._name_suffix = new_val
+
+    def create_masters_in_db(self, output, lib_name, content_list, debug=False, **kwargs):
+        # type: (DesignOutput, str, List[Any], bool, **Any) -> None
+        """Create the masters in the design database.
+
+        Parameters
+        ----------
+        output : DesignOutput
+            the output type.
+        lib_name : str
+            library to create the designs in.
+        content_list : Sequence[Any]
+            a list of the master contents.  Must be created in this order.
+        debug : bool
+            True to print debug messages
+        **kwargs :  Any
+            parameters associated with the given output type.
+        """
+        start = time.time()
+        if output is DesignOutput.LAYOUT:
+            if self._prj is None:
+                raise ValueError('BagProject is not defined.')
+
+            # create layouts
+            self._prj.instantiate_layout(lib_name, content_list)
+        elif output is DesignOutput.GDS:
+            fname = kwargs['fname']
+            res = self.tech_info.resolution
+            user_unit = self.tech_info.layout_unit
+
+            implement_gds(fname, lib_name, res, user_unit, content_list)
+        elif output is DesignOutput.SCHEMATIC:
+            if self._prj is None:
+                raise ValueError('BagProject is not defined.')
+
+            self._prj.instantiate_schematic(lib_name, content_list)
+        elif output is DesignOutput.YAML:
+            fname = kwargs['fname']
+
+            implement_yaml(fname, content_list)
+        elif is_netlist_type(output) or is_model_type(output):
+            fname = kwargs['fname']
+            prim_fname = kwargs.get('prim_fname', '')
+            flat = kwargs.get('flat', True)
+            shell = kwargs.get('shell', False)
+            rmin = kwargs.get('rmin', 2000)
+
+            if not prim_fname:
+                if self._prj is None:
+                    raise ValueError('prim_fname not set, and BagProject is not defined.')
+                prim_fname = self._prj.netlist_setup_file
+
+            implement_netlist(fname, content_list, output, flat, shell, rmin, prim_fname)
+        else:
+            raise ValueError('Unknown design output type: {}'.format(output.name))
+        end = time.time()
+
+        if debug:
+            print('design instantiation took %.4g seconds' % (end - start))
 
     def clear(self):
         """Clear all existing schematic masters."""
