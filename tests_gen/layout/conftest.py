@@ -3,7 +3,7 @@
 
 import pytest
 
-from bag.core import create_routing_grid
+from bag.env import create_routing_grid
 from bag.layout.template import TemplateDB
 
 
