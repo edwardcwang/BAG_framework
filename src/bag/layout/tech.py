@@ -173,7 +173,14 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
             raise ValueError('Unsupported vname %s' % vname)
 
         via_config = via_config[vname]
-        vtype2 = 'hrect' if vtype == 'vrect' else vtype
+        if vtype == 'vrect' and vtype not in via_config:
+            # trying vertical rectangle via, but it does not exist,
+            # so try rotating horizontal rectangle instead
+            rotate = True
+            vtype2 = 'hrect'
+        else:
+            rotate = False
+            vtype2 = vtype
         if vtype2 not in via_config:
             raise ValueError('Unsupported vtype %s' % vtype2)
 
@@ -201,7 +208,7 @@ class TechInfoConfig(TechInfo, metaclass=abc.ABCMeta):
         arr_enc, arr_test_tmp = self.get_via_arr_enc(vname, vtype, mtype, mw_unit, is_bot)
         arr_test = arr_test_tmp
 
-        if vtype == 'vrect':
+        if rotate:
             sp = sp[1], sp[0]
             dim = dim[1], dim[0]
             enc_cur = [(yv, xv) for xv, yv in enc_cur]
