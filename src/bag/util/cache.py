@@ -22,6 +22,7 @@ from pybag.core import implement_yaml, implement_netlist, implement_gds
 from sortedcontainers import SortedDict
 
 from ..io import fix_string
+from ..env import get_netlist_setup_file, get_gds_layer_map, get_gds_object_map
 from .search import get_new_name
 
 if TYPE_CHECKING:
@@ -444,7 +445,10 @@ class MasterDB(abc.ABC):
             res = self.tech_info.resolution
             user_unit = self.tech_info.layout_unit
 
-            implement_gds(fname, lib_name, res, user_unit, content_list)
+            lay_map = get_gds_layer_map()
+            obj_map = get_gds_object_map()
+
+            implement_gds(fname, lib_name, lay_map, obj_map, res, user_unit, content_list)
         elif output is DesignOutput.SCHEMATIC:
             if self._prj is None:
                 raise ValueError('BagProject is not defined.')
@@ -456,15 +460,11 @@ class MasterDB(abc.ABC):
             implement_yaml(fname, content_list)
         elif is_netlist_type(output) or is_model_type(output):
             fname = kwargs['fname']
-            prim_fname = kwargs.get('prim_fname', '')
             flat = kwargs.get('flat', True)
             shell = kwargs.get('shell', False)
             rmin = kwargs.get('rmin', 2000)
 
-            if not prim_fname:
-                if self._prj is None:
-                    raise ValueError('prim_fname not set, and BagProject is not defined.')
-                prim_fname = self._prj.netlist_setup_file
+            prim_fname = get_netlist_setup_file()
 
             implement_netlist(fname, content_list, output, flat, shell, rmin, prim_fname)
         else:

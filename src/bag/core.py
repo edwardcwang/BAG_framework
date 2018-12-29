@@ -6,7 +6,6 @@
 from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, Union, Type, Sequence, TypeVar
 
 import os
-import importlib
 import cProfile
 import pstats
 
@@ -16,10 +15,10 @@ from .interface import ZMQDealer
 from .interface.database import DbAccess
 from .layout.routing.grid import RoutingGrid
 from .layout.template import TemplateDB
-from .layout.tech import DummyTechInfo, TechInfo
-from .io import read_file, sim_data
-from .io.file import read_yaml_env
+from .io import sim_data
 from .concurrent.core import batch_async_task
+from .env import get_port_number, get_bag_config, create_tech_info, get_bag_work_dir
+from .util.importlib import import_class
 
 if TYPE_CHECKING:
     from .interface.simulator import SimAccess
@@ -29,70 +28,6 @@ if TYPE_CHECKING:
 
     ModuleType = TypeVar('ModuleType', bound=Module)
     TemplateType = TypeVar('TemplateType', bound=TemplateBase)
-
-
-def _get_config_file_abspath(fname):
-    """Get absolute path of configuration file using BAG_WORK_DIR environment variable."""
-    fname = os.path.basename(fname)
-    if 'BAG_WORK_DIR' not in os.environ:
-        raise ValueError('Environment variable BAG_WORK_DIR not defined')
-
-    work_dir = os.environ['BAG_WORK_DIR']
-    if not os.path.isdir(work_dir):
-        raise ValueError('$BAG_WORK_DIR = %s is not a directory' % work_dir)
-
-    # read port number
-    fname = os.path.join(work_dir, fname)
-    if not os.path.isfile(fname):
-        raise ValueError('Cannot find file: %s' % fname)
-    return fname
-
-
-def _get_port_number(port_file):
-    # type: (str) -> Tuple[Optional[int], str]
-    """Read the port number from the given port file.
-
-    Parameters
-    ----------
-    port_file : str
-        a file containing the communication port number.
-
-    Returns
-    -------
-    port : Optional[int]
-        the port number if reading is successful.
-    msg : str
-        Empty string on success, the error message on failure.
-    """
-    try:
-        port_file = _get_config_file_abspath(port_file)
-    except ValueError as err:
-        return None, str(err)
-
-    port = int(read_file(port_file))
-    return port, ''
-
-
-def _import_class_from_str(class_str):
-    # type: (str) -> Type
-    """Given a Python class string, convert it to the Python class.
-
-    Parameters
-    ----------
-    class_str : str
-        a Python class string/
-
-    Returns
-    -------
-    py_class : class
-        a Python class.
-    """
-    sections = class_str.split('.')
-
-    module_str = '.'.join(sections[:-1])
-    class_str = sections[-1]
-    modul = importlib.import_module(module_str)
-    return getattr(modul, class_str)
 
 
 class Testbench(object):
@@ -403,62 +338,11 @@ class Testbench(object):
         return self.save_dir
 
 
-def get_tech_params(bag_config_path: str) -> Dict[str, Any]:
-    if not bag_config_path:
-        bag_config_path = os.environ.get('BAG_CONFIG_PATH', '')
-        if not bag_config_path:
-            raise ValueError('Environment variable BAG_CONFIG_PATH not defined.')
-
-    bag_config = read_yaml_env(bag_config_path)
-    return read_yaml_env(bag_config['tech_config_path'])
-
-
-def create_tech_info(bag_config_path: str = '') -> TechInfo:
-    """Create TechInfo object."""
-    tech_params = get_tech_params(bag_config_path)
-
-    if 'class' in tech_params:
-        tech_cls = _import_class_from_str(tech_params['class'])
-        tech_info = tech_cls(tech_params)
-    else:
-        # just make a default tech_info object as place holder.
-        print('*WARNING*: No TechInfo class defined.  Using a dummy version.')
-        tech_info = DummyTechInfo(tech_params)
-
-    return tech_info
-
-
-def create_routing_grid(bag_config_path: str = '') -> RoutingGrid:
-    """Create TechInfo object."""
-    grid_params = get_tech_params(bag_config_path)['routing_grid']
-
-    tech_info = create_tech_info(bag_config_path=bag_config_path)
-    return RoutingGrid(tech_info, **grid_params)
-
-
-def get_netlist_setup_file(tech_dir=''):
-    # type: (str) -> str
-    if not tech_dir:
-        tech_dir = os.environ.get('BAG_TECH_CONFIG_DIR', '')
-        if not tech_dir:
-            raise ValueError('Environment variable BAG_TECH_CONFIG_DIR not defined.')
-
-    return os.path.join(tech_dir, 'netlist_setup', 'netlist_setup.yaml')
-
-
 class BagProject(object):
     """The main bag controller class.
 
     This class mainly stores all the user configurations, and issue
     high level bag commands.
-
-    Parameters
-    ----------
-    bag_config_path : Optional[str]
-        the bag configuration file path.  If None, will attempt to read from
-        environment variable BAG_CONFIG_PATH.
-    port : Optional[int]
-        the BAG server process port number.  If not given, will read from port file.
 
     Attributes
     ----------
@@ -468,23 +352,16 @@ class BagProject(object):
         the BAG process technology class.
     """
 
-    def __init__(self, bag_config_path=None, port=None):
-        # type: (Optional[str], Optional[int]) -> None
-        if bag_config_path is None:
-            if 'BAG_CONFIG_PATH' not in os.environ:
-                raise Exception('BAG_CONFIG_PATH not defined.')
-            bag_config_path = os.environ['BAG_CONFIG_PATH']
+    def __init__(self) -> None:
+        self.bag_config = get_bag_config()
 
-        self.bag_config = read_yaml_env(bag_config_path)
         bag_tmp_dir = os.environ.get('BAG_TEMP_DIR', None)
+        bag_work_dir = get_bag_work_dir()
 
         # get port files
-        if port is None:
-            socket_config = self.bag_config['socket']
-            if 'port_file' in socket_config:
-                port, msg = _get_port_number(socket_config['port_file'])
-                if msg:
-                    print('*WARNING* %s' % msg)
+        port, msg = get_port_number(bag_config=self.bag_config)
+        if msg:
+            print('*WARNING* %s' % msg)
 
         # create ZMQDealer object
         dealer_kwargs = {}
@@ -492,8 +369,7 @@ class BagProject(object):
         del dealer_kwargs['port_file']
 
         # create TechInfo instance
-        self.tech_info = create_tech_info(bag_config_path=bag_config_path)
-        self._netlist_file = get_netlist_setup_file()
+        self.tech_info = create_tech_info(bag_config=self.bag_config)
 
         if port is not None:
             # make DbAccess instance.
@@ -503,26 +379,21 @@ class BagProject(object):
 
         # create database interface object
         try:
-            lib_defs_file = _get_config_file_abspath(self.bag_config['lib_defs'])
+            lib_defs_file = os.path.join(bag_work_dir, self.bag_config['lib_defs'])
         except ValueError:
             lib_defs_file = ''
-        db_cls = _import_class_from_str(self.bag_config['database']['class'])
+        db_cls = import_class(self.bag_config['database']['class'])
         self.impl_db = db_cls(dealer, bag_tmp_dir, self.bag_config['database'], lib_defs_file)
         self._default_lib_path = self.impl_db.default_lib_path
 
         # make SimAccess instance.
-        sim_cls = _import_class_from_str(self.bag_config['simulation']['class'])
+        sim_cls = import_class(self.bag_config['simulation']['class'])
         self.sim = sim_cls(bag_tmp_dir, self.bag_config['simulation'])  # type: SimAccess
 
     @property
     def default_lib_path(self):
         # type: () -> str
         return self._default_lib_path
-
-    @property
-    def netlist_setup_file(self):
-        # type: () -> str
-        return self._netlist_file
 
     def close_bag_server(self):
         # type: () -> None
