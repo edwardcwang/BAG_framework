@@ -6,13 +6,9 @@
 from typing import TYPE_CHECKING, Dict, Any, Tuple, Optional, Union, Type, Sequence, TypeVar
 
 import os
-import string
 import importlib
 import cProfile
 import pstats
-
-# noinspection PyPackageRequirements
-import yaml
 
 from pybag.enum import DesignOutput
 
@@ -22,6 +18,7 @@ from .layout.routing.grid import RoutingGrid
 from .layout.template import TemplateDB
 from .layout.tech import DummyTechInfo, TechInfo
 from .io import read_file, sim_data
+from .io.file import read_yaml_env
 from .concurrent.core import batch_async_task
 
 if TYPE_CHECKING:
@@ -32,26 +29,6 @@ if TYPE_CHECKING:
 
     ModuleType = TypeVar('ModuleType', bound=Module)
     TemplateType = TypeVar('TemplateType', bound=TemplateBase)
-
-
-def _parse_yaml_file(fname):
-    # type: (str) -> Dict[str, Any]
-    """Parse YAML file with environment variable substitution.
-
-    Parameters
-    ----------
-    fname : str
-        yaml file name.
-
-    Returns
-    -------
-    table : Dict[str, Any]
-        the yaml file as a dictionary.
-    """
-    content = read_file(fname)
-    # substitute environment variables
-    content = string.Template(content).substitute(os.environ)
-    return yaml.load(content)
 
 
 def _get_config_file_abspath(fname):
@@ -432,8 +409,8 @@ def get_tech_params(bag_config_path: str) -> Dict[str, Any]:
         if not bag_config_path:
             raise ValueError('Environment variable BAG_CONFIG_PATH not defined.')
 
-    bag_config = _parse_yaml_file(bag_config_path)
-    return _parse_yaml_file(bag_config['tech_config_path'])
+    bag_config = read_yaml_env(bag_config_path)
+    return read_yaml_env(bag_config['tech_config_path'])
 
 
 def create_tech_info(bag_config_path: str = '') -> TechInfo:
@@ -498,7 +475,7 @@ class BagProject(object):
                 raise Exception('BAG_CONFIG_PATH not defined.')
             bag_config_path = os.environ['BAG_CONFIG_PATH']
 
-        self.bag_config = _parse_yaml_file(bag_config_path)
+        self.bag_config = read_yaml_env(bag_config_path)
         bag_tmp_dir = os.environ.get('BAG_TEMP_DIR', None)
 
         # get port files

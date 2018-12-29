@@ -3,9 +3,10 @@
 """This module handles file related IO.
 """
 
-from typing import TextIO
+from typing import TextIO, Any, Iterable
 
 import os
+import string
 import tempfile
 import time
 import pkg_resources
@@ -16,8 +17,7 @@ import yaml
 from .common import bag_encoding, bag_codec_error
 
 
-def open_file(fname, mode):
-    # type: (str, str) -> TextIO
+def open_file(fname: str, mode: str) -> TextIO:
     """Opens a file with the correct encoding interface.
 
     Use this method if you need to have a file handle.
@@ -39,17 +39,17 @@ def open_file(fname, mode):
     return open(fname, mode, encoding=bag_encoding, errors=bag_codec_error)
 
 
-def read_file(fname):
+def read_file(fname: str) -> str:
     """Read the given file and return content as string.
 
     Parameters
     ----------
-    fname : string
+    fname : str
         the file name.
 
     Returns
     -------
-    content : unicode
+    content : str
         the content as a unicode string.
     """
     with open_file(fname, 'r') as f:
@@ -57,17 +57,17 @@ def read_file(fname):
     return content
 
 
-def readlines_iter(fname):
+def readlines_iter(fname: str) -> Iterable[str]:
     """Iterate over lines in a file.
 
     Parameters
     ----------
-    fname : string
+    fname : str
         the file name.
 
     Yields
     ------
-    line : unicode
+    line : str
         a line in the file.
     """
     with open_file(fname, 'r') as f:
@@ -75,12 +75,12 @@ def readlines_iter(fname):
             yield line
 
 
-def read_yaml(fname):
+def read_yaml(fname: str) -> Any:
     """Read the given file using YAML.
 
     Parameters
     ----------
-    fname : string
+    fname : str
         the file name.
 
     Returns
@@ -94,33 +94,52 @@ def read_yaml(fname):
     return content
 
 
-def read_resource(package, fname):
+def read_yaml_env(fname: str) -> Any:
+    """Parse YAML file with environment variable substitution.
+
+    Parameters
+    ----------
+    fname : str
+        yaml file name.
+
+    Returns
+    -------
+    table : Any
+        the object returned by YAML.
+    """
+    content = read_file(fname)
+    # substitute environment variables
+    content = string.Template(content).substitute(os.environ)
+    return yaml.load(content)
+
+
+def read_resource(package: str, fname: str) -> str:
     """Read the given resource file and return content as string.
 
     Parameters
     ----------
-    package : string
+    package : str
         the package name.
-    fname : string
+    fname : str
         the resource file name.
 
     Returns
     -------
-    content : unicode
+    content : str
         the content as a unicode string.
     """
     raw_content = pkg_resources.resource_string(package, fname)
     return raw_content.decode(encoding=bag_encoding, errors=bag_codec_error)
 
 
-def write_file(fname, content, append=False, mkdir=True):
+def write_file(fname: str, content: str, append: bool = False, mkdir: bool = True) -> None:
     """Writes the given content to file.
 
     Parameters
     ----------
-    fname : string
+    fname : str
         the file name.
-    content : unicode
+    content : str
         the unicode string to write to file.
     append : bool
         True to append instead of overwrite.
@@ -137,33 +156,38 @@ def write_file(fname, content, append=False, mkdir=True):
         f.write(content)
 
 
-def make_temp_dir(prefix, parent_dir=None):
+def make_temp_dir(prefix: str, parent_dir: str = '') -> str:
     """Create a new temporary directory.
 
     Parameters
     ----------
-    prefix : string
+    prefix : str
         the directory prefix.
-    parent_dir : string
+    parent_dir : str
         the parent directory.
+
+    Returns
+    -------
+    dir_name : str
+        the temporary directory name.
     """
     prefix += time.strftime("_%Y%m%d_%H%M%S")
     parent_dir = parent_dir or tempfile.gettempdir()
     return tempfile.mkdtemp(prefix=prefix, dir=parent_dir)
 
 
-def open_temp(**kwargs):
+def open_temp(**kwargs: Any) -> TextIO:
     """Opens a new temporary file for writing with unicode interface.
 
     Parameters
     ----------
-    **kwargs
+    **kwargs : Any
         the tempfile keyword arguments.  See documentation for
         :func:`tempfile.NamedTemporaryFile`.
 
     Returns
     -------
-    file : file
+    file : TextIO
         the opened file that accepts unicode input.
     """
     timestr = time.strftime("_%Y%m%d_%H%M%S")
