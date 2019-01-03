@@ -7,10 +7,9 @@ import importlib
 import itertools
 import os
 
-import yaml
-
 from bag.math import float_to_si_string
-from bag.io import read_yaml, open_file, load_sim_results, save_sim_results, load_sim_file
+from bag.io import load_sim_results, save_sim_results, load_sim_file
+from bag.io.file import read_yaml, write_yaml
 from bag.layout import TemplateDB
 from bag.concurrent.core import batch_async_task
 from bag import BagProject
@@ -329,8 +328,7 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
             print('Measurement %s in state %s, '
                   'processing data from %s' % (self.meas_name, cur_state, tb_name))
             done, next_state, prev_output = self.process_output(cur_state, cur_results, tb_manager)
-            with open_file(os.path.join(self.data_dir, '%s.yaml' % cur_state), 'w') as f:
-                yaml.dump(prev_output, f)
+            write_yaml(os.path.join(self.data_dir, '%s.yaml' % cur_state), prev_output)
 
             cur_state = next_state
 
@@ -339,8 +337,7 @@ class MeasurementManager(object, metaclass=abc.ABCMeta):
     def get_state_output(self, state):
         # type: (str) -> Dict[str, Any]
         """Get the post-processed output of the given state."""
-        with open_file(os.path.join(self.data_dir, '%s.yaml' % state), 'r') as f:
-            return yaml.load(f)
+        return read_yaml(os.path.join(self.data_dir, '%s.yaml' % state))
 
     def get_testbench_specs(self, tb_type):
         # type: (str) -> Dict[str, Any]
@@ -520,12 +517,10 @@ class DesignManager(object):
                                                                     load_from_file=load_from_file)
             print('Measurement %s finished on %s' % (meas_name, dsn_name))
 
-            with open_file(os.path.join(data_dir, out_fname), 'w') as f:
-                yaml.dump(meas_res, f)
+            write_yaml(os.path.join(data_dir, out_fname), meas_res)
             result_summary[meas_type] = meas_res
 
-        with open_file(os.path.join(dsn_data_dir, summary_fname), 'w') as f:
-            yaml.dump(result_summary, f)
+        write_yaml(os.path.join(dsn_data_dir, summary_fname), result_summary)
 
     async def main_task(self, lib_name: str, dsn_name: str,
                         rcx_params: Optional[Dict[str, Any]],
@@ -588,10 +583,7 @@ class DesignManager(object):
             the result dictionary.
         """
         fname = os.path.join(self._root_dir, dsn_name, self.specs['summary_fname'])
-        with open_file(fname, 'r') as f:
-            summary = yaml.load(f)
-
-        return summary
+        return read_yaml(fname)
 
     def test_layout(self, gen_sch=True):
         # type: (bool) -> None

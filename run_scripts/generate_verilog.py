@@ -2,8 +2,9 @@
 
 import os
 
-import yaml
 from jinja2 import Environment, FileSystemLoader
+
+from bag.io.file import read_yaml
 
 
 def run_main():
@@ -15,8 +16,7 @@ def run_main():
     view_name = 'systemVerilog'
     model_fname = 'verilog.sv'
 
-    with open(cell_map_fname, 'r') as f:
-        cell_map = yaml.load(f)
+    cell_map = read_yaml(cell_map_fname)
 
     jinja_env = Environment(loader=FileSystemLoader(verilog_dir))
 

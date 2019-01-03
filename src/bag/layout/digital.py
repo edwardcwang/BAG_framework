@@ -7,9 +7,8 @@ from typing import Dict, Any, Set, Tuple, List, Optional
 
 import abc
 
-import yaml
-
 from bag.util.interval import IntervalSet
+from ..io.file import read_yaml
 from .util import BBox
 from .template import TemplateDB, TemplateBase
 from .objects import Instance
@@ -36,8 +35,7 @@ class StdCellBase(TemplateBase, metaclass=abc.ABCMeta):
 
     def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
         # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        with open(params['config_file'], 'r') as f:
-            self._config = yaml.load(f)
+        self._config = read_yaml(params['config_file'])
         self._tech_params = self._config['tech_params']
         self._cells = self._config['cells']
         self._spaces = self._config['spaces']

@@ -12,9 +12,11 @@ import time
 import pkg_resources
 import codecs
 
-import yaml
+from ruamel.yaml import YAML
 
 from .common import bag_encoding, bag_codec_error
+
+yaml = YAML(typ='unsafe')
 
 
 def open_file(fname: str, mode: str) -> TextIO:
@@ -154,6 +156,32 @@ def write_file(fname: str, content: str, append: bool = False, mkdir: bool = Tru
     mode = 'a' if append else 'w'
     with open_file(fname, mode) as f:
         f.write(content)
+
+
+def write_yaml(fname: str, obj: object, mkdir: bool = True) -> None:
+    """Writes the given object to a file using YAML format.
+
+    Parameters
+    ----------
+    fname : str
+        the file name.
+    obj : object
+        the object to write.
+    mkdir : bool
+        If True, will create parent directories if they don't exist.
+
+    Returns
+    -------
+    content : Any
+        the object returned by YAML.
+    """
+    if mkdir:
+        fname = os.path.abspath(fname)
+        dname = os.path.dirname(fname)
+        os.makedirs(dname, exist_ok=True)
+
+    with open_file(fname, 'w') as f:
+        yaml.dump(obj, f)
 
 
 def make_temp_dir(prefix: str, parent_dir: str = '') -> str:

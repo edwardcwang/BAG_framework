@@ -4,13 +4,13 @@ from typing import Dict, Any
 
 import pathlib
 
-import yaml
 import pytest
 
 from pybag.enum import DesignOutput, get_extension, is_model_type
 
 from bag.design.database import ModuleDB
 from bag.design.module import Module
+from bag.io.string import read_yaml_str
 
 
 def get_sch_master(module_db: ModuleDB, sch_design_params: Dict[str, Any]) -> Module:
@@ -88,8 +88,8 @@ def test_design(tmpdir,
             expect = f.read()
 
     if output_type is DesignOutput.YAML:
-        actual_dict = yaml.load(actual)
-        expect_dict = yaml.load(expect)
+        actual_dict = read_yaml_str(actual)
+        expect_dict = read_yaml_str(expect)
         assert actual_dict == expect_dict
     else:
         assert actual == expect

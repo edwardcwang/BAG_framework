@@ -11,10 +11,11 @@ import os
 import copy
 import argparse
 
-import yaml
 from jinja2 import Environment, DictLoader
 
 from pybag.enum import DesignOutput
+
+from bag.io.file import read_yaml, write_yaml
 
 mos_default = {
     'cell_name': '',
@@ -69,7 +70,6 @@ def populate_header(config: Dict[str, Any], inc_lines: Dict[DesignOutput, List[s
                     inc_list: Dict[int, List[str]]) -> None:
     for v, lines in inc_lines.items():
         inc_list[v.value] = config[v.name]['includes']
-        includes = config[v.name]['includes']
 
 
 def populate_mos(config: Dict[str, Any], netlist_map: Dict[str, Any],
@@ -95,18 +95,18 @@ def populate_mos(config: Dict[str, Any], netlist_map: Dict[str, Any],
                         ))
 
 
-def get_info(config: Dict[str, Any], output_dir) -> Tuple[Dict[str, Any], Dict[int, List[str]]]:
+def get_info(config: Dict[str, Any], output_dir) -> Tuple[Dict[str, Any], Dict[int, List[str]], Dict[int, str]]:
     header_config = config['header']
     mos_config = config['mos']
 
     netlist_map = {}
     inc_lines = {v: [] for v in supported_formats}
 
-    inc_list = {}
+    inc_list = {}  # type: Dict[int, List[str]]
     populate_header(header_config, inc_lines, inc_list)
     populate_mos(mos_config, netlist_map, inc_lines)
 
-    prim_files = {}
+    prim_files = {}  # type: Dict[int, str]
     for v, lines in inc_lines.items():
         fname = os.path.join(output_dir, supported_formats[v]['fname'])
         if lines:
@@ -133,8 +133,7 @@ def main() -> None:
 
     os.makedirs(output_dir, exist_ok=True)
 
-    with open(config_fname, 'r') as f:
-        config = yaml.load(f)
+    config = read_yaml(config_fname)
 
     netlist_map, inc_list, prim_files = get_info(config, output_dir)
     result = {
@@ -143,8 +142,7 @@ def main() -> None:
         'netlist_map': netlist_map,
     }
 
-    with open(os.path.join(output_dir, 'netlist_setup.yaml'), 'w') as f:
-        yaml.dump(result, f)
+    write_yaml(os.path.join(output_dir, 'netlist_setup.yaml'), result)
 
 
 if __name__ == '__main__':

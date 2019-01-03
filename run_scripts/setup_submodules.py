@@ -20,7 +20,8 @@ fi
 import os
 import subprocess
 
-import yaml
+from ruamel.yaml import YAML
+yaml = YAML()
 
 BAG_DIR = 'BAG_framework'
 

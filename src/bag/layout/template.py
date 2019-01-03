@@ -15,11 +15,9 @@ import abc
 import copy
 from itertools import product, islice
 
-import yaml
-
 from ..util.cache import DesignMaster, MasterDB
 from ..util.interval import IntervalSet
-from ..io import open_file
+from ..io.file import write_yaml
 from .core import PyLayInstance
 from .tech import TechInfo
 from .routing.base import Port, TrackID, WireArray
@@ -442,8 +440,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             },
         }
 
-        with open_file(fname, 'w') as f:
-            yaml.dump(info, f)
+        write_yaml(fname, info)
 
     def get_pin_name(self, name: str) -> str:
         """Get the actual name of the given pin from the renaming dictionary.

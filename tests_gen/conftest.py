@@ -6,9 +6,9 @@ import pathlib
 import importlib
 
 import pytest
-import yaml
 
 from bag.core import create_tech_info
+from bag.io.file import read_yaml
 
 
 def pytest_assertrepr_compare(op, left, right):
@@ -117,8 +117,7 @@ def setup_test_data(metafunc, data_name: str, data_type: str) -> None:
             if p.is_dir():
                 test_id = p.name  # type: str
                 # noinspection PyTypeChecker
-                with open(p / 'params.yaml', 'r') as f:
-                    content = yaml.load(f)
+                content = read_yaml(p / 'params.yaml')
                 # inject fields
                 content['test_id'] = pkg + '__' + test_id
                 content['test_output_dir'] = str(pathlib.Path(pkg) / data_type / test_id)

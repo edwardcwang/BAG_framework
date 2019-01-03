@@ -8,9 +8,7 @@ from typing import TYPE_CHECKING, Optional, List, Dict, Any, Sequence, Tuple
 import os
 import time
 
-import yaml
-
-from ..io import read_file, open_temp, readlines_iter, fix_string
+from ..io import read_file, read_yaml, open_temp, readlines_iter, fix_string
 from .virtuoso import VirtuosoChecker
 
 if TYPE_CHECKING:
@@ -272,8 +270,7 @@ class PVS(VirtuosoChecker):
             raise ValueError('cannot find directory %s.  Did you run PVS first?' % data_dir)
 
         # load default rcx options
-        content = read_file(self.rcx_runset)
-        rcx_options = yaml.load(content)
+        rcx_options = read_yaml(self.rcx_runset)
 
         # setup inputs/outputs
         rcx_options['input_db']['design_cell_name'] = '{} {} {}'.format(cell_name, lay_view,
