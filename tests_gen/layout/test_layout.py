@@ -4,12 +4,15 @@ from typing import Dict, Any
 
 import pathlib
 import importlib
+from shutil import copyfile
 
 import pytest
 
+from pybag.core import read_gds
 from pybag.enum import DesignOutput, get_extension
 
 from bag.layout.template import TemplateDB, TemplateBase
+from bag.env import get_gds_layer_map, get_gds_object_map
 
 
 def get_master(temp_db: TemplateDB, lay_design_params: Dict[str, Any]) -> TemplateBase:
@@ -60,18 +63,18 @@ def test_layout(tmpdir,
     temp_db.instantiate_layout(dsn, 'PYTEST_TOP', output=output_type, fname=str(path))
     assert path.check(file=1)
 
-    with path.open('rb') as f:
-        actual = f.read()
-
+    actual_fname = str(path)
     if gen_output:
         dir_name = pathlib.Path('pytest_output') / lay_design_params['test_output_dir']
-        out_fname = dir_name / out_base_name
+        expect_fname = dir_name / out_base_name
         dir_name.mkdir(parents=True, exist_ok=True)
-        with out_fname.open('wb') as f:
-            f.write(actual)
-        expect = actual
+        copyfile(actual_fname, expect_fname)
     else:
-        with open(expect_fname, 'rb') as f:
-            expect = f.read()
+        # currently only works for GDS
+        lay_map = get_gds_layer_map()
+        obj_map = get_gds_object_map()
+        tech_obj = temp_db.tech_info.pybag_tech
+        expect_cv_list = read_gds(expect_fname, lay_map, obj_map, tech_obj)
+        actual_cv_list = read_gds(actual_fname, lay_map, obj_map, tech_obj)
 
-    assert actual == expect
+        assert expect_cv_list == actual_cv_list
