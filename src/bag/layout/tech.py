@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Dict, List, Tuple, Optional, Any
 
-import abc
 import math
 from itertools import chain
 
@@ -15,14 +14,15 @@ from bag.util.search import BinaryIterator
 # try to import cython classes
 # noinspection PyUnresolvedReferences
 from pybag.core import BBox, PyTech, Transform
-from pybag.enum import SpaceQueryMode, Orient2D, Orientation
+from pybag.enum import Orient2D, Orientation
 
 if TYPE_CHECKING:
     from .core import PyLayInstance
     from .template import TemplateBase
 
 
-class TechInfo(abc.ABC):
+# Note: pybind11 classes do not work with ABCs, so we throw NotImplementedError as compromise.
+class TechInfo(PyTech):
     """The base technology class.
 
     This class provides various methods for querying technology-specific information.
@@ -46,12 +46,11 @@ class TechInfo(abc.ABC):
 
     def __init__(self, tech_params: Dict[str, Any], config: Dict[str, Any],
                  config_fname: str, mos_entry_name: str = 'mos') -> None:
+        PyTech.__init__(self, config_fname)
         self._tech_params = tech_params
-        self._pytech = PyTech(config_fname)
         self._config = config
         self._mos_entry_name = mos_entry_name
 
-    @abc.abstractmethod
     def add_cell_boundary(self, template: TemplateBase, box: BBox) -> None:
         """Adds a cell boundary object to the given template.
 
@@ -64,9 +63,8 @@ class TechInfo(abc.ABC):
         box : BBox
             the cell boundary bounding box.
         """
-        pass
+        raise NotImplementedError('Not implemented.')
 
-    @abc.abstractmethod
     def draw_device_blockage(self, template: TemplateBase) -> None:
         """Draw device blockage layers on the given template.
 
@@ -75,10 +73,9 @@ class TechInfo(abc.ABC):
         template : TemplateBase
             the template to draw the device block layers on
         """
-        pass
+        raise NotImplementedError('Not implemented.')
 
     # noinspection PyUnusedLocal
-    @abc.abstractmethod
     def get_metal_em_specs(self, layer: str, w: int, *, purpose: str = '', l: int = -1,
                            vertical: bool = False, **kwargs: Any) -> Tuple[float, float, float]:
         """Returns a tuple of EM current/resistance specs of the given wire.
@@ -108,10 +105,9 @@ class TechInfo(abc.ABC):
         iac_peak : float
             maximum AC peak current, in Amperes.
         """
-        return float('inf'), float('inf'), float('inf')
+        raise NotImplementedError('Not implemented.')
 
     # noinspection PyUnusedLocal
-    @abc.abstractmethod
     def get_via_em_specs(self, bot_layer: str, top_layer: str, *, bot_purpose: str = '',
                          top_purpose: str = '', cut_dim: Tuple[int, int] = (0, 0),
                          bm_dim: Tuple[int, int] = (-1, -1), tm_dim: Tuple[int, int] = (-1, -1),
@@ -150,10 +146,9 @@ class TechInfo(abc.ABC):
         iac_peak : float
             maximum AC peak current per via, in Amperes.
         """
-        return float('inf'), float('inf'), float('inf')
+        raise NotImplementedError('Not implemented.')
 
     # noinspection PyUnusedLocal
-    @abc.abstractmethod
     def get_res_em_specs(self, res_type: str, w: int, *,
                          l: int = -1, **kwargs: Any) -> Tuple[float, float, float]:
         """Returns a tuple of EM current/resistance specs of the given resistor.
@@ -179,7 +174,7 @@ class TechInfo(abc.ABC):
         iac_peak : float
             maximum AC peak current, in Amperes.
         """
-        return float('inf'), float('inf'), float('inf')
+        raise NotImplementedError('Not implemented.')
 
     @property
     def tech_params(self) -> Dict[str, Any]:
@@ -192,36 +187,6 @@ class TechInfo(abc.ABC):
         return self._config
 
     @property
-    def via_tech_name(self) -> str:
-        """str: Returns the via technology library name."""
-        return self._pytech.tech_lib
-
-    @property
-    def pin_purpose(self) -> str:
-        """str: Returns the layout pin purpose name."""
-        return self._pytech.pin_purpose
-
-    @property
-    def default_purpose(self) -> str:
-        """str: Returns the default purpose name."""
-        return self._pytech.default_purpose
-
-    @property
-    def resolution(self) -> float:
-        """float: Returns the grid resolution."""
-        return self._pytech.resolution
-
-    @property
-    def layout_unit(self) -> float:
-        """float: Returns the layout unit length, in meters."""
-        return self._pytech.resolution
-
-    @property
-    def use_flip_parity(self) -> bool:
-        """bool: True if flip_parity dictionary is needed in this technology."""
-        return self._pytech.use_flip_parity
-
-    @property
     def idc_temp(self) -> float:
         """float: the temperature at which to compute Idc EM specs, in Celsius"""
         return self._tech_params['layout']['em']['dc_temp']
@@ -230,100 +195,6 @@ class TechInfo(abc.ABC):
     def irms_dt(self) -> float:
         """float: the taget temperature delta when computing Irms EM specs, in Celsius"""
         return self._tech_params['layout']['em']['rms_dt']
-
-    def get_min_length(self, layer: str, purpose: str, width: int, even: bool = False) -> int:
-        """Returns the minimum length of a wire on the given layer with the given width.
-
-        Parameters
-        ----------
-        layer : str
-            the layer name.
-        purpose : str
-            the purpose name.
-        width : int
-            the width of the wire.
-        even : bool
-            True to round the output up to an even number.
-
-        Returns
-        -------
-        min_length : int
-            the minimum length.
-        """
-        return self._pytech.get_min_length(layer, purpose, width, even)
-
-    def get_layer_id(self, layer: str, purpose: str = '') -> int:
-        """Return the layer id for the given layer name.
-
-        Parameters
-        ----------
-        layer : str
-            the layer name.
-        purpose : str
-            the purpose name.
-
-        Returns
-        -------
-        layer_id : int
-            the layer ID.
-        """
-        return self._pytech.get_level(layer, purpose)
-
-    def get_lay_purp_list(self, layer_id: int) -> List[Tuple[str, str]]:
-        """Return list of layer/purpose pairs on the given routing layer.
-
-        Parameters
-        ----------
-        layer_id : int
-            the routing grid layer ID.
-
-        Returns
-        -------
-        lay_purp_list : List[Tuple[str, str]]
-            list of layer/purpose pairs on the given layer.
-        """
-        return self._pytech.get_lay_purp_list(layer_id)
-
-    def get_min_space(self, layer: str, width: int, *, purpose: str = '',
-                      same_color: bool = False) -> int:
-        """Returns the minimum spacing needed around a wire on the given layer with the given width.
-
-        Parameters
-        ----------
-        layer : str
-            the layer name.
-        width : int
-            the width of the wire, in resolution units.
-        purpose : str
-            the purpose name.
-        same_color : bool
-            True to use same-color spacing.
-
-        Returns
-        -------
-        sp : int
-            the minimum spacing needed.
-        """
-        sp_type = SpaceQueryMode.SAME_COLOR if same_color else SpaceQueryMode.DIFF_COLOR
-        return self._pytech.get_min_space(layer, purpose, width, sp_type)
-
-    def get_min_line_end_space(self, layer: str, width: int, *, purpose: str = '') -> int:
-        """Returns the minimum line-end spacing of a wire with given width.
-
-        Parameters
-        ----------
-        layer : str
-            the layer name.
-        width : int
-            the width of the wire.
-        purpose : str
-            the purpose name.
-        Returns
-        -------
-        sp : int
-            the minimum line-end space.
-        """
-        return self._pytech.get_min_space(layer, purpose, width, SpaceQueryMode.LINE_END)
 
     def get_well_layers(self, sub_type: str) -> List[Tuple[str, str]]:
         """Returns a list of well layers associated with the given substrate type.
@@ -631,8 +502,8 @@ class TechInfo(abc.ABC):
         if top_dir is None:
             top_dir = bot_dir.perpendicular()
 
-        via_id = self._pytech.get_via_id(bot_layer, bot_purpose, top_layer, top_purpose)
-        via_param = self._pytech.get_via_param(bbox.w, bbox.h, via_id, bot_dir, top_dir, extend)
+        via_id = self.get_via_id(bot_layer, bot_purpose, top_layer, top_purpose)
+        via_param = self.get_via_param(bbox.w, bbox.h, via_id, bot_dir, top_dir, extend)
 
         if via_param.empty:
             # no solution found

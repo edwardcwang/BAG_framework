@@ -5,9 +5,9 @@
 
 from __future__ import annotations
 
-from typing import Sequence, Union, Tuple, List, Optional, Dict, Any
+from typing import Sequence, Tuple, List, Optional, Dict, Any
 
-from pybag.core import BBox, Transform
+from pybag.core import BBox, Transform, PyRoutingGrid
 from pybag.enum import Orientation, Orient2D
 
 from bag.util.search import BinaryIterator
@@ -23,7 +23,7 @@ FillConfigType = Dict[int, Tuple[int, int, int, int]]
 OptHalfIntType = Optional[HalfInt]
 
 
-class RoutingGrid(object):
+class RoutingGrid(PyRoutingGrid):
     """A class that represents the routing grid.
 
     This class provides various methods to convert between Cartesian coordinates and
@@ -42,67 +42,12 @@ class RoutingGrid(object):
     ----------
     tech_info : TechInfo
         the TechInfo instance used to create metals and vias.
-    layers : Sequence[int]
-        list of available routing layers.  Must be in increasing order.
-    spaces : Sequence[int]
-        list of track spacings for each layer.
-    widths : Sequence[int]
-        list of minimum track widths for each layer.
-    bot_dir : str
-        the direction of the bottom-most layer.  Either 'x' for horizontal tracks or 'y' for
-        vertical tracks.
-    max_num_tr : Union[int, Sequence[int]]
-        maximum track width in number of tracks.  Can be given as an integer (which applies to
-        all layers), our a list to specify maximum width per layer.
-    width_override : Optional[Dict[int, Dict[int, int]]]
-        the width override dictionary.
+    config_fname : str
+        the routing grid configuration file.
     """
 
-    def __init__(self, tech_info: TechInfo, layers: Sequence[int], spaces: Sequence[int],
-                 widths: Sequence[int], bot_dir: str, *,
-                 max_num_tr: Union[int, Sequence[int]] = 1000,
-                 width_override: Optional[Dict[int, Dict[int, int]]] = None) -> None:
-        # error checking
-        num_layer = len(layers)
-        if len(spaces) != num_layer:
-            raise ValueError('spaces length = %d != %d' % (len(spaces), num_layer))
-        if len(widths) != num_layer:
-            raise ValueError('spaces length = %d != %d' % (len(widths), num_layer))
-        if isinstance(max_num_tr, int):
-            max_num_tr = [max_num_tr] * num_layer
-        elif len(max_num_tr) != num_layer:
-            raise ValueError('max_num_tr length = %d != %d' % (len(max_num_tr), num_layer))
-
-        self._tech_info = tech_info
-        self._flip_parity = {}  # type: Dict[int, Tuple[int, int]]
-        self._ignore_layers = set()
-        self.layers = []  # type: List[int]
-        self.sp_tracks = {}
-        self.w_tracks = {}
-        self.offset_tracks = {}
-        self.dir_tracks = {}  # type: Dict[int, Orient2D]
-        self.max_num_tr_tracks = {}
-        self.block_pitch = {}
-        self.w_override = {}
-        self.private_layers = []
-
-        cur_dir = Orient2D[bot_dir]
-        for lay, sp, w, max_num in zip(layers, spaces, widths, max_num_tr):
-            self.add_new_layer(lay, sp, w, cur_dir, max_num_tr=max_num, is_private=False)
-            # alternate track direction
-            cur_dir = cur_dir.perpendicular()
-
-        self.update_block_pitch()
-
-        # add width overrides
-        if width_override is not None:
-            for layer_id, w_info in width_override.items():
-                for width_ntr, tr_w in w_info.items():
-                    self.add_width_override(layer_id, width_ntr, tr_w)
-
-    def __contains__(self, layer: int) -> bool:
-        """Returns True if this RoutingGrid contains the given layer. """
-        return layer in self.sp_tracks
+    def __init__(self, tech_info: TechInfo, config_fname: str) -> None:
+        PyRoutingGrid.__init__(self, tech_info, config_fname)
 
     @classmethod
     def get_middle_track(cls, tr1: TrackType, tr2: TrackType, round_up: bool = False) -> HalfInt:
@@ -112,39 +57,10 @@ class RoutingGrid(object):
         return tmp.div2(round_up=round_up)
 
     @property
-    def flip_parity(self) -> Dict[int, Tuple[int, int]]:
-        """Dict[int, Tuple[int, int]]: The flip_parity dictionary."""
-        return self._flip_parity
-
-    @property
     def tech_info(self) -> TechInfo:
-        """The TechInfo technology object."""
-        return self._tech_info
-
-    @property
-    def resolution(self) -> float:
-        """Returns the grid resolution."""
-        return self._tech_info.resolution
-
-    @property
-    def layout_unit(self) -> float:
-        """Returns the layout unit length, in meters."""
-        return self._tech_info.layout_unit
-
-    @property
-    def top_private_layer(self) -> int:
-        """Returns the top private layer ID."""
-        return -99 if not self.private_layers else self.private_layers[-1]
-
-    @flip_parity.setter
-    def flip_parity(self, val: Dict[int, Tuple[int, int]]) -> None:
-        for k, v in val.items():
-            self._flip_parity[k] = v
-
-    def _get_track_offset(self, layer_id: int) -> int:
-        """Returns the track offset in resolution units on the given layer."""
-        track_pitch = self.get_track_pitch(layer_id)
-        return self.offset_tracks.get(layer_id, track_pitch // 2)
+        """TechInfo: The TechInfo technology object."""
+        ans = super(RoutingGrid, self).tech_info  # type: TechInfo
+        return ans
 
     def get_bot_common_layer(self, inst_grid: RoutingGrid, inst_top_layer: int) -> int:
         """Given an instance's RoutingGrid, return the bottom common layer ID.
@@ -262,21 +178,6 @@ class RoutingGrid(object):
     def is_horizontal(self, layer_id: int) -> bool:
         """Returns true if the given layer is horizontal."""
         return self.dir_tracks[layer_id] is Orient2D.x
-
-    def get_direction(self, layer_id: int) -> Orient2D:
-        """Returns the track direction of the given layer.
-
-        Parameters
-        ----------
-        layer_id : int
-            the layer ID.
-
-        Returns
-        -------
-        tdir : str
-            'x' for horizontal tracks, 'y' for vertical tracks.
-        """
-        return self.dir_tracks[layer_id]
 
     def get_track_pitch(self, layer_id: int) -> int:
         """Returns the routing track pitch on the given layer.
@@ -1073,7 +974,7 @@ class RoutingGrid(object):
             return None, None
         return lower_tr, upper_tr
 
-    def get_via_extensions_dim(self,  bot_layer_id: int, bot_dim: int,
+    def get_via_extensions_dim(self, bot_layer_id: int, bot_dim: int,
                                top_dim: int, **kwargs: Any) -> Tuple[int, int]:
         """Returns the via extension.
 
