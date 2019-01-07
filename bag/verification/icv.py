@@ -222,9 +222,26 @@ class ICV(VirtuosoChecker):
 
         # noinspection PyUnusedLocal
         def rcx_passed(retcode, log_fname):
-            if not os.path.isfile(result):
+            dirname = os.path.dirname(log_fname)
+            cell_name = os.path.basename(dirname)
+            results_file = os.path.join(dirname, cell_name + '.RESULTS')
+
+            # append error file at the end of log file
+            with open(log_fname, 'a') as logf:
+                with open(results_file, 'r') as errf:
+                    for line in errf:
+                        logf.write(line)
+
+            if not os.path.isfile(log_fname):
+                return None, ''
+
+            cmd_output = read_file(log_fname)
+            test_str = 'DRC and Extraction Results: CLEAN'
+
+            if test_str in cmd_output:
+                return results_file, log_fname
+            else:
                 return None, log_fname
-            return result, log_fname
 
         flow_list.append((cmd, log_file, None, run_dir, rcx_passed))
         return flow_list
