@@ -108,7 +108,8 @@ class RoutingGrid(PyRoutingGrid):
         return HalfInt(blk_dim // tr_half_pitch)
 
     def get_num_space_tracks(self, layer_id: int, width_ntr: int,
-                             half_space: bool = True, same_color: bool = False) -> HalfInt:
+                             half_space: bool = True, same_color: bool = False,
+                             even: bool = False) -> HalfInt:
         """Returns the number of tracks needed for space around a track of the given width.
 
         In advance technologies, metal spacing is often a function of the metal width, so for a
@@ -125,6 +126,8 @@ class RoutingGrid(PyRoutingGrid):
             True to allow half-integer spacing.
         same_color : bool
             True to use same-color spacing.
+        even : bool
+            True to enforce even resolution unit spacing.
 
         Returns
         -------
@@ -132,7 +135,7 @@ class RoutingGrid(PyRoutingGrid):
             minimum space needed around the given track in number of tracks.
         """
         width = self.get_track_width(layer_id, width_ntr)
-        sp_min_unit = self.get_space(layer_id, width_ntr, same_color=same_color)
+        sp_min_unit = self.get_space(layer_id, width_ntr, same_color=same_color, even=even)
         w_unit = self.w_tracks[layer_id]
         sp_unit = self.sp_tracks[layer_id]
         # if this width is overridden, we may have extra space
