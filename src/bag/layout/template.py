@@ -140,7 +140,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             self._grid.flip_parity = fp_dict
 
         # create Cython wrapper object
-        self._layout = PyLayCellView(self._grid.tech_info.pybag_tech, self.cell_name)
+        self._layout = PyLayCellView(self._grid, self.cell_name)
 
     @abc.abstractmethod
     def draw_layout(self) -> None:

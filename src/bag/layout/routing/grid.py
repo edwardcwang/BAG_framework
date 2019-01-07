@@ -48,6 +48,7 @@ class RoutingGrid(PyRoutingGrid):
 
     def __init__(self, tech_info: TechInfo, config_fname: str) -> None:
         PyRoutingGrid.__init__(self, tech_info, config_fname)
+        self._tech_info = tech_info
 
     @classmethod
     def get_middle_track(cls, tr1: TrackType, tr2: TrackType, round_up: bool = False) -> HalfInt:
@@ -59,8 +60,7 @@ class RoutingGrid(PyRoutingGrid):
     @property
     def tech_info(self) -> TechInfo:
         """TechInfo: The TechInfo technology object."""
-        ans = super(RoutingGrid, self).tech_info  # type: TechInfo
-        return ans
+        return self._tech_info
 
     def get_bot_common_layer(self, inst_grid: RoutingGrid, inst_top_layer: int) -> int:
         """Given an instance's RoutingGrid, return the bottom common layer ID.
@@ -77,20 +77,12 @@ class RoutingGrid(PyRoutingGrid):
         bot_layer : int
             the bottom common layer ID.
         """
-        my_bot_layer = self.layers[0]
-        for bot_layer in range(inst_top_layer, my_bot_layer - 1, -1):
-            has_bot = (bot_layer in self.layers)
-            inst_has_bot = (bot_layer in inst_grid.layers)
-            if has_bot and inst_has_bot:
-                w_par, sp_par = self.get_track_info(bot_layer)
-                w_inst, sp_inst = inst_grid.get_track_info(bot_layer)
-                if w_par != w_inst or sp_par != sp_inst or \
-                        self.dir_tracks[bot_layer] is not inst_grid.dir_tracks[bot_layer]:
-                    return bot_layer + 1
-            elif has_bot != inst_has_bot:
-                return bot_layer + 1
+        last_layer = self.bot_layer
+        for lay in range(inst_top_layer, last_layer - 1, -1):
+            if not self.get_track_info(lay).compatible(inst_grid.get_track_info(lay)):
+                return lay + 1
 
-        return my_bot_layer
+        return last_layer
 
     def get_flip_parity_at(self, bot_layer: int, top_layer: int,
                            xform: Transform) -> Dict[int, Tuple[int, int]]:
@@ -703,23 +695,6 @@ class RoutingGrid(PyRoutingGrid):
         """
         wblk, hblk = self.get_size_dimension(size)
         return self.get_size_tuple(new_top_layer, wblk, hblk)
-
-    def get_track_info(self, layer_id: int) -> Tuple[int, int]:
-        """Returns the routing track width and spacing on the given layer.
-
-        Parameters
-        ----------
-        layer_id : int
-            the routing layer ID.
-
-        Returns
-        -------
-        track_width : int
-            the track width in resolution units.
-        track_spacing : int
-            the track spacing in resolution units
-        """
-        return self.w_tracks[layer_id], self.sp_tracks[layer_id]
 
     def get_track_parity(self, layer_id: int, tr_idx: TrackType, modulus: int = 2) -> int:
         """Returns the parity of the given track.
