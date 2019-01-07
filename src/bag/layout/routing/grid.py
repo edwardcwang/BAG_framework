@@ -5,10 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Sequence, Tuple, List, Optional, Dict, Any
+from typing import Tuple, List, Optional, Dict, Any
 
 from pybag.core import BBox, Transform, PyRoutingGrid
-from pybag.enum import Orientation, Orient2D
+from pybag.enum import Orient2D
 
 from bag.util.search import BinaryIterator
 from bag.math import lcm
@@ -84,168 +84,9 @@ class RoutingGrid(PyRoutingGrid):
 
         return last_layer
 
-    def get_flip_parity_at(self, bot_layer: int, top_layer: int,
-                           xform: Transform) -> Dict[int, Tuple[int, int]]:
-        """Compute the flip parity dictionary for an instance placed at the given location.
-
-        Parameters
-        ----------
-        bot_layer : int
-            the bottom layer ID, inclusive.
-        top_layer : int
-            the top layer ID, inclusive.
-        xform : Transform
-            the transformation object.
-
-
-        Returns
-        -------
-        flip_parity : Dict[int, Tuple[int, int]]
-            the flip_parity dictionary.
-        """
-
-        loc = xform.location
-        oenum = xform.orient
-
-        if oenum is Orientation.R0:
-            scale_tup = 1, 1
-        elif oenum is Orientation.MX:
-            scale_tup = -1, 1
-        elif oenum is Orientation.MY:
-            scale_tup = 1, -1
-        elif oenum is Orientation.R180:
-            scale_tup = -1, -1
-        else:
-            raise ValueError('Unsupported orientation: ' + oenum.name)
-
-        flip_par = {}
-        for lay in range(bot_layer, top_layer + 1):
-            if lay in self.layers:
-                # find the track in top level that corresponds to the track at instance origin
-                dir_idx = self.get_direction(lay).value
-                coord = loc[1 - dir_idx]
-                scale = scale_tup[dir_idx]
-                tr_idx = self.coord_to_track(lay, coord)
-                offset_htr = int(tr_idx * 2) + 1
-
-                cur_scale, cur_offset = self._flip_parity.get(lay, (1, 0))
-                new_scale = cur_scale * scale
-                new_offset = (cur_scale * offset_htr + cur_offset) % 4
-                flip_par[lay] = (new_scale, new_offset)
-
-        return flip_par
-
-    def update_block_pitch(self) -> None:
-        """Update block pitch."""
-        self.block_pitch.clear()
-        top_private_layer = self.top_private_layer
-
-        # update private block pitches
-        lay_list = [lay for lay in self.layers
-                    if lay <= top_private_layer and lay not in self._ignore_layers]
-        self._update_block_pitch_helper(lay_list)
-
-        # update public block pitches
-        lay_list = [lay for lay in self.layers
-                    if lay > top_private_layer and lay not in self._ignore_layers]
-        self._update_block_pitch_helper(lay_list)
-
-    def _update_block_pitch_helper(self, lay_list: Sequence[int]) -> None:
-        """helper method for updating block pitch."""
-        pitch_list = []
-        for lay in lay_list:
-            cur_bp = self.get_track_pitch(lay)
-            cur_bp2 = cur_bp // 2
-            cur_dir = self.dir_tracks[lay]
-            if pitch_list:
-                # the pitch of each layer = LCM of all layers below with same direction
-                for play, (bp, bp2) in zip(lay_list, pitch_list):
-                    if self.dir_tracks[play] is cur_dir:
-                        cur_bp = lcm([cur_bp, bp])
-                        cur_bp2 = lcm([cur_bp2, bp2])
-            result = (cur_bp, cur_bp2)
-            pitch_list.append(result)
-            self.block_pitch[lay] = result
-
     def is_horizontal(self, layer_id: int) -> bool:
         """Returns true if the given layer is horizontal."""
-        return self.dir_tracks[layer_id] is Orient2D.x
-
-    def get_track_pitch(self, layer_id: int) -> int:
-        """Returns the routing track pitch on the given layer.
-
-        Parameters
-        ----------
-        layer_id : int
-            the routing layer ID.
-
-        Returns
-        -------
-        track_pitch : int
-            the track pitch.
-        """
-        return self.w_tracks[layer_id] + self.sp_tracks[layer_id]
-
-    def get_track_width(self, layer_id: int, width_ntr: int) -> int:
-        """Calculate track width in layout units from number of tracks.
-
-        Parameters
-        ----------
-        layer_id : int
-            the track layer ID
-        width_ntr : int
-            the track width in number of tracks.
-
-        Returns
-        -------
-        width : int
-            the track width.
-        """
-        w = self.w_tracks[layer_id]
-        sp = self.sp_tracks[layer_id]
-        w_unit = width_ntr * (w + sp) - sp
-        return self.w_override[layer_id].get(width_ntr, w_unit)
-
-    def get_track_width_inverse(self, layer_id: int, width: int, mode: int = -1) -> int:
-        """Given track width in resolution units, compute equivalent number of tracks.
-
-        This is the inverse function of get_track_width().
-
-        Parameters
-        ----------
-        layer_id : int
-            the track layer ID
-        width : int
-            the track width in resolution units.
-        mode : int
-            If negative, the result wire will have width less than or equal to the given width.
-            If positive, the result wire will have width greater than or equal to the given width.
-
-        Returns
-        -------
-        width_ntr : int
-            number of tracks needed to achieve the given width.
-        """
-        # use binary search to find the minimum track width
-        bin_iter = BinaryIterator(1, None)
-        while bin_iter.has_next():
-            ntr = bin_iter.get_next()
-            w_test = self.get_track_width(layer_id, ntr)
-            if w_test == width:
-                return ntr
-            elif w_test < width:
-                if mode < 0:
-                    bin_iter.save()
-                bin_iter.up()
-            else:
-                if mode > 0:
-                    bin_iter.save()
-                bin_iter.down()
-
-        ans = bin_iter.get_last_save()
-        if ans is None:
-            return 0
-        return ans
+        return self.get_direction(layer_id) is Orient2D.x
 
     def get_num_tracks(self, size: SizeType, layer_id: int) -> HalfInt:
         """Returns the number of tracks on the given layer for a block with the given size.
@@ -265,46 +106,6 @@ class RoutingGrid(PyRoutingGrid):
         blk_dim = self.get_size_dimension(size)[self.get_direction(layer_id).value]
         tr_half_pitch = self.get_track_pitch(layer_id) // 2
         return HalfInt(blk_dim // tr_half_pitch)
-
-    def get_min_length(self, layer_id: int, width_ntr: int) -> int:
-        """Returns the minimum length for the given track.
-
-        Parameters
-        ----------
-        layer_id : int
-            the track layer ID
-        width_ntr : int
-            the track width in number of tracks.
-
-        Returns
-        -------
-        min_length : int
-            the minimum length.
-        """
-        layer_type = self._tech_info.get_layer_type_from_id(layer_id)
-        width = self.get_track_width(layer_id, width_ntr)
-        return self.tech_info.get_min_length(layer_type, width)
-
-    def get_space(self, layer_id: int, width_ntr: int, same_color: bool = False) -> int:
-        """Returns the space needed around a track, in resolution units.
-
-        Parameters
-        ----------
-        layer_id : int
-            the track layer ID
-        width_ntr : int
-            the track width in number of tracks.
-        same_color : bool
-            True to use same-color spacing.
-
-        Returns
-        -------
-        sp : int
-            minimum space needed around the given track in resolution units.
-        """
-        layer_type = self._tech_info.get_layer_type_from_id(layer_id)
-        width = self.get_track_width(layer_id, width_ntr)
-        return self.tech_info.get_min_space(layer_type, width, same_color=same_color)
 
     def get_num_space_tracks(self, layer_id: int, width_ntr: int,
                              half_space: bool = True, same_color: bool = False) -> HalfInt:
@@ -343,25 +144,6 @@ class RoutingGrid(PyRoutingGrid):
             return HalfInt(num_half_pitch)
         else:
             return HalfInt(num_half_pitch + 1)
-
-    def get_line_end_space(self, layer_id: int, width_ntr: int) -> int:
-        """Returns the minimum line end spacing for the given wire.
-
-        Parameters
-        ----------
-        layer_id : int
-            wire layer ID.
-        width_ntr : int
-            wire width, in number of tracks.
-
-        Returns
-        -------
-        space : int
-            the line-end spacing.
-        """
-        layer_type = self._tech_info.get_layer_type_from_id(layer_id)
-        width = self.get_track_width(layer_id, width_ntr)
-        return self.tech_info.get_min_line_end_space(layer_type, width)
 
     def get_line_end_space_tracks(self, wire_layer: int, space_layer: int, width_ntr: int,
                                   half_space: bool = True) -> HalfInt:
