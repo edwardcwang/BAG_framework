@@ -134,19 +134,8 @@ class RoutingGrid(PyRoutingGrid):
         num_sp_tracks : HalfInt
             minimum space needed around the given track in number of tracks.
         """
-        width = self.get_track_width(layer_id, width_ntr)
-        sp_min_unit = self.get_space(layer_id, width_ntr, same_color=same_color, even=even)
-        w_unit = self.w_tracks[layer_id]
-        sp_unit = self.sp_tracks[layer_id]
-        # if this width is overridden, we may have extra space
-        width_normal = (w_unit + sp_unit) * width_ntr - sp_unit
-        extra_space = (width_normal - width) // 2
-        half_pitch = (w_unit + sp_unit) // 2
-        num_half_pitch = -(-(sp_min_unit - sp_unit - extra_space) // half_pitch)
-        if num_half_pitch % 2 == 0 or half_space:
-            return HalfInt(num_half_pitch)
-        else:
-            return HalfInt(num_half_pitch + 1)
+        htr = self.get_min_space_htr(layer_id, width_ntr, same_color=same_color, even=even)
+        return HalfInt(htr + (htr & half_space))
 
     def get_line_end_space_tracks(self, wire_layer: int, space_layer: int, width_ntr: int,
                                   half_space: bool = True) -> HalfInt:
