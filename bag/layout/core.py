@@ -764,7 +764,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                     break
 
             if opt_nxy is not None:
-                opt_num = weight * opt_nxy[0] * opt_nxy[1]
+                opt_num = weight * opt_nxy[0] * dim[0] * opt_nxy[1] * dim[1]
                 if (best_num is None or opt_num > best_num or
                         (opt_num == best_num and self._via_better(opt_mdim_list, best_mdim_list))):
                     best_num = opt_num
