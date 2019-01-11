@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Tuple, List, Optional, Dict, Any
 
 from pybag.core import BBox, Transform, PyRoutingGrid
-from pybag.enum import Orient2D
+from pybag.enum import Orient2D, Direction
 
 from bag.util.search import BinaryIterator
 from bag.math import lcm
@@ -137,17 +137,17 @@ class RoutingGrid(PyRoutingGrid):
         htr = self.get_min_space_htr(layer_id, width_ntr, same_color=same_color, even=even)
         return HalfInt(htr + (htr & half_space))
 
-    def get_line_end_space_tracks(self, wire_layer: int, space_layer: int, width_ntr: int,
+    def get_line_end_space_tracks(self, layer_dir: Direction, wire_layer: int, width_ntr: int,
                                   half_space: bool = True) -> HalfInt:
         """Returns the minimum line end spacing in number of space tracks.
 
         Parameters
         ----------
+        layer_dir : Direction
+            the direction of the specified layer.  LOWER if the layer is the
+            bottom layer, UPPER if the layer is the top layer.
         wire_layer : int
             line-end wire layer ID.
-        space_layer : int
-            the layer used to measure line-end space.  Must be adjacent to wire_layer, and its
-            direction must be orthogonal to the wire layer.
         width_ntr : int
             wire width, in number of tracks.
         half_space : bool
@@ -158,32 +158,15 @@ class RoutingGrid(PyRoutingGrid):
         space_ntr : HalfInt
             number of tracks needed to reserve as space.
         """
-        if space_layer == wire_layer - 1:
-            _, conn_ext = self.get_via_extensions(space_layer, 1, width_ntr)
-        elif space_layer == wire_layer + 1:
-            conn_ext, _ = self.get_via_extensions(wire_layer, width_ntr, 1)
-        else:
-            raise ValueError('space_layer must be adjacent to wire_layer')
-
-        if self.get_direction(space_layer) == self.get_direction(wire_layer):
-            raise ValueError('space_layer must be orthogonal to wire_layer.')
-
-        wire_sp = self.get_line_end_space(wire_layer, width_ntr)
-        margin = 2 * conn_ext + wire_sp
-        w, sp = self.get_track_info(space_layer)
-        half_pitch = (w + sp) // 2
-        space_ntr = max(-(-(margin - sp) // half_pitch), 0)
-        if space_ntr % 2 == 0 or half_space:
-            return HalfInt(space_ntr)
-        else:
-            return HalfInt(space_ntr + 1)
+        htr = self.get_line_end_space_htr(layer_dir.value, wire_layer, width_ntr)
+        return HalfInt(htr + (htr & half_space))
 
     def get_max_track_width(self, layer_id: int, num_tracks: int, tot_space: int,
                             half_end_space: bool = False) -> int:
         """Compute maximum track width and space that satisfies DRC rule.
 
         Given available number of tracks and numbers of tracks needed, returns
-        the maximum possible track width and spacing.
+        the maximum possible track width.
 
         Parameters
         ----------
@@ -192,7 +175,7 @@ class RoutingGrid(PyRoutingGrid):
         num_tracks : int
             number of tracks to draw.
         tot_space : int
-            avilable number of tracks.
+            available number of tracks.
         half_end_space : bool
             True if end spaces can be half of minimum spacing.  This is true if you're
             these tracks will be repeated, or there are no adjacent tracks.
@@ -761,30 +744,6 @@ class RoutingGrid(PyRoutingGrid):
             bot_ext = (vinfo['bot_box'].get_dim(bot_dir) - top_dim) // 2
             top_ext = (vinfo['top_box'].get_dim(top_dir) - bot_dim) // 2
             return bot_ext, top_ext
-
-    def get_via_extensions(self, bot_layer_id: int, bot_width: int,
-                           top_width: int) -> Tuple[int, int]:
-        """Returns the via extension.
-
-        Parameters
-        ----------
-        bot_layer_id : int
-            the via bottom layer ID.
-        bot_width : int
-            the bottom track width in number of tracks.
-        top_width : int
-            the top track width in number of tracks.
-
-        Returns
-        -------
-        bot_ext : int
-            via extension on the bottom layer.
-        top_ext : int
-            via extension on the top layer.
-        """
-        bot_dim = self.get_track_width(bot_layer_id, bot_width)
-        top_dim = self.get_track_width(bot_layer_id + 1, top_width)
-        return self.get_via_extensions_dim(bot_layer_id, bot_dim, top_dim)
 
     def coord_to_track(self, layer_id: int, coord: int) -> HalfInt:
         """Convert given coordinate to track number.
