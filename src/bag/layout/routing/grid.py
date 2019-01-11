@@ -278,50 +278,8 @@ class RoutingGrid(PyRoutingGrid):
         blk_h = lcm(dim_list[1])
         return blk_w, blk_h
 
-    def size_defined(self, layer_id: int) -> bool:
-        """Returns True if size is defined on the given layer."""
-        # TODO: start here
-        return layer_id >= self.top_private_layer + 2
-
-    def get_size_pitch(self, layer_id: int) -> Tuple[int, int]:
-        """Returns the horizontal/vertical pitch that defines template size.
-
-        Parameters
-        ----------
-        layer_id : int
-            the size layer.
-
-        Returns
-        -------
-        w_pitch : int
-            the width pitch.
-        h_pitch : int
-            the height pitch.
-        """
-        if not self.size_defined(layer_id):
-            raise ValueError('Size tuple is undefined for layer = %d' % layer_id)
-
-        top_dir = self.dir_tracks[layer_id]
-        bot_layer = layer_id - 1
-        while bot_layer in self.dir_tracks and self.dir_tracks[bot_layer] is top_dir:
-            bot_layer -= 1
-
-        h_pitch = self.get_track_pitch(layer_id)
-        w_pitch = self.get_track_pitch(bot_layer)
-        if top_dir is Orient2D.y:
-            return h_pitch, w_pitch
-        return w_pitch, h_pitch
-
-    def get_size_tuple(self,  # type: RoutingGrid
-                       layer_id,  # type: int
-                       width,  # type: int
-                       height,  # type: int
-                       round_up=False,  # type: bool
-                       unit_mode=True,  # type: bool
-                       half_blk_x=True,  # type: bool
-                       half_blk_y=True,  # type: bool
-                       ):
-        # type: (...) -> SizeType
+    def get_size_tuple(self, layer_id: int, width: int, height: int, *, round_up: bool = False,
+                       half_blk_x: bool = False, half_blk_y: bool = False) -> SizeType:
         """Compute the size tuple corresponding to the given width and height from block pitch.
 
         Parameters
@@ -335,8 +293,6 @@ class RoutingGrid(PyRoutingGrid):
         round_up : bool
             True to round up instead of raising an error if the given width and height
             are not on pitch.
-        unit_mode : bool
-            deprecated parameter.
         half_blk_x : bool
             True to allow half-block widths.
         half_blk_y : bool
@@ -349,9 +305,6 @@ class RoutingGrid(PyRoutingGrid):
             number of vertical tracks, and third element is the height in number of
             horizontal tracks.
         """
-        if not unit_mode:
-            raise ValueError('unit_mode = False not supported.')
-
         w_pitch, h_pitch = self.get_size_pitch(layer_id)
 
         wblk, hblk = self.get_block_size(layer_id, half_blk_x=half_blk_x, half_blk_y=half_blk_y)
@@ -421,6 +374,7 @@ class RoutingGrid(PyRoutingGrid):
         parity : int
             the track parity.
         """
+        # TODO: start here
         # multiply then divide by 2 makes sure negative tracks are colored correctly.
         htr = round(tr_idx * 2 + 1)
         scale, offset = self._flip_parity[layer_id]
