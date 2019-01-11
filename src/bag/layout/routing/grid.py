@@ -239,56 +239,6 @@ class RoutingGrid(PyRoutingGrid):
 
         return [HalfInt((scale * idx + offset) // den - 1) for idx in range(num_tracks)]
 
-    def get_block_size(self, layer_id: int, *, include_private: bool = False,
-                       half_blk_x: bool = True, half_blk_y: bool = True) -> Tuple[int, int]:
-        """Returns unit block size given the top routing layer.
-
-        Parameters
-        ----------
-        layer_id : int
-            the routing layer ID.
-        include_private : bool
-            True to include private layers in block size calculation.
-        half_blk_x : bool
-            True to allow half-block widths.
-        half_blk_y : bool
-            True to allow half-block heights.
-
-        Returns
-        -------
-        block_width : int
-            the block width in resolution units.
-        block_height : int
-            the block height in resolution units.
-        """
-        top_private_layer = self.top_private_layer
-        top_dir = self.dir_tracks[layer_id]
-
-        # get bottom layer that has different direction
-        bot_layer = layer_id - 1
-        while bot_layer in self.block_pitch and self.dir_tracks[bot_layer] is top_dir:
-            bot_layer -= 1
-
-        if bot_layer not in self.block_pitch:
-            bot_pitch = (2, 1)
-        else:
-            bot_pitch = self.block_pitch[bot_layer]
-
-        top_pitch = self.block_pitch[layer_id]
-
-        if layer_id > top_private_layer >= bot_layer and not include_private:
-            # if top layer not private but bottom layer is, then bottom is not quantized.
-            bot_pitch = (2, 1)
-
-        if top_dir is Orient2D.y:
-            w_pitch, h_pitch = top_pitch, bot_pitch
-        else:
-            w_pitch, h_pitch = bot_pitch, top_pitch
-
-        w_pitch = w_pitch[1] if half_blk_x else w_pitch[0]
-        h_pitch = h_pitch[1] if half_blk_y else h_pitch[0]
-        return w_pitch, h_pitch
-
     def get_fill_size(self, top_layer: int, fill_config: FillConfigType, *,
                       include_private: bool = False, half_blk_x: bool = True,
                       half_blk_y: bool = True) -> Tuple[int, int]:
@@ -330,6 +280,7 @@ class RoutingGrid(PyRoutingGrid):
 
     def size_defined(self, layer_id: int) -> bool:
         """Returns True if size is defined on the given layer."""
+        # TODO: start here
         return layer_id >= self.top_private_layer + 2
 
     def get_size_pitch(self, layer_id: int) -> Tuple[int, int]:
