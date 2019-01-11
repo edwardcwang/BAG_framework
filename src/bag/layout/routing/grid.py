@@ -357,7 +357,7 @@ class RoutingGrid(PyRoutingGrid):
         wblk, hblk = self.get_size_dimension(size)
         return self.get_size_tuple(new_top_layer, wblk, hblk)
 
-    def get_track_parity(self, layer_id: int, tr_idx: TrackType, modulus: int = 2) -> int:
+    def get_track_parity(self, layer_id: int, tr_idx: TrackType) -> int:
         """Returns the parity of the given track.
 
         Parameters
@@ -366,20 +366,13 @@ class RoutingGrid(PyRoutingGrid):
             the layer ID.
         tr_idx : TrackType
             the track index.
-        modulus : int
-            the parity modulus.
 
         Returns
         -------
         parity : int
             the track parity.
         """
-        # TODO: start here
-        # multiply then divide by 2 makes sure negative tracks are colored correctly.
-        htr = round(tr_idx * 2 + 1)
-        scale, offset = self._flip_parity[layer_id]
-        par_htr = scale * htr + offset
-        return (par_htr % (2 * modulus)) // 2
+        return self.get_htr_parity(layer_id, int(round(2 * tr_idx)))
 
     def get_layer_purpose(self, layer_id: int, tr_idx: TrackType) -> Tuple[str, str]:
         """Get the layer/purpose pair of the given track.
@@ -398,9 +391,7 @@ class RoutingGrid(PyRoutingGrid):
         purpose_name : str
             the purpose name.
         """
-        lay_purp_list = self.tech_info.get_lay_purp_list(layer_id)
-        tr_parity = self.get_track_parity(layer_id, tr_idx, modulus=len(lay_purp_list))
-        return lay_purp_list[tr_parity]
+        return self.get_htr_layer_purpose(layer_id, int(round(2 * tr_idx)))
 
     def get_wire_bounds(self, layer_id: int, tr_idx: TrackType, width: int = 1) -> Tuple[int, int]:
         """Calculate the wire bounds coordinate.
@@ -421,9 +412,7 @@ class RoutingGrid(PyRoutingGrid):
         upper : int
             the upper bound coordinate perpendicular to wire direction.
         """
-        width_unit = self.get_track_width(layer_id, width)
-        center = self.track_to_coord(layer_id, tr_idx)
-        return center - width_unit // 2, center + width_unit // 2
+        return self.get_wire_bounds_htr(layer_id, int(round(2 * tr_idx)), width)
 
     def get_bbox(self, layer_id: int, tr_idx: TrackType, lower: int, upper: int,
                  width: int = 1) -> BBox:
@@ -497,10 +486,11 @@ class RoutingGrid(PyRoutingGrid):
 
         # use binary search to find the minimum track width
         bin_iter = BinaryIterator(1, None)
-        tr_dir = self.dir_tracks[layer_id]
+        tr_dir = self.get_direction(layer_id)
         alt_dir = tr_dir.perpendicular()
-        bot_dir = self.dir_tracks.get(layer_id - 1, alt_dir)
-        top_dir = self.dir_tracks.get(layer_id + 1, alt_dir)
+        bot_dir = self.get_direction(layer_id - 1)
+        top_dir = self.get_direction(layer_id + 1)
+        # TODO: start here
         while bin_iter.has_next():
             ntr = bin_iter.get_next()
             width = self.get_track_width(layer_id, ntr)
