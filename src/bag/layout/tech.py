@@ -14,7 +14,7 @@ from bag.util.search import BinaryIterator
 # try to import cython classes
 # noinspection PyUnresolvedReferences
 from pybag.core import BBox, PyTech, Transform
-from pybag.enum import Orient2D, Orientation
+from pybag.enum import Orient2D, Orientation, Direction
 
 if TYPE_CHECKING:
     from .core import PyLayInstance
@@ -108,29 +108,33 @@ class TechInfo(PyTech):
         raise NotImplementedError('Not implemented.')
 
     # noinspection PyUnusedLocal
-    def get_via_em_specs(self, bot_layer: str, top_layer: str, *, bot_purpose: str = '',
-                         top_purpose: str = '', cut_dim: Tuple[int, int] = (0, 0),
-                         bm_dim: Tuple[int, int] = (-1, -1), tm_dim: Tuple[int, int] = (-1, -1),
+    def get_via_em_specs(self, layer_dir: Direction, layer: str, adj_layer: str, *,
+                         purpose: str = '', adj_purpose: str = '',
+                         cut_dim: Tuple[int, int] = (0, 0),
+                         m_dim: Tuple[int, int] = (-1, -1), adj_m_dim: Tuple[int, int] = (-1, -1),
                          array: bool = False, **kwargs: Any) -> Tuple[float, float, float]:
         """Returns a tuple of EM current/resistance specs of the given via.
 
         Parameters
         ----------
-        bot_layer : str
-            the bottom layer name.
-        top_layer : str
-            the top layer name.
-        bot_purpose : str
-            the bottom purpose name.
-        top_purpose : str
-            the top purpose name.
+        layer_dir : Direction
+            the direction of the first specified layer.  LOWER if the first layer is the
+            bottom layer, UPPER if the first layer is the top layer.
+        layer : str
+            the first layer name.
+        adj_layer : str
+            the second layer name.
+        purpose : str
+            the first layer purpose name.
+        adj_purpose : str
+            the second layer purpose name.
         cut_dim : Tuple[int, int]
             the via cut dimension.
-        bm_dim : Tuple[int, int]
-            bottom layer metal width/length in resolution units.  If negative,
+        m_dim : Tuple[int, int]
+            first layer metal width/length in resolution units.  If negative,
             disable length/width enhancement.
-        tm_dim : Tuple[int, int]
-            top layer metal width/length in resolution units.  If negative,
+        adj_m_dim : Tuple[int, int]
+            second layer metal width/length in resolution units.  If negative,
             disable length/width enhancement.
         array : bool
             True if this via is in a via array.
@@ -449,9 +453,10 @@ class TechInfo(PyTech):
             iac_peak=ipeak,
         )
 
-    def get_via_info(self, bbox: BBox, bot_layer: str, top_layer: str, bot_dir: Orient2D, *,
-                     bot_purpose: str = '', top_purpose: str = '', bot_len: int = -1,
-                     top_len: int = -1, extend: bool = True, top_dir: Optional[Orient2D] = None,
+    def get_via_info(self, bbox: BBox, layer_dir: Direction, layer: str, adj_layer: str,
+                     ex_dir: Orient2D, *, purpose: str = '', adj_purpose: str = '',
+                     wlen: int = -1, adj_wlen: int = -1, extend: bool = True,
+                     adj_ex_dir: Optional[Orient2D] = None,
                      **kwargs: Any) -> Optional[Dict[str, Any]]:
         """Create a via on the routing grid given the bounding box.
 
@@ -459,26 +464,29 @@ class TechInfo(PyTech):
         ----------
         bbox : BBox
             the bounding box of the via.
-        bot_layer : str
-            the bottom layer name.
-        top_layer : str
-            the top layer name.
-        bot_dir : Orient2D
-            the bottom layer extension direction.  Either 'x' or 'y'
-        bot_purpose : str
-            bottom purpose name.
-        top_purpose : str
-            top purpose name.
-        bot_len : int
-            length of bottom wire connected to this Via, in resolution units.
+        layer_dir : Direction
+            the direction of the first specified layer.  LOWER if the first layer is the
+            bottom layer, UPPER if the first layer is the top layer.
+        layer : str
+            the first layer name.
+        adj_layer : str
+            the second layer name.
+        ex_dir : Orient2D
+            the first layer extension direction.
+        purpose : str
+            first layer purpose name.
+        adj_purpose : str
+            second layer purpose name.
+        wlen : int
+            length of first layer wire connected to this Via, in resolution units.
             Used for length enhancement EM calculation.
-        top_len : int
-            length of top wire connected to this Via, in resolution units.
+        adj_wlen : int
+            length of second layer wire connected to this Via, in resolution units.
             Used for length enhancement EM calculation.
         extend : bool
             True if via extension can be drawn outside of bounding box.
-        top_dir : Optional[Orient2D]
-            top layer extension direction.  Can force to extend in same direction as bottom.
+        adj_ex_dir : Optional[Orient2D]
+            second layer extension direction.  Can force to extend in same direction as bottom.
         **kwargs : Any
             optional parameters for EM rule calculations, such as nominal temperature,
             AC rms delta-T, etc.
@@ -499,27 +507,28 @@ class TechInfo(PyTech):
             params : Dict[str, Any]
                 A dictionary of via parameters.
         """
-        if top_dir is None:
-            top_dir = bot_dir.perpendicular()
+        if adj_ex_dir is None:
+            adj_ex_dir = ex_dir.perpendicular()
 
-        via_id = self.get_via_id(bot_layer, bot_purpose, top_layer, top_purpose)
-        via_param = self.get_via_param(bbox.w, bbox.h, via_id, bot_dir, top_dir, extend)
+        via_id = self.get_via_id(layer_dir, layer, purpose, adj_layer, adj_purpose)
+        via_param = self.get_via_param(bbox.w, bbox.h, via_id, layer_dir,
+                                       ex_dir, adj_ex_dir, extend)
 
         if via_param.empty:
             # no solution found
             return None
 
         xform = Transform(bbox.xm, bbox.ym, Orientation.R0)
-        bot_box = via_param.get_box(xform, 0)
-        top_box = via_param.get_box(xform, 1)
-        bw = bot_box.get_dim(bot_dir.perpendicular())
-        tw = top_box.get_dim(top_dir.perpendicular())
+        m_box = via_param.get_box(xform, layer_dir)
+        adj_m_box = via_param.get_box(xform, layer_dir.flip())
+        w = m_box.get_dim(ex_dir.perpendicular())
+        adj_w = adj_m_box.get_dim(adj_ex_dir.perpendicular())
         cut_dim = via_param.cut_dim
         nx = via_param.nx
         ny = via_param.ny
-        idc, irms, ipeak = self.get_via_em_specs(bot_layer, top_layer, bot_purpose=bot_purpose,
-                                                 top_purpose=top_purpose, cut_dim=cut_dim,
-                                                 bm_dim=(bw, bot_len), tm_dim=(tw, top_len),
+        idc, irms, ipeak = self.get_via_em_specs(layer_dir, layer, adj_layer, purpose=purpose,
+                                                 adj_purpose=adj_purpose, cut_dim=cut_dim,
+                                                 m_dim=(w, wlen), adj_m_dim=(adj_w, adj_wlen),
                                                  array=nx > 1 or ny > 1, **kwargs)
 
         params = {'id': via_id,
@@ -528,14 +537,16 @@ class TechInfo(PyTech):
                   }
 
         ntot = nx * ny
+        box_list = [None, None]
+        box_list[layer_dir] = m_box
+        box_list[layer_dir.flip()] = adj_m_box
         return dict(
             resistance=0.0,
             idc=idc * ntot,
             iac_rms=irms * ntot,
             iac_peak=ipeak * ntot,
             params=params,
-            bot_box=bot_box,
-            top_box=top_box,
+            metal_box=box_list,
         )
 
     def design_resistor(self, res_type: str, res_targ: float, idc: float = 0.0,
