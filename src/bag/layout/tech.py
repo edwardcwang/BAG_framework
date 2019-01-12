@@ -75,9 +75,9 @@ class TechInfo(PyTech):
         """
         raise NotImplementedError('Not implemented.')
 
-    # noinspection PyUnusedLocal
-    def get_metal_em_specs(self, layer: str, w: int, *, purpose: str = '', l: int = -1,
-                           vertical: bool = False, **kwargs: Any) -> Tuple[float, float, float]:
+    def get_metal_em_specs(self, layer: str, w: int, purpose: str = '', length: int = -1,
+                           vertical: bool = False, dc_temp: int = -1000, rms_dt: int = -1000
+                           ) -> Tuple[float, float, float]:
         """Returns a tuple of EM current/resistance specs of the given wire.
 
         Parameters
@@ -88,13 +88,17 @@ class TechInfo(PyTech):
             the width of the metal in resolution units (dimension perpendicular to current flow).
         purpose : str
             the purpose name.
-        l : int
+        length : int
             the length of the metal in resolution units (dimension parallel to current flow).
             If negative, disable length enhancement.
         vertical : bool
             True to compute vertical current.
-        **kwargs :
-            optional EM specs parameters.
+        dc_temp : int
+            the temperature (in Celsius) to calculate DC current EM spec with.
+            If equal to -1000, use technology default.
+        rms_dt : int
+            the temperature delta (in Celsius) to target for when computing AC RMS current
+            EM spec.  If equal to -1000, use technology default.
 
         Returns
         -------
