@@ -52,11 +52,21 @@ class HalfInt(Integral):
             return '{:d}'.format(q)
         return '{:d}.5'.format(q)
 
-    def up(self) -> None:
+    def up(self) -> HalfInt:
         self._val += 1
+        return self
 
-    def down(self) -> None:
+    def down(self) -> HalfInt:
         self._val -= 1
+        return self
+
+    def up_even(self, flag: bool) -> HalfInt:
+        self._val += (self._val & flag)
+        return self
+
+    def down_even(self, flag: bool) -> HalfInt:
+        self._val -= (self._val & flag)
+        return self
 
     def increment(self, other: Any) -> None:
         self._val += HalfInt.convert(other)._val

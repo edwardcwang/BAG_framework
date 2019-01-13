@@ -9,7 +9,7 @@ from typing import Tuple, List, Optional, Dict, Any, Union
 
 from warnings import warn
 
-from pybag.core import Transform, PyRoutingGrid
+from pybag.core import Transform, PyRoutingGrid, coord_to_custom_htr
 from pybag.enum import Orient2D, Direction, RoundMode
 
 from bag.util.search import BinaryIterator
@@ -428,6 +428,23 @@ class RoutingGrid(PyRoutingGrid):
             the coordinate perpendicular to the track direction.
         mode : RoundMode
             the rounding mode.
+
+            If mode == NEAREST, return the nearest track (default).
+
+            If mode == LESS_EQ, return the nearest track with coordinate less
+            than or equal to coord.
+
+            If mode == LESS, return the nearest track with coordinate less
+            than coord.
+
+            If mode == GREATER, return the nearest track with coordinate greater
+            than or equal to coord.
+
+            If mode == GREATER_EQ, return the nearest track with coordinate greater
+            than coord.
+
+            If mode == NONE, raise error if coordinate is not on track.
+
         even : bool
             True to round coordinate to integer tracks.
 
@@ -438,9 +455,51 @@ class RoutingGrid(PyRoutingGrid):
         """
         return HalfInt(self.coord_to_htr(layer_id, coord, mode, even))
 
+    def coord_to_fill_track(self, layer_id: int, coord: int, fill_config: Dict[int, Any],
+                            mode: RoundMode = RoundMode.NEAREST) -> HalfInt:
+        """Returns the fill track number closest to the given coordinate.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer number.
+        coord : int
+            the coordinate perpendicular to the track direction.
+        fill_config : Dict[int, Any]
+            the fill configuration dictionary.
+        mode : RoundMode
+            the rounding mode.
+
+            If mode == NEAREST, return the nearest track (default).
+
+            If mode == LESS_EQ, return the nearest track with coordinate less
+            than or equal to coord.
+
+            If mode == LESS, return the nearest track with coordinate less
+            than coord.
+
+            If mode == GREATER, return the nearest track with coordinate greater
+            than or equal to coord.
+
+            If mode == GREATER_EQ, return the nearest track with coordinate greater
+            than coord.
+
+            If mode == NONE, raise error if coordinate is not on track.
+
+        Returns
+        -------
+        track : HalfInt
+            the track number
+        """
+        ntr_w, ntr_sp, _, _ = fill_config[layer_id]
+
+        num_htr = round(2 * (ntr_w + ntr_sp))
+        fill_pitch = num_htr * self.get_track_pitch(layer_id) // 2
+        return HalfInt(coord_to_custom_htr(coord, fill_pitch, fill_pitch // 2, mode, False))
+
     def coord_to_nearest_track(self, layer_id: int, coord: int, *,
                                half_track: bool = True,
-                               mode: Union[int, RoundMode] = RoundMode.NEAREST) -> HalfInt:
+                               mode: Union[RoundMode, int] = RoundMode.NEAREST) -> HalfInt:
         """Returns the track number closest to the given coordinate.
 
         Parameters
@@ -451,21 +510,21 @@ class RoutingGrid(PyRoutingGrid):
             the coordinate perpendicular to the track direction.
         half_track : bool
             if True, allow half integer track numbers.
-        mode : int
-            the "rounding" mode.
+        mode : Union[RoundMode, int]
+            the rounding mode.
 
-            If mode == 0, return the nearest track (default).
+            If mode == NEAREST, return the nearest track (default).
 
-            If mode == -1, return the nearest track with coordinate less
+            If mode == LESS_EQ, return the nearest track with coordinate less
             than or equal to coord.
 
-            If mode == -2, return the nearest track with coordinate less
+            If mode == LESS, return the nearest track with coordinate less
             than coord.
 
-            If mode == 1, return the nearest track with coordinate greater
+            If mode == GREATER, return the nearest track with coordinate greater
             than or equal to coord.
 
-            If mode == 2, return the nearest track with coordinate greater
+            If mode == GREATER_EQ, return the nearest track with coordinate greater
             than coord.
 
         Returns
@@ -478,7 +537,8 @@ class RoutingGrid(PyRoutingGrid):
         return HalfInt(self.coord_to_htr(layer_id, coord, mode, not half_track))
 
     def find_next_track(self, layer_id: int, coord: int, *, tr_width: int = 1,
-                        half_track: bool = True, mode: int = 1) -> HalfInt:
+                        half_track: bool = True,
+                        mode: Union[RoundMode, int] = RoundMode.GREATER_EQ) -> HalfInt:
         """Find the track such that its edges are on the same side w.r.t. the given coordinate.
 
         Parameters
@@ -491,23 +551,27 @@ class RoutingGrid(PyRoutingGrid):
             the track width, in number of tracks.
         half_track : bool
             True to allow half integer track center numbers.
-        mode : int
-            1 to find track with both edge coordinates larger than or equal to the given one,
-            -1 to find track with both edge coordinates less than or equal to the given one.
+        mode : Union[RoundMode, int]
+            the rounding mode.  NEAREST and NONE are not supported.
+
+            If mode == LESS_EQ, return the track with both edges less
+            than or equal to coord.
+
+            If mode == LESS, return the nearest track with both edges less
+            than coord.
+
+            If mode == GREATER, return the nearest track with both edges greater
+            than or equal to coord.
+
+            If mode == GREATER_EQ, return the nearest track with both edges greater
+            than coord.
 
         Returns
         -------
         tr_idx : HalfInt
             the center track index.
         """
-        # TODO: start here
-        tr_w = self.get_track_width(layer_id, tr_width)
-        if mode > 0:
-            return self.coord_to_nearest_track(layer_id, coord + tr_w // 2, half_track=half_track,
-                                               mode=mode)
-        else:
-            return self.coord_to_nearest_track(layer_id, coord - tr_w // 2, half_track=half_track,
-                                               mode=mode)
+        return HalfInt(self.find_next_htr(layer_id, coord, tr_width, mode, not half_track))
 
     def get_track_index_range(self, layer_id: int, lower: int, upper: int, *,
                               num_space: TrackType = 0, edge_margin: int = 0,
@@ -536,21 +600,18 @@ class RoutingGrid(PyRoutingGrid):
         end_track : OptHalfIntType
             the last track index.  None if no solution.
         """
+        even = not half_track
         # get start track half index
-        lower_bnd = self.coord_to_nearest_track(layer_id, lower, half_track=True, mode=-1)
-        start_track = self.find_next_track(layer_id, lower + edge_margin, half_track=True, mode=1)
+        lower_bnd = self.find_next_track(layer_id, lower, mode=RoundMode.LESS_EQ)
+        start_track = self.find_next_track(layer_id, lower + edge_margin, mode=RoundMode.GREATER_EQ)
         start_track = max(start_track, lower_bnd + num_space)
-        # check if half track is allowed
-        if not half_track and not start_track.is_integer:
-            start_track.up()
+        start_track.up_even(even)
 
         # get end track half index
-        upper_bnd = self.coord_to_nearest_track(layer_id, upper, half_track=True, mode=1)
-        end_track = self.find_next_track(layer_id, upper - edge_margin, half_track=True, mode=-1)
+        upper_bnd = self.find_next_track(layer_id, upper, mode=RoundMode.GREATER_EQ)
+        end_track = self.find_next_track(layer_id, upper - edge_margin, mode=RoundMode.LESS_EQ)
         end_track = min(end_track, upper_bnd - num_space)
-        # check if half track is allowed
-        if not half_track and not end_track.is_integer:
-            end_track.down()
+        end_track.down_even(even)
 
         if end_track < start_track:
             # no solution
@@ -579,70 +640,15 @@ class RoutingGrid(PyRoutingGrid):
         end_track : OptHalfIntType
             the last track index.  None if no solution.
         """
-        wtr = self.w_tracks[layer_id]
-        lower_tr = self.find_next_track(layer_id, lower - wtr, half_track=half_track, mode=1)
-        upper_tr = self.find_next_track(layer_id, upper + wtr, half_track=half_track, mode=-1)
+        even = not half_track
+        lower_tr = self.find_next_track(layer_id, lower, mode=RoundMode.LESS_EQ)
+        lower_tr.up().up_even(even)
+        upper_tr = self.find_next_track(layer_id, upper, mode=RoundMode.GREATER_EQ)
+        upper_tr.down().down_even(even)
 
         if upper_tr < lower_tr:
             return None, None
         return lower_tr, upper_tr
-
-    def coord_to_nearest_fill_track(self, layer_id: int, coord: int, fill_config: Dict[int, Any],
-                                    mode: int = 0) -> HalfInt:
-        """Returns the fill track number closest to the given coordinate.
-
-        Parameters
-        ----------
-        layer_id : int
-            the layer number.
-        coord : int
-            the coordinate perpendicular to the track direction.
-        fill_config : Dict[int, Any]
-            the fill configuration dictionary.
-        mode : int
-            the "rounding" mode.
-
-            If mode == 0, return the nearest track (default).
-
-            If mode == -1, return the nearest track with coordinate less
-            than or equal to coord.
-
-            If mode == -2, return the nearest track with coordinate less
-            than coord.
-
-            If mode == 1, return the nearest track with coordinate greater
-            than or equal to coord.
-
-            If mode == 2, return the nearest track with coordinate greater
-            than coord.
-
-        Returns
-        -------
-        track : HalfInt
-            the track number
-        """
-        tr_w, tr_sp, _, _ = fill_config[layer_id]
-
-        num_htr = round(2 * (tr_w + tr_sp))
-        fill_pitch = num_htr * self.get_track_pitch(layer_id) // 2
-        fill_pitch2 = fill_pitch // 2
-        fill_q, fill_r = divmod(coord - fill_pitch2, fill_pitch)
-
-        if fill_r == 0:
-            # exactly on track
-            if mode == -2:
-                # move to lower track
-                fill_q -= 1
-            elif mode == 2:
-                # move to upper track
-                fill_q += 1
-        else:
-            # not on track
-            if mode > 0 or (mode == 0 and fill_r >= fill_pitch2):
-                # round up
-                fill_q += 1
-
-        return self.coord_to_track(layer_id, fill_q * fill_pitch + fill_pitch2)
 
     def transform_track(self, layer_id: int, track_idx: TrackType, xform: Transform) -> HalfInt:
         """Transform the given track index.
@@ -678,8 +684,7 @@ class RoutingGrid(PyRoutingGrid):
         coord : int
             the coordinate perpendicular to track direction.
         """
-        pitch = self.get_track_pitch(layer_id)
-        return int(HalfInt.convert(track_idx) * pitch) + self._get_track_offset(layer_id)
+        return self.htr_to_coord(layer_id, int(round(2 * track_idx)))
 
     def interval_to_track(self, layer_id: int, intv: Tuple[int, int]) -> Tuple[HalfInt, int]:
         """Convert given coordinates to track number and width.
@@ -699,17 +704,18 @@ class RoutingGrid(PyRoutingGrid):
             the track width, in number of tracks.
         """
         start, stop = intv
-        track = self.coord_to_track(layer_id, (start + stop) // 2)
+        htr = self.coord_to_htr(layer_id, (start + stop) // 2, RoundMode.NONE, False)
         width = stop - start
 
         # binary search to take width override into account
         bin_iter = BinaryIterator(1, None)
         while bin_iter.has_next():
             cur_ntr = bin_iter.get_next()
-            cur_w = self.get_track_width(layer_id, cur_ntr)
-            if cur_w == width:
-                return track, cur_ntr
-            elif cur_w > width:
+            wire_bounds = self.get_wire_bounds_htr(layer_id, htr, cur_ntr)
+            wire_width = wire_bounds[1] - wire_bounds[0]
+            if wire_width == width:
+                return HalfInt(htr), cur_ntr
+            elif wire_width > width:
                 bin_iter.down()
             else:
                 bin_iter.up()
