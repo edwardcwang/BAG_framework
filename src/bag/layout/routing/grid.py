@@ -46,10 +46,13 @@ class RoutingGrid(PyRoutingGrid):
         the TechInfo instance used to create metals and vias.
     config_fname : str
         the routing grid configuration file.
+    grid : Optional[RoutingGrid]
+        If not None, create a copy of grid instead.
     """
 
-    def __init__(self, tech_info: TechInfo, config_fname: str) -> None:
-        PyRoutingGrid.__init__(self, tech_info, config_fname)
+    def __init__(self, tech_info: TechInfo, config_fname: str,
+                 grid: Optional[RoutingGrid] = None) -> None:
+        PyRoutingGrid.__init__(self, tech_info, config_fname, grid)
         self._tech_info = tech_info
 
     @classmethod
@@ -724,26 +727,8 @@ class RoutingGrid(PyRoutingGrid):
         raise ValueError('Interval {} on layer {} width not quantized'.format(intv, layer_id))
 
     def copy(self) -> RoutingGrid:
-        """Returns a deep copy of this RoutingGrid."""
-        cls = self.__class__
-        result = cls.__new__(cls)
-        attrs = result.__dict__
-        attrs['_tech_info'] = self._tech_info
-        attrs['_flip_parity'] = self._flip_parity.copy()
-        attrs['_ignore_layers'] = self._ignore_layers.copy()
-        attrs['layers'] = list(self.layers)
-        attrs['sp_tracks'] = self.sp_tracks.copy()
-        attrs['dir_tracks'] = self.dir_tracks.copy()
-        attrs['offset_tracks'] = {}
-        attrs['w_tracks'] = self.w_tracks.copy()
-        attrs['max_num_tr_tracks'] = self.max_num_tr_tracks.copy()
-        attrs['block_pitch'] = self.block_pitch.copy()
-        attrs['w_override'] = self.w_override.copy()
-        attrs['private_layers'] = list(self.private_layers)
-        for lay in self.layers:
-            attrs['w_override'][lay] = self.w_override[lay].copy()
-
-        return result
+        """Returns a copy of this RoutingGrid."""
+        return RoutingGrid(self._tech_info, '', grid=self)
 
     def ignore_layers_under(self, layer_id: int) -> None:
         """Ignore all layers under the given layer (inclusive) when calculating block pitches.
@@ -753,6 +738,7 @@ class RoutingGrid(PyRoutingGrid):
         layer_id : int
             ignore this layer and below.
         """
+        # TODO: start here
         for lay in self.layers:
             if lay > layer_id:
                 break
