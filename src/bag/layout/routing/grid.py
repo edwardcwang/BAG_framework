@@ -5,10 +5,12 @@
 
 from __future__ import annotations
 
-from typing import Tuple, List, Optional, Dict, Any
+from typing import Tuple, List, Optional, Dict, Any, Union
 
-from pybag.core import BBox, Transform, PyRoutingGrid
-from pybag.enum import Orient2D, Direction
+from warnings import warn
+
+from pybag.core import Transform, PyRoutingGrid
+from pybag.enum import Orient2D, Direction, RoundMode
 
 from bag.util.search import BinaryIterator
 from bag.math import lcm
@@ -414,115 +416,98 @@ class RoutingGrid(PyRoutingGrid):
         """
         return self.get_wire_bounds_htr(layer_id, int(round(2 * tr_idx)), width)
 
-    def get_bbox(self, layer_id: int, tr_idx: TrackType, lower: int, upper: int,
-                 width: int = 1) -> BBox:
-        """Compute bounding box for the given wire.
+    def coord_to_track(self, layer_id: int, coord: int, mode: RoundMode = RoundMode.NONE,
+                       even: bool = False) -> HalfInt:
+        """Convert given coordinate to track number.
 
         Parameters
         ----------
         layer_id : int
-            the layer ID.
-        tr_idx : TrackType
+            the layer number.
+        coord : int
+            the coordinate perpendicular to the track direction.
+        mode : RoundMode
+            the rounding mode.
+        even : bool
+            True to round coordinate to integer tracks.
+
+        Returns
+        -------
+        track : HalfInt
+            the track number
+        """
+        return HalfInt(self.coord_to_htr(layer_id, coord, mode, even))
+
+    def coord_to_nearest_track(self, layer_id: int, coord: int, *,
+                               half_track: bool = True,
+                               mode: Union[int, RoundMode] = RoundMode.NEAREST) -> HalfInt:
+        """Returns the track number closest to the given coordinate.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer number.
+        coord : int
+            the coordinate perpendicular to the track direction.
+        half_track : bool
+            if True, allow half integer track numbers.
+        mode : int
+            the "rounding" mode.
+
+            If mode == 0, return the nearest track (default).
+
+            If mode == -1, return the nearest track with coordinate less
+            than or equal to coord.
+
+            If mode == -2, return the nearest track with coordinate less
+            than coord.
+
+            If mode == 1, return the nearest track with coordinate greater
+            than or equal to coord.
+
+            If mode == 2, return the nearest track with coordinate greater
+            than coord.
+
+        Returns
+        -------
+        track : HalfInt
+            the track number
+        """
+        warn('coord_to_nearest_track is deprecated, use coord_to_track with optional flags instead',
+             DeprecationWarning)
+        return HalfInt(self.coord_to_htr(layer_id, coord, mode, not half_track))
+
+    def find_next_track(self, layer_id: int, coord: int, *, tr_width: int = 1,
+                        half_track: bool = True, mode: int = 1) -> HalfInt:
+        """Find the track such that its edges are on the same side w.r.t. the given coordinate.
+
+        Parameters
+        ----------
+        layer_id : int
+            the layer number.
+        coord : int
+            the coordinate perpendicular to the track direction.
+        tr_width : int
+            the track width, in number of tracks.
+        half_track : bool
+            True to allow half integer track center numbers.
+        mode : int
+            1 to find track with both edge coordinates larger than or equal to the given one,
+            -1 to find track with both edge coordinates less than or equal to the given one.
+
+        Returns
+        -------
+        tr_idx : HalfInt
             the center track index.
-        lower : int
-            the lower coordinate along track direction.
-        upper : int
-            the upper coordinate along track direction.
-        width : int
-            width of wire in number of tracks.
-
-        Returns
-        -------
-        bbox : BBox
-            the bounding box.
         """
-        cl, cu = self.get_wire_bounds(layer_id, tr_idx, width=width)
-        return BBox(self.get_direction(layer_id), lower, upper, cl, cu)
-
-    def get_min_track_width(self, layer_id: int, *, idc: float = 0, iac_rms: float = 0,
-                            iac_peak: float = 0, length: int = -1, bot_w: int = -1,
-                            top_w: int = -1, **kwargs: Any) -> int:
-        """Returns the minimum track width required for the given EM specs.
-
-        Parameters
-        ----------
-        layer_id : int
-            the layer ID.
-        idc : float
-            the DC current spec.
-        iac_rms : float
-            the AC RMS current spec.
-        iac_peak : float
-            the AC peak current spec.
-        length : int
-            the length of the wire in resolution units.  Use negative length
-            to disable length enhancement factor.
-        bot_w : int
-            the bottom layer track width in resolution units.  If given, will make sure
-            that the via between the two tracks meet EM specs too.
-        top_w : int
-            the top layer track width in resolution units.  If given, will make sure
-            that the via between the two tracks meet EM specs too.
-        **kwargs :
-            override default EM spec parameters.
-
-        Returns
-        -------
-        track_width : int
-            the minimum track width in number of tracks.
-        """
-        dc_temp = kwargs.get('dc_temp', -1000)
-        rms_dt = kwargs.get('rms_dt', -1000)
-
-        # if double patterning layer, just use any name.
-        lay, purp = self.tech_info.get_lay_purp_list(layer_id)[0]
-        if bot_w > 0:
-            blay, bpurp = self.tech_info.get_lay_purp_list(layer_id - 1)[0]
+        # TODO: start here
+        tr_w = self.get_track_width(layer_id, tr_width)
+        if mode > 0:
+            return self.coord_to_nearest_track(layer_id, coord + tr_w // 2, half_track=half_track,
+                                               mode=mode)
         else:
-            blay = None
-            bpurp = None
-        if top_w > 0:
-            tlay, tpurp = self.tech_info.get_lay_purp_list(layer_id + 1)[0]
-        else:
-            tlay = None
-            tpurp = None
-
-        # use binary search to find the minimum track width
-        bin_iter = BinaryIterator(1, None)
-        tr_dir = self.get_direction(layer_id)
-        bot_dir = self.get_direction(layer_id - 1)
-        top_dir = self.get_direction(layer_id + 1)
-        while bin_iter.has_next():
-            ntr = bin_iter.get_next()
-            idc_max, irms_max, ipeak_max = self.get_wire_em_specs(layer_id, ntr, length=length,
-                                                                  dc_temp=dc_temp, rms_dt=rms_dt)
-            if idc > idc_max or iac_rms > irms_max or iac_peak > ipeak_max:
-                # check metal satisfies EM spec
-                bin_iter.up()
-                continue
-            # TODO: start here
-            if bot_w > 0 and bot_dir is not tr_dir:
-                bbox = BBox(tr_dir, 0, bot_w, 0, width)
-                vinfo = self.tech_info.get_via_info(bbox, blay, lay, bot_dir, bot_purpose=bpurp,
-                                                    top_purpose=purp, top_dir=tr_dir, **kwargs)
-                if (vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or
-                        iac_peak > vinfo['iac_peak']):
-                    bin_iter.up()
-                    continue
-            if top_w > 0 and top_dir is not tr_dir:
-                bbox = BBox(tr_dir, 0, top_w, 0, width)
-                vinfo = self.tech_info.get_via_info(bbox, lay, tlay, tr_dir, bot_purpose=purp,
-                                                    top_purpose=tpurp, top_dir=top_dir, **kwargs)
-                if (vinfo is None or idc > vinfo['idc'] or iac_rms > vinfo['iac_rms'] or
-                        iac_peak > vinfo['iac_peak']):
-                    bin_iter.up()
-                    continue
-
-            # we got here, so all EM specs passed
-            bin_iter.save()
-            bin_iter.down()
-
-        return bin_iter.get_last_save()
+            return self.coord_to_nearest_track(layer_id, coord - tr_w // 2, half_track=half_track,
+                                               mode=mode)
 
     def get_track_index_range(self, layer_id: int, lower: int, upper: int, *,
                               num_space: TrackType = 0, edge_margin: int = 0,
@@ -601,159 +586,6 @@ class RoutingGrid(PyRoutingGrid):
         if upper_tr < lower_tr:
             return None, None
         return lower_tr, upper_tr
-
-    def get_via_extensions_dim(self, bot_layer_id: int, bot_dim: int,
-                               top_dim: int, **kwargs: Any) -> Tuple[int, int]:
-        """Returns the via extension.
-
-        Parameters
-        ----------
-        bot_layer_id : int
-            the via bottom layer ID.
-        bot_dim : int
-            the bottom track width in resolution units.
-        top_dim : int
-            the top track width in resolution units.
-        **kwargs : Any
-            optional parameters for get_via_info().
-
-        Returns
-        -------
-        bot_ext : int
-            via extension on the bottom layer.
-        top_ext : int
-            via extension on the top layer.
-        """
-        blay, bpurp = self.get_layer_purpose(bot_layer_id, 0)
-        tlay, tpurp = self.get_layer_purpose(bot_layer_id + 1, 0)
-        bot_dir = self.get_direction(bot_layer_id)
-        top_dir = self.get_direction(bot_layer_id + 1)
-        if top_dir is bot_dir:
-            raise ValueError('This method only works if top and bottom layers are orthogonal.')
-
-        vbox = BBox(bot_dir, 0, top_dim, 0, bot_dim)
-        vinfo = self._tech_info.get_via_info(vbox, blay, tlay, bot_dir, but_purpose=bpurp,
-                                             top_purpose=tpurp, top_dir=top_dir, **kwargs)
-        if vinfo is None:
-            raise ValueError('Cannot create via')
-        else:
-            bot_ext = (vinfo['bot_box'].get_dim(bot_dir) - top_dim) // 2
-            top_ext = (vinfo['top_box'].get_dim(top_dir) - bot_dim) // 2
-            return bot_ext, top_ext
-
-    def coord_to_track(self, layer_id: int, coord: int) -> HalfInt:
-        """Convert given coordinate to track number.
-
-        Parameters
-        ----------
-        layer_id : int
-            the layer number.
-        coord : int
-            the coordinate perpendicular to the track direction.
-
-        Returns
-        -------
-        track : HalfInt
-            the track number
-        """
-        pitch = self.get_track_pitch(layer_id)
-        q, r = divmod(coord - self._get_track_offset(layer_id), pitch)
-
-        if r == 0:
-            return HalfInt(2 * q)
-        elif r == (pitch // 2):
-            return HalfInt(2 * q + 1)
-        else:
-            raise ValueError('coordinate %.4g is not on track.' % coord)
-
-    def find_next_track(self, layer_id: int, coord: int, *, tr_width: int = 1,
-                        half_track: bool = True, mode: int = 1) -> HalfInt:
-        """Find the track such that its edges are on the same side w.r.t. the given coordinate.
-
-        Parameters
-        ----------
-        layer_id : int
-            the layer number.
-        coord : int
-            the coordinate perpendicular to the track direction.
-        tr_width : int
-            the track width, in number of tracks.
-        half_track : bool
-            True to allow half integer track center numbers.
-        mode : int
-            1 to find track with both edge coordinates larger than or equal to the given one,
-            -1 to find track with both edge coordinates less than or equal to the given one.
-
-        Returns
-        -------
-        tr_idx : HalfInt
-            the center track index.
-        """
-        tr_w = self.get_track_width(layer_id, tr_width)
-        if mode > 0:
-            return self.coord_to_nearest_track(layer_id, coord + tr_w // 2, half_track=half_track,
-                                               mode=mode)
-        else:
-            return self.coord_to_nearest_track(layer_id, coord - tr_w // 2, half_track=half_track,
-                                               mode=mode)
-
-    def coord_to_nearest_track(self, layer_id: int, coord: int, *,
-                               half_track: bool = True, mode: int = 0) -> HalfInt:
-        """Returns the track number closest to the given coordinate.
-
-        Parameters
-        ----------
-        layer_id : int
-            the layer number.
-        coord : int
-            the coordinate perpendicular to the track direction.
-        half_track : bool
-            if True, allow half integer track numbers.
-        mode : int
-            the "rounding" mode.
-
-            If mode == 0, return the nearest track (default).
-
-            If mode == -1, return the nearest track with coordinate less
-            than or equal to coord.
-
-            If mode == -2, return the nearest track with coordinate less
-            than coord.
-
-            If mode == 1, return the nearest track with coordinate greater
-            than or equal to coord.
-
-            If mode == 2, return the nearest track with coordinate greater
-            than coord.
-
-        Returns
-        -------
-        track : HalfInt
-            the track number
-        """
-        pitch = self.get_track_pitch(layer_id)
-        if half_track:
-            pitch //= 2
-
-        q, r = divmod(coord - self._get_track_offset(layer_id), pitch)
-
-        if r == 0:
-            # exactly on track
-            if mode == -2:
-                # move to lower track
-                q -= 1
-            elif mode == 2:
-                # move to upper track
-                q += 1
-        else:
-            # not on track
-            if mode > 0 or (mode == 0 and r >= pitch / 2):
-                # round up
-                q += 1
-
-        if not half_track:
-            return HalfInt(2 * q)
-        return HalfInt(q)
 
     def coord_to_nearest_fill_track(self, layer_id: int, coord: int, fill_config: Dict[int, Any],
                                     mode: int = 0) -> HalfInt:

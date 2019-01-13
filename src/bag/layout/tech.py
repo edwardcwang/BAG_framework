@@ -75,7 +75,7 @@ class TechInfo(PyTech):
         """
         raise NotImplementedError('Not implemented.')
 
-    def get_metal_em_specs(self, layer: str, w: int, purpose: str = '', length: int = -1,
+    def get_metal_em_specs(self, layer: str, purpose: str, w: int, length: int = -1,
                            vertical: bool = False, dc_temp: int = -1000, rms_dt: int = -1000
                            ) -> Tuple[float, float, float]:
         """Returns a tuple of EM current/resistance specs of the given wire.
@@ -84,10 +84,10 @@ class TechInfo(PyTech):
         ----------
         layer : str
             the layer name.
-        w : int
-            the width of the metal in resolution units (dimension perpendicular to current flow).
         purpose : str
             the purpose name.
+        w : int
+            the width of the metal in resolution units (dimension perpendicular to current flow).
         length : int
             the length of the metal in resolution units (dimension parallel to current flow).
             If negative, disable length enhancement.
@@ -112,11 +112,10 @@ class TechInfo(PyTech):
         raise NotImplementedError('Not implemented.')
 
     # noinspection PyUnusedLocal
-    def get_via_em_specs(self, layer_dir: Direction, layer: str, adj_layer: str, *,
-                         purpose: str = '', adj_purpose: str = '',
-                         cut_dim: Tuple[int, int] = (0, 0),
-                         m_dim: Tuple[int, int] = (-1, -1), adj_m_dim: Tuple[int, int] = (-1, -1),
-                         array: bool = False, **kwargs: Any) -> Tuple[float, float, float]:
+    def get_via_em_specs(self, layer_dir: Direction, layer: str, purpose: str, adj_layer: str,
+                         adj_purpose: str, cut_w: int, cut_h: int, m_w: int = -1, m_l: int = -1,
+                         adj_m_w: int = -1, adj_m_l: int = -1, array: bool = False,
+                         dc_temp: int = -1000, rms_dt: int = -1000) -> Tuple[float, float, float]:
         """Returns a tuple of EM current/resistance specs of the given via.
 
         Parameters
@@ -126,24 +125,36 @@ class TechInfo(PyTech):
             bottom layer, UPPER if the first layer is the top layer.
         layer : str
             the first layer name.
-        adj_layer : str
-            the second layer name.
         purpose : str
             the first layer purpose name.
+        adj_layer : str
+            the second layer name.
         adj_purpose : str
             the second layer purpose name.
-        cut_dim : Tuple[int, int]
-            the via cut dimension.
-        m_dim : Tuple[int, int]
-            first layer metal width/length in resolution units.  If negative,
-            disable length/width enhancement.
-        adj_m_dim : Tuple[int, int]
-            second layer metal width/length in resolution units.  If negative,
-            disable length/width enhancement.
+        cut_w : int
+            the via cut width.
+        cut_h : int
+            the via cut height.
+        m_w : int
+            the first layer wire width, used for EM enhancement calculations.
+            Negative numbers has no effect.
+        m_l : int
+            the first layer wire length, used for EM enhancement calculations.
+            Negative numbers has no effect.
+        adj_m_w : int
+            the second layer wire width, used for EM enhancement calculations.
+            Negative numbers has no effect.
+        adj_m_l : int
+            the second layer wire length, used for EM enhancement calculations.
+            Negative numbers has no effect.
         array : bool
             True if this via is in a via array.
-        **kwargs : Any
-            optional EM specs parameters.
+        dc_temp : int
+            the temperature (in Celsius) to calculate DC current EM spec with.
+            If equal to -1000, use technology default.
+        rms_dt : int
+            the temperature delta (in Celsius) to target for when computing AC RMS current
+            EM spec.  If equal to -1000, use technology default.
 
         Returns
         -------
@@ -530,9 +541,9 @@ class TechInfo(PyTech):
         cut_dim = via_param.cut_dim
         nx = via_param.nx
         ny = via_param.ny
-        idc, irms, ipeak = self.get_via_em_specs(layer_dir, layer, adj_layer, purpose=purpose,
-                                                 adj_purpose=adj_purpose, cut_dim=cut_dim,
-                                                 m_dim=(w, wlen), adj_m_dim=(adj_w, adj_wlen),
+        idc, irms, ipeak = self.get_via_em_specs(layer_dir, layer, purpose, adj_layer,
+                                                 adj_purpose, cut_dim[0], cut_dim[1],
+                                                 m_w=w, m_l=wlen, adj_m_w=adj_w, adj_m_l=adj_wlen,
                                                  array=nx > 1 or ny > 1, **kwargs)
 
         params = {'id': via_id,
