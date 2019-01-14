@@ -6,10 +6,10 @@
 from __future__ import annotations
 
 from typing import (
-    TYPE_CHECKING, Tuple, Union, Iterable, Iterator, Dict, List, Sequence, Any
+    TYPE_CHECKING, Tuple, Union, Iterable, Iterator, Dict, List, Sequence, Any, Optional
 )
 
-from pybag.core import BBox, BBoxArray, Transform
+from pybag.core import BBox, Transform
 
 from ...util.math import HalfInt
 from ...util.search import BinaryIterator
@@ -17,6 +17,8 @@ from ...util.search import BinaryIterator
 if TYPE_CHECKING:
     from .grid import RoutingGrid
     from bag.typing import TrackType
+
+SpDictType = Dict[Union[str, Tuple[str, str]], Dict[int, TrackType]]
 
 
 class TrackID(object):
@@ -47,7 +49,7 @@ class TrackID(object):
         self._n = num
         self._pitch = HalfInt(0) if num == 1 else HalfInt.convert(pitch)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         arg_list = ['layer={}'.format(self._layer_id), 'track={}'.format(self._idx.to_string())]
         if self._w != 1:
             arg_list.append('width={}'.format(self._w))
@@ -57,7 +59,7 @@ class TrackID(object):
 
         return '{}({})'.format(self.__class__.__name__, ', '.join(arg_list))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return repr(self)
 
     def __iter__(self) -> Iterator[HalfInt]:
@@ -148,11 +150,11 @@ class WireArray(object):
         self._lower = lower
         self._upper = upper
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '{}({}, {:d}, {:d})'.format(self.__class__.__name__, self._track_id,
                                            self._lower, self._upper)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return repr(self)
 
     @property
@@ -235,7 +237,7 @@ class WireArray(object):
             yield WireArray(TrackID(layer, tr, width=width), self._lower, self._upper)
 
     def get_overall_bbox(self, grid: RoutingGrid) -> BBox:
-        """Returns the BBoxArray representing this WireArray.
+        """Returns the overall bounding box of this WireArray.
 
         Parameters
         ----------
@@ -244,77 +246,12 @@ class WireArray(object):
 
         Returns
         -------
-        bbox_arr : BBoxArray
-            the BBoxArray of the wires.
+        box : BBox
+            the overall bounding box of the wires.
         """
-        # TODO: fix this
-        track_id = self.track_id
-        tr_w = track_id.width
-        layer_id = track_id.layer_id
-        base_idx = track_id.base_index
-        num = track_id.num
-
-        base_box = grid.get_bbox(layer_id, base_idx, self._lower, self._upper,
-                                 width=tr_w)
-        tot_pitch = int(track_id.pitch * grid.get_track_pitch(layer_id))
-        if grid.get_direction(layer_id) == 'x':
-            return BBoxArray(base_box, ny=num, spy=tot_pitch)
-        else:
-            return BBoxArray(base_box, nx=num, spx=tot_pitch)
-
-    def wire_iter(self, grid: RoutingGrid) -> Iterable[Tuple[Tuple[str, str], BBox]]:
-        """Iterate over all wires in this WireArray as layer/BBox pair.
-
-        Parameters
-        ----------
-        grid : RoutingGrid
-            the RoutingGrid of this WireArray.
-
-        Yields
-        ------
-        lay_purp : Tuple[str, str]
-            the wire layer/purpose tuple.
-        bbox : BBox
-            the wire bounding box.
-        """
-        tr_w = self.track_id.width
-        layer_id = self.layer_id
-        for tr_idx in self.track_id:
-            lay_purp = grid.get_layer_purpose(layer_id, tr_idx)
-            bbox = grid.get_bbox(layer_id, tr_idx, self._lower, self._upper, width=tr_w)
-            yield lay_purp, bbox
-
-    def wire_arr_iter(self, grid: RoutingGrid) -> Iterable[Tuple[Tuple[str, str], BBoxArray]]:
-        """Iterate over all wires in this WireArray as layer/BBoxArray pair.
-
-        This method group all rectangles in the same layer together.
-
-        Parameters
-        ----------
-        grid : RoutingGrid
-            the RoutingGrid of this WireArray.
-
-        Yields
-        ------
-        lay_purp : Tuple[str, str]
-            the wire layer/purpose tuple.
-        bbox : BBoxArray
-            the wire bounding boxes.
-        """
-        tid = self.track_id
-        layer_id = tid.layer_id
-        tr_width = tid.width
-        track_pitch = grid.get_track_pitch(layer_id)
-        orient = grid.get_direction(layer_id)
-        for track_idx in tid.sub_tracks_iter(grid):
-            base_idx = track_idx.base_index
-            lay_purp = grid.get_layer_purpose(layer_id, base_idx)
-            cur_num = track_idx.num
-            wire_pitch = int(track_idx.pitch * track_pitch)
-            tl, tu = grid.get_wire_bounds(layer_id, base_idx, width=tr_width)
-            base_box = BBox(orient, self._lower, self._upper, tl, tu)
-            box_arr = BBoxArray(base_box, orient, np=cur_num, spp=wire_pitch)
-            yield lay_purp, box_arr
+        wlower, wupper = self._track_id.get_bounds(grid)
+        return BBox(grid.get_direction(self._track_id.layer_id), self._lower, self._upper,
+                    wlower, wupper)
 
     def transform(self, xform: Transform, grid: RoutingGrid) -> WireArray:
         """Transform this WireArray.
@@ -372,20 +309,20 @@ class Port(object):
     ----------
     term_name : str
         the terminal name of the port.
-    pin_dict : Dict[int, List[WireArray]]
+    pin_dict : Dict[Union[int, str], Union[List[WireArray], List[BBox]]]
         a dictionary from layer ID to pin geometries on that layer.
     label : str
         the label of this port.
     """
 
-    def __init__(self, term_name, pin_dict, label):
-        # type: (str, Dict[int, Union[List[WireArray], List[BBox]]], str) -> None
+    def __init__(self, term_name: str,
+                 pin_dict: Dict[Union[int, str], Union[List[WireArray], List[BBox]]],
+                 label: str) -> None:
         self._term_name = term_name
         self._pin_dict = pin_dict
         self._label = label
 
-    def __iter__(self):
-        # type: () -> WireArray
+    def __iter__(self) -> Iterable[Union[WireArray, BBox]]:
         """Iterate through all pin geometries in this port.
 
         the iteration order is not guaranteed.
@@ -393,41 +330,36 @@ class Port(object):
         for geo_list in self._pin_dict.values():
             yield from geo_list
 
-    def get_single_layer(self):
-        # type: () -> Union[int, str]
+    def get_single_layer(self) -> Union[int, str]:
         """Returns the layer of this port if it only has a single layer."""
         if len(self._pin_dict) > 1:
             raise ValueError('This port has more than one layer.')
         return next(iter(self._pin_dict))
 
-    def _get_layer(self, layer):
-        # type: (Union[int, str]) -> Union[int, str]
+    def _get_layer(self, layer: Union[int, str]) -> Union[int, str]:
         """Get the layer ID or name."""
         if isinstance(layer, str):
             return self.get_single_layer() if not layer else layer
         else:
-            return self.get_single_layer() if layer < 0 else layer
+            return self.get_single_layer() if layer == -1000 else layer
 
     @property
-    def net_name(self):
-        # type: () -> str
-        """Returns the net name of this port."""
+    def net_name(self) -> str:
+        """str: The net name of this port."""
         return self._term_name
 
     @property
-    def label(self):
-        # type: () -> str
-        """Returns the label of this port."""
+    def label(self) -> str:
+        """str: The label of this port."""
         return self._label
 
-    def get_pins(self, layer=-1):
-        # type: (Union[int, str]) -> Union[List[WireArray], List[BBox]]
+    def get_pins(self, layer: Union[int, str] = -1000) -> Union[List[WireArray], List[BBox]]:
         """Returns the pin geometries on the given layer.
 
         Parameters
         ----------
         layer : Union[int, str]
-            the layer ID.  If Negative, check if this port is on a single layer,
+            the layer ID.  If equal to -1000, check if this port is on a single layer,
             then return the result.
 
         Returns
@@ -438,15 +370,14 @@ class Port(object):
         layer = self._get_layer(layer)
         return self._pin_dict.get(layer, [])
 
-    def get_bounding_box(self, grid, layer=-1):
-        # type: (RoutingGrid, Union[int, str]) -> BBox
+    def get_bounding_box(self, grid: RoutingGrid, layer: Union[int, str] = -1000) -> BBox:
         """Calculate the overall bounding box of this port on the given layer.
 
         Parameters
         ----------
         grid : RoutingGrid
             the RoutingGrid of this Port.
-        layer : Union[int, str
+        layer : Union[int, str]
             the layer ID.  If Negative, check if this port is on a single layer,
             then return the result.
 
@@ -459,9 +390,9 @@ class Port(object):
         box = BBox.get_invalid_bbox()
         for geo in self._pin_dict[layer]:
             if isinstance(geo, BBox):
-                box = box.merge(geo)
+                box.merge(geo)
             else:
-                box = box.merge(geo.get_overall_bbox(grid))
+                box.merge(geo.get_overall_bbox(grid))
         return box
 
     def get_transform(self, xform: Transform, grid: RoutingGrid) -> Port:
@@ -503,17 +434,12 @@ class TrackManager(object):
         dictionary from wire types to its width on each layer.
     tr_spaces : Dict[Union[str, Tuple[str, str]], Dict[int, TrackType]]
         dictionary from wire types to its spaces on each layer.
-    **kwargs :
+    **kwargs : Any
         additional options.
     """
 
-    def __init__(self,
-                 grid,  # type: RoutingGrid
-                 tr_widths,  # type: Dict[str, Dict[int, int]]
-                 tr_spaces,  # type: Dict[Union[str, Tuple[str, str]], Dict[int, TrackType]]
-                 **kwargs,  # type: Any
-                 ):
-        # type: (...) -> None
+    def __init__(self, grid: RoutingGrid, tr_widths: Dict[str, Dict[int, int]],
+                 tr_spaces: SpDictType, **kwargs: Any) -> None:
         half_space = kwargs.get('half_space', True)
 
         self._grid = grid
@@ -521,18 +447,45 @@ class TrackManager(object):
         self._tr_spaces = tr_spaces
         self._half_space = half_space
 
+    @classmethod
+    def _get_space_from_tuple(cls, layer_id: int, ntup: Tuple[str, str],
+                              sp_dict: Optional[SpDictType]) -> Optional[TrackType]:
+        if sp_dict is not None:
+            test = sp_dict.get(ntup, None)
+            if test is not None:
+                return test.get(layer_id, None)
+            ntup = (ntup[1], ntup[0])
+            test = sp_dict.get(ntup, None)
+            if test is not None:
+                return test.get(layer_id, None)
+        return None
+
+    @classmethod
+    def _get_space_from_type(cls, layer_id: int, wtype: str,
+                             sp_dict: Optional[SpDictType]) -> Optional[TrackType]:
+        if sp_dict is None:
+            return None
+        test = sp_dict.get(wtype, None)
+        if test is None:
+            key = (wtype, '')
+            test = sp_dict.get(key, None)
+            if test is None:
+                key = ('', wtype)
+                test = sp_dict.get(key, None)
+
+        if test is None:
+            return None
+        return test.get(layer_id, None)
+
     @property
-    def grid(self):
-        # type: () -> RoutingGrid
+    def grid(self) -> RoutingGrid:
         return self._grid
 
     @property
-    def half_space(self):
-        # type: () -> bool
+    def half_space(self) -> bool:
         return self._half_space
 
-    def get_width(self, layer_id, track_type):
-        # type: (int, Union[str, int]) -> int
+    def get_width(self, layer_id: int, track_type: Union[str, int]) -> int:
         """Returns the track width.
 
         Parameters
@@ -548,12 +501,9 @@ class TrackManager(object):
             return 1
         return self._tr_widths[track_type].get(layer_id, 1)
 
-    def get_space(self,  # type: TrackManager
-                  layer_id,  # type: int
-                  type_tuple,  # type: Union[str, int, Tuple[Union[str, int], Union[str, int]]]
-                  **kwargs,  # type: Any
-                  ):
-        # type: (...) -> TrackType
+    def get_space(self, layer_id: int,
+                  type_tuple: Union[str, int, Tuple[Union[str, int], Union[str, int]]],
+                  **kwargs: Any) -> TrackType:
         """Returns the track spacing.
 
         Parameters
@@ -565,8 +515,13 @@ class TrackManager(object):
             track type.  If a tuple of two types are given, will return the specific spacing
             between those two track types if specified.  Otherwise, returns the maximum of all the
             valid spacing.
-        **kwargs:
+        **kwargs : Any
             optional parameters.
+
+        Returns
+        -------
+        tr_sp : TrackType
+            the track spacing
         """
         half_space = kwargs.get('half_space', self._half_space)
         sp_override = kwargs.get('sp_override', None)
@@ -601,46 +556,8 @@ class TrackManager(object):
             return max(cur_space, self._grid.get_num_space_tracks(layer_id, cur_width,
                                                                   half_space=half_space))
 
-    @classmethod
-    def _get_space_from_tuple(cls, layer_id, ntup, sp_dict):
-        if sp_dict is not None:
-            if ntup in sp_dict:
-                return sp_dict[ntup].get(layer_id, None)
-            ntup = (ntup[1], ntup[0])
-            if ntup in sp_dict:
-                return sp_dict[ntup].get(layer_id, None)
-        return None
-
-    @classmethod
-    def _get_space_from_type(cls, layer_id, wtype, sp_dict):
-        if sp_dict is None:
-            return None
-        if wtype in sp_dict:
-            test = sp_dict[wtype]
-        else:
-            key = (wtype, '')
-            if key in sp_dict:
-                test = sp_dict[key]
-            else:
-                key = ('', wtype)
-                if key in sp_dict:
-                    test = sp_dict[key]
-                else:
-                    test = None
-
-        if test is None:
-            return None
-        return test.get(layer_id, None)
-
-    def get_next_track(self,  # type: TrackManager
-                       layer_id,  # type: int
-                       cur_idx,  # type: TrackType
-                       cur_type,  # type: Union[str, int]
-                       next_type,  # type: Union[str, int]
-                       up=True,  # type: bool
-                       **kwargs,  # type: Any
-                       ):
-        # type: (...) -> HalfInt
+    def get_next_track(self, layer_id: int, cur_idx: TrackType, cur_type: Union[str, int],
+                       next_type: Union[str, int], up: bool = True, **kwargs: Any) -> HalfInt:
         """Compute the track location of a wire next to a given one.
 
         Parameters
@@ -655,7 +572,7 @@ class TrackManager(object):
             the next wire type.
         up : bool
             True to return the next track index that is larger than cur_idx.
-        **kwargs :
+        **kwargs : Any
             optional parameters.
 
         Returns
@@ -673,13 +590,8 @@ class TrackManager(object):
         else:
             return -wsum - space + cur_idx
 
-    def place_wires(self,  # type: TrackManager
-                    layer_id,  # type: int
-                    type_list,  # type: Sequence[Union[str, int]]
-                    start_idx=0,  # type: TrackType
-                    **kwargs,  # type: Any
-                    ):
-        # type: (...) -> Tuple[HalfInt, List[HalfInt]]
+    def place_wires(self, layer_id: int, type_list: Sequence[Union[str, int]],
+                    start_idx: TrackType = 0, **kwargs: Any) -> Tuple[HalfInt, List[HalfInt]]:
         """Place the given wires next to each other.
 
         Parameters
@@ -717,8 +629,7 @@ class TrackManager(object):
         return ntr, ans
 
     @classmethod
-    def _get_align_delta(cls, tot_ntr, num_used, alignment):
-        # type: (TrackType, TrackType, int) -> HalfInt
+    def _get_align_delta(cls, tot_ntr: TrackType, num_used: TrackType, alignment: int) -> HalfInt:
         if alignment == -1 or num_used == tot_ntr:
             # we already aligned to left
             return HalfInt(0)
@@ -731,15 +642,8 @@ class TrackManager(object):
         else:
             raise ValueError('Unknown alignment code: %d' % alignment)
 
-    def align_wires(self,  # type: TrackManager
-                    layer_id,  # type: int
-                    type_list,  # type: Sequence[Union[str, int]]
-                    tot_ntr,  # type: TrackType
-                    alignment=0,  # type: int
-                    start_idx=0,  # type: TrackType
-                    **kwargs,  # type: Any
-                    ):
-        # type: (...) -> List[HalfInt]
+    def align_wires(self, layer_id: int, type_list: Sequence[Union[str, int]], tot_ntr: TrackType,
+                    alignment: int = 0, start_idx: TrackType = 0, **kwargs: Any) -> List[HalfInt]:
         """Place the given wires in the given space with the specified alignment.
 
         Parameters
@@ -756,7 +660,7 @@ class TrackManager(object):
             If alignment == 1, will "right adjust" the wires.
         start_idx : TrackType
             the starting track index.
-        **kwargs:
+        **kwargs : Any
             optional parameters for place_wires().
 
         Returns
@@ -771,17 +675,10 @@ class TrackManager(object):
         delta = self._get_align_delta(tot_ntr, num_used, alignment)
         return [idx + delta for idx in idx_list]
 
-    def spread_wires(self,  # type: TrackManager
-                     layer_id,  # type: int
-                     type_list,  # type: Sequence[Union[str, int]]
-                     tot_ntr,  # type: TrackType
-                     sp_type,  # type: Union[str, int, Tuple[Union[str, int], Union[str, int]]]
-                     alignment=0,  # type: int
-                     start_idx=0,  # type: TrackType
-                     max_sp=10000,  # type: int
-                     sp_override=None,
-                     ):
-        # type: (...) -> List[HalfInt]
+    def spread_wires(self, layer_id: int, type_list: Sequence[Union[str, int]], tot_ntr: TrackType,
+                     sp_type: Union[str, int, Tuple[Union[str, int], Union[str, int]]],
+                     alignment: int = 0, start_idx: TrackType = 0, max_sp: int = 10000,
+                     sp_override: Optional[SpDictType] = None) -> List[HalfInt]:
         """Spread out the given wires in the given space.
 
         This method tries to spread out wires by increasing the space around the given
@@ -805,7 +702,7 @@ class TrackManager(object):
             the starting track index.
         max_sp : int
             maximum space.
-        sp_override :
+        sp_override : Optional[SpDictType]
             tracking spacing override dictionary.
 
         Returns
