@@ -108,55 +108,20 @@ class TrackID(object):
             the upper bound coordinate perpendicular to track direction.
         """
         lower, upper = grid.get_wire_bounds(self.layer_id, self._idx, width=self.width)
-        pitch_dim = int(self._pitch * grid.get_track_pitch(self._layer_id))
-        upper += (self.num - 1) * pitch_dim
-        return lower, upper
-
-    def sub_tracks_iter(self, grid: RoutingGrid) -> Iterable[TrackID]:
-        """Iterate through sub-TrackIDs where every track in sub-TrackID has the same layer/purpose.
-
-        This method is used to deal with double patterning layer.  If this TrackID is not
-        on a double patterning layer, it simply yields itself.
-
-        Parameters
-        ----------
-        grid : RoutingGrid
-            the RoutingGrid object.
-
-        Yields
-        ------
-        sub_id : TrackID
-            a TrackID where all tracks has the same layer/purpose.
-        """
-        layer_id = self._layer_id
-        lay_purp_list = grid.tech_info.get_lay_purp_list(layer_id)
-        modulus = len(lay_purp_list)
-        if modulus:
-            if self._pitch.is_integer and int(self._pitch) % modulus == 0:
-                # layer name will never change
-                yield self
-            else:
-                # TODO: have more robust solution than just yielding tracks one by one?
-                for tr_idx in self:
-                    yield TrackID(layer_id, tr_idx, width=self.width)
+        delta = (self._n - 1) * int(self._pitch * grid.get_track_pitch(self._layer_id))
+        if delta >= 0:
+            upper += delta
         else:
-            yield self
+            lower += delta
+        return lower, upper
 
     def transform(self, xform: Transform, grid: RoutingGrid) -> TrackID:
         """Transform this TrackID."""
         if xform.flips_xy:
             raise ValueError('Cannot transform TrackID when axes are swapped.')
 
-        layer_id = self._layer_id
-        dir_idx = grid.get_direction(layer_id).value
-        scale = xform.axis_scale[dir_idx]
-        if scale < 0:
-            base_idx = -self._idx - (self._n - 1) * self._pitch - 1
-        else:
-            base_idx = self._idx
-
-        delta = grid.coord_to_track(layer_id, xform.location[1 - dir_idx]) + 0.5
-        self._idx = base_idx + delta
+        self._idx = grid.transform_htr(self._layer_id, self._idx, xform)
+        self._pitch *= xform.axis_scale[1 - grid.get_direction(self._layer_id).value]
         return self
 
     def get_transform(self, xform: Transform, grid: RoutingGrid) -> TrackID:
@@ -269,7 +234,7 @@ class WireArray(object):
         for tr in tid:
             yield WireArray(TrackID(layer, tr, width=width), self._lower, self._upper)
 
-    def get_bbox_array(self, grid: RoutingGrid) -> BBoxArray:
+    def get_overall_bbox(self, grid: RoutingGrid) -> BBox:
         """Returns the BBoxArray representing this WireArray.
 
         Parameters
@@ -282,6 +247,7 @@ class WireArray(object):
         bbox_arr : BBoxArray
             the BBoxArray of the wires.
         """
+        # TODO: fix this
         track_id = self.track_id
         tr_w = track_id.width
         layer_id = track_id.layer_id
@@ -495,7 +461,7 @@ class Port(object):
             if isinstance(geo, BBox):
                 box = box.merge(geo)
             else:
-                box = box.merge(geo.get_bbox_array(grid).get_overall_bbox())
+                box = box.merge(geo.get_overall_bbox(grid))
         return box
 
     def get_transform(self, xform: Transform, grid: RoutingGrid) -> Port:
