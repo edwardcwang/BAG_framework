@@ -111,7 +111,6 @@ class TechInfo(PyTech):
         """
         raise NotImplementedError('Not implemented.')
 
-    # noinspection PyUnusedLocal
     def get_via_em_specs(self, layer_dir: Direction, layer: str, purpose: str, adj_layer: str,
                          adj_purpose: str, cut_w: int, cut_h: int, m_w: int = -1, m_l: int = -1,
                          adj_m_w: int = -1, adj_m_l: int = -1, array: bool = False,
@@ -167,9 +166,8 @@ class TechInfo(PyTech):
         """
         raise NotImplementedError('Not implemented.')
 
-    # noinspection PyUnusedLocal
-    def get_res_em_specs(self, res_type: str, w: int, *,
-                         l: int = -1, **kwargs: Any) -> Tuple[float, float, float]:
+    def get_res_em_specs(self, res_type: str, w: int, *, length: int = -1,
+                         dc_temp: int = -1000, rms_dt: int = -1000) -> Tuple[float, float, float]:
         """Returns a tuple of EM current/resistance specs of the given resistor.
 
         Parameters
@@ -178,11 +176,15 @@ class TechInfo(PyTech):
             the resistor type string.
         w : int
             the width of the metal in resolution units (dimension perpendicular to current flow).
-        l : int
+        length : int
             the length of the metal in resolution units (dimension parallel to current flow).
             If negative, disable length enhancement.
-        **kwargs : Any
-            optional EM specs parameters.
+        dc_temp : int
+            the temperature (in Celsius) to calculate DC current EM spec with.
+            If equal to -1000, use technology default.
+        rms_dt : int
+            the temperature delta (in Celsius) to target for when computing AC RMS current
+            EM spec.  If equal to -1000, use technology default.
 
         Returns
         -------
@@ -205,15 +207,17 @@ class TechInfo(PyTech):
         """Dict[str, Any]: The configuration dictionary used to compute various DRC rules."""
         return self._config
 
-    @property
-    def idc_temp(self) -> float:
-        """float: the temperature at which to compute Idc EM specs, in Celsius"""
-        return self._tech_params['layout']['em']['dc_temp']
+    def get_dc_temp(self, dc_temp: int = -1000) -> int:
+        """Returns the temperature at which to evaluate DC electro-migration rules."""
+        if dc_temp == -1000:
+            return self._tech_params['layout']['em']['dc_temp']
+        return dc_temp
 
-    @property
-    def irms_dt(self) -> float:
-        """float: the taget temperature delta when computing Irms EM specs, in Celsius"""
-        return self._tech_params['layout']['em']['rms_dt']
+    def get_rms_dt(self, rms_dt: int = -1000) -> int:
+        """Returns the delta-temperature requirement for RMS electro-migration rules."""
+        if rms_dt == -1000:
+            return self._tech_params['layout']['em']['rms_dt']
+        return rms_dt
 
     def get_well_layers(self, sub_type: str) -> List[Tuple[str, str]]:
         """Returns a list of well layers associated with the given substrate type.
@@ -363,15 +367,18 @@ class TechInfo(PyTech):
         """
         return self.config['resistor']['info'][res_type]['min_nsq']
 
-    def get_idc_scale_factor(self, temp: float, mtype: str, is_res: bool = False) -> float:
+    def get_idc_scale_factor(self, layer: str, purpose: str, temp: float,
+                             is_res: bool = False) -> float:
         """Return the Idc EM specs temperature scale factor.
 
         Parameters
         ----------
+        layer : str
+            the layer name.
+        purpose : str
+            the purpose name.
         temp : float
             the temperature, in Celsius.
-        mtype : str
-            the metal type.
         is_res : bool
             True to get scale factor for resistor.
 
@@ -381,11 +388,13 @@ class TechInfo(PyTech):
             the scale factor.
         """
         if is_res:
-            mtype = 'res'
-        idc_em_scale = self.config['idc_em_scale']
-        if mtype in idc_em_scale:
-            idc_params = idc_em_scale[mtype]
+            key = 'res'
         else:
+            key = (layer, purpose)
+        idc_em_scale = self.config['idc_em_scale']
+
+        idc_params = idc_em_scale.get(key, None)
+        if idc_params is None:
             idc_params = idc_em_scale['default']
 
         temp_list = idc_params['temp']
@@ -459,7 +468,7 @@ class TechInfo(PyTech):
         """
         rsq = self.get_res_rsquare(res_type)
         res = l / w * rsq
-        idc, irms, ipeak = self.get_res_em_specs(res_type, w, l=l, **kwargs)
+        idc, irms, ipeak = self.get_res_em_specs(res_type, w, length=l, **kwargs)
 
         return dict(
             resistance=res,
@@ -632,7 +641,7 @@ class TechInfo(PyTech):
                     if lcur_unit < max(lmin_unit, int(math.ceil(min_nsq * wcur_unit))):
                         w_iter.down()
                     else:
-                        tmp = self.get_res_em_specs(res_type, wcur_unit, l=lcur_unit, **kwargs)
+                        tmp = self.get_res_em_specs(res_type, wcur_unit, length=lcur_unit, **kwargs)
                         res_idc, res_irms, res_ipeak = tmp
                         if (0.0 < res_idc < idc_par or 0.0 < res_irms < iac_rms_par or
                                 0.0 < res_ipeak < iac_peak_par):

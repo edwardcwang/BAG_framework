@@ -8,7 +8,7 @@ from typing import Tuple, Dict, Any, Optional
 import os
 
 from .io.file import read_file, read_yaml_env
-from .layout.tech import TechInfo, DummyTechInfo
+from .layout.tech import TechInfo
 from .layout.routing import RoutingGrid
 from .util.importlib import import_class
 
@@ -59,7 +59,11 @@ def get_tech_params(bag_config: Optional[Dict[str, Any]] = None) -> Dict[str, An
     """
     if bag_config is None:
         bag_config = get_bag_config()
-    return read_yaml_env(bag_config['tech_config_path'])
+
+    fname = bag_config['tech_config_path']
+    ans = read_yaml_env(bag_config['tech_config_path'])
+    ans['tech_config_fname'] = fname
+    return ans
 
 
 def create_tech_info(bag_config: Optional[Dict[str, Any]] = None) -> TechInfo:
@@ -72,7 +76,7 @@ def create_tech_info(bag_config: Optional[Dict[str, Any]] = None) -> TechInfo:
     else:
         # just make a default tech_info object as place holder.
         print('*WARNING*: No TechInfo class defined.  Using a dummy version.')
-        tech_info = DummyTechInfo(tech_params)
+        tech_info = TechInfo(tech_params, {}, '')
 
     return tech_info
 
@@ -80,8 +84,7 @@ def create_tech_info(bag_config: Optional[Dict[str, Any]] = None) -> TechInfo:
 def create_routing_grid(bag_config: Optional[Dict[str, Any]] = None) -> RoutingGrid:
     """Create RoutingGrid object."""
     tech_info = create_tech_info(bag_config=bag_config)
-    grid_params = tech_info.tech_params['routing_grid']
-    return RoutingGrid(tech_info, **grid_params)
+    return RoutingGrid(tech_info, tech_info.tech_params['tech_config_fname'])
 
 
 def get_port_number(bag_config: Optional[Dict[str, Any]] = None) -> Tuple[int, str]:

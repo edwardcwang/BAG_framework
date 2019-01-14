@@ -13,10 +13,10 @@ from pybag.core import BBox, Transform
 
 from ...util.math import HalfInt
 from ...util.search import BinaryIterator
+from ...typing import TrackType
 
 if TYPE_CHECKING:
     from .grid import RoutingGrid
-    from bag.typing import TrackType
 
 SpDictType = Dict[Union[str, Tuple[str, str]], Dict[int, TrackType]]
 
