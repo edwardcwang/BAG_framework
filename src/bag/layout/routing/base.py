@@ -64,7 +64,7 @@ class TrackID(object):
 
     def __iter__(self) -> Iterator[HalfInt]:
         """Iterate over all middle track indices in this TrackID."""
-        return (self._idx + idx * self._pitch for idx in range(self._n))
+        return (self.base_index + idx * self.pitch for idx in range(self.num))
 
     @property
     def layer_id(self) -> int:
@@ -98,29 +98,6 @@ class TrackID(object):
 
     def get_immutable_key(self) -> Tuple[str, int, HalfInt, int, int, HalfInt]:
         return self.__class__.__name__, self._layer_id, self._idx, self._w, self._n, self._pitch
-
-    def get_bounds(self, grid: RoutingGrid) -> Tuple[int, int]:
-        """Calculate the track bounds coordinate.
-
-        Parameters
-        ----------
-        grid : RoutingGrid
-            the RoutingGrid object.
-
-        Returns
-        -------
-        lower : int
-            the lower bound coordinate perpendicular to track direction.
-        upper : int
-            the upper bound coordinate perpendicular to track direction.
-        """
-        lower, upper = grid.get_wire_bounds(self.layer_id, self._idx, width=self.width)
-        delta = (self._n - 1) * int(self._pitch * grid.get_track_pitch(self._layer_id))
-        if delta >= 0:
-            upper += delta
-        else:
-            lower += delta
-        return lower, upper
 
     def transform(self, xform: Transform, grid: RoutingGrid) -> TrackID:
         """Transform this TrackID."""
@@ -240,23 +217,6 @@ class WireArray(object):
         width = tid.width
         for tr in tid:
             yield WireArray(TrackID(layer, tr, width=width), self._lower, self._upper)
-
-    def get_overall_bbox(self, grid: RoutingGrid) -> BBox:
-        """Returns the overall bounding box of this WireArray.
-
-        Parameters
-        ----------
-        grid : RoutingGrid
-            the RoutingGrid of this WireArray.
-
-        Returns
-        -------
-        box : BBox
-            the overall bounding box of the wires.
-        """
-        wlower, wupper = self._track_id.get_bounds(grid)
-        return BBox(grid.get_direction(self._track_id.layer_id), self._lower, self._upper,
-                    wlower, wupper)
 
     def transform(self, xform: Transform, grid: RoutingGrid) -> WireArray:
         """Transform this WireArray.
@@ -397,7 +357,7 @@ class Port(object):
             if isinstance(geo, BBox):
                 box.merge(geo)
             else:
-                box.merge(geo.get_overall_bbox(grid))
+                box.merge(grid.get_warr_bbox(geo))
         return box
 
     def get_transform(self, xform: Transform, grid: RoutingGrid) -> Port:

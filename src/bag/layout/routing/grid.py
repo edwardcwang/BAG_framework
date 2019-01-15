@@ -5,18 +5,18 @@
 
 from __future__ import annotations
 
-from typing import Tuple, List, Optional, Dict, Any, Union
+from typing import Tuple, List, Optional, Dict, Any, Union, Iterable
 
 from warnings import warn
 
-from pybag.core import Transform, PyRoutingGrid, coord_to_custom_htr
+from pybag.core import Transform, PyRoutingGrid, BBox, coord_to_custom_htr
 from pybag.enum import Orient2D, Direction, RoundMode
 
 from bag.util.search import BinaryIterator
 from bag.math import lcm
 from bag.layout.tech import TechInfo
 
-from .base import TrackID
+from .base import TrackID, WireArray
 from ...util.math import HalfInt
 from ...typing import TrackType
 
@@ -729,3 +729,49 @@ class RoutingGrid(PyRoutingGrid):
     def copy(self) -> RoutingGrid:
         """Returns a copy of this RoutingGrid."""
         return RoutingGrid(self._tech_info, '', grid=self)
+
+    def get_warr_bbox(self, warr: WireArray) -> BBox:
+        """Computes the overall bounding box of the given WireArray.
+
+        Parameters
+        ----------
+        warr : WireArray
+            the WireArray object.
+
+        Returns
+        -------
+        bbox : BBox
+            the overall bounding box of the WireArray.
+        """
+        tid = warr.track_id
+        layer_id = tid.layer_id
+        lower, upper = self.get_wire_bounds_htr(layer_id, tid.base_htr, tid.width)
+
+        delta = (tid.num - 1) * int(tid.pitch * self.get_track_pitch(layer_id))
+        if delta >= 0:
+            upper += delta
+        else:
+            lower += delta
+
+        return BBox(self.get_direction(layer_id), warr.lower, warr.upper, lower, upper)
+
+    def warr_bbox_iter(self, warr: WireArray) -> Iterable[Tuple[str, str, BBox]]:
+        """Returns an iterator over the BBox corresponding to the wires.
+
+        Parameters
+        ----------
+        warr : WireArray
+            the WireArray object.
+
+        Yields
+        -------
+        layer : str
+            the layer name.
+        purpose : str
+            the purpose name.
+        bbox : BBox
+            the bounding box of a single wire.
+        """
+        tid = warr.track_id
+        return self.bbox_iter(tid.layer_id, tid.base_htr, tid.width, tid.num, tid.pitch,
+                              warr.lower, warr.upper)
