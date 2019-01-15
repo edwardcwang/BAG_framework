@@ -38,6 +38,10 @@ class HalfInt(Integral):
     def is_integer(self) -> bool:
         return self._val % 2 == 0
 
+    @property
+    def dbl_value(self) -> int:
+        return self._val
+
     def div2(self, round_up: bool = False) -> HalfInt:
         q, r = divmod(self._val, 2)
         if r or not round_up:

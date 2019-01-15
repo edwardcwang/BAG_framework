@@ -82,6 +82,11 @@ class TrackID(object):
         return self._idx
 
     @property
+    def base_htr(self) -> int:
+        """int: the base half-track index."""
+        return self._idx.dbl_value
+
+    @property
     def num(self) -> int:
         """int: Number of tracks in this TrackID."""
         return self._n

@@ -188,7 +188,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self.draw_layout()
 
         # finalize this template
-        self.grid.tech_info.finalize_template(self)
+        grid = self.grid
+        grid.tech_info.finalize_template(self)
 
         # construct port objects
         for net_name, port_params in self._port_params.items():
@@ -197,9 +198,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if port_params['show']:
                 label = port_params['label']
                 for wire_arr_list in pin_dict.values():
-                    for wire_arr in wire_arr_list:  # type: WireArray
-                        for lay_purp, bbox in wire_arr.wire_iter(self.grid):
-                            self._layout.add_pin(lay_purp[0], net_name, label, bbox)
+                    for warr in wire_arr_list:  # type: WireArray
+                        tid = warr.track_id
+                        lay_id = tid.layer_id
+                        htr_pitch = int(tid.pitch * grid.get_track_pitch(lay_id) // 2)
+                        self._layout.add_pin_arr(net_name, label, lay_id, tid.base_htr,
+                                                 warr.lower, warr.upper, tid.width, tid.num,
+                                                 htr_pitch)
             self._ports[net_name] = Port(net_name, pin_dict, label)
 
         # construct primitive port objects
@@ -377,6 +382,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if bbox.xl != 0 or bbox.yl != 0:
             raise ValueError('lower-left corner of overall bounding box must be (0, 0).')
 
+        # noinspection PyAttributeOutsideInit
         self.size = grid.get_size_tuple(top_layer_id, bbox.w, bbox.h, round_up=round_up,
                                         half_blk_x=half_blk_x, half_blk_y=half_blk_y)
 
@@ -401,6 +407,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if dx < 0 or dy < 0:
             raise ValueError('lower-left corner of array box must be in first quadrant.')
 
+        # noinspection PyAttributeOutsideInit
         self.size = grid.get_size_tuple(top_layer_id, 2 * dx + self.array_box.width_unit,
                                         2 * dy + self.array_box.height_unit)
 
