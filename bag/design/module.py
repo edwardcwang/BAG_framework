@@ -1034,46 +1034,29 @@ class ResMetalModule(Module):
     def get_params_info(cls):
         # type: () -> Dict[str, str]
         return dict(
-            w='resistor width, in meters.',
-            l='resistor length, in meters.',
+            w='resistor width, in layout units.',
+            l='resistor length, in layout units.',
             layer='the metal layer ID.',
         )
 
-    def design(self, w=1e-6, l=1e-6, layer=1):
-        """Create a metal resistor.
+    def design(self, w, l, layer):
+        # type: (float, float, int) -> None
+        pass
 
-        Parameters
-        ----------
-        w : float
-            the resistor width, in meters.
-        l: float
-            the resistor length, in meters.
-        layer : int
-            the metal layer ID.
-        """
-        # get technology parameters
-        tech_dict = self.tech_info.tech_params['res_metal']
-        lib_name = tech_dict['lib_name']
-        l_name = tech_dict['l_name']
-        w_name = tech_dict['w_name']
-        layer_name = tech_dict.get('layer_name', None)
-        cell_name = tech_dict['cell_table'][layer]
+    def get_schematic_parameters(self):
+        # type: () -> Dict[str, str]
+        w = self.params['w'] * self.tech_info.layout_unit
+        l = self.params['l'] * self.tech_info.layout_unit
+        layer = self.params['layer']
+        wstr = float_to_si_string(w)
+        lstr = float_to_si_string(l)
+        lay_str = str(layer)
+        return dict(w=wstr, l=lstr, layer=lay_str)
 
-        if layer_name is None:
-            # replace resistor cellview
-            self.replace_instance_master('R0', lib_name, cell_name, static=True)
-        else:
-            self.instances['R0'].parameters[layer_name] = cell_name
-        self.instances['R0'].parameters[l_name] = float_to_si_string(l, precision=6)
-        self.instances['R0'].parameters[w_name] = float_to_si_string(w, precision=6)
-        for key, val in tech_dict['others'].items():
-            if isinstance(val, float):
-                val = float_to_si_string(val, precision=6)
-            elif isinstance(val, int):
-                val = '%d' % val
-            elif isinstance(val, bool) or isinstance(val, str):
-                pass
-            else:
-                raise ValueError('unsupported type: %s' % type(val))
+    def is_primitive(self):
+        # type: () -> bool
+        return True
 
-            self.instances['R0'].parameters[key] = val
+    def should_delete_instance(self):
+        # type: () -> bool
+        return self.params['w'] == 0 or self.params['l'] == 0
