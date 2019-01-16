@@ -9,7 +9,7 @@ from typing import (
     TYPE_CHECKING, Tuple, Union, Iterable, Iterator, Dict, List, Sequence, Any, Optional
 )
 
-from pybag.core import BBox, Transform
+from pybag.core import BBox, Transform, PyTrackID, PyWireArray
 
 from ...util.math import HalfInt
 from ...util.search import BinaryIterator
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 SpDictType = Dict[Union[str, Tuple[str, str]], Dict[int, TrackType]]
 
 
-class TrackID(object):
+class TrackID(PyTrackID):
     """A class that represents locations of track(s) on the routing grid.
 
     Parameters
@@ -43,78 +43,42 @@ class TrackID(object):
         if num < 1:
             raise ValueError('TrackID must have 1 or more tracks.')
 
-        self._layer_id = layer_id
-        self._idx = HalfInt.convert(track_idx)
-        self._w = width
-        self._n = num
-        self._pitch = HalfInt(0) if num == 1 else HalfInt.convert(pitch)
-
-    def __repr__(self) -> str:
-        arg_list = ['layer={}'.format(self._layer_id), 'track={}'.format(self._idx.to_string())]
-        if self._w != 1:
-            arg_list.append('width={}'.format(self._w))
-        if self._n != 1:
-            arg_list.append('num={}'.format(self._n))
-        arg_list.append('pitch={}'.format(self._pitch.to_string()))
-
-        return '{}({})'.format(self.__class__.__name__, ', '.join(arg_list))
-
-    def __str__(self) -> str:
-        return repr(self)
+        PyTrackID.__init__(self, layer_id, int(round(2 * track_idx)), width, num,
+                           int(round(2 * pitch)))
 
     def __iter__(self) -> Iterator[HalfInt]:
         """Iterate over all middle track indices in this TrackID."""
-        return (self.base_index + idx * self.pitch for idx in range(self.num))
-
-    @property
-    def layer_id(self) -> int:
-        """int: The layer ID."""
-        return self._layer_id
-
-    @property
-    def width(self) -> int:
-        """int: The track width."""
-        return self._w
+        return (HalfInt(self.base_htr + idx * self.htr_pitch) for idx in range(self.num))
 
     @property
     def base_index(self) -> HalfInt:
         """HalfInt: the base index."""
-        return self._idx
-
-    @property
-    def base_htr(self) -> int:
-        """int: the base half-track index."""
-        return self._idx.dbl_value
-
-    @property
-    def num(self) -> int:
-        """int: Number of tracks in this TrackID."""
-        return self._n
+        return HalfInt(self.base_htr)
 
     @property
     def pitch(self) -> HalfInt:
         """HalfInt: the track pitch."""
-        return self._pitch
-
-    def get_immutable_key(self) -> Tuple[str, int, HalfInt, int, int, HalfInt]:
-        return self.__class__.__name__, self._layer_id, self._idx, self._w, self._n, self._pitch
+        return HalfInt(self.htr_pitch)
 
     def transform(self, xform: Transform, grid: RoutingGrid) -> TrackID:
         """Transform this TrackID."""
         if xform.flips_xy:
             raise ValueError('Cannot transform TrackID when axes are swapped.')
 
-        self._idx = grid.transform_htr(self._layer_id, self._idx, xform)
-        self._pitch *= xform.axis_scale[1 - grid.get_direction(self._layer_id).value]
+        lay_id = self.layer_id
+        # noinspection PyAttributeOutsideInit
+        self.base_htr = grid.transform_htr(lay_id, self.base_htr, xform)
+        # noinspection PyAttributeOutsideInit
+        self.htr_pitch = self.htr_pitch * xform.axis_scale[1 - grid.get_direction(lay_id).value]
         return self
 
     def get_transform(self, xform: Transform, grid: RoutingGrid) -> TrackID:
         """returns a transformed TrackID."""
-        return TrackID(self._layer_id, self._idx, width=self._w,
-                       num=self._n, pitch=self._pitch).transform(xform, grid)
+        return TrackID(self.layer_id, self.base_index, width=self.width,
+                       num=self.num, pitch=self.pitch).transform(xform, grid)
 
 
-class WireArray(object):
+class WireArray(PyWireArray):
     """An array of wires on the routing grid.
 
     Parameters
@@ -128,46 +92,13 @@ class WireArray(object):
     """
 
     def __init__(self, track_id: TrackID, lower: int, upper: int) -> None:
-        self._track_id = track_id
-        self._lower = lower
-        self._upper = upper
+        PyWireArray.__init__(self, track_id, lower, upper)
 
-    def __repr__(self) -> str:
-        return '{}({}, {:d}, {:d})'.format(self.__class__.__name__, self._track_id,
-                                           self._lower, self._upper)
-
-    def __str__(self) -> str:
-        return repr(self)
-
-    @property
-    def lower(self) -> int:
-        """int: The starting coordinate of this wire."""
-        return self._lower
-
-    @property
-    def upper(self) -> int:
-        """int: The stopping coordinate of this wire."""
-        return self._upper
-
-    @property
-    def middle(self) -> int:
-        """int: The midpoint coordinate of this wire."""
-        return (self._lower + self._upper) // 2
-
-    @property
+    @PyWireArray.track_id.getter
     def track_id(self) -> TrackID:
         """TrackID: The TrackID of this WireArray."""
-        return self._track_id
-
-    @property
-    def layer_id(self) -> int:
-        """int:  The layer ID of this WireArray."""
-        return self.track_id.layer_id
-
-    @property
-    def width(self) -> int:
-        """int: The wire width."""
-        return self.track_id.width
+        tid = super(WireArray, self).track_id  # type: TrackID
+        return tid
 
     @classmethod
     def list_to_warr(cls, warr_list: Sequence[WireArray]) -> WireArray:
@@ -198,25 +129,26 @@ class WireArray(object):
 
     @classmethod
     def single_warr_iter(cls, warr: Union[WireArray, Sequence[WireArray]]) -> Iterable[WireArray]:
+        """Iterate through single wires in the given WireArray or WireArray list."""
         if isinstance(warr, WireArray):
             yield from warr.warr_iter()
         else:
             for w in warr:
                 yield from w.warr_iter()
 
-    def get_immutable_key(self) -> Any:
-        return (self.__class__.__name__, self._track_id.get_immutable_key(), self._lower,
-                self._upper)
-
     def to_warr_list(self) -> List[WireArray]:
+        """Convert this WireArray into a list of single wires."""
         return list(self.warr_iter())
 
     def warr_iter(self) -> Iterable[WireArray]:
-        tid = self._track_id
+        """Iterates through single wires in this WireArray."""
+        tid = self.track_id
         layer = tid.layer_id
         width = tid.width
+        lower = self.lower
+        upper = self.upper
         for tr in tid:
-            yield WireArray(TrackID(layer, tr, width=width), self._lower, self._upper)
+            yield WireArray(TrackID(layer, tr, width=width), lower, upper)
 
     def transform(self, xform: Transform, grid: RoutingGrid) -> WireArray:
         """Transform this WireArray.
@@ -233,17 +165,16 @@ class WireArray(object):
         warr : WireArray
             a reference to this object.
         """
-        self._track_id = self._track_id.get_transform(xform, grid)
+        # noinspection PyAttributeOutsideInit
+        self.track_id = self.track_id.get_transform(xform, grid)
         dir_idx = grid.get_direction(self.layer_id).value
         scale = xform.axis_scale[dir_idx]
-        if scale < 0:
-            tmp = self._lower
-            self._lower = -self._upper
-            self._upper = -tmp
-
         delta = xform.location[dir_idx]
-        self._lower += delta
-        self._upper += delta
+        if scale < 0:
+            self.set_coord(-self.upper + delta, -self.lower + delta)
+        else:
+            self.set_coord(self.lower + delta, self.upper + delta)
+
         return self
 
     def get_transform(self, xform: Transform, grid: RoutingGrid) -> WireArray:
@@ -261,7 +192,7 @@ class WireArray(object):
         warr : WireArray
             the new WireArray object.
         """
-        return WireArray(self._track_id, self._lower, self._upper).transform(xform, grid)
+        return WireArray(self.track_id, self.lower, self.upper).transform(xform, grid)
 
 
 class Port(object):
