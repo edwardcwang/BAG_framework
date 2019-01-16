@@ -24,7 +24,8 @@ from .routing.base import Port, TrackID, WireArray
 from .routing.grid import RoutingGrid
 
 from pybag.enum import (
-    PathStyle, BlockageType, BoundaryType, GeometryMode, DesignOutput, Orient2D
+    PathStyle, BlockageType, BoundaryType, GeometryMode, DesignOutput, Orient2D,
+    Orientation, Direction
 )
 from pybag.core import (
     BBox, BBoxArray, PyLayCellView, Transform, PyLayInstRef, PyPath, PyBlockage, PyBoundary,
@@ -199,12 +200,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                 label = port_params['label']
                 for wire_arr_list in pin_dict.values():
                     for warr in wire_arr_list:  # type: WireArray
-                        tid = warr.track_id
-                        lay_id = tid.layer_id
-                        htr_pitch = int(tid.pitch * grid.get_track_pitch(lay_id) // 2)
-                        self._layout.add_pin_arr(net_name, label, lay_id, tid.base_htr,
-                                                 warr.lower, warr.upper, tid.width, tid.num,
-                                                 htr_pitch)
+                        self._layout.add_pin_arr(net_name, label, warr)
             self._ports[net_name] = Port(net_name, pin_dict, label)
 
         # construct primitive port objects
@@ -414,20 +410,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def write_summary_file(self, fname: str, lib_name: str, cell_name: str) -> None:
         """Create a summary file for this template layout."""
         # get all pin information
+        grid = self.grid
+        tech_info = grid.tech_info
         pin_dict = {}
-        res = self.grid.resolution
+        res = grid.resolution
         for port_name in self.port_names_iter():
             pin_cnt = 0
             port = self.get_port(port_name)
             for pin_warr in port:
-                for layer_name, bbox in pin_warr.wire_iter(self.grid):
+                for lay, _, bbox in pin_warr.wire_iter(grid):
                     if pin_cnt == 0:
                         pin_name = port_name
                     else:
                         pin_name = '%s_%d' % (port_name, pin_cnt)
                     pin_cnt += 1
                     pin_dict[pin_name] = dict(
-                        layer=[layer_name, self._grid.tech_info.pybag_tech.pin_purpose],
+                        layer=[lay, tech_info.pin_purpose],
                         netname=port_name,
                         xy0=[bbox.xl * res, bbox.yl * res],
                         xy1=[bbox.xh * res, bbox.yh * res],
@@ -556,21 +554,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         kwargs['grid'] = self.grid
         return self.template_db.new_template(params=params, temp_cls=temp_cls, **kwargs)
-
-    def move_all_by(self, dx: int = 0, dy: int = 0) -> None:
-        """Move all layout objects Except pins in this layout by the given amount.
-
-        Note: this method invalidates all WireArray objects and non-primitive pins.
-
-        Parameters
-        ----------
-        dx : int
-            the X shift.
-        dy : int
-            the Y shift.
-        """
-        # TODO: Implement this
-        raise ValueError("Not implemented")
 
     def add_instance(self,
                      master: TemplateBase,
@@ -705,7 +688,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         rect : PyRect
             the added rectangle.
         """
-        return self._layout.add_rect(layer, purpose, self.is_horizontal(layer), bbox, commit=commit)
+        return self._layout.add_rect(layer, purpose, bbox, commit)
 
     def add_rect_arr(self, layer: str, purpose: str, barr: BBoxArray) -> None:
         """Add a new rectangle array.
@@ -719,7 +702,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         barr : BBoxArray
             the rectangle bounding box array.
         """
-        self._layout.add_rect_arr(layer, purpose, self.is_horizontal(layer), barr)
+        self._layout.add_rect_arr(layer, purpose, barr)
 
     def add_res_metal(self, layer_id: int, bbox: BBox) -> None:
         """Add a new metal resistor.
@@ -731,9 +714,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         bbox : BBox
             the resistor bounding box.
         """
-        is_horiz = self._grid.is_horizontal(layer_id)
         for lay, purp in self._grid.tech_info.get_res_metal_layers(layer_id):
-            self._layout.add_rect(lay, purp, is_horiz, bbox, commit=True)
+            self._layout.add_rect(lay, purp, bbox, True)
 
     def add_path(self, layer: str, purpose: str, width: int, points: List[PointType],
                  start_style: PathStyle, *, join_style: PathStyle = PathStyle.round,
@@ -767,8 +749,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if stop_style is None:
             stop_style = start_style
         half_width = width // 2
-        is_horiz = self.is_horizontal(layer)
-        return self._layout.add_path(layer, purpose, is_horiz, points, half_width, start_style,
+        return self._layout.add_path(layer, purpose, points, half_width, start_style,
                                      stop_style, join_style, commit)
 
     def add_path45_bus(self, layer: str, purpose: str, points: List[PointType], widths: List[int],
@@ -805,8 +786,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         if stop_style is None:
             stop_style = start_style
-        is_horiz = self.is_horizontal(layer)
-        return self._layout.add_path45_bus(layer, purpose, is_horiz, points, widths, spaces,
+        return self._layout.add_path45_bus(layer, purpose, points, widths, spaces,
                                            start_style, stop_style, join_style, commit)
 
     def add_polygon(self, layer: str, purpose: str, points: List[PointType],
@@ -829,7 +809,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         polygon : PyPolygon
             the added polygon object.
         """
-        return self._layout.add_poly(layer, purpose, self.is_horizontal(layer), points, commit)
+        return self._layout.add_poly(layer, purpose, points, commit)
 
     def add_blockage(self, layer: str, blk_type: BlockageType, points: List[PointType],
                      commit: bool = True) -> PyBlockage:
@@ -974,8 +954,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         bbox : BBox
             the label bounding box.
         """
-        # TODO: Implement this
-        raise ValueError('Not implemented yet.')
+        orient = Orientation.R90 if bbox.h > bbox.w else Orientation.R0
+        xform = Transform(bbox.xm, bbox.ym, orient)
+        self._layout.add_label(layer, purpose, xform, label)
 
     def add_pin(self, net_name: str, wire_arr_list: Union[WireArray, List[WireArray]],
                 *, label: str = '', show: bool = True, edge_mode: int = 0) -> None:
@@ -1022,9 +1003,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         for warr in wire_arr_list:
             # add pin array to port_pins
-            layer_id = warr.track_id.layer_id
+            tid = warr.track_id
+            layer_id = tid.layer_id
             if edge_mode != 0:
-                cur_w = self.grid.get_track_width(layer_id, warr.track_id.width)
+                # create new pin WireArray that's snapped to the edge
+                cur_w = self.grid.get_wire_total_width(layer_id, tid.width)
                 wl = warr.lower
                 wu = warr.upper
                 pin_len = min(cur_w * 2, wu - wl)
@@ -1032,7 +1015,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     wu = wl + pin_len
                 else:
                     wl = wu - pin_len
-                warr = WireArray(warr.track_id, wl, wu)
+                warr = WireArray(tid, wl, wu)
 
             port_pins = port_params['pins']
             if layer_id not in port_pins:
@@ -1074,22 +1057,16 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         via : PyVia
             the new via object.
         """
-        params = self._grid.tech_info.get_via_info(bbox, bot_layer, top_layer, bot_dir,
-                                                   bot_purpose=bot_purpose, top_purpose=top_purpose,
-                                                   top_dir=top_dir, extend=extend)['params']
-        vid = params['id']
-        xform = params['xform']
-        w = params['cut_width']
-        h = params['cut_height']
-        vnx = params['num_cols']
-        vny = params['num_rows']
-        vspx = params['sp_cols']
-        vspy = params['sp_rows']
-        l1, r1, t1, b1 = params['enc1']
-        l2, r2, t2, b2 = params['enc2']
+        if top_dir is None:
+            top_dir = bot_dir.perpendicular()
 
-        bot_horiz = self.is_horizontal(bot_layer)
-        top_horiz = self.is_horizontal(top_layer)
+        tech_info = self._grid.tech_info
+        via_id = tech_info.get_via_id(Direction.LOWER, bot_layer, bot_purpose, top_layer,
+                                      top_purpose)
+        via_param = self._grid.tech_info.get_via_param(bbox.w, bbox.h, via_id, Direction.LOWER,
+                                                       bot_dir, top_dir, extend)
+
+        # TODO: start here
         return self._layout.add_via(xform, vid, add_layers, bot_horiz, top_horiz, vnx, vny, w, h,
                                     vspx, vspy, l1, r1, t1, b1, l2, r2, t2, b2, commit)
 

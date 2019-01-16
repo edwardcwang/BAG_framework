@@ -714,8 +714,7 @@ class RoutingGrid(PyRoutingGrid):
         bin_iter = BinaryIterator(1, None)
         while bin_iter.has_next():
             cur_ntr = bin_iter.get_next()
-            wire_bounds = self.get_wire_bounds_htr(layer_id, htr, cur_ntr)
-            wire_width = wire_bounds[1] - wire_bounds[0]
+            wire_width = self.get_wire_total_width(layer_id, cur_ntr)
             if wire_width == width:
                 return HalfInt(htr), cur_ntr
             elif wire_width > width:
