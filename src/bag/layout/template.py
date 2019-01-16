@@ -29,7 +29,7 @@ from pybag.enum import (
 )
 from pybag.core import (
     BBox, BBoxArray, PyLayCellView, Transform, PyLayInstRef, PyPath, PyBlockage, PyBoundary,
-    PyRect, PyVia, PyPolygon, PyPolygon90, PyPolygon45
+    PyRect, PyVia, PyPolygon, PyPolygon90, PyPolygon45, ViaParam
 )
 
 GeoType = Union[PyRect, PyPolygon90, PyPolygon45, PyPolygon]
@@ -1057,18 +1057,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         via : PyVia
             the new via object.
         """
-        if top_dir is None:
-            top_dir = bot_dir.perpendicular()
-
         tech_info = self._grid.tech_info
-        via_id = tech_info.get_via_id(Direction.LOWER, bot_layer, bot_purpose, top_layer,
-                                      top_purpose)
-        via_param = self._grid.tech_info.get_via_param(bbox.w, bbox.h, via_id, Direction.LOWER,
-                                                       bot_dir, top_dir, extend)
+        via_info = tech_info.get_via_info(bbox, Direction.LOWER, bot_layer, top_layer,
+                                          bot_dir, purpose=bot_purpose, adj_purpose=top_purpose,
+                                          extend=extend, adj_ex_dir=top_dir)
 
-        # TODO: start here
-        return self._layout.add_via(xform, vid, add_layers, bot_horiz, top_horiz, vnx, vny, w, h,
-                                    vspx, vspy, l1, r1, t1, b1, l2, r2, t2, b2, commit)
+        if via_info is None:
+            raise ValueError('Cannot create via between layers ({}, {}) and ({}, {}) '
+                             'with BBox: {}'.format(bot_layer, bot_purpose, top_layer, top_purpose,
+                                                    bbox))
+
+        table = via_info['params']
+        via_id = table['id']
+        xform = table['xform']
+        via_param = table['via_param']
+
+        return self._layout.add_via(xform, via_id, via_param, add_layers, commit)
 
     def add_via_arr(self, barr: BBoxArray, bot_layer: str, top_layer: str, bot_dir: Orient2D, *,
                     bot_purpose: str = '', top_purpose: str = '', extend: bool = True,
@@ -1101,27 +1105,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         via_info : Dict[str, Any]
             the via information dictionary.
         """
-        via_info = self._grid.tech_info.get_via_info(barr.base, bot_layer, top_layer, bot_dir,
-                                                     bot_purpose=bot_purpose,
-                                                     top_purpose=top_purpose,
-                                                     top_dir=top_dir, extend=extend)
-        params = via_info['params']
+        tech_info = self._grid.tech_info
+        base_box = barr.base
+        via_info = tech_info.get_via_info(base_box, Direction.LOWER, bot_layer, top_layer,
+                                          bot_dir, purpose=bot_purpose, adj_purpose=top_purpose,
+                                          extend=extend, adj_ex_dir=top_dir)
 
-        vid = params['id']
-        xform = params['xform']
-        w = params['cut_width']
-        h = params['cut_height']
-        vnx = params['num_cols']
-        vny = params['num_rows']
-        vspx = params['sp_cols']
-        vspy = params['sp_rows']
-        l1, r1, t1, b1 = params['enc1']
-        l2, r2, t2, b2 = params['enc2']
+        if via_info is None:
+            raise ValueError('Cannot create via between layers ({}, {}) and ({}, {}) '
+                             'with BBox: {}'.format(bot_layer, bot_purpose, top_layer, top_purpose,
+                                                    base_box))
+        table = via_info['params']
+        via_id = table['id']
+        xform = table['xform']
+        via_param = table['via_param']
 
-        bot_horiz = self.is_horizontal(bot_layer)
-        top_horiz = self.is_horizontal(top_layer)
-        self._layout.add_via_arr(xform, vid, add_layers, bot_horiz, top_horiz, vnx, vny, w, h,
-                                 vspx, vspy, l1, r1, t1, b1, l2, r2, t2, b2, barr.nx, barr.ny,
+        self._layout.add_via_arr(xform, via_id, via_param, add_layers, barr.nx, barr.ny,
                                  barr.spx, barr.spy)
 
         return via_info
@@ -1168,9 +1167,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         l1, r1, t1, b1 = enc1
         l2, r2, t2, b2 = enc2
-        self._layout.add_via_arr(xform, via_type, False, False, False, num_cols, num_rows,
-                                 cut_width, cut_height, sp_cols, sp_rows, l1, r1, t1, b1,
-                                 l2, r2, t2, b2, nx, ny, spx, spy)
+        param = ViaParam(num_cols, num_rows, cut_width, cut_height, sp_cols, sp_rows,
+                         l1, r1, t1, b1, l2, r2, t2, b2)
+        self._layout.add_via_arr(xform, via_type, param, True, nx, ny, spx, spy)
 
     def add_via_on_grid(self, bot_layer_id: int, bot_track: TrackType, top_track: TrackType,
                         *, bot_width: int = 1, top_width: int = 1, **kwargs: Any) -> PyVia:
@@ -1231,6 +1230,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             list of added wire arrays.
             If any elements in warr_list were None, they will be None in the return.
         """
+        # TODO: start here
         if isinstance(warr_list, WireArray):
             warr_list = [warr_list]
 
