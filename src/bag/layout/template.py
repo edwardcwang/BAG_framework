@@ -17,6 +17,7 @@ from itertools import product, islice
 
 from ..util.cache import DesignMaster, MasterDB
 from ..util.interval import IntervalSet
+from ..util.math import HalfInt
 from ..io.file import write_yaml
 from .core import PyLayInstance
 from .tech import TechInfo
@@ -1230,12 +1231,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             list of added wire arrays.
             If any elements in warr_list were None, they will be None in the return.
         """
-        # TODO: start here
+        grid = self.grid
+
         if isinstance(warr_list, WireArray):
             warr_list = [warr_list]
 
         new_warr_list = []
         for warr in warr_list:
+            tid = warr.track_id
             if warr is None:
                 new_warr_list.append(None)
             else:
@@ -1251,9 +1254,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     cur_upper = max(upper, wupper)
                 if min_len_mode is not None:
                     # extend track to meet minimum length
-                    min_len = self.grid.get_min_length(warr.layer_id, warr.track_id.width)
                     # make sure minimum length is even so that middle coordinate exists
-                    min_len = -(-min_len // 2) * 2
+                    min_len = grid.get_min_length(tid.layer_id, tid.width, even=True)
                     tr_len = cur_upper - cur_lower
                     if min_len > tr_len:
                         ext = min_len - tr_len
@@ -1265,10 +1267,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                             cur_lower -= ext // 2
                             cur_upper = cur_lower + min_len
 
-                new_warr = WireArray(warr.track_id, cur_lower, cur_upper)
-                for (lay, purp), bbox_arr in new_warr.wire_arr_iter(self.grid):
-                    self.add_rect_arr(lay, purp, bbox_arr)
-
+                new_warr = WireArray(tid, cur_lower, cur_upper)
+                self._layout.add_warr(new_warr)
                 new_warr_list.append(new_warr)
 
         return new_warr_list
@@ -1301,10 +1301,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         tid = TrackID(layer_id, track_idx, width=width, num=num, pitch=pitch)
         warr = WireArray(tid, lower, upper)
-
-        for (lay, purp), bbox_arr in warr.wire_arr_iter(self.grid):
-            self.add_rect_arr(lay, purp, bbox_arr)
-
+        self._layout.add_warr(warr)
         return warr
 
     def add_res_metal_warr(self, layer_id: int, track_idx: TrackType, lower: int, upper: int,
@@ -1331,9 +1328,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         warr = self.add_wires(layer_id, track_idx, lower, upper, **kwargs)
 
-        for _, bbox_arr in warr.wire_arr_iter(self.grid):
-            for bbox in bbox_arr:
-                self.add_res_metal(layer_id, bbox)
+        for _, _, box in warr.wire_iter(self.grid):
+            self.add_res_metal(layer_id, box)
 
         return warr
 
@@ -1344,6 +1340,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                     array: bool = False,
                     **kwargs: Any) -> Dict[int, Tuple[List[WireArray], List[WireArray]]]:
         """Draw mom cap in the defined bounding box."""
+        # TODO: port this method
         cap_rect_list = kwargs.get('return_cap_wires', None)
         cap_type = kwargs.get('cap_type', 'standard')
 
@@ -1645,25 +1642,25 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         # record all wire ranges
         a = wire_arr_list[0]
         layer_id = a.layer_id
-        direction = grid.get_direction(layer_id)
-        perp_dir = direction.perpendicular()
-        htr_pitch = grid.get_track_pitch(layer_id) // 2
         intv_set = IntervalSet()
         for wire_arr in wire_arr_list:
-            if wire_arr.layer_id != layer_id:
+            tid = wire_arr.track_id
+            lay_id = tid.layer_id
+            tr_w = tid.width
+            if lay_id != layer_id:
                 raise ValueError('WireArray layer ID != %d' % layer_id)
 
             cur_range = wire_arr.lower, wire_arr.upper
-            box_arr = wire_arr.get_bbox_array(grid)
-            for box in box_arr:
-                intv = box.get_interval(perp_dir)
+            for tidx in tid:
+                intv = grid.get_wire_bounds(lay_id, tidx, width=tr_w)
                 intv_rang_item = intv_set.get_first_overlap_item(intv)
                 if intv_rang_item is None:
                     range_set = IntervalSet()
                     range_set.add(cur_range)
-                    intv_set.add(intv, val=range_set)
+                    intv_set.add(intv, val=(range_set, tidx, tr_w))
                 elif intv_rang_item[0] == intv:
-                    intv_rang_item[1].add(cur_range, merge=True, abut=True)
+                    tmp_rang_set: IntervalSet = intv_rang_item[1][0]
+                    tmp_rang_set.add(cur_range, merge=True, abut=True)
                 else:
                     raise ValueError('wire interval {} overlap existing wires.'.format(intv))
 
@@ -1671,88 +1668,82 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         new_warr_list = []
         base_start = None  # type: Optional[int]
         base_end = None  # type: Optional[int]
-        base_intv = None  # type: Optional[Tuple[int, int]]
+        base_tidx = None  # type: Optional[HalfInt]
         base_width = None  # type: Optional[int]
         count = 0
-        hpitch = 0
-        last_lower = 0
-        for intv, range_set in intv_set.items():
-            cur_start = range_set.get_start()  # type: int
-            cur_end = range_set.get_end()  # type: int
-            add = len(range_set) > 1
+        pitch = 0
+        last_tidx = 0
+        for set_item in intv_set.items():
+            intv = set_item[0]
+            range_set: IntervalSet = set_item[1][0]
+            cur_tidx: HalfInt = set_item[1][1]
+            cur_tr_w: int = set_item[1][2]
+            cur_start = range_set.start
+            cur_end = range_set.stop
             if lower is not None and lower < cur_start:
                 cur_start = lower
-                add = True
             if upper is not None and upper > cur_end:
                 cur_end = upper
-                add = True
-
-            cur_lower, cur_upper = intv
-            if add:
-                tr_id = grid.coord_to_track(layer_id, (cur_lower + cur_upper) // 2)
-                lay, purp = grid.get_layer_purpose(layer_id, tr_id)
-                self.add_rect(lay, purp, BBox(direction, cur_start, cur_end, cur_lower, cur_upper))
 
             if debug:
                 print('wires intv: %s, range: (%d, %d)' % (intv, cur_start, cur_end))
-            cur_width = cur_upper - cur_lower
             if count == 0:
-                base_intv = intv
+                base_tidx = cur_tidx
                 base_start = cur_start
                 base_end = cur_end
-                base_width = cur_upper - cur_lower
+                base_width = cur_tr_w
                 count = 1
-                hpitch = 0
+                pitch = 0
             else:
-                assert base_intv is not None, "count == 0 should have set base_intv"
+                assert base_tidx is not None, "count == 0 should have set base_intv"
                 assert base_width is not None, "count == 0 should have set base_width"
                 assert base_start is not None, "count == 0 should have set base_start"
                 assert base_end is not None, "count == 0 should have set base_end"
-                if cur_start == base_start and cur_end == base_end and base_width == cur_width:
+                if cur_start == base_start and cur_end == base_end and base_width == cur_tr_w:
                     # length and width matches
-                    cur_hpitch = (cur_lower - last_lower) // htr_pitch
+                    cur_pitch = cur_tidx - last_tidx
                     if count == 1:
                         # second wire, set half pitch
-                        hpitch = cur_hpitch
+                        pitch = cur_pitch
                         count += 1
-                    elif hpitch == cur_hpitch:
+                    elif pitch == cur_pitch:
                         # pitch matches
                         count += 1
                     else:
                         # pitch does not match, add current wires and start anew
-                        tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv)
-                        track_id = TrackID(layer_id, tr_idx, width=tr_width,
-                                           num=count, pitch=hpitch / 2)
+                        track_id = TrackID(layer_id, base_tidx, width=base_width,
+                                           num=count, pitch=pitch)
                         warr = WireArray(track_id, base_start, base_end)
                         new_warr_list.append(warr)
-                        base_intv = intv
+                        self._layout.add_warr(warr)
+                        base_tidx = cur_tidx
                         count = 1
-                        hpitch = 0
+                        pitch = 0
                 else:
                     # length/width does not match, add cumulated wires and start anew
-                    tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv)
-                    track_id = TrackID(layer_id, tr_idx, width=tr_width,
-                                       num=count, pitch=hpitch / 2)
+                    track_id = TrackID(layer_id, base_tidx, width=base_width,
+                                       num=count, pitch=pitch)
                     warr = WireArray(track_id, base_start, base_end)
                     new_warr_list.append(warr)
+                    self._layout.add_warr(warr)
                     base_start = cur_start
                     base_end = cur_end
-                    base_intv = intv
-                    base_width = cur_width
+                    base_tidx = cur_tidx
+                    base_width = cur_tr_w
                     count = 1
-                    hpitch = 0
+                    pitch = 0
 
             # update last lower coordinate
-            last_lower = cur_lower
+            last_tidx = cur_tidx
 
-        assert base_intv is not None, "count == 0 should have set base_intv"
+        assert base_tidx is not None, "count == 0 should have set base_intv"
         assert base_start is not None, "count == 0 should have set base_start"
         assert base_end is not None, "count == 0 should have set base_end"
 
         # add last wires
-        tr_idx, tr_width = grid.interval_to_track(layer_id, base_intv)
-        track_id = TrackID(layer_id, tr_idx, tr_width, num=count, pitch=hpitch / 2)
+        track_id = TrackID(layer_id, base_tidx, base_width, num=count, pitch=pitch)
         warr = WireArray(track_id, base_start, base_end)
+        self._layout.add_warr(warr)
         new_warr_list.append(warr)
         return new_warr_list
 
@@ -1760,6 +1751,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                            tlow: Optional[int] = None,
                            tup: Optional[int] = None) -> Tuple[int, int]:
         """Helper method.  Draw vias on the intersection of the BBoxArray and TrackID."""
+        # TODO: start here
         grid = self._grid
 
         tr_layer_id = track_id.layer_id
