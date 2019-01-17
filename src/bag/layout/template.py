@@ -1747,7 +1747,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         new_warr_list.append(warr)
         return new_warr_list
 
-    def connect_bbox_to_tracks(self, box_dir: Direction, layer: str, purpose: str,
+    def connect_bbox_to_tracks(self, layer_dir: Direction, layer: str, purpose: str,
                                box_arr: Union[BBox, BBoxArray], track_id: TrackID, *,
                                track_lower: Optional[int] = None,
                                track_upper: Optional[int] = None,
@@ -1758,7 +1758,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        box_dir : Direction
+        layer_dir : Direction
             the primitive wire layer direction relative to the given tracks.  LOWER if
             the wires are below tracks, UPPER if the wires are above tracks.
         layer : str
@@ -1788,24 +1788,32 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if isinstance(box_arr, BBox):
             box_arr = BBoxArray(box_arr)
 
-        tl, tu = self._layout.connect_barr_to_tracks(box_dir, layer, purpose, box_arr, track_id,
-                                                     track_lower, track_upper, min_len_mode,
-                                                     wire_lower, wire_upper)
-        return WireArray(track_id, tl, tu)
+        bnds = self._layout.connect_barr_to_tracks(layer_dir, layer, purpose, box_arr, track_id,
+                                                   track_lower, track_upper, min_len_mode,
+                                                   wire_lower, wire_upper)
+        tr_idx = 1 - layer_dir.value
+        return WireArray(track_id, bnds[tr_idx][0], bnds[tr_idx][1])
 
-    def connect_bbox_to_differential_tracks(self, p_lay_purp: Tuple[str, str],
+    def connect_bbox_to_differential_tracks(self, p_lay_dir: Direction, n_lay_dir: Direction,
+                                            p_lay_purp: Tuple[str, str],
                                             n_lay_purp: Tuple[str, str],
                                             pbox: Union[BBox, BBoxArray],
                                             nbox: Union[BBox, BBoxArray], tr_layer_id: int,
                                             ptr_idx: TrackType, ntr_idx: TrackType, *,
                                             width: int = 1, track_lower: Optional[int] = None,
-                                            track_upper: Optional[int] = None) -> DiffWarrType:
+                                            track_upper: Optional[int] = None,
+                                            min_len_mode: MinLenMode = MinLenMode.NONE
+                                            ) -> DiffWarrType:
         """Connect the given differential primitive wires to two tracks symmetrically.
 
         This method makes sure the connections are symmetric and have identical parasitics.
 
         Parameters
         ----------
+        p_lay_dir : Direction
+            positive signal layer direction.
+        n_lay_dir : Direction
+            negative signal layer direction.
         p_lay_purp : Tuple[str, str]
             positive signal layer/purpose pair.
         n_lay_purp : Tuple[str, str]
@@ -1826,6 +1834,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[int]
             if given, extend track(s) to this upper coordinate.
+        min_len_mode : MinLenMode
+            the minimum length extension mode.
 
         Returns
         -------
@@ -1834,22 +1844,28 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         n_track : Optional[WireArray]
             the negative track.
         """
-        track_list = self.connect_bbox_to_matching_tracks([p_lay_purp, n_lay_purp], [pbox, nbox],
+        track_list = self.connect_bbox_to_matching_tracks([p_lay_dir, n_lay_dir],
+                                                          [p_lay_purp, n_lay_purp], [pbox, nbox],
                                                           tr_layer_id, [ptr_idx, ntr_idx],
                                                           width=width, track_lower=track_lower,
-                                                          track_upper=track_upper)
+                                                          track_upper=track_upper,
+                                                          min_len_mode=min_len_mode)
         return track_list[0], track_list[1]
 
-    def connect_bbox_to_matching_tracks(self, lay_purp_list: List[Tuple[str, str]],
+    def connect_bbox_to_matching_tracks(self, lay_dir_list: List[Direction],
+                                        lay_purp_list: List[Tuple[str, str]],
                                         box_arr_list: List[Union[BBox, BBoxArray]],
                                         tr_layer_id: int, tr_idx_list: List[TrackType], *,
                                         width: int = 1, track_lower: Optional[int] = None,
-                                        track_upper: Optional[int] = None
+                                        track_upper: Optional[int] = None,
+                                        min_len_mode: MinLenMode = MinLenMode.NONE,
                                         ) -> List[Optional[WireArray]]:
         """Connect the given primitive wire to given tracks.
 
         Parameters
         ----------
+        lay_dir_list : List[Direction]
+            the primitive wire layer direction list.
         lay_purp_list : List[Tuple[str, str]]
             the primitive wire layer/purpose list.
         box_arr_list : List[Union[BBox, BBoxArray]]
@@ -1864,81 +1880,58 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[int]
             if given, extend track(s) to this upper coordinate.
-
+        min_len_mode : MinLenMode
+            the minimum length extension mode.
         Returns
         -------
         wire_arr : List[Optional[WireArray]]
             WireArrays representing the tracks created.
         """
         grid = self.grid
-
-        num_tracks = len(tr_idx_list)
-        if num_tracks != len(box_arr_list):
-            raise ValueError('wire list length and track index list length mismatch.')
-        if num_tracks == 0:
-            raise ValueError('No tracks given')
-
-        w_layer_id = grid.tech_info.get_layer_id(lay_purp_list[0][0])
-        if abs(w_layer_id - tr_layer_id) != 1:
-            raise ValueError('Given primitive wires not adjacent to given track layer.')
-        bot_layer_id = min(w_layer_id, tr_layer_id)
-
-        # compute wire_lower/upper without via extension
-        w_lower, w_upper = grid.get_wire_bounds(tr_layer_id, tr_idx_list[0], width=width)
-        for tr_idx in islice(tr_idx_list, 1, None):
-            cur_low, cur_up = grid.get_wire_bounds(tr_layer_id, tr_idx, width=width)
-            w_lower = min(w_lower, cur_low)
-            w_upper = max(w_upper, cur_up)
-
-        # separate wire arrays into bottom/top tracks, compute wire/track lower/upper coordinates
-        tr_width = grid.get_track_width(tr_layer_id, width)
         tr_dir = grid.get_direction(tr_layer_id)
-        bbox_bounds = [w_lower, w_upper]  # type: List[Optional[int]]
-        for idx, box_arr in enumerate(box_arr_list):
-            # convert to BBoxArray
+        w_dir = tr_dir.perpendicular()
+
+        num = len(lay_dir_list)
+        if len(lay_purp_list) != num or len(box_arr_list) != num or len(tr_idx_list) != num:
+            raise ValueError('Connection list parameters have mismatch length.')
+        if num == 0:
+            raise ValueError('Connection lists are empty.')
+
+        wl = None
+        wu = None
+        for lay_dir, (lay, purp), box_arr, tr_idx in zip(lay_dir_list, lay_purp_list,
+                                                         box_arr_list, tr_idx_list):
+            if isinstance(box_arr, BBox):
+                box_arr = BBoxArray(box_arr)
+
+            tid = TrackID(tr_layer_id, tr_idx, width=width)
+            bnds = self._layout.connect_barr_to_tracks(lay_dir, lay, purp, box_arr, tid,
+                                                       track_lower, track_upper, min_len_mode,
+                                                       wl, wu)
+            w_idx = lay_dir.value
+            tr_idx = 1 - w_idx
+            wl = bnds[w_idx][0]
+            wu = bnds[w_idx][1]
+            track_lower = bnds[tr_idx][0]
+            track_upper = bnds[tr_idx][1]
+
+        # extend wires
+        ans = []
+        for (lay, purp), box_arr, tr_idx in zip(lay_purp_list, box_arr_list, tr_idx_list):
             if isinstance(box_arr, BBox):
                 box_arr = BBoxArray(box_arr)
             else:
-                pass
+                box_arr = BBoxArray(box_arr.base, tr_dir, nt=box_arr.get_num(tr_dir),
+                                    spt=box_arr.get_sp(tr_dir))
 
-            base = box_arr.base
-            if w_layer_id < tr_layer_id:
-                bot_dim = base.get_dim(tr_dir)
-                top_dim = tr_width
-                w_ext, tr_ext = grid.get_via_extensions_dim(bot_layer_id, bot_dim, top_dim)
-            else:
-                bot_dim = tr_width
-                top_dim = base.get_dim(tr_dir)
-                tr_ext, w_ext = grid.get_via_extensions_dim(bot_layer_id, bot_dim, top_dim)
+            box_arr.set_interval(w_dir, wl, wu)
+            self._layout.add_rect_arr(lay, purp, box_arr)
 
-            bbox_bounds[0] = min(bbox_bounds[0], w_lower - w_ext)
-            bbox_bounds[1] = max(bbox_bounds[1], w_upper + w_ext)
+            warr = WireArray(TrackID(tr_layer_id, tr_idx, width=width), track_lower, track_upper)
+            self._layout.add_warr(warr)
+            ans.append(warr)
 
-            # compute track lower/upper including via extension
-            tr_bounds = box_arr.get_overall_bbox().get_interval(tr_dir)
-            if track_lower is None:
-                track_lower = tr_bounds[0] - tr_ext
-            else:
-                track_lower = min(track_lower, tr_bounds[0] - tr_ext)
-            if track_upper is None:
-                track_upper = tr_bounds[1] + tr_ext
-            else:
-                track_upper = max(track_upper, tr_bounds[1] + tr_ext)
-
-        assert_msg = "track_lower/track_upper should be set above"
-        assert track_lower is not None and track_upper is not None, assert_msg
-
-        # draw tracks
-        track_list = []  # type: List[Optional[WireArray]]
-        for (lay, purp), box_arr, tr_idx in zip(lay_purp_list, box_arr_list, tr_idx_list):
-            track_list.append(self.add_wires(tr_layer_id, tr_idx, track_lower, track_upper,
-                                             width=width))
-
-            tr_id = TrackID(tr_layer_id, tr_idx, width=width)
-            self.connect_bbox_to_tracks(lay, purp, box_arr, tr_id, wire_lower=bbox_bounds[0],
-                                        wire_upper=bbox_bounds[1])
-
-        return track_list
+        return ans
 
     def connect_to_tracks(self, wire_arr_list: Union[WireArray, List[WireArray]],
                           track_id: TrackID, *, wire_lower: Optional[int] = None,
