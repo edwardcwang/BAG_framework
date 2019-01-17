@@ -1034,8 +1034,8 @@ class ResMetalModule(Module):
     def get_params_info(cls):
         # type: () -> Dict[str, str]
         return dict(
-            w='resistor width, in layout units.',
-            l='resistor length, in layout units.',
+            w='resistor width, in meters.',
+            l='resistor length, in meters.',
             layer='the metal layer ID.',
         )
 
@@ -1045,8 +1045,8 @@ class ResMetalModule(Module):
 
     def get_schematic_parameters(self):
         # type: () -> Dict[str, str]
-        w = self.params['w'] * self.tech_info.layout_unit
-        l = self.params['l'] * self.tech_info.layout_unit
+        w = self.params['w']
+        l = self.params['l']
         layer = self.params['layer']
         wstr = float_to_si_string(w)
         lstr = float_to_si_string(l)
