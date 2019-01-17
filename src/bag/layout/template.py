@@ -13,7 +13,7 @@ from bag.typing import PointType
 
 import abc
 import copy
-from itertools import product, islice
+from itertools import product
 
 from ..util.cache import DesignMaster, MasterDB
 from ..util.interval import IntervalSet
@@ -983,11 +983,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             If <0, draw the pin on the lower end of the WireArray.  If >0, draw the pin
             on the upper end.  If 0, draw the pin on the entire WireArray.
         """
-        if isinstance(wire_arr_list, WireArray):
-            wire_arr_list = [wire_arr_list]
-        else:
-            pass
-
         label = label or net_name
 
         if net_name not in self._port_params:
@@ -1002,7 +997,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if port_params['show'] != show:
             raise ValueError('Conflicting show port specification.')
 
-        for warr in wire_arr_list:
+        for warr in WireArray.wire_grp_iter(wire_arr_list):
             # add pin array to port_pins
             tid = warr.track_id
             layer_id = tid.layer_id
@@ -1172,41 +1167,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                          l1, r1, t1, b1, l2, r2, t2, b2)
         self._layout.add_via_arr(xform, via_type, param, True, nx, ny, spx, spy)
 
-    def add_via_on_grid(self, bot_layer_id: int, bot_track: TrackType, top_track: TrackType,
-                        *, bot_width: int = 1, top_width: int = 1, **kwargs: Any) -> PyVia:
+    def add_via_on_grid(self, tid1: TrackID, tid2: TrackID, *,
+                        extend: bool = True, add_layers: bool = False) -> None:
         """Add a via on the routing grid.
 
         Parameters
         ----------
-        bot_layer_id : int
-            the bottom layer ID.
-        bot_track : TrackType
-            the bottom track index.
-        top_track : TrackType
-            the top track index.
-        bot_width : int
-            the bottom track width.
-        top_width : int
-            the top track width.
-        **kwargs : Any
-            optional arguments for add_via().
-
-        Returns
-        -------
-        via : PyVia
-            the via object created.
+        tid1 : TrackID
+            the first TrackID
+        tid2 : TrackID
+            the second TrackID
+        extend : bool
+            True to extend outside the via bounding box.
+        add_layers : bool
+            True to add metal layers.
         """
-        grid = self.grid
-        bl, bu = grid.get_wire_bounds(bot_layer_id, bot_track, width=bot_width)
-        tl, tu = grid.get_wire_bounds(bot_layer_id + 1, top_track, width=top_width)
-        bot_dir = grid.get_direction(bot_layer_id)
-        top_dir = grid.get_direction(bot_layer_id + 1)
-        bbox = BBox(bot_dir, bl, bu, tl, tu)
-        lay1, purp1 = grid.get_layer_purpose(bot_layer_id, bot_track)
-        lay2, purp2 = grid.get_layer_purpose(bot_layer_id + 1, top_track)
-
-        return self.add_via(bbox, lay1, lay2, bot_dir, bot_purpose=purp1,
-                            top_purpose=purp2, top_dir=top_dir, **kwargs)
+        self._layout.add_via_on_grid(tid1, tid2, extend, add_layers)
 
     def extend_wires(self, warr_list: Union[WireArray, List[Optional[WireArray]]], *,
                      lower: Optional[int] = None, upper: Optional[int] = None,
@@ -1233,11 +1209,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         grid = self.grid
 
-        if isinstance(warr_list, WireArray):
-            warr_list = [warr_list]
-
         new_warr_list = []
-        for warr in warr_list:
+        for warr in WireArray.wire_grp_iter(warr_list):
             tid = warr.track_id
             if warr is None:
                 new_warr_list.append(None)
@@ -1630,25 +1603,18 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         grid = self._grid
 
-        if isinstance(wire_arr_list, WireArray):
-            wire_arr_list = [wire_arr_list]
-        else:
-            pass
-
-        if not wire_arr_list:
-            # do nothing
-            return []
-
         # record all wire ranges
-        a = wire_arr_list[0]
-        layer_id = a.layer_id
+        layer_id = None
         intv_set = IntervalSet()
-        for wire_arr in wire_arr_list:
+        for wire_arr in WireArray.wire_grp_iter(wire_arr_list):
+
             tid = wire_arr.track_id
             lay_id = tid.layer_id
             tr_w = tid.width
-            if lay_id != layer_id:
-                raise ValueError('WireArray layer ID != %d' % layer_id)
+            if layer_id is None:
+                layer_id = lay_id
+            elif lay_id != layer_id:
+                raise ValueError('WireArray layer ID != {}'.format(layer_id))
 
             cur_range = wire_arr.lower, wire_arr.upper
             for tidx in tid:
@@ -1735,6 +1701,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
             # update last lower coordinate
             last_tidx = cur_tidx
+
+        if base_tidx is None:
+            # no wires given at all
+            return []
 
         assert base_tidx is not None, "count == 0 should have set base_intv"
         assert base_start is not None, "count == 0 should have set base_start"
@@ -1852,6 +1822,21 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                                           min_len_mode=min_len_mode)
         return track_list[0], track_list[1]
 
+    def fix_track_min_length(self, tr_layer_id: int, width: int, track_lower: int, track_upper: int,
+                             min_len_mode: MinLenMode) -> Tuple[int, int]:
+        even = min_len_mode is MinLenMode.MIDDLE
+        tr_len = max(track_upper - track_lower, self.grid.get_min_length(tr_layer_id, width,
+                                                                         even=even))
+        if min_len_mode is MinLenMode.LOWER:
+            track_lower = track_upper - tr_len
+        elif min_len_mode is MinLenMode.UPPER:
+            track_upper = track_lower + tr_len
+        elif min_len_mode is MinLenMode.MIDDLE:
+            track_lower = (track_upper + track_lower - tr_len) // 2
+            track_upper = track_lower + tr_len
+
+        return track_lower, track_upper
+
     def connect_bbox_to_matching_tracks(self, lay_dir_list: List[Direction],
                                         lay_purp_list: List[Tuple[str, str]],
                                         box_arr_list: List[Union[BBox, BBoxArray]],
@@ -1906,7 +1891,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
             tid = TrackID(tr_layer_id, tr_idx, width=width)
             bnds = self._layout.connect_barr_to_tracks(lay_dir, lay, purp, box_arr, tid,
-                                                       track_lower, track_upper, min_len_mode,
+                                                       track_lower, track_upper, MinLenMode.NONE,
                                                        wl, wu)
             w_idx = lay_dir.value
             tr_idx = 1 - w_idx
@@ -1915,6 +1900,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             track_lower = bnds[tr_idx][0]
             track_upper = bnds[tr_idx][1]
 
+        # fix min_len_mode
+        track_lower, track_upper = self.fix_track_min_length(tr_layer_id, width, track_lower,
+                                                             track_upper, min_len_mode)
         # extend wires
         ans = []
         for (lay, purp), box_arr, tr_idx in zip(lay_purp_list, box_arr_list, tr_idx_list):
@@ -1936,7 +1924,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def connect_to_tracks(self, wire_arr_list: Union[WireArray, List[WireArray]],
                           track_id: TrackID, *, wire_lower: Optional[int] = None,
                           wire_upper: Optional[int] = None, track_lower: Optional[int] = None,
-                          track_upper: Optional[int] = None, min_len_mode: Optional[int] = None,
+                          track_upper: Optional[int] = None, min_len_mode: MinLenMode = None,
                           ret_wire_list: Optional[List[WireArray]] = None,
                           debug: bool = False) -> Optional[WireArray]:
         """Connect all given WireArrays to the given track(s).
@@ -1957,9 +1945,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[CoordType]
             if given, extend track(s) to this upper coordinate.
-        min_len_mode : Optional[int]
-            If not None, will extend track so it satisfy minimum length requirement.
-            Use -1 to extend lower bound, 1 to extend upper bound, 0 to extend both equally.
+        min_len_mode : MinLenMode
+            the minimum length extension mode.
         ret_wire_list : Optional[List[WireArray]]
             If not none, extended wires that are created will be appended to this list.
         debug : bool
@@ -1970,76 +1957,49 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         wire_arr : Optional[WireArray]
             WireArray representing the tracks created.
         """
-        if isinstance(wire_arr_list, WireArray):
-            # convert to list.
-            wire_arr_list = [wire_arr_list]
-        if not wire_arr_list:
-            return None
-
-        grid = self._grid
-
         # find min/max track Y coordinates
         tr_layer_id = track_id.layer_id
-        wl, wu = track_id.get_bounds(grid)
-        if wire_lower is not None:
-            wl = min(wire_lower, wl)
-
-        if wire_upper is not None:
-            wu = max(wire_upper, wu)
+        tr_w = track_id.width
 
         # get top wire and bottom wire list
-        top_list = []
-        bot_list = []
-        for wire_arr in wire_arr_list:
+        warr_list_list = [[], []]
+        for wire_arr in WireArray.wire_grp_iter(wire_arr_list):
             cur_layer_id = wire_arr.layer_id
             if cur_layer_id == tr_layer_id + 1:
-                top_list.append(wire_arr)
+                warr_list_list[1].append(wire_arr)
             elif cur_layer_id == tr_layer_id - 1:
-                bot_list.append(wire_arr)
+                warr_list_list[0].append(wire_arr)
             else:
                 raise ValueError(
                     'WireArray layer %d cannot connect to layer %d' % (cur_layer_id, tr_layer_id))
 
+        if not warr_list_list[0] and not warr_list_list[1]:
+            # no wires at all
+            return None
+
         # connect wires together
-        top_wire_list = self.connect_wires(top_list, lower=wl, upper=wu, debug=debug)
-        bot_wire_list = self.connect_wires(bot_list, lower=wl, upper=wu, debug=debug)
+        for warr in self.connect_wires(warr_list_list[0], lower=wire_lower, upper=wire_upper,
+                                       debug=debug):
+            bnds = self._layout.connect_warr_to_tracks(warr, track_id, None, None,
+                                                       track_lower, track_upper)
+            if ret_wire_list is not None:
+                ret_wire_list.append(WireArray(warr.track_id, bnds[0][0], bnds[0][1]))
+            track_lower = bnds[1][0]
+            track_upper = bnds[1][1]
+        for warr in self.connect_wires(warr_list_list[1], lower=wire_lower, upper=wire_upper,
+                                       debug=debug):
+            bnds = self._layout.connect_warr_to_tracks(warr, track_id, None, None,
+                                                       track_lower, track_upper)
+            if ret_wire_list is not None:
+                ret_wire_list.append(WireArray(warr.track_id, bnds[1][0], bnds[1][1]))
+            track_lower = bnds[0][0]
+            track_upper = bnds[0][1]
 
-        # draw vias
-        for w_layer_id, wire_list in ((tr_layer_id + 1, top_wire_list),
-                                      (tr_layer_id - 1, bot_wire_list)):
-            for wire_arr in wire_list:
-                for (wlay, wpurp), box_arr in wire_arr.wire_arr_iter(grid):
-                    track_lower, track_upper = self._draw_via_on_track(wlay, wpurp, box_arr,
-                                                                       track_id, tlow=track_lower,
-                                                                       tup=track_upper)
-
-        assert_msg = "track_lower/track_upper should have been set just above"
-        assert track_lower is not None and track_upper is not None, assert_msg
-
-        if min_len_mode is not None:
-            # extend track to meet minimum length
-            min_len = grid.get_min_length(tr_layer_id, track_id.width)
-            # make sure minimum length is even so that middle coordinate exists
-            min_len = -(-min_len // 2) * 2
-            tr_len = track_upper - track_lower
-            if min_len > tr_len:
-                ext = min_len - tr_len
-                if min_len_mode < 0:
-                    track_lower -= ext
-                elif min_len_mode > 0:
-                    track_upper += ext
-                else:
-                    track_lower -= ext // 2
-                    track_upper = track_lower + min_len
-
-        # draw tracks
+        # fix min_len_mode
+        track_lower, track_upper = self.fix_track_min_length(tr_layer_id, tr_w, track_lower,
+                                                             track_upper, min_len_mode)
         result = WireArray(track_id, track_lower, track_upper)
-        for (wlay, wpurp), bbox_arr in result.wire_arr_iter(grid):
-            self.add_rect_arr(wlay, wpurp, bbox_arr)
-
-        if ret_wire_list is not None:
-            ret_wire_list.extend(top_wire_list)
-            ret_wire_list.extend(bot_wire_list)
+        self._layout.add_warr(result)
         return result
 
     def connect_to_track_wires(self, wire_arr_list: Union[WireArray, List[WireArray]],
@@ -2067,21 +2027,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             WireArrays representing the tracks created.  None if nothing to do.
         """
         ans = []  # type: List[Optional[WireArray]]
-        if isinstance(track_wires, WireArray):
-            ans_is_list = False
-            track_wires = [track_wires]
-        else:
-            ans_is_list = True
-
-        for warr in track_wires:
+        for warr in WireArray.wire_grp_iter(track_wires):
             tr = self.connect_to_tracks(wire_arr_list, warr.track_id, track_lower=warr.lower,
                                         track_upper=warr.upper, min_len_mode=min_len_mode,
                                         debug=debug)
             ans.append(tr)
 
-        if ans_is_list:
-            return ans
-        return ans[0]
+        if isinstance(track_wires, WireArray):
+            return ans[0]
+        return ans
 
     def strap_wires(self, warr: WireArray, targ_layer: int, tr_w_list: Optional[List[int]] = None,
                     min_len_mode_list: Optional[List[int]] = None) -> WireArray:
@@ -2141,6 +2095,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     def _strap_wires_helper(self, warr: WireArray, targ_layer: int, tr_w: int,
                             mlen_mode: Optional[int]) -> WireArray:
         """Helper method for strap_wires().  Connect one layer at a time."""
+        # TODO: fix this
         grid = self._grid
         wire_tid = warr.track_id
         wire_layer = wire_tid.layer_id
@@ -2318,7 +2273,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                 width: int = 1,
                                 track_lower: Optional[int] = None,
                                 track_upper: Optional[int] = None,
-                                debug: bool = False) -> List[Optional[WireArray]]:
+                                min_len_mode: MinLenMode = MinLenMode.NONE
+                                ) -> List[Optional[WireArray]]:
         """Connect wires to tracks with optimal matching.
 
         This method connects the wires to tracks in a way that minimizes the parasitic mismatches.
@@ -2337,96 +2293,58 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[int]
             if given, extend track(s) to this upper coordinate.
-        debug : bool
-            True to print debug messages.
+        min_len_mode : MinLenMode
+            the minimum length extension mode.
 
         Returns
         -------
         track_list : List[WireArray]
             list of created tracks.
         """
-        grid = self._grid
-
         # simple error checking
         num_tracks = len(tr_idx_list)  # type: int
         if num_tracks != len(warr_list_list):
-            raise ValueError('wire list length and track index list length mismatch.')
+            raise ValueError('Connection list parameters have mismatch length.')
         if num_tracks == 0:
-            raise ValueError('No tracks given')
+            raise ValueError('Connection lists are empty.')
 
-        # compute wire_lower/upper without via extension
-        w_lower, w_upper = grid.get_wire_bounds(tr_layer_id, tr_idx_list[0], width=width)
-        for tr_idx in islice(tr_idx_list, 1, None):
-            cur_low, cur_up = grid.get_wire_bounds(tr_layer_id, tr_idx, width=width)
-            w_lower = min(w_lower, cur_low)
-            w_upper = max(w_upper, cur_up)
-
-        # separate wire arrays into bottom/top tracks, compute wire/track lower/upper coordinates
-        bot_warrs = [[] for _ in range(num_tracks)]
-        top_warrs = [[] for _ in range(num_tracks)]
-        bot_bounds = [None, None]  # type: List[Optional[int]]
-        top_bounds = [None, None]  # type: List[Optional[int]]
-        for idx, warr_list in enumerate(warr_list_list):
-            # convert to WireArray list
-            if isinstance(warr_list, WireArray):
-                warr_list = [warr_list]
-            else:
-                pass
-
-            if not warr_list:
-                raise ValueError('No wires found for track index %d' % idx)
-
-            for warr in warr_list:
-                warr_tid = warr.track_id
-                cur_layer_id = warr_tid.layer_id
-                cur_width = warr_tid.width
-                if cur_layer_id == tr_layer_id + 1:
-                    tr_ext, w_ext = grid.get_via_extensions(tr_layer_id, width, cur_width)
-                    top_warrs[idx].append(warr)
-                    cur_bounds = top_bounds
-                elif cur_layer_id == tr_layer_id - 1:
-                    w_ext, tr_ext = grid.get_via_extensions(cur_layer_id, cur_width, width)
-                    bot_warrs[idx].append(warr)
-                    cur_bounds = bot_bounds
+        wbounds = [[None, None], [None, None]]
+        for warr_list, tr_idx in zip(warr_list_list, tr_idx_list):
+            tid = TrackID(tr_layer_id, tr_idx, width=width)
+            for warr in WireArray.wire_grp_iter(warr_list):
+                cur_lay_id = warr.layer_id
+                if cur_lay_id == tr_layer_id + 1:
+                    wb_idx = 1
+                elif cur_lay_id == tr_layer_id - 1:
+                    wb_idx = 0
                 else:
-                    raise ValueError('Cannot connect wire on layer %d '
-                                     'to track on layer %d' % (cur_layer_id, tr_layer_id))
+                    raise ValueError(
+                        'WireArray layer {} cannot connect to layer {}'.format(cur_lay_id,
+                                                                               tr_layer_id))
 
-                # compute wire lower/upper including via extension
-                if cur_bounds[0] is None:
-                    cur_bounds[0] = w_lower - w_ext
-                    cur_bounds[1] = w_upper + w_ext
-                else:
-                    cur_bounds[0] = min(cur_bounds[0], w_lower - w_ext)
-                    cur_bounds[1] = max(cur_bounds[1], w_upper + w_ext)
+                bnds = self._layout.connect_warr_to_tracks(warr, tid, wbounds[wb_idx][0],
+                                                           wbounds[wb_idx][1], track_lower,
+                                                           track_upper)
+                wbounds[wb_idx] = bnds[wb_idx]
+                track_lower = bnds[1 - wb_idx][0]
+                track_upper = bnds[1 - wb_idx][1]
 
-                # compute track lower/upper including via extension
-                warr_bounds = warr_tid.get_bounds(grid)
-                if track_lower is None:
-                    track_lower = warr_bounds[0] - tr_ext
-                else:
-                    track_lower = min(track_lower, warr_bounds[0] - tr_ext)
-                if track_upper is None:
-                    track_upper = warr_bounds[1] + tr_ext
-                else:
-                    track_upper = max(track_upper, warr_bounds[1] + tr_ext)
+        # fix min_len_mode
+        track_lower, track_upper = self.fix_track_min_length(tr_layer_id, width, track_lower,
+                                                             track_upper, min_len_mode)
+        # extend wires
+        ans = []
+        for warr_list, tr_idx in zip(warr_list_list, tr_idx_list):
+            for warr in WireArray.wire_grp_iter(warr_list):
+                wb_idx = (warr.layer_id - tr_layer_id + 1) // 2
+                self._layout.add_warr(WireArray(warr.track_id, wbounds[wb_idx][0],
+                                                wbounds[wb_idx][1]))
 
-        assert_msg = "track_lower/track_upper should have been set above"
-        assert track_lower is not None and track_upper is not None, assert_msg
+            warr = WireArray(TrackID(tr_layer_id, tr_idx, width=width), track_lower, track_upper)
+            self._layout.add_warr(warr)
+            ans.append(warr)
 
-        # draw tracks
-        track_list = []  # type: List[Optional[WireArray]]
-        for bwarr_list, twarr_list, tr_idx in zip(bot_warrs, top_warrs, tr_idx_list):
-            track_list.append(self.add_wires(tr_layer_id, tr_idx, track_lower, track_upper,
-                                             width=width))
-
-            tr_id = TrackID(tr_layer_id, tr_idx, width=width)
-            self.connect_to_tracks(bwarr_list, tr_id, wire_lower=bot_bounds[0],
-                                   wire_upper=bot_bounds[1], min_len_mode=None, debug=debug)
-            self.connect_to_tracks(twarr_list, tr_id, wire_lower=top_bounds[0],
-                                   wire_upper=top_bounds[1], min_len_mode=None, debug=debug)
-
-        return track_list
+        return ans
 
     def draw_vias_on_intersections(self, bot_warr_list: Union[WireArray, List[WireArray]],
                                    top_warr_list: Union[WireArray, List[WireArray]]) -> None:
@@ -2439,47 +2357,11 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         top_warr_list : Union[WireArray, List[WireArray]]
             the top wires.
         """
-        if isinstance(bot_warr_list, WireArray):
-            bot_warr_list = [bot_warr_list]
-        else:
-            pass
-        if isinstance(top_warr_list, WireArray):
-            top_warr_list = [top_warr_list]
-        else:
-            pass
-        if not bot_warr_list:
-            return
-
-        grid = self.grid
-        bot_layer_id = bot_warr_list[0].track_id.layer_id
-        top_layer_id = bot_layer_id + 1
-        bot_dir = grid.get_direction(bot_layer_id)
-        if grid.get_direction(top_layer_id) is bot_dir:
-            raise ValueError('This method only works on orthogonal layers.')
-        for bwarr in bot_warr_list:
-            bot_tl = bwarr.lower
-            bot_tu = bwarr.upper
-            bot_track_idx = bwarr.track_id
-            bot_width = bot_track_idx.width
-            for bot_index in bot_track_idx:
-                blay, bpurp = grid.get_layer_purpose(bot_layer_id, bot_index)
-                btl, btu = grid.get_wire_bounds(bot_layer_id, bot_index, width=bot_width)
-                for twarr in top_warr_list:
-                    top_tl = twarr.lower
-                    top_tu = twarr.upper
-                    top_track_idx = twarr.track_id
-                    top_width = top_track_idx.width
-                    if top_tu >= btu and top_tl <= btl:
-                        # top wire cuts bottom wire, possible intersection
-                        for top_index in top_track_idx:
-                            ttl, ttu = grid.get_wire_bounds(top_layer_id, top_index,
-                                                            width=top_width)
-                            if bot_tu >= ttu and bot_tl <= ttl:
-                                # bottom wire cuts top wire, we have intersection.  Make bbox
-                                box = BBox(bot_dir, ttl, ttu, btl, btu)
-                                tlay, tpurp = self.grid.get_layer_purpose(top_layer_id, top_index)
-                                self.add_via(box, blay, tlay, bot_dir, bot_purpose=bpurp,
-                                             top_purpose=tpurp)
+        for bwarr in WireArray.wire_grp_iter(bot_warr_list):
+            btid = bwarr.track_id
+            for twarr in WireArray.wire_grp_iter(top_warr_list):
+                ttid = twarr.track_id
+                self.add_via_on_grid(btid, ttid, add_layers=True)
 
     def has_blockage(self, layer_id: int, test_box: BBox, spx: int = 0, spy: int = 0) -> bool:
         """Returns true if there are blockage objects.
@@ -2500,6 +2382,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         has_blockage : bool
             True if some objects are too close to the given box.
         """
+        # TODO: fix this
         return self._layout.has_blockage(layer_id, test_box, spx=spx, spy=spy)
 
     def blockage_iter(self, layer_id: int, test_box: BBox,
@@ -2522,6 +2405,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         obj : GeoType
             objects that are too close to the given BBox.
         """
+        # TODO: fix this
         return self._layout.blockage_iter(layer_id, test_box, spx=spx, spy=spy)
 
     def is_track_available(self, layer_id: int, tr_idx: TrackType, lower: int, upper: int, *,
@@ -2550,6 +2434,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         available : bool
             True if the track is available.
         """
+        # TODO: fix this
         grid = self._grid
         track_id = TrackID(layer_id, tr_idx, width=width)
         warr = WireArray(track_id, lower, upper)
@@ -2643,6 +2528,7 @@ class BlackBoxTemplate(TemplateBase):
 
     def _register_pin(self, lay_id: int, lay: str, term_name: str, box: BBox,
                       show_pins: bool) -> None:
+        # TODO: fix this
         if lay_id is None:
             self.add_pin_primitive(term_name, lay, box, show=show_pins)
         else:

@@ -136,6 +136,14 @@ class WireArray(PyWireArray):
             for w in warr:
                 yield from w.warr_iter()
 
+    @classmethod
+    def wire_grp_iter(cls, warr: Union[WireArray, Sequence[WireArray]]) -> Iterable[WireArray]:
+        """Iterate through WireArrays in the given WireArray or WireArray list."""
+        if isinstance(warr, WireArray):
+            yield warr
+        else:
+            yield from warr
+
     def to_warr_list(self) -> List[WireArray]:
         """Convert this WireArray into a list of single wires."""
         return list(self.warr_iter())
