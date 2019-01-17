@@ -26,7 +26,7 @@ from .routing.grid import RoutingGrid
 
 from pybag.enum import (
     PathStyle, BlockageType, BoundaryType, GeometryMode, DesignOutput, Orient2D,
-    Orientation, Direction
+    Orientation, Direction, MinLenMode
 )
 from pybag.core import (
     BBox, BBoxArray, PyLayCellView, Transform, PyLayInstRef, PyPath, PyBlockage, PyBoundary,
@@ -1747,70 +1747,20 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         new_warr_list.append(warr)
         return new_warr_list
 
-    def _draw_via_on_track(self, wlay: str, wpurp: str, box_arr: BBoxArray, track_id: TrackID, *,
-                           tlow: Optional[int] = None,
-                           tup: Optional[int] = None) -> Tuple[int, int]:
-        """Helper method.  Draw vias on the intersection of the BBoxArray and TrackID."""
-        # TODO: start here
-        grid = self._grid
-
-        tr_layer_id = track_id.layer_id
-        tr_width = track_id.width
-        tr_dir = grid.get_direction(tr_layer_id)
-        tr_pitch = grid.get_track_pitch(tr_layer_id)
-
-        w_layer_id = grid.tech_info.get_layer_id(wlay)
-        w_dir = tr_dir.perpendicular()
-        wbase = box_arr.base
-        for sub_track_id in track_id.sub_tracks_iter(grid):
-            base_idx = sub_track_id.base_index
-            if w_layer_id > tr_layer_id:
-                bot_lay, bot_purp = grid.get_layer_purpose(tr_layer_id, base_idx)
-                top_lay = wlay
-                top_purp = wpurp
-                bot_dir = tr_dir
-            else:
-                bot_lay = wlay
-                bot_purp = wpurp
-                top_lay, top_purp = grid.get_layer_purpose(tr_layer_id, base_idx)
-                bot_dir = w_dir
-            # compute via bounding box
-            tl, tu = grid.get_wire_bounds(tr_layer_id, base_idx, width=tr_width)
-            wl, wu = wbase.get_interval(tr_dir)
-            vbox_base = BBox(tr_dir, wl, wu, tl, tu)
-            nt, spt = box_arr.get_array_info(tr_dir)
-            np = sub_track_id.num
-            spp = int(sub_track_id.pitch * tr_pitch)
-            vbarr = BBoxArray(vbox_base, tr_dir, nt=nt, spt=spt, np=np, spp=spp)
-            via_info = self.add_via_arr(vbarr, bot_lay, top_lay, bot_dir, bot_purpose=bot_purp,
-                                        top_purpose=top_purp)
-            vtbox = via_info['bot_box'] if w_layer_id > tr_layer_id else via_info['top_box']
-            vlow = vtbox.get_coord(tr_dir, 0)
-            vup = vtbox.get_coord(tr_dir, 1) + (nt - 1) * spt
-            if tlow is None:
-                tlow = vlow
-            else:
-                tlow = min(tlow, vlow)
-            if tup is None:
-                tup = vup
-            else:
-                tup = max(tup, vup)
-
-        assert_msg = "for loop should have assigned tl_unit and tu_unit"
-        assert tlow is not None and tup is not None, assert_msg
-
-        return tlow, tup
-
-    def connect_bbox_to_tracks(self, layer: str, purpose: str, box_arr: Union[BBox, BBoxArray],
-                               track_id: TrackID, *, track_lower: Optional[int] = None,
+    def connect_bbox_to_tracks(self, box_dir: Direction, layer: str, purpose: str,
+                               box_arr: Union[BBox, BBoxArray], track_id: TrackID, *,
+                               track_lower: Optional[int] = None,
                                track_upper: Optional[int] = None,
-                               min_len_mode: Optional[int] = None,
+                               min_len_mode: MinLenMode = MinLenMode.NONE,
                                wire_lower: Optional[int] = None,
                                wire_upper: Optional[int] = None) -> WireArray:
         """Connect the given primitive wire to given tracks.
 
         Parameters
         ----------
+        box_dir : Direction
+            the primitive wire layer direction relative to the given tracks.  LOWER if
+            the wires are below tracks, UPPER if the wires are above tracks.
         layer : str
             the primitive wire layer name.
         purpose : str
@@ -1823,9 +1773,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[int]
             if given, extend track(s) to this upper coordinate.
-        min_len_mode : Optional[int]
-            If not None, will extend track so it satisfy minimum length requirement.
-            Use -1 to extend lower bound, 1 to extend upper bound, 0 to extend both equally.
+        min_len_mode : MinLenMode
+            The minimum length extension mode.
         wire_lower : Optional[int]
             if given, extend wire(s) to this lower coordinate.
         wire_upper : Optional[int]
@@ -1837,49 +1786,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             WireArray representing the tracks created.
         """
         if isinstance(box_arr, BBox):
-            new_barr = BBoxArray(box_arr)
-        else:
-            new_barr = box_arr.get_copy()
+            box_arr = BBoxArray(box_arr)
 
-        grid = self.grid
-
-        # extend bounding boxes to tracks
-        tl, tu = track_id.get_bounds(grid)
-        if wire_lower is not None:
-            tl = min(wire_lower, tl)
-        if wire_upper is not None:
-            tu = max(wire_upper, tu)
-
-        tr_layer = track_id.layer_id
-        ex_dir = grid.get_direction(tr_layer).perpendicular()
-        new_barr.extend_orient(ex_dir, ct=tl).extend_orient(ex_dir, ct=tu)
-        self.add_rect_arr(layer, purpose, new_barr)
-
-        # draw vias
-        tlow, tup = self._draw_via_on_track(layer, purpose, new_barr, track_id,
-                                            tlow=track_lower, tup=track_upper)
-
-        # draw tracks
-        if min_len_mode is not None:
-            # extend track to meet minimum length
-            min_len = grid.get_min_length(tr_layer, track_id.width)
-            # make sure minimum length is even so that middle coordinate exists
-            min_len = -(-min_len // 2) * 2
-            tr_len = tup - tlow
-            if min_len > tr_len:
-                ext = min_len - tr_len
-                if min_len_mode < 0:
-                    tlow -= ext
-                elif min_len_mode > 0:
-                    tup += ext
-                else:
-                    tlow -= ext // 2
-                    tup = tlow + min_len
-        result = WireArray(track_id, tlow, tup)
-        for (lay, purp), wbarr in result.wire_arr_iter(grid):
-            self.add_rect_arr(lay, purp, wbarr)
-
-        return result
+        tl, tu = self._layout.connect_barr_to_tracks(box_dir, layer, purpose, box_arr, track_id,
+                                                     track_lower, track_upper, min_len_mode,
+                                                     wire_lower, wire_upper)
+        return WireArray(track_id, tl, tu)
 
     def connect_bbox_to_differential_tracks(self, p_lay_purp: Tuple[str, str],
                                             n_lay_purp: Tuple[str, str],
