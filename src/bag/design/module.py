@@ -37,6 +37,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         the design database object.
     params : Dict[str, Any]
         the parameters dictionary.
+    key : Any
+        the unique ID representing this master instance.
+    copy_state : Optional[Dict[str, Any]]
+        If given, set the content of this master from this dictionary.
     **kwargs : Any
         additional arguments
 
@@ -48,10 +52,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         the instance dictionary.
     """
 
-    def __init__(self, yaml_fname, database, params, **kwargs):
-        # type: (str, ModuleDB, Dict[str, Any], **Any) -> None
-        copy_state = kwargs.get('copy_state', None)
-
+    def __init__(self, yaml_fname: str, database: ModuleDB, params: Param, *,
+                 key: Any, copy_state: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
         self._cv = None  # type: Optional[PySchCellView]
         if copy_state:
             self._netlist_dir = copy_state['netlist_dir']
@@ -81,13 +83,12 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 self.instances = {}  # type: Dict[str, SchInstance]
 
         # initialize schematic master
-        DesignMaster.__init__(self, database, params, copy_state=copy_state)
+        DesignMaster.__init__(self, database, params, key=key, copy_state=copy_state)
 
-    def compute_unique_key(self, model_params=None):
-        # type: (Optional[Param]) -> Any
-        if model_params is None:
-            model_params = self._model_params
-        return self.get_qualified_name(), self.params, model_params
+    @classmethod
+    def compute_unique_key(cls, params: Param,
+                           model_params: Optional[Dict[str, Any]] = None) -> Any:
+        return cls.get_qualified_name(), params, model_params
 
     def get_master_basename(self):
         # type: () -> str
@@ -112,7 +113,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         # type: () -> Module
         """Returns a copy of this master instance."""
         copy_state = self.get_copy_state()
-        return self.__class__(self._master_db, {}, copy_state=copy_state)
+        return self.__class__(self._master_db, None, copy_state=copy_state)
 
     @property
     def tech_info(self) -> TechInfo:

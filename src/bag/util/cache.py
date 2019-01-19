@@ -100,8 +100,8 @@ class DesignMaster(abc.ABC):
         the master database.
     params : Dict[str, Any]
         the parameters dictionary.
-    **kwargs :
-        optional parameters.
+    copy_state : Optional[Dict[str, Any]]
+        If given, set the content of this master from this dictionary.
 
     Attributes
     ----------
@@ -109,13 +109,10 @@ class DesignMaster(abc.ABC):
         the parameters dictionary.
     """
 
-    def __init__(self, master_db, params, **kwargs):
-        # type: (DBType, Dict[str, Any], **Any) -> None
-        copy_state = kwargs.get('copy_state', None)
-
+    def __init__(self, master_db: DBType, params: Param, *,
+                 copy_state: Optional[Dict[str, Any]] = None) -> None:
         self._master_db = master_db  # type: DBType
         self._cell_name = ''
-        self._key = None
 
         if copy_state:
             self._children = copy_state['children']
@@ -129,39 +126,86 @@ class DesignMaster(abc.ABC):
             self._finalized = False
 
             # set parameters
-            self.params = Param()  # type: Param
-
-            params_info = self.get_params_info()
-            default_params = self.get_default_param_values()
-            self.populate_params(params, params_info, default_params, **kwargs)
+            self.params = params
+            self._key = self.compute_unique_key(params)
 
             # update design master signature
-            self.update_signature()
+            self._cell_name = get_new_name(self.get_master_basename(),
+                                           self.master_db.used_cell_names)
 
-    def populate_params(self, table, params_info, default_params, **kwargs):
-        # type: (Dict[str, Any], Dict[str, str], Dict[str, Any], **Any) -> None
+    @classmethod
+    def get_qualified_name(cls) -> str:
+        """Returns the qualified name of this class."""
+        my_module = cls.__module__
+        if my_module is None or my_module == str.__class__.__module__:
+            return cls.__name__
+        else:
+            return my_module + '.' + cls.__name__
+
+    @classmethod
+    def populate_params(cls, table: Dict[str, Any], params_info: Dict[str, str],
+                        default_params: Dict[str, Any], **kwargs: Any) -> Param:
         """Fill params dictionary with values from table and default_params"""
         hidden_params = kwargs.get('hidden_params', {})
 
+        result = Param()
         for key, desc in params_info.items():
             if key not in table:
                 if key not in default_params:
-                    raise ValueError('Parameter %s not specified.  Description:\n%s' % (key, desc))
+                    raise ValueError('Parameter {} not specified.  '
+                                     'Description:\n{}'.format(key, desc))
                 else:
-                    self.params.assign(key, default_params[key])
+                    result.assign(key, default_params[key])
             else:
-                self.params.assign(key, table[key])
+                result.assign(key, table[key])
 
         # add hidden parameters
         for name, value in hidden_params.items():
-            self.params.assign(name, table.get(name, value))
+            result.assign(name, table.get(name, value))
 
-        self.params.update_hash()
+        result.update_hash()
+        return result
 
-    def update_signature(self):
-        # type: () -> None
-        self._cell_name = get_new_name(self.get_master_basename(), self.master_db.used_cell_names)
-        self._key = self.compute_unique_key()
+    @classmethod
+    def compute_unique_key(cls, params: Param) -> Any:
+        """Returns a unique hashable object (usually tuple or string) that represents this instance.
+
+        Parameters
+        ----------
+        params : Param
+            the parameters object.  All default and hidden parameters have been processed already.
+
+        Returns
+        -------
+        unique_id : Any
+            a hashable unique ID representing the given parameters.
+        """
+        return cls.get_qualified_name(), params
+
+    @classmethod
+    def process_params(cls, params: Dict[str, Any], **kwargs: Any) -> Tuple[Param, Any]:
+        """Process the given parameters dictionary.
+
+        This method computes the final parameters dictionary from the user given one by
+        filling in default and hidden parameter values, and also compute the unique ID of
+        this master instance.
+
+        Parameters
+        ----------
+        params : Dict[str, Any]
+            the parameter dictionary specified by the user.
+        kwargs : Any
+            optional parameters.
+
+        Returns
+        -------
+        unique_id : Any
+            a hashable unique ID representing the given parameters.
+        """
+        params_info = cls.get_params_info()
+        default_params = cls.get_default_param_values()
+        params = cls.populate_params(params, params_info, default_params, **kwargs)
+        return params, cls.compute_unique_key(params)
 
     def get_copy_state(self):
         # type: () -> Dict[str, Any]
@@ -304,31 +348,11 @@ class DesignMaster(abc.ABC):
         """Returns True if this DesignMaster is finalized."""
         return self._finalized
 
-    def get_qualified_name(self):
-        # type: () -> str
-        """Returns the qualified name of this class."""
-        my_module = self.__class__.__module__
-        if my_module is None or my_module == str.__class__.__module__:
-            return self.__class__.__name__
-        else:
-            return my_module + '.' + self.__class__.__name__
-
     def finalize(self):
         # type: () -> None
         """Finalize this master instance.
         """
         self._finalized = True
-
-    def compute_unique_key(self):
-        # type: () -> Any
-        """Returns a unique hashable object (usually tuple or string) that represents this instance.
-
-        Returns
-        -------
-        unique_id : Any
-            a hashable unique ID representing the given parameters.
-        """
-        return self.get_qualified_name(), self.params
 
     def add_child_key(self, child_key):
         # type: (object) -> None
@@ -506,8 +530,7 @@ class MasterDB(abc.ABC):
         if params is None:
             params = {}
 
-        master = gen_cls(self, params, **kwargs)
-        key = master.key
+        master_params, key = gen_cls.process_params(params, **kwargs)
         test = self.find_master(key)
         if test is not None:
             if debug:
@@ -516,6 +539,7 @@ class MasterDB(abc.ABC):
 
         if debug:
             print('finalizing master')
+        master = gen_cls(self, master_params, key=key, **kwargs)
         start = time.time()
         master.finalize()
         end = time.time()
