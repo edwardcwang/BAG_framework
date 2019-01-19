@@ -1179,9 +1179,9 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         extend : bool
             True to extend outside the via bounding box.
         """
-        self._layout.add_via_on_intersection(WireArray(tid1, COORD_MIN, COORD_MAX),
-                                             WireArray(tid2, COORD_MIN, COORD_MAX),
-                                             extend, False)
+        self._layout.add_via_on_intersections(WireArray(tid1, COORD_MIN, COORD_MAX),
+                                              WireArray(tid2, COORD_MIN, COORD_MAX),
+                                              extend, False)
 
     def extend_wires(self, warr_list: Union[WireArray, List[Optional[WireArray]]], *,
                      lower: Optional[int] = None, upper: Optional[int] = None,
@@ -2351,7 +2351,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         for bwarr in WireArray.wire_grp_iter(bot_warr_list):
             for twarr in WireArray.wire_grp_iter(top_warr_list):
-                self._layout.add_via_on_intersection(bwarr, twarr, True, True)
+                self._layout.add_via_on_intersections(bwarr, twarr, True, True)
 
     def has_blockage(self, layer_id: int, test_box: BBox, spx: int = 0, spy: int = 0) -> bool:
         """Returns true if there are blockage objects.
