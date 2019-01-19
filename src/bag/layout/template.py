@@ -30,7 +30,7 @@ from pybag.enum import (
 )
 from pybag.core import (
     BBox, BBoxArray, PyLayCellView, Transform, PyLayInstRef, PyPath, PyBlockage, PyBoundary,
-    PyRect, PyVia, PyPolygon, PyPolygon90, PyPolygon45, ViaParam
+    PyRect, PyVia, PyPolygon, PyPolygon90, PyPolygon45, ViaParam, COORD_MIN, COORD_MAX
 )
 
 GeoType = Union[PyRect, PyPolygon90, PyPolygon45, PyPolygon]
@@ -1167,8 +1167,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                          l1, r1, t1, b1, l2, r2, t2, b2)
         self._layout.add_via_arr(xform, via_type, param, True, nx, ny, spx, spy)
 
-    def add_via_on_grid(self, tid1: TrackID, tid2: TrackID, *,
-                        extend: bool = True, add_layers: bool = False) -> None:
+    def add_via_on_grid(self, tid1: TrackID, tid2: TrackID, *, extend: bool = True) -> None:
         """Add a via on the routing grid.
 
         Parameters
@@ -1179,10 +1178,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the second TrackID
         extend : bool
             True to extend outside the via bounding box.
-        add_layers : bool
-            True to add metal layers.
         """
-        self._layout.add_via_on_grid(tid1, tid2, extend, add_layers)
+        self._layout.add_via_on_intersection(WireArray(tid1, COORD_MIN, COORD_MAX),
+                                             WireArray(tid2, COORD_MIN, COORD_MAX),
+                                             extend, False)
 
     def extend_wires(self, warr_list: Union[WireArray, List[Optional[WireArray]]], *,
                      lower: Optional[int] = None, upper: Optional[int] = None,
@@ -2173,9 +2172,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
                                     nwarr_list: Union[WireArray, List[WireArray]],
                                     tr_layer_id: int, ptr_idx: TrackType, ntr_idx: TrackType, *,
                                     width: int = 1, track_lower: Optional[int] = None,
-                                    track_upper: Optional[int] = None,
-                                    debug: bool = False) -> Tuple[Optional[WireArray],
-                                                                  Optional[WireArray]]:
+                                    track_upper: Optional[int] = None
+                                    ) -> Tuple[Optional[WireArray], Optional[WireArray]]:
         """Connect the given differential wires to two tracks symmetrically.
 
         This method makes sure the connections are symmetric and have identical parasitics.
@@ -2198,8 +2196,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[int]
             if given, extend track(s) to this upper coordinate.
-        debug : bool
-            True to print debug messages.
 
         Returns
         -------
@@ -2210,17 +2206,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         track_list = self.connect_matching_tracks([pwarr_list, nwarr_list], tr_layer_id,
                                                   [ptr_idx, ntr_idx], width=width,
-                                                  track_lower=track_lower, track_upper=track_upper,
-                                                  debug=debug)
+                                                  track_lower=track_lower, track_upper=track_upper)
         return track_list[0], track_list[1]
 
     def connect_differential_wires(self, pin_warrs: Union[WireArray, List[WireArray]],
                                    nin_warrs: Union[WireArray, List[WireArray]],
                                    pout_warr: WireArray, nout_warr: WireArray, *,
                                    track_lower: Optional[int] = None,
-                                   track_upper: Optional[int] = None,
-                                   debug: bool = False) -> Tuple[Optional[WireArray],
-                                                                 Optional[WireArray]]:
+                                   track_upper: Optional[int] = None
+                                   ) -> Tuple[Optional[WireArray], Optional[WireArray]]:
         """Connect the given differential wires to two WireArrays symmetrically.
 
         This method makes sure the connections are symmetric and have identical parasitics.
@@ -2239,8 +2233,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             if given, extend track(s) to this lower coordinate.
         track_upper : Optional[int]
             if given, extend track(s) to this upper coordinate.
-        debug : bool
-            True to print debug messages.
 
         Returns
         -------
@@ -2266,7 +2258,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         return self.connect_differential_tracks(pin_warrs, nin_warrs, lay_id, pidx, nidx,
                                                 width=width, track_lower=tr_lower,
-                                                track_upper=tr_upper, debug=debug)
+                                                track_upper=tr_upper)
 
     def connect_matching_tracks(self, warr_list_list: List[Union[WireArray, List[WireArray]]],
                                 tr_layer_id: int, tr_idx_list: List[TrackType], *,
@@ -2358,10 +2350,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the top wires.
         """
         for bwarr in WireArray.wire_grp_iter(bot_warr_list):
-            btid = bwarr.track_id
             for twarr in WireArray.wire_grp_iter(top_warr_list):
-                ttid = twarr.track_id
-                self.add_via_on_grid(btid, ttid, add_layers=True)
+                self._layout.add_via_on_intersection(bwarr, twarr, True, True)
 
     def has_blockage(self, layer_id: int, test_box: BBox, spx: int = 0, spy: int = 0) -> bool:
         """Returns true if there are blockage objects.
