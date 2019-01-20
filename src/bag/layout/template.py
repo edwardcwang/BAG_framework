@@ -15,7 +15,7 @@ import abc
 import copy
 from itertools import product
 
-from ..util.cache import DesignMaster, MasterDB
+from ..util.cache import DesignMaster, MasterDB, Param
 from ..util.interval import IntervalSet
 from ..util.math import HalfInt
 from ..io.file import write_yaml
@@ -103,20 +103,19 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
     ----------
     temp_db : TemplateDB
         the template database.
-    params : Dict[str, Any]
+    params : Param
         the parameter values.
     **kwargs : Any
         dictionary of the following optional parameters:
 
         grid : RoutingGrid
             the routing grid to use for this template.
-        use_cybagoa : bool
-            True to use cybagoa module to accelerate layout.
     """
 
-    def __init__(self, temp_db: TemplateDB, params: Dict[str, Any], **kwargs: Any) -> None:
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
         # initialize template attributes
-        self._parent_grid = kwargs.get('grid', temp_db.grid)
+        # TODO: make routing grid hashable and a hidden parameter
+        self._parent_grid = kwargs.pop('grid', temp_db.grid)
         self._grid = self._parent_grid.copy()  # type: RoutingGrid
         self._size = None  # type: SizeType
         self._ports = {}
@@ -129,20 +128,20 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self.prim_bound_box = None
 
         # add hidden parameters
-        if 'hidden_params' in kwargs:
-            hidden_params = kwargs['hidden_params'].copy()
-        else:
-            hidden_params = {}
-        hidden_params['flip_parity'] = None
-
-        DesignMaster.__init__(self, temp_db, params, hidden_params=hidden_params)
+        DesignMaster.__init__(self, temp_db, params, **kwargs)
         # update RoutingGrid
-        fp_dict = self.params['flip_parity']
-        if fp_dict is not None:
-            self._grid.flip_parity = fp_dict
+        fp_data = self.params['flip_parity']
+        if fp_data is not None:
+            self._grid.set_flip_parity(fp_data)
 
         # create Cython wrapper object
         self._layout = PyLayCellView(self._grid, self.cell_name)
+
+    @classmethod
+    def get_hidden_params(cls) -> Dict[str, Any]:
+        ans = DesignMaster.get_hidden_params()
+        ans['flip_parity'] = None
+        return ans
 
     @abc.abstractmethod
     def draw_layout(self) -> None:

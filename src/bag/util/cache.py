@@ -6,8 +6,7 @@
 from __future__ import annotations
 
 from typing import (
-    TYPE_CHECKING, Sequence, Dict, Set, Any, Optional, TypeVar, Type, Tuple, Iterator,
-    Iterable, List
+    TYPE_CHECKING, Sequence, Dict, Set, Any, Optional, TypeVar, Type, Tuple, Iterator, List
 )
 
 import abc
@@ -34,12 +33,10 @@ DBType = TypeVar('DBType', bound='MasterDB')
 
 
 class Param(SortedDict):
-    def __init__(self, items: Optional[Iterable[Any, Any]] = None, hash_value: int = 0) -> None:
-        if items is None:
-            SortedDict.__init__(self)
-        else:
-            SortedDict.__init__(self, items)
-        self._hash_value = hash_value
+    def __init__(self, *args, **kwargs) -> None:
+        hash_val = kwargs.pop('_hash_value', 0)
+        SortedDict.__init__(self, *args, **kwargs)
+        self._hash_value = hash_val
 
     @classmethod
     def to_param(cls, table: Dict[Any, Any]):
@@ -68,7 +65,9 @@ class Param(SortedDict):
         return seed & sys.maxsize
 
     def copy(self) -> Param:
-        return self.__class__(items=self.items(), hash_value=self._hash_value)
+        ans = SortedDict.copy(self)  # type: Param
+        ans._hash_value = self._hash_value
+        return ans
 
     def assign(self, name: object, value: object):
         if isinstance(value, Param) or not isinstance(value, dict):
@@ -98,10 +97,12 @@ class DesignMaster(abc.ABC):
     ----------
     master_db : MasterDB
         the master database.
-    params : Dict[str, Any]
+    params : Param
         the parameters dictionary.
+    key: Any
+        If not None, the unique ID for this master instance.
     copy_state : Optional[Dict[str, Any]]
-        If given, set the content of this master from this dictionary.
+        If not None, set content of this master from this dictionary.
 
     Attributes
     ----------
@@ -110,7 +111,7 @@ class DesignMaster(abc.ABC):
     """
 
     def __init__(self, master_db: DBType, params: Param, *,
-                 copy_state: Optional[Dict[str, Any]] = None) -> None:
+                 key: Any = None, copy_state: Optional[Dict[str, Any]] = None) -> None:
         self._master_db = master_db  # type: DBType
         self._cell_name = ''
 
@@ -127,7 +128,7 @@ class DesignMaster(abc.ABC):
 
             # set parameters
             self.params = params
-            self._key = self.compute_unique_key(params)
+            self._key = self.compute_unique_key(params) if key is None else key
 
             # update design master signature
             self._cell_name = get_new_name(self.get_master_basename(),
@@ -144,9 +145,9 @@ class DesignMaster(abc.ABC):
 
     @classmethod
     def populate_params(cls, table: Dict[str, Any], params_info: Dict[str, str],
-                        default_params: Dict[str, Any], **kwargs: Any) -> Param:
+                        default_params: Dict[str, Any]) -> Param:
         """Fill params dictionary with values from table and default_params"""
-        hidden_params = kwargs.get('hidden_params', {})
+        hidden_params = cls.get_hidden_params()
 
         result = Param()
         for key, desc in params_info.items():
@@ -183,7 +184,7 @@ class DesignMaster(abc.ABC):
         return cls.get_qualified_name(), params
 
     @classmethod
-    def process_params(cls, params: Dict[str, Any], **kwargs: Any) -> Tuple[Param, Any]:
+    def process_params(cls, params: Dict[str, Any]) -> Tuple[Param, Any]:
         """Process the given parameters dictionary.
 
         This method computes the final parameters dictionary from the user given one by
@@ -194,8 +195,6 @@ class DesignMaster(abc.ABC):
         ----------
         params : Dict[str, Any]
             the parameter dictionary specified by the user.
-        kwargs : Any
-            optional parameters.
 
         Returns
         -------
@@ -204,8 +203,12 @@ class DesignMaster(abc.ABC):
         """
         params_info = cls.get_params_info()
         default_params = cls.get_default_param_values()
-        params = cls.populate_params(params, params_info, default_params, **kwargs)
+        params = cls.populate_params(params, params_info, default_params)
         return params, cls.compute_unique_key(params)
+
+    def update_signature(self, key: Any) -> None:
+        self._key = key
+        self._cell_name = get_new_name(self.get_master_basename(), self.master_db.used_cell_names)
 
     def get_copy_state(self):
         # type: () -> Dict[str, Any]
@@ -221,7 +224,7 @@ class DesignMaster(abc.ABC):
         # type: () -> MasterType
         """Returns a copy of this master instance."""
         copy_state = self.get_copy_state()
-        return self.__class__(self._master_db, {}, copy_state=copy_state)
+        return self.__class__(self._master_db, None, copy_state=copy_state)
 
     @classmethod
     def to_immutable_id(cls, val):
@@ -278,6 +281,21 @@ class DesignMaster(abc.ABC):
         -------
         default_params : Dict[str, Any]
             dictionary of default parameter values.
+        """
+        return {}
+
+    @classmethod
+    def get_hidden_params(cls):
+        # type: () -> Dict[str, Any]
+        """Returns a dictionary of hidden parameter values.
+
+        hidden parameters are parameters are invisible to the user and only used
+        and computed internally.
+
+        Returns
+        -------
+        hidden_params : Dict[str, Any]
+            dictionary of hidden parameter values.
         """
         return {}
 
@@ -530,7 +548,7 @@ class MasterDB(abc.ABC):
         if params is None:
             params = {}
 
-        master_params, key = gen_cls.process_params(params, **kwargs)
+        master_params, key = gen_cls.process_params(params)
         test = self.find_master(key)
         if test is not None:
             if debug:

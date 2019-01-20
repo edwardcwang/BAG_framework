@@ -14,7 +14,7 @@ from ..io.template import new_template_env_fs
 
 if TYPE_CHECKING:
     from ..core import BagProject
-    from ..layout.core import TechInfo
+    from ..layout.tech import TechInfo
     from .module import Module
 
     ModuleType = TypeVar('ModuleType', bound=Module)
@@ -83,7 +83,7 @@ class ModuleDB(MasterDB):
         return self._tech_info
 
     def generate_model_netlist(self, fname, cell_name, model_params):
-        # type: (str, str, Dict[str, Any]) -> str
+        # type: (str, str, Param) -> str
         template = self._temp_env.get_template(fname)
         return template.render(_cell_name=cell_name, **model_params)
 
@@ -128,7 +128,10 @@ class ModuleDB(MasterDB):
         """
         debug = kwargs.get('debug', False)
 
-        key = master.compute_unique_key(model_params=model_params)
+        new_params = master.params.copy()
+        new_params.assign('model_params', model_params)
+        new_params.update_hash()
+        key = master.compute_unique_key(new_params)
         test = self.find_master(key)
         if test is not None:
             if debug:
@@ -138,7 +141,7 @@ class ModuleDB(MasterDB):
         if debug:
             print('generating model master')
         new_master = master.get_copy()
-        new_master.design_model(model_params)
+        new_master.design_model(model_params, key)
         self.register_master(key, new_master)
         return new_master
 

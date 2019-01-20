@@ -3,6 +3,8 @@
 """This module defines base design module class and primitive design classes.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, List, Dict, Optional, Tuple, Any, Union, Iterable
 
 import os
@@ -37,12 +39,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         the design database object.
     params : Dict[str, Any]
         the parameters dictionary.
-    key : Any
-        the unique ID representing this master instance.
     copy_state : Optional[Dict[str, Any]]
-        If given, set the content of this master from this dictionary.
+        If not None, set content of this master from this dictionary.
     **kwargs : Any
-        additional arguments
+        optional arguments
 
     Attributes
     ----------
@@ -53,18 +53,16 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
     """
 
     def __init__(self, yaml_fname: str, database: ModuleDB, params: Param, *,
-                 key: Any, copy_state: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
+                 copy_state: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
         self._cv = None  # type: Optional[PySchCellView]
         if copy_state:
             self._netlist_dir = copy_state['netlist_dir']
             self._cv = copy_state['cv']
             self._pins = copy_state['pins']  # type: Dict[str, TermType]
-            self._model_params = copy_state['model_params']  # type: Optional[Dict[str, Any]]
             self._orig_cell_name = copy_state['orig_cell_name']
             self.instances = copy_state['instances']  # type: Dict[str, SchInstance]
         else:
             self._pins = {}  # type: Dict[str, TermType]
-            self._model_params = None  # type: Optional[Param]
             if yaml_fname:
                 # normal schematic
                 yaml_fname = os.path.abspath(yaml_fname)
@@ -83,12 +81,13 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 self.instances = {}  # type: Dict[str, SchInstance]
 
         # initialize schematic master
-        DesignMaster.__init__(self, database, params, key=key, copy_state=copy_state)
+        DesignMaster.__init__(self, database, params, copy_state=copy_state, **kwargs)
 
     @classmethod
-    def compute_unique_key(cls, params: Param,
-                           model_params: Optional[Dict[str, Any]] = None) -> Any:
-        return cls.get_qualified_name(), params, model_params
+    def get_hidden_params(cls) -> Dict[str, Any]:
+        ans = DesignMaster.get_hidden_params()
+        ans['model_params'] = None
+        return ans
 
     def get_master_basename(self):
         # type: () -> str
@@ -104,16 +103,9 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         base['netlist_dir'] = self._netlist_dir
         base['cv'] = new_cv
         base['pins'] = self._pins.copy()
-        base['model_params'] = self._model_params
         base['orig_cell_name'] = self._orig_cell_name
         base['instances'] = new_inst
         return base
-
-    def get_copy(self):
-        # type: () -> Module
-        """Returns a copy of this master instance."""
-        copy_state = self.get_copy_state()
-        return self.__class__(self._master_db, None, copy_state=copy_state)
 
     @property
     def tech_info(self) -> TechInfo:
@@ -146,10 +138,11 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         pass
 
-    def design_model(self, model_params):
-        # type: (Param) -> None
-        self._model_params = model_params
-        self.update_signature()
+    def design_model(self, model_params, key):
+        # type: (Param, Any) -> None
+        self.params.assign('model_params', model_params)
+        self.params.update_hash()
+        self.update_signature(key)
         self._cv.cell_name = self.cell_name
         if 'view_name' not in model_params:
             # this is a hierarchical model
@@ -159,7 +152,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
             self.clear_children_key()
             for name, inst in self.instances.items():
-                cur_params = self._model_params.get(name, None)
+                cur_params = model_params.get(name, None)
                 if cur_params is None:
                     raise ValueError('Cannot find model parameters for instance {}'.format(name))
                 inst.design_model(cur_params)
@@ -185,8 +178,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         # type: () -> None
         """Finalize this master instance.
         """
-        # invoke design function
+        # invoke design function, excluding model_params
+        mpar = self.params.pop('model_params')
         self.design(**self.params)
+        self.params.assign('model_params', mpar)
 
         # get set of children master keys
         for inst in self.instances.values():
@@ -211,12 +206,13 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
         netlist = ''
         if is_model_type(output_type):
-            if self._model_params is None:
+            model_params = self.params['model_params']
+            if model_params is None:
                 # model parameters is unset.  This happens if a behavioral model view is used
                 # at a top level block, and this cell gets shadows out.
                 # If this is the case, just return None so this cellview won't be netlisted.
                 return cell_name, (None, '')
-            view_name = self._model_params.get('view_name', None)
+            view_name = model_params.get('view_name', None)
             if view_name is not None:
                 ext = get_extension(output_type)
                 if view_name:
@@ -225,8 +221,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                     # empty view_name, use default name
                     fname = '{}.{}'.format(self.orig_cell_name, ext)
                 fname = os.path.join(os.path.dirname(self._netlist_dir), 'models', fname)
-                netlist = self.master_db.generate_model_netlist(fname, cell_name,
-                                                                self._model_params)
+                netlist = self.master_db.generate_model_netlist(fname, cell_name, model_params)
 
         return cell_name, (self._cv, netlist)
 
@@ -774,7 +769,7 @@ class MosModuleBase(Module):
     """
 
     def __init__(self, yaml_fname, database, params, **kwargs):
-        # type: (str, ModuleDB, Dict[str, Any], **Any) -> None
+        # type: (str, ModuleDB, Param, **Any) -> None
         Module.__init__(self, yaml_fname, database, params, **kwargs)
         self._pins = dict(G=TermType.inout, D=TermType.inout, S=TermType.inout, B=TermType.inout)
 
@@ -824,7 +819,7 @@ class ResPhysicalModuleBase(Module):
     """
 
     def __init__(self, yaml_fname, database, params, **kwargs):
-        # type: (str, ModuleDB, Dict[str, Any], **Any) -> None
+        # type: (str, ModuleDB, Param, **Any) -> None
         Module.__init__(self, yaml_fname, database, params, **kwargs)
         self._pins = dict(PLUS=TermType.inout, MINUS=TermType.inout, BULK=TermType.inout)
 
@@ -868,7 +863,7 @@ class ResMetalModule(Module):
     """
 
     def __init__(self, yaml_fname, database, params, **kwargs):
-        # type: (str, ModuleDB, Dict[str, Any], **Any) -> None
+        # type: (str, ModuleDB, Param, **Any) -> None
         Module.__init__(self, yaml_fname, database, params, **kwargs)
         self._pins = dict(PLUS=TermType.inout, MINUS=TermType.inout)
 
