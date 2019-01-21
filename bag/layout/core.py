@@ -710,8 +710,8 @@ class TechInfo(object, metaclass=abc.ABCMeta):
 
                 for spx, spy in sp_combo:
                     # get via array bounding box
-                    w_arr = nx * (spx + dim[0]) - spx
-                    h_arr = ny * (spy + dim[1]) - spy
+                    w_arr = dim[0] if nx == 1 else nx * (spx + dim[0]) - spx
+                    h_arr = dim[1] if ny == 1 else ny * (spy + dim[1]) - spy
                     mdim_list = [None, None]
                     # check at least one enclosure rule is satisfied for both top and bottom layer
                     for idx, (mdir, tot_enc_list, arr_enc, arr_test) in \
@@ -764,7 +764,7 @@ class TechInfo(object, metaclass=abc.ABCMeta):
                     break
 
             if opt_nxy is not None:
-                opt_num = weight * opt_nxy[0] * dim[0] * opt_nxy[1] * dim[1]
+                opt_num = weight * opt_nxy[0] * opt_nxy[1]
                 if (best_num is None or opt_num > best_num or
                         (opt_num == best_num and self._via_better(opt_mdim_list, best_mdim_list))):
                     best_num = opt_num
