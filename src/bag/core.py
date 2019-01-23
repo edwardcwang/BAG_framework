@@ -15,9 +15,12 @@ from .interface import ZMQDealer
 from .interface.database import DbAccess
 from .layout.routing.grid import RoutingGrid
 from .layout.template import TemplateDB
+from .layout.tech import TechInfo
 from .io import sim_data
 from .concurrent.core import batch_async_task
-from .env import get_port_number, get_bag_config, create_tech_info, get_bag_work_dir
+from .env import (
+    get_port_number, get_bag_config, get_bag_work_dir, create_routing_grid
+)
 from .util.importlib import import_class
 
 if TYPE_CHECKING:
@@ -348,8 +351,6 @@ class BagProject(object):
     ----------
     bag_config : Dict[str, Any]
         the BAG configuration parameters dictionary.
-    tech_info : bag.layout.core.TechInfo
-        the BAG process technology class.
     """
 
     def __init__(self) -> None:
@@ -369,9 +370,9 @@ class BagProject(object):
         del dealer_kwargs['port_file']
 
         # create TechInfo instance
-        self.tech_info = create_tech_info(bag_config=self.bag_config)
+        self._grid = create_routing_grid()
 
-        if port is not None:
+        if port >= 0:
             # make DbAccess instance.
             dealer = ZMQDealer(port, **dealer_kwargs)
         else:
@@ -389,6 +390,16 @@ class BagProject(object):
         # make SimAccess instance.
         sim_cls = import_class(self.bag_config['simulation']['class'])
         self.sim = sim_cls(bag_tmp_dir, self.bag_config['simulation'])  # type: SimAccess
+
+    @property
+    def tech_info(self) -> TechInfo:
+        """TechInfo: the TechInfo object."""
+        return self._grid.tech_info
+
+    @property
+    def grid(self) -> RoutingGrid:
+        """RoutingGrid: the global routing grid object."""
+        return self._grid
 
     @property
     def default_lib_path(self):
@@ -456,28 +467,18 @@ class BagProject(object):
         """
         return self.impl_db.get_cells_in_library(lib_name)
 
-    def make_template_db(self, impl_lib, grid_specs, **kwargs):
-        # type: (str, Dict[str, Any], **Any) -> TemplateDB
+    def make_template_db(self, impl_lib, **kwargs):
+        # type: (str, **Any) -> TemplateDB
         """Create and return a new TemplateDB instance.
 
         Parameters
         ----------
         impl_lib : str
             the library name to put generated layouts in.
-        grid_specs : Dict[str, Any]
-            the routing grid specification dictionary.
         **kwargs : Any
             optional TemplateDB parameters.
         """
-        layers = grid_specs['layers']
-        widths = grid_specs['widths']
-        spaces = grid_specs['spaces']
-        bot_dir = grid_specs['bot_dir']
-        width_override = grid_specs.get('width_override', None)
-
-        routing_grid = RoutingGrid(self.tech_info, layers, spaces, widths, bot_dir,
-                                   width_override=width_override)
-        tdb = TemplateDB(routing_grid, impl_lib, prj=self, **kwargs)
+        tdb = TemplateDB(self.grid, impl_lib, prj=self, **kwargs)
 
         return tdb
 
@@ -546,13 +547,11 @@ class BagProject(object):
 
         impl_lib = specs['impl_lib']
         impl_cell = specs['impl_cell']
-        grid_specs = specs['routing_grid']
         params = specs['params']
         gen_sch = gen_sch and (sch_cls is not None)
 
         if gen_lay or gen_sch:
-            temp_db = self.make_template_db(impl_lib, grid_specs,
-                                            name_prefix=prefix, name_suffix=suffix)
+            temp_db = self.make_template_db(impl_lib, name_prefix=prefix, name_suffix=suffix)
 
             name_list = [impl_cell]
             print('computing layout...')

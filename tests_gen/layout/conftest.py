@@ -8,8 +8,8 @@ from bag.layout.template import TemplateDB
 
 
 @pytest.fixture(scope='session')
-def routing_grid():
-    return create_routing_grid()
+def routing_grid(tech_info):
+    return create_routing_grid(tech_info=tech_info)
 
 
 @pytest.fixture

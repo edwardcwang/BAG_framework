@@ -81,9 +81,11 @@ def create_tech_info(bag_config: Optional[Dict[str, Any]] = None) -> TechInfo:
     return tech_info
 
 
-def create_routing_grid(bag_config: Optional[Dict[str, Any]] = None) -> RoutingGrid:
+def create_routing_grid(tech_info: Optional[TechInfo] = None,
+                        bag_config: Optional[Dict[str, Any]] = None) -> RoutingGrid:
     """Create RoutingGrid object."""
-    tech_info = create_tech_info(bag_config=bag_config)
+    if tech_info is None:
+        tech_info = create_tech_info(bag_config=bag_config)
     return RoutingGrid(tech_info, tech_info.tech_params['tech_config_fname'])
 
 
@@ -109,6 +111,8 @@ def get_port_number(bag_config: Optional[Dict[str, Any]] = None) -> Tuple[int, s
     try:
         port = int(read_file(port_file))
     except ValueError as err:
+        return -1, str(err)
+    except FileNotFoundError as err:
         return -1, str(err)
 
     return port, ''

@@ -7,7 +7,7 @@ import importlib
 
 import pytest
 
-from bag.core import create_tech_info
+from bag.env import create_tech_info
 from bag.io.file import read_yaml
 
 

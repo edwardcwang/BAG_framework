@@ -73,8 +73,8 @@ def test_layout(tmpdir,
         # currently only works for GDS
         lay_map = get_gds_layer_map()
         obj_map = get_gds_object_map()
-        tech_obj = temp_db.tech_info.pybag_tech
-        expect_cv_list = read_gds(expect_fname, lay_map, obj_map, tech_obj)
-        actual_cv_list = read_gds(actual_fname, lay_map, obj_map, tech_obj)
+        grid = temp_db.grid
+        expect_cv_list = read_gds(expect_fname, lay_map, obj_map, grid)
+        actual_cv_list = read_gds(actual_fname, lay_map, obj_map, grid)
 
         assert expect_cv_list == actual_cv_list
