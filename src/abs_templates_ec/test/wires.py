@@ -16,11 +16,9 @@ class TestWire00(TemplateBase):
 
     def draw_layout(self) -> None:
         # Metal 4 is horizontal, Metal 5 is vertical
-        print('in draw_layout')
         hm_layer = 4
         vm_layer = 5
 
-        print('add wires')
         warr1 = self.add_wires(hm_layer, 0, 100, 300)
         # print WireArray object
         print(warr1)
@@ -51,4 +49,3 @@ class TestWire00(TemplateBase):
         print(self.bound_box)
         # add a M7 rectangle to visualize bounding box in layout
         self.add_rect('M7', '', self.bound_box)
-        print('finish draw layout')
