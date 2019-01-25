@@ -48,4 +48,4 @@ class TestWire00(TemplateBase):
         # print bounding box of this template
         print(self.bound_box)
         # add a M7 rectangle to visualize bounding box in layout
-        self.add_rect('M7', '', self.bound_box)
+        self.add_rect(('M7', ''), self.bound_box)

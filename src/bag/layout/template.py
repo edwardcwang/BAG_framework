@@ -312,24 +312,22 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         self._layout.set_geometry_mode(mode.value)
 
-    def get_rect_bbox(self, layer: str, purpose: str = '') -> BBox:
+    def get_rect_bbox(self, lay_purp: Tuple[str, str]) -> BBox:
         """Returns the overall bounding box of all rectangles on the given layer.
 
         Note: currently this does not check primitive instances or vias.
 
         Parameters
         ----------
-        layer : str
-            the layer name.
-        purpose : str
-            the purpose name.
+        lay_purp: Tuple[str, str]
+            the layer/purpose pair.
 
         Returns
         -------
         box : BBox
             the overall bounding box of the given layer.
         """
-        return self._layout.get_rect_bbox(layer, purpose)
+        return self._layout.get_rect_bbox(lay_purp[0], lay_purp[1])
 
     def new_template_with(self, **kwargs: Any) -> TemplateBase:
         """Create a new template with the given parameters.
@@ -669,15 +667,13 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         lay_id = self._grid.tech_info.get_layer_id(layer)
         return (lay_id is None) or self._grid.is_horizontal(lay_id)
 
-    def add_rect(self, layer: str, purpose: str, bbox: BBox, commit: bool = True) -> PyRect:
+    def add_rect(self, lay_purp: Tuple[str, str], bbox: BBox, commit: bool = True) -> PyRect:
         """Add a new rectangle.
 
         Parameters
         ----------
-        layer: str
-            the layer name.
-        purpose: str
-            the purpose name.
+        lay_purp: Tuple[str, str]
+            the layer/purpose pair.
         bbox : BBox
             the rectangle bounding box.
         commit : bool
@@ -688,21 +684,19 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         rect : PyRect
             the added rectangle.
         """
-        return self._layout.add_rect(layer, purpose, bbox, commit)
+        return self._layout.add_rect(lay_purp[0], lay_purp[1], bbox, commit)
 
-    def add_rect_arr(self, layer: str, purpose: str, barr: BBoxArray) -> None:
+    def add_rect_arr(self, lay_purp: Tuple[str, str], barr: BBoxArray) -> None:
         """Add a new rectangle array.
 
         Parameters
         ----------
-        layer: str
-            the layer name.
-        purpose: str
-            the purpose name.
+        lay_purp: Tuple[str, str]
+            the layer/purpose pair.
         barr : BBoxArray
             the rectangle bounding box array.
         """
-        self._layout.add_rect_arr(layer, purpose, barr)
+        self._layout.add_rect_arr(lay_purp[0], lay_purp[1], barr)
 
     def add_res_metal(self, layer_id: int, bbox: BBox) -> None:
         """Add a new metal resistor.
@@ -717,17 +711,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         for lay, purp in self._grid.tech_info.get_res_metal_layers(layer_id):
             self._layout.add_rect(lay, purp, bbox, True)
 
-    def add_path(self, layer: str, purpose: str, width: int, points: List[PointType],
+    def add_path(self, lay_purp: Tuple[str, str], width: int, points: List[PointType],
                  start_style: PathStyle, *, join_style: PathStyle = PathStyle.round,
                  stop_style: Optional[PathStyle] = None, commit: bool = True) -> PyPath:
         """Add a new path.
 
         Parameters
         ----------
-        layer : str
-            the layer name.
-        purpose : str
-            the purpose name.
+        lay_purp: Tuple[str, str]
+            the layer/purpose pair.
         width : int
             the path width.
         points : List[PointType]
@@ -749,10 +741,10 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if stop_style is None:
             stop_style = start_style
         half_width = width // 2
-        return self._layout.add_path(layer, purpose, points, half_width, start_style,
+        return self._layout.add_path(lay_purp[0], lay_purp[1], points, half_width, start_style,
                                      stop_style, join_style, commit)
 
-    def add_path45_bus(self, layer: str, purpose: str, points: List[PointType], widths: List[int],
+    def add_path45_bus(self, lay_purp: Tuple[str, str], points: List[PointType], widths: List[int],
                        spaces: List[int], start_style: PathStyle, *,
                        join_style: PathStyle = PathStyle.round,
                        stop_style: Optional[PathStyle] = None, commit: bool = True) -> PyPath:
@@ -760,10 +752,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        layer : str
-            the path layer.
-        purpose : str
-            the purpose name.
+        lay_purp: Tuple[str, str]
+            the layer/purpose pair.
         points : List[PointType]
             points defining this path.
         widths : List[int]
@@ -786,19 +776,17 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         if stop_style is None:
             stop_style = start_style
-        return self._layout.add_path45_bus(layer, purpose, points, widths, spaces,
+        return self._layout.add_path45_bus(lay_purp[0], lay_purp[1], points, widths, spaces,
                                            start_style, stop_style, join_style, commit)
 
-    def add_polygon(self, layer: str, purpose: str, points: List[PointType],
+    def add_polygon(self, lay_purp: Tuple[str, str], points: List[PointType],
                     commit: bool = True) -> PyPolygon:
         """Add a new polygon.
 
         Parameters
         ----------
-        layer : str
-            the polygon layer.
-        purpose: str
-            the layer purpose.
+        lay_purp: Tuple[str, str]
+            the layer/purpose pair.
         points : List[PointType]
             vertices of the polygon.
         commit : bool
@@ -809,7 +797,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         polygon : PyPolygon
             the added polygon object.
         """
-        return self._layout.add_poly(layer, purpose, points, commit)
+        return self._layout.add_poly(lay_purp[0], lay_purp[1], points, commit)
 
     def add_blockage(self, layer: str, blk_type: BlockageType, points: List[PointType],
                      commit: bool = True) -> PyBlockage:
@@ -938,7 +926,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         else:
             port_pins[layer] = [bbox]
 
-    def add_label(self, label: str, layer: str, purpose: str, bbox: BBox) -> None:
+    def add_label(self, label: str, lay_purp: Tuple[str, str], bbox: BBox) -> None:
         """Adds a label to the layout.
 
         This is mainly used to add voltage text labels.
@@ -947,16 +935,14 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         label : str
             the label text.
-        layer : str
-            the layer name.
-        purpose : str
-            the purpose name.
+        lay_purp: Tuple[str, str]
+            the layer/purpose pair.
         bbox : BBox
             the label bounding box.
         """
         orient = Orientation.R90 if bbox.h > bbox.w else Orientation.R0
         xform = Transform(bbox.xm, bbox.ym, orient)
-        self._layout.add_label(layer, purpose, xform, label)
+        self._layout.add_label(lay_purp[0], lay_purp[1], xform, label)
 
     def add_pin(self, net_name: str, wire_arr_list: Union[WireArray, List[WireArray]],
                 *, label: str = '', show: bool = True, edge_mode: int = 0) -> None:
@@ -1018,26 +1004,21 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             else:
                 port_pins[layer_id].append(warr)
 
-    def add_via(self, bbox: BBox, bot_layer: str, top_layer: str, bot_dir: Orient2D, *,
-                bot_purpose: str = '', top_purpose: str = '', extend: bool = True,
-                top_dir: Optional[Orient2D] = None, add_layers: bool = False,
-                commit: bool = True) -> PyVia:
+    def add_via(self, bbox: BBox, bot_lay_purp: Tuple[str, str], top_lay_purp: Tuple[str, str],
+                bot_dir: Orient2D, *, extend: bool = True, top_dir: Optional[Orient2D] = None,
+                add_layers: bool = False, commit: bool = True) -> PyVia:
         """Adds an arrayed via object to the layout.
 
         Parameters
         ----------
         bbox : BBox
             the via bounding box, not including extensions.
-        bot_layer : str
-            the bottom layer name.
-        top_layer : str
-            the top layer name.
+        bot_lay_purp : Tuple[str. str]
+            the bottom layer/purpose pair.
+        top_lay_purp : Tuple[str, str]
+            the top layer/purpose pair.
         bot_dir : Orient2D
             the bottom layer extension direction.
-        bot_purpose : str
-            bottom layer purpose.
-        top_purpose : str
-            top layer purpose.
         extend : bool
             True if via extension can be drawn outside of the box.
         top_dir : Optional[Orient2D]
@@ -1053,14 +1034,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             the new via object.
         """
         tech_info = self._grid.tech_info
-        via_info = tech_info.get_via_info(bbox, Direction.LOWER, bot_layer, top_layer,
-                                          bot_dir, purpose=bot_purpose, adj_purpose=top_purpose,
+        via_info = tech_info.get_via_info(bbox, Direction.LOWER, bot_lay_purp[0],
+                                          top_lay_purp[0],
+                                          bot_dir, purpose=bot_lay_purp[1],
+                                          adj_purpose=top_lay_purp[1],
                                           extend=extend, adj_ex_dir=top_dir)
 
         if via_info is None:
-            raise ValueError('Cannot create via between layers ({}, {}) and ({}, {}) '
-                             'with BBox: {}'.format(bot_layer, bot_purpose, top_layer, top_purpose,
-                                                    bbox))
+            raise ValueError('Cannot create via between layers {} and {} '
+                             'with BBox: {}'.format(bot_lay_purp, top_lay_purp, bbox))
 
         table = via_info['params']
         via_id = table['id']
@@ -1069,8 +1051,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         return self._layout.add_via(xform, via_id, via_param, add_layers, commit)
 
-    def add_via_arr(self, barr: BBoxArray, bot_layer: str, top_layer: str, bot_dir: Orient2D, *,
-                    bot_purpose: str = '', top_purpose: str = '', extend: bool = True,
+    def add_via_arr(self, barr: BBoxArray, bot_lay_purp: Tuple[str, str],
+                    top_lay_purp: Tuple[str, str], bot_dir: Orient2D, *, extend: bool = True,
                     top_dir: Optional[Orient2D] = None, add_layers: bool = False) -> Dict[str, Any]:
         """Adds an arrayed via object to the layout.
 
@@ -1078,16 +1060,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         ----------
         barr : BBoxArray
             the BBoxArray representing the via bounding boxes, not including extensions.
-        bot_layer : str
-            the bottom layer name.
-        top_layer : str
-            the top layer name.
+        bot_lay_purp : Tuple[str. str]
+            the bottom layer/purpose pair.
+        top_lay_purp : Tuple[str, str]
+            the top layer/purpose pair.
         bot_dir : Orient2D
             the bottom layer extension direction.
-        bot_purpose : str
-            bottom layer purpose.
-        top_purpose : str
-            top layer purpose.
         extend : bool
             True if via extension can be drawn outside of the box.
         top_dir : Optional[Orient2D]
@@ -1102,14 +1080,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         tech_info = self._grid.tech_info
         base_box = barr.base
-        via_info = tech_info.get_via_info(base_box, Direction.LOWER, bot_layer, top_layer,
-                                          bot_dir, purpose=bot_purpose, adj_purpose=top_purpose,
-                                          extend=extend, adj_ex_dir=top_dir)
+        via_info = tech_info.get_via_info(base_box, Direction.LOWER, bot_lay_purp[0],
+                                          top_lay_purp[0], bot_dir, purpose=bot_lay_purp[1],
+                                          adj_purpose=top_lay_purp[1], extend=extend,
+                                          adj_ex_dir=top_dir)
 
         if via_info is None:
-            raise ValueError('Cannot create via between layers ({}, {}) and ({}, {}) '
-                             'with BBox: {}'.format(bot_layer, bot_purpose, top_layer, top_purpose,
-                                                    base_box))
+            raise ValueError('Cannot create via between layers {} and {} '
+                             'with BBox: {}'.format(bot_lay_purp, top_lay_purp, base_box))
+
         table = via_info['params']
         via_id = table['id']
         xform = table['xform']
