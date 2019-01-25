@@ -49,3 +49,26 @@ class TestWire00(TemplateBase):
         print(self.bound_box)
         # add a M7 rectangle to visualize bounding box in layout
         self.add_rect(('M7', ''), self.bound_box)
+
+
+class TestVia00(TemplateBase):
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
+
+    @classmethod
+    def get_params_info(cls):
+        return {}
+
+    def draw_layout(self):
+        # Metal 4 is horizontal, Metal 5 is vertical
+        hm_layer = 4
+        vm_layer = 5
+
+        warr1 = self.add_wires(hm_layer, 0, 0, 400)
+        warr2 = self.add_wires(vm_layer, 2, 0, 400)
+        self.connect_to_track_wires(warr1, warr2)
+
+        warr3 = self.add_wires(hm_layer, 10, 0, 400, num=3, pitch=2)
+        self.connect_to_track_wires(warr2, warr3)
+
+        self.add_pin('foo', warr2)

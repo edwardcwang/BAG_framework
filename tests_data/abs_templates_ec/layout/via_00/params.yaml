@@ -1,0 +1,3 @@
+module: 'abs_templates_ec.test.wires'
+class: 'TestVia00'
+params: {}

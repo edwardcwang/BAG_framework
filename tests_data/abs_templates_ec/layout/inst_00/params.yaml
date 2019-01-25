@@ -1,0 +1,3 @@
+module: 'abs_templates_ec.test.geo_inst'
+class: 'TestPolyInst00'
+params: {}
