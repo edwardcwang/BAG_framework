@@ -1251,7 +1251,6 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         """
         tid = TrackID(layer_id, track_idx, width=width, num=num, pitch=pitch)
         warr = WireArray(tid, lower, upper)
-        print('calling add_warr')
         self._layout.add_warr(warr)
         return warr
 
