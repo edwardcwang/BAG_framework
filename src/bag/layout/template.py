@@ -1981,7 +1981,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
     def connect_to_track_wires(self, wire_arr_list: Union[WireArray, List[WireArray]],
                                track_wires: Union[WireArray, List[WireArray]], *,
-                               min_len_mode: Optional[int] = None,
+                               min_len_mode: Optional[MinLenMode] = None,
                                debug: bool = False) -> Union[Optional[WireArray],
                                                              List[Optional[WireArray]]]:
         """Connect all given WireArrays to the given WireArrays on adjacent layer.
@@ -1992,9 +1992,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             list of WireArrays to connect to track.
         track_wires : Union[WireArray, List[WireArray]]
             list of tracks as WireArrays.
-        min_len_mode : Optional[int]
-            If not None, will extend track so it satisfy minimum length requirement.
-            Use -1 to extend lower bound, 1 to extend upper bound, 0 to extend both equally.
+        min_len_mode : MinLenMode
+            the minimum length extension mode.
         debug : bool
             True to print debug messages.
 
