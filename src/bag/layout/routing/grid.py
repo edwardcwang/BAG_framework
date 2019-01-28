@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Tuple, List, Optional, Dict, Any, Union, Iterable
+from typing import Tuple, List, Optional, Dict, Any, Union
 
 from warnings import warn
 
@@ -753,24 +753,3 @@ class RoutingGrid(PyRoutingGrid):
             lower += delta
 
         return BBox(self.get_direction(layer_id), warr.lower, warr.upper, lower, upper)
-
-    def warr_bbox_iter(self, warr: WireArray) -> Iterable[Tuple[str, str, BBox]]:
-        """Returns an iterator over the BBox corresponding to the wires.
-
-        Parameters
-        ----------
-        warr : WireArray
-            the WireArray object.
-
-        Yields
-        -------
-        layer : str
-            the layer name.
-        purpose : str
-            the purpose name.
-        bbox : BBox
-            the bounding box of a single wire.
-        """
-        tid = warr.track_id
-        return self.bbox_iter(tid.layer_id, tid.base_htr, tid.width, tid.num, tid.pitch,
-                              warr.lower, warr.upper)
