@@ -596,6 +596,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         ref = self._layout.add_instance(master.layout_cellview, inst_name, xform, nx, ny,
                                         spx, spy, commit)
+        self.add_child_key(master.key)
         return PyLayInstance(self, master, ref)
 
     def add_instance_primitive(self,

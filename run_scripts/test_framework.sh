@@ -8,4 +8,4 @@ then
     exit 1
 fi
 
-exec ${BAG_PYTEST} ${BAG_TECH_CONFIG_DIR}/tests $@
+exec ${BAG_PYTEST} ${BAG_FRAMEWORK}/tests $@
