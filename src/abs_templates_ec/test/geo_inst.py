@@ -47,7 +47,7 @@ class TestPolyInst00(TemplateBase):
 
         # instantiate Test1
         master = self.template_db.new_template(params={}, temp_cls=TestRectPath00)
-        self.add_instance(master, inst_name='X0', xform=Transform(-100, -100, Orientation.MX))
+        self.add_instance(master, inst_name='X0', xform=Transform(-100, -100, Orientation.MXR90))
 
         # add via, using BAG's technology DRC calculator
         self.add_via(BBox(0, 0, 100, 100), ('M1', ''), ('M2', ''), Orient2D.x)
