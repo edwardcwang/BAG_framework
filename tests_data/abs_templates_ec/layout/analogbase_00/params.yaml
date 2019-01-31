@@ -1,0 +1,10 @@
+module: 'abs_templates_ec.test.analogbase'
+class: 'SingleRowTest'
+params:
+  mos_type: nch
+  lch: 10.0e-9
+  w: 4
+  intent: lvt
+  fg: 20
+  ptap_w: 4
+  ntap_w: 4

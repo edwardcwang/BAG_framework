@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+"""This module tests various geometry creation and instance placement API."""
+
 from typing import Any
 
 from pybag.enum import GeometryMode, PathStyle, Orientation, Orient2D, BlockageType, BoundaryType

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+"""This module defines generators that tests wiring API."""
+
 from typing import Dict, Any
 
 from bag.util.cache import Param
