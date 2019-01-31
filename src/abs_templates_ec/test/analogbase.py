@@ -1,17 +1,17 @@
 
 """This module tests AnalogBase."""
 
+from typing import Any
+
+from bag.util.cache import Param
+from bag.layout.template import TemplateDB
+
 from abs_templates_ec.analog_core.base import AnalogBase
 
 
-class SingleRowTest(AnalogBase):
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        AnalogBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
-        self._sch_params = None
-
-    @property
-    def sch_params(self):
-        return self._sch_params
+class DrawBaseSingleRow(AnalogBase):
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        AnalogBase.__init__(self, temp_db, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):

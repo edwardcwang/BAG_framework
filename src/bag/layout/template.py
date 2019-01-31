@@ -126,6 +126,7 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         self._fill_box = None  # type: BBox
         self.prim_top_layer = None
         self.prim_bound_box = None
+        self._sch_params = None  # type: Optional[Dict[str, Any]]
 
         # add hidden parameters
         DesignMaster.__init__(self, temp_db, params, **kwargs)
@@ -216,6 +217,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
 
         # call super finalize routine
         DesignMaster.finalize(self)
+
+    @property
+    def sch_params(self) -> Optional[Dict[str, Any]]:
+        """Optional[Dict[str, Any]]: The schematic parameters dictionary."""
+        return self._sch_params
+
+    @sch_params.setter
+    def sch_params(self, new_params: Dict[str, Any]) -> None:
+        self._sch_params = new_params
 
     @property
     def template_db(self) -> TemplateDB:
@@ -2451,11 +2461,6 @@ class BlackBoxTemplate(TemplateBase):
 
     def __init__(self, temp_db: TemplateDB, params: Dict[str, Any], **kwargs: Any) -> None:
         TemplateBase.__init__(self, temp_db, params, **kwargs)
-        self._sch_params = {}  # type: Dict[str, Any]
-
-    @property
-    def sch_params(self) -> Dict[str, Any]:
-        return self._sch_params
 
     @classmethod
     def get_params_info(cls) -> Dict[str, str]:

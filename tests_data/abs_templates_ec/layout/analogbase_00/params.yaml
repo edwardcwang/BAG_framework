@@ -1,5 +1,5 @@
 module: 'abs_templates_ec.test.analogbase'
-class: 'SingleRowTest'
+class: 'DrawBaseSingleRow'
 params:
   mos_type: nch
   lch: 10.0e-9

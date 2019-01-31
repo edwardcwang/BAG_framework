@@ -3,17 +3,15 @@
 """This module defines abstract analog mosfet template classes.
 """
 
-from typing import TYPE_CHECKING, Dict, Any, Union, Tuple, List, Optional
+from typing import Dict, Any, Union, Tuple, List, Optional
 
 import abc
 from itertools import chain
 from collections import namedtuple
 
+from bag.layout.tech import TechInfo
 from bag.layout.routing import RoutingGrid
 from bag.layout.template import TemplateBase
-
-if TYPE_CHECKING:
-    from bag.layout.tech import TechInfoConfig
 
 PlaceInfo = namedtuple('PlaceInfo', ['tot_width', 'core_fg', 'core_width', 'edge_margins',
                                      'edge_widths', 'arr_box_x', ])
@@ -36,7 +34,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
     """
 
     def __init__(self, config, tech_info, mos_entry_name='mos'):
-        # type: (Dict[str, Any], TechInfoConfig, str) -> None
+        # type: (Dict[str, Any], TechInfo, str) -> None
         self.config = config
         self.mos_config = self.config[mos_entry_name]
         self.res = self.config['resolution']
@@ -572,13 +570,10 @@ class MOSTech(object, metaclass=abc.ABCMeta):
                     via_info['bot_enc_le'], via_info['top_enc_le']):
             vdim_le = vdim[0] if direction == 'x' else vdim[1]
             top_ext = vdim_le // 2 + vtle
-            lay_name = self.tech_info.get_layer_name(lay)
-            if isinstance(lay_name, tuple):
-                lay_name = lay_name[0]
-            lay_type = self.tech_info.get_layer_type(lay_name)
-            min_len = self.tech_info.get_min_length(lay_type, w)
-            min_len = max(2 * top_ext, -(-min_len // 2) * 2)
-            sp_le = self.tech_info.get_min_line_end_space(lay_type, w)
+            layer, purp = self.tech_info.get_lay_purp_list(lay)[0]
+            min_len = self.tech_info.get_min_length(layer, purp, w, even=True)
+            min_len = max(2 * top_ext, min_len)
+            sp_le = self.tech_info.get_min_line_end_space(layer, w, purpose=purp)
             conn_info[lay] = dict(
                 w=w,
                 direction=direction,
@@ -815,7 +810,7 @@ class MOSTech(object, metaclass=abc.ABCMeta):
 
     def get_min_fg_sep(self, lch_unit):
         # type: (int) -> int
-        """Returns the minimum number of dummy fingers needed between active transistors in AnalogBase.
+        """Returns the minimum number of dummy fingers needed between transistors in AnalogBase.
 
         Parameters
         ----------
@@ -845,26 +840,18 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         """
         return self.config[name]
 
-    def get_mos_pitch(self, unit_mode=False):
-        # type: (bool) -> Union[float, int]
+    def get_mos_pitch(self):
+        # type: () -> int
         """Returns the transistor vertical placement quantization pitch.
         
         This is usually the fin pitch for finfet process.
-        
-        Parameters
-        ----------
-        unit_mode : bool
-            True to return the pitch in resolution units.
-            
+
         Returns
         -------
-        mos_pitch : Union[float, int]
+        mos_pitch : int
             the transistor vertical placement quantization pitch.
         """
-        ans = self.mos_config['mos_pitch']
-        if unit_mode:
-            return ans
-        return ans * self.res
+        return self.mos_config['mos_pitch']
 
     def get_dum_conn_track_info(self, lch_unit):
         # type: (int) -> Tuple[int, int]
@@ -1024,13 +1011,13 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         if top_layer <= prim_layer:
             # use private layer for horizontal quantization so that
             # array box can be defined.
-            blk_w = grid.get_block_size(top_vm_layer, unit_mode=True, half_blk_x=half_blk_x)[0]
+            blk_w = grid.get_block_size(top_vm_layer, half_blk_x=half_blk_x)[0]
             edgel_margin = -(-edgel_margin // blk_w) * blk_w
             edger_margin = -(-edger_margin // blk_w) * blk_w
             arr_dxl = edgel_margin
             arr_dxr = edger_margin
         else:
-            blk_w = grid.get_block_size(top_layer, unit_mode=True, half_blk_x=half_blk_x)[0]
+            blk_w = grid.get_block_size(top_layer, half_blk_x=half_blk_x)[0]
             arr_dxl = 0
             arr_dxr = 0
 
