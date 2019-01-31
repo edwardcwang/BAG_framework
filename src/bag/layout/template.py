@@ -941,9 +941,15 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         bbox : BBox
             the label bounding box.
         """
-        orient = Orientation.R90 if bbox.h > bbox.w else Orientation.R0
+        w = bbox.w
+        text_h = bbox.h
+        if text_h > w:
+            orient = Orientation.R90
+            text_h = w
+        else:
+            orient = Orientation.R0
         xform = Transform(bbox.xm, bbox.ym, orient)
-        self._layout.add_label(lay_purp[0], lay_purp[1], xform, label)
+        self._layout.add_label(lay_purp[0], lay_purp[1], xform, label, text_h)
 
     def add_pin(self, net_name: str, wire_arr_list: Union[WireArray, List[WireArray]],
                 *, label: str = '', show: bool = True, edge_mode: int = 0) -> None:
