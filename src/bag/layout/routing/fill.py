@@ -5,9 +5,9 @@
 
 from typing import TYPE_CHECKING, Optional, Union, List, Tuple, Any, Generator
 
-from rtree.index import Index, Property
+# from rtree.index import Index, Property
 
-from bag.layout.util import BBox
+# from bag.layout.util import BBox
 from bag.util.search import BinaryIterator, minimize_cost_golden
 
 if TYPE_CHECKING:
