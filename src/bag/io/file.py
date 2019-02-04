@@ -201,6 +201,7 @@ def make_temp_dir(prefix: str, parent_dir: str = '') -> str:
     """
     prefix += time.strftime("_%Y%m%d_%H%M%S")
     parent_dir = parent_dir or tempfile.gettempdir()
+    os.makedirs(parent_dir, exist_ok=True)
     return tempfile.mkdtemp(prefix=prefix, dir=parent_dir)
 
 

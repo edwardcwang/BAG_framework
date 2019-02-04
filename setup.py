@@ -19,10 +19,9 @@ setup(
     python_requires='>=3.7',
     install_requires=[
         'setuptools>=18.5',
-        'PyYAML>=3.11',
+        'ruamel.yaml',
         'Jinja2>=2.9',
         'numpy>=1.10',
-        'networkx>=1.11',
         'pexpect>=4.0',
         'pyzmq>=15.2.0',
         'scipy>=0.17',
