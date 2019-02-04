@@ -1180,7 +1180,7 @@ class AnalogBase(TemplateBase, abc.ABC):
             )
             master = self.new_template(params=sub_params, temp_cls=AnalogSubstrate)
             master_list.append(master)
-            height = master.bound_box.height_unit
+            height = master.bound_box.h
             rprop_list.append(dict(
                 mos_type=sub_type,
                 orient=Orientation.R0,
@@ -1213,7 +1213,7 @@ class AnalogBase(TemplateBase, abc.ABC):
             )
             master = self.new_template(params=params, temp_cls=AnalogMOSBase)
             master_list.append(master)
-            height = master.bound_box.height_unit
+            height = master.bound_box.h
             g_conn_y = master.get_g_conn_y()
             d_conn_y = master.get_d_conn_y()
             g2_ysep = master.get_po_y()[0]
@@ -1315,7 +1315,7 @@ class AnalogBase(TemplateBase, abc.ABC):
             )
             master = self.new_template(params=sub_params, temp_cls=AnalogSubstrate)
             master_list.append(master)
-            height = master.bound_box.height_unit
+            height = master.bound_box.h
             rprop_list.append(dict(
                 mos_type=sub_type,
                 w=top_sub_w,
@@ -1510,8 +1510,8 @@ class AnalogBase(TemplateBase, abc.ABC):
         )
         top_end_master = self.new_template(params=top_end_params, temp_cls=AnalogEndRow)
         # compute Y coordinate shift from adding end row
-        dy = bot_end_master.array_box.height_unit
-        h_top = top_end_master.array_box.height_unit
+        dy = bot_end_master.array_box.h
+        h_top = top_end_master.array_box.h
         min_height -= h_top
 
         # find bot_ext_w such that we place blocks as close to center as possible,
@@ -1573,7 +1573,7 @@ class AnalogBase(TemplateBase, abc.ABC):
         gr_vdd_dum_warrs = []
         # add end rows to list
         y_list.insert(0, 0)
-        y_list.append(y_list[-1] + master_list[-1].array_box.height_unit)
+        y_list.append(y_list[-1] + master_list[-1].array_box.h)
         ext_list.insert(0, (0, None))
         ext_list.append((0, None))
         ext_list.append((0, None))
@@ -1589,7 +1589,7 @@ class AnalogBase(TemplateBase, abc.ABC):
                 enumerate(zip(y_list, ext_list, master_list, orient_list)):
             pridx = row_idx - 1
             no_flip = orient is Orientation.R0
-            height = master.bound_box.height_unit
+            height = master.bound_box.h
             if master.is_empty and height == 0:
                 continue
 
@@ -1657,7 +1657,7 @@ class AnalogBase(TemplateBase, abc.ABC):
                     tech_cls_name=self._tech_cls_name,
                 )
                 edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
-                edge_width = edge_master.bound_box.width_unit
+                edge_width = edge_master.bound_box.w
                 if not edge_master.is_empty:
                     edge_inst = self.add_instance(edge_master,
                                                   xform=Transform(edgel_x0, yo, orient))
@@ -1725,7 +1725,7 @@ class AnalogBase(TemplateBase, abc.ABC):
                     tech_cls_name=self._tech_cls_name,
                 )
                 edge_master = self.new_template(params=edge_params, temp_cls=AnalogEdge)
-                edge_width = edge_master.bound_box.width_unit
+                edge_width = edge_master.bound_box.w
                 edger_xo = inst.array_box.xh + edge_width
                 if not edge_master.is_empty:
                     edge_inst = self.add_instance(edge_master,

@@ -1,24 +1,23 @@
 # -*- coding: utf-8 -*-
 
-from typing import TYPE_CHECKING, Dict, Union, Any, List, Optional, Tuple
+from typing import Dict, Union, Any, List, Optional, Tuple
 
 import abc
 import math
 from collections import namedtuple
 
+from pybag.core import BBox, BBoxArray
+
 from bag.math import lcm
 from bag.util.search import BinaryIterator
-from bag.layout.util import BBox
+from bag.layout.tech import TechInfo
 from bag.layout.routing import WireArray
-from bag.layout.routing.fill import fill_symmetric_min_density_info
-from bag.layout.routing.fill import fill_symmetric_interval
-from bag.layout.routing.fill import fill_symmetric_max_density
+from bag.layout.routing.fill import (
+    fill_symmetric_min_density_info, fill_symmetric_interval, fill_symmetric_max_density
+)
 from bag.layout.template import TemplateBase
 
 from .core import MOSTech
-
-if TYPE_CHECKING:
-    from bag.layout.tech import TechInfoConfig
 
 RowInfo = namedtuple('RowInfo', ['od_x_list', 'od_type', 'row_y', 'od_y', 'po_y', 'md_y'])
 AdjRowInfo = namedtuple('AdjRowInfo', ['row_y', 'po_y', 'po_types'])
@@ -54,8 +53,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         the given configuration dictionary.
     """
 
-    def __init__(self, config, tech_info, mos_entry_name='mos'):
-        # type: (Dict[str, Any], TechInfoConfig, str) -> None
+    def __init__(self, config: Dict[str, Any], tech_info: TechInfo, mos_entry_name: str = 'mos') -> None:
         MOSTech.__init__(self, config, tech_info, mos_entry_name=mos_entry_name)
         self.ignore_vm_layers = set()
 
@@ -345,12 +343,15 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         mos_constants['od_fin_exty'] = (offset + int(round(h_scale * fin_h)) +
                                         int(round(p_scale * fin_p)))
 
+    # noinspection PyMethodMayBeStatic,PyUnusedLocal
     def get_has_cpo(self, mos_constants, **kwargs):
         return mos_constants['has_cpo']
 
+    # noinspection PyMethodMayBeStatic,PyUnusedLocal
     def get_implant_type(self, lch_unit, mos_type, **kwargs):
         return mos_type
 
+    # noinspection PyMethodMayBeStatic,PyUnusedLocal
     def is_gr_continuous(self, lch_unit, **kwargs):
         return False
 
@@ -1840,7 +1841,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         # compute new adj_row_list
         if is_gr_continuous:
-            po_types = ('PO_dummy',) * (fg_od_margin - 1) + ('PO_sub',) * (guard_ring_nf + fg_od_margin +1)
+            po_types = ('PO_dummy',) * (fg_od_margin - 1) + ('PO_sub',) * (guard_ring_nf + fg_od_margin + 1)
         else:
             po_types = ('PO_dummy',) * (fg_od_margin - 1) + ('PO_edge',) + \
                    ('PO_sub',) * guard_ring_nf + ('PO_edge',) + ('PO_dummy',) * (fg_od_margin - 1)
@@ -2036,16 +2037,16 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
 
         po_xl, po_xr = po_x
         if has_cpo:
-            template.add_rect(po_lay, BBox(po_xl, row_y[0], po_xr, row_y[1], res, unit_mode=True))
+            template.add_rect(po_lay, BBox(po_xl, row_y[0], po_xr, row_y[1]))
         else:
-            template.add_rect(po_lay, BBox(po_xl, po_y[0], po_xr, po_y[1], res, unit_mode=True))
+            template.add_rect(po_lay, BBox(po_xl, po_y[0], po_xr, po_y[1]))
 
         od_yb, od_yt = od_y
         if od_yt > od_yb and ('sub' in po_type or
                               ('edge' in po_type and po_type != 'PO_edge_dummy')):
             pode_lay = mos_layer_table.get('PODE', None)
             if pode_lay is not None:
-                template.add_rect(pode_lay, BBox(po_xl, od_yb, po_xr, od_yt, res, unit_mode=True))
+                template.add_rect(pode_lay, BBox(po_xl, od_yb, po_xr, od_yt))
 
     def draw_mos(self, template, layout_info):
         # type: (TemplateBase, Dict[str, Any]) -> None
@@ -2123,7 +2124,6 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         layout_info : Dict[str, Any]
             the layout information dictionary.
         """
-        res = self.res
         mos_layer_table = self.config['mos_layer_table']
 
         blk_type = layout_info['blk_type']
@@ -2228,18 +2228,18 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                             # modify OD geometry inside planar guard ring
                             if blk_type == 'gr_sub_sub':
                                 self.draw_od(template, od_name,
-                                             BBox(od_xl, od_yt, od_xr, arr_yt, res, unit_mode=True))
+                                             BBox(od_xl, od_yt, od_xr, arr_yt))
                                 od_xr = po_xc + lch_unit // 2 + (fg - 1) * sd_pitch + po_od_extx
                             elif blk_type == 'gr_sub':
                                 od_yb = 0
                                 od_yt = arr_yt
-                        od_box = BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True)
+                        od_box = BBox(od_xl, od_yb, od_xr, od_yt)
                         self.draw_od(template, od_name, od_box)
             elif is_planar_sub and blk_type == 'gr_sub' and arr_yt > arr_yb:
                 od_start, od_stop = od_x_list[0]
                 od_xl = po_xc - lch_unit // 2 + od_start * sd_pitch - po_od_extx
                 od_xr = po_xc + lch_unit // 2 + (od_stop - 1) * sd_pitch + po_od_extx
-                od_box = BBox(od_xl, arr_yb, od_xr, arr_yt, res, unit_mode=True)
+                od_box = BBox(od_xl, arr_yb, od_xr, arr_yt)
                 self.draw_od(template, od_name, od_box)
 
             # draw PO/PODE
@@ -2291,7 +2291,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     if idx not in no_md_region:
                         md_xl = idx * sd_pitch - md_w // 2
                         md_xr = md_xl + md_w
-                        md_box = BBox(md_xl, md_yb, md_xr, md_yt, res, unit_mode=True)
+                        md_box = BBox(md_xl, md_yb, md_xr, md_yt)
                         if md_on_od[idx]:
                             self.draw_mos_rect(template, md_lay_cur, md_box)
                         else:
@@ -2306,7 +2306,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                 # round to fin grid
                 yb = (yb - fin_p2 + fin_h2) // fin_p * fin_p + fin_p2 - fin_h2
                 yt = -(-(yt - fin_p2 - fin_h2) // fin_p) * fin_p + fin_p2 + fin_h2
-            box = BBox(xl, yb, blk_w, yt, res, unit_mode=True)
+            box = BBox(xl, yb, blk_w, yt)
             if box.is_physical() and imp_lay[0] != '':
                 self.draw_mos_rect(template, imp_lay, box)
 
@@ -2323,13 +2323,11 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                                        po_y, (po_y[0], po_y[0]), is_sub_ring=is_sub_ring)
 
         # set size and add PR boundary
-        arr_box = BBox(0, arr_yb, blk_w, arr_yt, res, unit_mode=True)
-        bound_box = arr_box.extend(x=0, y=0, unit_mode=True)
+        arr_box = BBox(0, arr_yb, blk_w, arr_yt)
+        bound_box = arr_box.extend(x=0, y=0)
         template.array_box = arr_box
         template.prim_bound_box = bound_box
         if bound_box.is_physical():
-            template.add_cell_boundary(bound_box)
-
             # draw metal fill.  This only needs to be done if the template has nonzero area.
             for fill_info in fill_info_list:
                 exc_lay = fill_info.exc_layer
@@ -2340,7 +2338,7 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
                     self.draw_mos_rect(template, exc_lay, bound_box)
                 for xl, xr in x_intv_list:
                     for yb, yt in y_intv_list:
-                        self.draw_mos_rect(template, lay, BBox(xl, yb, xr, yt, res, unit_mode=True))
+                        self.draw_mos_rect(template, lay, BBox(xl, yb, xr, yt))
 
     def draw_substrate_connection(self,  # type: MOSTechFinfetBase
                                   template,  # type: TemplateBase
@@ -2718,19 +2716,18 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
             return
 
         # draw fills
-        res = template.grid.resolution
         ny = len(od_y_list)
         po_lay = mos_layer_table['PO_dummy']
         for idx, (od_yb, od_yt) in enumerate(od_y_list):
             po_yb = fill_yb if idx == 0 else od_yb - po_od_exty
             po_yt = fill_yt if idx == ny - 1 else od_yt + po_od_exty
             for od_xl, od_xr in od_x_list:
-                box = BBox(od_xl, od_yb, od_xr, od_yt, res, unit_mode=True)
+                box = BBox(od_xl, od_yb, od_xr, od_yt)
                 self.draw_od(template, 'OD_dummy', box)
                 po_xl = od_xl + po_od_extx - sd_pitch
                 po_xr = po_xl + lch_unit
                 nx = 1 + ((od_xr - po_xr - po_od_extx + sd_pitch) // sd_pitch)
-                template.add_rect_arr(po_lay, BBox(po_xl, po_yb, po_xr, po_yt), nx=nx, spx=sd_pitch)
+                template.add_rect_arr(po_lay, BBoxArray(BBox(po_xl, po_yb, po_xr, po_yt), nx=nx, spx=sd_pitch))
 
         # draw other layers
         od_xl = od_x_list[0][0]
@@ -2746,8 +2743,8 @@ class MOSTechFinfetBase(MOSTech, metaclass=abc.ABCMeta):
         imp_yt = fill_yt + imp_po_ency
         fin_yb = ((imp_yb - fin_p2 + fin_h2) // fin_p) * fin_p + fin_p2 - fin_h2
         fin_yt = -(-(imp_yt - fin_p2 - fin_h2) // fin_p) * fin_p + fin_p2 + fin_h2
-        fin_box = BBox(fin_xl, fin_yb, fin_xr, fin_yt, res, unit_mode=True)
-        imp_box = BBox(imp_xl, imp_yb, imp_xr, imp_yt, res, unit_mode=True)
+        fin_box = BBox(fin_xl, fin_yb, fin_xr, fin_yt)
+        imp_box = BBox(imp_xl, imp_yb, imp_xr, imp_yt)
         for imp_lay in self.get_mos_layers(mos_type, threshold):
             if imp_lay == finbound_lay:
                 box = fin_box
