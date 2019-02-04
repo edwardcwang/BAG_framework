@@ -14,6 +14,7 @@ import sys
 import time
 import numbers
 from collections import OrderedDict
+from collections.abc import Hashable
 
 from pybag.enum import DesignOutput, is_netlist_type, is_model_type
 from pybag.core import implement_yaml, implement_netlist, implement_gds
@@ -32,7 +33,7 @@ MasterType = TypeVar('MasterType', bound='DesignMaster')
 DBType = TypeVar('DBType', bound='MasterDB')
 
 
-class Param(SortedDict):
+class Param(SortedDict, Hashable):
     def __init__(self, *args, **kwargs) -> None:
         hash_val = kwargs.pop('_hash_value', 0)
         SortedDict.__init__(self, *args, **kwargs)
@@ -50,10 +51,18 @@ class Param(SortedDict):
 
     @classmethod
     def get_hash(cls, val: object) -> int:
-        if isinstance(val, list):
+        if isinstance(val, Param):
+            return hash(val)
+        elif isinstance(val, list) or isinstance(val, tuple):
             seed = 0
             for item in val:
                 seed = cls._combine_hash(seed, cls.get_hash(item))
+            return seed
+        elif isinstance(val, dict):
+            seed = 0
+            for k, v in val.items():
+                seed = cls._combine_hash(seed, hash(k))
+                seed = cls._combine_hash(seed, cls.get_hash(v))
             return seed
         else:
             return hash(val)
