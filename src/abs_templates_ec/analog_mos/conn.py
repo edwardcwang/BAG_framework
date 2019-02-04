@@ -3,9 +3,10 @@
 """This module defines abstract analog mosfet template classes.
 """
 
-from typing import Dict, Any, Set
+from typing import Dict, Any
 
 from bag.math import float_to_si_string
+from bag.util.cache import Param
 from bag.layout.template import TemplateBase, TemplateDB
 
 
@@ -13,9 +14,8 @@ class AnalogMOSConn(TemplateBase):
     """A template containing transistor connections.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -106,9 +106,8 @@ class AnalogMOSDummy(TemplateBase):
     """A template containing transistor dummy connections.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -170,9 +169,8 @@ class AnalogMOSDecap(TemplateBase):
     """A template containing transistor decap connections.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -243,9 +241,8 @@ class AnalogSubstrateConn(TemplateBase):
     """A template containing substrate connections.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
         self.has_connection = False
 
     @classmethod
