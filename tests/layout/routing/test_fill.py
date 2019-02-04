@@ -83,128 +83,125 @@ def check_props(fill_list, space_list, num_diff_sp1, num_diff_sp2, n, tot_intv, 
                 assert len_list[-1] == sp
 
 
-def test_fill_symmetric_non_cyclic():
+@pytest.mark.parametrize('sp', [3, 4, 5])
+@pytest.mark.parametrize('inc_sp', [True, False])
+@pytest.mark.parametrize('offset', [0, 4, 7])
+@pytest.mark.parametrize('foe', [True, False])
+def test_fill_symmetric_non_cyclic(sp, inc_sp, offset, foe):
     # test fill symmetric for non-cyclic
-    sp_list = [3, 4, 5]
-    inc_sp_list = [True, False]
-    offset_list = [0, 4, 7]
-    foe_list = [True, False]
     area_max = 50
-    for sp, inc_sp, offset, foe in product(sp_list, inc_sp_list, offset_list, foe_list):
-        for area in range(sp + 1, area_max + 1):
-            tot_intv = offset, offset + area
-            for nfill in range(1, area - sp + 1):
-                nsp = nfill - 1 if foe else nfill + 1
-                # compute minimum possible footprint
-                if nfill % 2 == 1 or inc_sp:
-                    # minimum possible footprint
-                    min_footprint = nfill * 1 + nsp * sp
-                else:
-                    # if we have even fill and we can decrease space, then we can decrease middle space by 1
-                    min_footprint = nfill * 1 + nsp * sp - 1
-                if min_footprint > area:
-                    # test exception when drawing with no solution
-                    # we have no solution when minimum possible footprint > area
-                    with pytest.raises(ValueError):
-                        fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
-                                              invert=False, fill_on_edge=foe, cyclic=False)
-                    with pytest.raises(ValueError):
-                        fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
-                                              invert=True, fill_on_edge=foe, cyclic=False)
-                else:
-                    # get fill and space list
-                    fill_list, num_diff_sp1 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
-                                                                    invert=False, fill_on_edge=foe, cyclic=False)
-                    space_list, num_diff_sp2 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
-                                                                     invert=True, fill_on_edge=foe, cyclic=False)
+    for area in range(sp + 1, area_max + 1):
+        tot_intv = offset, offset + area
+        for nfill in range(1, area - sp + 1):
+            nsp = nfill - 1 if foe else nfill + 1
+            # compute minimum possible footprint
+            if nfill % 2 == 1 or inc_sp:
+                # minimum possible footprint
+                min_footprint = nfill * 1 + nsp * sp
+            else:
+                # if we have even fill and we can decrease space, then we can decrease middle space by 1
+                min_footprint = nfill * 1 + nsp * sp - 1
+            if min_footprint > area:
+                # test exception when drawing with no solution
+                # we have no solution when minimum possible footprint > area
+                with pytest.raises(ValueError):
+                    fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                          invert=False, fill_on_edge=foe, cyclic=False)
+                with pytest.raises(ValueError):
+                    fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                          invert=True, fill_on_edge=foe, cyclic=False)
+            else:
+                # get fill and space list
+                fill_list, num_diff_sp1 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                                                invert=False, fill_on_edge=foe, cyclic=False)
+                space_list, num_diff_sp2 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                                                 invert=True, fill_on_edge=foe, cyclic=False)
 
-                    check_props(fill_list, space_list, num_diff_sp1, num_diff_sp2, nfill, tot_intv, inc_sp, sp,
-                                1, 1, nfill, foe, tot_intv[0], tot_intv[1], 2)
+                check_props(fill_list, space_list, num_diff_sp1, num_diff_sp2, nfill, tot_intv, inc_sp, sp,
+                            1, 1, nfill, foe, tot_intv[0], tot_intv[1], 2)
 
 
-def test_fill_symmetric_cyclic_edge_fill():
+@pytest.mark.parametrize('sp', [3, 4, 5])
+@pytest.mark.parametrize('inc_sp', [True, False])
+@pytest.mark.parametrize('offset', [0, 4, 7])
+def test_fill_symmetric_cyclic_edge_fill(sp, inc_sp, offset):
     # test fill symmetric for cyclic, fill on edge
-    sp_list = [3, 4, 5]
-    inc_sp_list = [True, False]
-    offset_list = [0, 4, 7]
     area_max = 50
-    for sp, inc_sp, offset in product(sp_list, inc_sp_list, offset_list):
-        for area in range(sp + 1, area_max + 1):
-            tot_intv = offset, offset + area
-            for nfill in range(1, area - sp + 1):
-                nsp = nfill
-                if nfill % 2 == 0 or inc_sp:
-                    # minimum possible footprint.  Edge fill block must be even (hence the + 1)
-                    min_footprint = nfill * 1 + 1 + nsp * sp
-                else:
-                    # if we have odd fill and we can decrease space, then we can decrease middle space by 1
-                    min_footprint = nfill * 1 + 1 + nsp * sp - 1
-                if min_footprint > area:
-                    # test exception when drawing with no solution
-                    # we have no solution when minimum possible footprint > area
-                    with pytest.raises(ValueError):
-                        fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
-                                              invert=False, fill_on_edge=True, cyclic=True)
-                    with pytest.raises(ValueError):
-                        fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
-                                              invert=True, fill_on_edge=True, cyclic=True)
-                else:
-                    # get fill and space list
-                    fill_list, num_diff_sp1 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
-                                                                    invert=False, fill_on_edge=True, cyclic=True)
-                    space_list, num_diff_sp2 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
-                                                                     invert=True, fill_on_edge=True, cyclic=True)
-                    # test boundary fills centers on edge
-                    sintv, eintv = fill_list[0], fill_list[-1]
-                    assert (sintv[1] + sintv[0]) % 2 == 0 and (eintv[1] + eintv[0]) % 2 == 0
-                    assert (sintv[1] + sintv[0]) // 2 == tot_intv[0] and (eintv[1] + eintv[0]) // 2 == tot_intv[1]
-                    # test other properties
-                    check_props(fill_list, space_list, num_diff_sp1, num_diff_sp2, nfill, tot_intv, inc_sp, sp,
-                                0, 1, nfill + 1, True, sintv[0], eintv[1], 3)
+    for area in range(sp + 1, area_max + 1):
+        tot_intv = offset, offset + area
+        for nfill in range(1, area - sp + 1):
+            nsp = nfill
+            if nfill % 2 == 0 or inc_sp:
+                # minimum possible footprint.  Edge fill block must be even (hence the + 1)
+                min_footprint = nfill * 1 + 1 + nsp * sp
+            else:
+                # if we have odd fill and we can decrease space, then we can decrease middle space by 1
+                min_footprint = nfill * 1 + 1 + nsp * sp - 1
+            if min_footprint > area:
+                # test exception when drawing with no solution
+                # we have no solution when minimum possible footprint > area
+                with pytest.raises(ValueError):
+                    fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                          invert=False, fill_on_edge=True, cyclic=True)
+                with pytest.raises(ValueError):
+                    fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                          invert=True, fill_on_edge=True, cyclic=True)
+            else:
+                # get fill and space list
+                fill_list, num_diff_sp1 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                                                invert=False, fill_on_edge=True, cyclic=True)
+                space_list, num_diff_sp2 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                                                 invert=True, fill_on_edge=True, cyclic=True)
+                # test boundary fills centers on edge
+                sintv, eintv = fill_list[0], fill_list[-1]
+                assert (sintv[1] + sintv[0]) % 2 == 0 and (eintv[1] + eintv[0]) % 2 == 0
+                assert (sintv[1] + sintv[0]) // 2 == tot_intv[0] and (eintv[1] + eintv[0]) // 2 == tot_intv[1]
+                # test other properties
+                check_props(fill_list, space_list, num_diff_sp1, num_diff_sp2, nfill, tot_intv, inc_sp, sp,
+                            0, 1, nfill + 1, True, sintv[0], eintv[1], 3)
 
 
-def test_fill_symmetric_cyclic_edge_space():
+@pytest.mark.parametrize('sp', [3, 4, 5])
+@pytest.mark.parametrize('inc_sp', [True, False])
+@pytest.mark.parametrize('offset', [0, 4, 7])
+def test_fill_symmetric_cyclic_edge_space(sp, inc_sp, offset):
     # test fill symmetric for cyclic, space on edge
-    sp_list = [3, 4, 5]
-    inc_sp_list = [True, False]
-    offset_list = [0, 4, 7]
     area_max = 50
-    for sp, inc_sp, offset in product(sp_list, inc_sp_list, offset_list):
-        for area in range(sp + 1, area_max + 1):
-            tot_intv = offset, offset + area
-            for nfill in range(1, area - sp + 1):
-                nsp = nfill
-                adj_sp = 1 if inc_sp else -1
-                sp_edge_tweak = sp % 2 == 1
-                if sp_edge_tweak:
-                    # minimum possible footprint.  Edge space block must be even (hence the + adj_sp)
-                    min_footprint = nfill * 1 + nsp * sp + adj_sp
-                else:
-                    min_footprint = nfill * 1 + nsp * sp
-                if nfill % 2 == 0 and not inc_sp:
-                    # if we have middle space block, we can subtract one more from middle.
-                    min_footprint -= 1
-                if min_footprint > area:
-                    # test exception when drawing with no solution
-                    # we have no solution when minimum possible footprint > area
-                    with pytest.raises(ValueError):
-                        fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
-                                              invert=False, fill_on_edge=False, cyclic=True)
-                        print(area, nfill, sp, inc_sp)
-                    with pytest.raises(ValueError):
-                        fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
-                                              invert=True, fill_on_edge=False, cyclic=True)
-                else:
-                    # get fill and space list
-                    fill_list, num_diff_sp1 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
-                                                                    invert=False, fill_on_edge=False, cyclic=True)
-                    space_list, num_diff_sp2 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
-                                                                     invert=True, fill_on_edge=False, cyclic=True)
+    for area in range(sp + 1, area_max + 1):
+        tot_intv = offset, offset + area
+        for nfill in range(1, area - sp + 1):
+            nsp = nfill
+            adj_sp = 1 if inc_sp else -1
+            sp_edge_tweak = sp % 2 == 1
+            if sp_edge_tweak:
+                # minimum possible footprint.  Edge space block must be even (hence the + adj_sp)
+                min_footprint = nfill * 1 + nsp * sp + adj_sp
+            else:
+                min_footprint = nfill * 1 + nsp * sp
+            if nfill % 2 == 0 and not inc_sp:
+                # if we have middle space block, we can subtract one more from middle.
+                min_footprint -= 1
+            if min_footprint > area:
+                # test exception when drawing with no solution
+                # we have no solution when minimum possible footprint > area
+                with pytest.raises(ValueError):
+                    fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                          invert=False, fill_on_edge=False, cyclic=True)
+                    print(area, nfill, sp, inc_sp)
+                with pytest.raises(ValueError):
+                    fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                          invert=True, fill_on_edge=False, cyclic=True)
+            else:
+                # get fill and space list
+                fill_list, num_diff_sp1 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                                                invert=False, fill_on_edge=False, cyclic=True)
+                space_list, num_diff_sp2 = fill_symmetric_helper(area, nfill, sp, offset=offset, inc_sp=inc_sp,
+                                                                 invert=True, fill_on_edge=False, cyclic=True)
 
-                    # test boundary space centers on edge
-                    sintv, eintv = space_list[0], space_list[-1]
-                    assert (sintv[1] + sintv[0]) % 2 == 0 and (eintv[1] + eintv[0]) % 2 == 0
-                    assert (sintv[1] + sintv[0]) // 2 == tot_intv[0] and (eintv[1] + eintv[0]) // 2 == tot_intv[1]
-                    # test other properties
-                    check_props(fill_list, space_list, num_diff_sp1, num_diff_sp2, nfill, tot_intv, inc_sp, sp,
-                                1, 2, nfill, False, sintv[0], eintv[1], 2, sp_edge_tweak)
+                # test boundary space centers on edge
+                sintv, eintv = space_list[0], space_list[-1]
+                assert (sintv[1] + sintv[0]) % 2 == 0 and (eintv[1] + eintv[0]) % 2 == 0
+                assert (sintv[1] + sintv[0]) // 2 == tot_intv[0] and (eintv[1] + eintv[0]) // 2 == tot_intv[1]
+                # test other properties
+                check_props(fill_list, space_list, num_diff_sp1, num_diff_sp2, nfill, tot_intv, inc_sp, sp,
+                            1, 2, nfill, False, sintv[0], eintv[1], 2, sp_edge_tweak)

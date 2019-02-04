@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import os
-
 import pytest
 
 from bag.util.cache import Param
