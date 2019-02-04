@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 
-from typing import Dict, Any, Set
+from typing import Dict, Any
 
 from bag.math import float_to_si_string, lcm
+from bag.util.cache import Param
 from bag.layout.template import TemplateBase, TemplateDB
 
 
@@ -10,9 +11,8 @@ class AnalogSubstrateCore(TemplateBase):
     """A primitive template of substrate contact
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -47,9 +47,9 @@ class AnalogSubstrateCore(TemplateBase):
 
 
 class AnalogSubstrate(TemplateBase):
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
+
         self._layout_info = None
         self._ext_top_info = None
         self._ext_bot_info = None
@@ -165,7 +165,7 @@ class AnalogSubstrate(TemplateBase):
         )
 
         master = self.new_template(params=core_params, temp_cls=AnalogSubstrateCore)
-        inst = self.add_instance(master, 'XCORE')
+        inst = self.add_instance(master, inst_name='XCORE')
         self.array_box = master.array_box
         self.prim_bound_box = master.prim_bound_box
 

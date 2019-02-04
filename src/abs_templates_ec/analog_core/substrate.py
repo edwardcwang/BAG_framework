@@ -3,11 +3,12 @@
 """This module defines various substrate related classes."""
 # TODO: Add tech_cls switch support?
 
-from typing import TYPE_CHECKING, Dict, Any, Set, Tuple, Optional, Union
+from typing import Dict, Any, Set, Tuple, Optional, Union
 
+from bag.util.cache import Param
 from bag.util.search import BinaryIterator
-from bag.layout.template import TemplateBase
-from bag.layout.routing import TrackID
+from bag.layout.template import TemplateBase, TemplateDB
+from bag.layout.routing import RoutingGrid, TrackID
 from bag.layout.util import BBox
 
 from ..analog_mos.substrate import AnalogSubstrate
@@ -16,10 +17,6 @@ from ..analog_mos.mos import SubRingExt
 from ..analog_mos.conn import AnalogSubstrateConn
 
 from .base import AnalogBaseInfo
-
-if TYPE_CHECKING:
-    from bag.layout.routing import RoutingGrid
-    from bag.layout.template import TemplateDB
 
 
 class SubstrateContact(TemplateBase):
@@ -42,9 +39,8 @@ class SubstrateContact(TemplateBase):
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
         self._fg_tot = None
         self._sub_bndx = None
         self._sub_bndy = None
@@ -353,9 +349,8 @@ class SubstrateRing(TemplateBase):
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
         self._blk_loc = None
 
@@ -647,9 +642,9 @@ class DeepNWellRing(TemplateBase):
         :class:`bag.layout.template.TemplateBase` for details.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **Any) -> None
-        super(DeepNWellRing, self).__init__(temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
+
         self._tech_cls = self.grid.tech_info.tech_params['layout']['mos_tech_class']
         self._blk_loc = None
 

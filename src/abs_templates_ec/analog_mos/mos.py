@@ -3,23 +3,20 @@
 """This module defines analog mosfet primitive template classes.
 """
 
-from typing import TYPE_CHECKING, Dict, Any, Set, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional
 
 from bag.math import float_to_si_string
+from bag.util.cache import Param
 from bag.layout.util import BBox
-from bag.layout.template import TemplateBase
-
-if TYPE_CHECKING:
-    from bag.layout.template import TemplateDB
+from bag.layout.template import TemplateBase, TemplateDB
 
 
 class AnalogMOSBase(TemplateBase):
     """A primitive template of a transistor row.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
         self._layout_info = None
         self._ext_top_info = None
         self._ext_bot_info = None
@@ -140,9 +137,8 @@ class AnalogMOSExt(TemplateBase):
     """A primitive template of the geometry between transistor/substrate rows.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
         self._layout_info = None
         self._left_edge_info = None
         self._right_edge_info = None
@@ -236,9 +232,8 @@ class SubRingExt(TemplateBase):
     edges of a substrate ring.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
         self._layout_info = None
         self._left_edge_info = None
         self._right_edge_info = None
@@ -310,9 +305,8 @@ class DummyFillActive(TemplateBase):
     """A template that fills an area with active devices.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
 
     @classmethod
     def get_min_fill_dim(cls, tech_info, mos_type, threshold):
@@ -347,9 +341,8 @@ class DummyFillActive(TemplateBase):
         tech_cls.draw_active_fill(self, mos_type, threshold, w, h)
 
         # set size
-        box = BBox(0, 0, w, h, self.grid.resolution, unit_mode=True)
+        box = BBox(0, 0, w, h)
         self.prim_top_layer = 1
         self.array_box = self.prim_bound_box = box
-        self.add_cell_boundary(box)
 
         self.grid.tech_info.draw_device_blockage(self)

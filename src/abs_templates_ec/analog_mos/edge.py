@@ -3,16 +3,16 @@
 """This module defines analog mosfet boundary primitive template classes.
 """
 
-from typing import TYPE_CHECKING, Dict, Any, Set, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional
+
+from pybag.core import Transform
 
 from bag.math import float_to_si_string
-from bag.layout.template import TemplateBase
+from bag.util.cache import Param
+from bag.layout.template import TemplateBase, TemplateDB
 
 from .substrate import AnalogSubstrateCore
 from .conn import AnalogSubstrateConn
-
-if TYPE_CHECKING:
-    from bag.layout.template import TemplateDB
 
 
 class AnalogEndRow(TemplateBase):
@@ -21,9 +21,8 @@ class AnalogEndRow(TemplateBase):
     This template must abut a substrate row.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
         self._sub_ysep = None
         self._layout_info = None
         self._left_edge_info = None
@@ -99,7 +98,7 @@ class AnalogEndRow(TemplateBase):
         else:
             tech_cls = self.grid.tech_info.tech_params['layout'][tech_cls_name]
 
-        blk_pitch = self.grid.get_block_size(top_layer, unit_mode=True)[1]
+        blk_pitch = self.grid.get_block_size(top_layer)[1]
         end_info = tech_cls.get_analog_end_info(lch_unit, sub_type, threshold, fg, is_end,
                                                 blk_pitch, **options)
 
@@ -115,9 +114,8 @@ class SubRingEndRow(TemplateBase):
     """A primitive template of the inner substrate boundary row inside a substrate ring.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
         self._layout_info = None
         self._left_edge_info = None
         self._right_edge_info = None
@@ -203,9 +201,8 @@ class AnalogOuterEdge(TemplateBase):
     """A primitive template of the outer-most left/right edge of analog mosfet.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -242,9 +239,8 @@ class AnalogGuardRingSep(TemplateBase):
     """A primitive template of the geometry between substrate/transistor row and left/right guard ring.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -283,9 +279,8 @@ class AnalogEdge(TemplateBase):
     This block will include guard ring if that option is enabled.
     """
 
-    def __init__(self, temp_db, lib_name, params, used_names, **kwargs):
-        # type: (TemplateDB, str, Dict[str, Any], Set[str], **kwargs) -> None
-        TemplateBase.__init__(self, temp_db, lib_name, params, used_names, **kwargs)
+    def __init__(self, temp_db: TemplateDB, params: Param, **kwargs: Any) -> None:
+        TemplateBase.__init__(self, temp_db, params, **kwargs)
 
     @classmethod
     def get_params_info(cls):
@@ -350,7 +345,7 @@ class AnalogEdge(TemplateBase):
         )
         master = self.new_template(params=out_params, temp_cls=AnalogOuterEdge)
         if not master.is_empty:
-            self.add_instance(master, 'XOUTER')
+            self.add_instance(master, inst_name='XOUTER')
 
         self.array_box = master.array_box
         self.prim_bound_box = master.prim_bound_box
@@ -363,7 +358,7 @@ class AnalogEdge(TemplateBase):
             # draw guard ring and guard ring separator
             x0 = self.array_box.right_unit
             sub_info = tech_cls.get_gr_sub_info(guard_ring_nf, layout_info, is_sub_ring=is_sub_ring)
-            loc = x0, 0
+            xform = Transform(x0, 0)
             sub_params = dict(
                 dummy_only=False,
                 port_tracks=[],
@@ -373,7 +368,7 @@ class AnalogEdge(TemplateBase):
                 tech_cls_name=tech_cls_name,
             )
             master = self.new_template(params=sub_params, temp_cls=AnalogSubstrateCore)
-            inst = self.add_instance(master, 'XSUB', loc=loc, unit_mode=True)
+            inst = self.add_instance(master, inst_name='XSUB', xform=xform)
             if sub_info['blk_type'] != 'gr_sub_end_sub':
                 conn_params = dict(
                     layout_name='%s_subconn' % basename,
@@ -384,11 +379,11 @@ class AnalogEdge(TemplateBase):
                 )
                 conn_master = self.new_template(params=conn_params, temp_cls=AnalogSubstrateConn)
                 if conn_master.has_connection:
-                    conn_inst = self.add_instance(conn_master, loc=loc, unit_mode=True)
+                    conn_inst = self.add_instance(conn_master, xform=xform)
                     for port_name in conn_inst.port_names_iter():
                         self.reexport(conn_inst.get_port(port_name), show=False)
 
-            x0 = inst.array_box.right_unit
+            x0 = inst.array_box.xh
             sep_info = tech_cls.get_gr_sep_info(layout_info, adj_blk_info, is_sub_ring=is_sub_ring)
             sep_params = dict(
                 layout_name='%s_sep' % basename,
@@ -396,7 +391,7 @@ class AnalogEdge(TemplateBase):
                 tech_cls_name=tech_cls_name,
             )
             master = self.new_template(params=sep_params, temp_cls=AnalogGuardRingSep)
-            inst = self.add_instance(master, 'XSEP', loc=(x0, 0), unit_mode=True)
+            inst = self.add_instance(master, inst_name='XSEP', xform=Transform(x0, 0))
             self.array_box = self.array_box.merge(inst.array_box)
             self.prim_bound_box = self.prim_bound_box.merge(
-                inst.translate_master_box(master.prim_bound_box))
+                inst.transform_master_object(master.prim_bound_box))
