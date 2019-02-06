@@ -9,6 +9,8 @@ import abc
 from itertools import chain
 from collections import namedtuple
 
+from pybag.enum import Orient2D
+
 from bag.layout.tech import TechInfo
 from bag.layout.routing import RoutingGrid
 from bag.layout.template import TemplateBase
@@ -568,7 +570,8 @@ class MOSTech(object, metaclass=abc.ABCMeta):
         for lay, w, direction, vdim, vble, vtle in \
                 zip(layers, widths, dirs, via_info['dim'],
                     via_info['bot_enc_le'], via_info['top_enc_le']):
-            vdim_le = vdim[0] if direction == 'x' else vdim[1]
+            direction = Orient2D[direction]
+            vdim_le = vdim[0] if direction is Orient2D.x else vdim[1]
             top_ext = vdim_le // 2 + vtle
             layer, purp = self.tech_info.get_lay_purp_list(lay)[0]
             min_len = self.tech_info.get_min_length(layer, purp, w, even=True)
