@@ -26,6 +26,7 @@ def get_sch_master(module_db: ModuleDB, sch_design_params: Dict[str, Any]) -> Mo
 @pytest.mark.parametrize("output_type, options", [
     (DesignOutput.YAML, {}),
     (DesignOutput.CDL, {'flat': True, 'shell': False, 'rmin': 2000}),
+    (DesignOutput.SPECTRE, {'flat': True, 'shell': False, 'rmin': 2000}),
     (DesignOutput.VERILOG, {'flat': True, 'shell': False, 'rmin': 2000}),
     (DesignOutput.VERILOG, {'flat': True, 'shell': True, 'rmin': 2000}),
     (DesignOutput.SYSVERILOG, {'flat': True, 'shell': False, 'rmin': 2000}),
