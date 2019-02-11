@@ -18,6 +18,7 @@ from typing import Dict, Any
 import os
 import pkg_resources
 
+from bag.util.cache import Param
 from bag.design.module import Module
 from bag.design.database import ModuleDB
 
@@ -33,8 +34,7 @@ class {lib_name}__{cell_name}(Module):
                                                 os.path.join('netlist_info',
                                                              '{cell_name}.yaml'))
 
-    def __init__(self, database, params, **kwargs):
-        # type: (ModuleDB, Dict[str, Any], **Any) -> None
+    def __init__(self, database: ModuleDB, params: Param, **kwargs: Any) -> None:
         Module.__init__(self, self.yaml_file, database, params, **kwargs)
 '''
 
