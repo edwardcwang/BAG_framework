@@ -1803,7 +1803,7 @@ class AnalogBase(TemplateBase, abc.ABC):
         if not tot_imp_box.is_physical():
             self._sub_bndx = None, None
         else:
-            self._sub_bndx = tot_imp_box.left_unit, tot_imp_box.right_unit
+            self._sub_bndx = tot_imp_box.xl, tot_imp_box.xh
 
         # connect body guard rings together
         self._gr_vdd_warrs = self.connect_wires(gr_vdd_warrs)
