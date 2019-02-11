@@ -8,4 +8,4 @@ export max_port=9999
 export port_file="BAG_server_port.txt"
 export log="skill_server.log"
 
-exec "${BAG_PYTHON} ${cmd} ${min_port} ${max_port} ${port_file} ${log}"
+exec ${BAG_PYTHON} ${cmd} ${min_port} ${max_port} ${port_file} ${log}

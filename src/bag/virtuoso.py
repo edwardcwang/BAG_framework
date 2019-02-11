@@ -5,8 +5,6 @@
 
 import os
 import sys
-import atexit
-import signal
 import argparse
 
 import bag.interface
@@ -92,7 +90,8 @@ def parse_command_line_arguments():
 
     desc = 'A Python program that performs tasks for virtuoso.'
     parser = argparse.ArgumentParser(description=desc)
-    desc = 'Valid commands.  Supply -h/--help flag after the command name to learn more about the command.'
+    desc = ('Valid commands.  Supply -h/--help flag after '
+            'the command name to learn more about the command.')
     sub_parsers = parser.add_subparsers(title='Commands', description=desc, help='command name.')
 
     desc = 'Run BAG skill server.'
