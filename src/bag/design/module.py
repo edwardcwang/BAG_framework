@@ -11,16 +11,14 @@ import os
 import abc
 from itertools import zip_longest
 
+from pybag.core import PySchCellView, PySchCellViewInfo
+from pybag.enum import TermType, DesignOutput, is_model_type, get_extension
+
 from ..math import float_to_si_string
 from ..util.cache import DesignMaster, Param
 from .instance import SchInstance
 from ..layout.tech import TechInfo
 
-try:
-    from pybag.core import PySchCellView
-    from pybag.enum import TermType, DesignOutput, is_model_type, get_extension
-except ImportError:
-    raise ImportError('Cannot import pybag library.  Do you have the right shared library file?')
 
 if TYPE_CHECKING:
     from .database import ModuleDB
@@ -133,6 +131,21 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         :meth:`.array_instance`
         """
         pass
+
+    def get_cv_info(self, cell_name: str) -> PySchCellViewInfo:
+        """Returns the PySchCellViewInfo object.
+
+        Parameters
+        ----------
+        cell_name : str
+            the target cell name.
+
+        Returns
+        -------
+        cv_info : PySchCellViewInfo
+            the PySchCellViewInfo object.
+        """
+        return self._cv.get_info(cell_name)
 
     def design_model(self, model_params: Param, key: Any) -> None:
         self.params.assign('model_params', model_params)
