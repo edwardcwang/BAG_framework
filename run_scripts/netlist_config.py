@@ -20,6 +20,7 @@ from bag.io.file import read_yaml, write_yaml
 netlist_map_default = {
     'analogLib': {
         'gnd': {
+            'lib_name': 'analogLib',
             'cell_name': 'gnd',
             'in_terms': [],
             'io_terms': ['gnd!'],
@@ -29,6 +30,7 @@ netlist_map_default = {
             'props': {}
         },
         'vdc': {
+            'lib_name': 'analogLib',
             'cell_name': 'vdc',
             'in_terms': [],
             'io_terms': ['PLUS', 'MINUS'],
@@ -45,10 +47,61 @@ netlist_map_default = {
                 'srcType': [3, 'dc'],
             }
         },
+        'idc': {
+            'lib_name': 'analogLib',
+            'cell_name': 'idc',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'idc': [3, ''],
+                'acm': [3, ''],
+                'acp': [3, ''],
+                'xfm': [3, ''],
+                'pacm': [3, ''],
+                'pacp': [3, ''],
+                'srcType': [3, 'dc'],
+            }
+        },
+        'res': {
+            'lib_name': 'analogLib',
+            'cell_name': 'res',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'model': [3, ''],
+                'r': [3, ''],
+                'l': [3, ''],
+                'w': [3, ''],
+                'm': [3, ''],
+            }
+        },
+        'cap': {
+            'lib_name': 'analogLib',
+            'cell_name': 'cap',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'model': [3, ''],
+                'c': [3, ''],
+                'l': [3, ''],
+                'w': [3, ''],
+                'm': [3, ''],
+            }
+        },
     },
 }
 
 mos_default = {
+    'lib_name': 'BAG_prim',
     'cell_name': '',
     'in_terms': [],
     'out_terms': [],
@@ -68,6 +121,11 @@ MM0 D G S B {{ model_name }}{% for key, val in param_list %} {{ key }}={{ val }}
 .ENDS
 """
 
+mos_spectre_fmt = """subckt {{ cell_name }} B D G S
+MM0 D G S B {{ model_name }}{% for key, val in param_list %} {{ key }}={{ val }}{% endfor %}
+ends {{ cell_name }}
+"""
+
 mos_verilog_fmt = """module {{ cell_name }}(
     inout B,
     inout D,
@@ -82,6 +140,10 @@ supported_formats = {
         'fname': 'bag_prim.cdl',
         'mos': 'mos_cdl',
     },
+    DesignOutput.SPECTRE: {
+        'fname': 'bag_prim.scs',
+        'mos': 'mos_scs',
+    },
     DesignOutput.VERILOG: {
         'fname': 'bag_prim.v',
         'mos': 'mos_verilog',
@@ -93,7 +155,7 @@ supported_formats = {
 }
 
 jinja_env = Environment(
-    loader=DictLoader({'mos_cdl': mos_cdl_fmt, 'mos_verilog': mos_verilog_fmt}),
+    loader=DictLoader({'mos_cdl': mos_cdl_fmt, 'mos_scs': mos_spectre_fmt, 'mos_verilog': mos_verilog_fmt}),
     keep_trailing_newline=True,
 )
 
