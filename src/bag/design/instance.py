@@ -3,19 +3,17 @@
 """This module defines classes representing various design instances.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Type, Optional, Any
 
 from ..util.cache import Param
 
+from pybag.core import PySchInstRef
+
 if TYPE_CHECKING:
     from .database import ModuleDB
     from .module import Module
-
-    try:
-        from pybag.core import PySchInstRef
-    except ImportError:
-        raise ImportError(
-            'Cannot import pybag library.  Do you have the right shared library file?')
 
 
 class SchInstance:
@@ -29,8 +27,8 @@ class SchInstance:
         a reference to the actual schematic instance object.
     """
 
-    def __init__(self, db, inst_ptr, master=None):
-        # type: (ModuleDB, PySchInstRef, Optional[Module]) -> None
+    def __init__(self, db: ModuleDB, inst_ptr: PySchInstRef,
+                 master: Optional[Module] = None) -> None:
         self._db = db
         self._master = master
         self._ptr = inst_ptr
@@ -48,61 +46,52 @@ class SchInstance:
             self._sch_cls = master.__class__
 
     @property
-    def database(self):
-        # type: () -> ModuleDB
+    def database(self) -> ModuleDB:
         """ModuleDB: the schematic database."""
         return self._db
 
     @property
-    def master(self):
-        # type: () -> Optional[Module]
+    def master(self) -> Optional[Module]:
         """Optional[Module]: the master object of this instance."""
         return self._master
 
     @property
-    def master_class(self):
-        # type: () -> Optional[Type[Module]]
+    def master_class(self) -> Optional[Type[Module]]:
+        """Optional[Type[Module]]: the class object of the master of this instance."""
         return self._sch_cls
 
     @property
-    def lib_name(self):
-        # type: () -> str
+    def lib_name(self) -> str:
         """str: the generator library name."""
         return self._ptr.lib_name
 
     @property
-    def cell_name(self):
-        # type: () -> str
+    def cell_name(self) -> str:
         """str: the generator cell name."""
         return self._ptr.cell_name
 
     @property
-    def master_cell_name(self):
-        # type: () -> str
+    def master_cell_name(self) -> str:
         """str: the cell name of the master object"""
         return self.cell_name if self.master is None else self.master.cell_name
 
     @property
-    def static(self):
-        # type: () -> bool
+    def static(self) -> bool:
         """bool: True if this instance points to a static/fixed schematic."""
         return self._sch_cls is None
 
     @property
-    def width(self):
-        # type: () -> int
+    def width(self) -> int:
         """int: the instance symbol width."""
         return self._ptr.width
 
     @property
-    def height(self):
-        # type: () -> int
+    def height(self) -> int:
         """int: the instance symbol height."""
         return self._ptr.height
 
     @property
-    def is_primitive(self):
-        # type: () -> bool
+    def is_primitive(self) -> bool:
         """bool: True if this is a primitive (static or in BAG_prim) schematic instance."""
         if self._sch_cls is None:
             return True
@@ -111,21 +100,18 @@ class SchInstance:
         return self.master.is_primitive()
 
     @property
-    def should_delete(self):
-        # type: () -> bool
+    def should_delete(self) -> bool:
         """bool: True if this instance should be deleted by the parent."""
         return self.master is not None and self.master.should_delete_instance()
 
     @property
-    def master_key(self):
-        # type: () -> Optional[Any]
+    def master_key(self) -> Optional[Any]:
         """Optional[Any]: A unique key identifying the master object."""
         if self.master is None:
             raise ValueError('Instance {} has no master; cannot get key')
         return self.master.key
 
-    def design(self, **kwargs):
-        # type: (**Any) -> None
+    def design(self, **kwargs: Any) -> None:
         """Call the design method on master."""
         if self._sch_cls is None:
             raise RuntimeError('Cannot call design() method on static instances.')
@@ -139,8 +125,7 @@ class SchInstance:
             self._ptr.lib_name = self._master.lib_name
         self._ptr.cell_name = self._master.cell_name
 
-    def design_model(self, model_params):
-        # type: (Param) -> None
+    def design_model(self, model_params: Param) -> None:
         """Call design_model method on master."""
         if self._sch_cls is None:
             # static instance; assume model is defined in include files
@@ -149,8 +134,8 @@ class SchInstance:
         self._master = self._db.new_model(self._master, model_params)
         self._ptr.cell_name = self._master.cell_name
 
-    def change_generator(self, gen_lib_name, gen_cell_name, static=False):
-        # type: (str, str, bool) -> None
+    def change_generator(self, gen_lib_name: str, gen_cell_name: str,
+                         static: bool = False, keep_connections: bool = False) -> None:
         """Change the circuit generator responsible for producing this instance.
 
         Parameter
@@ -161,16 +146,18 @@ class SchInstance:
             new generator cell name.
         static : bool
             True if this is actually a fixed schematic, not a generator.
+        keep_connections : bool
+            True to keep the old connections when the instance master changed.
         """
         self._master = None
         if static:
             self._sch_cls = None
         else:
             self._sch_cls = self._db.get_schematic_class(gen_lib_name, gen_cell_name)
-        self._ptr.update_master(gen_lib_name, gen_cell_name, prim=static)
+        self._ptr.update_master(gen_lib_name, gen_cell_name, prim=static,
+                                keep_connections=keep_connections)
 
-    def set_param(self, key, val):
-        # type: (str, Any) -> None
+    def set_param(self, key: str, val: Any) -> None:
         """Sets the parameters of this instance.
 
         Parameters
@@ -182,8 +169,7 @@ class SchInstance:
         """
         self._ptr.set_param(key, val)
 
-    def update_connection(self, inst_name, term_name, net_name):
-        # type: (str, str, str) -> None
+    def update_connection(self, inst_name: str, term_name: str, net_name: str) -> None:
         """Update connections of this schematic instance.
 
         Parameters
@@ -197,8 +183,7 @@ class SchInstance:
         """
         self._ptr.update_connection(inst_name, term_name, net_name)
 
-    def get_connection(self, term_name):
-        # type: (str) -> str
+    def get_connection(self, term_name: str) -> str:
         """Get the net name connected to the given terminal.
 
         Parameters
@@ -213,8 +198,7 @@ class SchInstance:
         """
         return self._ptr.get_connection(term_name)
 
-    def get_master_lib_name(self, impl_lib):
-        # type: (str) -> str
+    def get_master_lib_name(self, impl_lib: str) -> str:
         """Returns the master library name.
 
         the master library could be different than the implementation library in

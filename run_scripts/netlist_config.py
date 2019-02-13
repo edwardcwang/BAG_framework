@@ -17,11 +17,43 @@ from pybag.enum import DesignOutput
 
 from bag.io.file import read_yaml, write_yaml
 
+netlist_map_default = {
+    'analogLib': {
+        'gnd': {
+            'cell_name': 'gnd',
+            'in_terms': [],
+            'io_terms': ['gnd!'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {}
+        },
+        'vdc': {
+            'cell_name': 'vdc',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'vdc': [3, ''],
+                'acm': [3, ''],
+                'acp': [3, ''],
+                'xfm': [3, ''],
+                'pacm': [3, ''],
+                'pacp': [3, ''],
+                'srcType': [3, 'dc'],
+            }
+        },
+    },
+}
+
 mos_default = {
     'cell_name': '',
     'in_terms': [],
     'out_terms': [],
     'io_terms': ['B', 'D', 'G', 'S'],
+    'nets': [],
     'is_prim': True,
     'props': {
         'l': [3, ''],
@@ -136,6 +168,7 @@ def main() -> None:
     config = read_yaml(config_fname)
 
     netlist_map, inc_list, prim_files = get_info(config, output_dir)
+    netlist_map.update(netlist_map_default)
     result = {
         'prim_files': prim_files,
         'inc_list': inc_list,
