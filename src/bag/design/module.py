@@ -89,12 +89,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         ans['model_params'] = None
         return ans
 
-    def get_master_basename(self):
-        # type: () -> str
+    def get_master_basename(self) -> str:
         return self.orig_cell_name
 
-    def get_copy_state(self):
-        # type: () -> Dict[str, Any]
+    def get_copy_state(self) -> Dict[str, Any]:
         base = DesignMaster.get_copy_state(self)
         new_cv = self._cv.get_copy()
         new_inst = {name: SchInstance(self.master_db, ref, master=self.instances[name].master)
@@ -112,13 +110,11 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         return self.master_db.tech_info
 
     @property
-    def pins(self):
-        # type: () -> Dict[str, TermType]
+    def pins(self) -> Dict[str, TermType]:
         return self._pins
 
     @abc.abstractmethod
-    def design(self, **kwargs):
-        # type: (**Any) -> None
+    def design(self, **kwargs: Any) -> None:
         """To be overridden by subclasses to design this module.
 
         To design instances of this module, you can
@@ -138,8 +134,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         pass
 
-    def design_model(self, model_params, key):
-        # type: (Param, Any) -> None
+    def design_model(self, model_params: Param, key: Any) -> None:
         self.params.assign('model_params', model_params)
         self.params.update_hash()
         self.update_signature(key)
@@ -159,8 +154,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 if not inst.is_primitive:
                     self.add_child_key(inst.master_key)
 
-    def set_param(self, key, val):
-        # type: (str, Union[int, float, bool, str]) -> None
+    def set_param(self, key: str, val: Union[int, float, bool, str]) -> None:
         """Set schematic parameters for this master.
 
         This method is only used to set parameters for BAG primitives.
@@ -174,8 +168,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         self._cv.set_param(key, val)
 
-    def finalize(self):
-        # type: () -> None
+    def finalize(self) -> None:
         """Finalize this master instance.
         """
         # invoke design function, excluding model_params
@@ -197,8 +190,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         # call super finalize routine
         DesignMaster.finalize(self)
 
-    def get_content(self, output_type, rename_dict, name_prefix, name_suffix):
-        # type: (DesignOutput, Dict[str, str], str, str) -> Tuple[str, Any]
+    def get_content(self, output_type: DesignOutput, rename_dict: Dict[str, str],
+                    name_prefix: str, name_suffix: str) -> Tuple[str, Any]:
         cell_name = self.format_cell_name(self.cell_name, rename_dict, name_prefix, name_suffix)
 
         if self.is_primitive():
@@ -226,21 +219,18 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         return cell_name, (self._cv, netlist)
 
     @property
-    def cell_name(self):
-        # type: () -> str
+    def cell_name(self) -> str:
         """The master cell name."""
         if self.is_primitive():
             return self.get_cell_name_from_parameters()
         return super(Module, self).cell_name
 
     @property
-    def orig_cell_name(self):
-        # type: () -> str
+    def orig_cell_name(self) -> str:
         """The original schematic template cell name."""
         return self._orig_cell_name
 
-    def is_primitive(self):
-        # type: () -> bool
+    def is_primitive(self) -> bool:
         """Returns True if this Module represents a BAG primitive.
 
         NOTE: This method is only used by BAG and schematic primitives.  This method prevents
@@ -254,8 +244,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         return False
 
-    def should_delete_instance(self):
-        # type: () -> bool
+    def should_delete_instance(self) -> bool:
         """Returns True if this instance should be deleted based on its parameters.
 
         This method is mainly used to delete 0 finger or 0 width transistors.  However,
@@ -269,8 +258,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         return False
 
-    def get_schematic_parameters(self):
-        # type: () -> Dict[str, str]
+    def get_schematic_parameters(self) -> Dict[str, str]:
         """Returns the schematic parameter dictionary of this instance.
 
         NOTE: This method is only used by BAG primitives, as they are
@@ -284,8 +272,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         return {}
 
-    def get_cell_name_from_parameters(self):
-        # type: () -> str
+    def get_cell_name_from_parameters(self) -> str:
         """Returns new cell name based on parameters.
 
         NOTE: This method is only used by BAG primitives.  This method
@@ -301,8 +288,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         return super(Module, self).cell_name
 
-    def rename_pin(self, old_pin, new_pin):
-        # type: (str, str) -> None
+    def rename_pin(self, old_pin: str, new_pin: str) -> None:
         """Renames an input/output pin of this schematic.
 
         NOTE: Make sure to call :meth:`.reconnect_instance_terminal` so that instances are
@@ -317,8 +303,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         self._cv.rename_pin(old_pin, new_pin)
 
-    def add_pin(self, new_pin, pin_type):
-        # type: (str, Union[TermType, str]) -> None
+    def add_pin(self, new_pin: str, pin_type: Union[TermType, str]) -> None:
         """Adds a new pin to this schematic.
 
         NOTE: Make sure to call :meth:`.reconnect_instance_terminal` so that instances are
@@ -336,8 +321,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         else:
             self._cv.add_pin(new_pin, TermType[pin_type].value)
 
-    def remove_pin(self, remove_pin):
-        # type: (str) -> bool
+    def remove_pin(self, remove_pin: str) -> bool:
         """Removes a pin from this schematic.
 
         Parameters
@@ -352,8 +336,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self._cv.remove_pin(remove_pin)
 
-    def rename_instance(self, old_name, new_name, conn_list=None):
-        # type: (str, str, Optional[Iterable[Tuple[str, str]]]) -> None
+    def rename_instance(self, old_name: str, new_name: str,
+                        conn_list: Optional[Iterable[Tuple[str, str]]] = None) -> None:
         """Renames an instance in this schematic.
 
         Parameters
@@ -371,8 +355,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             for term, net in conn_list:
                 inst.update_connection(new_name, term, net)
 
-    def remove_instance(self, inst_name):
-        # type: (str) -> bool
+    def remove_instance(self, inst_name: str) -> bool:
         """Remove the instance with the given name.
 
         Parameters
@@ -390,8 +373,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             del self.instances[inst_name]
         return success
 
-    def delete_instance(self, inst_name):
-        # type: (str) -> bool
+    def delete_instance(self, inst_name: str) -> bool:
         """Delete the instance with the given name.
 
         This method is identical to remove_instance().  It's here only for backwards
@@ -409,8 +391,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self._cv.remove_instance(inst_name)
 
-    def replace_instance_master(self, inst_name, lib_name, cell_name, static=False):
-        # type: (str, str, str, bool) -> None
+    def replace_instance_master(self, inst_name: str, lib_name: str, cell_name: str,
+                                static: bool = False, keep_connections: bool = True) -> None:
         """Replace the master of the given instance.
 
         NOTE: all terminal connections will be reset.  Call reconnect_instance_terminal() to modify
@@ -426,14 +408,15 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             the new cell name.
         static : bool
             True if we're replacing instance with a static schematic instead of a design module.
+        keep_connections : bool
+            True to keep the old connections when the instance master changed.
         """
         if inst_name not in self.instances:
             raise ValueError('Cannot find instance with name: %s' % inst_name)
 
         self.instances[inst_name].change_generator(lib_name, cell_name, static=static)
 
-    def reconnect_instance_terminal(self, inst_name, term_name, net_name):
-        # type: (str, str, str) -> None
+    def reconnect_instance_terminal(self, inst_name: str, term_name: str, net_name: str) -> None:
         """Reconnect the instance terminal to a new net.
 
         Parameters
@@ -451,8 +434,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
         inst.update_connection(inst_name, term_name, net_name)
 
-    def reconnect_instance(self, inst_name, term_net_iter):
-        # type: (str, Iterable[Tuple[str, str]]) -> None
+    def reconnect_instance(self, inst_name: str, term_net_iter: Iterable[Tuple[str, str]]) -> None:
         """Reconnect all give instance terminals
 
         Parameters
@@ -469,14 +451,11 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         for term, net in term_net_iter:
             inst.update_connection(inst_name, term, net)
 
-    def array_instance(self,
-                       inst_name: str,
+    def array_instance(self, inst_name: str,
                        inst_name_list: Optional[List[str]] = None,
                        term_list: Optional[List[Dict[str, str]]] = None,
                        inst_term_list: Optional[List[Tuple[str, Iterable[Tuple[str, str]]]]] = None,
-                       dx: int = 0,
-                       dy: int = 0
-                       ) -> None:
+                       dx: int = 0, dy: int = 0) -> None:
         """Replace the given instance by an array of instances.
 
         This method will replace self.instances[inst_name] by a list of
@@ -523,14 +502,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             inst_ptr = self._cv.get_inst_ref(name)
             self.instances[name] = SchInstance(db, inst_ptr, master=orig_inst.master)
 
-    def design_dc_bias_sources(self,  # type: Module
-                               vbias_dict,  # type: Optional[Dict[str, List[str]]]
-                               ibias_dict,  # type: Optional[Dict[str, List[str]]]
-                               vinst_name,  # type: str
-                               iinst_name,  # type: str
-                               define_vdd=True,  # type: bool
-                               ):
-        # type: (...) -> None
+    def design_dc_bias_sources(self,  vbias_dict: Optional[Dict[str, List[str]]],
+                               ibias_dict: Optional[Dict[str, List[str]]],
+                               vinst_name: str, iinst_name: str,
+                               define_vdd: bool = True) -> None:
         """Convenience function for generating DC bias sources.
 
         Given DC voltage/current bias sources information, array the given voltage/current bias
@@ -595,8 +570,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             else:
                 self.remove_instance(inst_name)
 
-    def design_dummy_transistors(self, dum_info, inst_name, vdd_name, vss_name, net_map=None):
-        # type: (List[Tuple[Any]], str, str, str, Optional[Dict[str, str]]) -> None
+    def design_dummy_transistors(self, dum_info: List[Tuple[Any]], inst_name: str, vdd_name: str,
+                                 vss_name: str, net_map: Optional[Dict[str, str]] = None) -> None:
         """Convenience function for generating dummy transistor schematic.
 
         Given dummy information (computed by AnalogBase) and a BAG transistor instance,
@@ -643,20 +618,9 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
                 inst.update_connection(name, 'S', s_name)
                 inst.design(w=w, l=lch, nf=fg, intent=th)
 
-    def design_transistor(self,  # type: Module
-                          inst_name,  # type: str
-                          w,  # type: Union[float, int]
-                          lch,  # type: float
-                          seg,  # type: int
-                          intent,  # type: str
-                          m,  # type: str
-                          d='',  # type: str
-                          g='',  # type: Union[str, List[str]]
-                          s='',  # type: str
-                          b='',  # type: str
-                          stack=1  # type: int
-                          ):
-        # type: (...) -> None
+    def design_transistor(self, inst_name: str, w: Union[float, int], lch: float, seg: int,
+                          intent: str, m: str, d: str = '', g: Union[str, List[str]] = '',
+                          s: str = '', b: str = '', stack: int = 1) -> None:
         """Design a BAG_prim transistor (with stacking support).
 
         This is a convenient method to design a stack transistor.  Additional transistors
@@ -768,14 +732,12 @@ class MosModuleBase(Module):
     """The base design class for the bag primitive transistor.
     """
 
-    def __init__(self, yaml_fname, database, params, **kwargs):
-        # type: (str, ModuleDB, Param, **Any) -> None
+    def __init__(self, yaml_fname: str, database: ModuleDB, params: Param, **kwargs: Any) -> None:
         Module.__init__(self, yaml_fname, database, params, **kwargs)
         self._pins = dict(G=TermType.inout, D=TermType.inout, S=TermType.inout, B=TermType.inout)
 
     @classmethod
-    def get_params_info(cls):
-        # type: () -> Dict[str, str]
+    def get_params_info(cls) -> Dict[str, str]:
         return dict(
             w='transistor width, in meters or number of fins.',
             l='transistor length, in meters.',
@@ -783,12 +745,10 @@ class MosModuleBase(Module):
             intent='transistor threshold flavor.',
         )
 
-    def design(self, w, l, nf, intent):
-        # type: (Union[float, int], float, int, str) -> None
+    def design(self, w: Union[float, int], l: float, nf: int, intent: str) -> None:
         pass
 
-    def get_schematic_parameters(self):
-        # type: () -> Dict[str, str]
+    def get_schematic_parameters(self) -> Dict[str, str]:
         w_res = self.tech_info.tech_params['mos']['width_resolution']
         l_res = self.tech_info.tech_params['mos']['length_resolution']
         w = self.params['w']
@@ -800,17 +760,14 @@ class MosModuleBase(Module):
 
         return dict(w=wstr, l=lstr, nf=nstr)
 
-    def get_cell_name_from_parameters(self):
-        # type: () -> str
+    def get_cell_name_from_parameters(self) -> str:
         mos_type = self.orig_cell_name.split('_')[0]
         return '{}_{}'.format(mos_type, self.params['intent'])
 
-    def is_primitive(self):
-        # type: () -> bool
+    def is_primitive(self) -> bool:
         return True
 
-    def should_delete_instance(self):
-        # type: () -> bool
+    def should_delete_instance(self) -> bool:
         return self.params['nf'] == 0 or self.params['w'] == 0
 
 
@@ -818,26 +775,22 @@ class ResPhysicalModuleBase(Module):
     """The base design class for a real resistor parametrized by width and length.
     """
 
-    def __init__(self, yaml_fname, database, params, **kwargs):
-        # type: (str, ModuleDB, Param, **Any) -> None
+    def __init__(self, yaml_fname: str, database: ModuleDB, params: Param, **kwargs: Any) -> None:
         Module.__init__(self, yaml_fname, database, params, **kwargs)
         self._pins = dict(PLUS=TermType.inout, MINUS=TermType.inout, BULK=TermType.inout)
 
     @classmethod
-    def get_params_info(cls):
-        # type: () -> Dict[str, str]
+    def get_params_info(cls) -> Dict[str, str]:
         return dict(
             w='resistor width, in meters.',
             l='resistor length, in meters.',
             intent='resistor flavor.',
         )
 
-    def design(self, w, l, intent):
-        # type: (float, float, str) -> None
+    def design(self, w: float, l: float, intent: str) -> None:
         pass
 
-    def get_schematic_parameters(self):
-        # type: () -> Dict[str, str]
+    def get_schematic_parameters(self) -> Dict[str, str]:
         w = self.params['w']
         l = self.params['l']
         wstr = float_to_si_string(w)
@@ -845,16 +798,13 @@ class ResPhysicalModuleBase(Module):
 
         return dict(w=wstr, l=lstr)
 
-    def get_cell_name_from_parameters(self):
-        # type: () -> str
+    def get_cell_name_from_parameters(self) -> str:
         return 'res_{}'.format(self.params['intent'])
 
-    def is_primitive(self):
-        # type: () -> bool
+    def is_primitive(self) -> bool:
         return True
 
-    def should_delete_instance(self):
-        # type: () -> bool
+    def should_delete_instance(self) -> bool:
         return self.params['w'] == 0 or self.params['l'] == 0
 
 
@@ -862,26 +812,22 @@ class ResMetalModule(Module):
     """The base design class for a metal resistor.
     """
 
-    def __init__(self, yaml_fname, database, params, **kwargs):
-        # type: (str, ModuleDB, Param, **Any) -> None
+    def __init__(self, yaml_fname: str, database: ModuleDB, params: Param, **kwargs: Any) -> None:
         Module.__init__(self, yaml_fname, database, params, **kwargs)
         self._pins = dict(PLUS=TermType.inout, MINUS=TermType.inout)
 
     @classmethod
-    def get_params_info(cls):
-        # type: () -> Dict[str, str]
+    def get_params_info(cls) -> Dict[str, str]:
         return dict(
             w='resistor width, in meters.',
             l='resistor length, in meters.',
             layer='the metal layer ID.',
         )
 
-    def design(self, w, l, layer):
-        # type: (float, float, int) -> None
+    def design(self, w: float, l: float, layer: int) -> None:
         pass
 
-    def get_schematic_parameters(self):
-        # type: () -> Dict[str, str]
+    def get_schematic_parameters(self) -> Dict[str, str]:
         w = self.params['w']
         l = self.params['l']
         layer = self.params['layer']
@@ -890,10 +836,8 @@ class ResMetalModule(Module):
         lay_str = str(layer)
         return dict(w=wstr, l=lstr, layer=lay_str)
 
-    def is_primitive(self):
-        # type: () -> bool
+    def is_primitive(self) -> bool:
         return True
 
-    def should_delete_instance(self):
-        # type: () -> bool
+    def should_delete_instance(self) -> bool:
         return self.params['w'] == 0 or self.params['l'] == 0
