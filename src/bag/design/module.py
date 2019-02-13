@@ -392,7 +392,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         return self._cv.remove_instance(inst_name)
 
     def replace_instance_master(self, inst_name: str, lib_name: str, cell_name: str,
-                                static: bool = False, keep_connections: bool = True) -> None:
+                                static: bool = False, keep_connections: bool = False) -> None:
         """Replace the master of the given instance.
 
         NOTE: all terminal connections will be reset.  Call reconnect_instance_terminal() to modify
@@ -414,7 +414,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         if inst_name not in self.instances:
             raise ValueError('Cannot find instance with name: %s' % inst_name)
 
-        self.instances[inst_name].change_generator(lib_name, cell_name, static=static)
+        self.instances[inst_name].change_generator(lib_name, cell_name, static=static,
+                                                   keep_connections=keep_connections)
 
     def reconnect_instance_terminal(self, inst_name: str, term_name: str, net_name: str) -> None:
         """Reconnect the instance terminal to a new net.
