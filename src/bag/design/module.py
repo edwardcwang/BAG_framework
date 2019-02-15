@@ -132,21 +132,6 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         pass
 
-    def get_cv_info(self, cell_name: str) -> PySchCellViewInfo:
-        """Returns the PySchCellViewInfo object.
-
-        Parameters
-        ----------
-        cell_name : str
-            the target cell name.
-
-        Returns
-        -------
-        cv_info : PySchCellViewInfo
-            the PySchCellViewInfo object.
-        """
-        return self._cv.get_info(cell_name)
-
     def design_model(self, model_params: Param, key: Any) -> None:
         self.params.assign('model_params', model_params)
         self.params.update_hash()
@@ -348,6 +333,20 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             True if the pin is successfully found and removed.
         """
         return self._cv.remove_pin(remove_pin)
+
+    def set_pin_attribute(self, pin_name: str, key: str, val: str) -> None:
+        """Set an attribute on the given pin.
+
+        Parameters
+        ----------
+        pin_name : str
+            the pin name.
+        key : str
+            the attribute name.
+        val : str
+            the attribute value.
+        """
+        self._cv.set_pin_attribute(pin_name, key, val)
 
     def rename_instance(self, old_name: str, new_name: str,
                         conn_list: Optional[Iterable[Tuple[str, str]]] = None) -> None:

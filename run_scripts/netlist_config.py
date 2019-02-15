@@ -20,6 +20,7 @@ from bag.io.file import read_yaml, write_yaml
 netlist_map_default = {
     'analogLib': {
         'gnd': {
+            'lib_name': 'analogLib',
             'cell_name': 'gnd',
             'in_terms': [],
             'io_terms': ['gnd!'],
@@ -29,6 +30,7 @@ netlist_map_default = {
             'props': {}
         },
         'vdc': {
+            'lib_name': 'analogLib',
             'cell_name': 'vdc',
             'in_terms': [],
             'io_terms': ['PLUS', 'MINUS'],
@@ -49,6 +51,7 @@ netlist_map_default = {
 }
 
 mos_default = {
+    'lib_name': 'BAG_prim',
     'cell_name': '',
     'in_terms': [],
     'out_terms': [],
