@@ -19,6 +19,72 @@ from bag.io.file import read_yaml, write_yaml
 
 netlist_map_default = {
     'analogLib': {
+        'cap': {
+            'lib_name': 'analogLib',
+            'cell_name': 'cap',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'c': [3, ''],
+                'l': [3, ''],
+                'm': [3, ''],
+                'w': [3, ''],
+            }
+        },
+        'idc': {
+            'lib_name': 'analogLib',
+            'cell_name': 'idc',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'acm': [3, ''],
+                'acp': [3, ''],
+                'idc': [3, ''],
+                'pacm': [3, ''],
+                'pacp': [3, ''],
+                'srcType': [3, 'dc'],
+                'xfm': [3, ''],
+            }
+        },
+        'ipulse': {
+            'lib_name': 'analogLib',
+            'cell_name': 'ipulse',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'i1': [3, ''],
+                'i2': [3, ''],
+                'idc': [3, ''],
+                'per': [3, ''],
+                'pw': [3, ''],
+                'srcType': [3, 'pulse'],
+                'td': [3, ''],
+            }
+        },
+        'isin': {
+            'lib_name': 'analogLib',
+            'cell_name': 'isin',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'freq': [3, ''],
+                'ia': [3, ''],
+                'idc': [3, ''],
+                'srcType': [3, 'sine'],
+            }
+        },
         'gnd': {
             'lib_name': 'analogLib',
             'cell_name': 'gnd',
@@ -29,6 +95,21 @@ netlist_map_default = {
             'out_terms': [],
             'props': {}
         },
+        'res': {
+            'lib_name': 'analogLib',
+            'cell_name': 'res',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'l': [3, ''],
+                'm': [3, ''],
+                'r': [3, ''],
+                'w': [3, ''],
+            }
+        },
         'vdc': {
             'lib_name': 'analogLib',
             'cell_name': 'vdc',
@@ -38,13 +119,46 @@ netlist_map_default = {
             'nets': [],
             'out_terms': [],
             'props': {
-                'vdc': [3, ''],
                 'acm': [3, ''],
                 'acp': [3, ''],
-                'xfm': [3, ''],
                 'pacm': [3, ''],
                 'pacp': [3, ''],
                 'srcType': [3, 'dc'],
+                'vdc': [3, ''],
+                'xfm': [3, ''],
+            }
+        },
+        'vpulse': {
+            'lib_name': 'analogLib',
+            'cell_name': 'vpulse',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'per': [3, ''],
+                'pw': [3, ''],
+                'srcType': [3, 'pulse'],
+                'td': [3, ''],
+                'v1': [3, ''],
+                'v2': [3, ''],
+                'vdc': [3, ''],
+            }
+        },
+        'vsin': {
+            'lib_name': 'analogLib',
+            'cell_name': 'vsin',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'freq': [3, ''],
+                'srcType': [3, 'sine'],
+                'va': [3, ''],
+                'vdc': [3, ''],
             }
         },
     },
@@ -71,6 +185,11 @@ MM0 D G S B {{ model_name }}{% for key, val in param_list %} {{ key }}={{ val }}
 .ENDS
 """
 
+mos_spectre_fmt = """subckt {{ cell_name }} B D G S
+MM0 D G S B {{ model_name }}{% for key, val in param_list %} {{ key }}={{ val }}{% endfor %}
+ends {{ cell_name }}
+"""
+
 mos_verilog_fmt = """module {{ cell_name }}(
     inout B,
     inout D,
@@ -85,6 +204,10 @@ supported_formats = {
         'fname': 'bag_prim.cdl',
         'mos': 'mos_cdl',
     },
+    DesignOutput.SPECTRE: {
+        'fname': 'bag_prim.scs',
+        'mos': 'mos_scs',
+    },
     DesignOutput.VERILOG: {
         'fname': 'bag_prim.v',
         'mos': 'mos_verilog',
@@ -96,7 +219,7 @@ supported_formats = {
 }
 
 jinja_env = Environment(
-    loader=DictLoader({'mos_cdl': mos_cdl_fmt, 'mos_verilog': mos_verilog_fmt}),
+    loader=DictLoader({'mos_cdl': mos_cdl_fmt, 'mos_scs': mos_spectre_fmt, 'mos_verilog': mos_verilog_fmt}),
     keep_trailing_newline=True,
 )
 

@@ -26,6 +26,8 @@ def get_sch_master(module_db: ModuleDB, sch_design_params: Dict[str, Any]) -> Mo
 @pytest.mark.parametrize("output_type, options", [
     (DesignOutput.YAML, {}),
     (DesignOutput.CDL, {'flat': True, 'shell': False, 'rmin': 2000}),
+    (DesignOutput.SPECTRE, {'flat': True, 'shell': False, 'rmin': 2000}),
+    (DesignOutput.SPECTRE, {'flat': True, 'shell': False, 'top_subckt': False, 'rmin': 2000}),
     (DesignOutput.VERILOG, {'flat': True, 'shell': False, 'rmin': 2000}),
     (DesignOutput.VERILOG, {'flat': True, 'shell': True, 'rmin': 2000}),
     (DesignOutput.SYSVERILOG, {'flat': True, 'shell': False, 'rmin': 2000}),
@@ -53,6 +55,8 @@ def test_design(tmpdir,
 
     if output_type is DesignOutput.YAML:
         base = 'out'
+    elif output_type is DesignOutput.SPECTRE:
+        base = 'out_{}'.format(int(options['shell']) + 2 * int(options.get('top_subckt', True)))
     else:
         base = 'out_{}'.format(int(options['shell']))
 
