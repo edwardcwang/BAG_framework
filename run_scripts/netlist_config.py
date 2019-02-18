@@ -19,32 +19,19 @@ from bag.io.file import read_yaml, write_yaml
 
 netlist_map_default = {
     'analogLib': {
-        'gnd': {
+        'cap': {
             'lib_name': 'analogLib',
-            'cell_name': 'gnd',
-            'in_terms': [],
-            'io_terms': ['gnd!'],
-            'is_prim': True,
-            'nets': [],
-            'out_terms': [],
-            'props': {}
-        },
-        'vdc': {
-            'lib_name': 'analogLib',
-            'cell_name': 'vdc',
+            'cell_name': 'cap',
             'in_terms': [],
             'io_terms': ['PLUS', 'MINUS'],
             'is_prim': True,
             'nets': [],
             'out_terms': [],
             'props': {
-                'vdc': [3, ''],
-                'acm': [3, ''],
-                'acp': [3, ''],
-                'xfm': [3, ''],
-                'pacm': [3, ''],
-                'pacp': [3, ''],
-                'srcType': [3, 'dc'],
+                'c': [3, ''],
+                'l': [3, ''],
+                'm': [3, ''],
+                'w': [3, ''],
             }
         },
         'idc': {
@@ -56,14 +43,57 @@ netlist_map_default = {
             'nets': [],
             'out_terms': [],
             'props': {
-                'idc': [3, ''],
                 'acm': [3, ''],
                 'acp': [3, ''],
-                'xfm': [3, ''],
+                'idc': [3, ''],
                 'pacm': [3, ''],
                 'pacp': [3, ''],
                 'srcType': [3, 'dc'],
+                'xfm': [3, ''],
             }
+        },
+        'ipulse': {
+            'lib_name': 'analogLib',
+            'cell_name': 'ipulse',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'i1': [3, ''],
+                'i2': [3, ''],
+                'idc': [3, ''],
+                'per': [3, ''],
+                'pw': [3, ''],
+                'srcType': [3, 'pulse'],
+                'td': [3, ''],
+            }
+        },
+        'isin': {
+            'lib_name': 'analogLib',
+            'cell_name': 'isin',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'freq': [3, ''],
+                'ia': [3, ''],
+                'idc': [3, ''],
+                'srcType': [3, 'sine'],
+            }
+        },
+        'gnd': {
+            'lib_name': 'analogLib',
+            'cell_name': 'gnd',
+            'in_terms': [],
+            'io_terms': ['gnd!'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {}
         },
         'res': {
             'lib_name': 'analogLib',
@@ -74,27 +104,61 @@ netlist_map_default = {
             'nets': [],
             'out_terms': [],
             'props': {
-                'model': [3, ''],
-                'r': [3, ''],
                 'l': [3, ''],
-                'w': [3, ''],
                 'm': [3, ''],
+                'r': [3, ''],
+                'w': [3, ''],
             }
         },
-        'cap': {
+        'vdc': {
             'lib_name': 'analogLib',
-            'cell_name': 'cap',
+            'cell_name': 'vdc',
             'in_terms': [],
             'io_terms': ['PLUS', 'MINUS'],
             'is_prim': True,
             'nets': [],
             'out_terms': [],
             'props': {
-                'model': [3, ''],
-                'c': [3, ''],
-                'l': [3, ''],
-                'w': [3, ''],
-                'm': [3, ''],
+                'acm': [3, ''],
+                'acp': [3, ''],
+                'pacm': [3, ''],
+                'pacp': [3, ''],
+                'srcType': [3, 'dc'],
+                'vdc': [3, ''],
+                'xfm': [3, ''],
+            }
+        },
+        'vpulse': {
+            'lib_name': 'analogLib',
+            'cell_name': 'vpulse',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'per': [3, ''],
+                'pw': [3, ''],
+                'srcType': [3, 'pulse'],
+                'td': [3, ''],
+                'v1': [3, ''],
+                'v2': [3, ''],
+                'vdc': [3, ''],
+            }
+        },
+        'vsin': {
+            'lib_name': 'analogLib',
+            'cell_name': 'vsin',
+            'in_terms': [],
+            'io_terms': ['PLUS', 'MINUS'],
+            'is_prim': True,
+            'nets': [],
+            'out_terms': [],
+            'props': {
+                'freq': [3, ''],
+                'srcType': [3, 'sine'],
+                'va': [3, ''],
+                'vdc': [3, ''],
             }
         },
     },
