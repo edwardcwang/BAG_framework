@@ -11,7 +11,7 @@ import os
 import abc
 from itertools import zip_longest
 
-from pybag.core import PySchCellView, PySchCellViewInfo
+from pybag.core import PySchCellView
 from pybag.enum import TermType, DesignOutput, is_model_type, get_extension
 
 from ..math import float_to_si_string
@@ -367,24 +367,6 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             for term, net in conn_list:
                 inst.update_connection(new_name, term, net)
 
-    def remove_instance(self, inst_name: str) -> bool:
-        """Remove the instance with the given name.
-
-        Parameters
-        ----------
-        inst_name : str
-            the child instance to delete.
-
-        Returns
-        -------
-        success : bool
-            True if the instance is successfully found and removed.
-        """
-        success = self._cv.remove_instance(inst_name)
-        if success:
-            del self.instances[inst_name]
-        return success
-
     def delete_instance(self, inst_name: str) -> bool:
         """Delete the instance with the given name.
 
@@ -401,7 +383,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         success : bool
             True if the instance is successfully found and removed.
         """
-        return self._cv.remove_instance(inst_name)
+        success = self._cv.remove_instance(inst_name)
+        if success:
+            del self.instances[inst_name]
+        return success
 
     def replace_instance_master(self, inst_name: str, lib_name: str, cell_name: str,
                                 static: bool = False, keep_connections: bool = False) -> None:
@@ -581,7 +566,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
                             inst.set_param(k, v)
             else:
-                self.remove_instance(inst_name)
+                self.delete_instance(inst_name)
 
     def design_dummy_transistors(self, dum_info: List[Tuple[Any]], inst_name: str, vdd_name: str,
                                  vss_name: str, net_map: Optional[Dict[str, str]] = None) -> None:
@@ -605,7 +590,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             optional net name transformation mapping.
         """
         if not dum_info:
-            self.remove_instance(inst_name)
+            self.delete_instance(inst_name)
         else:
             num_arr = len(dum_info)
             arr_name_list = ['XDUMMY%d' % idx for idx in range(num_arr)]
