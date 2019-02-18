@@ -8,4 +8,4 @@ then
     exit 1
 fi
 
-exec ${BAG_PYTEST} ${BAG_FRAMEWORK}/tests $@
+exec ${BAG_PYTEST} $@

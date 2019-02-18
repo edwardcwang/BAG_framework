@@ -516,11 +516,15 @@ class MasterDB(abc.ABC):
             top_subckt = kwargs.get('top_subckt', True)
             rmin = kwargs.get('rmin', 2000)
             cv_info_list = kwargs.get('cv_info_list', [])
+            cv_info_out = kwargs.get('cv_info_out', None)
+            cv_netlist = kwargs.get('cv_netlist', '')
 
             prim_fname = get_netlist_setup_file()
+            if cv_info_list and not cv_netlist:
+                raise ValueError('cv_netlist not specified when cv_info_list is non-empty.')
 
             implement_netlist(fname, content_list, output, flat, shell, top_subckt, rmin,
-                              prim_fname, cv_info_list)
+                              prim_fname, cv_info_list, cv_netlist, cv_info_out)
         else:
             raise ValueError('Unknown design output type: {}'.format(output.name))
         end = time.time()
