@@ -11,7 +11,7 @@ import os
 import abc
 from itertools import zip_longest
 
-from pybag.core import PySchCellView, PySchCellViewInfo
+from pybag.core import PySchCellView
 from pybag.enum import TermType, DesignOutput, is_model_type, get_extension
 
 from ..math import float_to_si_string
@@ -131,21 +131,6 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         :meth:`.array_instance`
         """
         pass
-
-    def get_cv_info(self, cell_name: str) -> PySchCellViewInfo:
-        """Returns the PySchCellViewInfo object.
-
-        Parameters
-        ----------
-        cell_name : str
-            the target cell name.
-
-        Returns
-        -------
-        cv_info : PySchCellViewInfo
-            the PySchCellViewInfo object.
-        """
-        return self._cv.get_info(cell_name)
 
     def design_model(self, model_params: Param, key: Any) -> None:
         self.params.assign('model_params', model_params)
@@ -349,6 +334,20 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """
         return self._cv.remove_pin(remove_pin)
 
+    def set_pin_attribute(self, pin_name: str, key: str, val: str) -> None:
+        """Set an attribute on the given pin.
+
+        Parameters
+        ----------
+        pin_name : str
+            the pin name.
+        key : str
+            the attribute name.
+        val : str
+            the attribute value.
+        """
+        self._cv.set_pin_attribute(pin_name, key, val)
+
     def rename_instance(self, old_name: str, new_name: str,
                         conn_list: Optional[Iterable[Tuple[str, str]]] = None) -> None:
         """Renames an instance in this schematic.
@@ -368,24 +367,6 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             for term, net in conn_list:
                 inst.update_connection(new_name, term, net)
 
-    def remove_instance(self, inst_name: str) -> bool:
-        """Remove the instance with the given name.
-
-        Parameters
-        ----------
-        inst_name : str
-            the child instance to delete.
-
-        Returns
-        -------
-        success : bool
-            True if the instance is successfully found and removed.
-        """
-        success = self._cv.remove_instance(inst_name)
-        if success:
-            del self.instances[inst_name]
-        return success
-
     def delete_instance(self, inst_name: str) -> bool:
         """Delete the instance with the given name.
 
@@ -402,7 +383,10 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         success : bool
             True if the instance is successfully found and removed.
         """
-        return self._cv.remove_instance(inst_name)
+        success = self._cv.remove_instance(inst_name)
+        if success:
+            del self.instances[inst_name]
+        return success
 
     def replace_instance_master(self, inst_name: str, lib_name: str, cell_name: str,
                                 static: bool = False, keep_connections: bool = False) -> None:
@@ -582,7 +566,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
                             inst.set_param(k, v)
             else:
-                self.remove_instance(inst_name)
+                self.delete_instance(inst_name)
 
     def design_dummy_transistors(self, dum_info: List[Tuple[Any]], inst_name: str, vdd_name: str,
                                  vss_name: str, net_map: Optional[Dict[str, str]] = None) -> None:
@@ -606,7 +590,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
             optional net name transformation mapping.
         """
         if not dum_info:
-            self.remove_instance(inst_name)
+            self.delete_instance(inst_name)
         else:
             num_arr = len(dum_info)
             arr_name_list = ['XDUMMY%d' % idx for idx in range(num_arr)]
