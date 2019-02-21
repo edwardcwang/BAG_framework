@@ -564,10 +564,10 @@ class RoutingGrid(PyRoutingGrid):
             than coord.
 
             If mode == GREATER, return the nearest track with both edges greater
-            than or equal to coord.
+            than coord.
 
             If mode == GREATER_EQ, return the nearest track with both edges greater
-            than coord.
+            than or equal to coord.
 
         Returns
         -------

@@ -44,10 +44,7 @@ class HalfInt(Integral):
 
     def div2(self, round_up: bool = False) -> HalfInt:
         q, r = divmod(self._val, 2)
-        if r or not round_up:
-            self._val = q
-        else:
-            self._val = q + 1
+        self._val = q + (r and round_up)
         return self
 
     def to_string(self) -> str:
