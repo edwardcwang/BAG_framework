@@ -598,7 +598,7 @@ class BagProject(object):
         routing_grid = RoutingGrid(self.tech_info, layers, spaces, widths, bot_dir,
                                    width_override=width_override)
         tdb = TemplateDB('template_libs.def', routing_grid, impl_lib, use_cybagoa=use_cybagoa,
-                         gds_lay_file=gds_lay_file, cache_dir=cache_dir)
+                         gds_lay_file=gds_lay_file, cache_dir=cache_dir, prj=self)
 
         return tdb
 
