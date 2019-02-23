@@ -35,19 +35,12 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         the netlist information file name.
     database : ModuleDB
         the design database object.
-    params : Dict[str, Any]
+    params : Param
         the parameters dictionary.
     copy_state : Optional[Dict[str, Any]]
         If not None, set content of this master from this dictionary.
     **kwargs : Any
         optional arguments
-
-    Attributes
-    ----------
-    params : Dict[str, Any]
-        the parameters dictionary.
-    instances : Dict[str, SchInstance]
-        the instance dictionary.
     """
 
     def __init__(self, yaml_fname: str, database: ModuleDB, params: Param, *,
@@ -133,8 +126,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         pass
 
     def design_model(self, model_params: Param, key: Any) -> None:
-        self.params.assign('model_params', model_params)
-        self.params.update_hash()
+        self.params = self.params.copy(append=dict(model_params=model_params))
         self.update_signature(key)
         self._cv.cell_name = self.cell_name
         if 'view_name' not in model_params:
@@ -170,9 +162,8 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
         """Finalize this master instance.
         """
         # invoke design function, excluding model_params
-        mpar = self.params.pop('model_params')
-        self.design(**self.params)
-        self.params.assign('model_params', mpar)
+        args = dict((k, v) for k, v in self.params.items() if k != 'model_params')
+        self.design(**args)
 
         # get set of children master keys
         for inst in self.instances.values():
@@ -197,7 +188,7 @@ class Module(DesignMaster, metaclass=abc.ABCMeta):
 
         netlist = ''
         if is_model_type(output_type):
-            model_params = self.params['model_params']
+            model_params: Optional[Param] = self.params['model_params']
             if model_params is None:
                 # model parameters is unset.  This happens if a behavioral model view is used
                 # at a top level block, and this cell gets shadows out.
@@ -749,9 +740,9 @@ class MosModuleBase(Module):
     def get_schematic_parameters(self) -> Dict[str, str]:
         w_res = self.tech_info.tech_params['mos']['width_resolution']
         l_res = self.tech_info.tech_params['mos']['length_resolution']
-        w = self.params['w']
-        l = self.params['l']
-        nf = self.params['nf']
+        w: float = self.params['w']
+        l: float = self.params['l']
+        nf: int = self.params['nf']
         wstr = float_to_si_string(int(round(w / w_res)) * w_res)
         lstr = float_to_si_string(int(round(l / l_res)) * l_res)
         nstr = str(nf)
@@ -789,8 +780,8 @@ class ResPhysicalModuleBase(Module):
         pass
 
     def get_schematic_parameters(self) -> Dict[str, str]:
-        w = self.params['w']
-        l = self.params['l']
+        w: float = self.params['w']
+        l: float = self.params['l']
         wstr = float_to_si_string(w)
         lstr = float_to_si_string(l)
 
@@ -826,8 +817,8 @@ class ResMetalModule(Module):
         pass
 
     def get_schematic_parameters(self) -> Dict[str, str]:
-        w = self.params['w']
-        l = self.params['l']
+        w: float = self.params['w']
+        l: float = self.params['l']
         layer = self.params['layer']
         wstr = float_to_si_string(w)
         lstr = float_to_si_string(l)

@@ -10,20 +10,15 @@ from typing import (
 )
 
 import abc
-import sys
 import time
-import numbers
 from collections import OrderedDict
-from collections.abc import Hashable
 
 from pybag.enum import DesignOutput, is_netlist_type, is_model_type
 from pybag.core import implement_yaml, implement_netlist, implement_gds
 
-from sortedcontainers import SortedDict
-
-from ..io import fix_string
 from ..env import get_netlist_setup_file, get_gds_layer_map, get_gds_object_map
 from .search import get_new_name
+from .immutable import ImmutableSortedDict, to_immutable
 
 if TYPE_CHECKING:
     from ..core import BagProject
@@ -32,69 +27,7 @@ if TYPE_CHECKING:
 MasterType = TypeVar('MasterType', bound='DesignMaster')
 DBType = TypeVar('DBType', bound='MasterDB')
 
-
-class Param(SortedDict, Hashable):
-    def __init__(self, *args, **kwargs) -> None:
-        hash_val = kwargs.pop('_hash_value', 0)
-        SortedDict.__init__(self, *args, **kwargs)
-        self._hash_value = hash_val
-
-    @classmethod
-    def to_param(cls, table: Dict[Any, Any]):
-        if isinstance(table, Param):
-            return table
-        ans = Param()
-        for key, val in table.items():
-            ans.assign(key, val)
-        ans.update_hash()
-        return ans
-
-    @classmethod
-    def get_hash(cls, val: object) -> int:
-        if isinstance(val, Param):
-            return hash(val)
-        elif isinstance(val, list) or isinstance(val, tuple):
-            seed = 0
-            for item in val:
-                seed = cls._combine_hash(seed, cls.get_hash(item))
-            return seed
-        elif isinstance(val, dict):
-            seed = 0
-            for k, v in val.items():
-                seed = cls._combine_hash(seed, hash(k))
-                seed = cls._combine_hash(seed, cls.get_hash(v))
-            return seed
-        else:
-            return hash(val)
-
-    @classmethod
-    def _combine_hash(cls, seed: int, v: int) -> int:
-        # boost::hash_combine port
-        seed ^= v + 0x9e3779b9 + (seed << 6) + (seed >> 2)
-        return seed & sys.maxsize
-
-    def copy(self) -> Param:
-        ans = SortedDict.copy(self)  # type: Param
-        ans._hash_value = self._hash_value
-        return ans
-
-    def assign(self, name: object, value: object):
-        if isinstance(value, Param) or not isinstance(value, dict):
-            SortedDict.__setitem__(self, name, value)
-        else:
-            SortedDict.__setitem__(self, name, self.to_param(value))
-
-    def update_hash(self) -> None:
-        self._hash_value = 0
-        for key, val in self.items():
-            self._hash_value = self._combine_hash(self._hash_value, hash(key))
-            self._hash_value = self._combine_hash(self._hash_value, self.get_hash(val))
-
-    def __setitem__(self, name: object, value: object) -> None:
-        raise TypeError('Cannot call __setitem__ on a Param object.')
-
-    def __hash__(self) -> int:
-        return self._hash_value
+Param = ImmutableSortedDict
 
 
 class DesignMaster(abc.ABC):
@@ -158,23 +91,22 @@ class DesignMaster(abc.ABC):
         """Fill params dictionary with values from table and default_params"""
         hidden_params = cls.get_hidden_params()
 
-        result = Param()
+        result = {}
         for key, desc in params_info.items():
             if key not in table:
                 if key not in default_params:
                     raise ValueError('Parameter {} not specified.  '
                                      'Description:\n{}'.format(key, desc))
                 else:
-                    result.assign(key, default_params[key])
+                    result[key] = default_params[key]
             else:
-                result.assign(key, table[key])
+                result[key] = table[key]
 
         # add hidden parameters
         for name, value in hidden_params.items():
-            result.assign(name, table.get(name, value))
+            result[name] = table.get(name, value)
 
-        result.update_hash()
-        return result
+        return Param(result)
 
     @classmethod
     def compute_unique_key(cls, params: Param) -> Any:
@@ -240,22 +172,13 @@ class DesignMaster(abc.ABC):
         # type: (Any) -> Any
         """Convert the given object to an immutable type for use as keys in dictionary.
         """
-        # python 2/3 compatibility: convert raw bytes to string
-        val = fix_string(val)
-
-        if (val is None or isinstance(val, numbers.Number) or isinstance(val, str) or
-                isinstance(val, Param)):
-            return val
-        elif isinstance(val, list) or isinstance(val, tuple):
-            return tuple((cls.to_immutable_id(item) for item in val))
-        elif isinstance(val, dict):
-            return Param.to_param(val)
-        elif isinstance(val, set):
-            return tuple((k for k in sorted(val)))
-        elif hasattr(val, 'get_immutable_key') and callable(val.get_immutable_key):
-            return val.get_immutable_key()
-        else:
-            raise Exception('Unrecognized value %s with type %s' % (str(val), type(val)))
+        try:
+            return to_immutable(val)
+        except ValueError:
+            if hasattr(val, 'get_immutable_key') and callable(val.get_immutable_key):
+                return val.get_immutable_key()
+            else:
+                raise Exception('Unrecognized value %s with type %s' % (str(val), type(val)))
 
     @classmethod
     def format_cell_name(cls, cell_name, rename_dict, name_prefix, name_suffix):

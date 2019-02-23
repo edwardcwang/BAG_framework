@@ -128,9 +128,7 @@ class ModuleDB(MasterDB):
         """
         debug = kwargs.get('debug', False)
 
-        new_params = master.params.copy()
-        new_params.assign('model_params', model_params)
-        new_params.update_hash()
+        new_params = master.params.copy(append=dict(model_params=model_params))
         key = master.compute_unique_key(new_params)
         test = self.find_master(key)
         if test is not None:
@@ -156,7 +154,7 @@ class ModuleDB(MasterDB):
                     **kwargs,  # type: Any
                     ):
         # type: (...) -> Sequence[Tuple[Module, str]]
-        new_info_list = [(self.new_model(m, Param.to_param(m_params)), name)
+        new_info_list = [(self.new_model(m, Param(m_params)), name)
                          for m, name, m_params in info_list]
         self.batch_output(output, new_info_list, **kwargs)
         return new_info_list
