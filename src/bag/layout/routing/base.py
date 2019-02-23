@@ -495,7 +495,7 @@ class TrackManager(object):
             return -wsum - space + cur_idx
 
     def place_wires(self, layer_id: int, type_list: Sequence[Union[str, int]],
-                    start_idx: TrackType = 0, **kwargs: Any) -> Tuple[HalfInt, List[HalfInt]]:
+                    start_idx: TrackType = 0, **kwargs: Any) -> Tuple[HalfInt, Tuple[HalfInt, ...]]:
         """Place the given wires next to each other.
 
         Parameters
@@ -513,11 +513,11 @@ class TrackManager(object):
         -------
         num_tracks : HalfInt
             number of tracks used.
-        locations : List[HalfInt]
+        locations : Tuple[HalfInt, ...]
             the center track index of each wire.
         """
         if not type_list:
-            return HalfInt(0), []
+            return HalfInt(0), tuple()
 
         prev_type = type_list[0]
         w0 = self.get_width(layer_id, prev_type)
@@ -530,7 +530,7 @@ class TrackManager(object):
 
         w1 = self.get_width(layer_id, type_list[-1])
         ntr = (ans[-1] - ans[0]) + (w0 + w1) / 2
-        return ntr, ans
+        return ntr, tuple(ans)
 
     @classmethod
     def _get_align_delta(cls, tot_ntr: TrackType, num_used: TrackType, alignment: int) -> HalfInt:

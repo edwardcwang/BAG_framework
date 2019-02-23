@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import TypeVar, Any, Generic, Dict, Iterable, Tuple, Union, Optional
+from typing import TypeVar, Any, Generic, Dict, Iterable, Tuple, Union, Optional, Mapping
 
 import sys
 import abc
@@ -50,16 +50,17 @@ def combine_hash(a: int, b: int) -> int:
 class ImmutableSortedDict(Immutable, collections.Mapping, Generic[T, U]):
     """An immutable dictionary with sorted keys."""
 
-    def __init__(self, table: Optional[Dict[T, Any]] = None,
-                 copy: Optional[ImmutableSortedDict[T, Any]] = None) -> None:
-        if copy is not None:
-            self._keys = copy._keys
-            self._vals = copy._vals
-            self._hash = copy._hash
-        elif table is not None:
-            self._keys = tuple(sorted(table.keys()))
-            self._vals = tuple((to_immutable(table[k]) for k in self._keys))
-            self._hash = combine_hash(hash(self._keys), hash(self._vals))
+    def __init__(self,
+                 table: Optional[Mapping[T, Any]] = None) -> None:
+        if table is not None:
+            if isinstance(table, ImmutableSortedDict):
+                self._keys = table._keys
+                self._vals = table._vals
+                self._hash = table._hash
+            else:
+                self._keys = tuple(sorted(table.keys()))
+                self._vals = tuple((to_immutable(table[k]) for k in self._keys))
+                self._hash = combine_hash(hash(self._keys), hash(self._vals))
         else:
             self._keys = tuple()
             self._vals = tuple()
@@ -80,13 +81,13 @@ class ImmutableSortedDict(Immutable, collections.Mapping, Generic[T, U]):
     def __iter__(self) -> Iterable[T]:
         return iter(self._keys)
 
-    def __getitem__(self, item: T) -> ImmutableType:
+    def __getitem__(self, item: T) -> U:
         idx = bisect.bisect_left(self._keys, item)
         if idx == len(self._keys) or self._keys[idx] != item:
             raise KeyError('Key not found: {}'.format(item))
         return self._vals[idx]
 
-    def get(self, item: T, default: Optional[Any] = None) -> Any:
+    def get(self, item: T, default: Optional[U] = None) -> Optional[U]:
         idx = bisect.bisect_left(self._keys, item)
         if idx == len(self._keys) or self._keys[idx] != item:
             return default
@@ -103,7 +104,7 @@ class ImmutableSortedDict(Immutable, collections.Mapping, Generic[T, U]):
 
     def copy(self, append: Optional[Dict[T, Any]] = None) -> ImmutableSortedDict:
         if append is None:
-            return self.__class__(copy=self)
+            return self.__class__(self)
         else:
             tmp = dict(zip(self._keys, self._vals))
             tmp.update(append)
