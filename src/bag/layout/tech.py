@@ -4,17 +4,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Tuple, Optional, Any
+from typing import TYPE_CHECKING, Dict, List, Tuple, Optional, Any, Sequence
 
 import math
 from itertools import chain
-
-from bag.util.search import BinaryIterator
 
 # try to import cython classes
 # noinspection PyUnresolvedReferences
 from pybag.core import BBox, PyTech, Transform
 from pybag.enum import Orient2D, Orientation, Direction
+
+from ..util.search import BinaryIterator
+from ..util.cache import Param
 
 if TYPE_CHECKING:
     from .core import PyLayInstance
@@ -35,8 +36,6 @@ class TechInfo(PyTech):
         the configuration dictionary corresponding to config_fname.
     config_fname : str
         the configuration file name.
-    mos_entry_name : str
-        the AnalogBase default parameters key.
 
     Attributes
     ----------
@@ -45,11 +44,12 @@ class TechInfo(PyTech):
     """
 
     def __init__(self, tech_params: Dict[str, Any], config: Dict[str, Any],
-                 config_fname: str, mos_entry_name: str = 'mos') -> None:
+                 config_fname: str) -> None:
         PyTech.__init__(self, config_fname)
         self._tech_params = tech_params
         self._config = config
-        self._mos_entry_name = mos_entry_name
+        self._tech_cls_dict: Dict[str, Any] = {}
+        self._tech_cls_cache: Dict[Tuple[str, Param], Any] = {}
 
     def add_cell_boundary(self, template: TemplateBase, box: BBox) -> None:
         """Adds a cell boundary object to the given template.
@@ -207,6 +207,24 @@ class TechInfo(PyTech):
         """Dict[str, Any]: The configuration dictionary used to compute various DRC rules."""
         return self._config
 
+    def register_device_tech(self, dev_name: str, obj: Any) -> None:
+        """Register the A technology class for the given device."""
+        self._tech_cls_dict[dev_name] = obj
+
+    def get_device_tech(self, dev_name: str, **kwargs: Any) -> Any:
+        """Get an instance of the technology class for the given device."""
+        cache_key = (dev_name, Param(kwargs))
+        ans = self._tech_cls_cache.get(cache_key, None)
+        if ans is None:
+            # make the technology class instance.
+            cls = self._tech_cls_dict.get(dev_name, None)
+            if cls is None:
+                raise ValueError(
+                    'Technology class {} not found.  Is it registered?'.format(dev_name))
+
+            ans = self._tech_cls_cache[cache_key] = cls(tech_info=self, **kwargs)
+        return ans
+
     def get_dc_temp(self, dc_temp: int = -1000) -> int:
         """Returns the temperature at which to evaluate DC electro-migration rules."""
         if dc_temp == -1000:
@@ -225,7 +243,7 @@ class TechInfo(PyTech):
         """
         return self._config['well_layers'][sub_type]
 
-    def get_implant_layers(self, mos_type: str, res_type: str = '') -> List[Tuple[str, str]]:
+    def get_implant_layers(self, mos_type: str, res_type: str = '') -> Sequence[Tuple[str, str]]:
         """Returns a list of implant layers associated with the given device type.
 
         Parameters
@@ -240,22 +258,14 @@ class TechInfo(PyTech):
         imp_list : List[Tuple[str, str]]
             list of implant layers.
         """
-        if not res_type:
-            table = self.config[self._mos_entry_name]
-        else:
-            table = self.config['resistor']
-
-        return list(table['imp_layers'][mos_type].keys())
+        entry_name = 'res_{}'.format(res_type) if res_type else mos_type
+        return tuple(self.config['imp_layers'][entry_name].keys())
 
     def get_threshold_layers(self, mos_type: str, threshold: str,
-                             res_type: str = '') -> List[Tuple[str, str]]:
+                             res_type: str = '') -> Sequence[Tuple[str, str]]:
         """Returns a list of threshold layers."""
-        if not res_type:
-            table = self.config[self._mos_entry_name]
-        else:
-            table = self.config['resistor']
-
-        return list(table['thres_layers'][mos_type][threshold].keys())
+        entry_name = 'res_{}'.format(res_type) if res_type else mos_type
+        return tuple(self.config['thres_layers'][entry_name][threshold].keys())
 
     def get_exclude_layer(self, layer_id: int) -> Tuple[str, str]:
         """Returns the metal exclude layer"""
@@ -284,7 +294,7 @@ class TechInfo(PyTech):
         lay_list : List[Tuple[str, str]]
             list of DNW layers.
         """
-        return self.config[self._mos_entry_name]['dnw_layers']
+        return self.config['dnw_layers']
 
     def get_res_metal_layers(self, layer_id: int) -> List[Tuple[str, str]]:
         """Returns a list of layers associated with the given metal resistor.
@@ -417,13 +427,13 @@ class TechInfo(PyTech):
         if merge_imp:
             lay_iter = chain(lay_iter, self.get_implant_layers(sub_type, res_type=res_type))
 
-        for lay, purp in lay_iter:
+        for lay_purp in lay_iter:
             tot_box = BBox.get_invalid_bbox()
             for inst in inst_list:
-                cur_box = inst.master.get_rect_bbox(lay, purp)
+                cur_box = inst.master.get_rect_bbox(lay_purp)
                 tot_box.merge(inst.transform_master_object(cur_box))
             if tot_box.is_physical():
-                template.add_rect(lay, purp, tot_box)
+                template.add_rect(lay_purp, tot_box)
 
     def finalize_template(self, template: TemplateBase) -> None:
         """Perform any operations necessary on the given layout template before finalizing it.
