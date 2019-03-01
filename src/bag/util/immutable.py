@@ -96,13 +96,13 @@ class ImmutableSortedDict(Immutable, collections.Mapping, Generic[T, U]):
     def keys(self) -> Iterable[T]:
         return iter(self._keys)
 
-    def values(self) -> Iterable[ImmutableType]:
+    def values(self) -> Iterable[U]:
         return iter(self._vals)
 
-    def items(self) -> Iterable[Tuple[T, ImmutableType]]:
+    def items(self) -> Iterable[Tuple[T, U]]:
         return zip(self._keys, self._vals)
 
-    def copy(self, append: Optional[Dict[T, Any]] = None) -> ImmutableSortedDict:
+    def copy(self, append: Optional[Dict[T, Any]] = None) -> ImmutableSortedDict[T, U]:
         if append is None:
             return self.__class__(self)
         else:
