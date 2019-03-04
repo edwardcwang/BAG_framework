@@ -15,7 +15,7 @@ from pybag.core import BBox, PyTech, Transform
 from pybag.enum import Orient2D, Orientation, Direction
 
 from ..util.search import BinaryIterator
-from ..util.cache import Param
+from ..util.immutable import ImmutableSortedDict
 
 if TYPE_CHECKING:
     from .core import PyLayInstance
@@ -49,7 +49,7 @@ class TechInfo(PyTech):
         self._tech_params = tech_params
         self._config = config
         self._tech_cls_dict: Dict[str, Any] = {}
-        self._tech_cls_cache: Dict[Tuple[str, Param], Any] = {}
+        self._tech_cls_cache: Dict[Tuple[str, ImmutableSortedDict], Any] = {}
 
     def add_cell_boundary(self, template: TemplateBase, box: BBox) -> None:
         """Adds a cell boundary object to the given template.
@@ -213,7 +213,7 @@ class TechInfo(PyTech):
 
     def get_device_tech(self, dev_name: str, **kwargs: Any) -> Any:
         """Get an instance of the technology class for the given device."""
-        cache_key = (dev_name, Param(kwargs))
+        cache_key = (dev_name, ImmutableSortedDict(kwargs))
         ans = self._tech_cls_cache.get(cache_key, None)
         if ans is None:
             # make the technology class instance.
