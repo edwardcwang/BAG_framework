@@ -5,27 +5,15 @@
 
 from __future__ import annotations
 
-from typing import TypeVar, Any, Generic, Dict, Iterable, Tuple, Union, Optional, Mapping
+from typing import TypeVar, Any, Generic, Dict, Iterable, Tuple, Union, Optional
 
 import sys
-import abc
 import bisect
-import collections
-
-
-class Immutable(abc.ABC):
-    """This is the abstract base class of all immutable data types."""
-
-    @abc.abstractmethod
-    def __eq__(self, other: Any) -> bool: ...
-
-    @abc.abstractmethod
-    def __hash__(self) -> int: ...
-
+from collections import Hashable, Mapping
 
 T = TypeVar('T')
 U = TypeVar('U')
-ImmutableType = Union[Immutable, Tuple[Immutable, ...]]
+ImmutableType = Union[Hashable, Tuple[Hashable, ...]]
 
 
 def combine_hash(a: int, b: int) -> int:
@@ -47,7 +35,7 @@ def combine_hash(a: int, b: int) -> int:
     return sys.maxsize & (a ^ (b + 0x9e3779b9 + (a << 6) + (a >> 2)))
 
 
-class ImmutableSortedDict(Immutable, collections.Mapping, Generic[T, U]):
+class ImmutableSortedDict(Hashable, Mapping, Generic[T, U]):
     """An immutable dictionary with sorted keys."""
 
     def __init__(self,
@@ -113,9 +101,7 @@ class ImmutableSortedDict(Immutable, collections.Mapping, Generic[T, U]):
 
 def to_immutable(obj: Any) -> ImmutableType:
     """Convert the given Python object into an immutable type."""
-    if (obj is None or isinstance(obj, str) or isinstance(obj, int) or
-            isinstance(obj, float) or isinstance(obj, complex) or
-            isinstance(obj, Immutable)):
+    if obj is None or isinstance(obj, Hashable):
         return obj
     if isinstance(obj, tuple) or isinstance(obj, list):
         return tuple((to_immutable(v) for v in obj))

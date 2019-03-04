@@ -6,13 +6,12 @@
 from __future__ import annotations
 
 from typing import (
-    TYPE_CHECKING, Union, Dict, Any, List, TypeVar, Type, Optional, Tuple, Iterable,
+    TYPE_CHECKING, Union, Dict, Any, List, TypeVar, Type, Optional, Tuple, Iterable, Mapping,
     Sequence, cast
 )
 from bag.typing import PointType
 
 import abc
-import copy
 from itertools import product
 
 from ..util.cache import DesignMaster, MasterDB, Param
@@ -77,7 +76,7 @@ class TemplateDB(MasterDB):
     def tech_info(self) -> TechInfo:
         return self._grid.tech_info
 
-    def new_template(self, temp_cls: Type[TemplateType], params: Optional[Dict[str, Any]] = None,
+    def new_template(self, temp_cls: Type[TemplateType], params: Optional[Mapping[str, Any]] = None,
                      **kwargs: Any) -> TemplateType:
         """Alias for new_master() for backwards compatibility.
         """
@@ -96,7 +95,7 @@ class TemplateDB(MasterDB):
         self.batch_output(output, info_list, **kwargs)
 
 
-class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
+class TemplateBase(DesignMaster, abc.ABC):
     """The base template class.
 
     Parameters
@@ -356,12 +355,8 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
             A new layout master object.
         """
         # get new parameter dictionary.
-        new_params = copy.deepcopy(self.params)
-        for key, val in kwargs.items():
-            if key in new_params:
-                new_params[key] = val
-
-        return self.template_db.new_template(params=new_params, temp_cls=self.__class__,
+        new_params = self.params.copy(append=kwargs)
+        return self.template_db.new_template(self.__class__, params=new_params,
                                              grid=self._parent_grid)
 
     def set_size_from_bound_box(self, top_layer_id: int, bbox: BBox, *, round_up: bool = False,
@@ -386,9 +381,12 @@ class TemplateBase(DesignMaster, metaclass=abc.ABCMeta):
         if bbox.xl != 0 or bbox.yl != 0:
             raise ValueError('lower-left corner of overall bounding box must be (0, 0).')
 
-        # noinspection PyAttributeOutsideInit
-        self.size = grid.get_size_tuple(top_layer_id, bbox.w, bbox.h, round_up=round_up,
-                                        half_blk_x=half_blk_x, half_blk_y=half_blk_y)
+        if grid.size_defined(top_layer_id):
+            self.size = grid.get_size_tuple(top_layer_id, bbox.w, bbox.h, round_up=round_up,
+                                            half_blk_x=half_blk_x, half_blk_y=half_blk_y)
+        else:
+            self.prim_top_layer = top_layer_id
+            self.prim_bound_box = bbox
 
     def set_size_from_array_box(self, top_layer_id: int) -> None:
         """Automatically compute the size from array_box.
