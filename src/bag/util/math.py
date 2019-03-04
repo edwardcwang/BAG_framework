@@ -79,7 +79,7 @@ class HalfInt(Integral):
         return 'HalfInt({})'.format(self._val / 2)
 
     def __hash__(self):
-        return hash(self._val)
+        return hash(self._val / 2)
 
     def __eq__(self, other):
         if isinstance(other, HalfInt):
