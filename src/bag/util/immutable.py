@@ -13,7 +13,7 @@ from collections import Hashable, Mapping
 
 T = TypeVar('T')
 U = TypeVar('U')
-ImmutableType = Union[Hashable, Tuple[Hashable, ...]]
+ImmutableType = Union[None, Hashable, Tuple[Hashable, ...]]
 
 
 def combine_hash(a: int, b: int) -> int:
@@ -101,8 +101,15 @@ class ImmutableSortedDict(Hashable, Mapping, Generic[T, U]):
 
 def to_immutable(obj: Any) -> ImmutableType:
     """Convert the given Python object into an immutable type."""
-    if obj is None or isinstance(obj, Hashable):
+    if obj is None:
         return obj
+    if isinstance(obj, Hashable):
+        # gets around cases of tuple of un-hashable types.
+        try:
+            hash(obj)
+            return obj
+        except TypeError:
+            pass
     if isinstance(obj, tuple) or isinstance(obj, list):
         return tuple((to_immutable(v) for v in obj))
     if isinstance(obj, set):
