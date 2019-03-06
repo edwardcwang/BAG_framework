@@ -288,6 +288,11 @@ class TemplateBase(DesignMaster, abc.ABC):
         return self._size
 
     @property
+    def size_defined(self) -> bool:
+        """bool: True if size or bounding box has been set."""
+        return self.size is not None or self.prim_bound_box is not None
+
+    @property
     def bound_box(self) -> Optional[BBox]:
         """Optional[BBox]: Returns the template BBox.  None if size not set yet."""
         mysize = self.size
