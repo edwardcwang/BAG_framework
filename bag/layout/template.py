@@ -352,7 +352,7 @@ class TemplateDB(MasterDB):
             via_info = lay_info['via_info']
 
         out_fname = '%s.gds' % lib_name
-        gds_lib = gdspy.GdsLibrary(name=lib_name)
+        gds_lib = gdspy.GdsLibrary(name=lib_name, unit=lay_unit, precision=res * lay_unit)
         cell_dict = gds_lib.cell_dict
         if debug:
             print('Instantiating layout')
@@ -445,7 +445,7 @@ class TemplateDB(MasterDB):
                                          verbose=False)
                 gds_cell.add(cur_poly.fracture(precision=res))
 
-        gds_lib.write_gds(out_fname, unit=lay_unit, precision=res * lay_unit)
+        gds_lib.write_gds(out_fname)
         end = time.time()
         if debug:
             print('layout instantiation took %.4g seconds' % (end - start))
