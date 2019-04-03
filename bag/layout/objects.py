@@ -253,7 +253,7 @@ class InstanceInfo(dict):
     """
 
     param_list = ['lib', 'cell', 'view', 'name', 'loc', 'orient', 'num_rows',
-                  'num_cols', 'sp_rows', 'sp_cols']
+                  'num_cols', 'sp_rows', 'sp_cols', 'master_key']
 
     def __init__(self, res, change_orient=True, **kwargs):
         kv_iter = ((key, kwargs[key]) for key in self.param_list)
@@ -353,6 +353,14 @@ class InstanceInfo(dict):
     def params(self, new_params):
         # type: (Optional[Dict[str, Any]]) -> None
         self['params'] = new_params
+
+    @property
+    def master_key(self):
+        return self.get('master_key', None)
+
+    @master_key.setter
+    def master_key(self, value):
+        self['master_key'] = value
 
     @property
     def angle_reflect(self):
@@ -633,6 +641,7 @@ class Instance(Arrayable):
                             num_cols=self.nx,
                             sp_rows=self.spy,
                             sp_cols=self.spx,
+                            master_key=self.master.key
                             )
 
     @property

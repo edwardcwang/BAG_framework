@@ -449,6 +449,10 @@ class SkillInterface(DbAccess):
         for info_list in layout_list:
             new_inst_list = []
             for inst in info_list[1]:
+                if 'master_key' in inst:
+                    # SKILL inteface cannot handle master_key info, so we remove it
+                    # from InstanceInfo if we find it
+                    inst.pop('master_key')
                 if 'params' in inst:
                     inst = inst.copy()
                     inst['params'] = _dict_to_pcell_params(inst['params'])
